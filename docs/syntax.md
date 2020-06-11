@@ -18,15 +18,15 @@ local function tree_insert(tree, x)
 end
 ```
 
-Note that future versions of Lua extend the Lua 5.1 syntax with the following features:
+Note that future versions of Lua extend the Lua 5.1 syntax with the following features; with the exception of the string literals, these are **not** supported by Luau:
 
 - hexadecimal (\\0x), Unicode (\\u) and \\z escapes for string literals
-- goto statements
+- goto statements and labels
 - bitwise operators
 - floor division operator (//)
 - \<toclose> and \<const> local attributes
 
-Luau implements the string literal extensions, but no other features; for details please refer to [compatibility section](compatibility.md).
+> For details please refer to [compatibility section](compatibility.md).
 
 The rest of this document documents additional syntax used in Luau.
 
