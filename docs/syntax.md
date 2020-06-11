@@ -50,8 +50,8 @@ In addition to basic integer and floating-point decimal numbers, Luau supports:
 
 Note that Luau only has a single number type, a 64-bit IEEE754 double precision number (which can represent integers up to 2^53 exactly), and larger integer literals are stored with precision loss.
 
-Continue
-========
+Continue statement
+==================
 
 In addition to `break` in all loops, Luau supports `continue` statement. Similar to `break`, `continue` must be the last statement in the block.
 
@@ -73,7 +73,7 @@ end
 
 When used in `repeat..until` loops, `continue` can not skip the declaration of a local variable if that local variable is used in the loop condition; code like this is invalid and won't compile:
 
-```
+```lua
 repeat
     do continue end
     local a = 5
