@@ -103,7 +103,7 @@ a[foo()] = a[foo()] + 1
 a[foo()] += 1
 ```
 
-Compound assignments call the arithmetic metamethods (`__add` et al) and table indexing metamethods (`__index` and `__newindex`) as necessary - for custom types no extra effort is necessary to support them.
+Compound assignments call the arithmetic metamethods (`__add` et al) and table indexing metamethods (`__index` and `__newindex`) as needed - for custom types no extra effort is necessary to support them.
 
 Type annotations
 ================
