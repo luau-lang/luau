@@ -3,6 +3,14 @@ Luau
 
 Luau is a fast, small, safe, gradually typed embeddable scripting language derived from Lua. It is used by Roblox game developers to write game code, as well as by Roblox engineers to implement large parts of the user-facing application code as well as portions of the editor (Roblox Studio) as plugins.
 
+```lua
+type Point = { x: number, y: number }
+
+local p = { x = 1, y = 2 }
+
+print(p.x, p.y)
+-- print(p.z) results in a type error
+```
 
 Motivation
 ==========
@@ -15,7 +23,7 @@ Having grown a substantial internal codebase that needed to be correct and perfo
 
 Unlike mainline Lua, we also could not afford to do major breaking changes to the language (hence the 5.1 language baseline that remained unchanged for more than a decade). While faster implementations of Lua 5.1 like LuaJIT were available, they didn't meet our needs in terms of portability, ease of change and they didn't address the problem of developing robust code at scale.
 
-All of these motivated us to start reshaping Lua 5.1 that we started from into a new, derivative language that we call Luau. Our focus it on making the language more performant and feature-rich, and make it easier to write robust code through a combination of linting and type checking using a gradual type system.
+All of these motivated us to start reshaping Lua 5.1 that we started from into a new, derivative language that we call Luau. Our focus is on making the language more performant and feature-rich, and make it easier to write robust code through a combination of linting and type checking using a gradual type system.
 
 Syntax
 ======
