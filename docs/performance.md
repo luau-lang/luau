@@ -2,8 +2,8 @@
 
 One of main goals of Luau is to enable high performance code, with gameplay code being the main use case. This can be viewed as two separate goals:
 
-- Make idiomatic code that is often written faster
-- Enable even more high performance code through careful tuning
+- Make idiomatic code that wasn't tuned faster
+- Enable even higher performance through careful tuning
 
 Both of these goals are important - it's insufficient to just focus on the highly tuned code, and all things being equal we prefer to raise all boats by implementing general optimizations. However, in some cases it's important to be aware of optimizations that Luau does and doesn't do.
 
