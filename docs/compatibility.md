@@ -28,6 +28,20 @@ Luau has certain limitations around the number of local variables, registers, up
 
 Note that Lua 5.3 has a larger upvalue limit (255) and a larger constant limit (2^26); existing Luau limits are likely sufficient for reasonable use cases.
 
+Lua 5.1
+=======
+
+Since several features were removed from Lua 5.1 for sandboxing reasons, this table lists them for completeness.
+
+| feature | notes |
+|---------|------|
+| tail calls | removed to simplify implementation and make debugging and stack traces easier |
+| `io`, `os`, `package` and `debug` library | note that some functions in `os`/`debug` are still present |
+| `loadfile`, `dofile` | removed for sandboxing, no direct file access |
+| `loadstring` bytecode and `string.dump` | exposing bytecode is dangerous for sandboxing reasons |
+
+Sandboxing challenges are [covered in the dedicated section](sandbox.md).
+
 Lua 5.2
 =======
 
