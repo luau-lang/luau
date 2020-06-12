@@ -53,7 +53,7 @@ Sandboxing challenges are [covered in the dedicated section](sandbox.md).
 | hex and `\z` escapes in strings | ✔️ | |
 | support for hexadecimal floats | 🤷‍♀️ | no strong use cases |
 | order metamethods work for different types | ❌ | no strong use cases and more complicated semantics + compat |
-| empty statement | ✔️ | |
+| empty statement | 🤷‍♀️ | less useful in Lua than in JS/C#/C/C++ |
 | `break` statement may appear in the middle of a block | 🤷‍♀️ | we'd like to do it for return/continue as well but there be dragons |
 | arguments for function called through `xpcall` | ✔️ | |
 | optional base in `math.log` | ✔️ | |
