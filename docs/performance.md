@@ -15,9 +15,9 @@ The rest of this document goes into some optimizations that Luau employs and how
 
 ## Fast bytecode interpreter
 
-Luau features a very highly tuned portable bytecode interpreter. It's similar to Lua interpreter in that it's written in C, but it's highly tuned to yield efficient assembly when compiled with Clang and latest versions of MSVC. On some workloads it can match the performance of LuaJIT interpreter which is written in highly specialized assembly. We are continuing to tune the interpreter and the bytecode format over time; while some extra performance can be extracted by rewriting the interpreter in assembly, we're unlikely to ever do that as the extra gains at this point are marginal, and we gain a lot in terms of portability and being able to quickly prototype new ideas.
+Luau features a very highly tuned portable bytecode interpreter. It's similar to Lua interpreter in that it's written in C, but it's highly tuned to yield efficient assembly when compiled with Clang and latest versions of MSVC. On some workloads it can match the performance of LuaJIT interpreter which is written in highly specialized assembly. We are continuing to tune the interpreter and the bytecode format over time; while extra performance can be extracted by rewriting the interpreter in assembly, we're unlikely to ever do that as the extra gains at this point are marginal, and we gain a lot from C in terms of portability and being able to quickly implement new optimizations.
 
-Of course the interpreter isn't typical C code - it uses many tricks to achieve extreme levels of performance and to coerce the compiler to produce efficient code. Due to a better bytecode design and more efficient dispatch loop it's noticeably faster than Lua 5.x (including Lua 5.4 which made some of the changes similar to Luau, but doesn't come close). The bytecode design was partially inspired by excellent LuaJIT interpreter.
+Of course the interpreter isn't typical C code - it uses many tricks to achieve extreme levels of performance and to coerce the compiler to produce efficient assembly. Due to a better bytecode design and more efficient dispatch loop it's noticeably faster than Lua 5.x (including Lua 5.4 which made some of the changes similar to Luau, but doesn't come close). The bytecode design was partially inspired by excellent LuaJIT interpreter. Most computationally intensive scripts only use the interpreter core loop and builtins, which on x64 compiles into \~16 KB, thus leaving half of the instruction cache for other infrequently called code.
 
 ## Optimizing compiler
 
@@ -54,19 +54,61 @@ The use of any of these functions performs a dynamic deoptimization, marking the
 
 > Note: Luau still supports these functions as part of our backwards compatibility promise, although we'd love to switch to Lua 5.2's `_ENV` as that mechanism is cleaner and doesn't require costly dynamic deoptimization.
 
-## Calling built-in functions
+## Fast method calls
 
-## Inserting into tables
+Luau specializes method calls to improve their performance through a combination of compiler, VM and binding optimizations. Compiler emits a specialized instruction sequence when methods are called through `obj:Method` syntax (while this isn't idiomatic anyway, you should avoid `obj.Method(obj)`). When the object in question is a Lua table, VM performs some voodoo magic based on inline caching to try to quickly discover the implementation of this method through the metatable.
 
-## Iterating through tables
+For this to be effective, it's crucial that `__index` in a metatable points to a table directly. For performance reasons it's strongly recommended to avoid `__index` functions as well as deep `__index` chains; an ideal object in Luau is a table with a metatable that points to itself through `__index`.
 
-## Creating record-like tables
+When the object in question is a reflected userdata, a special mechanism called "namecall" is used to minimize the interop cost. In classical Lua binding model, `obj:Method` is called in two steps, retrieving the function object (`obj.Method`) and calling it; both steps are often implemented in C++, and the method retrieval needs to use a method object cache - all of this makes method calls slow.
+
+Luau can directly call the method by name using the "namecall" extension, and an optimized reflection layer can retrieve the correct method quickly through more voodoo magic based on string interning and custom Luau features that aren't exposed through Luau scripts.
+
+As a result of both optimizations, common Lua tricks of caching the method in a local variable aren't very productive in Luau and aren't recommended either.
+
+## Specialized builtin function calls
+
+Due to global sandboxing and the ability to dynamically deoptimize code running in impure environments, in pure environments we go beyond optimizing the interpreter and optimize many built-in functions through a "fastcall" mechanism.
+
+For this mechanism to work, function call must be "obvious" to the compiler - it needs to call a builtin function directly, e.g. `math.max(x, 1)`, although it also works if the function is "localized" (`local max = math.max`); this mechanism doesn't work for indirect function calls unless they were inlined during compilation, and doesn't work for method calls (so calling `string.byte` is more efficient than `s:byte`).
+
+The mechanism works by directly invoking a highly specialized and optimized implementation of a builtin function from the interpreter core loop without setting up a stack frame and omitting other work; additionally, some fastcall specializations are partial in that they don't support all types of arguments, for example all `math` library builtins are only specialized for numeric arguments, so calling `math.abs` with a string argument will fall back to the slower implementation that will do string->number coercion.
+
+As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `math`, `bit32`, `assert`, `type`, `typeof` and some functions from `string` library.
+
+> Note: The partial specialization mechanism is cute in that for `assert`, it only specializes on truthful conditions; hopefully performance of `assert(false)` isn't crucial for most code!
+
+## Optimized table iteration
+
+Luau implements a fully generic iteration protocol; however, for iteration through tables it recognizes three common idioms (`for .. in ipairs(t)`, `for .. in pairs(t)` and `for .. in next, t`) and emits specialized bytecode that is carefully optimized using custom internal iterators.
+
+As a result, iteration through tables typically doesn't result in function calls for every iteration; the performance of iteration using `pairs` and `ipairs` is comparable, so it's recommended to pick the iteration style based on readability instead of performance.
+
+Iterating through array-like tables using `for i=1,#t` tends to be slightly slower because of extra cost incurred when reading elements from the table.
+
+## Creating and modifying tables
+
+Luau implements several optimizations for table creation. When creating object-like tables, it's recommended to use table literals (`{ ... }`) and to specify all table fields in the literal in one go instead of assigning fields later; this triggers an optimization inspired by LuaJIT's "table templates" and results in higher performance when creating objects. When creating array-like tables, if the maximum size of the table is known up front, it's recommended to use `table.create` function which can create an empty table with preallocated storage, and optionally fill it with a given value.
+
+When appending elements to tables, it's recommended to use `table.insert` (which is currently ever so slightly slower than `t[#t+1]` but it will be improved in the future) if the table size is not known. In cases when a table is filled sequentially, however, it's much more efficient to use a known index for insertion - together with preallocating tables using `table.create` this can result in much faster code, for example this is the fastest way to build a table of squares:
+
+```lua
+local t = table.create(N)
+
+for i=1,N do
+	t[i] = i * i
+end
+```
 
 ## Native Vector3 math
 
-> Note: this optimization is still in progress, so this paragraph represents the desired end state
+> Note: this optimization is still in progress, so this section doesn't document it, but it's going to be great
 
 ## Fast memory allocator
+
+Similarly to LuaJIT, but unlike vanilla Lua, Luau implements a custom allocator that is highly specialized and tuned to the common allocation workloads we see. The allocator design is inspired by classic pool allocators as well as the excellent `mimalloc`, but through careful domain-specific tuning it beats all general purpose allocators we've tested, including `rpmalloc`, `mimalloc`, `jemalloc`, `ptmalloc` and `tcmalloc`.
+
+This doesn't mean that memory allocation in Luau is free - it's carefully optimized, but it still carries a cost, and a high rate of allocations requires more work from the garbage collector. The garbage collector is incremental, so short of some edge cases this rarely results in visible GC pauses, but can impact the throughput since scripts will interrupt to perform "GC assists" (helping clean up the garbage). Thus for high performance Luau code it's recommended to avoid allocating memory in tight loops, by avoiding temporary table and userdata creation.
 
 ## Optimized garbage collector
 
