@@ -11,7 +11,7 @@ Worth noting is that Luau is focused on, first and foremost, stable high perform
 
 Luau eventually plans to implement JIT on some platforms, but this is subject to careful memory safety analysis and is likely to not be deployed for client-side scripts, as the extra risk involved in JITs is much more pronounced when it may affect players.
 
-The rest of this document goes into some optimizations that Luau employs and how to best leverage them when writing code.
+The rest of this document goes into some optimizations that Luau employs and how to best leverage them when writing code. The document is not complete - a lot of optimizations are transparent to the user and involve detailed low-level tuning of various parts that is not described here - and all of this is subject to change without notice, as it doesn't affect the semantics of valid code.
 
 ## Fast bytecode interpreter
 
@@ -51,6 +51,8 @@ This optimization relies on being able to predict the shape of the environment t
 - `getfenv`/`setfenv` can directly modify the environment of any function
 
 The use of any of these functions performs a dynamic deoptimization, marking the affected environment as "impure". The optimizations are only in effect on functions with "pure" environments - because of this, the use of `loadstring`/`getfenv`/`setfenv` is not recommended. Note that `getfenv` deoptimizes the environment even if it's only used to read values from the environment.
+
+> Note: Luau still supports these functions as part of our backwards compatibility promise, although we'd love to switch to Lua 5.2's `_ENV` as that mechanism is cleaner and doesn't require costly dynamic deoptimization.
 
 ## Calling built-in functions
 
