@@ -7,7 +7,7 @@ Our overall goal is to incorporate features from the later versions of Lua when 
 
 - ✔️ - the feature is available in Luau
 - ❌ - the feature is not available in Luau because we don't believe it makes sense to include it
-- :heavy_exclamation_mark: - the feature is not available in Luau because of compatibility/sandboxing concerns
+- ⁉️ - the feature is not available in Luau because of compatibility/sandboxing concerns
 - 🔜 - the feature is not available in Luau yet but we'd like to include it and are possibly working on it
 - 🤷‍♀️ - the feature is not available in Luau yet; we don't have strong opinions on it so it might make it at some point
 
@@ -36,7 +36,7 @@ Lua 5.2
 | emergency garbage collector | ❌ | Luau runs in environments where handling memory exhaustion in emergency situations is not tenable |
 | goto statement | ❌ | this complicates the compiler due to handling of locals and doesn't address a significant need |
 | finalizers for tables | ❌ | no `__gc` support due to sandboxing and performance/complexity |
-| no more fenv for threads or functions | :heavy_exclamation_mark: | we love this, but it breaks compatibility |
+| no more fenv for threads or functions | ⁉️ | we love this, but it breaks compatibility |
 | tables honor the `__len` metamethod | ❌ | performance implications, no strong use cases
 | hex and `\z` escapes in strings (also `\u` for Unicode) | ✔️ | |
 | support for hexadecimal floats | 🤷‍♀️ | no strong use cases |
@@ -88,13 +88,13 @@ Lua 5.4
 | new implementation for math.random | ✔️ | our RNG is based on PCG, unlike Lua 5.4 which uses Xoroshiro |
 | optional `init` argument to `string.gmatch` | 🤷‍♀️ | no strong use cases |
 | new functions `lua_resetthread` and `coroutine.close` | ❌ | not useful without to-be-closed variables |
-| coersions string-to-number moved to the string library | :heavy_exclamation_mark: | we love this, but it breaks compatibility |
+| coersions string-to-number moved to the string library | ⁉️ | we love this, but it breaks compatibility |
 | new format `%p` in `string.format` | 🤷‍♀️ | no strong use cases |
 | `utf8` library accepts codepoints up to 2^31 | 🤷‍♀️ | no strong use cases |
-| The use of the `__lt` metamethod to emulate `__le` has been removed | :heavy_exclamation_mark: | breaks compatibility and doesn't seem very interesting otherwise |
+| The use of the `__lt` metamethod to emulate `__le` has been removed | ⁉️ | breaks compatibility and doesn't seem very interesting otherwise |
 | When finalizing objects, Lua will call `__gc` metamethods that are not functions | ❌ | no `__gc` support due to sandboxing and performance/complexity |
 | The function print calls `__tostring` instead of tostring to format its arguments. | 🔜 | |
-| By default, the decoding functions in the utf8 library do not accept surrogates. | :heavy_exclamation_mark: | breaks compatibility and doesn't seem very interesting otherwise |
+| By default, the decoding functions in the utf8 library do not accept surrogates. | ⁉️ | breaks compatibility and doesn't seem very interesting otherwise |
 
 Lua has a beautiful syntax and frankly we're disappointed in the `<const>`/`<toclose>` which takes away from that beauty. Taking syntax aside, `<toclose>` isn't very useful in Luau - its dominant use case is for code that works with external resources like files or sockets, but we don't provide such APIs - and has a very large complexity cost, evidences by a lot of bug fixes since the initial implementation in 5.4 work versions. `<const>` in Luau doesn't matter for performance - our multi-pass compiler is already able to analyze the usage of the variable to know if it's modified or not and extract all performance gains from it - so the only use here is for code readability, where the `<const>` syntax is... suboptimal.
 
