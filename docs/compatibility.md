@@ -23,6 +23,7 @@ Luau has certain limitations around the number of local variables, registers, up
 - Registers: 255 per function (same as all versions of Lua, this includes local variables and function arguments)
 - Constants: 2^23 per function (up from 2^18 in Lua 5.1)
 - Instructions: 2^23 per function (up from 2^17 in Lua 5.1, although in both cases the limit only applies to control flow)
+- Nested functions: 2^15 per function (down from 2^18 in Lua 5.1)
 
 Note that Lua 5.3 has a larger upvalue limit (255) and a larger constant limit (2^26); existing Luau limits are likely sufficient for reasonable use cases.
 
