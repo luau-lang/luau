@@ -1,5 +1,4 @@
-Syntax
-======
+# Syntax
 
 Luau uses the baseline [syntax of Lua 5.1](https://www.lua.org/manual/5.1/manual.html#2). For detailed documentation, please refer to the Lua manual, this is an example:
 
@@ -30,8 +29,7 @@ Note that future versions of Lua extend the Lua 5.1 syntax with the following fe
 
 The rest of this document documents additional syntax used in Luau.
 
-String literals
-===============
+## String literals
 
 As noted above, Luau implements support for hexadecimal (`\0x`), Unicode (`\u`) and `\z` escapes for string literals. This syntax follows [Lua 5.3 syntax](https://www.lua.org/manual/5.3/manual.html#3.1):
 
@@ -39,8 +37,7 @@ As noted above, Luau implements support for hexadecimal (`\0x`), Unicode (`\u`) 
 - `\u{ABC}` inserts a UTF8 byte sequence that encodes U+0ABC character into the string (note that braces are mandatory)
 - `\z` at the end of the line inside a string literal ignores all following whitespace including newlines, which can be helpful for breaking long literals into multiple lines.
 
-Number literals
-===============
+## Number literals
 
 In addition to basic integer and floating-point decimal numbers, Luau supports:
 
@@ -50,8 +47,7 @@ In addition to basic integer and floating-point decimal numbers, Luau supports:
 
 Note that Luau only has a single number type, a 64-bit IEEE754 double precision number (which can represent integers up to 2^53 exactly), and larger integer literals are stored with precision loss.
 
-Continue statement
-==================
+## Continue statement
 
 In addition to `break` in all loops, Luau supports `continue` statement. Similar to `break`, `continue` must be the last statement in the block.
 
@@ -80,8 +76,7 @@ repeat
 until a > 0
 ```
 
-Compound assignments
-====================
+## Compound assignments
 
 Luau supports compound assignments with the following operators: `+=`, `-=`, `*=`, `/=`, `%=`, `^=`, `..=`. Just like regular assignments, compound assignments are statements, not expressions:
 
@@ -105,8 +100,7 @@ a[foo()] += 1
 
 Compound assignments call the arithmetic metamethods (`__add` et al) and table indexing metamethods (`__index` and `__newindex`) as needed - for custom types no extra effort is necessary to support them.
 
-Type annotations
-================
+## Type annotations
 
 To support gradual typing, Luau supports optional type annotations for variables and functions, as well as declaring type aliases.
 

@@ -1,5 +1,4 @@
-Compatibility
-=============
+# Compatibility
 
 Luau is based on Lua 5.1, and as such incorporates all features of 5.1, except for ones that had to be taken out due to sandboxing limitations. Because of backwards compatibility constraints, we don't remove features deprecated by later versions (e.g. we still support `getfenv`/`setfenv`). Later Lua versions introduce new features into the language and new libraries/functions.
 
@@ -13,8 +12,7 @@ Our overall goal is to incorporate features from the later versions of Lua when 
 
 Please note that all of these decisions are not final, they are just our current stance. In some cases evolution of our VM may make a feature that was previously impractical to support due to performance complications feasible. In some cases a feature that didn't have a strong use case gains one, so we can implement it.
 
-Implementation limits
-=====================
+## Implementation limits
 
 Luau has certain limitations around the number of local variables, registers, upvalues, constants and instructions. These limits are often different from the limits imposed by various versions of Lua, and are documented here without promising that future versions will adhere to these. Note that writing code that is close to any of these limits is dangerous because this code may become invalid as our codegen evolves.
 
@@ -28,8 +26,7 @@ Luau has certain limitations around the number of local variables, registers, up
 
 Note that Lua 5.3 has a larger upvalue limit (255) and a larger constant limit (2^26); existing Luau limits are likely sufficient for reasonable use cases.
 
-Lua 5.1
-=======
+## Lua 5.1
 
 Since several features were removed from Lua 5.1 for sandboxing reasons, this table lists them for completeness.
 
@@ -42,8 +39,7 @@ Since several features were removed from Lua 5.1 for sandboxing reasons, this ta
 
 Sandboxing challenges are [covered in the dedicated section](sandbox.md).
 
-Lua 5.2
-=======
+## Lua 5.2
 
 | feature | status | notes |
 |---------|--------|------|
@@ -72,8 +68,7 @@ Two things that are important to call out here are various new metamethods for t
 
 For `__pairs`/`__ipairs`, we aren't sure that this is the right design choice - self-iterating tables via `__iter` are very appealing, and if we can resolve some challenges with array iteration order, that would make the language more accessible so we may go that route instead.
 
-Lua 5.3
-=======
+## Lua 5.3
 
 | feature | status | notes |
 |---------|--------|------|
@@ -94,8 +89,7 @@ If integers are taken out of the equation, bitwise operators make much less sens
 
 Floor division is less harmful, but it's used rarely enough that `math.floor(a/b)` seems like an adequate replacement; additionally, `//` is a comment in C-derived languages and we may decide to adopt it in addition to `--` at some point.
 
-Lua 5.4
-=======
+## Lua 5.4
 
 | feature | status | notes |
 |--|--|--|

@@ -1,5 +1,4 @@
-Why Luau?
-=========
+# Why Luau?
 
 Around 2006, [Roblox](https://www.roblox.com) started using Lua 5.1 as a scripting language for games. Over the years the runtime had to be tweaked to provide a safe, secure sandboxed environment; we gradually started accumulating small library changes and tweaks.
 
@@ -11,8 +10,7 @@ Unlike mainline Lua, we also could not afford to do major breaking changes to th
 
 All of these motivated us to start reshaping Lua 5.1 that we started from into a new, derivative language that we call Luau. Our focus is on making the language more performant and feature-rich, and make it easier to write robust code through a combination of linting and type checking using a gradual type system.
 
-Complete rewrite?
-=================
+## Complete rewrite?
 
 A very large part of Luau codebase is written from scratch. We needed a set of tools to be able to write language analysis tools; Lua has a parser that is integrated with the bytecode compiler, which makes it unsuitable for complex semantic analysis. For bytecode compilation, while a single pass compiler can deliver better compilation throughput and be simpler than a full frontend/backend, it significantly limits the optimizations that can be done at the bytecode level.
 

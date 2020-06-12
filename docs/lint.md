@@ -1,5 +1,4 @@
-Linting
-=======
+# Linting
 
 Luau comes with a set of linting passes, that help make sure that the code is correct and consistent. Unlike the type checker, that models the behavior of the code thoroughly and points toward type mismatches that are likely to result in runtime errors, the linter is more opinionated and produces warnings that can often be safely ignored, although it's recommended to keep the code clean of the warnings.
 
@@ -7,8 +6,7 @@ Linter produces many different types of warnings; many of these are enabled by d
 
 The rest of this page documents all warnings produced by the linter; each warning has a name and a numeric code, the latter is used when displaying warnings.
 
-UnknownGlobal (1)
-===
+## UnknownGlobal (1)
 
 By default, variables in Luau are global (this is inherited from Lua 5.x and can't be changed because of backwards compatibility). This means that typos in identifiers are invisible to the parser, and often break at runtime. For this reason, the linter considers all globals that aren't part of the builtin global table and aren't explicitly defined in the script "unknown":
 
@@ -21,8 +19,7 @@ print(displaName)
 
 Note that injecting globals via `setfenv` can produce this warning in correct code; global injection is incompatible with type checking and has performance implications so we recommend against it and in favor of using `require` with correctly scoped identifiers.
 
-DeprecatedGlobal (2)
-===
+## DeprecatedGlobal (2)
 
 Some global names exist for compatibility but their use is discouraged. This mostly affects globals introduced by Roblox, and since they can have problematic behavior or can break in the future, this warning highlights their uses:
 
@@ -33,8 +30,7 @@ ypcall(function()
 end)
 ```
 
-GlobalUsedAsLocal (3)
-===
+## GlobalUsedAsLocal (3)
 
 The UnknownGlobal lint can catch typos in globals that are read, but can't catch them in globals that are assigned to. Because of this, and to discourage the use of globals in general, linter detects cases when a global is only used in one function and can be safely converted to a local variable. Note that in some cases this requires declaring the local variable in the beginning of the function instead of where it's being assigned to.
 
@@ -50,8 +46,7 @@ local function testFunc(a)
 end
 ```
 
-LocalShadow (4)
-===
+## LocalShadow (4)
 
 In Luau, it is valid to shadow locals and globals with a local variable, including doing it in the same function. This can result in subtle bugs, since the shadowing may not be obvious to the reader. This warning detects cases where local variables shadow other local variables in the same function, or global variables used in the script; for more cases of detected shadowing see `LocalShadowPedantic`.
 
@@ -66,8 +61,7 @@ local function foo()
 end
 ```
 
-SameLineStatement (5)
-===
+## SameLineStatement (5)
 
 Luau doesn't require the use of semicolons and doesn't automatically insert them at line breaks. When used wisely this results in code that is easy to read and understand, however it can cause subtle issues and hard to understand code when abused by using many different statements on the same line. This warning highlights cases where code should either be broken into multiple lines, or use `;` as a visual guide.
 
@@ -76,8 +70,7 @@ Luau doesn't require the use of semicolons and doesn't automatically insert them
 if b < 0 then local a = b + 1 print(a, b) end
 ```
 
-MultiLineStatement (6)
-===
+## MultiLineStatement (6)
 
 An opposite problem is having statements that span multiple lines. This is good for readability when the code is indented properly, but when it's not it results in code that's hard to understand, as its easy to confuse the next line for a separate statement.
 
@@ -87,8 +80,7 @@ print(math.max(1,
 math.min(2, 3)))
 ```
 
-LocalUnused (7)
-===
+## LocalUnused (7)
 
 This warning is one of the few warnings that highlight unused variables. Local variable declarations that aren't used may indicate a bug in the code (for example, there could be a typo in the code that uses the wrong variable) or redundant code that is no longer necessary (for example, calling a function to get its result and never using this result). This warning warns about locals that aren't used; if the locals are not used intentionally they can be prefixed with `_` to silence the warning:
 
@@ -99,8 +91,7 @@ local y = 2
 print(x, x)
 ```
 
-FunctionUnused (8)
-===
+## FunctionUnused (8)
 
 While unused local variables could be useful for debugging, unused functions usually contain dead code that was meant to be removed. Unused functions clutter code, can be a result of typos similar to local variables, and can mislead the reader into thinking that some functionality is supported.
 
@@ -115,8 +106,7 @@ end
 return foo()
 ```
 
-ImportUnused (9)
-===
+## ImportUnused (9)
 
 In Luau, there's no first-class module system that's part of the syntax, but `require` function acts as an import statement. When a local is initialized with a `require` result, and the local is unused, this is classified as "unused import". Removing unused imports improves code quality because it makes it obvious what the dependencies of the code are:
 
@@ -125,8 +115,7 @@ In Luau, there's no first-class module system that's part of the syntax, but `re
 local Roact = require(game.Packages.Roact)
 ```
 
-BuiltinGlobalWrite (10)
-===
+## BuiltinGlobalWrite (10)
 
 While the sandboxing model of Luau prevents overwriting built-in globals such as `table` for the entire program, it's still valid to reassign these globals - this results in "global shadowing", where the script's global table contains a custom version of `table` after writing to it. This is problematic because it disables some optimizations, and can result in misleading code. When shadowing built-in globals, use locals instead.
 
@@ -135,8 +124,7 @@ While the sandboxing model of Luau prevents overwriting built-in globals such as
 math = {}
 ```
 
-PlaceholderRead (11)
-===
+## PlaceholderRead (11)
 
 `_` variable name is commonly used as a placeholder to discard function results. The linter follows this convention and doesn't warn about the use of `_` in various cases where a different name would cause a warning otherwise. To make sure the placeholder is only used to write values to it, this warning detects the cases where it's read instead:
 
@@ -146,8 +134,7 @@ local _ = 5
 return _
 ```
 
-UnreachableCode (12)
-===
+## UnreachableCode (12)
 
 In some cases the linter can detect code that is never executed, because all execution paths through the function exit the function or the loop before reaching it. Such code is misleading because it's not always obvious to the reader that it never runs, and as such it should be removed.
 
@@ -163,8 +150,7 @@ function cbrt(v)
 end
 ```
 
-UnknownType (13)
-===
+## UnknownType (13)
 
 Luau provides several functions to get the value type as a string (`type`, `typeof`), and some Roblox APIs expose class names through string arguments (`Instance.new`). This warning detects incorrect use of the type names by checking the string literals used in type comparisons and function calls.
 
@@ -175,8 +161,7 @@ if type(v) == "String" then
 end
 ```
 
-ForRange (14)
-===
+## ForRange (14)
 
 When using a numeric for, it's possible to make various mistakes when specifying the for bounds. For example, to iterate through the table backwards, it's important to specify the negative step size. This warning detects several cases where the numeric for only runs for 0 or 1 iterations, or when the step doesn't divide the size of the range evenly.
 
@@ -186,8 +171,7 @@ for i=#t,1 do
 end
 ```
 
-UnbalancedAssignment (15)
-===
+## UnbalancedAssignment (15)
 
 Assignment statements and local variable declarations in Luau support multiple variables on the left side and multiple values on the right side. The number of values doesn't need to match; when the right side has more values, the extra values are discarded, and then the left side has more variables the extra variables are set to `nil`. However, this can result in subtle bugs where a value is omitted mistakenly. This warning warns about cases like this; if the last expression on the right hand side returns multiple values, the warning is not emitted.
 
@@ -196,8 +180,7 @@ Assignment statements and local variable declarations in Luau support multiple v
 local x, y, z = 1, 2
 ```
 
-ImplicitReturn (16)
-===
+## ImplicitReturn (16)
 
 In Luau, there's a subtle difference between returning no values from a function and returning `nil`. In many contexts these are equivalent, but when the results are passed to a variadic function (perhaps implicitly), the difference can be observed - for example, `print(foo())` prints nothing if `foo` returns no values, and `nil` if it returns `nil`.
 
@@ -214,7 +197,6 @@ local function find(t, expected)
 end
 ```
 
-LocalShadowPedantic (17)
-===
+## LocalShadowPedantic (17)
 
 This warning extends `LocalShadow` by also warning about cases where a local variable shadows a local variable with the same name from a parent function, or when it shadows a builtin global. This warning tends to be noisy and as such is disabled by default.
