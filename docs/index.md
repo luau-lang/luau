@@ -36,7 +36,7 @@ Whenever possible, Luau aims to be backwards-compatible with Lua 5.1 and at the 
 Analysis
 ========
 
-To make it easier to write correct code, Luau comes with a set of analysis tools that can surface common mistakes. These consist of a linter and a type checker, colloqually known as "script analysis", and can be used from [Roblox Studio](https://developer.roblox.com/en-us/articles/The-Script-Analysis-Tool) or using SECRET TOOL. The linting passes are [described here](lint.md), and the type checking user guide can [be found here](typecheck.md).
+To make it easier to write correct code, Luau comes with a set of analysis tools that can surface common mistakes. These consist of a linter and a type checker, colloquially known as "script analysis", and can be used from [Roblox Studio](https://developer.roblox.com/en-us/articles/The-Script-Analysis-Tool) or using SECRET TOOL. The linting passes are [described here](lint.md), and the type checking user guide can [be found here](typecheck.md).
 
 Libraries
 =========
