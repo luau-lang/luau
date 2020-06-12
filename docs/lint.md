@@ -140,7 +140,7 @@ PlaceholderRead (11)
 
 `_` variable name is commonly used as a placeholder to discard function results. The linter follows this convention and doesn't warn about the use of `_` in various cases where a different name would cause a warning otherwise. To make sure the placeholder is only used to write values to it, this warning detects the cases where it's read instead:
 
-```
+```lua
 local _ = 5
 -- Placeholder value '_' is read here; consider using a named variable
 return _
