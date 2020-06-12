@@ -68,6 +68,8 @@ Two things that are important to call out here are various new metamethods for t
 
 For `__pairs`/`__ipairs`, we aren't sure that this is the right design choice - self-iterating tables via `__iter` are very appealing, and if we can resolve some challenges with array iteration order, that would make the language more accessible so we may go that route instead.
 
+Ephemeron tables may be implemented at some point since they do have valid uses and they make weak tables semantically cleaner, however the cleanup mechanism for these is expensive and complicated, and as such this can only be considered after the pending GC rework is complete.
+
 ## Lua 5.3
 
 | feature | status | notes |
