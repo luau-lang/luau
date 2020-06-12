@@ -23,10 +23,9 @@ Luau is syntactically backwards-compatible with Lua 5.1 (code that is valid Lua 
 
 Luau limits the set of standard libraries exposed to the users and implements extra sandboxing features to be able to run unprivileged code (written by our game developers) side by side with privileged code (written by us). This results in an execution environment that is different from what is commonplace in Lua. The sandboxing [is described here](sandbox.md).
 
-
 ## Compatibility
 
-Whenever possible, Luau aims to be backwards-compatible with Lua 5.1 and at the same time to incorporate features from later revisions of Lua. However, Luau is not a full superset of later versions of Lua - we do not agree with some design decisions and are not constrained by the same reasoning as that of PUC-Rio. All post-5.1 Lua features, along with their support status in Luau, [are documented here](compatibility.md).
+Whenever possible, Luau aims to be backwards-compatible with Lua 5.1 and at the same time to incorporate features from later revisions of Lua. However, Luau is not a full superset of later versions of Lua - we do not agree with some design decisions made by the Lua authors, and have different use cases and constraints. All post-5.1 Lua features, along with their support status in Luau, [are documented here](compatibility.md).
 
 ## Analysis
 
