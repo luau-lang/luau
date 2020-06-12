@@ -67,3 +67,16 @@ This mechanism is bad for performance, memory safety and isolation:
 Because of these issues, Luau does not support `__gc`. Instead it uses tag-based destructors that can perform additional memory cleanup during userdata destruction; crucially, these are only available to the host (so they can never be invoked manually), and they run right before freeing the userdata memory block which is both optimal for performance, and guaranteed to be memory safe.
 
 For monitoring garbage collector behavior the recommendation is to use weak tables instead.
+
+## Interrupts
+
+In addition to preventing API access, it can be important for isolation to limit the memory and CPU usage of code that runs inside the VM.
+
+By default, no memory limits are imposed on the running code, so it's possible to exhaust the address space of the host; this is easy to configure from the host for Luau allocations, but of course with a rich API surface exposed by the host it's hard to eliminate this as a possibility. Memory exhaustion doesn't result in memory safety issues or any particular risk to the system that's running the host process, other than the host process getting terminated by the OS.
+
+Limiting CPU usage can be equally challenging with a rich API. However, Luau does provide a VM-level feature to try to contain runaway scripts which makes it possible to terminate any script externally. This works through a global interrupt mechanism, where the host can setup an interrupt handler at any point, and any Luau code is guaranteed to call this handler "eventually" (in practice this can happen at any function call or at any loop iteration). This still leaves the possibility of a very long running script open if the script manages to find a way to call a single C function that takes a lot of time, but short of that the interruption is very prompt.
+
+Roblox sets up the interrupt handler using a watchdog that:
+
+- Limits the runtime of any script in Studio to 10 seconds (configurable through Studio settings)
+- Upon client shutdown, interrupts execution of every running script 1 second after shutdown
