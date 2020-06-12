@@ -1,6 +1,13 @@
 theme: jekyll-theme-minimal
-title: [Luau | fast, small, safe, gradually typed embeddable scripting language]
+title: Luau
 description: >
   A fast, small, safe, gradually typed embeddable scripting language derived from Lua
   <hr/>
   <a href="why.html">Why Luau?</a><br/>
+  <a href="syntax.html">Syntax</a><br/>
+  <a href="sandbox.html">Sandboxing</a><br/>
+  <a href="compatibility.html">Compatibility</a><br/>
+  <a href="lint.html">Linting</a><br/>
+  <a href="typecheck.html">Type checking</a><br/>
+  <a href="performance.html">Performance</a><br/>
+  <hr/>
