@@ -27,6 +27,20 @@ foo = 1
 
 However, in strict mode, the second snippet would be able to infer `number` for `foo` still.
 
+## Unknown symbols
+
+You may see this error a lot, and that's by design even in nonstrict mode.
+
+Consider how often you're likely to assign a new value to a local variable. What if you accidentally misspelled it? Oops, it's now assigned globally and your local variable is still using the old value.
+
+```lua
+local someLocal = 1
+
+soeLocal = 2 -- the bug
+
+print(someLocal)
+```
+
 ## Structural type system
 
 Luau's type system is structural by default, which is to say that we inspect the shape of two tables to see if they are similar enough. This was the obvious choice because Lua 5.1 is inherently structural.
