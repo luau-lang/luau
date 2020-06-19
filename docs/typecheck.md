@@ -273,3 +273,37 @@ local basePart: BasePart = part
 ```
 
 Note that many of these types provide some properties and methods in both lowerCase and UpperCase; the lowerCase variants are deprecated, and the type system will ask you to use the UpperCase variants instead.
+
+## Module interactions
+
+Let's say that we have two modules, `Foo` and `Bar`. Luau will try to resolve the paths if it can find any `require` in any scripts. In this case, when you say `script.Parent.Bar`, Luau will resolve it as: relative to this script, go to my parent and get that script named Bar.
+
+```lua
+-- Module Foo
+local Bar = require(script.Parent.Bar)
+
+local baz1: Bar.Baz = 1     -- not ok
+local baz2: Bar.Baz = "foo" -- ok
+
+print(Bar.Quux)         -- ok
+print(Bar.FakeProperty) -- not ok
+
+Bar.NewProperty = true -- not ok
+```
+
+```lua
+-- Module Bar
+export type Baz = string
+
+local module = {}
+
+module.Quux = "Hello, world!"
+
+return module
+```
+
+There are some caveats here though. Luau has to be able to resolve this path statically, otherwise Luau cannot accurately type check it. There are three kinds of outcome for each require paths:
+
+* Resolved - Luau was able to resolve this path statically,
+* Module not found - The module at this path does not exist, and
+* Unresolvable - This require path may resolve correctly at runtime
