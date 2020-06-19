@@ -79,7 +79,7 @@ local a
 local b = nil
 ```
 
-## Functions
+## Function types
 
 Let's start with something simple.
 
@@ -119,7 +119,7 @@ f(2)     -- ok
 f("foo") -- not ok
 ```
 
-## Tables
+## Table types
 
 From the type checker perspective, each table can be in one of three states. They are: `unsealed table`, `sealed table`, and `generic table`. This is intended to represent how the table's type is allowed to change.
 
@@ -273,34 +273,34 @@ When we check the type of a value, what we're doing is we're refining the type, 
 
 Using `type` comparison:
 ```lua
-local x: string | number
+local stringOrNumber: string | number = "foo"
 
 if type(x) == "string" then
-    local y: string = x -- ok
-    local z: number = x -- not ok
+    local onlyString: string = stringOrNumber -- ok
+    local onlyNumber: number = stringOrNumber -- not ok
 end
 
-local y: string = x -- not ok
-local z: number = x -- not ok
+local onlyString: string = stringOrNumber -- not ok
+local onlyNumber: number = stringOrNumber -- not ok
 ```
 
 Using truthy test:
 ```lua
-local x: string? = nil
+local maybeString: string? = nil
 
-if x then
-    local y: string = x -- ok
+if maybeString then
+    local onlyString: string = maybeString -- ok
 end
 ```
 
 And using `assert` will work with the above type guards:
 ```lua
-local x: string | number
+local stringOrNumber: string | number = "foo"
 
 assert(type(x) == "string")
 
-local y: string = x -- ok
-local z: number = x -- not ok
+local onlyString: string = stringOrNumber -- ok
+local onlyNumber: number = stringOrNumber -- not ok
 ```
 
 ## Roblox types
