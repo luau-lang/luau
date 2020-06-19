@@ -4,7 +4,7 @@ Luau supports a gradual type system through the use of type annotations and type
 
 ## Type inference modes
 
-There are three modes currently available. Each one differ in important ways. They must be annotated on the top few lines among the comments.
+There are three modes currently available. They must be annotated on the top few lines among the comments.
 
 * `--!nocheck`,
 * `--!nonstrict` (default), and
@@ -44,7 +44,7 @@ local b2: B = a1 -- not ok
 
 ## Primitive types
 
-In Lua, we have 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, only `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax.md). Note that we have explicitly skipped `userdata` from the type system.
+Lua VM supports 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax.md), and `userdata` is represented by [concrete types](#Roblox types); other types can be specified by their name.
 
 Additionally, we also have `any` which is a special built-in type. It effectively disables all type checking, and thus should be used as last resort.
 
@@ -107,7 +107,7 @@ f("foo") -- not ok
 
 ## Tables
 
-From the perspective of the programmers, there are three states you should care about. They are: `unsealed table`, `sealed table`, and `generic table`. This is intended to represent the relationship of two different tables.
+From the type checker perspective, each table can be in one of three states. They are: `unsealed table`, `sealed table`, and `generic table`. This is intended to represent how the table's type is allowed to change.
 
 ### Unsealed tables
 
@@ -137,7 +137,7 @@ v2.z = 3 -- not ok
 
 ### Sealed tables
 
-A sealed table is a table that is now locked down. This occurs when the table constructor literal had 1 or more expression.
+A sealed table is a table that is now locked down. This occurs when the table constructor literal had 1 or more expression, or when the table type is spelt out explicitly via a type annotation.
 
 ```lua
 local t = {x = 1} -- {x: number}
@@ -261,11 +261,15 @@ local y: string = x -- ok
 local z: number = x -- not ok
 ```
 
-## Using Luau on Roblox
+## Roblox types
 
-All of Roblox's types are readily available for Luau's type inference engine to use, too. We can automatically deduce what your `Instance.new` is actually supposed to return.
+Roblox supports a rich set of classes and data types, [documented here](https://developer.roblox.com/en-us/api-reference). All of them are readily available for the type checker to use by their name (e.g. `Part` or `RaycastResult`).
+
+Additionally, we can automatically deduce what calls like `Instance.new` and `game:GetService` are supposed to return:
 
 ```lua
 local part = Instance.new("Part")
 local basePart: BasePart = part
 ```
+
+Note that many of these types provide some properties and methods in both lowerCase and UpperCase; the lowerCase variants are deprecated, and the type system will ask you to use the UpperCase variants instead.
