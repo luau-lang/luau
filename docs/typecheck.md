@@ -225,6 +225,34 @@ Note: it's impossible to create an intersection type of some primitive types, e.
 
 Note: Luau still does not support user-defined overloaded functions. Some of Roblox and Lua 5.1 functions have different function signature, so inherently requires overloaded functions.
 
+## Typing idiomatic OOP
+
+One common pattern we see throughout Roblox is this OOP idiom. A downside with this pattern is that it does not automatically create a type binding for an instance of that class, so one has to write `type Account = typeof(Account.new("", 0))`.
+
+```lua
+local Account = {}
+Account.__index = Account
+
+function Account.new(name, balance)
+    local self = {}
+    self.name = name
+    self.balance = balance
+
+    return setmetatable(self, Account)
+end
+
+function Account:deposit(credit)
+    self.balance += credit
+end
+
+function Account:withdraw(debit)
+    self.balance -= debit
+end
+
+local account: Account = Account.new("Alexander", 500)
+             --^^^^^^^ not ok, 'Account' does not exist
+```
+
 ## Type refinements
 
 When we check the type of a value, what we're doing is we're refining the type, hence "type refinement." Currently, the support for this is somewhat basic.
@@ -302,7 +330,7 @@ module.Quux = "Hello, world!"
 return module
 ```
 
-There are some caveats here though. Luau has to be able to resolve this path statically, otherwise Luau cannot accurately type check it. There are three kinds of outcome for each require paths:
+There are some caveats here though. The path must be resolvable statically, otherwise Luau cannot accurately type check it. There are three kinds of outcome for each require paths:
 
 * Resolved - Luau was able to resolve this path statically,
 * Module not found - The module at this path does not exist, and
