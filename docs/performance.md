@@ -29,6 +29,12 @@ While bytecode optimizations are limited due to the flexibility of Luau code (e.
 
 Luau compiler currently doesn't use type information to do further optimizations, however early experiments suggest that we can extract further wins. Because we control the entire stack (unlike e.g. TypeScript where the type information is discarded completely before reaching the VM), we have more flexibility there and can make some tradeoffs during codegen even if the type system isn't completely sound. For example, it might be reasonable to assume that in presence of known types, we can infer absence of side effects for arithmetic operations and builtins - if the runtime types mismatch due to intentional violation of the type safety through global injection, the code will still be safely sandboxed; this may unlock optimizations such as common subexpression elimination and allocation hoisting without a JIT. This is speculative pending further research.
 
+## Epsilon-overhead debugger
+
+It's important for Luau to have stable and predictable performance. Something that comes up in Lua-based environments often is the use of line hooks to implement debugging (both for breakpoints and for stepping). This is problematic because the support for hooks is typically not free in general, but importantly once the hook is enabled, calling the hook has a considerable overhead, and the hook itself may be very costly to evaluate since it will need to associate the script:line pair with the breakpoint information.
+
+Luau does not support hooks at all, and relies on first-class support for breakpoints (using bytecode patching) and single-stepping (using a custom interpreter loop) to implement debugging. As a result, the presence of breakpoints doesn't slow the script execution down - the only noticeable discrepancy between running code under a debugger and without a debugger should be in cases where breakpoints are evaluated and skipped based on breakpoint conditions, or when stepping over long-running fragments of code.
+
 ## Inline caching for table and global access
 
 Table access for field lookup is optimized in Luau using a mechanism that blends inline caching (classically used in Java/JavaScript VMs) and HREFs (implemented in LuaJIT). Compiler can predict the hash slot used by field lookup, and the VM can correct this prediction dynamically.
