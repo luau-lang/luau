@@ -19,7 +19,7 @@ end
 
 Note that future versions of Lua extend the Lua 5.1 syntax with the following features; with the exception of the string literals, these are **not** supported by Luau:
 
-- hexadecimal (`\0x`), Unicode (`\u`) and `\z` escapes for string literals
+- hexadecimal (`\x`), Unicode (`\u`) and `\z` escapes for string literals
 - goto statements and labels
 - bitwise operators
 - floor division operator (`//`)
@@ -33,7 +33,7 @@ The rest of this document documents additional syntax used in Luau.
 
 As noted above, Luau implements support for hexadecimal (`\0x`), Unicode (`\u`) and `\z` escapes for string literals. This syntax follows [Lua 5.3 syntax](https://www.lua.org/manual/5.3/manual.html#3.1):
 
-- `\0xAB` inserts a character with the code 0xAB into the string
+- `\xAB` inserts a character with the code 0xAB into the string
 - `\u{ABC}` inserts a UTF8 byte sequence that encodes U+0ABC character into the string (note that braces are mandatory)
 - `\z` at the end of the line inside a string literal ignores all following whitespace including newlines, which can be helpful for breaking long literals into multiple lines.
 
