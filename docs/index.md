@@ -13,7 +13,7 @@ print(p.x, p.y)
 
 ## Motivation
 
-Around 2006, [Roblox](https://www.roblox.com) started using Lua 5.1 as a scripting language for games. Over the years we ended up substantially evolving the implementation and the language; to support growing sophistication of games on the Roblox platform, growing team sizes and large internal teams writing a lot of code for application/editor (400KLOC as of 2020), we had to invest in performance, ease of use and language tooling, and introduce a gradual type system to the language. [This page](why.md) goes into more detail about the road that got us here.
+Around 2006, [Roblox](https://www.roblox.com) started using Lua 5.1 as a scripting language for games. Over the years we ended up substantially evolving the implementation and the language; to support growing sophistication of games on the Roblox platform, growing team sizes and large internal teams writing a lot of code for application/editor (1+MLOC as of 2020), we had to invest in performance, ease of use and language tooling, and introduce a gradual type system to the language. [This page](why.md) goes into more detail about the road that got us here.
 
 ## Syntax
 
