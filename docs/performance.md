@@ -112,11 +112,19 @@ end
 
 > Note: this optimization is still in progress, so this section doesn't document it, but it's going to be great
 
+## Optimized upvalue storage
+
+Lua implements upvalues as garbage collected objects that can point directly at the thread's stack or, when the value leaves the stack frame (and is "closed"), store the value inside the object. This representation is necessary when upvalues are mutated, but inefficient when they aren't - and 90% or more of upvalues aren't mutated in typical Lua code. Luau takes advantage of this by reworking upvalue storage to prioritize immutable upvalues - capturing upvalues that don't change doesn't require extra allocations or upvalue closing, resulting in faster closure allocation, faster execution, faster garbage collection and faster upvalue access due to better memory locality.
+
+Note that "immutable" in this case only refers to the variable itself - if the variable isn't assigned to it can be captured by value, even if it's a table that has its contents change.
+
 ## Fast memory allocator
 
 Similarly to LuaJIT, but unlike vanilla Lua, Luau implements a custom allocator that is highly specialized and tuned to the common allocation workloads we see. The allocator design is inspired by classic pool allocators as well as the excellent `mimalloc`, but through careful domain-specific tuning it beats all general purpose allocators we've tested, including `rpmalloc`, `mimalloc`, `jemalloc`, `ptmalloc` and `tcmalloc`.
 
 This doesn't mean that memory allocation in Luau is free - it's carefully optimized, but it still carries a cost, and a high rate of allocations requires more work from the garbage collector. The garbage collector is incremental, so short of some edge cases this rarely results in visible GC pauses, but can impact the throughput since scripts will interrupt to perform "GC assists" (helping clean up the garbage). Thus for high performance Luau code it's recommended to avoid allocating memory in tight loops, by avoiding temporary table and userdata creation.
+
+In addition to a fast allocator, all frequently used structures in Luau have been optimized for memory consumption, especially on 64-bit platforms, compared to Lua 5.1 baseline. This helps to reduce heap memory footprint and improve performance in some cases by reducing the memory bandwidth impact of garbage collection.
 
 ## Optimized garbage collector
 
