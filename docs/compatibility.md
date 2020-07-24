@@ -60,8 +60,8 @@ Sandboxing challenges are [covered in the dedicated section](sandbox.md).
 | optional separator in `string.rep` | 🤷‍♀️ | no real use cases |
 | new metamethods `__pairs` and `__ipairs` | ❌ | would like to reevaluate iteration design long term |
 | frontier patterns | ✔️ | |
-| `%g` in patterns | 🤷‍♀️ | no strong use cases but no major implications |
-| `\0` in patterns | 🤷‍♀️ | no strong use cases but no major implications |
+| `%g` in patterns | ✔️ | |
+| `\0` in patterns | ✔️ | |
 | `bit32` library | ✔️ | |
 
 Two things that are important to call out here are various new metamethods for tables and yielding in metamethods. In both cases, there are performance implications to supporting this - our implementation is *very* highly tuned for performance, so any changes that affect the core fundamentals of how Lua works have a price. To support yielding in metamethods we'd need to make the core of the VM more involved, since almost every single "interesting" opcode would need to learn how to be resumable - which also complicates future JIT/AOT story. Metamethods in general are important for extensibility, but very challenging to deal with in implementation, so we err on the side of not supporting any new metamethods unless a strong need arises.
@@ -78,7 +78,7 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 | integers (64-bit by default) | ❌ | backwards compatibility and performance implications |
 | bitwise operators | ❌ | `bit32` library covers this |
 | basic utf-8 support | ✔️ | we include `utf8` library and other UTF8 features |
-| functions for packing and unpacking values (string.pack/unpack/packsize) | 🔜 | very useful for working with binary data |
+| functions for packing and unpacking values (string.pack/unpack/packsize) | ✔️ | |
 | floor division | ❌ | no strong use cases, syntax overlaps with C comments |
 | `ipairs` and the `table` library respect metamethods | ❌ | no strong use cases, performance implications |
 | new function `table.move` | ✔️ | |
