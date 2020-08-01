@@ -200,3 +200,19 @@ end
 ## LocalShadowPedantic (17)
 
 This warning extends `LocalShadow` by also warning about cases where a local variable shadows a local variable with the same name from a parent function, or when it shadows a builtin global. This warning tends to be noisy and as such is disabled by default.
+
+## FormatString (18)
+
+Luau has several library functions that expect a format string that specifies the behavior for the function. These format strings follow a specific syntax that depends on the question; mistakes in these strings can lead to runtime errors or unexpected behavior of the code.
+
+To help make sure that the strings used for these functions are correct, linter checks calls to `string.format`, `string.pack`, `string.packsize`, `string.unpack`, `string.match`, `string.gmatch`, `string.find`, `string.gsub` and `os.date` and issues warnings when the call uses a literal string with an incorrect format:
+
+```lua
+-- Invalid match pattern: invalid capture reference, must refer to a closed capture
+local cap = string.match(s, "(%d)%2")
+
+-- Invalid format string: unfinished format specifier
+local str = ("%d %"):format(1, 2)
+```
+
+ Note that with the exception of `string.format` this only works when the function is called via the library, not via the method call (so prefer `string.match(s, "pattern")` to `s:match("pattern")`).
