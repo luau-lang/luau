@@ -24,4 +24,4 @@ While Luau doesn't currently implement JIT/AOT, this is likely to happen at some
 
 ## Open source?
 
-Please note that at this time we are not ready to make Luau implementation publically available in the source form. Right now the only interface to Luau is the Roblox engine (exposed in Roblox game client/server and Roblox Studio).
+Please note that at this time we are not ready to make Luau implementation publicly available in the source form. Right now the only interface to Luau is the Roblox engine (exposed in Roblox game client/server and Roblox Studio).
