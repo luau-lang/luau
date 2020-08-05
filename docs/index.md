@@ -5,7 +5,7 @@ Luau is a fast, small, safe, gradually typed embeddable scripting language deriv
 ```lua
 type Point = { x: number, y: number }
 
-local p = { x = 1, y = 2 }
+local p: Point = { x = 1, y = 2 }
 
 print(p.x, p.y)
 -- print(p.z) results in a type error
