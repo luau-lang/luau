@@ -216,3 +216,15 @@ local str = ("%d %"):format(1, 2)
 ```
 
  Note that with the exception of `string.format` this only works when the function is called via the library, not via the method call (so prefer `string.match(s, "pattern")` to `s:match("pattern")`).
+
+## TableLiteral (19)
+
+Table literals are often used in Luau to create objects or specify data. The syntax for table literals is rich but invites mistakes, for example it allows duplicate keys or redundant index specification for values already present in the list form. This warning is emitted for cases where some entries in the table literal are ignored at runtime as they're duplicate:
+
+```lua
+print({
+    first = 1,
+    second = 2,
+    first = 3, -- Table field 'first' is a duplicate; previously defined at line 2
+})
+```
