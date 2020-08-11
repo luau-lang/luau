@@ -227,7 +227,7 @@ local vec3: Vector3 = {x = 1, y = 2, z = 3} -- ok
 ```
 
 ```lua
-type SimpleOverloadedFunction = (string) -> number & (number) -> string
+type SimpleOverloadedFunction = ((string) -> number) & ((number) -> string)
 
 local f: SimpleOverloadedFunction
 
