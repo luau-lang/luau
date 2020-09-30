@@ -309,6 +309,8 @@ local onlyNumber: number = stringOrNumber -- not ok
 
 Roblox supports a rich set of classes and data types, [documented here](https://developer.roblox.com/en-us/api-reference). All of them are readily available for the type checker to use by their name (e.g. `Part` or `RaycastResult`).
 
+When one type inherits from another type, the type checker models this relationship and allows to cast a subclass to the parent class implicitly, so you can pass a `Part` to a function that expects an `Instance`.
+
 Additionally, we can automatically deduce what calls like `Instance.new` and `game:GetService` are supposed to return:
 
 ```lua
