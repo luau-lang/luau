@@ -129,3 +129,7 @@ In addition to a fast allocator, all frequently used structures in Luau have bee
 ## Optimized garbage collector
 
 > Note: our garbage collector optimizations are still in progress, so this section doesn't document them.
+
+## Fast binding interface
+
+> Note: our optimizations of binding interface are still in progress, so this section doesn't document them.
