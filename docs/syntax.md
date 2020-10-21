@@ -128,6 +128,8 @@ local array: { [number] : string }
 local object: { x: number, y: string }
 ```
 
+When the table consists of values keyed by numbers, it's called an array-like table and has a special short-hand syntax, `{T}` (e.g. `{string}`).
+
 Additionally, the type syntax supports type intersections (`((number) -> string) & ((boolean) -> string)`) and unions (`(number | boolean) -> string`). An intersection represents a type with values that conform to both sides at the same time, which is useful for overloaded functions; a union represents a type that can store values of either type - `any` is technically a union of all possible types.
 
 It's common in Lua for function arguments or other values to store either a value of a given type or `nil`; this is represented as a union (`number | nil`), but can be specified using `?` as a shorthand syntax (`number?`).
