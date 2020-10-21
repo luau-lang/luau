@@ -184,6 +184,8 @@ local t = {"Hello", "world!"} -- {[number]: string}
 print(table.concat(t, ", "))
 ```
 
+Luau supports a concise declaration for array-like tables, `{T}` (for example, `{string}` is equivalent to `{[number]: string}`); the more explicit definition of an indexer is still useful when the key isn't a number, or when the table has other fields like `{ [number]: string, n: number }`.
+
 ## Generics
 
 The type inference engine was built from the ground up to recognize generics. A generic is simply a type parameter in which another type could be slotted in. It's extremely useful because it allows the type inference engine to remember what the type actually is, unlike `any`.
