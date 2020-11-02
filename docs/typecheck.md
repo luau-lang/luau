@@ -313,7 +313,9 @@ Roblox supports a rich set of classes and data types, [documented here](https://
 
 When one type inherits from another type, the type checker models this relationship and allows to cast a subclass to the parent class implicitly, so you can pass a `Part` to a function that expects an `Instance`.
 
-Additionally, we can automatically deduce what calls like `Instance.new` and `game:GetService` are supposed to return:
+All enums are also available to use by their name as part of the `Enum` type library, e.g. `local m: Enum.Material = part.Material`.
+
+Finally, we can automatically deduce what calls like `Instance.new` and `game:GetService` are supposed to return:
 
 ```lua
 local part = Instance.new("Part")
