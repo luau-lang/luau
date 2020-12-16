@@ -49,7 +49,7 @@ The same optimization is applied to the custom globals declared in the script, a
 
 ## Importing global access chains
 
-While global access for library functions can be optimized in a similar way, this optimization breaks down when the global table is using sandboxing through metatables, and even when globals aren't sandoxed, `math.max` still requires two table accesses.
+While global access for library functions can be optimized in a similar way, this optimization breaks down when the global table is using sandboxing through metatables, and even when globals aren't sandboxed, `math.max` still requires two table accesses.
 
 It's always possible to "localize" the global accesses by using `local max = math.max`, but this is cumbersome - in practice it's easy to forget to apply this optimization. To avoid relying on programmers remembering to do this, Luau implements a special optimization called "imports", where most global chains such as `math.max` are resolved when the script is loaded instead of when the script is executed.
 
