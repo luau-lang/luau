@@ -339,8 +339,4 @@ module.Quux = "Hello, world!"
 return module
 ```
 
-There are some caveats here though. The path must be resolvable statically, otherwise Luau cannot accurately type check it. There are three kinds of outcome for each require paths:
-
-* Resolved - Luau was able to resolve this path statically,
-* Module not found - The module at this path does not exist, and
-* Unresolvable - This require path may resolve correctly at runtime
+There are some caveats here though. For instance, the require path must be resolvable statically, otherwise Luau cannot accurately type check it.
