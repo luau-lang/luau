@@ -108,17 +108,6 @@ print(greetings("Alexander")          -- ok
 print(greetings({name = "Alexander"}) -- not ok
 ```
 
-Another example is assigning a value to a local outside of the function: we know `x` and `y` are the same type when we assign `y` to `x`. By calling it, we assigned `x` the value of the argument we passed in. In doing so, we gave `x` a more concrete type, so now we know `x` is whatever type that got passed in.
-
-```lua
-local x
-local function f(y) x = y end
-
-f(1)     -- ok
-f(2)     -- ok
-f("foo") -- not ok
-```
-
 ## Table types
 
 From the type checker perspective, each table can be in one of three states. They are: `unsealed table`, `sealed table`, and `generic table`. This is intended to represent how the table's type is allowed to change.
