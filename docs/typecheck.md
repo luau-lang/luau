@@ -29,8 +29,6 @@ However, in strict mode, the second snippet would be able to infer `number` for 
 
 ## Unknown symbols
 
-You may see this error when using custom globals, and that's by design even in nonstrict mode.
-
 Consider how often you're likely to assign a new value to a local variable. What if you accidentally misspelled it? Oops, it's now assigned globally and your local variable is still using the old value.
 
 ```lua
@@ -41,7 +39,7 @@ soeLocal = 2 -- the bug
 print(someLocal)
 ```
 
-Because of this, Luau type checker currently emits an error whenever a non-function global is used; use local variables instead.
+Because of this, Luau type checker currently emits an error in strict mode; use local variables instead.
 
 ## Structural type system
 
