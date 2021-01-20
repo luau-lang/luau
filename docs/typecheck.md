@@ -25,11 +25,9 @@ local foo
 foo = 1
 ```
 
-However, in strict mode, the second snippet would be able to infer `number` for `foo` still.
+However, given the second snippet in strict mode, the type checker would be able to infer `number` for `foo`.
 
 ## Unknown symbols
-
-You may see this error when using custom globals, and that's by design even in nonstrict mode.
 
 Consider how often you're likely to assign a new value to a local variable. What if you accidentally misspelled it? Oops, it's now assigned globally and your local variable is still using the old value.
 
@@ -41,7 +39,7 @@ soeLocal = 2 -- the bug
 print(someLocal)
 ```
 
-Because of this, Luau type checker currently emits an error whenever a non-function global is used; use local variables instead.
+Because of this, Luau type checker currently emits an error in strict mode; use local variables instead.
 
 ## Structural type system
 
@@ -108,17 +106,6 @@ end
 
 print(greetings("Alexander")          -- ok
 print(greetings({name = "Alexander"}) -- not ok
-```
-
-Another example is assigning a value to a local outside of the function: we know `x` and `y` are the same type when we assign `y` to `x`. By calling it, we assigned `x` the value of the argument we passed in. In doing so, we gave `x` a more concrete type, so now we know `x` is whatever type that got passed in.
-
-```lua
-local x
-local function f(y) x = y end
-
-f(1)     -- ok
-f(2)     -- ok
-f("foo") -- not ok
 ```
 
 ## Table types
@@ -352,8 +339,4 @@ module.Quux = "Hello, world!"
 return module
 ```
 
-There are some caveats here though. The path must be resolvable statically, otherwise Luau cannot accurately type check it. There are three kinds of outcome for each require paths:
-
-* Resolved - Luau was able to resolve this path statically,
-* Module not found - The module at this path does not exist, and
-* Unresolvable - This require path may resolve correctly at runtime
+There are some caveats here though. For instance, the require path must be resolvable statically, otherwise Luau cannot accurately type check it.
