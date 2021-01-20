@@ -25,7 +25,7 @@ local foo
 foo = 1
 ```
 
-However, in strict mode, the second snippet would be able to infer `number` for `foo` still.
+However, given the second snippet in strict mode, the type checker would be able to infer `number` for `foo`.
 
 ## Unknown symbols
 
