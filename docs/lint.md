@@ -228,3 +228,15 @@ print({
     first = 3, -- Table field 'first' is a duplicate; previously defined at line 2
 })
 ```
+
+## DeadLocal (20)
+
+It's easy to forget to initialize a local variable and then proceed to use it regardless. This can happen due to a typo, or sometimes it can happen because the original variable definition is shadowed. When a local variable doesn't have an initial value and is used without ever being assigned to, this warning is emitted:
+
+```
+local foo
+
+if foo then -- Variable 'foo' defined at line 1 is never initialized or assigned; initialize with 'nil' to silence
+	print(foo)
+end
+```
