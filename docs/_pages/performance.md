@@ -1,8 +1,7 @@
 ---
 permalink: /performance
+title: Performance
 ---
-
-# Performance
 
 One of main goals of Luau is to enable high performance code, with gameplay code being the main use case. This can be viewed as two separate goals:
 
