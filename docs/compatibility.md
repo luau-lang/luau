@@ -37,7 +37,7 @@ Since several features were removed from Lua 5.1 for sandboxing reasons, this ta
 | `loadfile`, `dofile` | removed for sandboxing, no direct file access |
 | `loadstring` bytecode and `string.dump` | exposing bytecode is dangerous for sandboxing reasons |
 
-Sandboxing challenges are [covered in the dedicated section](sandbox.md).
+Sandboxing challenges are [covered in the dedicated section](sandbox).
 
 ## Lua 5.2
 
