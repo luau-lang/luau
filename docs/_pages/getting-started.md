@@ -11,7 +11,7 @@ To get started with Luau you need to install Roblox Studio, which you can downlo
 If you just want to experiment with the language itself, you can create a simple baseplate game.
 
 <figure>
-  <img src="/assets/images/create-new-place.png">
+  <img src="{{ site-baseurl }}/assets/images/create-new-place.png">
 </figure>
 
 ## Creating a script
@@ -19,7 +19,7 @@ If you just want to experiment with the language itself, you can create a simple
 To create your own testing script, go to ServerScriptService in the explorer tree and add a Script object.
 
 <figure>
-  <img src="/assets/images/create-script.png">
+  <img src="{{ site-baseurl }}/assets/images/create-script.png">
 </figure>
 
 Double-click on the script object and paste this:
@@ -67,8 +67,8 @@ print(isfoo(1))
 Note that the editor now highlights the incorrect calls to ``ispositive()`` and ``isfoo()``.
 
 <figure>
-  <img src="/assets/images/error-ispositive.png">
-  <img src="/assets/images/error-isfoo.png">
+  <img src="{{ site-baseurl }}/assets/images/error-ispositive.png">
+  <img src="{{ site-baseurl }}/assets/images/error-isfoo.png">
 </figure>
 
 ## Annotations
@@ -107,7 +107,7 @@ result = ispositive(1)
 Oops -- we're returning string values, but we forgot to update the function return type. Since ``print()`` accepts anything, the call to ``ispositive()`` is still valid. But because the annotation doesn't match our code, we get a warning in the function body itself:
 
 <figure>
-  <img src="/assets/images/error-ispositive-string.png">
+  <img src="{{ site-baseurl }}/assets/images/error-ispositive-string.png">
 </figure>
 
 And then of course, the fix is simple; just change the annotation to declare the return type as a string.
@@ -130,7 +130,7 @@ result = ispositive(1)
 Well, almost - we also declared result as a boolean, and now that's clearly wrong.
 
 <figure>
-  <img src="/assets/images/error-ispositive-boolean.png">
+  <img src="{{ site-baseurl }}/assets/images/error-ispositive-boolean.png">
 </figure>
 
 So now we update the type of the local variable, and everything is good.
