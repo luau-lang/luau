@@ -1,0 +1,16 @@
+main:
+  - title: "Why?"
+    url: /why
+  - title: "Syntax"
+    url: /syntax
+  - title: "Terms of Use"
+    url: /limited-terms-of-use
+  - title: "Linting"
+    url: /lint
+  - title: "Performance"
+    url: /performance
+  - title: "Sandboxing"
+    url: /sandbox
+  - title: "Typechecking"
+    url: /typecheck
+  

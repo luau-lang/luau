@@ -1,6 +1,7 @@
 ---
 layout: default
 title: LIMITED USE LICENSE
+permalink: /limited-terms-of-use
 ---
 <div style="text-align:center;font-weight:bold;">
 <p>ROBLOX, INC.</p>

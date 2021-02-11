@@ -1,6 +1,17 @@
 remote_theme: "mmistakes/minimal-mistakes@4.22.0"
+minimal_mistakes_skin: "air" #, "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum" "sunrise"
+url:
 title: Luau
 description: >
   A fast, small, safe, gradually typed embeddable scripting language derived from Lua
 
-plugins: [ jekyll-include-cache ]
+plugins: ["jekyll-include-cache"]
+include: ["_pages"]
+
+defaults:
+ # _docs
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "single"

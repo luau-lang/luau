@@ -1,3 +1,6 @@
+---
+permalink: /typecheck
+---
 # Type checking
 
 Luau supports a gradual type system through the use of type annotations and type inference.
