@@ -78,7 +78,3 @@ feature_row3:
 {% include feature_row id="feature_row2" type="left" %}
 
 {% include feature_row id="feature_row3" %}
-
-### Terms of Use
-
-See [here](limited-terms-of-use) for all of the important legal stuff.
