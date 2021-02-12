@@ -1,6 +1,7 @@
 remote_theme: "mmistakes/minimal-mistakes@4.22.0"
-minimal_mistakes_skin: "air" #, "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum" "sunrise"
+minimal_mistakes_skin: "default" #"air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum" "sunrise"
 url:
+name: Roblox
 title: Luau
 description: >
   A fast, small, safe, gradually typed embeddable scripting language derived from Lua
