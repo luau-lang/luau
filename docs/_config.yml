@@ -7,6 +7,8 @@ description: >
 
 plugins: ["jekyll-include-cache"]
 include: ["_pages"]
+atom_feed:
+  hide: true
 
 defaults:
  # _docs
