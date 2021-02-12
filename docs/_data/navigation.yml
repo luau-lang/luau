@@ -1,0 +1,21 @@
+main:
+  - title: Home
+    url: /
+  - title: Getting Started
+    url: /getting-started
+
+pages:
+  - title: Getting Started
+    url: /getting-started
+  - title: Why Luau?
+    url: /why
+  - title: Syntax
+    url: /syntax
+  - title: Linting
+    url: /lint
+  - title: Performance
+    url: /performance
+  - title: Sandboxing
+    url: /sandbox
+  - title: Typechecking
+    url: /typecheck

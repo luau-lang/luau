@@ -1,13 +1,22 @@
-theme: jekyll-theme-minimal
+remote_theme: "mmistakes/minimal-mistakes@4.22.0"
+minimal_mistakes_skin: "default" #"air", "aqua", "contrast", "dark", "dirt", "neon", "mint", "plum" "sunrise"
+url:
+name: Roblox
 title: Luau
 description: >
   A fast, small, safe, gradually typed embeddable scripting language derived from Lua
-  <hr/>
-  <a href="why.html">Why Luau?</a><br/>
-  <a href="syntax.html">Syntax</a><br/>
-  <a href="sandbox.html">Sandboxing</a><br/>
-  <a href="compatibility.html">Compatibility</a><br/>
-  <a href="lint.html">Linting</a><br/>
-  <a href="typecheck.html">Type checking</a><br/>
-  <a href="performance.html">Performance</a><br/>
-  <br/><hr/>
+
+plugins: ["jekyll-include-cache"]
+include: ["_pages"]
+atom_feed:
+  hide: true
+
+defaults:
+ # _docs
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "single"
+      sidebar:
+        nav: "pages"

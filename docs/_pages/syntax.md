@@ -1,4 +1,8 @@
-# Syntax
+---
+permalink: /syntax
+title: Syntax
+toc: true
+---
 
 Luau uses the baseline [syntax of Lua 5.1](https://www.lua.org/manual/5.1/manual.html#2). For detailed documentation, please refer to the Lua manual, this is an example:
 
@@ -25,7 +29,7 @@ Note that future versions of Lua extend the Lua 5.1 syntax with the following fe
 - floor division operator (`//`)
 - `<toclose>` and `<const>` local attributes
 
-> For details please refer to [compatibility section](compatibility.md).
+> For details please refer to [compatibility section](compatibility).
 
 The rest of this document documents additional syntax used in Luau.
 
@@ -150,4 +154,4 @@ By default type aliases are local to the file they are declared in. To be able t
 export type Point = { x: number, y: number }
 ```
 
-For more information please refer to [typechecking documentation](typecheck.md).
+For more information please refer to [typechecking documentation](typecheck).
