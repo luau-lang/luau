@@ -3,7 +3,7 @@ layout: single
 title:  "Luau Type Checking Release"
 ---
 
-10 months ago, we’ve started upon the journey of helping Roblox scripters write robust code by introducing an early beta of type checking. We’ve received a lot of enthusiastic feedback and worked with the community on trying to make sure critical issues are addressed, usability is improved and the type system is ready for prime time.
+10 months ago, we’ve started upon the journey of helping Roblox scripters write robust code by introducing [an early beta of type checking](https://devforum.roblox.com/t/luau-type-checking-release). We’ve received a lot of enthusiastic feedback and worked with the community on trying to make sure critical issues are addressed, usability is improved and the type system is ready for prime time.
 
 Today I’m incredibly excited to announce that the first release of [Luau](https://roblox.github.io/luau/) type checking is officially released! Thanks a lot to @Apakovtac, @EthicalRobot, @fun_enthusiast, @machinamentum, @mrow_pizza and @zeuxcg!
 
