@@ -15,7 +15,7 @@ The first step in this is an *infallible* parser, that always returns an Abstrac
 
 The Luau parser now recovers from errors, which means, for example, we can give hints about programs in an IDE.
 
-![A type error after a syntax error](/assets/images/type-error-after-syntax-error.png)
+![A type error after a syntax error]({{ site.url }}{{ site.baseurl }}/assets/images/type-error-after-syntax-error.png)
 
 ## Type definition files
 
@@ -25,17 +25,17 @@ Developers familiar with TypeScript will know all about `.d.ts` declaration file
 
 The Luau type checker can't know everything about your code, and sometimes it will produce type errors even when you know the code is correct. For example, sometimes the type checker can't work out the intended types, and gives a message such as "Unknown type used... consider adding a type annotation".
 
-!["Consider adding a type annotation"](/assets/images/type-annotation-needed.png)
+!["Consider adding a type annotation"]({{ site.url }}{{ site.baseurl }}/assets/images/type-annotation-needed.png)
 
 Previously the only way to add an annotation was to put it on the *declaration* of the variable, but now you can put it on the *use* too.  A use of variable `x` at type `T` can be written `x :: T`. For example the type `any` can be used almost anywhere, so a common usage of type assertions is to switch off the type system by writing `x :: any`.
 
-!["A type assertion y:any"](/assets/images/type-annotation-provided.png)
+!["A type assertion y:any"]({{ site.url }}{{ site.baseurl }}/assets/images/type-annotation-provided.png)
 
 ## Improved type refinements
 
 Type refinements are used when a check is made on the dynamic type of a variable. Luau knows the static type during type-checking, but the dynamic type might be a refinement of the static type (or it might not, that's why we're checking it). For example, if the static type of `x` is `any`, then we might check that it's a number before incrementing it.
 
-!["A type refinement type(x) == "number"](/assets/images/type-refinement-in-action.png)
+!["A type refinement type(x) == "number"]({{ site.url }}{{ site.baseurl }}/assets/images/type-refinement-in-action.png)
 
 ## Performance improvements
 
