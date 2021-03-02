@@ -1,6 +1,6 @@
 main:
-  - title: Home
-    url: /
+  - title: News
+    url: /news
   - title: Getting Started
     url: /getting-started
 

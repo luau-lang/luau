@@ -20,3 +20,11 @@ defaults:
       layout: "single"
       sidebar:
         nav: "pages"
+ # _posts
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: single
+      related: true
+      show_date: true
