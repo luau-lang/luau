@@ -38,11 +38,19 @@ We've made various improvements to the Luau typechecker:
 
 ## Performance improvements
 
-We've made quite a few performance improvements to the Luau bytecode interpreter.
+We are continuing to work on optimizing our VM and libraries to make sure idiomatic code keeps improving in performance. Most of these changes are motivated by our benchmark suite; while some improvements may seem small and insignificant, over time these compound and allow us to reach excellent performance.
 
- * Function calls are now faster in the common case of one- or two-argument functions.
- * Some built-in operations such as equality checking and modulo arithmetic are now faster.
- * Calls to `string.method()` are now faster
+ * Table key assignments as well as global assignments have been optimized to play nicer with modern CPUs, yielding ~2% speedup in some benchmarks
+ * Luau function calls are now ~3% faster in most cases; we also have more call optimizations coming up next month!
+ * Modulo operation (%) is not a bit faster on Windows, resulting in ~2% performance improvement on some benchmarks
+
+!["Benchmark vs Lua 5.3"]({{ site.url }}{{ site.baseurl }}luau-recap-february-2021-benchmark.png)
+
+## Library changes
+
+`table` library now has a new method, `clear`, that removes all keys from the table but keeps the internal table capacity. When working with large arrays, this can be more efficient than assigning a table to `{}` - the performance gains are similar to that of using `table.create` instead of `{}` *when you expect the number of elements to stay more or less the same*. Note that large empty tables still take memory and are a bit slower for garbage collector to process, so use this with caution.
+
+In addition to that we found a small bug in `string.char` implementation that allowed creating strings from out-of-range character codes (e.g. `string.char(2000)`); the problem has been fixed and these calls now correctly generate an error.
 
 ## Coming soon...
 
