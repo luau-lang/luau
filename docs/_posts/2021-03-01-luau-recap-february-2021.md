@@ -27,12 +27,22 @@ Previously the only way to add an annotation was to put it on the *declaration* 
 
 !["A type assertion y:any"]({{ site.url }}{{ site.baseurl }}/assets/images/type-annotation-provided.png)
 
+## Typechecking improvements
+
+We've made various improvements to the Luau typechecker:
+
+ * We allow duplicate function definitions in non-strict mode.
+ * Better typechecking of `and`, `(f or g)()`, arrays with properties, and `string:format()`.
+ * Improved typechecking of infinite loops.
+ * Better error reporting for function type mismatch, type aliases and cyclic types.
+
 ## Performance improvements
 
 We've made quite a few performance improvements to the Luau bytecode interpreter.
 
  * Function calls are now faster in the common case of one- or two-argument functions.
  * Some built-in operations such as equality checking and modulo arithmetic are now faster.
+ * Calls to `string.method()` are now faster
 
 ## Coming soon...
 
