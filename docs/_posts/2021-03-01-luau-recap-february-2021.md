@@ -52,6 +52,8 @@ Our Luau VM implementation is focused on performance and provides a different AP
 
 The good news is that we have lifted that limitation and coroutines can now be debugged just like any regular function. This can especially help people who use Promise libraries that rely on coroutines internally.
 
+![Debugging a coroutine]({{ site.url }}{{ site.baseurl }}/assets/images/luau-recap-february-2021-debugger.png)
+
 ## Library changes
 
 `table` library now has a new method, `clear`, that removes all keys from the table but keeps the internal table capacity. When working with large arrays, this can be more efficient than assigning a table to `{}` - the performance gains are similar to that of using `table.create` instead of `{}` *when you expect the number of elements to stay more or less the same*. Note that large empty tables still take memory and are a bit slower for garbage collector to process, so use this with caution.
