@@ -42,9 +42,9 @@ We are continuing to work on optimizing our VM and libraries to make sure idioma
 
  * Table key assignments as well as global assignments have been optimized to play nicer with modern CPUs, yielding ~2% speedup in some benchmarks
  * Luau function calls are now ~3% faster in most cases; we also have more call optimizations coming up next month!
- * Modulo operation (%) is not a bit faster on Windows, resulting in ~2% performance improvement on some benchmarks
+ * Modulo operation (%) is now a bit faster on Windows, resulting in ~2% performance improvement on some benchmarks
 
-!["Benchmark vs Lua 5.3"]({{ site.url }}{{ site.baseurl }}luau-recap-february-2021-benchmark.png)
+!["Benchmark vs Lua 5.3"]({{ site.url }}{{ site.baseurl }}/assets/images/luau-recap-february-2021-benchmark.png)
 
 ## Library changes
 
