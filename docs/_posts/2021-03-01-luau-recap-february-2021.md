@@ -54,11 +54,4 @@ function sum(...: number): number
 end
 ```
 
-* _Class declarations in type definition files_ will allow object-oriented APIs to be declared!
-```
-declare class Cat : Animal
-    function meow() -> string
-end
-```
-
 And there will be more!
