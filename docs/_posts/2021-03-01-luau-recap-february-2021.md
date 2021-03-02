@@ -31,9 +31,8 @@ Previously the only way to add an annotation was to put it on the *declaration* 
 
 We've made quite a few performance improvements to the Luau bytecode interpreter.
 
-Function calls are now faster in the common case of one- or two-argument functions.
-
-Some built-in operations such as equality checking and modulo arithmetic are now faster.
+ * Function calls are now faster in the common case of one- or two-argument functions.
+ * Some built-in operations such as equality checking and modulo arithmetic are now faster.
 
 ## Coming soon...
 
