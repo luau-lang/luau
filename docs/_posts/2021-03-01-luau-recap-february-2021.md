@@ -48,8 +48,8 @@ end
 ```
 function sum(...: number): number
     local result = 0
-    for i,v in ipairs(arg) do
-        result = result + v
+    for i,v in ipairs({...}) do
+        result += v
     end
     return result
 end
