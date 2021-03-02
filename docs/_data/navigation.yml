@@ -1,6 +1,4 @@
 main:
-  - title: Home
-    url: /
   - title: News
     url: /news
   - title: Getting Started
