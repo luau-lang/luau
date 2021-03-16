@@ -17,5 +17,7 @@ pages:
     url: /performance
   - title: Sandboxing
     url: /sandbox
+  - title: Compatibility
+    url: /compatibility
   - title: Typechecking
     url: /typecheck
