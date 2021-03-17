@@ -5,6 +5,7 @@ name: Roblox
 title: Luau
 description: >
   A fast, small, safe, gradually typed embeddable scripting language derived from Lua
+logo: /assets/images/luau-88.png
 
 plugins: ["jekyll-include-cache"]
 include: ["_pages"]
