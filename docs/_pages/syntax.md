@@ -21,7 +21,7 @@ local function tree_insert(tree, x)
 end
 ```
 
-Note that future versions of Lua extend the Lua 5.1 syntax with the following features; these are **not** supported by Luau with the exception of the string literals:
+Note that future versions of Lua extend the Lua 5.1 syntax with the following features; the following are **not** supported by Luau with the exception of the string literals:
 
 - hexadecimal (`\x`), Unicode (`\u`) and `\z` escapes for string literals
 - goto statements and labels
