@@ -125,6 +125,17 @@ Function types are specified using the arguments and return types, separated wit
 local foo: (number, string) -> boolean
 ```
 
+To return no values or more than one, you need to wrap the return type position with parentheses, and then list your types there.
+
+```lua
+local no_returns: (number, string) -> ()
+local returns_boolean_and_string: (nunber, string) -> (boolean, string)
+
+function foo(x: number, y: number): (number, string)
+    return x + y, tostring(x) .. tostring(y)
+end
+```
+
 Table types are specified using the table literal syntax, using `:` to separate keys from values:
 
 ```lua
