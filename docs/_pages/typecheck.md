@@ -234,6 +234,26 @@ Note: it's impossible to create an intersection type of some primitive types, e.
 
 Note: Luau still does not support user-defined overloaded functions. Some of Roblox and Lua 5.1 functions have different function signature, so inherently requires overloaded functions.
 
+## Variadic types
+
+Luau permits assigning a type to the `...` variadic symbol like any other parameter:
+
+```lua
+local function f(...: number)
+end
+
+f(1, 2, 3)     -- ok
+f(1, "string") -- not ok
+```
+
+`f` accepts any number of `number` values.
+
+In type annotations, this is written as `...T`:
+
+```lua
+type F = (...number) -> ...string
+```
+
 ## Typing idiomatic OOP
 
 One common pattern we see throughout Roblox is this OOP idiom. A downside with this pattern is that it does not automatically create a type binding for an instance of that class, so one has to write `type Account = typeof(Account.new("", 0))`.
