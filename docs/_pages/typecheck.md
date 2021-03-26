@@ -248,7 +248,7 @@ f(1, "string") -- not ok
 
 `f` accepts any number of `number` values.
 
-In type annotations, this is written `...T`:
+In type annotations, this is written as `...T`:
 
 ```lua
 type F = (...number) -> ...string
