@@ -9,7 +9,26 @@ Luau is our new language that you can read more about at [https://roblox.github.
 
 ## Typed variadics
 
-[TODO]
+Luau supports *variadic* functions, meaning ones which can take a variable number of arguments (varargs!) but previously there was no way to specify their type. Now you can!
+```
+function f(x: string, ...: number)
+  print(x)
+  print(...)
+end
+f("hi")
+f("lo", 5, 27)
+```
+This function takes a string, plus as many numbers as you like, but if you try calling it with anything else, you'll get a type error, for example `f("oh", true)` gives an error " Type `boolean` could not be converted into `number`"
+
+Variadics can be used in function declarations, and function types, for example
+```
+type T = {
+  sum: (...number) -> number
+}
+function f(x: T)
+  print(x.sum(1, 2, 3))
+end
+```
 
 ## Generic functions
 
@@ -39,5 +58,6 @@ Luau now has a shiny new logo!
 
 ## Coming soon...
 
-* Better treatment of cyclic requires
+* Generic variadics!
+* Better treatment of cyclic requires!
 * [Anything else?]
