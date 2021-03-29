@@ -24,7 +24,8 @@ Luau is our new language that you can read more about at [https://roblox.github.
 ## Performance improvements
 
 * Significantly optimized non-variadic function calls, improving performance by up to 10% on call-heavy benchmarks
-* Improve performance of math.clamp, math.sign and math.round by 2.3x, 2x and 1.6x respectively
+* Improve performance of `math.clamp`, `math.sign` and `math.round` by 2.3x, 2x and 1.6x respectively
+* Optimized `coroutine.resume` with ~10% gains on coroutine-heavy benchmarks
 
 ## Library changes
 
