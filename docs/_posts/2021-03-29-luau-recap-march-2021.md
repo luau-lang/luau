@@ -23,13 +23,8 @@ Luau is our new language that you can read more about at [https://roblox.github.
 
 ## Performance improvements
 
-* Optimized `coroutine.resume`
-  (a 10% speed-up in benchmarks)
-* New implementation of string mutations, which mutates in place rather than copying if there's
-  only one copy of the string buffer (a 20% speedup)
-* New `FASTCALL` specializations, optimizing common cases for methods such as `table.insert`
-  (a 40% speedup)
-* Improved `table.move` performance (often 3x faster!)
+* Significantly optimized non-variadic function calls, improving performance by up to 10% on call-heavy benchmarks
+* Optimized `coroutine.resume` (a 10% speed-up in benchmarks)
 
 ## Library changes
 
