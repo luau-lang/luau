@@ -65,4 +65,4 @@ Luau now has a shiny new logo!
 * Native Vector3 math with dramatic performance improvements!
 * Better tools for memory analysis!
 * Better treatment of cyclic requires during type checking
-* Better refinements including nil-ability checks, `and`/`or` and `IsA`
+* Better type refinements including nil-ability checks, `and`/`or` and `IsA`
