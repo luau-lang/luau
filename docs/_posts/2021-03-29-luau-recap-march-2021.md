@@ -29,7 +29,7 @@ We are continuing to squeeze the performance out of all sorts of possible code; 
 * Improve performance of `math.clamp`, `math.sign` and `math.round` by 2.3x, 2x and 1.6x respectively
 * Optimized `coroutine.resume` with ~10% gains on coroutine-heavy benchmarks
 
-Note that we work off a set of benchmarks that we consider representative of the wide gamut of code that runs on Luau. If you have code that you think we could be running faster, never hesitate to open a feature request / bug report on Roblox Developer Forum!
+Note that we work off a set of benchmarks that we consider representative of the wide gamut of code that runs on Luau. If you have code that you think should be running faster, never hesitate to open a feature request / bug report on Roblox Developer Forum!
 
 ## Library changes
 
