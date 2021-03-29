@@ -38,7 +38,6 @@ end
 
 * Check bodies of methods whose `self` has type `any`
 * More precise types for `debug.*` methods
-* Better typechecking for `Instance:IsA`.
 
 ## Performance improvements
 
