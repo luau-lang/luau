@@ -45,4 +45,5 @@ Luau now has a shiny new logo!
 
 * Better treatment of cyclic requires
 * Native Vector3 math with dramatic performance improvements
+* Better tools for memory analysis
 * [Anything else?]
