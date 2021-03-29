@@ -38,6 +38,7 @@ end
 
 * Check bodies of methods whose `self` has type `any`
 * More precise types for `debug.*` methods
+* Mutually dependent type aliases are now handled correctly
 
 ## Performance improvements
 
