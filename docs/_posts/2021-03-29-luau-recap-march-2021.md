@@ -62,8 +62,7 @@ Luau now has a shiny new logo!
 
 ## Coming soon...
 
-* Generic variadics!
 * Native Vector3 math with dramatic performance improvements!
 * Better tools for memory analysis!
-* Better treatment of cyclic requires
-* [Anything else?]
+* Better treatment of cyclic requires during type checking
+* Better refinements including nil-ability checks, `and`/`or` and `IsA`
