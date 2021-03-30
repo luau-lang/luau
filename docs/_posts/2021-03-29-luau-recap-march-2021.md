@@ -70,6 +70,24 @@ We are continuing to squeeze the performance out of all sorts of possible code; 
 
 Note that we work off a set of benchmarks that we consider representative of the wide gamut of code that runs on Luau. If you have code that you think should be running faster, never hesitate to open a feature request / bug report on Roblox Developer Forum!
 
+## Debugger improvements
+
+We continue to improve our Luau debugger and we have added a new feature to help with coroutine call debugging.
+The call stack that is being displayed while stopped inside a coroutine frame will display the chain of threads that have called it.
+Before:
+
+!["Old debugger"]({{ site.url }}{{ site.baseurl }}/assets/images/luau-recap-march-2021-debug-before.png)
+
+After:
+
+!["New debugger"]({{ site.url }}{{ site.baseurl }}/assets/images/luau-recap-march-2021-debug-after.png)
+
+We have restored the ability to break on all errors inside the scripts.
+This is useful in cases where you need to track the location and state of an error that is triggered inside 'pcall'.
+For example, when the error that's triggered is not the one you expected.
+
+!["Break on all exceptions"]({{ site.url }}{{ site.baseurl }}/assets/images/luau-recap-march-2021-debug-dialog.png)
+
 ## Library changes
 
 * Added the `debug.info` function which allows retrieving information about stack frames or functions; similarly to `debug.getinfo` from Lua, this accepts an options string that must consist of characters `slnfa`; unlike Lua that returns a table, the function returns all requested values one after another to improve performance.
