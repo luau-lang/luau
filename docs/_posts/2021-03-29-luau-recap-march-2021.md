@@ -32,9 +32,29 @@ end
 
 ## Generic functions
 
-[TODO]
+Luau has always supported type inference for generic functions, for example:
+```
+type Point<X,Y> = { x: X, y: Y }
+function swap(p)
+  return { x = p.y, y = p.x }
+end
+local p : Point<number, string> = swap({ x = "hi", y = 37 })
+local q : Point<boolean, string> = swap({ x = "hi", y = true })
+```
+but up until now, there's been no way to write the type of `swap`, since Luau didn't have type parameters to functions (just regular old data parameters). Well, now you can:
+```
+function swap<X, Y>(p : Point<X, Y>): Point<Y, X>
+  return { x = p.y, y = p.x }
+end
+```
+Generic functions can be used in function declarations, and function types too, for example
+```
+type Swapper = { swap : <X, Y>(Point<X, Y>) -> Point<Y, X> }
+```
 
 ## Typechecking improvements
+
+We've made various improvements to the Luau typechecker:
 
 * Check bodies of methods whose `self` has type `any`
 * More precise types for `debug.*` methods
@@ -62,7 +82,8 @@ Luau now has a shiny new logo!
 
 ## Coming soon...
 
+* Generic variadics!
 * Native Vector3 math with dramatic performance improvements!
 * Better tools for memory analysis!
-* Better treatment of cyclic requires during type checking
-* Better type refinements including nil-ability checks, `and`/`or` and `IsA`
+* Better treatment of cyclic requires during type checking!
+* Better type refinements including nil-ability checks, `and`/`or` and `IsA`!
