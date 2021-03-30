@@ -67,6 +67,9 @@ We are continuing to squeeze the performance out of all sorts of possible code; 
 * Significantly optimized non-variadic function calls, improving performance by up to 10% on call-heavy benchmarks
 * Improve performance of `math.clamp`, `math.sign` and `math.round` by 2.3x, 2x and 1.6x respectively
 * Optimized `coroutine.resume` with ~10% gains on coroutine-heavy benchmarks
+* Equality comparisons are now a bit faster when comparing to constants, including `nil`; this makes some benchmarks 2-3% faster
+* Calls to builtin functions like `math.abs` or `bit32.rrotate` are now significantly faster in some cases, e.g. this makes SHA256 benchmark 25% faster
+* `rawset`, `rawget`, `rawequal` and 2-argument `table.insert` are now 40-50% faster; notably, `table.insert(t, v)` is now faster than `t[#t+1]=v`
 
 Note that we work off a set of benchmarks that we consider representative of the wide gamut of code that runs on Luau. If you have code that you think should be running faster, never hesitate to open a feature request / bug report on Roblox Developer Forum!
 
