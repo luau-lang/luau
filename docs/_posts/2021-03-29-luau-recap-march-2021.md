@@ -74,6 +74,7 @@ Note that we work off a set of benchmarks that we consider representative of the
 
 We continue to improve our Luau debugger and we have added a new feature to help with coroutine call debugging.
 The call stack that is being displayed while stopped inside a coroutine frame will display the chain of threads that have called it.
+
 Before:
 
 !["Old debugger"]({{ site.url }}{{ site.baseurl }}/assets/images/luau-recap-march-2021-debug-before.png)
