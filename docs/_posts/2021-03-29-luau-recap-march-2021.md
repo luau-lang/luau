@@ -18,7 +18,7 @@ end
 f("hi")
 f("lo", 5, 27)
 ```
-This function takes a string, plus as many numbers as you like, but if you try calling it with anything else, you'll get a type error, for example `f("oh", true)` gives an error " Type `boolean` could not be converted into `number`"
+This function takes a string, plus as many numbers as you like, but if you try calling it with anything else, you'll get a type error, for example `f("oh", true)` gives an error "Type `boolean` could not be converted into `number`"
 
 Variadics can be used in function declarations, and function types, for example
 ```
