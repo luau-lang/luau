@@ -7,10 +7,10 @@ description: >
   A fast, small, safe, gradually typed embeddable scripting language derived from Lua
 logo: /assets/images/luau-88.png
 
-plugins: ["jekyll-include-cache"]
+plugins: ["jekyll-include-cache", "jekyll-feed"]
 include: ["_pages"]
 atom_feed:
-  hide: true
+  path: feed.xml
 
 defaults:
  # _docs
