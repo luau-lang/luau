@@ -188,6 +188,40 @@ local strings: Array<string> = {"Hello", "world!"}
 local numbers: Array<number> = {1, 2, 3, 4, 5, 6}
 ```
 
+## Generic functions
+
+As well as generic type aliases like `Array<T>`, Luau supports generic functions. These are functions that, as well as their regular data parameters, take type parameters. For example, a function which reverses an array is:
+```
+function reverse(a)
+  local result = {}
+  for i = #a, 1, -1 do
+    table.insert(result, a[i])
+  end
+  return result
+end
+```
+The type of this function is that it can reverse an array, and return an array of the same type. Luau can infer this type, but if you want to be explicit, you can declare the type parameter `T`, for example:
+```
+function reverse<T>(a: Array<T>): Array<T>
+  local result: Array<T> = {}
+  for i = #a, 1, -1 do
+    table.insert(result, a[i])
+  end
+  return result
+end
+```
+When a generic function is called, Luau infers type arguments, for example
+```
+local x: Array<number> = reverse({1, 2, 3})
+local y: Array<string> = reverse({"a", "b", "c"})
+```
+Generic types are used for built-in functions as well as user functions,
+for example the type of `table.insert` is:
+```
+<T>(Array<T>, T) -> ()
+```
+
+
 ## Union types
 
 A union type represents *one of* the types in this set. If you try to pass a union onto another thing that expects a *more specific* type, it will fail.
