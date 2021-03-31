@@ -182,16 +182,16 @@ Luau supports a concise declaration for array-like tables, `{T}` (for example, `
 The type inference engine was built from the ground up to recognize generics. A generic is simply a type parameter in which another type could be slotted in. It's extremely useful because it allows the type inference engine to remember what the type actually is, unlike `any`.
 
 ```lua
-type Array<T> = {[number]: T}
+type Pair<T> = {first: T, second: T}
 
-local strings: Array<string> = {"Hello", "world!"}
-local numbers: Array<number> = {1, 2, 3, 4, 5, 6}
+local strings: Pair<string> = {first="Hello", second="World"}
+local numbers: Pair<number> = {first=1, second=2}
 ```
 
 ## Generic functions
 
-As well as generic type aliases like `Array<T>`, Luau supports generic functions. These are functions that, as well as their regular data parameters, take type parameters. For example, a function which reverses an array is:
-```
+As well as generic type aliases like `Pair<T>`, Luau supports generic functions. These are functions that, as well as their regular data parameters, take type parameters. For example, a function which reverses an array is:
+```lua
 function reverse(a)
   local result = {}
   for i = #a, 1, -1 do
@@ -201,9 +201,9 @@ function reverse(a)
 end
 ```
 The type of this function is that it can reverse an array, and return an array of the same type. Luau can infer this type, but if you want to be explicit, you can declare the type parameter `T`, for example:
-```
-function reverse<T>(a: Array<T>): Array<T>
-  local result: Array<T> = {}
+```lua
+function reverse<T>(a: {T}): {T}
+  local result: {T} = {}
   for i = #a, 1, -1 do
     table.insert(result, a[i])
   end
@@ -211,16 +211,15 @@ function reverse<T>(a: Array<T>): Array<T>
 end
 ```
 When a generic function is called, Luau infers type arguments, for example
-```
-local x: Array<number> = reverse({1, 2, 3})
-local y: Array<string> = reverse({"a", "b", "c"})
+```lua
+local x: {number} = reverse({1, 2, 3})
+local y: {string} = reverse({"a", "b", "c"})
 ```
 Generic types are used for built-in functions as well as user functions,
-for example the type of `table.insert` is:
+for example the type of two-argument `table.insert` is:
+```lua
+<T>({T}, T) -> ()
 ```
-<T>(Array<T>, T) -> ()
-```
-
 
 ## Union types
 
