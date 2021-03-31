@@ -216,7 +216,7 @@ local x: {number} = reverse({1, 2, 3})
 local y: {string} = reverse({"a", "b", "c"})
 ```
 Generic types are used for built-in functions as well as user functions,
-for example the type of `table.insert` is:
+for example the type of two-argument `table.insert` is:
 ```lua
 <T>({T}, T) -> ()
 ```
