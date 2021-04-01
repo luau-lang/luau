@@ -190,6 +190,8 @@ local numbers: Pair<number> = {first=1, second=2}
 
 ## Generic functions
 
+**WARNING** Generic functions are currently disabled as we're fixing some critical bugs.
+
 As well as generic type aliases like `Pair<T>`, Luau supports generic functions. These are functions that, as well as their regular data parameters, take type parameters. For example, a function which reverses an array is:
 ```lua
 function reverse(a)
