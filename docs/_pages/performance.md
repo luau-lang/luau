@@ -102,7 +102,7 @@ Iterating through array-like tables using `for i=1,#t` tends to be slightly slow
 
 Luau implements several optimizations for table creation. When creating object-like tables, it's recommended to use table literals (`{ ... }`) and to specify all table fields in the literal in one go instead of assigning fields later; this triggers an optimization inspired by LuaJIT's "table templates" and results in higher performance when creating objects. When creating array-like tables, if the maximum size of the table is known up front, it's recommended to use `table.create` function which can create an empty table with preallocated storage, and optionally fill it with a given value.
 
-When appending elements to tables, it's recommended to use `table.insert` (which is currently ever so slightly slower than `t[#t+1]` but it will be improved in the future) if the table size is not known. In cases when a table is filled sequentially, however, it's much more efficient to use a known index for insertion - together with preallocating tables using `table.create` this can result in much faster code, for example this is the fastest way to build a table of squares:
+When appending elements to tables, it's recommended to use `table.insert` (which is the fastest method to append an element to a table if the table size is not known). In cases when a table is filled sequentially, however, it's much more efficient to use a known index for insertion - together with preallocating tables using `table.create` this can result in much faster code, for example this is the fastest way to build a table of squares:
 
 ```lua
 local t = table.create(N)
