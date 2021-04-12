@@ -108,8 +108,8 @@ local function greetings(name)
     return greetingsHelper(name)
 end
 
-print(greetings("Alexander"))         -- ok
-print(greetings({name = "Alexander"}) -- not ok
+print(greetings("Alexander"))          -- ok
+print(greetings({name = "Alexander"})) -- not ok
 ```
 
 ## Table types
