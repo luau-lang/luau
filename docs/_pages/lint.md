@@ -249,7 +249,7 @@ end
 
 This warning is emitted when a script defines two functions with the same name in the same scope.
 
-The warning is not produced when the functions are defined in different scopes because this is much more likely to be 
+The warning is not produced when the functions are defined in different scopes because this is much more likely to be intentional.
 
 ```lua
 function foo() end
