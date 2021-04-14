@@ -108,8 +108,8 @@ local function greetings(name)
     return greetingsHelper(name)
 end
 
-print(greetings("Alexander"))         -- ok
-print(greetings({name = "Alexander"}) -- not ok
+print(greetings("Alexander"))          -- ok
+print(greetings({name = "Alexander"})) -- not ok
 ```
 
 ## Table types
@@ -190,6 +190,8 @@ local numbers: Pair<number> = {first=1, second=2}
 
 ## Generic functions
 
+**WARNING** Generic functions are currently disabled as we're fixing some critical bugs.
+
 As well as generic type aliases like `Pair<T>`, Luau supports generic functions. These are functions that, as well as their regular data parameters, take type parameters. For example, a function which reverses an array is:
 ```lua
 function reverse(a)
@@ -216,7 +218,7 @@ local x: {number} = reverse({1, 2, 3})
 local y: {string} = reverse({"a", "b", "c"})
 ```
 Generic types are used for built-in functions as well as user functions,
-for example the type of `table.insert` is:
+for example the type of two-argument `table.insert` is:
 ```lua
 <T>({T}, T) -> ()
 ```
