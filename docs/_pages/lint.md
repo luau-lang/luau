@@ -237,10 +237,28 @@ print({
 
 It's easy to forget to initialize a local variable and then proceed to use it regardless. This can happen due to a typo, or sometimes it can happen because the original variable definition is shadowed. When a local variable doesn't have an initial value and is used without ever being assigned to, this warning is emitted:
 
-```
+```lua
 local foo
 
 if foo then -- Variable 'foo' defined at line 1 is never initialized or assigned; initialize with 'nil' to silence
 	print(foo)
+end
+```
+
+## DuplicateFunction (21)
+
+This warning is emitted when a script defines two functions with the same name in the same scope.
+
+The warning is not produced when the functions are defined in different scopes because this is much more likely to be intentional.
+
+```lua
+function foo() end
+function foo() end -- Duplicate function definition: 'foo' also defined on line 1
+
+-- OK: the functions are not defined in the same scope.
+if x then
+    function bar() end
+else
+    function bar() end
 end
 ```
