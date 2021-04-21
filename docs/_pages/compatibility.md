@@ -36,7 +36,6 @@ Since several features were removed from Lua 5.1 for sandboxing reasons, this ta
 
 | feature | notes |
 |---------|------|
-| tail calls | removed to simplify implementation and make debugging and stack traces easier |
 | `io`, `os`, `package` and `debug` library | note that some functions in `os`/`debug` are still present |
 | `loadfile`, `dofile` | removed for sandboxing, no direct file access |
 | `loadstring` bytecode and `string.dump` | exposing bytecode is dangerous for sandboxing reasons |
@@ -125,3 +124,4 @@ We have a few behavior deviations from Lua 5.x that come from either a different
 
 * Order of table assignment in table literals follows program order in mixed tables (Lua 5.x assigns array elements first in some cases)
 * Equality comparisons call `__eq` metamethod even when objects are rawequal (which matches other metamethods like `<=` and facilitates NaN checking)
+* Tail calls are not supported to simplify implementation, make debugging/stack traces more predictable and allow deep validation of caller identity for security
