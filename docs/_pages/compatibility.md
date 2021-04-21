@@ -122,6 +122,6 @@ If we do end up introducing const variables, it would be through a `const var = 
 
 We have a few behavior deviations from Lua 5.x that come from either a different implementation, or our desire to clean up small inconsistencies in the language/libraries:
 
+* Tail calls are not supported to simplify implementation, make debugging/stack traces more predictable and allow deep validation of caller identity for security
 * Order of table assignment in table literals follows program order in mixed tables (Lua 5.x assigns array elements first in some cases)
 * Equality comparisons call `__eq` metamethod even when objects are rawequal (which matches other metamethods like `<=` and facilitates NaN checking)
-* Tail calls are not supported to simplify implementation, make debugging/stack traces more predictable and allow deep validation of caller identity for security
