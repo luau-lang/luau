@@ -39,6 +39,7 @@ Since several features were removed from Lua 5.1 for sandboxing reasons, this ta
 | `io`, `os`, `package` and `debug` library | note that some functions in `os`/`debug` are still present |
 | `loadfile`, `dofile` | removed for sandboxing, no direct file access |
 | `loadstring` bytecode and `string.dump` | exposing bytecode is dangerous for sandboxing reasons |
+| `newproxy` can only be called with nil or boolean | extra flexibility removed for sandboxing |
 
 Sandboxing challenges are [covered in the dedicated section](sandbox).
 
