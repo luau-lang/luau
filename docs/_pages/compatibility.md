@@ -119,7 +119,7 @@ Lua has a beautiful syntax and frankly we're disappointed in the `<const>`/`<toc
 
 If we do end up introducing const variables, it would be through a `const var = value` syntax, which is backwards compatible through a context-sensitive keyword similar to `type`.
 
-## Lua 5.x differences
+## Differences from Lua
 
 We have a few behavior deviations from Lua 5.x that come from either a different implementation, or our desire to clean up small inconsistencies in the language/libraries:
 
