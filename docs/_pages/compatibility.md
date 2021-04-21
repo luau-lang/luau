@@ -36,10 +36,10 @@ Since several features were removed from Lua 5.1 for sandboxing reasons, this ta
 
 | feature | notes |
 |---------|------|
-| tail calls | removed to simplify implementation and make debugging and stack traces easier |
 | `io`, `os`, `package` and `debug` library | note that some functions in `os`/`debug` are still present |
 | `loadfile`, `dofile` | removed for sandboxing, no direct file access |
 | `loadstring` bytecode and `string.dump` | exposing bytecode is dangerous for sandboxing reasons |
+| `newproxy` can only be called with nil or boolean | extra flexibility removed for sandboxing |
 
 Sandboxing challenges are [covered in the dedicated section](sandbox).
 
@@ -47,10 +47,11 @@ Sandboxing challenges are [covered in the dedicated section](sandbox).
 
 | feature | status | notes |
 |---------|--------|------|
-| yieldable pcall and metamethods | ✔️/❌ | pcall/xpcall supports yielding but metamethods don't |
+| yieldable pcall/xpcall | ✔️ | |
+| yieldable metamethods | ❌ | significant performance implications |
 | ephemeron tables | ❌ | this complicates the garbage collector esp. for large weak tables |
 | emergency garbage collector | ❌ | Luau runs in environments where handling memory exhaustion in emergency situations is not tenable |
-| goto statement | ❌ | this complicates the compiler due to handling of locals and doesn't address a significant need |
+| goto statement | ❌ | this complicates the compiler, makes control flow unstructured and doesn't address a significant need |
 | finalizers for tables | ❌ | no `__gc` support due to sandboxing and performance/complexity |
 | no more fenv for threads or functions | 😞 | we love this, but it breaks compatibility |
 | tables honor the `__len` metamethod | ❌ | performance implications, no strong use cases
@@ -67,6 +68,7 @@ Sandboxing challenges are [covered in the dedicated section](sandbox).
 | `%g` in patterns | ✔️ | |
 | `\0` in patterns | ✔️ | |
 | `bit32` library | ✔️ | |
+| `string.gsub` is stricter about using `%` on special characters only | ✔️ | |
 
 Two things that are important to call out here are various new metamethods for tables and yielding in metamethods. In both cases, there are performance implications to supporting this - our implementation is *very* highly tuned for performance, so any changes that affect the core fundamentals of how Lua works have a price. To support yielding in metamethods we'd need to make the core of the VM more involved, since almost every single "interesting" opcode would need to learn how to be resumable - which also complicates future JIT/AOT story. Metamethods in general are important for extensibility, but very challenging to deal with in implementation, so we err on the side of not supporting any new metamethods unless a strong need arises.
 
@@ -88,6 +90,7 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 | new function `table.move` | ✔️ | |
 | `collectgarbage("count")` now returns only one result | ✔️ | |
 | `coroutine.isyieldable` | ✔️ | |
+| stricter error checking for `table.insert`/`table.remove` | 🔜 | we're evaluating compatibility implications
 
 It's important to highlight integer support and bitwise operators. For Luau, it's rare that a full 64-bit integer type is necessary - double-precision types support integers up to 2^53 (in Lua which is used in embedded space, integers may be more appealing in environments without a native 64-bit FPU). However, there's a *lot* of value in having a single number type, both from performance perspective and for consistency. Notably, Lua doesn't handle integer overflow properly, so using integers also carries compatibility implications.
 
@@ -110,9 +113,17 @@ Floor division is less harmful, but it's used rarely enough that `math.floor(a/b
 | `utf8` library accepts codepoints up to 2^31 | 🤷‍♀️ | no strong use cases |
 | The use of the `__lt` metamethod to emulate `__le` has been removed | 😞 | breaks compatibility and doesn't seem very interesting otherwise |
 | When finalizing objects, Lua will call `__gc` metamethods that are not functions | ❌ | no `__gc` support due to sandboxing and performance/complexity |
-| The function print calls `__tostring` instead of tostring to format its arguments. | 🔜 | |
+| The function print calls `__tostring` instead of tostring to format its arguments. | ✔️ | |
 | By default, the decoding functions in the utf8 library do not accept surrogates. | 😞 | breaks compatibility and doesn't seem very interesting otherwise |
 
 Lua has a beautiful syntax and frankly we're disappointed in the `<const>`/`<toclose>` which takes away from that beauty. Taking syntax aside, `<toclose>` isn't very useful in Luau - its dominant use case is for code that works with external resources like files or sockets, but we don't provide such APIs - and has a very large complexity cost, evidences by a lot of bug fixes since the initial implementation in 5.4 work versions. `<const>` in Luau doesn't matter for performance - our multi-pass compiler is already able to analyze the usage of the variable to know if it's modified or not and extract all performance gains from it - so the only use here is for code readability, where the `<const>` syntax is... suboptimal.
 
 If we do end up introducing const variables, it would be through a `const var = value` syntax, which is backwards compatible through a context-sensitive keyword similar to `type`.
+
+## Differences from Lua
+
+We have a few behavior deviations from Lua 5.x that come from either a different implementation, or our desire to clean up small inconsistencies in the language/libraries:
+
+* Tail calls are not supported to simplify implementation, make debugging/stack traces more predictable and allow deep validation of caller identity for security
+* Order of table assignment in table literals follows program order in mixed tables (Lua 5.x assigns array elements first in some cases)
+* Equality comparisons call `__eq` metamethod even when objects are rawequal (which matches other metamethods like `<=` and facilitates NaN checking)
