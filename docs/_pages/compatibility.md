@@ -127,3 +127,4 @@ We have a few behavior deviations from Lua 5.x that come from either a different
 * Tail calls are not supported to simplify implementation, make debugging/stack traces more predictable and allow deep validation of caller identity for security
 * Order of table assignment in table literals follows program order in mixed tables (Lua 5.x assigns array elements first in some cases)
 * Equality comparisons call `__eq` metamethod even when objects are rawequal (which matches other metamethods like `<=` and facilitates NaN checking)
+* `os.time` returns UTC timestamp when called with a table for consistency
