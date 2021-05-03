@@ -39,4 +39,8 @@ Read more about the feature [on Roblox Developer forums](https://devforum.roblox
 
 Backwards compatibility is important for Luau, but sometimes a change is required to fix corner cases in the language / libraries or to improve performance. Even still, we try to keep impact of these changes to a minimum:
 
-* __eq tag method will always get called for table comparisons even when a table is compared to itself.
+* __eq tag method will always get called for table comparisons even when a table is compared to itself
+
+## Coming soon...
+
+* Better type refinements for statements under a condition using a new constraint resolver. Luau will now understand complex conditions combining `and`/`not` and type guards with more improvements to come
