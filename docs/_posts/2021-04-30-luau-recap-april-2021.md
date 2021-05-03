@@ -37,6 +37,6 @@ Read more about the feature [on Roblox Developer forums](https://devforum.roblox
 
 ## Behavior changes
 
-Backwards compatibility is very important for Luau, but sometimes a change is required to improve the language or performance. Even still, we try to keep impact of these changes to a minimum:
+Backwards compatibility is important for Luau, but sometimes a change is required to fix corner cases in the language / libraries or to improve performance. Even still, we try to keep impact of these changes to a minimum:
 
 * __eq tag method will always get called for table comparisons even when a table is compared to itself.
