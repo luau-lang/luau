@@ -8,7 +8,7 @@ One paragraph explanation of the feature.
 
 Why are we doing this? What use cases does it support? What is the expected outcome?
 
-## Detailed design
+## Design
 
 This is the bulk of the proposal. Explain the design in enough detail for somebody familiar with the language to understand, and include examples of how the feature is used.
 
@@ -19,7 +19,3 @@ Why should we *not* do this?
 ## Alternatives
 
 What other designs have been considered? What is the impact of not doing this?
-
-## Unresolved questions
-
-What parts of the design are still undecided?
