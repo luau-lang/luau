@@ -25,7 +25,7 @@ Since reversing these decisions is incredibly costly and can be impossible due t
 Process
 ===
 
-To open an RFC, a Pull Request must be opened which creates a new Markdown file in rfcs/ folder. The RFCs should follow the template `rfcs/TEMPLATE.md`, and should have a file name that is a short human readable description of the feature (using lowercase alphanumeric characters and dashes only).
+To open an RFC, a Pull Request must be opened which creates a new Markdown file in `rfcs/` folder. The RFCs should follow the template `rfcs/TEMPLATE.md`, and should have a file name that is a short human readable description of the feature (using lowercase alphanumeric characters and dashes only). Try using the general area of the RFC as a prefix, e.g. `syntax-generic-functions.md` or `function-debug-info.md`. The PR will hav
 
 > Note: we currently don't accept community contributions for RFCs, although this will likely change in the future.
 
