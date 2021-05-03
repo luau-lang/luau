@@ -9,7 +9,7 @@ Luau is our new language that you can read more about at [https://roblox.github.
 
 ## Editor features
 
-Luau implementation now provides an API for type-aware autocomplete suggestions.
+Luau implementation now provides an internal API for type-aware autocomplete suggestions.
 
 Roblox Studio will be the first user of this API and we plan for a new beta feature to come soon in addition to existing Luau-powered beta features like Go To Declaration, Type Hovers and Script Function Filter (you should check those out!)
 
