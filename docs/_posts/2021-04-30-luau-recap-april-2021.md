@@ -7,7 +7,7 @@ Luau is our new language that you can read more about at [https://roblox.github.
 
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-april-2021/).]
 
-## Features
+## Editor features
 
 Luau implementation now provides an API for type-aware autocomplete suggestions.
 
