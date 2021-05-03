@@ -13,7 +13,7 @@ Whenever new syntax is introduced, we need to ask:
 
 For changes in semantics, we should be asking:
 
-- Is it easy to understand and non-surprising?
+- Is behavior easy to understand and non-surprising?
 - Can it be implemented performantly today?
 - Can it be sandboxed assuming malicious usage?
 - Is it compatible with type checking and other forms of static analysis?
