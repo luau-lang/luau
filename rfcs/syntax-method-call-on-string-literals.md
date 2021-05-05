@@ -1,4 +1,4 @@
-# String terms are directly chainable
+# Allow method call on string literals
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
