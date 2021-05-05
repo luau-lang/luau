@@ -1,4 +1,4 @@
-# Named function type arguments
+# Named Function Type Arguments
 
 ## Summary
 
