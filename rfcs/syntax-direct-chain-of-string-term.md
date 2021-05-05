@@ -29,9 +29,11 @@ Formally, the proposal is to move the `String` parser from `exp` to `prefixexp`:
   functioncall ::= prefixexp args | prefixexp `:´ Name args
 ```
 
+The recommendation is that we should keep statements starting with string tokens as illegal syntax, as it is too niche to support use cases with side-effecting functions.
+
 ## Drawbacks
 
-Statements starting by parsing `prefixexp` will now allow string tokens to be parsed despite that the return values of the function calls are now discarded. The recommendation is that we should keep statements starting with string tokens as illegal syntax as it is too niche to support use cases with side-effecting functions.
+Statements starting by parsing `prefixexp` will now allow string tokens to be parsed despite that the return values of the function calls are always discarded. This is a non-issue if we obey the recommendation to ban statements starting with string tokens.
 
 ## Alternatives
 
