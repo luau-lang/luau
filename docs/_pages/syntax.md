@@ -129,7 +129,7 @@ To return no values or more than one, you need to wrap the return type position 
 
 ```lua
 local no_returns: (number, string) -> ()
-local returns_boolean_and_string: (nunber, string) -> (boolean, string)
+local returns_boolean_and_string: (number, string) -> (boolean, string)
 
 function foo(x: number, y: number): (number, string)
     return x + y, tostring(x) .. tostring(y)
