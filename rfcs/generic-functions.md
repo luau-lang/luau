@@ -30,11 +30,19 @@ Functions may also take generic type pack arguments for varargs, for instance:
 function compose<a...>(... : a...) -> (a...) return ... end
 ```
 
-This change is *not* only syntax, as explicit type parameters need to be part of the semantics of types. For example:
+This change is *not* only syntax, as explicit type parameters need to be part of the semantics of types. For example, we can define a generic identity function
+
+```
+local function id(x) return x end
+local x: string = id("hi")
+local y: number = id(37)
+type Id = typeof(id)
+```
+
+and two functions 
 
 ```
 function f()
-  function id(x) return x end
   return id
 end
 function g()
@@ -57,7 +65,7 @@ The types of these functions are
 so this is okay:
 
 ```
-  local i = f()
+  local i: Id = f()
   local x: string = i("hi")
   local y: number = i(37)
 ```
@@ -65,7 +73,8 @@ so this is okay:
 but this is not:
 
 ```
-  local i = g()
+  -- This assignment shouldn't typecheck!
+  local i: Id = g()
   local x: string = i("hi")
   -- This is unsound, since it assigns a string to a variable of type number
   local y: number = i(37)
@@ -103,7 +112,7 @@ Not having bounded types stops some examples like giving a type to the function 
 
 ## Alternatives
 
-We did originally consider Rank-1 types, but the problem is that's not backward-compatible, as DataBrain pointed out in the [Dev Forum](https://devforum.roblox.com/t/luau-recap-march-2021/1141387/29), since `typeof` allows users to construct generic types even without syntax for them.
+We did originally consider Rank-1 types, but the problem is that's not backward-compatible, as DataBrain pointed out in the [Dev Forum](https://devforum.roblox.com/t/luau-recap-march-2021/1141387/29), since `typeof` allows users to construct generic types even without syntax for them. Rank-1 types give a false positive type error in this case, which comes from deployed code.
 
 We could introduce syntax for generic types without changing the semantics, but then there'd be a gap between the syntax (where the types `() -> <a>(a) -> a` and `<a>() -> (a) -> a` are different) and the semantics (where they are not). As noted above, this isn't sound.
 
