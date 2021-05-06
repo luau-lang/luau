@@ -8,7 +8,7 @@ Extend the syntax and semantics of functions to support explicit generic functio
 
 Currently Luau allows generic functions to be inferred but not given explicit type annotations. For example
 
-```
+```lua
 function id(x) return x end
 local x: string = id("hi")
 local y: number = id(37)
