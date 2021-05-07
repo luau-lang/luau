@@ -1,4 +1,4 @@
-# FEATURE_NAME
+# Feature name
 
 ## Summary
 
