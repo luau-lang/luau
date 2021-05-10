@@ -52,3 +52,5 @@ Function type comparisons will ignore the argument names, this proposal doesn't 
 Argument names require that we create unique function types even when these types are 'identical', so we can't compare types using pointer identity.
 
 This is already the case in current Luau implementation, but it might reduce the optimization opportunities in the future.
+
+There might also be cases of pointer identity checks that are currently hidden and named arguments might expose places where correct unification is required in the type checker.
