@@ -42,6 +42,9 @@ This feature can be found in other languages:
 
 Implementation will store the names inside the function type description.
 
+Parsing the argument list will require a single-token lookahead that we already support.
+Argument list parser will check if current token is an identifier and if the lookahead token is a colon, in which case it will consume both tokens.
+
 Function type comparisons will ignore the argument names, this proposal doesn't change the semantics of the language and how typechecking is performed.
 
 ## Drawbacks
