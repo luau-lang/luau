@@ -20,19 +20,19 @@ is fine, but there is no way for a user to write the type of `id`.
 
 Allow functions to take type parameters as well as function parameters, similar to Java/Typescript/...
 
-```
+```lua
 function id<a>(x : a) : a return x end
 ```
 
 Functions may also take generic type pack arguments for varargs, for instance:
 
-```
+```lua
 function compose<a...>(... : a...) -> (a...) return ... end
 ```
 
 This change is *not* only syntax, as explicit type parameters need to be part of the semantics of types. For example, we can define a generic identity function
 
-```
+```lua
 local function id(x) return x end
 local x: string = id("hi")
 local y: number = id(37)
@@ -41,7 +41,7 @@ type Id = typeof(id)
 
 and two functions 
 
-```
+```lua
 function f()
   return id
 end
@@ -57,14 +57,14 @@ end
 
 The types of these functions are
 
-```
+```lua
   f : () -> <a>(a) -> a
   g : <a>() -> (a) -> a
 ```
 
 so this is okay:
 
-```
+```lua
   local i: Id = f()
   local x: string = i("hi")
   local y: number = i(37)
@@ -72,7 +72,7 @@ so this is okay:
 
 but this is not:
 
-```
+```lua
   -- This assignment shouldn't typecheck!
   local i: Id = g()
   local x: string = i("hi")
@@ -92,7 +92,7 @@ Types become more complex, so harder for programmers to reason about, and adding
 
 Not having higher-kinded types stops some examples which are parameterized on container types, for example:
 
-```
+```lua
   function g<c>(f : <a>(a) -> c<a>) : <b>(b) -> c<c<b>>
     return function(x) return f(f(x)) end
   end
@@ -100,7 +100,7 @@ Not having higher-kinded types stops some examples which are parameterized on co
 
 Not having bounded types stops some examples like giving a type to the function that sums an non-empty array:
 
-```
+```lua
   function sum(xs)
     local result = x[0]
     for i=1,#xs
