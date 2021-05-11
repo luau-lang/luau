@@ -1,4 +1,4 @@
-# generic functions
+# Generic functions
 
 ## Summary
 
