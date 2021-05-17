@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+Status: **Implemented**
+
 ## Summary
 
 Add syntax for ascribing a type to variadic pack (`...`).

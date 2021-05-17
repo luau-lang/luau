@@ -52,4 +52,4 @@ When an RFC gets merged, the feature *can* be implemented; however, there's no s
 
 To avoid having permanently stale RFCs, in rare cases Luau team can *remove* a previously merged RFC when the landscape is believed to change enough for a feature like this to warrant further discussion.
 
-To track progress of implemented features, it's advised to follow documentation instead; while RFCs aren't meant to be user-facing documentation, recaps in particular can reference RFCs for additional context behind the changes.
+When an RFC is implemented and the implementation is enabled via feature flags, RFC should be updated to include "**Status**: Implemented" at the top level (before *Summary* section).

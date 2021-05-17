@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Add `debug.info` as programmatic debug info access API, similarly to Lua's `debug.getinfo`

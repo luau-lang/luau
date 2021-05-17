@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Implement syntax for type ascriptions using `::`

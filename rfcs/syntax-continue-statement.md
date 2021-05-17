@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Add `continue` statement to `for`, `while` and `repeat` loops using a context-sensitive keyword to preserve compatibility.

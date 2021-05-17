@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process and as such doesn't follow the template precisely
 
+**Status**: Implemented
+
 ## Summary
 
 Add `table.clear` function that removes all elements from the table but keeps internal capacity allocated.

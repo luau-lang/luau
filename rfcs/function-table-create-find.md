@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process and as such doesn't follow the template precisely
 
+**Status**: Implemented
+
 ## Design
 
 This proposal suggests adding two new builtin table functions:
