@@ -33,7 +33,7 @@ By itself, this change introduces an additional ambiguity because of the combina
 
 Consider code like this:
 
-```
+```lua
 local foo = bar
 ("fmt"):format(...)
 ```
@@ -46,7 +46,7 @@ The grammar today also allows calling functions with string literals as their fi
 
 By itself, this proposal thus would create a similar ambiguity in code like this:
 
-```
+```lua
 local foo = bar
 "fmt":format(...)
 ```
@@ -55,7 +55,7 @@ While we could extend the line-based error check to include function literal arg
 
 Doing so would prohibit code like this:
 
-```
+```lua
 "fmt":format(...)
 ```
 
