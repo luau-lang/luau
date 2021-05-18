@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 `__eq` metamethod will always be called during `==`/`~=` comparison, even for objects that are rawequal.

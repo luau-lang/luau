@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Change \_VERSION global to "Luau" to differentiate Luau from Lua

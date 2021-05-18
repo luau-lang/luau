@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
+**Status**: Implemented
+
 ## Summary
 
 Add string pack/unpack from Lua 5.3 for binary interop, with small tweaks to format specification to make format strings portable.

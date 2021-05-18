@@ -2,6 +2,8 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process and as such doesn't follow the template precisely
 
+**Status**: Implemented
+
 ## Design
 
 A feature present in many many programming languages is assignment operators that perform operations on the left hand side, for example
