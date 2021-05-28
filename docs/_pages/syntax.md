@@ -165,4 +165,12 @@ By default type aliases are local to the file they are declared in. To be able t
 export type Point = { x: number, y: number }
 ```
 
+An exported type can be used in another module by prefixing its name with the require alias that you used to import the module.
+
+```lua
+local M = require(Other.Module)
+
+local a: M.Point = {x=5, y=6}
+```
+
 For more information please refer to [typechecking documentation](typecheck).
