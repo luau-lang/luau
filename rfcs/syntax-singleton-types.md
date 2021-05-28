@@ -4,7 +4,7 @@
 
 ## Summary
 
-Introduce a new kind of type variable, called singleton types. They are just like normal types but has the capability to represent a constant value at runtime.
+Introduce a new kind of type variable, called singleton types. They are just like normal types but has the capability to represent a constant runtime value as a type.
 
 ## Motivation
 
@@ -70,8 +70,8 @@ local foo: boolean = true
 local bar: true = foo -- not allowed
 ```
 
-Additionally, we can change the type binding `boolean` to actually alias to `true | false`, aka a union of two constant options, either `true` or `false`.
-
 ## Drawbacks
 
-If done naively, type checking performance could regress severely. Especially in situations where we may need to check if the providing union of constant strings is a subset of another union of constant strings that is receiving it. Without singleton types, the time complexity of that situation is just `O(m * n)`. This could be made much worse because the time complexity of `std::string::operator==` is `O(n)` leading to `O(m * n * o)` which is completely unacceptable. Fortunately, the strings are meant to be constant, so we just have to hash the string exactly once and then use this hashed value to compare for the rest of type analysis, so `O(m * n * 1)` is still `O(m * n)`. None of this is an issue with booleans and numbers (not part of this proposal) because their comparisons are always `O(1)`.
+This may increase the cost of type checking - since some types now need to carry a string literal value, it may need to be copied and compared. The cost can be mitigated through interning although this is not very trivial due to cross-module type checking and the need to be able to typecheck a module graph incrementally.
+
+This may make the type system a bit more complex to understand, as many programmers have a mental model of types that doesn't include being able to use literal values as a type, and having that be a subtype of a more general value type.
