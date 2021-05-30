@@ -233,7 +233,7 @@ print({
 })
 ```
 
-## DeadLocal (20)
+## UninitializedLocal (20)
 
 It's easy to forget to initialize a local variable and then proceed to use it regardless. This can happen due to a typo, or sometimes it can happen because the original variable definition is shadowed. When a local variable doesn't have an initial value and is used without ever being assigned to, this warning is emitted:
 
