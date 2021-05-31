@@ -1,5 +1,7 @@
 # Named function type arguments
 
+**Status**: Implemented
+
 ## Summary
 
 Introduce syntax for optional names of function type arguments.
