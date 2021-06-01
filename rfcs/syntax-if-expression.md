@@ -39,6 +39,8 @@ Studio's script editor autocomplete currently adds an indented block followed by
 
 Parser recovery can also be more fragile due to leading `if` keyword - when `if` was encountered previously, it always meant an unfinished expression, but now it may start an `if-expr` that, when confused with `if-end` statement can lead to a substantially incorrect parse that is difficult to recover from. However, similar issues occur frequently due to function call statements and as such it's not clear that this makes the recovery materially worse.
 
+While this is not a problem today, in the past we've contemplated adding support for mid-block `return` statements; these would create an odd grammatical quirk where an `if..then` statement following an empty `return` would parse as an `if` expression. This would happen even without `if` expressions though for function calls (e.g. `return` followed by `print(1)`), and is more of a problem with the potential `return` statement changes and less of a problem with this proposal.
+
 ## Alternatives
 
 We've evaluated many alternatives for the proposed syntax.
