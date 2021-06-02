@@ -142,6 +142,12 @@ function foo(x: number, y: number): (number, string)
 end
 ```
 
+Note that function types are specified without the argument names in the examples above, but it's also possible to specify the names (that are not semantically significant but can show up in documentation and autocomplete):
+
+```lua
+local callback: (errorCode: number, errorText: string) -> ()
+```
+
 Table types are specified using the table literal syntax, using `:` to separate keys from values:
 
 ```lua
