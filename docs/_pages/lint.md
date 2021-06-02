@@ -100,7 +100,7 @@ print(x, x)
 While unused local variables could be useful for debugging, unused functions usually contain dead code that was meant to be removed. Unused functions clutter code, can be a result of typos similar to local variables, and can mislead the reader into thinking that some functionality is supported.
 
 ```lua
--- Function 'bar' is never used
+-- Function 'bar' is never used; prefix with '_' to silence
 local function bar()
 end
 
@@ -115,7 +115,7 @@ return foo()
 In Luau, there's no first-class module system that's part of the syntax, but `require` function acts as an import statement. When a local is initialized with a `require` result, and the local is unused, this is classified as "unused import". Removing unused imports improves code quality because it makes it obvious what the dependencies of the code are:
 
 ```lua
--- Import 'Roact' is never used
+-- Import 'Roact' is never used; prefix with '_' to silence
 local Roact = require(game.Packages.Roact)
 ```
 
