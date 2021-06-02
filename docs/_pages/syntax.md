@@ -117,6 +117,12 @@ function foo(x: number, y: string): boolean
 end
 ```
 
+In addition, the type of any expression can be overridden using a type cast `::`:
+
+```lua
+local k = (y :: string):rep(x)
+```
+
 There are several simple builtin types: `any` (represents inability of the type checker to reason about the type), `nil`, `boolean`, `number`, `string` and `thread`.
 
 Function types are specified using the arguments and return types, separated with `->`:
