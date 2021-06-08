@@ -26,14 +26,14 @@ applied. When multiple files are used, the file closer to the .lua file override
 
 Example of a valid .luaurc file:
 
-```json
+```json5
 {
-  "mode": "nonstrict"
+	"mode": "nonstrict",
 	"lint": {
 		"*": "fatal",
 		"LocalUnused": "disabled",
 	},
-  "globals": ["expect"] // TestEZ
+	"globals": ["expect"] // TestEZ
 }
 ```
 
