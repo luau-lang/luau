@@ -45,6 +45,8 @@ File-based JSON configuration may or may not map cleanly to environments that do
 
 Support for two ways to specify the mode, "mode" and "language"/"mode", complicates specification a bit.
 
+Using JSON5 instead of vanilla JSON limits the interoperability.
+
 Making the default set of linting passes fatal requires enumerating them one by one, as "*": "fatal" means "enable all linting passes and make them fatal" (unlike -Werror).
 
 Making the type checking issues visible but non-fatal is impossible.
