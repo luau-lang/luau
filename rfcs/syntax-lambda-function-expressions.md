@@ -36,7 +36,8 @@ prefixexp ::= NAME | `(' expr `)'
 ```
 After:
 ```
-prefixexp ::= NAME [`->' subexpr] | funcargs `->' subexpr | `(' expr `)'
+funchead ::= `(' [parlist] `)' [`:' ReturnType]
+prefixexp ::= NAME [`->' subexpr] | funchead `->' subexpr | `(' expr `)'
 ```
 
 Note that an anonymous function with a single argument is allowed to have a type annotation only when it's inside `()`.
@@ -47,7 +48,7 @@ We extend the syntax of *prefixexp* instead of *simpleexp* because we parse expr
 
 Parsing of the first option is easy, we check a single token for `->` after the NAME.
 
-### Parsing ``funcargs `->' subexpr``
+### Parsing ``funchead `->' subexpr``
 
 Parsing of the function argument list is in conflict with an expression in `` `(' expr `)'``.
 To resolve this issue, we are going to perform the switch to potential function arguments after we consume the common `(` token.
@@ -86,5 +87,9 @@ local b = filter(map(c, do(a: number) a * 2), do(a: number) a > 0)
 
 Syntax of *simpleexp* is extended with a new option:
 ```
-| `do` funcargs subexpr
+| `do` funchead subexpr
+```
+where
+```
+funchead ::= `(' [parlist] `)' [`:' ReturnType]
 ```
