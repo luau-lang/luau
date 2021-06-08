@@ -1,0 +1,86 @@
+# nil-forgiving postfix operator !
+
+## Summary
+
+Introduce syntax to suppress typechecking errors for nilable types by ascribing them into a non-nil type.
+
+## Motivation
+
+Typechecking might not be able to figure out that a certain expression is a non-nil type, but the user might know additional context of the expression.
+
+Using `::` ascriptions is the current work-around for this issue, but it's much more verbose and requires providing the full type name when you only want to ascribe T? to T.
+
+The nil-forgiving operator will also allow chaining to be written in a very terse manner:
+```lua
+local p = a!.b!.c
+```
+instead of
+```lua
+local ((p as Part).b as Folder).c
+```
+
+Note that nil-forgiving operator is **not** a part of member access operator, it can be used in standalone expressions, indexing and other places:
+```lua
+local p = f(a!)!
+local q = b!['X']
+```
+
+Nil-forgiving operator (also known as null-forgiving or null-suppression operator) can be found in C# programming language.
+
+## Design
+
+To implement this, we will change the syntax of the *primaryexp*.
+
+Before:
+```
+primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
+```
+After:
+```
+postfixeexp ::= (`.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs) [`!']
+primaryexp ::= prefixexp [`!'] { postfixeexp }
+```
+
+When we get the `!` token, we will wrap the expression that we have into a new AstExprNonNilAssertion node.
+
+This operator doesn't have any impact on the run-time behavior of the program, it will only change the type of the expression in the typechecker.
+
+---
+If the operator is used on expression of type that is already non-nil, it has no effect and doesn't generate additional warnings.
+
+The reason for this is to simplify movement of existing code where context in each location is slightly different.
+
+As an example from Roblox, instance path could dynamically change from being know to exist to be missing when script is changed in edit mode.
+
+## Drawbacks
+
+It might be useful to warn about unnecessary uses of this operator, but we have no way way of enabling this behavior.
+
+It may be possible to warn for some limited number of cases, for example, when used on l-value:
+```lua
+p.a! = b
+```
+Another case is for constants, but the check will require an AST match:
+```lua
+local a = 2!
+local b = "str"!
+```
+
+## Alternatives
+
+It might be useful to consider a safe navigation operator (also known as null-chaining and optional chaining operator) as an addition to this proposal.
+
+We can call it a nil-chaining operator.
+
+Compared to nil-forgiving operator, nil-chaining operator does impact the run-time behavior.
+
+It makes it possible to avoid a run-time error of accessing `nil` values by replacing the result of the expression with `nil` instead of evaluation the part on RHS of the operator.
+
+Because nil-chaining has a run-time check it can only be used in specific expression kinds because it changes how each one of them is evaluated.
+
+Multiple cases will be defined:
+* ?. nil-chaining member access operator. If LHS is `nil`, member access is not performed and the expression value is `nil`. The type of this expressions is a union between member type and `nil`.
+* ?[] nil-chaining indexing operator. If LSH is `nil`, index access is not performed and the expression value is `nil`. Type of the expression is a union between element type and `nil`.
+* ?() nil-chaining function call operator. If LSH is `nil`, function is not called and the expression value is `nil`. Type of the expression is a union between function return type and `nil`.
+
+nil-chaining operator can be found in many programming languages, including C#, Dart, Kotlin, Swift and TypeScript.
