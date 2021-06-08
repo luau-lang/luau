@@ -16,7 +16,7 @@ local p = a!.b!.c
 ```
 instead of
 ```lua
-local ((p as Part).b as Folder).c
+local ((p :: Part).b :: Folder).c
 ```
 
 Note that nil-forgiving operator is **not** a part of member access operator, it can be used in standalone expressions, indexing and other places:
@@ -25,7 +25,7 @@ local p = f(a!)!
 local q = b!['X']
 ```
 
-Nil-forgiving operator (also known as null-forgiving or null-suppression operator) can be found in C# programming language.
+Nil-forgiving operator (also known as null-forgiving or null-suppression operator) can be found in some programming languages such as C# and TypeScript.
 
 ## Design
 
@@ -80,7 +80,7 @@ Because nil-chaining has a run-time check it can only be used in specific expres
 
 Multiple cases will be defined:
 * ?. nil-chaining member access operator. If LHS is `nil`, member access is not performed and the expression value is `nil`. The type of this expressions is a union between member type and `nil`.
-* ?[] nil-chaining indexing operator. If LSH is `nil`, index access is not performed and the expression value is `nil`. Type of the expression is a union between element type and `nil`.
-* ?() nil-chaining function call operator. If LSH is `nil`, function is not called and the expression value is `nil`. Type of the expression is a union between function return type and `nil`.
+* ?[] nil-chaining indexing operator. If LHS is `nil`, index access is not performed and the expression value is `nil`. Type of the expression is a union between element type and `nil`.
+* ?() nil-chaining function call operator. If LHS is `nil`, function is not called and the expression value is `nil`. Type of the expression is a union between function return type and `nil`.
 
 nil-chaining operator can be found in many programming languages, including C#, Dart, Kotlin, Swift and TypeScript.
