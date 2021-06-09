@@ -43,6 +43,13 @@ primaryexp ::= prefixexp [`!'] { postfixeexp }
 
 When we get the `!` token, we will wrap the expression that we have into a new AstExprNonNilAssertion node.
 
+An error is generated when the type of expression node this is one of the following:
+* AstExprConstantBool
+* AstExprConstantNumber
+* AstExprConstantString
+* AstExprFunction
+* AstExprTable
+
 This operator doesn't have any impact on the run-time behavior of the program, it will only affect the type of the expression in the typechecker.
 
 ---
@@ -54,7 +61,7 @@ p.a! = b
 ```
 
 ---
-When operator is used on expression of a union type with a 'nil' option, it removes that option from the set.
+When operator is used on expression of a union type with a `nil` option, it removes that option from the set.
 If only one option remains, the union type is replaced with the type of a single option.
 
 If the type is `nil`, typechecker will generate a warning that the operator cannot be applied to the expression.
@@ -68,9 +75,3 @@ As an example from Roblox, instance path could dynamically change from being kno
 ## Drawbacks
 
 It might be useful to warn about unnecessary uses of this operator, but we have no way way of enabling this behavior.
-
-It may be possible to warn for some limited number of cases, like use of the operator on constants, but the check will require an AST match:
-```lua
-local a = 2!
-local b = "str"!
-```
