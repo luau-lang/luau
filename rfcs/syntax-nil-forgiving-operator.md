@@ -74,4 +74,10 @@ As an example from Roblox, instance path could dynamically change from being kno
 
 ## Drawbacks
 
-It might be useful to warn about unnecessary uses of this operator, but we have no way way of enabling this behavior.
+### Unnecessary operator use
+
+It might be useful to warn about unnecessary uses of this operator when the value cannot be `nil`, but we have no way of enabling this behavior.
+
+### Bad practice
+
+The operator might be placed by users to ignore/silence correct warnings and lower the strength of type checking that Luau provides.
