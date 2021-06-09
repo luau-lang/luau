@@ -46,6 +46,14 @@ When we get the `!` token, we will wrap the expression that we have into a new A
 This operator doesn't have any impact on the run-time behavior of the program, it will only change the type of the expression in the typechecker.
 
 ---
+While parsing an assignment expression starts with a *primaryexp*, it performs a check that it has an l-value based on a fixed set of AstNode types.
+
+Since using `!` on an l-value has no effect, we don't extend this list with the new node and will generate a specialized parse error for code like:
+```lua
+p.a! = b
+```
+
+---
 If the operator is used on expression of type that is already non-nil, it has no effect and doesn't generate additional warnings.
 
 The reason for this is to simplify movement of existing code where context in each location is slightly different.
@@ -56,11 +64,7 @@ As an example from Roblox, instance path could dynamically change from being kno
 
 It might be useful to warn about unnecessary uses of this operator, but we have no way way of enabling this behavior.
 
-It may be possible to warn for some limited number of cases, for example, when used on l-value:
-```lua
-p.a! = b
-```
-Another case is for constants, but the check will require an AST match:
+It may be possible to warn for some limited number of cases, like use of the operator on constants, but the check will require an AST match:
 ```lua
 local a = 2!
 local b = "str"!
