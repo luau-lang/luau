@@ -65,7 +65,7 @@ When we are done with parsing, we re-use the existing AST for function expressio
 ### Single return value
 In Luau, multiple return value support is a first-class citizen, but the syntax becomes ambiguous if we allow that:
 ```lua
-f(a, b -> b.a, b.b, c) -- how many values does the b return or the f accept?
+f(a, b -> b.a, b.b, c) -- how many values does the lambda return or the 'f' accepts?
 ``` 
 As a solution, regular anonymous function definition can be used when multiple return values are required.
 
@@ -96,3 +96,9 @@ The problem with this option is that parsing with limited look-ahead and without
 f((x):number(2))
 ```
 Only after the return type annotation can we see that there is no `->` token and this was a member function call.
+
+### Use new `=>` token instead of `->`
+
+`->` token is already used for return type in function type annotations.
+
+While there might be value of using a different token (and some programming languages do use `=>`), it introduces a new token when it's not necessary.
