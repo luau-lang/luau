@@ -43,7 +43,7 @@ primaryexp ::= prefixexp [`!'] { postfixeexp }
 
 When we get the `!` token, we will wrap the expression that we have into a new AstExprNonNilAssertion node.
 
-This operator doesn't have any impact on the run-time behavior of the program, it will only change the type of the expression in the typechecker.
+This operator doesn't have any impact on the run-time behavior of the program, it will only affect the type of the expression in the typechecker.
 
 ---
 While parsing an assignment expression starts with a *primaryexp*, it performs a check that it has an l-value based on a fixed set of AstNode types.
@@ -54,9 +54,14 @@ p.a! = b
 ```
 
 ---
-If the operator is used on expression of type that is already non-nil, it has no effect and doesn't generate additional warnings.
+When operator is used on expression of a union type with a 'nil' option, it removes that option from the set.
+If only one option remains, the union type is replaced with the type of a single option.
 
-The reason for this is to simplify movement of existing code where context in each location is slightly different.
+If the type is `nil`, typechecker will generate a warning that the operator cannot be applied to the expression.
+
+For any other type, it has no effect and doesn't generate additional warnings.
+
+The reason for the last rule is to simplify movement of existing code where context in each location is slightly different.
 
 As an example from Roblox, instance path could dynamically change from being know to exist to be missing when script is changed in edit mode.
 
