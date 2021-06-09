@@ -65,22 +65,3 @@ Another case is for constants, but the check will require an AST match:
 local a = 2!
 local b = "str"!
 ```
-
-## Alternatives
-
-It might be useful to consider a safe navigation operator (also known as null-chaining and optional chaining operator) as an addition to this proposal.
-
-We can call it a nil-chaining operator.
-
-Compared to nil-forgiving operator, nil-chaining operator does impact the run-time behavior.
-
-It makes it possible to avoid a run-time error of accessing `nil` values by replacing the result of the expression with `nil` instead of evaluation the part on RHS of the operator.
-
-Because nil-chaining has a run-time check it can only be used in specific expression kinds because it changes how each one of them is evaluated.
-
-Multiple cases will be defined:
-* ?. nil-chaining member access operator. If LHS is `nil`, member access is not performed and the expression value is `nil`. The type of this expressions is a union between member type and `nil`.
-* ?[] nil-chaining indexing operator. If LHS is `nil`, index access is not performed and the expression value is `nil`. Type of the expression is a union between element type and `nil`.
-* ?() nil-chaining function call operator. If LHS is `nil`, function is not called and the expression value is `nil`. Type of the expression is a union between function return type and `nil`.
-
-nil-chaining operator can be found in many programming languages, including C#, Dart, Kotlin, Swift and TypeScript.
