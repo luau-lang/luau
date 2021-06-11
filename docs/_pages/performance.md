@@ -86,7 +86,7 @@ For this mechanism to work, function call must be "obvious" to the compiler - it
 
 The mechanism works by directly invoking a highly specialized and optimized implementation of a builtin function from the interpreter core loop without setting up a stack frame and omitting other work; additionally, some fastcall specializations are partial in that they don't support all types of arguments, for example all `math` library builtins are only specialized for numeric arguments, so calling `math.abs` with a string argument will fall back to the slower implementation that will do string->number coercion.
 
-As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `math`, `bit32`, `assert`, `type`, `typeof` and some functions from `string` library.
+As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, all functions from `math` and `bit32`, and some functions from `string` and `table` library.
 
 > Note: The partial specialization mechanism is cute in that for `assert`, it only specializes on truthful conditions; hopefully performance of `assert(false)` isn't crucial for most code!
 
@@ -112,9 +112,11 @@ for i=1,N do
 end
 ```
 
-## Native Vector3 math
+## Native vector math
 
-> Note: this optimization is still in progress, so this section doesn't document it, but it's going to be great
+Luau uses tagged value storage - each value contains a type tag and the data that represents the value of a given type. Because of the need to store 64-bit double precision numbers *and* 64-bit pointers, we don't use NaN tagging and have to pay the cost of 16 bytes per value.
+
+We take advantage of this to provide a native value type that can store a 32-bit floating point vector with 3 components. This type is fundamental to game computations and as such it's important to optimize the storage and the operations with that type - our VM implements first class support for all math operations and component manipulation, which essentially means we have native 3-wide SIMD support. For code that uses many vector values this results in significantly smaller GC pressure and significantly faster execution, and gives programmers a mechanism to hand-vectorize numeric code if need be.
 
 ## Optimized upvalue storage
 
@@ -137,3 +139,9 @@ In addition to a fast allocator, all frequently used structures in Luau have bee
 ## Fast binding interface
 
 > Note: our optimizations of binding interface are still in progress, so this section doesn't document them.
+
+## Optimized libraries
+
+While the best performing code in Luau spends most of the time in the interpreter, performance of the standard library functions is critical to some applications. In addition to specializing many small and simple functions using the builtin call mechanism, we spend extra care on optimizing all library functions and providing additional functions beyond the Lua standard library that help achieve good performance with idiomatic code.
+
+For example, functions like `insert`, `remove` and `move` from the `table` library have been tuned for performance on array-like tables, achieving 3x and more performance compared to un-tuned versions, and Luau provides functions like `table.create` and `table.find` to achieve further speedup when applicable. We also use a carefully tuned dynamic string buffer implementation for internal `string` library to reduce garbage created during string manipulation.
