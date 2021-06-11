@@ -114,7 +114,9 @@ end
 
 ## Native vector math
 
-Luau uses tagged value storage - each value contains a type tag and the data that represents the value of a given type. Because of the need to store 64-bit double precision numbers *and* 64-bit pointers, we don't use NaN tagging and have to pay the cost of 16 bytes per value. We take advantage of this to provide a native value type that can store a 32-bit floating point vector with 3 components. This type is fundamental to game computations and as such it's important to optimize the storage and the operations with that type - our VM implements first class support for all math operations and component manipulation, which essentially means we have native 3-wide SIMD support. For code that uses many vector values this results in significantly smaller GC pressure and significantly faster execution, and gives programmers a way to hand-vectorize numeric code if need be.
+Luau uses tagged value storage - each value contains a type tag and the data that represents the value of a given type. Because of the need to store 64-bit double precision numbers *and* 64-bit pointers, we don't use NaN tagging and have to pay the cost of 16 bytes per value.
+
+We take advantage of this to provide a native value type that can store a 32-bit floating point vector with 3 components. This type is fundamental to game computations and as such it's important to optimize the storage and the operations with that type - our VM implements first class support for all math operations and component manipulation, which essentially means we have native 3-wide SIMD support. For code that uses many vector values this results in significantly smaller GC pressure and significantly faster execution, and gives programmers a mechanism to hand-vectorize numeric code if need be.
 
 ## Optimized upvalue storage
 
