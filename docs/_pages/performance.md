@@ -45,7 +45,6 @@ Table access for field lookup is optimized in Luau using a mechanism that blends
 
 As a result, field access can be very fast in Luau, provided that:
 
-- The source code uses `table.field` notation. The compiler doesn't optimize `table[field]` as it assumes that in this case `field` is not a string and/or can change for different accesses. Because of this you should avoid using `table["field"]` which isn't idiomatic anyway.
 - The field access doesn't use metatables. The fastest way to work with tables in Luau is to store fields directly inside the table, and store methods in the metatable (see below); access to "static" fields in classic OOP designs is best done through `Class.StaticField` instead of `object.StaticField`.
 - The object structure is usually uniform. While it's possible to use the same function to access tables of different shape - e.g. `function getX(obj) return obj.x end` can be used on any table that has a field `"x"` - it's best to not vary the keys used in the tables too much, as it defeats this optimization.
 
