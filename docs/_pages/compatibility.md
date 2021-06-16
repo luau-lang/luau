@@ -90,7 +90,7 @@ Ephemeron tables may be implemented at some point since they do have valid uses 
 | new function `table.move` | ✔️ | |
 | `collectgarbage("count")` now returns only one result | ✔️ | |
 | `coroutine.isyieldable` | ✔️ | |
-| stricter error checking for `table.insert`/`table.remove` | 🔜 | we're evaluating compatibility implications
+| stricter error checking for `table.insert`/`table.remove` | 😞 | we love this, but it breaks compatibility
 
 It's important to highlight integer support and bitwise operators. For Luau, it's rare that a full 64-bit integer type is necessary - double-precision types support integers up to 2^53 (in Lua which is used in embedded space, integers may be more appealing in environments without a native 64-bit FPU). However, there's a *lot* of value in having a single number type, both from performance perspective and for consistency. Notably, Lua doesn't handle integer overflow properly, so using integers also carries compatibility implications.
 
