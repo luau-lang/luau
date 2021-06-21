@@ -25,7 +25,7 @@ local p = f(a!)!
 local q = b!['X']
 ```
 
-Nil-forgiving operator (also known as null-forgiving or null-suppression operator) can be found in some programming languages such as C# and TypeScript.
+Nil-forgiving operator can be found in some programming languages such as C# (null-forgiving or null-suppression operator) and TypeScript (non-null assertion operator).
 
 ## Design
 
@@ -84,7 +84,7 @@ The operator might be placed by users to ignore/silence correct warnings and low
 
 ## Alternatives
 
-Aside from type assertion operator `::` it should be possible to place `assert` function calls before the operation.
+Aside from type assertion operator :: it should be possible to place `assert` function calls before the operation.
 Type refinement/constraints should handle that statement and avoid warning in the following expressions.
 
 But `assert` call will introduce runtime overhead without adding extra safety to the case when the type is nil at run time, in both cases an error will be thrown.
