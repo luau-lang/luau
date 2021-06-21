@@ -81,3 +81,10 @@ It might be useful to warn about unnecessary uses of this operator when the valu
 ### Bad practice
 
 The operator might be placed by users to ignore/silence correct warnings and lower the strength of type checking that Luau provides.
+
+## Alternatives
+
+Aside from type assertion operator `::` it should be possible to place `assert` function calls before the operation.
+Type refinement/constraints should handle that statement and avoid warning in the following expressions.
+
+But `assert` call will introduce runtime overhead without adding extra safety to the case when the type is nil at run time, in both cases an error will be thrown.
