@@ -282,5 +282,5 @@ local t = {}
 
 table.insert(t, 0, 42) -- table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?
 
-table.insert(t, #t + 1, 42) -- table.insert will append the value to the table; consider removing the second argument for efficiency
+table.insert(t, #t+1, 42) -- table.insert will append the value to the table; consider removing the second argument for efficiency
 ```
