@@ -23,6 +23,28 @@ This framework is extensible and we have plans for future improvements with `a =
 
 It is now also possible to get better type information inside `else` blocks of an `if` statement.
 
+A few examples to see the constraint resolver in action:
+```lua
+function say_hello(name: string?)
+    -- extra parentheses were enough to trip the old typechecker
+    if (name) then 
+        print("Hello " .. name .. "!")
+    else
+        print("Hello mysterious stranger!")
+    end
+end
+```
+```lua
+function say_hello(name: string?, surname: string?)
+    -- but now we handle that and more complex expressions as well
+    if not (name and surname) then
+        print("Hello mysterious stranger!")
+    else
+        print("Hello " .. name .. " " .. surname .. "!")
+    end
+end
+```
+
 ## Typechecking improvements
 
 We have improved the way we handled module `require` calls. Previously, we had a simple pattern match on the `local m = require(...)` statement, but now we have replaced it with a general handling of the function call in any context.
