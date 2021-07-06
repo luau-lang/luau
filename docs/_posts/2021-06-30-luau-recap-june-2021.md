@@ -19,7 +19,7 @@ Type guards support include expressions like:
 * `if enum:IsA("EnumName") then`
 * `if type(v) == "string" then`
 
-This framework is extensible and we have plans for future improvements with `a == b` equality constraints and handling of table field assignments.
+This framework is extensible and we have plans for future improvements with `a == b`/`a ~= b` equality constraints and handling of table field assignments.
 
 It is now also possible to get better type information inside `else` blocks of an `if` statement.
 
