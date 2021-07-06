@@ -262,3 +262,25 @@ else
     function bar() end
 end
 ```
+
+## DeprecatedApi (22)
+
+This warning is emitted when a script accesses a method or field that is marked as deprecated. Use of deprecated APIs is discouraged since they may have performance or correctness issues, may result in unexpected behavior, and could be removed in the future.
+
+```lua
+function getSize(i: Instance)
+    return i.DataCost -- Member 'Instance.DataCost' is deprecated
+end
+```
+
+## TableOperations (23)
+
+To manipulate array-like tables, Luau provides a set of functions as part of the standard `table` library. To help use these functions correctly, this warning is emitted when one of these functions is used incorrectly or can be adjusted to be more performant.
+
+```lua
+local t = {}
+
+table.insert(t, 0, 42) -- table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?
+
+table.insert(t, #t+1, 42) -- table.insert will append the value to the table; consider removing the second argument for efficiency
+```
