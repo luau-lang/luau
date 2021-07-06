@@ -51,7 +51,7 @@ We have improved the way we handled module `require` calls. Previously, we had a
 
 Handling of union types in equality operators was fixed to remove incorrect error reports.
 
-A new `IsA` function was introduced to check the type of a Roblox Enum.
+A new `IsA` method was introduced to EnumItem to check the type of a Roblox Enum.
 This is intended to replace the `enumItem.EnumType == Enum.NormalId` pattern in the code for a construct that allows our constraint resolver to infer better types.
 
 Additional fixes include:
