@@ -45,6 +45,9 @@ function say_hello(name: string?, surname: string?)
 end
 ```
 
+Please note that constraints are currently placed only on local and global variables.
+One of our goals is to include support for table members in the future.
+
 ## Typechecking improvements
 
 We have improved the way we handled module `require` calls. Previously, we had a simple pattern match on the `local m = require(...)` statement, but now we have replaced it with a general handling of the function call in any context.
