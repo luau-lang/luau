@@ -24,6 +24,9 @@ sudo tlmgr install ncctools
 sudo tlmgr install comment
 sudo tlmgr install balance
 sudo tlmgr install preprint
+sudo tlmgr install libertine
+sudo tlmgr install inconsolata
+sudo tlmgr install newtx
 sudo tlmgr install latexmk
 ```
 
