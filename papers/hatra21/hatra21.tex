@@ -95,11 +95,36 @@ documentation).
 
 \subsection{Type-driven development}
 
-- Code refactoring
+Professional development studios are also goal-directed (though the
+goals may be more abstract, such as ``decrease user churn'' or
+``improve frame rate'') but have needs that are less common in
+learners:
+\begin{itemize}
 
-- Code navigation
+\item \emph{Code planning}:
+  code spends much of its development time in an incomplete state,
+  with holes that will be filled in later.
 
-- Detect detection
+\item \emph{Code refactoring}:
+  experiences evolve over time, and it easy for changes to
+  break previously-held invariants.
+
+\item \emph{Defect detection}:
+  code has errors, and detecting these at runtime (for example by crash telemetry)
+  can be expensive and recovery can be time-consuming.
+  
+\end{itemize}
+Detecting defects ahead-of-time is a traditional goal of type systems,
+resulting in an array of techniques for establishing safety results,
+surveyed for example in~\cite{TAPL}. Supporting code planning and
+refactoring are some of the goals of \emph{type-driven
+development}~\cite{TDDIdris} under the slogan ``type, define,
+refine''.
+
+To help support the transition from novice to experienced developer,
+types are introduced gradully, through API documentation and type discovery.
+Type inference provides many of the benefits of type-driven development
+even to creators who are not explicitly providing types.
 
 \section{Types}
 \subsection{Infallible types}
