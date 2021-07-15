@@ -42,9 +42,64 @@ including a type inference engine.
 This paper will discuss some of the goals of the Luau type system, and
 why those goals are slightly different from other type systems.
 
-\section{Infallible types}
-\section{Strict types}
-\section{Nonstrict types}
+\section{Human Aspects}
+\subsection{Heterogenous developer community}
+
+Quoting a 2020 report \cite{RobloxDevelopers}:
+\begin{itemize}
+\item Adopt Me! now has over 10 billion plays and surpassed 1.6 million concurrent users in game earlier this year.
+\item Piggy, launched in January 2020, has close to 5 billion visits in just over six months.
+\item There are now 345,000 developers on the platform who are monetizing their games.
+\end{itemize}
+This demonstrates how heterogenous the Roblox developer community is:
+developers of experiences with plays measured in billions on the same
+platform as children first learning to code. Moreover, \emph{both of
+these groups are important}, as the professional development studios
+bring high-quality experiences to the platform, and the beginning creators
+contribute to the energetic creative community.
+
+\subsection{Goal-driven learning}
+
+All developers are goal-driven, but this is especially true for
+learners. A learner will download Roblox Studio (the IDE) with an
+experience in mind, often designing an obstacle course (an ``obby'')
+to play in with their friends.
+
+The user experience of developing a Roblox experience is
+primarily a 3D interactive one, where the user designs and deploys 3D
+assets such as terrain, parts and joints, and provides them with
+physics attributes such as mass and orientation. The user can interact
+with the experience in Studio, and deploy it to a Roblox server so anyone with
+the Roblox app can play it.
+
+\begin{figure}
+\includegraphics[width=0.48\textwidth]{studio-mow.png}
+\includegraphics[width=0.48\textwidth]{studio-script-editor.png}
+\caption{Roblox Studio's 3D environment editor, and script editor}
+\end{figure}
+
+At some point during experience design, the user of Studio has a need
+which can't be met by the physics engine alone. ``The stairs should
+light up when a player walks on them'' or ``the bomb should explode
+when it hits the ground.'' At this point they will discover the script
+editor, and the Luau programming language.
+
+This workflow is different from many initial exposures to programming,
+in that by the time the user first opens the script editor, they have
+already built much of their creation, and have a very specific
+concrete aim.
+
+This workflow suggests a Luau goal for helping the majority of
+creators: \emph{support learning how to perform specific tasks} (for
+example through autocomplete suggestions and documentation).
+
+\subsection{Type-driven development}
+
+\section{Types}
+\subsection{Infallible types}
+\subsection{Strict types}
+\subsection{Nonstrict types}
+
 \section{Conclusions}
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
