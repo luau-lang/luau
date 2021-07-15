@@ -7,7 +7,7 @@
 
 \begin{document}
 
-\title{The Goals of the Luau Type System}
+\title{Position Paper: Goals of the Luau Type System}
 
 \author{Andy Friesen}
 \author{Alan Jeffrey}
@@ -20,7 +20,7 @@
 }
 
 \begin{abstract}
-  A position paper about the goals Luau type system.
+  A position paper about goals of the Luau type system.
 \end{abstract}
 
 \maketitle
@@ -30,8 +30,8 @@
 The Roblox~\cite{Roblox} platform allows anyone to create shared,
 immersive, 3D experiences.  At the time of writing, there are
 approximately eight million experiences available on Roblox, created
-by eight million developers.  Roblox developers are often young, for
-example there are over 200 Roblox coding camps in over 65 countries
+by eight million developers.  Roblox creators are often young, for
+example there are over 200 Roblox kids' coding camps in over 65 countries
 listed at~\cite{AllEducators}.
 
 The Luau programming language~\cite{Luau} is the scripting language
@@ -39,8 +39,8 @@ used by developers of Roblox experiences. Luau is derived from the Lua
 programming language~\cite{Lua}, with additional capabilities,
 including a type inference engine.
 
-This paper will discuss some of the goals of the Luau type system, and
-why those goals are slightly different from other type systems.
+This paper will discuss some of the goals of the Luau type system,
+focusing on where the goals are different from those of other type systems.
 
 \section{Human Aspects}
 \subsection{Heterogenous developer community}
@@ -52,7 +52,7 @@ Quoting a 2020 report \cite{RobloxDevelopers}:
 \item There are now 345,000 developers on the platform who are monetizing their games.
 \end{itemize}
 This demonstrates how heterogenous the Roblox developer community is:
-developers of experiences with plays measured in billions on the same
+developers of experiences with plays measured in billions are on the same
 platform as children first learning to code. Moreover, \emph{both of
 these groups are important}, as the professional development studios
 bring high-quality experiences to the platform, and the beginning creators
@@ -65,33 +65,33 @@ learners. A learner will download Roblox Studio (the IDE) with an
 experience in mind, often designing an obstacle course (an ``obby'')
 to play in with their friends.
 
-The user experience of developing a Roblox experience is
-primarily a 3D interactive one, where the user designs and deploys 3D
-assets such as terrain, parts and joints, and provides them with
-physics attributes such as mass and orientation. The user can interact
-with the experience in Studio, and deploy it to a Roblox server so anyone with
-the Roblox app can play it.
+The user experience of developing a Roblox experience is primarily a
+3D interactive one, seen in Fig.~\ref{fig:studio}(a). The user designs
+and deploys 3D assets such as terrain, parts and joints, and provides
+them with physics attributes such as mass and orientation. The user
+can interact with the experience in Studio, and deploy it to a Roblox
+server so anyone with the Roblox app can play it.
 
 \begin{figure}
 \includegraphics[width=0.48\textwidth]{studio-mow.png}
 \includegraphics[width=0.48\textwidth]{studio-script-editor.png}
-\caption{Roblox Studio's 3D environment editor, and script editor}
+\caption{Roblox Studio's 3D environment editor (a), and script editor (b)}
+\label{fig:studio}
 \end{figure}
 
 At some point during experience design, the user of Studio has a need
 which can't be met by the physics engine alone. ``The stairs should
 light up when a player walks on them'' or ``a firework is set off
 every few seconds.'' At this point they will discover the script
-editor, and the Luau programming language.
+editor, seen in Fig.~\ref{fig:studio}(b), and the Luau programming language.
 
-This workflow is different from many initial exposures to programming,
-in that by the time the user first opens the script editor, they have
-already built much of their creation, and have a very specific
-concrete aim.
-
-This workflow suggests a Luau goal for helping the majority of
-creators: \emph{support learning how to perform specific tasks} (for
-example through autocomplete suggestions and documentation).
+This onboarding experience is different from many initial exposures to
+programming, in that by the time the user first opens the script
+editor, they have already built much of their creation, and have a
+very specific concrete aim.  It suggests a Luau goal for helping the
+majority of creators: \emph{support learning how to perform specific
+tasks} (for example through autocomplete suggestions and
+documentation).
 
 \subsection{Type-driven development}
 
@@ -135,6 +135,8 @@ Goal: no false positives
 - Usual techniques do not apply, e.g. correctness becomes ``code with red squigglies does not return a result''
 
 - Related to success types?
+
+- Problems with mutation and avoiding whole-program analysis.
 
 \subsection{Mixing types}
 
