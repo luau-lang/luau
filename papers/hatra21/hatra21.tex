@@ -80,8 +80,8 @@ the Roblox app can play it.
 
 At some point during experience design, the user of Studio has a need
 which can't be met by the physics engine alone. ``The stairs should
-light up when a player walks on them'' or ``the bomb should explode
-when it hits the ground.'' At this point they will discover the script
+light up when a player walks on them'' or ``a firework is set off
+every few seconds.'' At this point they will discover the script
 editor, and the Luau programming language.
 
 This workflow is different from many initial exposures to programming,
@@ -95,12 +95,70 @@ example through autocomplete suggestions and documentation).
 
 \subsection{Type-driven development}
 
+- Code refactoring
+
+- Code navigation
+
+- Detect detection
+
 \section{Types}
 \subsection{Infallible types}
+
+Goal: support type-directed tools in all programs
+
+- All programs have a type (analogy with infallible parsers)
+
+- Used by autocomplete + goto-declaration
+
+- Still support red squigglies
+
+- Problem: stop the user being swamped by cascading errors
+
+- Problem: no ``right'' type, just heuristics
+
 \subsection{Strict types}
+
+Goal: no false negatives
+
+- Appropriate for experienced developers?
+
+- Variants of ``usual techniques'' apply, e.g. progress becomes ``if you get stuck, there must be red squigglies''
+
+- Related to blame analysis?
+
 \subsection{Nonstrict types}
 
-\section{Conclusions}
+Goal: no false positives
+
+- Appropriate for the majority of developers?
+
+- Usual techniques do not apply, e.g. correctness becomes ``code with red squigglies does not return a result''
+
+- Related to success types?
+
+\subsection{Mixing types}
+
+Goal: support mixed strict/nonstrict development
+
+- Strictness is per-script, so programs are mixed
+
+- Can the correctness criteria be combined?
+
+- Can success types be combined with regular types?
+
+- Same types, different red squigglies?
+
+- Related: incorrectness logic vs correcness logic?
+
+\section{Future work}
+
+Draw the damn owl
+
+- Mixing types
+
+- Other interactions between types and IDEs, e.g. typed holes.
+
+- Formalizations of all of this?
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
