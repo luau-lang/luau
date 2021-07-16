@@ -238,8 +238,8 @@ straightforwardly be adapted, by extending the operational semantics to flagged 
 \end{itemize}
 and defining:
 \begin{itemize}
-\item \emph{Progress}: if ${} \vdash M \Rightarrow N$, then either $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
-\item \emph{Preservation}: if $N \rightarrow N'$ and $N'$ has a flagged subterm, then $N$ has a flagged subterm.
+\item \emph{Progress}: if ${} \vdash M \Rightarrow N : T$, then either $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
+\item \emph{Preservation}: if ${} \vdash M \Rightarrow N : T$ and $N \rightarrow N'$ then  $M \rightarrow^*M'$ and ${} \vdash M' \Rightarrow N' : T$.
 \end{itemize}
 Some issues raised by infallible types:
 \begin{itemize}
@@ -276,8 +276,8 @@ We can formalize this by defining an \emph{evaluation context}
 $\evCtx[\bullet]$, and saying $M$ is \emph{incorrectly flagged}
 if it is of the form $\evCtx[\squnder{V}]$. We can then define:
 \begin{itemize}
-\item \emph{Correct flagging}: if ${} \vdash M \Rightarrow M'$ and
-  $M' \rightarrow^* N'$ then $N'$ is correctly flagged.
+\item \emph{Correct flagging}: if ${} \vdash M \Rightarrow N : T$
+  then $N$ is correctly flagged.
 \end{itemize}
 Some issues raised by nonstrict types:
 \begin{itemize}
