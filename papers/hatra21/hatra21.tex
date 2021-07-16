@@ -4,9 +4,11 @@
 \copyrightyear{2021}
 \acmYear{2021}
 \acmConference[HATRA '21]{Human Aspects of Types and Reasoning Assistants}{October 2021}{Chicago, IL}
+\acmBooktitle{HATRA '21: Human Aspects of Types and Reasoning Assistants}
 
 \newcommand{\squnder}[1]{\underline{#1}}
 \newcommand{\infer}[2]{\frac{\textstyle#1}{\textstyle#2}}
+\newcommand{\erase}{\mathrm{erase}}
 \newcommand{\evCtx}{\mathcal{E}}
 \newcommand{\NIL}{\mathsf{nil}}
 \newcommand{\TRUE}{\mathsf{true}}
@@ -21,7 +23,7 @@
 
 \begin{document}
 
-\title{Position Paper: Goals of the Luau Type System}
+\title{Position Paper: Some Goals of the Luau Type System}
 
 \author{Andy Friesen}
 \author{Alan Jeffrey}
@@ -34,7 +36,12 @@
 }
 
 \begin{abstract}
-  A position paper about goals of the Luau type system.
+  Luau is the scripting language used in creating Roblox experiences.
+  It is a typed language based on the dynamically-typed Lua language,
+  and uses type inference to infer types. These types are then in the
+  IDE, for example when providing autocomplete suggestions. In this
+  paper, we describe some of the goals of the Luau type system,
+  focusing on where the goals are different from those of other type systems.
 \end{abstract}
 
 \maketitle
@@ -43,9 +50,9 @@
 
 The Roblox~\cite{Roblox} platform allows anyone to create shared,
 immersive, 3D experiences.  At the time of writing, there are
-approximately eight million experiences available on Roblox, created
-by eight million developers.  Roblox creators are often young, for
-example there are over 200 Roblox kids' coding camps in over 65 countries
+approximately 20~million experiences available on Roblox, created
+by 8~million developers.  Roblox creators are often young, for
+example there are over 200~Roblox kids' coding camps in 65~countries
 listed at~\cite{AllEducators}.
 
 The Luau programming language~\cite{Luau} is the scripting language
@@ -59,7 +66,7 @@ focusing on where the goals are different from those of other type systems.
 \section{Human Aspects}
 \subsection{Heterogenous developer community}
 
-Quoting a 2020 report \cite{RobloxDevelopers}:
+Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 \begin{itemize}
 \item Adopt Me! now has over 10 billion plays and surpassed 1.6 million concurrent users in game earlier this year.
 \item Piggy, launched in January 2020, has close to 5 billion visits in just over six months.
@@ -133,7 +140,10 @@ resulting in an array of techniques for establishing safety results,
 surveyed for example in~\cite{TAPL}. Supporting code planning and
 refactoring are some of the goals of \emph{type-driven
 development}~\cite{TDDIdris} under the slogan ``type, define,
-refine''.
+refine''.  For example. a common use of type-driven development is to
+rename a property, which is achieved by changing the name in one place,
+and then fixing the resulting type errors---once the type system stops
+reporting errors, the refactoring is complete.
 
 To help support the transition from novice to experienced developer,
 types are introduced gradully, through API documentation and type discovery.
@@ -147,40 +157,46 @@ Goal: \emph{support type-driven tools in all programs}.
 
 Programs spend much of their time under development in an incomplete state, even if the final arifact
 is well-typed. Type-driven tools should support this, by providing type information for all programs.
-
 An analogy is infallible parsers, which perform error recovery and provide an AST for all input texts.
 
 Program analysis can still flag type errors, for example with red
 squiggly underlining. Formalizing this, rather than a judgement
 $\Gamma\vdash M:T$, for an input terms $M$, there is a judgement
 $\Gamma \vdash M \Rightarrow M' : T$ where $M'$ is an output term
-where some subterms are flagged $\squnder{M}$. For example the usual
-type rules for field access becomes:
-\[
-  \infer{
-    \Gamma \vdash M \Rightarrow M' : T
-  }{
-    \Gamma \vdash M.\ell \Rightarrow M'.\ell : U
-  }
-  [
-    T = \{ \overline{\ell:U} \} \mbox{ and } (\ell:U) \in (\overline{\ell:U})
-  ]
-\]
-but there is also a rule for unsuccesful field access:  
-\[
-  \infer{
-    \Gamma \vdash M \Rightarrow M' : T
-  }{
-    \Gamma \vdash M.\ell \Rightarrow \squnder{M'.\ell} : U
-  }
-  [
-    T = \{ \overline{\ell:U} \} \mbox{ implies } \ell \not\in \overline{\ell}
-  ]
-\]
-In this type rule, $U$ is unconstrained. The goal of infallible types is that every term can be typed:
+where some subterms are flagged $\squnder{M}$. Write $\erase(M)$
+for the result of erasing flagged type errors: $\erase(\squnder{M}) = \erase(M)$.
+
+%% For example the usual
+%% type rules for field access becomes:
+%% \[
+%%   \infer{
+%%     \Gamma \vdash M \Rightarrow M' : T
+%%   }{
+%%     \Gamma \vdash M.\ell \Rightarrow M'.\ell : U
+%%   }
+%%   [
+%%     T = \{ \overline{\ell:U} \} \mbox{ and } (\ell:U) \in (\overline{\ell:U})
+%%   ]
+%% \]
+%% but there is also a rule for unsuccesful field access:  
+%% \[
+%%   \infer{
+%%     \Gamma \vdash M \Rightarrow M' : T
+%%   }{
+%%     \Gamma \vdash M.\ell \Rightarrow \squnder{M'.\ell} : U
+%%   }
+%%   [
+%%     T = \{ \overline{\ell:U} \} \mbox{ implies } \ell \not\in \overline{\ell}
+%%   ]
+%% \]
+%% In this type rule, $U$ is unconstrained.
+
+The goal of infallible types is that every term can be typed:
 \begin{itemize}
 \item \emph{Typability}: for every $M$ and $\Gamma$,
   there are $M'$ and $T$ such that $\Gamma \vdash M \Rightarrow M' : T$.
+\item \emph{Erasure}: if $\Gamma \vdash M \Rightarrow M' : T$
+  then $\erase(M) = \erase(M')$ 
 \end{itemize}
 Some issues raised by infallible types:
 \begin{itemize}
