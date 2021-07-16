@@ -301,11 +301,23 @@ Related work: success types~\cite{???} and incorrectness logic~\cite{???}.
 
 Goal: \emph{support mixed strict/nonstrict development}.
 
-Real Luau programs contain many scripts, each of which may have its own mode,
-so we need to support a mixture of strict and nonstrict development.
+Like every active software community, Roblox developers share code
+with one another constantly.  First- and third-party developers alike
+frequently share entire software packages written in Luau.  To add to
+this, many Roblox games are authored not by just one developer, but a
+whole team.
+
+It is therefore crucial that we offer first-class support for mixing
+code written in strict and nonstrict modes.
 
 Some issues raised by mixed-mode types:
 \begin{itemize}
+
+\item How much feedback can we offer for a nonstrict script that is
+  importing strict-mode code?
+
+\item In strict mode, how do we talk about values and types that are
+  drawn from nonstrict code?
 
 \item How can we combine the goals of strict and nonstrict types?
 
