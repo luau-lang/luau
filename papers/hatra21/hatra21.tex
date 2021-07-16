@@ -6,13 +6,14 @@
 \acmConference[HATRA '21]{Human Aspects of Types and Reasoning Assistants}{October 2021}{Chicago, IL}
 \acmBooktitle{HATRA '21: Human Aspects of Types and Reasoning Assistants}
 
-\newcommand{\squnder}[1]{\underline{#1}}
+\newcommand{\squnder}[1]{\color{red}\underline{{\color{black}#1}}\color{black}}
 \newcommand{\infer}[2]{\frac{\textstyle#1}{\textstyle#2}}
 \newcommand{\erase}{\mathrm{erase}}
 \newcommand{\evCtx}{\mathcal{E}}
 \newcommand{\NIL}{\mathsf{nil}}
 \newcommand{\TRUE}{\mathsf{true}}
 \newcommand{\FALSE}{\mathsf{false}}
+\newcommand{\NUMBER}{\mathsf{number}}
 \newcommand{\ERROR}{\mathsf{error}}
 \newcommand{\IF}{\mathsf{if}\,}
 \newcommand{\THEN}{\,\mathsf{then}\,}
@@ -153,7 +154,7 @@ even to creators who are not explicitly providing types.
 \section{Types}
 \subsection{Infallible types}
 
-Goal: \emph{support type-driven tools in all programs}.
+Goal: \emph{support type-driven tools for all programs}.
 
 Programs spend much of their time under development in an incomplete state, even if the final arifact
 is well-typed. Type-driven tools should support this, by providing type information for all programs.
@@ -161,10 +162,10 @@ An analogy is infallible parsers, which perform error recovery and provide an AS
 
 Program analysis can still flag type errors, for example with red
 squiggly underlining. Formalizing this, rather than a judgement
-$\Gamma\vdash M:T$, for an input terms $M$, there is a judgement
-$\Gamma \vdash M \Rightarrow M' : T$ where $M'$ is an output term
-where some subterms are flagged $\squnder{M}$. Write $\erase(M)$
-for the result of erasing flagged type errors: $\erase(\squnder{M}) = \erase(M)$.
+$\Gamma\vdash M:T$, for an input term $M$, there is a judgement
+$\Gamma \vdash M \Rightarrow N : T$ where $N$ is an output term
+where some subterms are \emph{flagged} $\squnder{N}$. Write $\erase(N)$
+for the result of erasing flaggings: $\erase(\squnder{N}) = \erase(N)$.
 
 %% For example the usual
 %% type rules for field access becomes:
@@ -194,9 +195,9 @@ for the result of erasing flagged type errors: $\erase(\squnder{M}) = \erase(M)$
 The goal of infallible types is that every term can be typed:
 \begin{itemize}
 \item \emph{Typability}: for every $M$ and $\Gamma$,
-  there are $M'$ and $T$ such that $\Gamma \vdash M \Rightarrow M' : T$.
-\item \emph{Erasure}: if $\Gamma \vdash M \Rightarrow M' : T$
-  then $\erase(M) = \erase(M')$ 
+  there are $N$ and $T$ such that $\Gamma \vdash M \Rightarrow N : T$.
+\item \emph{Erasure}: if $\Gamma \vdash M \Rightarrow N : T$
+  then $\erase(M) = \erase(N)$ 
 \end{itemize}
 Some issues raised by infallible types:
 \begin{itemize}
@@ -209,7 +210,9 @@ Some issues raised by infallible types:
 \end{itemize}
 Related work: lots on type error reporting~\cite{???}, and on
 heuristics for program repair~\cite{???}, but not type repair, or on
-the semantics of programs with type errors.
+the semantics of programs with type errors. Many compilers perform
+error recovery during typechecking, but do not provide a semantiocs
+for programs with type errors.
 
 \subsection{Strict types}
 
@@ -225,19 +228,26 @@ progress. This requires:
 \item \emph{Operational semantics}: a reduction judgement $M \rightarrow N$ on terms.
 \item \emph{Values}: a subset of terms representing a successfully completed evaluation.
 \end{itemize}
-We then represent error states as stuck states (terms that are not
+Error states at runtime are represented as stuck states (terms that are not
 values but cannot reduce), and showing that no well-typed program is
 stuck. This is not true if typing is infallible, but can fairly
-straightforwardly be adapted:
+straightforwardly be adapted, by extending the operational semantics to flagged terms:
 \begin{itemize}
-\item \emph{Progress}: if ${} \vdash M \Rightarrow M'$, then either $M \rightarrow N$ or $M$ is a value or $M'$ is flagged.
-\item \emph{Preservation}: if ${} \vdash M \Rightarrow M'$ and $M \rightarrow N$ and ${} \vdash N \Rightarrow N'$ and $N'$ is flagged, then $M'$ is flagged.
+\item If $M \rightarrow M'$ then $\squnder{M} \rightarrow \squnder{M'}$.
+\item If $V$ is a value, then $\squnder{V} \rightarrow V$.
+\end{itemize}
+and defining:
+\begin{itemize}
+\item \emph{Progress}: if ${} \vdash M \Rightarrow N$, then either $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
+\item \emph{Preservation}: if $N \rightarrow N'$ and $N'$ has a flagged subterm, then $N$ has a flagged subterm.
 \end{itemize}
 Some issues raised by infallible types:
 \begin{itemize}
 \item How should the judgements and their metatheory be set up?
-\item How should generic functions be handled?
-\item What does type inference or bidirectional typechecking look like in this setting?
+\item How should type inference and generic functions be handled?
+\item Is the operational semantics of flagged values
+  ($\squnder{V} \rightarrow V$) the right one?
+\item Will higher-order code require wrappers on functions? 
 \end{itemize}
 Related work: blame analysis~\cite{???}.
 
@@ -246,8 +256,9 @@ Related work: blame analysis~\cite{???}.
 Goal: \emph{no false positives.}
 
 For developers who are not interested in defect detection, type-driven
-tools such as autocomplete can still be useful, and type-directed
-development can still be useful. For such developers, Luau provides a
+tools and techniques such as autocomplete, API documentation
+and support for refactoring can still be useful.
+For such developers, Luau provides a
 \emph{nonstict mode}, which we hope will eventually be useful for all
 developers. This does \emph{not} aim for soundness, but instead has
 the goal of ``no false positives``, in the sense that any flagged code
@@ -255,21 +266,18 @@ is guaranteed to produce a runtime error when executed.
 
 On the face of it, this is undecidable, since a program such as
 $(\IF f() \THEN \ERROR \END)$ will produce a runtime error when $f()$ is
-$\TRUE$, but we can aim for a weaker property, thjat all flagged code
+$\TRUE$, but we can aim for a weaker property, that all flagged code
 is either dead code or will produce an error. Either of these is a
 defect, so deserves flagging, even if the tool does not know
-which. For example, using this definition
-$(\IF f() \THEN \squnder{\ERROR} \END)$ is not a false positive, but
-$(\squnder{\IF f() \THEN \ERROR \END})$ might be.
+which reason applies. For example, using this definition
+$(\IF f() \THEN \squnder{\ERROR} \END)$ is not a false positive.
 
 We can formalize this by defining an \emph{evaluation context}
-$\evCtx[\bullet]$, defining a \emph{redex} of $M$ to be a subterm $N$
-such that $M = \evCtx[N]$, and defining $M{\Uparrow}$ when there is no
-value $V$ such that $M \rightarrow^* V$. We can then define:
-
+$\evCtx[\bullet]$, and saying $M$ is \emph{incorrectly flagged}
+if it is of the form $\evCtx[\squnder{V}]$. We can then define:
 \begin{itemize}
-\item \emph{Snappy name}: if ${} \vdash M \Rightarrow M'$ and $M'$ has a flagged redex
-  then $M{\Uparrow}$.
+\item \emph{Correct flagging}: if ${} \vdash M \Rightarrow M'$ and
+  $M' \rightarrow^* N'$ then $N'$ is correctly flagged.
 \end{itemize}
 Some issues raised by nonstrict types:
 \begin{itemize}
@@ -278,21 +286,20 @@ Some issues raised by nonstrict types:
   flagging will often move from function definitions to call sites.
 
 \item This definition will not allow an unchecked use of an optional value
-  to be flagged, for example if we define $\FUNCTION g()\,\IF f() \THEN \RETURN 5 \ELSE \RETURN \NIL \END$
-  then a strict type system can flag $1 + g()$ but a nonstrict one cannot.
+  to be flagged, for example if $f() : \NUMBER?$ (meaning $f$ may optionally return a number)
+  then a strict type system can flag $1 + f()$ but a nonstrict one cannot.
 
 \item Property update of tables in languages like Luau always succeeds
-  (the property is inserted if it did not exist), which interacts
-  badly with compositional analysis. For example, if module $A$
-  exports a table $t=\{p=5\}$, module $B$ assumes $t.p$ is a number,
-  and module $C$ sets $t.p=\FALSE$, then we cannot flag $C$ since the
-  assignment will succeed, and we cannot flag $A$ or $B$ without some
-  whole-program analysis.
+  (the property is inserted if it did not exist), and so functions which
+  update properties cannot be flagged.
+
+\item Does nonstrict typing require whole program analysis,
+  to find all the possible types a property might be updated with?
 
 \item The natural formulation of function types in a nonstrict setting
-  is that of~\cite{???}: if $f: T \rightarrow U$ and $f(v) \rightarrow^* w$
-  then $v:T$ and $w:U$. This formulation is \emph{covariant} in $T$,
-  not \emph{contavariant}.
+  is that of~\cite{???}: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
+  then $V:T$ and $W:U$. This formulation is \emph{covariant} in $T$,
+  not \emph{contavariant}; what impact does this have?
   
 \end{itemize}
 Related work: success types~\cite{???} and incorrectness logic~\cite{???}.
