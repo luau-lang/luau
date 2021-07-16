@@ -7,6 +7,17 @@
 
 \newcommand{\squnder}[1]{\underline{#1}}
 \newcommand{\infer}[2]{\frac{\textstyle#1}{\textstyle#2}}
+\newcommand{\evCtx}{\mathcal{E}}
+\newcommand{\NIL}{\mathsf{nil}}
+\newcommand{\TRUE}{\mathsf{true}}
+\newcommand{\FALSE}{\mathsf{false}}
+\newcommand{\ERROR}{\mathsf{error}}
+\newcommand{\IF}{\mathsf{if}\,}
+\newcommand{\THEN}{\,\mathsf{then}\,}
+\newcommand{\ELSE}{\,\mathsf{else}\,}
+\newcommand{\END}{\,\mathsf{end}}
+\newcommand{\FUNCTION}{\mathsf{function}\,}
+\newcommand{\RETURN}{\mathsf{return}\,}
 
 \begin{document}
 
@@ -143,7 +154,8 @@ Program analysis can still flag type errors, for example with red
 squiggly underlining. Formalizing this, rather than a judgement
 $\Gamma\vdash M:T$, for an input terms $M$, there is a judgement
 $\Gamma \vdash M \Rightarrow M' : T$ where $M'$ is an output term
-where some subterms are flagged $\squnder{M}$. For example the usual type rules for field access becomes:
+where some subterms are flagged $\squnder{M}$. For example the usual
+type rules for field access becomes:
 \[
   \infer{
     \Gamma \vdash M \Rightarrow M' : T
@@ -165,8 +177,11 @@ but there is also a rule for unsuccesful field access:
     T = \{ \overline{\ell:U} \} \mbox{ implies } \ell \not\in \overline{\ell}
   ]
 \]
-In this type rule, $U$ is unconstrained.
-
+In this type rule, $U$ is unconstrained. The goal of infallible types is that every term can be typed:
+\begin{itemize}
+\item \emph{Typability}: for every $M$ and $\Gamma$,
+  there are $M'$ and $T$ such that $\Gamma \vdash M \Rightarrow M' : T$.
+\end{itemize}
 Some issues raised by infallible types:
 \begin{itemize}
 \item Which heuristics should be used to provide types for flagged programs? For example, could one
@@ -176,52 +191,120 @@ Some issues raised by infallible types:
   than genuine errors?
 \item How can the goals of an infallible type system be formalized?
 \end{itemize}
+Related work: lots on type error reporting~\cite{???}, and on
+heuristics for program repair~\cite{???}, but not type repair, or on
+the semantics of programs with type errors.
 
 \subsection{Strict types}
 
-Goal: no false negatives
+Goal: \emph{no false negatives.}
 
-- Appropriate for experienced developers?
+For developers who are interested in defect detection, Luau provides a \emph{strict mode},
+which acts much like a traditional, sound, type system. This has the goal of ``no false negatives'' that is any
+run-time error is flagged.
 
-- Variants of ``usual techniques'' apply, e.g. progress becomes ``if you get stuck, there must be red squigglies''
-
-- Related to blame analysis?
+The usual presentation of type safety is using type preservation and
+progress. This requires:
+\begin{itemize}
+\item \emph{Operational semantics}: a reduction judgement $M \rightarrow N$ on terms.
+\item \emph{Values}: a subset of terms representing a successfully completed evaluation.
+\end{itemize}
+We then represent error states as stuck states (terms that are not
+values but cannot reduce), and showing that no well-typed program is
+stuck. This is not true if typing is infallible, but can fairly
+straightforwardly be adapted:
+\begin{itemize}
+\item \emph{Progress}: if ${} \vdash M \Rightarrow M'$, then either $M \rightarrow N$ or $M$ is a value or $M'$ is flagged.
+\item \emph{Preservation}: if ${} \vdash M \Rightarrow M'$ and $M \rightarrow N$ and ${} \vdash N \Rightarrow N'$ and $N'$ is flagged, then $M'$ is flagged.
+\end{itemize}
+Some issues raised by infallible types:
+\begin{itemize}
+\item How should the judgements and their metatheory be set up?
+\item How should generic functions be handled?
+\item What does type inference or bidirectional typechecking look like in this setting?
+\end{itemize}
+Related work: blame analysis~\cite{???}.
 
 \subsection{Nonstrict types}
 
-Goal: no false positives
+Goal: \emph{no false positives.}
 
-- Appropriate for the majority of developers?
+For developers who are not interested in defect detection, type-driven
+tools such as autocomplete can still be useful, and type-directed
+development can still be useful. For such developers, Luau provides a
+\emph{nonstict mode}, which we hope will eventually be useful for all
+developers. This does \emph{not} aim for soundness, but instead has
+the goal of ``no false positives``, in the sense that any flagged code
+is guaranteed to produce a runtime error when executed.
 
-- Usual techniques do not apply, e.g. correctness becomes ``code with red squigglies does not return a result''
+On the face of it, this is undecidable, since a program such as
+$(\IF f() \THEN \ERROR \END)$ will produce a runtime error when $f()$ is
+$\TRUE$, but we can aim for a weaker property, thjat all flagged code
+is either dead code or will produce an error. Either of these is a
+defect, so deserves flagging, even if the tool does not know
+which. For example, using this definition
+$(\IF f() \THEN \squnder{\ERROR} \END)$ is not a false positive, but
+$(\squnder{\IF f() \THEN \ERROR \END})$ might be.
 
-- Related to success types?
+We can formalize this by defining an \emph{evaluation context}
+$\evCtx[\bullet]$, defining a \emph{redex} of $M$ to be a subterm $N$
+such that $M = \evCtx[N]$, and defining $M{\Uparrow}$ when there is no
+value $V$ such that $M \rightarrow^* V$. We can then define:
 
-- Problems with mutation and avoiding whole-program analysis.
+\begin{itemize}
+\item \emph{Snappy name}: if ${} \vdash M \Rightarrow M'$ and $M'$ has a flagged redex
+  then $M{\Uparrow}$.
+\end{itemize}
+Some issues raised by nonstrict types:
+\begin{itemize}
+
+\item Under this definition, any function that will terminate is unflagged, so
+  flagging will often move from function definitions to call sites.
+
+\item This definition will not allow an unchecked use of an optional value
+  to be flagged, for example if we define $\FUNCTION g()\,\IF f() \THEN \RETURN 5 \ELSE \RETURN \NIL \END$
+  then a strict type system can flag $1 + g()$ but a nonstrict one cannot.
+
+\item Property update of tables in languages like Luau always succeeds
+  (the property is inserted if it did not exist), which interacts
+  badly with compositional analysis. For example, if module $A$
+  exports a table $t=\{p=5\}$, module $B$ assumes $t.p$ is a number,
+  and module $C$ sets $t.p=\FALSE$, then we cannot flag $C$ since the
+  assignment will succeed, and we cannot flag $A$ or $B$ without some
+  whole-program analysis.
+
+\item The natural formulation of function types in a nonstrict setting
+  is that of~\cite{???}: if $f: T \rightarrow U$ and $f(v) \rightarrow^* w$
+  then $v:T$ and $w:U$. This formulation is \emph{covariant} in $T$,
+  not \emph{contavariant}.
+  
+\end{itemize}
+Related work: success types~\cite{???} and incorrectness logic~\cite{???}.
 
 \subsection{Mixing types}
 
-Goal: support mixed strict/nonstrict development
+Goal: \emph{support mixed strict/nonstrict development}.
 
-- Strictness is per-script, so programs are mixed
+Real Luau programs contain many scripts, each of which may have its own mode,
+so we need to support a mixture of strict and nonstrict development.
 
-- Can the correctness criteria be combined?
+Some issues raised by mixed-mode types:
+\begin{itemize}
 
-- Can success types be combined with regular types?
+\item How can we combine the goals of strict and nonstrict types?
 
-- Same types, different red squigglies?
+\item Can we have strict and non-strict mode infer the same types,
+  only with different flagging?
 
-- Related: incorrectness logic vs correcness logic?
+\end{itemize}
+Related work: none???
 
-\section{Future work}
+\section{Conclusions}
 
-Draw the damn owl
-
-- Mixing types
-
-- Other interactions between types and IDEs, e.g. typed holes.
-
-- Formalizations of all of this?
+In this paper, we have presented some of the goals of the Luau type
+system, and how they map to the needs of the Roblox creator
+community. We have sketched what a solution might look like, all that
+remains is to draw the damn owl~\cite{owl}.
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
