@@ -56,7 +56,6 @@ approximately 20~million experiences available on Roblox, created
 by 8~million developers.  Roblox creators are often young, for
 example there are over 200~Roblox kids' coding camps in 65~countries
 listed at~\cite{AllEducators}.
-
 The Luau programming language~\cite{Luau} is the scripting language
 used by developers of Roblox experiences. Luau is derived from the Lua
 programming language~\cite{Lua}, with additional capabilities,
@@ -266,8 +265,7 @@ $(\IF f() \THEN \ERROR \END)$ will produce a runtime error when $f()$ is
 $\TRUE$, but we can aim for a weaker property, that all flagged code
 is either dead code or will produce an error. Either of these is a
 defect, so deserves flagging, even if the tool does not know
-which reason applies. For example, using this definition
-$(\IF f() \THEN \squnder{\ERROR} \END)$ is not a false positive.
+which reason applies.
 
 We can formalize this by defining an \emph{evaluation context}
 $\evCtx[\bullet]$, and saying $M$ is \emph{incorrectly flagged}
@@ -309,8 +307,7 @@ Like every active software community, Roblox developers share code
 with one another constantly.  First- and third-party developers alike
 frequently share entire software packages written in Luau.  To add to
 this, many Roblox games are authored not by just one developer, but a
-whole team.
-
+team.
 It is therefore crucial that we offer first-class support for mixing
 code written in strict and nonstrict modes.
 
