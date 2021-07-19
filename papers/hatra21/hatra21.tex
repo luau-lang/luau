@@ -163,7 +163,7 @@ Program analysis can still flag type errors, for example with red
 squiggly underlining. Formalizing this, rather than a judgment
 $\Gamma\vdash M:T$, for an input term $M$, there is a judgment
 $\Gamma \vdash M \Rightarrow N : T$ where $N$ is an output term
-where some subterms are \emph{flagged} $\squnder{N}$. Write $\erase(N)$
+where some subterms are \emph{flagged} as having type errors, written $\squnder{N}$. Write $\erase(N)$
 for the result of erasing flaggings: $\erase(\squnder{N}) = \erase(N)$.
 
 %% For example the usual
@@ -207,8 +207,12 @@ Some issues raised by infallible types:
   than genuine errors?
 \item How can the goals of an infallible type system be formalized?
 \end{itemize}
-Related work: lots on type error reporting~\cite{???}, and on
-heuristics for program repair~\cite{???}, but not type repair, or on
+\emph{Related work}:
+there is a large body of work on type error reporting
+(see, for example, the survey in~\cite[Ch.~3]{TopQuality})
+and on type-directed program repair
+(see, for example, the survey in~\cite[Ch.~3]{RepairingTypeErrors}),
+but not type repair, or on
 the semantics of programs with type errors. Many compilers perform
 error recovery during typechecking, but do not provide a semantics
 for programs with type errors.
@@ -242,7 +246,7 @@ Some issues raised by infallible types:
   ($\squnder{V} \rightarrow V$) the right one?
 \item Will higher-order code require wrappers on functions? 
 \end{itemize}
-Related work: blame analysis~\cite{???}.
+\emph{Related work}: gradual typing and blame analysis, e.g.~\cite{GradualTyping,WellTyped,Contracts}
 
 \subsection{Nonstrict types}
 
@@ -295,7 +299,7 @@ Some issues raised by nonstrict types:
   not \emph{contavariant}; what impact does this have?
   
 \end{itemize}
-Related work: success types~\cite{???} and incorrectness logic~\cite{???}.
+\emph{Related work}: success types~\cite{SuccessTyping} and incorrectness logic~\cite{IncorrectnessLogic}.
 
 \subsection{Mixing types}
 
@@ -325,14 +329,14 @@ Some issues raised by mixed-mode types:
   only with different flagging?
 
 \end{itemize}
-Related work: none???
+\emph{Related work}: this appears to be an undererxplored area.
 
 \section{Conclusions}
 
 In this paper, we have presented some of the goals of the Luau type
 system, and how they map to the needs of the Roblox creator
 community. We have sketched what a solution might look like, all that
-remains is to draw the damn owl~\cite{owl}.
+remains is to draw the owl~\cite{HowToDrawAnOwl}.
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
