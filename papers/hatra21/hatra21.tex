@@ -39,8 +39,8 @@
 
 \begin{abstract}
   Luau is the scripting language used in creating Roblox experiences.
-  It is a typed language based on the dynamically-typed Lua language,
-  and uses type inference to infer types. These types are then in the
+  It is a statically-typed language based on the dynamically-typed Lua language,
+  and uses type inference to infer types. These types are used in the
   IDE, for example when providing autocomplete suggestions. In this
   paper, we describe some of the goals of the Luau type system,
   focusing on where the goals are different from those of other type systems.
@@ -66,7 +66,7 @@ This paper will discuss some of the goals of the Luau type system,
 focusing on where the goals are different from those of other type systems.
 
 \section{Human Aspects}
-\subsection{Heterogenous developer community}
+\subsection{Heterogeneous developer community}
 
 Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 \begin{itemize}
@@ -74,7 +74,7 @@ Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 \item Piggy, launched in January 2020, has close to 5 billion visits in just over six months.
 \item There are now 345,000 developers on the platform who are monetizing their games.
 \end{itemize}
-This demonstrates how heterogenous the Roblox developer community is:
+This demonstrates how heterogeneous the Roblox developer community is:
 developers of experiences with billions of plays are on the same
 platform as children first learning to code. Moreover, \emph{both of
 these groups are important}, as the professional development studios
@@ -113,15 +113,13 @@ programming, in that by the time the user first opens the script
 editor, they have already built much of their creation, and have a
 very specific concrete aim.  It suggests a Luau goal for helping the
 majority of creators: \emph{support learning how to perform specific
-tasks} (for example through autocomplete suggestions and
-documentation).
+tasks} (for example through autocomplete suggestions).
 
 \subsection{Type-driven development}
 
 Professional development studios are also goal-directed (though the
 goals may be more abstract, such as ``decrease user churn'' or
-``improve frame rate'') but have needs that are less common in
-learners:
+``improve frame rate'') but have additional needs:
 \begin{itemize}
 
 \item \emph{Code planning}:
@@ -148,7 +146,7 @@ and then fixing the resulting type errors---once the type system stops
 reporting errors, the refactoring is complete.
 
 To help support the transition from novice to experienced developer,
-types are introduced gradully, through API documentation and type discovery.
+types are introduced gradually, through API documentation and type discovery.
 Type inference provides many of the benefits of type-driven development
 even to creators who are not explicitly providing types.
 
@@ -157,13 +155,13 @@ even to creators who are not explicitly providing types.
 
 Goal: \emph{support type-driven tools for all programs}.
 
-Programs spend much of their time under development in an incomplete state, even if the final arifact
-is well-typed. Type-driven tools should support this, by providing type information for all programs.
+Programs spend much of their time under development in an incomplete state, even if the final artifact
+is well-typed. Tools should support this, by providing type information for all programs.
 An analogy is infallible parsers, which perform error recovery and provide an AST for all input texts.
 
 Program analysis can still flag type errors, for example with red
-squiggly underlining. Formalizing this, rather than a judgement
-$\Gamma\vdash M:T$, for an input term $M$, there is a judgement
+squiggly underlining. Formalizing this, rather than a judgment
+$\Gamma\vdash M:T$, for an input term $M$, there is a judgment
 $\Gamma \vdash M \Rightarrow N : T$ where $N$ is an output term
 where some subterms are \emph{flagged} $\squnder{N}$. Write $\erase(N)$
 for the result of erasing flaggings: $\erase(\squnder{N}) = \erase(N)$.
@@ -180,7 +178,7 @@ for the result of erasing flaggings: $\erase(\squnder{N}) = \erase(N)$.
 %%     T = \{ \overline{\ell:U} \} \mbox{ and } (\ell:U) \in (\overline{\ell:U})
 %%   ]
 %% \]
-%% but there is also a rule for unsuccesful field access:  
+%% but there is also a rule for unsuccessful field access:  
 %% \[
 %%   \infer{
 %%     \Gamma \vdash M \Rightarrow M' : T
@@ -212,7 +210,7 @@ Some issues raised by infallible types:
 Related work: lots on type error reporting~\cite{???}, and on
 heuristics for program repair~\cite{???}, but not type repair, or on
 the semantics of programs with type errors. Many compilers perform
-error recovery during typechecking, but do not provide a semantiocs
+error recovery during typechecking, but do not provide a semantics
 for programs with type errors.
 
 \subsection{Strict types}
@@ -221,30 +219,24 @@ Goal: \emph{no false negatives.}
 
 For developers who are interested in defect detection, Luau provides a \emph{strict mode},
 which acts much like a traditional, sound, type system. This has the goal of ``no false negatives'' that is any
-run-time error is flagged.
-
-The usual presentation of type safety is using type preservation and
-progress. This requires:
+run-time error is flagged. This is formalized using:
 \begin{itemize}
-\item \emph{Operational semantics}: a reduction judgement $M \rightarrow N$ on terms.
+\item \emph{Operational semantics}: a reduction judgment $M \rightarrow N$ on terms.
 \item \emph{Values}: a subset of terms representing a successfully completed evaluation.
 \end{itemize}
 Error states at runtime are represented as stuck states (terms that are not
 values but cannot reduce), and showing that no well-typed program is
 stuck. This is not true if typing is infallible, but can fairly
-straightforwardly be adapted, by extending the operational semantics to flagged terms:
-\begin{itemize}
-\item If $M \rightarrow M'$ then $\squnder{M} \rightarrow \squnder{M'}$.
-\item If $V$ is a value, then $\squnder{V} \rightarrow V$.
-\end{itemize}
-and defining:
+straightforwardly be adapted. We extend the operational semantics to flagged terms,
+where $M \rightarrow M'$ implies $\squnder{M} \rightarrow \squnder{M'}$, and
+for any value $V$ we have $\squnder{V} \rightarrow V$, then show:
 \begin{itemize}
 \item \emph{Progress}: if ${} \vdash M \Rightarrow N : T$, then either $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
 \item \emph{Preservation}: if ${} \vdash M \Rightarrow N : T$ and $N \rightarrow N'$ then  $M \rightarrow^*M'$ and ${} \vdash M' \Rightarrow N' : T$.
 \end{itemize}
 Some issues raised by infallible types:
 \begin{itemize}
-\item How should the judgements and their metatheory be set up?
+\item How should the judgments and their metatheory be set up?
 \item How should type inference and generic functions be handled?
 \item Is the operational semantics of flagged values
   ($\squnder{V} \rightarrow V$) the right one?
@@ -260,7 +252,7 @@ For developers who are not interested in defect detection, type-driven
 tools and techniques such as autocomplete, API documentation
 and support for refactoring can still be useful.
 For such developers, Luau provides a
-\emph{nonstict mode}, which we hope will eventually be useful for all
+\emph{nonstrict mode}, which we hope will eventually be useful for all
 developers. This does \emph{not} aim for soundness, but instead has
 the goal of ``no false positives``, in the sense that any flagged code
 is guaranteed to produce a runtime error when executed.
