@@ -8,7 +8,7 @@ The way `::` works today is really strange.  The best solution we can come up wi
 
 The current Luau implementation of the `::` operator is a little bit strange.  Due to an accident, it can only be used for downcasts and casts to `any`.
 
-This is unfortunate because it works in many cases where users feel that it should, but doesn't actually make a whole lot of sense when scrutinized.
+Because of this property, `::` works as users expect in a great many cases, but doesn't actually make a whole lot of sense when scrutinized.
 
 ```lua
 local t = {x=0, y=0}
@@ -17,23 +17,22 @@ local a = t :: {x: number, y: number, z: number} -- OK
 local a = t :: {x: number} -- Error: This is an upcast!
 ```
 
-Originally, we intended for type assertions to only be useful for upcasts.  This would make it consistent with the way annotations work in OCaml and Haskell and
-would never break soundness.  However, users have yet to report this oddity!  It is working correctly for them!
+Originally, we intended for type assertions to only be useful for upcasts.  This would make it consistent with the way annotations work in OCaml and Haskell and would never break soundness.  However, users have yet to report this oddity!  It is working correctly for them!
 
-We must conclude that users are not interested in explicit upcasting syntax.  Only downcasts and "samecasts" (a cast from a type to itself) are interesting.
+From this, we conclude that users are actually much more interested in having a convenient way to write a downcast.  We should bless this use and clean up the rules so they make more sense.
 
 ## Design
 
-I propose that we change the meaning of the `::` operator to permit _any coersion whatsoever_.  The `::` operator thus becomes morally equivalent to using `any`:
-scripts that include either cannot be assumed to be sound.
+I propose that we change the meaning of the `::` operator to permit coersion between any two types.  It officially becomes a second way, like `any`, to completely bypass the type system.
 
 ## Drawbacks
 
-`::` was originally envisioned to be a way for users to make the type inference engine work smarter and better for them.  Making all casts succeed
-thoroughly puts an end to that goal.  This is acceptable because nobody seems to be interested in using it that way anyway.
+`::` was originally envisioned to be a way for users to make the type inference engine work smarter and better for them.  Users have taught us that they are more interested in downcasts and we should be responsive to that.
 
 ## Alternatives
 
-We could simply update `::` to act the way it was originally envisioned.  This would break some code in lua-apps, where it is expressly used to perform a downcast. This would satisfy this RFR author, but leaves open the problem of how to perform a downcast in Luau.  If we were to go ahead with this plan, programmers would have to write `(foo :: any) :: TargetType` to effect a downcast.
+We could simply update `::` to act the way it was originally envisioned.  `::` would not break soundness and users would have to figure out some other way to downcast.  Code they have already written to do so would break.  To be truly morally true to the original vision, we would have to also forbid `:: any`, which would be a further usability hit.
 
 We could introduce yet another operator expressly for downcasts, but we'd have to come up with its name and explain the difference to end users.
+
+Lastly, we could permit both upcasts and downcasts, but not permit casts between totally unrelated types.  I think this is doable, but potentially inefficient: Luau would basically have to pay the CPU cycles required to try both and rewind if they don't work.
