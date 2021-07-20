@@ -39,7 +39,7 @@
 \begin{abstract}
   Luau is the scripting language used in creating Roblox experiences.
   It is a statically-typed language based on the dynamically-typed Lua language,
-  and uses type inference to infer types. These types are used in the
+  with type inference. These types are used in the
   IDE, for example when providing autocomplete suggestions. In this
   paper, we describe some of the goals of the Luau type system,
   focusing on where the goals are different from those of other type systems.
@@ -77,7 +77,7 @@ developers of experiences with billions of plays are on the same
 platform as children first learning to code. Moreover, \emph{both of
 these groups are important}, as the professional development studios
 bring high-quality experiences to the platform, and the beginning creators
-contribute to the energetic creative community.
+contribute to the energetic creative community, and will form the next generation of developers.
 
 \subsection{Goal-driven learning}
 
@@ -91,7 +91,8 @@ The user experience of developing a Roblox experience is primarily a
 and deploys 3D assets such as terrain, parts and joints, and provides
 them with physics attributes such as mass and orientation. The user
 can interact with the experience in Studio, and deploy it to a Roblox
-server so anyone with the Roblox app can play it.
+server so anyone with the Roblox app can play it. Physics, rendering
+and multiplayer are all immediately accessible to all creators.
 
 \begin{figure}
 \includegraphics[width=0.48\textwidth]{studio-mow.png}
@@ -104,7 +105,7 @@ At some point during experience design, the user of Studio has a need
 which can't be met by the physics engine alone. ``The stairs should
 light up when a player walks on them'' or ``a firework is set off
 every few seconds.'' At this point they will discover the script
-editor, seen in Fig.~\ref{fig:studio}(b), and the Luau programming language.
+editor, seen in Fig.~\ref{fig:studio}(b).
 
 This onboarding experience is different from many initial exposures to
 programming, in that by the time the user first opens the script
