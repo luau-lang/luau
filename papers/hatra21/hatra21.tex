@@ -6,6 +6,8 @@
 \acmConference[HATRA '21]{Human Aspects of Types and Reasoning Assistants}{October 2021}{Chicago, IL}
 \acmBooktitle{HATRA '21: Human Aspects of Types and Reasoning Assistants}
 
+\usepackage{listings}
+
 \newcommand{\squnder}[1]{\color{red}\underline{{\color{black}#1}}\color{black}}
 \newcommand{\infer}[2]{\frac{\textstyle#1}{\textstyle#2}}
 \newcommand{\erase}{\mathrm{erase}}
@@ -341,6 +343,48 @@ Some questions raised by mixed-mode types:
 
 \end{itemize}
 \emph{Related work}: this appears to be an under-explored area.
+
+\subsection{Type inference}
+
+Goal: \emph{infer types to allow gradual adoption of type annotations.}
+
+Roblox, for many years, used the Lua language, which is dynamically typed and possesses a
+very weak type system. Due to this large quantity of pre-existing dynamically-typed code,
+it is essential for the type system to function even in the absence of type annotations,
+in order to make the type features of Luau gradually adoptable. This means that Luau needs
+to be able to infer types for symbols without any annotations being present, to the best of
+its ability. This precludes syntactical rules such as Rust's requirement that all function
+parameters be annotated with their type~\cite[Ch. 3.3]{RustBook}.
+
+This requirement presents challenges for the type inference algorithm, because Luau may not have
+enough information to determine the type of a given program. In non-strict mode in particular,
+which sees use in existing codebases, we cannot rely on the presence of type annotations. We also
+cannot require that the user provide them if Luau cannot deduce the type of a symbol. In cases
+such as this, we must admit defeat and assume that the code is correct, to fulfill non-strict
+mode's goal of ``no false positives''. We do this by saying that the result of the operation is
+$\mathsf{any}$, a type that can be converted to and from any other type freely.
+
+In strict mode, Luau is not so limited, and in pursuit of the strict-mode goal of ``no false
+negatives'', we may surface errors to the user indicating that the type inference system requires
+more information, in the form of annotations, in order to type-check a piece of code. This code,
+for example, requires a type annotation in order for Luau to determine the return type of the function:
+
+\lstset{language=[5.1]Lua}
+\begin{lstlisting}
+function f(a, b)
+  return a + b
+end
+\end{lstlisting}
+
+Some questions raised by type inference:
+\begin{itemize}
+
+\item How many cases in strict mode cannot be inferred by the type inference system? Minimizing
+  this kind of error is desirable, to make the type system as unobtrusive as possible.
+
+\end{itemize}
+
+\emph{Related work}: there is a large body of work on type inference, largely summarized in~\cite{TAPL}.
 
 \section{Conclusions}
 
