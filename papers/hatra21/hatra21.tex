@@ -159,9 +159,12 @@ even to creators who are not explicitly providing types.
 \section{Types}
 \subsection{Infallible types}
 
+Goal: \emph{Provide type information even for ill-typed or syntactically invalid programs.}
+
 Programs spend much of their time under development in an ill-typed or incomplete state, even if the
-final artifact is well-typed. Tools should support this by \emph{providing type information even for ill-typed programs}.
-An analogy is infallible parsers, which perform error recovery and provide an AST for all input texts.
+final artifact is well-typed. Tools should support this by providing type information even for ill-typed
+or syntactically invalid programs. An analogy is infallible parsers, which perform error recovery and
+provide an AST for all input texts, even if they don't adhere to the parser's syntax.
 
 Program analysis can still flag type errors, which may be presented
 to the user with red squiggly underlining. Formalizing this, rather
@@ -259,11 +262,11 @@ Goal: \emph{no false positives.}
 
 For developers who are not interested in defect detection, type-driven
 tools and techniques such as autocomplete, API documentation
-and support for refactoring can still be useful.
+and refactoring tools can still be useful.
 For such developers, Luau provides a
 \emph{nonstrict mode}, which we hope will eventually be useful for all
-developers.  The non-strict typing mode is particularly useful when
-adopting Luau types in pre-existing code, which was not authored with
+developers.  This non-strict typing mode is particularly useful when
+adopting Luau types in pre-existing code that was not authored with
 the type system in mind.  Non-strict mode does \emph{not} aim for
 soundness, but instead has the goal of ``no false positives``, in the
 sense that any flagged code is guaranteed to produce a runtime error
