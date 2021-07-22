@@ -306,7 +306,7 @@ Some issues raised by nonstrict types:
   to find all the possible types a property might be updated with?
 
 \item The natural formulation of function types in a nonstrict setting
-  is that of~\cite{???}: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
+  is: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
   then $V:T$ and $W:U$. This formulation is \emph{covariant} in $T$,
   not \emph{contavariant}; what impact does this have?
   
@@ -390,8 +390,10 @@ Some questions raised by type inference:
 
 In this paper, we have presented some of the goals of the Luau type
 system, and how they map to the needs of the Roblox creator
-community. We have sketched what a solution might look like; all that
-remains is to draw the owl~\cite{HowToDrawAnOwl}.
+community. We have also explored how these goals differ from traditional
+type systems, where it is necessary to accomodate the unique needs of
+the Roblox platform. We have sketched what a solution might look like;
+all that remains is to draw the owl~\cite{HowToDrawAnOwl}.
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
