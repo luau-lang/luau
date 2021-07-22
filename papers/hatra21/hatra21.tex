@@ -40,7 +40,9 @@
   Luau is the scripting language that powers user-generated experiences on the
   Roblox platform. It is a statically-typed language with type inference based
   on the dynamically-typed Lua language. These types are used for providing
-  autocomplete suggestions in Roblox Studio, the IDE for authoring Roblox experiences.
+  editor assistance in Roblox Studio, the IDE for authoring Roblox experiences.
+  Due to Roblox's uniquely heterogeneous developer community, Luau must operate
+  in a somewhat different fashion than a traditional statically-typed language.
   In this paper, we describe some of the goals of the Luau type system,
   focusing on where the goals differ from those of other type systems.
 \end{abstract}
@@ -60,8 +62,10 @@ used by creators of Roblox experiences. Luau is derived from the Lua
 programming language~\cite{Lua}, with additional capabilities,
 including a type inference engine.
 
-This paper will discuss some of the goals of the Luau type system,
-focusing on where the goals differ from those of other type systems.
+This paper will discuss some of the goals of the Luau type system, such
+as supporting goal-driven learning, non-strict typing semantics, and
+mixed strict and non-strict types.  Particular focus is placed on how
+these goals differ from traditional type systems' goals.
 
 \section{Human Aspects}
 \subsection{Heterogeneous developer community}
@@ -80,6 +84,8 @@ bring high-quality experiences to the platform, and the beginning creators
 contribute to the energetic creative community, forming the next generation of developers.
 
 \subsection{Goal-driven learning}
+
+Goal: \emph{support learning how to perform specific tasks organically}
 
 All developers are goal-driven, but this is especially true for
 learners. A learner will download Roblox Studio with an
@@ -110,11 +116,12 @@ editor, seen in Fig.~\ref{fig:studio}(b).
 This onboarding experience is different from many initial exposures to
 programming, in that by the time the user first opens the script
 editor, they have already built much of their creation, and have a
-very specific concrete aim.  It suggests a Luau goal for helping the
-majority of creators: \emph{support learning how to perform specific
-tasks}.
+very specific concrete aim. As such, Luau must allow users to perform a
+specific task with a minimum of ``boilerplate'' code.
 
 \subsection{Type-driven development}
+
+Goal: \emph{enable users to leverage types in their development process}
 
 Professional development studios are also goal-directed (though the
 goals may be more abstract, such as ``decrease user churn'' or
@@ -144,7 +151,7 @@ property, which is achieved by changing the name in one place,
 and then fixing the resulting type errors---once the type system stops
 reporting errors, the refactoring is complete.
 
-To \emph{help support the transition from novice to experienced developer},
+To help support the transition from novice to experienced developer,
 types are introduced gradually, through API documentation and type discovery.
 Type inference provides many of the benefits of type-driven development
 even to creators who are not explicitly providing types.
@@ -255,9 +262,12 @@ tools and techniques such as autocomplete, API documentation
 and support for refactoring can still be useful.
 For such developers, Luau provides a
 \emph{nonstrict mode}, which we hope will eventually be useful for all
-developers. This does \emph{not} aim for soundness, but instead has
-the goal of ``no false positives``, in the sense that any flagged code
-is guaranteed to produce a runtime error when executed.
+developers.  The non-strict typing mode is particularly useful when
+adopting Luau types in pre-existing code, which was not authored with
+the type system in mind.  Non-strict mode does \emph{not} aim for
+soundness, but instead has the goal of ``no false positives``, in the
+sense that any flagged code is guaranteed to produce a runtime error
+when executed.
 
 On the face of it, this is undecidable, since a program such as
 $(\IF f() \THEN \ERROR \END)$ will produce a runtime error when $f()$ is
@@ -305,11 +315,11 @@ Goal: \emph{support mixed strict/nonstrict development}.
 Like every active software community, Roblox developers share code
 with one another constantly.  First- and third-party developers alike
 frequently share entire software packages written in Luau.  To add to
-this, many Roblox experiences are authored by a team.
-It is therefore crucial that we offer first-class support for mixing
-code written in strict and nonstrict modes.
+this, many Roblox experiences are authored by a team.  It is therefore
+crucial that we offer first-class support for mixing code written in
+strict and nonstrict modes.
 
-Some issues raised by mixed-mode types:
+Some questions raised by mixed-mode types:
 \begin{itemize}
 
 \item How much feedback can we offer for a nonstrict script that is
@@ -322,6 +332,9 @@ Some issues raised by mixed-mode types:
 
 \item Can we have strict and non-strict mode infer the same types,
   only with different flagging?
+
+\item Is strict-mode code sound when it relies on non-strict code,
+  which has weaker invariants?
 
 \end{itemize}
 \emph{Related work}: this appears to be an under-explored area.
