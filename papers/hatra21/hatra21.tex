@@ -119,7 +119,7 @@ This onboarding experience is different from many initial exposures to
 programming, in that by the time the user first opens the script
 editor, they have already built much of their creation, and have a
 very specific concrete aim. As such, Luau must allow users to perform a
-specific task with a minimum of ``boilerplate'' code.
+specific task with as much help as possible from tools.
 
 \subsection{Type-driven development}
 
@@ -161,7 +161,7 @@ even to creators who are not explicitly providing types.
 \section{Types}
 \subsection{Infallible types}
 
-Goal: \emph{Provide type information even for ill-typed or syntactically invalid programs.}
+Goal: \emph{provide type information even for ill-typed or syntactically invalid programs.}
 
 Programs spend much of their time under development in an ill-typed or incomplete state, even if the
 final artifact is well-typed. Tools should support this by providing type information even for ill-typed
@@ -245,7 +245,7 @@ straightforwardly be adapted. We extend the operational semantics to flagged ter
 where $M \rightarrow M'$ implies $\squnder{M} \rightarrow \squnder{M'}$, and
 for any value $V$ we have $\squnder{V} \rightarrow V$, then show:
 \begin{itemize}
-\item \emph{Progress}: if ${} \vdash M \Rightarrow N : T$, then $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
+\item \emph{Progress}: if ${} \vdash M \Rightarrow N : T$, then either $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
 \item \emph{Preservation}: if ${} \vdash M \Rightarrow N : T$ and $N \rightarrow N'$ then  $M \rightarrow^*M'$ and ${} \vdash M' \Rightarrow N' : T$.
 \end{itemize}
 Some issues raised by infallible types:
@@ -306,7 +306,7 @@ Some issues raised by nonstrict types:
   to find all the possible types a property might be updated with?
 
 \item The natural formulation of function types in a nonstrict setting
-  is: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
+  is that of~\cite{SuccessTyping}: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
   then $V:T$ and $W:U$. This formulation is \emph{covariant} in $T$,
   not \emph{contavariant}; what impact does this have?
   
@@ -367,7 +367,7 @@ $\mathsf{any}$, a type that can be converted to and from any other type freely.
 In strict mode, Luau is not so limited, and in pursuit of the strict-mode goal of ``no false
 negatives'', we may surface errors to the user indicating that the type inference system requires
 more information, in the form of annotations, in order to type-check a piece of code. This code,
-for example, requires a type annotation in order for Luau to determine the return type of the function:
+for example, requires a type annotation in order for Luau to determine the return type of the function (since Luau does not know if ``+'' refers to built-in addition on numbers, or a user-defined method):
 
 \lstset{language=[5.1]Lua}
 \begin{lstlisting}
@@ -381,7 +381,9 @@ Some questions raised by type inference:
 
 \item How many cases in strict mode cannot be inferred by the type inference system? Minimizing
   this kind of error is desirable, to make the type system as unobtrusive as possible.
+\item Can something like the Rust traits system~\cite{RustBook} or Haskell classes~\cite{TypeClasses} be used to provide types for overloaded operators, without hopelessly confusing learners?
 
+\item Can type inference be used to infer the same types in strict and nonstrict mode, to ease migrating between modes, with the only difference being error reporting?
 \end{itemize}
 
 \emph{Related work}: there is a large body of work on type inference, largely summarized in~\cite{TAPL}.
