@@ -87,6 +87,21 @@ table.remove(t, #t - 1)
 table.insert(t, string.find("hello", "h"))
 ```
 
+Another new check is 'DuplicateConditions'. The name speaks for itself, `if` statement chains with duplicate conditions and expressions containing `and`/`or` operations with redundant parts will now be detected:
+```lua
+if x then
+	-- ...
+elseif not x then
+	-- ...
+elseif x̳ then -- Condition has already been checked on line 1
+	-- ...
+end
+
+local success = a and a̳ -- Condition has already been checked on column 17
+
+local good = (a or b) or a̳ -- Condition has already been checked on column 15
+``` 
+
 We've also fixed an incorrect lint warning when `typeof` is used to check for `EnumItem`.
 
 ## Editor features
