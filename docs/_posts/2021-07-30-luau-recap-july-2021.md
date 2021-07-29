@@ -100,3 +100,4 @@ An issue was fixed that prevented the debugger from displaying values inside Rob
 This change also fixed a performance issue when `table.insert` was called with a large negative index.
 
 The 'TableOperations' lint mentioned earlier will flag cases where insertion at index 0 is performed.
+ 
