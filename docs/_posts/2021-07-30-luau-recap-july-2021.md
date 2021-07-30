@@ -3,7 +3,7 @@ layout: single
 title:  "Luau Recap: July 2021"
 ---
 
-Luau is our new language that you can read more about at [https://roblox.github.io/luau](https://roblox.github.io/luau). Our team was still busy working on upcoming Studio Beta feature for script editor, but we did fit in multiple typechecking improvements.
+Luau is our new language that you can read more about at [https://luau-lang.org](https://luau-lang.org). Our team was still busy working on upcoming Studio Beta feature for script editor, but we did fit in multiple typechecking improvements.
 
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-july-2021/).]
 
@@ -50,7 +50,7 @@ We read those reports and two additional cases have been fixed this month.
 We now track only a single one that should be fixed next month.
 
 Another false positive error that was fixed involves tables with __call metatable function.
-We no longer report an error when this method is invoked and we'll also make sure that given arguments match the function definition:
+We no longer report a type error when this method is invoked and we'll also make sure that given arguments match the function definition:
 ```lua
 --!strict
 local t = { x = 2 }
