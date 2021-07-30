@@ -14,8 +14,8 @@ A common complaint that we've received was a false-positive error when table wit
 --!strict
 type Foo = {x: number | string}
 local foos: {Foo} = {
-  {x = 1234567},
-  {x = "hello"} -- Type 'string' could not be converted into 'number'
+    {x = 1234567},
+    {x = "hello"} -- Type 'string' could not be converted into 'number'
 }
 ```
 This case is now handled and skipping optional fields is allowed as well:
@@ -56,9 +56,9 @@ We no longer report a type error when this method is invoked and we'll also make
 local t = { x = 2 }
 
 local x = setmetatable(t, {
-	__call = function(self, a: number)
-		return a * self.x
-	end
+    __call = function(self, a: number)
+        return a * self.x
+    end
 })
 local a = x(2) -- no longer an error
 ```
@@ -90,11 +90,11 @@ table.insert(t, string.find("hello", "h"))
 Another new check is 'DuplicateConditions'. The name speaks for itself, `if` statement chains with duplicate conditions and expressions containing `and`/`or` operations with redundant parts will now be detected:
 ```lua
 if x then
-	-- ...
+    -- ...
 elseif not x then
-	-- ...
+    -- ...
 elseif x̳ then -- Condition has already been checked on line 1
-	-- ...
+    -- ...
 end
 
 local success = a and a̳ -- Condition has already been checked on column 17
