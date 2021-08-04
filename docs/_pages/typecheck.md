@@ -347,7 +347,7 @@ And using `assert` will work with the above type guards:
 ```lua
 local stringOrNumber: string | number = "foo"
 
-assert(type(x) == "string")
+assert(type(stringOrNumber) == "string")
 
 local onlyString: string = stringOrNumber -- ok
 local onlyNumber: number = stringOrNumber -- not ok
