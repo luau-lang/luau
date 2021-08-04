@@ -6,6 +6,8 @@
 \acmConference[HATRA '21]{Human Aspects of Types and Reasoning Assistants}{October 2021}{Chicago, IL}
 \acmBooktitle{HATRA '21: Human Aspects of Types and Reasoning Assistants}
 
+\usepackage{listings}
+
 \newcommand{\squnder}[1]{\color{red}\underline{{\color{black}#1}}\color{black}}
 \newcommand{\infer}[2]{\frac{\textstyle#1}{\textstyle#2}}
 \newcommand{\erase}{\mathrm{erase}}
@@ -24,7 +26,7 @@
 
 \begin{document}
 
-\title{Position Paper: Some Goals of the Luau Type System}
+\title{Position Paper: Goals of the Luau Type System}
 
 \author{Lily Brown}
 \author{Andy Friesen}
@@ -37,12 +39,14 @@
 }
 
 \begin{abstract}
-  Luau is the scripting language used in creating Roblox experiences.
-  It is a statically-typed language based on the dynamically-typed Lua language,
-  with type inference. These types are used in the
-  IDE, for example when providing autocomplete suggestions. In this
-  paper, we describe some of the goals of the Luau type system,
-  focusing on where the goals are different from those of other type systems.
+  Luau is the scripting language that powers user-generated experiences on the
+  Roblox platform. It is a statically-typed language, based on the
+  dynamically-typed Lua language, with type inference. These types are used for providing
+  editor assistance in Roblox Studio, the IDE for authoring Roblox experiences.
+  Due to Roblox's uniquely heterogeneous developer community, Luau must operate
+  in a somewhat different fashion than a traditional statically-typed language.
+  In this paper, we describe some of the goals of the Luau type system,
+  focusing on where the goals differ from those of other type systems.
 \end{abstract}
 
 \maketitle
@@ -50,49 +54,55 @@
 \section{Introduction}
 
 The Roblox~\cite{Roblox} platform allows anyone to create shared,
-immersive, 3D experiences.  At the time of writing, there are
+immersive, 3D experiences.  As of July 2021, there are
 approximately 20~million experiences available on Roblox, created
-by 8~million developers.  Roblox creators are often young, for
-example there are over 200~Roblox kids' coding camps in 65~countries
-listed at~\cite{AllEducators}.
+by 8~million developers.  Roblox creators are often young: there are
+over 200~Roblox kids' coding camps in 65~countries
+listed by the company as education resources~\cite{AllEducators}.
 The Luau programming language~\cite{Luau} is the scripting language
-used by developers of Roblox experiences. Luau is derived from the Lua
+used by creators of Roblox experiences. Luau is derived from the Lua
 programming language~\cite{Lua}, with additional capabilities,
 including a type inference engine.
 
-This paper will discuss some of the goals of the Luau type system,
-focusing on where the goals are different from those of other type systems.
+This paper will discuss some of the goals of the Luau type system, such
+as supporting goal-driven learning, non-strict typing semantics, and
+mixed strict and non-strict types.  Particular focus is placed on how
+these goals differ from traditional type systems' goals.
 
-\section{Human Aspects}
+\section{Needs of the Roblox platform}
 \subsection{Heterogeneous developer community}
+
+Need: \emph{a language that is powerful enough to support professional users, yet accessible to beginners}
 
 Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 \begin{itemize}
-\item Adopt Me! now has over 10 billion plays and surpassed 1.6 million concurrent users in game earlier this year.
-\item Piggy, launched in January 2020, has close to 5 billion visits in just over six months.
+\item \emph{Adopt Me!} now has over 10 billion plays and surpassed 1.6 million concurrent users earlier this year.
+\item \emph{Piggy}, launched in January 2020, has close to 5 billion visits in just over six months.
 \item There are now 345,000 developers on the platform who are monetizing their games.
 \end{itemize}
-This demonstrates how heterogeneous the Roblox developer community is:
+This demonstrates the heterogeneity of the Roblox developer community:
 developers of experiences with billions of plays are on the same
-platform as children first learning to code. Moreover, \emph{both of
-these groups are important}, as the professional development studios
-bring high-quality experiences to the platform, and the beginning creators
-contribute to the energetic creative community, and will form the next generation of developers.
+platform as children first learning to code. Both of these groups are important to
+support. The professional development studios bring high-quality experiences to the
+platform, and the beginning creators contribute to the energetic creative community,
+forming the next generation of developers.
 
 \subsection{Goal-driven learning}
 
+Need: \emph{organic learning for achieving specific goals}
+
 All developers are goal-driven, but this is especially true for
-learners. A learner will download Roblox Studio (the IDE) with an
-experience in mind, often designing an obstacle course (an ``obby'')
+learners. A learner will download Roblox Studio with an
+experience in mind, such as designing an obstacle course (an ``obby'')
 to play in with their friends.
 
 The user experience of developing a Roblox experience is primarily a
 3D interactive one, seen in Fig.~\ref{fig:studio}(a). The user designs
-and deploys 3D assets such as terrain, parts and joints, and provides
+and deploys 3D assets such as terrain, parts and joints, providing
 them with physics attributes such as mass and orientation. The user
 can interact with the experience in Studio, and deploy it to a Roblox
 server so anyone with the Roblox app can play it. Physics, rendering
-and multiplayer are all immediately accessible to all creators.
+and multiplayer are all immediately accessible to creators.
 
 \begin{figure}
 \includegraphics[width=0.48\textwidth]{studio-mow.png}
@@ -101,20 +111,21 @@ and multiplayer are all immediately accessible to all creators.
 \label{fig:studio}
 \end{figure}
 
-At some point during experience design, the user of Studio has a need
-which can't be met by the physics engine alone. ``The stairs should
+At some point during experience design, the experience creator has a need
+that can't be met by the physics engine alone, such as ``the stairs should
 light up when a player walks on them'' or ``a firework is set off
-every few seconds.'' At this point they will discover the script
+every few seconds.'' At this point, they will discover the script
 editor, seen in Fig.~\ref{fig:studio}(b).
 
 This onboarding experience is different from many initial exposures to
 programming, in that by the time the user first opens the script
 editor, they have already built much of their creation, and have a
-very specific concrete aim.  It suggests a Luau goal for helping the
-majority of creators: \emph{support learning how to perform specific
-tasks} (for example through autocomplete suggestions).
+very specific concrete aim. As such, Luau must allow users to perform a
+specific task with as much help as possible from tools.
 
 \subsection{Type-driven development}
+
+Need: \emph{a language that supports large-scale codebases and defect detection}
 
 Professional development studios are also goal-directed (though the
 goals may be more abstract, such as ``decrease user churn'' or
@@ -122,11 +133,11 @@ goals may be more abstract, such as ``decrease user churn'' or
 \begin{itemize}
 
 \item \emph{Code planning}:
-  code spends much of its development time in an incomplete state,
-  with holes that will be filled in later.
+  code spends much of its time in an incomplete state, with holes
+  that will be filled in later.
 
 \item \emph{Code refactoring}:
-  experiences evolve over time, and it easy for changes to
+  code evolves over time, and it is easy for changes to
   break previously-held invariants.
 
 \item \emph{Defect detection}:
@@ -139,8 +150,8 @@ resulting in an array of techniques for establishing safety results,
 surveyed for example in~\cite{TAPL}. Supporting code planning and
 refactoring are some of the goals of \emph{type-driven
 development}~\cite{TDDIdris} under the slogan ``type, define,
-refine''.  For example. a common use of type-driven development is to
-rename a property, which is achieved by changing the name in one place,
+refine''.  A common use of type-driven development is renaming a
+property, which is achieved by changing the name in one place,
 and then fixing the resulting type errors---once the type system stops
 reporting errors, the refactoring is complete.
 
@@ -149,17 +160,19 @@ types are introduced gradually, through API documentation and type discovery.
 Type inference provides many of the benefits of type-driven development
 even to creators who are not explicitly providing types.
 
-\section{Types}
+\section{Goals of the type system}
 \subsection{Infallible types}
 
-Goal: \emph{support type-driven tools for all programs}.
+Goal: \emph{provide type information even for ill-typed or syntactically invalid programs.}
 
-Programs spend much of their time under development in an incomplete state, even if the final artifact
-is well-typed. Tools should support this by providing type information even for ill-typed programs.
-An analogy is infallible parsers, which perform error recovery and provide an AST for all input texts.
+Programs spend much of their time under development in an ill-typed or incomplete state, even if the
+final artifact is well-typed. Tools should support this by providing type information even for ill-typed
+or syntactically invalid programs. An analogy is infallible parsers, which perform error recovery and
+provide an AST for all input texts, even if they don't adhere to the parser's syntax.
 
-Program analysis can still flag type errors, for example with red
-squiggly underlining. Formalizing this, rather than a judgment
+Program analysis can still flag type errors, which may be presented
+to the user with red squiggly underlining. Formalizing this, rather
+than a judgment
 $\Gamma\vdash M:T$, for an input term $M$, there is a judgment
 $\Gamma \vdash M \Rightarrow N : T$ where $N$ is an output term
 where some subterms are \emph{flagged} as having type errors, written $\squnder{N}$. Write $\erase(N)$
@@ -202,7 +215,7 @@ Some issues raised by infallible types:
 \item Which heuristics should be used to provide types for flagged programs? For example, could one
   use minimal edit distance to correct for spelling mistakes in field names?
 \item How can we avoid cascading type errors, where a developer is
-  faced with type errors that are artifacts of the heuristics rather
+  faced with type errors that are artifacts of the heuristics, rather
   than genuine errors?
 \item How can the goals of an infallible type system be formalized?
 \end{itemize}
@@ -221,8 +234,8 @@ for programs with type errors.
 Goal: \emph{no false negatives.}
 
 For developers who are interested in defect detection, Luau provides a \emph{strict mode},
-which acts much like a traditional, sound, type system. This has the goal of ``no false negatives'' that is any
-run-time error is flagged. This is formalized using:
+which acts much like a traditional, sound, type system. This has the goal of ``no false negatives''
+where any possible run-time error is flagged. This is formalized using:
 \begin{itemize}
 \item \emph{Operational semantics}: a reduction judgment $M \rightarrow N$ on terms.
 \item \emph{Values}: a subset of terms representing a successfully completed evaluation.
@@ -253,16 +266,19 @@ Goal: \emph{no false positives.}
 
 For developers who are not interested in defect detection, type-driven
 tools and techniques such as autocomplete, API documentation
-and support for refactoring can still be useful.
+and refactoring tools can still be useful.
 For such developers, Luau provides a
 \emph{nonstrict mode}, which we hope will eventually be useful for all
-developers. This does \emph{not} aim for soundness, but instead has
-the goal of ``no false positives``, in the sense that any flagged code
-is guaranteed to produce a runtime error when executed.
+developers.  This non-strict typing mode is particularly useful when
+adopting Luau types in pre-existing code that was not authored with
+the type system in mind.  Non-strict mode does \emph{not} aim for
+soundness, but instead has the goal of ``no false positives``, in the
+sense that any flagged code is guaranteed to produce a runtime error
+when executed.
 
 On the face of it, this is undecidable, since a program such as
 $(\IF f() \THEN \ERROR \END)$ will produce a runtime error when $f()$ is
-$\TRUE$, but we can aim for a weaker property, that all flagged code
+$\TRUE$, but we can aim for a weaker property: that all flagged code
 is either dead code or will produce an error. Either of these is a
 defect, so deserves flagging, even if the tool does not know
 which reason applies.
@@ -292,7 +308,7 @@ Some issues raised by nonstrict types:
   to find all the possible types a property might be updated with?
 
 \item The natural formulation of function types in a nonstrict setting
-  is that of~\cite{???}: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
+  is that of~\cite{SuccessTyping}: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
   then $V:T$ and $W:U$. This formulation is \emph{covariant} in $T$,
   not \emph{contavariant}; what impact does this have?
   
@@ -306,12 +322,11 @@ Goal: \emph{support mixed strict/nonstrict development}.
 Like every active software community, Roblox developers share code
 with one another constantly.  First- and third-party developers alike
 frequently share entire software packages written in Luau.  To add to
-this, many Roblox games are authored not by just one developer, but a
-team.
-It is therefore crucial that we offer first-class support for mixing
-code written in strict and nonstrict modes.
+this, many Roblox experiences are authored by a team.  It is therefore
+crucial that we offer first-class support for mixing code written in
+strict and nonstrict modes.
 
-Some issues raised by mixed-mode types:
+Some questions raised by mixed-mode types:
 \begin{itemize}
 
 \item How much feedback can we offer for a nonstrict script that is
@@ -325,15 +340,64 @@ Some issues raised by mixed-mode types:
 \item Can we have strict and non-strict mode infer the same types,
   only with different flagging?
 
+\item Is strict-mode code sound when it relies on non-strict code,
+  which has weaker invariants?
+
 \end{itemize}
 \emph{Related work}: this appears to be an under-explored area.
+
+\subsection{Type inference}
+
+Goal: \emph{infer types to allow gradual adoption of type annotations.}
+
+Roblox, for many years, used the Lua language, which is dynamically typed and possesses a
+very weak type system. Due to this large quantity of pre-existing dynamically-typed code,
+it is essential for the type system to function even in the absence of type annotations,
+in order to make the type features of Luau gradually adoptable. This means that Luau needs
+to be able to infer types for symbols without any annotations being present, to the best of
+its ability. This precludes syntactical rules such as Rust's requirement that all function
+parameters be annotated with their type~\cite[Ch. 3.3]{RustBook}.
+
+This requirement presents challenges for the type inference algorithm, because Luau may not have
+enough information to determine the type of a given program. In non-strict mode in particular,
+which sees use in existing codebases, we cannot rely on the presence of type annotations. We also
+cannot require that the user provide them if Luau cannot deduce the type of a symbol. In cases
+such as this, we must admit defeat and assume that the code is correct, to fulfill non-strict
+mode's goal of ``no false positives''. We do this by saying that the result of the operation is
+$\mathsf{any}$, a type that can be converted to and from any other type freely.
+
+In strict mode, Luau is not so limited, and in pursuit of the strict-mode goal of ``no false
+negatives'', we may surface errors to the user indicating that the type inference system requires
+more information, in the form of annotations, in order to type-check a piece of code. This code,
+for example, requires a type annotation in order for Luau to determine the return type of the function (since Luau does not know if ``+'' refers to built-in addition on numbers, or a user-defined method):
+
+\lstset{language=[5.1]Lua}
+\begin{lstlisting}
+function f(a, b)
+  return a + b
+end
+\end{lstlisting}
+
+Some questions raised by type inference:
+\begin{itemize}
+
+\item How many cases in strict mode cannot be inferred by the type inference system? Minimizing
+  this kind of error is desirable, to make the type system as unobtrusive as possible.
+\item Can something like the Rust traits system~\cite{RustBook} or Haskell classes~\cite{TypeClasses} be used to provide types for overloaded operators, without hopelessly confusing learners?
+
+\item Can type inference be used to infer the same types in strict and nonstrict mode, to ease migrating between modes, with the only difference being error reporting?
+\end{itemize}
+
+\emph{Related work}: there is a large body of work on type inference, largely summarized in~\cite{TAPL}.
 
 \section{Conclusions}
 
 In this paper, we have presented some of the goals of the Luau type
 system, and how they map to the needs of the Roblox creator
-community. We have sketched what a solution might look like, all that
-remains is to draw the owl~\cite{HowToDrawAnOwl}.
+community. We have also explored how these goals differ from traditional
+type systems, where it is necessary to accomodate the unique needs of
+the Roblox platform. We have sketched what a solution might look like;
+all that remains is to draw the owl~\cite{HowToDrawAnOwl}.
 
 \bibliographystyle{ACM-Reference-Format} \bibliography{bibliography}
 
