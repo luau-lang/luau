@@ -26,17 +26,17 @@
 
 \begin{document}
 
-\title{Position Paper: Some Goals of the Luau Type System}
+\title{Position Paper: Goals of the Luau Type System}
 
-%% \author{Lily Brown}
-%% \author{Andy Friesen}
-%% \author{Alan Jeffrey}
-%% \affiliation{
-%%   \institution{Roblox}
-%%   \city{San Mateo}
-%%   \state{CA}
-%%   \country{USA}
-%% }
+\author{Lily Brown}
+\author{Andy Friesen}
+\author{Alan Jeffrey}
+\affiliation{
+  \institution{Roblox}
+  \city{San Mateo}
+  \state{CA}
+  \country{USA}
+}
 
 \begin{abstract}
   Luau is the scripting language that powers user-generated experiences on the
@@ -69,8 +69,10 @@ as supporting goal-driven learning, non-strict typing semantics, and
 mixed strict and non-strict types.  Particular focus is placed on how
 these goals differ from traditional type systems' goals.
 
-\section{Human Aspects}
+\section{Needs of the Roblox platform}
 \subsection{Heterogeneous developer community}
+
+Need: \emph{a language that is powerful enough to support professional users, yet accessible to beginners}
 
 Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 \begin{itemize}
@@ -80,14 +82,14 @@ Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 \end{itemize}
 This demonstrates the heterogeneity of the Roblox developer community:
 developers of experiences with billions of plays are on the same
-platform as children first learning to code. Moreover, \emph{both of
-these groups are important}. The professional development studios
-bring high-quality experiences to the platform, and the beginning creators
-contribute to the energetic creative community, forming the next generation of developers.
+platform as children first learning to code. Both of these groups are important to
+support. The professional development studios bring high-quality experiences to the
+platform, and the beginning creators contribute to the energetic creative community,
+forming the next generation of developers.
 
 \subsection{Goal-driven learning}
 
-Goal: \emph{support learning how to perform specific tasks organically}
+Need: \emph{organic learning for achieving specific goals}
 
 All developers are goal-driven, but this is especially true for
 learners. A learner will download Roblox Studio with an
@@ -123,7 +125,7 @@ specific task with as much help as possible from tools.
 
 \subsection{Type-driven development}
 
-Goal: \emph{enable users to leverage types in their development process}
+Need: \emph{a language that supports large-scale codebases and defect detection}
 
 Professional development studios are also goal-directed (though the
 goals may be more abstract, such as ``decrease user churn'' or
@@ -158,7 +160,7 @@ types are introduced gradually, through API documentation and type discovery.
 Type inference provides many of the benefits of type-driven development
 even to creators who are not explicitly providing types.
 
-\section{Types}
+\section{Goals of the type system}
 \subsection{Infallible types}
 
 Goal: \emph{provide type information even for ill-typed or syntactically invalid programs.}
