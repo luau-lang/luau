@@ -201,9 +201,19 @@ local function find(t, expected)
 end
 ```
 
-## LocalShadowPedantic (17)
+## DuplicateLocal (17)
 
-This warning extends `LocalShadow` by also warning about cases where a local variable shadows a local variable with the same name from a parent function, or when it shadows a builtin global. This warning tends to be noisy and as such is disabled by default.
+Luau syntax allows to use the same name for different parameters of a function as well as different local variables declared in the same statement. This is error prone, even if it's occasionally useful, so a warning is emitted in cases like this, unless the duplicate name is the placeholder `_`:
+
+```lua
+function foo(a, b, a) -- Function parameter 'a' already defined on column 14
+end
+
+function obj:method(self) -- Function parameter 'self' already defined implicitly
+end
+
+local x, y, x = v:GetComponents() -- Variable 'x' already defined on column 7
+```
 
 ## FormatString (18)
 
