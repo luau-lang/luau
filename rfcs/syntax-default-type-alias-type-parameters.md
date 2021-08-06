@@ -9,20 +9,25 @@ Introduce syntax to provide default type values inside the type alias type param
 Luau has support for type parameters for type aliases and functions.
 In languages with similar features like C++ and TypeScript, it is possible to specify default values and users with experience in those languages would like to use that in Luau.
 
-As an example, this feature can be used to define a equality comparator function type that by default accepts a single type argument and assigns the same type to the second argument, but it's still possible to specify both type arguments:
+Here is an example that is coming up frequently during development of GraphQL Luau library:
+```lua
+export type GraphQLFieldResolver<
+    TSource,
+    TContext,
+    TArgs = { [string]: any }
+> = (TSource, TArgs, TContext, GraphQLResolveInfo) -> any
+```
+If we could specify defaults like that, we won't have to write long type names when type alias is used unless specific customization is required.
+Some engineers already skip these extra arguments and use `any` to save time, which gives worse typechecking quality.
+
+Without default arguments it's also harder to refactor the code as each type alias reference that uses 'common' type arguments has to be updated.
+
+While previous example uses a concrete type for default type value, it should also be possible to reference generic types from the same list:
 ```lua
 type Eq<T, U = T> = (l: T, r: U) -> boolean
 
 local a: Eq<number> = ...
 local b: Eq<number, string> = ...
-```
-
-While previous examples reference type parameters from the same list, it is also possible to specify concrete types:
-```lua
-type StrArray<T = string> = {arr: {T}, locked: boolean}
-
-local a: StrArray = ...
-local b: StrArray<MyString> = ...
 ```
 
 Generic functions in Luau also have a type parameter list, but it's not possible to specify type arguments at the call site and because of that, default type argument values for generic functions are not proposed.
