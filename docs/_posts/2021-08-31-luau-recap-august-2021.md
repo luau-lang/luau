@@ -16,14 +16,14 @@ To support that feature, a lot of work went into:
 * Improving fault-tolerant parser recovery scenarios
 * Storing additional information in the AST, including comments, better location information and partial syntax data
 * Tracking additional information about types and their fields, including tracking definition locations, function argument names, deprecation state and custom Roblox-specific tags
-* Updating reflection information to provide more specific Instance types and correct previously missing/wrong type annotations
-* Hybrid typechecking mode to try and infer types even in scripts with no typechecking enabled
-* Support for types that are attached to the DataModel tree elements to provide instance member information
-* Placing limits to finish typechecking in a finite space/time.
+* Updating reflection information to provide more specific `Instance` types and correct previously missing or wrong type annotations
+* Hybrid typechecking mode which tries to infer types even in scripts with no typechecking enabled
+* Support for types that are attached to the `DataModel` tree elements to provide instance member information
+* Placing limits to finish typechecking in a finite space/time
 * Adding Autocomplete API for the Roblox Studio to get location-based entity information and appropriate suggestions
 * Additional type inference engine improvements and fixes
 
-While our work continues to respond to the feedback we receive, our team members are shifting focus to add generic functions, extend Parallel Luau, improve Lua VM performance, provide documentation and support typechecking of Lua metatable-based OOP constructs. 
+While our work continues to respond to the feedback we receive, our team members are shifting focus to add generic functions, improve type refinements in conditionals, extend Parallel Luau, improve Lua VM performance and provide documentation. 
 
 ## Typechecking improvements
 
@@ -105,7 +105,7 @@ We now try to avoid calling GC during the script execution and perform all the w
 
 For general stability improvements we fixed a crash when strange types like '`nil??`' are used and when users have their own global functions named '`require`'.
 
-Indexing table with an incompatible type will now show squiggly error lines under the index instead of the whole expression, which was a bit misleading.
+Indexing a table with an incompatible type will now show squiggly error lines under the index instead of the whole expression, which was a bit misleading.
 
 An issue with debug information that caused `repeat ... until` condition line to be skipped when stepping was fixed.
 
