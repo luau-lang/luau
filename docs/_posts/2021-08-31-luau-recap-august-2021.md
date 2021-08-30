@@ -12,15 +12,15 @@ Luau is our new language that you can read more about at [https://roblox.github.
 The Roblox Studio [Luau-Powered Autocomplete & Language Features Beta](https://devforum.roblox.com/t/script-editor-luau-powered-autocomplete-language-features-beta) that our team has been working on has finally been released!
 Be sure to check that out and leave your feedback for things we can improve.
 
-To support that, a lot of work went into:
+To support that feature, a lot of work went into:
 * Improving fault-tolerant parser recovery scenarios
 * Storing additional information in the AST, including comments, better location information and partial syntax data
 * Tracking additional information about types and their fields, including tracking definition locations, function argument names, deprecation state and custom Roblox-specific tags
-* Updating reflection information to provide more specific Instance types and previously missing/wrong type annotations
+* Updating reflection information to provide more specific Instance types and correct previously missing/wrong type annotations
 * Hybrid typechecking mode to try and infer types even in scripts with no typechecking enabled
-* Types that are attached to the DataModel tree elements to provide member information
+* Support for types that are attached to the DataModel tree elements to provide instance member information
 * Placing limits to finish typechecking in a finite space/time.
-* Autocomplete API for the Roblox Studio to get entity information and appropriate suggestions
+* Adding Autocomplete API for the Roblox Studio to get location-based entity information and appropriate suggestions
 * Additional type inference engine improvements and fixes
 
 While our work continues to respond to the feedback we receive, our team members are shifting focus to add generic functions, extend Parallel Luau, improve Lua VM performance, provide documentation and support typechecking of Lua metatable-based OOP constructs. 
@@ -28,6 +28,7 @@ While our work continues to respond to the feedback we receive, our team members
 ## Typechecking improvements
 
 Type constraint resolver now remembers constraints placed on individual table fields.
+
 This should fix false-positive errors reported after making sure the optional table field is present:
 ```lua
 --!strict
@@ -38,7 +39,7 @@ if t.value then
 end
 ```
 
-It can also refine field types:
+And it can also refine field type to a more specific one:
 ```lua
 --!strict
 local t: {value: string|number} = {value = 2}
@@ -48,7 +49,7 @@ if type(t.value) == "number" then
 end
 ```
 
-Like before, combining multiple conditions using 'and' and 'not' are also supported.
+Like before, combining multiple conditions using 'and' and 'not' is also supported.
 
 ---
 
@@ -76,12 +77,11 @@ local foos: Bar = {a = {
 
 Finally, we have fixed an issue with Roblox class field access using indexing like `part["Anchored"] = true`.
 
-```
 ## Linter improvements
 
 We have added a new linter check for duplicate local variable definitions.
 
-It is created to find duplicate names cases like these:
+It is created to find duplicate names in cases like these:
 ```lua
 local function foo(a1, a2, a2) -- Function argument 'a2' already defined on column 24
 local a1, a2, a2 = f() -- Variable 'a2' already defined on column 11
@@ -90,23 +90,23 @@ local bar = {}
 function bar:test(self) -- Function argument 'self' already defined implicitly
 ```
 
-Our UnknownType linter warning was extended to check for correct class names passed into `FindFirstChildOfClass`, `FindFirstChildWhichIsA`, `FindFirstAncestorOfClass` and `FindFirstAncestorWhichIsA`.
+Our UnknownType linter warning was extended to check for correct class names passed into `FindFirstChildOfClass`, `FindFirstChildWhichIsA`, `FindFirstAncestorOfClass` and `FindFirstAncestorWhichIsA` funcitons.
 
 ## Performance improvements
 
 We have added an optimization to 'table.unpack' for 2x performance improvement.
 
-One extra optimization for tables is to predict required table size based on fields that are assigned to it in the code after construction (when table is initialized as empty).
+One extra optimization for tables is to predict required table size based on fields that are assigned to it in the code after construction.
 
 Another optimization this month changes the location and rate of garbage collection invocations.
-We now try to avoid calling GC during the script execution and perform all the work in the GcJob part of the frame (it could be seen in the performance profiler). When possible we can now skip that job in the frame if we have some memory budget available.
+We now try to avoid calling GC during the script execution and perform all the work in the GcJob part of the frame (it could be seen in the performance profiler). When possible, we can now skip that job in the frame completely, if we have some memory budget available.
 
 ## Other improvements
 
-For general stability improvements we fixed a crash when strange types like '`nil??`' are used and when users have their own global functions names '`require`'.
+For general stability improvements we fixed a crash when strange types like '`nil??`' are used and when users have their own global functions named '`require`'.
 
 Indexing table with an incompatible type will now show squiggly error lines under the index instead of the whole expression, which was a bit misleading.
 
 An issue with debug information that caused `repeat ... until` condition line to be skipped when stepping was fixed.
 
-Type output was changed to replace display of types like '`{<g405>(g405) -> g405}`' with '`{<a>(a) -> a}`'.
+Type output was improved to replace display of types like '`{<g405>(g405) -> g405}`' with '`{<a>(a) -> a}`'.
