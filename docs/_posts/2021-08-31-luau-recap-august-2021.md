@@ -3,7 +3,7 @@ layout: single
 title:  "Luau Recap: August 2021"
 ---
 
-Luau is our new language that you can read more about at [https://roblox.github.io/luau](https://roblox.github.io/luau).
+Luau is our new language that you can read more about at [https://luau-lang.org](https://luau-lang.org).
 
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-august-2021/).]
 
