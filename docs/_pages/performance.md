@@ -102,7 +102,7 @@ Iterating through array-like tables using `for i=1,#t` tends to be slightly slow
 
 Luau implements several optimizations for table creation. When creating object-like tables, it's recommended to use table literals (`{ ... }`) and to specify all table fields in the literal in one go instead of assigning fields later; this triggers an optimization inspired by LuaJIT's "table templates" and results in higher performance when creating objects. When creating array-like tables, if the maximum size of the table is known up front, it's recommended to use `table.create` function which can create an empty table with preallocated storage, and optionally fill it with a given value.
 
-When the exact table shape isn't known, Luau compiler can still predict the table capacity required in case the table is initialized with an empty literal (`{}`) and filled with fields subsequently. For example, the following code only performs a single allocation:
+When the exact table shape isn't known, Luau compiler can still predict the table capacity required in case the table is initialized with an empty literal (`{}`) and filled with fields subsequently. For example, the following code creates a correctly sized table implicitly:
 
 ```lua
 local v = {}
