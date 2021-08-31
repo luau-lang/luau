@@ -90,7 +90,7 @@ local bar = {}
 function bar:test(self) -- Function argument 'self' already defined implicitly
 ```
 
-Our UnknownType linter warning was extended to check for correct class names passed into `FindFirstChildOfClass`, `FindFirstChildWhichIsA`, `FindFirstAncestorOfClass` and `FindFirstAncestorWhichIsA` funcitons.
+Our UnknownType linter warning was extended to check for correct class names passed into `FindFirstChildOfClass`, `FindFirstChildWhichIsA`, `FindFirstAncestorOfClass` and `FindFirstAncestorWhichIsA` functions.
 
 ## Performance improvements
 
