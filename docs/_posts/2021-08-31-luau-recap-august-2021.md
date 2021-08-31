@@ -96,7 +96,7 @@ Our UnknownType linter warning was extended to check for correct class names pas
 
 We have added an optimization to 'table.unpack' for 2x performance improvement.
 
-One extra optimization for tables is to predict required table size based on fields that are assigned to it in the code after construction.
+We've also implemented an extra optimization for tables to predict required table capacity based on fields that are assigned to it in the code after construction. This can reduce the need to reallocate tables.
 
 Another optimization this month changes the location and rate of garbage collection invocations.
 We now try to avoid calling GC during the script execution and perform all the work in the GcJob part of the frame (it could be seen in the performance profiler). When possible, we can now skip that job in the frame completely, if we have some memory budget available.
