@@ -59,8 +59,12 @@ File-based JSON configuration may or may not map cleanly to environments that do
 
 Using JSON5 instead of vanilla JSON limits the interoperability.
 
+There's no way to force specific lints to be fatal, although this can be solved in the future by expanding "lintErrors" to be optionally an array of strings.
+
 ## Alternatives
 
 It's possible to consider forcing users to specify the source settings via `--!` comments exclusively. This is problematic as it may require excessive amounts of annotation though, which this proposal aims to simplify.
 
 The format of the configuration file does not have to be JSON; for example, it can be a valid Luau source file which is the approach luacheck takes. This makes it more difficult to repurpose the .luaurc file to use third-party processing tools though, e.g. a package manager would need to learn how to parse Luau syntax to store configuration in .luaurc.
+
+It's possible to use the old style of lint rule specification with "enabled"/"fatal"/etc., but it's more verbose and is more difficult to use in common scenarios, such as "all enabled lints are fatal and these are the ones we need to enable in addition to the default set" is impossible to specify.
