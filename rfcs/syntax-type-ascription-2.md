@@ -2,11 +2,11 @@
 
 ## Summary
 
-The way `::` works today is really strange.  The best solution we can come up with is to allow `::` to convert between any two types.
+The way `::` works today is really strange.  The best solution we can come up with is to allow `::` to convert between any two related types.
 
 ## Motivation
 
-The current Luau implementation of the `::` operator is a little bit strange.  Due to an accident, it can only be used for downcasts and casts to `any`.
+Due to an accident of the implementation, the Luau `::` operator can only be used for downcasts and casts to `any`.
 
 Because of this property, `::` works as users expect in a great many cases, but doesn't actually make a whole lot of sense when scrutinized.
 
@@ -23,16 +23,12 @@ From this, we conclude that users are actually much more interested in having a 
 
 ## Design
 
-I propose that we change the meaning of the `::` operator to permit coersion between any two types.  It officially becomes a second way, like `any`, to completely bypass the type system.
+I propose that we change the meaning of the `::` operator to permit conversions between any two types for which either is a subtype of the other.
 
 ## Drawbacks
 
-`::` was originally envisioned to be a way for users to make the type inference engine work smarter and better for them.  Users have taught us that they are more interested in downcasts and we should be responsive to that.
+`::` was originally envisioned to be a way for users to make the type inference engine work smarter and better for them.  The fact of the matter is, though, that downcasts are useful to our users.  We should be responsive to that.
 
 ## Alternatives
 
-We could simply update `::` to act the way it was originally envisioned.  `::` would not break soundness and users would have to figure out some other way to downcast.  Code they have already written to do so would break.  To be truly morally true to the original vision, we would have to also forbid `:: any`, which would be a further usability hit.
-
-We could introduce yet another operator expressly for downcasts, but we'd have to come up with its name and explain the difference to end users.
-
-Lastly, we could permit both upcasts and downcasts, but not permit casts between totally unrelated types.  I think this is doable, but potentially inefficient: Luau would basically have to pay the CPU cycles required to try both and rewind if they don't work.
+We initially discussed allowing `::` to coerce anything to anything else, acting as a full bypass of the type system.  We are not doing this because it is really just not that hard to implement: All we need to do is to succeed if unification works between the two types in either direction.
