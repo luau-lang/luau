@@ -31,4 +31,4 @@ I propose that we change the meaning of the `::` operator to permit conversions 
 
 ## Alternatives
 
-We initially discussed allowing `::` to coerce anything to anything else, acting as a full bypass of the type system.  We are not doing this because it is really just not that hard to implement: All we need to do is to succeed if unification works between the two types in either direction.
+We initially discussed allowing `::` to coerce anything to anything else, acting as a full bypass of the type system.  We are not doing this because it is really just not that hard to implement: All we need to do is to succeed if unification works between the two types in either direction. Additionally, requiring one type to be subtype of another catches mistakes when two types are completely unrelated, e.g. casting a `string` to a table will still produce an error when this proposal is in effect - this will make sure that `::` is as safe of a bypass as it can be in practice.
