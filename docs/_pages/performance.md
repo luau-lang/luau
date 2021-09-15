@@ -142,14 +142,6 @@ This doesn't mean that memory allocation in Luau is free - it's carefully optimi
 
 In addition to a fast allocator, all frequently used structures in Luau have been optimized for memory consumption, especially on 64-bit platforms, compared to Lua 5.1 baseline. This helps to reduce heap memory footprint and improve performance in some cases by reducing the memory bandwidth impact of garbage collection.
 
-## Optimized garbage collector
-
-> Note: our garbage collector optimizations are still in progress, so this section doesn't document them.
-
-## Fast binding interface
-
-> Note: our optimizations of binding interface are still in progress, so this section doesn't document them.
-
 ## Optimized libraries
 
 While the best performing code in Luau spends most of the time in the interpreter, performance of the standard library functions is critical to some applications. In addition to specializing many small and simple functions using the builtin call mechanism, we spend extra care on optimizing all library functions and providing additional functions beyond the Lua standard library that help achieve good performance with idiomatic code.
