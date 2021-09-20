@@ -93,7 +93,7 @@ Methods in classes should be read-only by default.
 
 Getter and setter types apply to classes as well as tables.
 
-Many of the Roblox APIs an be marked as having getters but not
+Many of the Roblox APIs can be marked as having getters but not
 setters, which will improve accuracy of type checking for Roblox APIs.
 
 ### Metatables
