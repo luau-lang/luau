@@ -116,6 +116,12 @@ the initial DM. This is unsound, but would support reparenting, and
 any solution for reparenting is either going to require whole-program
 analysis or have unsoundness.
 
+### Separate getter and setters via intersection types
+
+We could restrict the language to only allow a getter or a setter (but
+not both) but this is not a restriction due to intersection types,
+since we can mimic `{ get p: T, set p: U }` as `{ get p: T } & { set p: U }`.
+
 ### Why separate the getter from the setter?
 
 Separate getters and setters were introduced to TypeScript in response
