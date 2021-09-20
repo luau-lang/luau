@@ -108,6 +108,14 @@ A `require`d module's properties should be read-only by default.
 
 *This is a possibly breaking change.*
 
+### Separate getter and setter for Instance.Parent
+
+If we had separate getters and setters for Instance.Parent, we could
+allow setting with any `Instance`, but getting at the type given by
+the initial DM. This is unsound, but would support reparenting, and
+any solution for reparenting is either going to require whole-program
+analysis or have unsoundness.
+
 ### Why separate the getter from the setter?
 
 Separate getters and setters were introduced to TypeScript in response
