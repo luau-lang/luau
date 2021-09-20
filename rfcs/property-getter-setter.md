@@ -141,8 +141,17 @@ function h(): Animal? return x.p end
 ```
 
 it is not obvious what type to infer for `x`, should it be `{ p: Dog? }` or `{ p: Animal? }`?
+With either of those types, the following code does not typecheck:
+
+```lua
+local t1: { p: Animal? } = { p: nil }
+local t2: { p: Dog? } = { p: nil }
+x = t1 -- Does not typecheck if x: { p: Dog? }
+x = t2 -- Does not typecheck if x: { p: Amimal? }
+```
+
 If there are separate getter and setter types, there is a most general type, which is
-`{ get p: Animal?, set p: Dog? }`.
+`{ get p: Animal?, set p: Dog? }`, which allows this program to typecheck.
 
 With separate getter and setter types, every position in a type is either
 covariant or contravariant, and *there are no more uses of invariance*.
