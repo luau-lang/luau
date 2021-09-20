@@ -175,6 +175,23 @@ who will be faced with get/set modifiers on many properties.
 Rather than making read-write access the default, we could make read-only the
 default and add a new modifier for read-write. This is not backwards compatible.
 
-Rather than separate getter and setter types, we could have one type with
-a read/write annotation. This would re-introduce invariance, and there are
-programs which would no longer typecheck.
+Rather than separate getter and setter types, we could have one type
+with a read/write annotation. This would re-introduce invariance, and
+would not allow the example program to typecheck.
+
+There is a trade-off here, between reporting a type error in cases
+like this, or inferring a type with separate getters and setters. Both
+of these introduce complexity:
+
+* If we report a type error, the user has to work out why this is an
+  error, and how to fix it. In order to understand why it is an error,
+  the user needs to understand subtyping and the variance rules for
+  properties.
+  
+* If we infer separate getters and setters, the user will be faced
+  with types with separate getters and setters in error messages and
+  type hover.
+
+This is a tricky trade-off, as we are deciding for the user how to
+spend their complexity budget.
+
