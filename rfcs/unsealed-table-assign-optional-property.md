@@ -23,8 +23,8 @@ Currently, this code doesn't typecheck, due to `p` and `q` being unknown propert
 
 ## Design
 
-In order to support this idiom, we propose that assigning a table with
-to an unsealed table should add an optional proerty.
+In order to support this idiom, we propose that assigning a table
+to an unsealed table should add an optional property.
 
 For example, before this change the type of `t` is `{ u: {} }`,
 and after this change is `{ u: { p: number?, q: number? } }`.
