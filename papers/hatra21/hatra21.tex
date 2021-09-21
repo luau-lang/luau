@@ -5,24 +5,31 @@
 \acmYear{2021}
 \acmConference[HATRA '21]{Human Aspects of Types and Reasoning Assistants}{October 2021}{Chicago, IL}
 \acmBooktitle{HATRA '21: Human Aspects of Types and Reasoning Assistants}
-
-\usepackage{listings}
+\acmDOI{}
+\acmISBN{}
+\expandafter\def\csname @copyrightpermission\endcsname{\raisebox{-1ex}{\includegraphics[height=3.5ex]{cc-by}} This work is licensed under a Creative Commons Attribution 4.0 International License.}
 
 \newcommand{\squnder}[1]{\color{red}\underline{{\color{black}#1}}\color{black}}
 \newcommand{\infer}[2]{\frac{\textstyle#1}{\textstyle#2}}
 \newcommand{\erase}{\mathrm{erase}}
 \newcommand{\evCtx}{\mathcal{E}}
 \newcommand{\NIL}{\mathsf{nil}}
+\newcommand{\ANY}{\mathsf{any}}
 \newcommand{\TRUE}{\mathsf{true}}
 \newcommand{\FALSE}{\mathsf{false}}
 \newcommand{\NUMBER}{\mathsf{number}}
+\newcommand{\STRING}{\mathsf{string}}
 \newcommand{\ERROR}{\mathsf{error}}
 \newcommand{\IF}{\mathsf{if}\,}
+\newcommand{\LOCAL}{\mathsf{local}\,}
 \newcommand{\THEN}{\,\mathsf{then}\,}
 \newcommand{\ELSE}{\,\mathsf{else}\,}
 \newcommand{\END}{\,\mathsf{end}}
 \newcommand{\FUNCTION}{\mathsf{function}\,}
 \newcommand{\RETURN}{\mathsf{return}\,}
+\newcommand{\FIND}{\mathsf{find}}
+\newcommand{\PRINT}{\mathsf{print}}
+\newcommand{\strlit}[1]{\mbox{``#1''}}
 
 \begin{document}
 
@@ -53,10 +60,10 @@
 
 \section{Introduction}
 
-The Roblox~\cite{Roblox} platform allows anyone to create shared,
+The Roblox platform allows anyone to create shared,
 immersive, 3D experiences.  As of July 2021, there are
 approximately 20~million experiences available on Roblox, created
-by 8~million developers.  Roblox creators are often young: there are
+by 8~million developers~\cite{Roblox}.  Roblox creators are often young: there are
 over 200~Roblox kids' coding camps in 65~countries
 listed by the company as education resources~\cite{AllEducators}.
 The Luau programming language~\cite{Luau} is the scripting language
@@ -66,7 +73,7 @@ including a type inference engine.
 
 This paper will discuss some of the goals of the Luau type system, such
 as supporting goal-driven learning, non-strict typing semantics, and
-mixed strict and non-strict types.  Particular focus is placed on how
+mixing strict and non-strict types.  Particular focus is placed on how
 these goals differ from traditional type systems' goals.
 
 \section{Needs of the Roblox platform}
@@ -83,7 +90,7 @@ Quoting a Roblox 2020 report \cite{RobloxDevelopers}:
 This demonstrates the heterogeneity of the Roblox developer community:
 developers of experiences with billions of plays are on the same
 platform as children first learning to code. Both of these groups are important to
-support. The professional development studios bring high-quality experiences to the
+support: the professional development studios bring high-quality experiences to the
 platform, and the beginning creators contribute to the energetic creative community,
 forming the next generation of developers.
 
@@ -92,8 +99,9 @@ forming the next generation of developers.
 Need: \emph{organic learning for achieving specific goals}
 
 All developers are goal-driven, but this is especially true for
-learners. A learner will download Roblox Studio with an
-experience in mind, such as designing an obstacle course (an ``obby'')
+learners. A learner will download Roblox Studio
+(the creation environment for the Roblox platform) with an
+experience in mind, such as designing an obstacle course
 to play in with their friends.
 
 The user experience of developing a Roblox experience is primarily a
@@ -112,9 +120,9 @@ and multiplayer are all immediately accessible to creators.
 \end{figure}
 
 At some point during experience design, the experience creator has a need
-that can't be met by the physics engine alone, such as ``the stairs should
+that can't be met by the game engine alone, such as ``the stairs should
 light up when a player walks on them'' or ``a firework is set off
-every few seconds.'' At this point, they will discover the script
+every few seconds''. At this point, they will discover the script
 editor, seen in Fig.~\ref{fig:studio}(b).
 
 This onboarding experience is different from many initial exposures to
@@ -122,6 +130,19 @@ programming, in that by the time the user first opens the script
 editor, they have already built much of their creation, and have a
 very specific concrete aim. As such, Luau must allow users to perform a
 specific task with as much help as possible from tools.
+
+A common workflow for getting started is to Google the task, then
+cut-and-paste the resulting code, adapting it as needed.  Since this
+is so common, backward compatibility of Luau with existing code is
+important, even for learners who do not have an existing code base to
+maintain.
+
+Type-driven tools are useful to all creators, in as much as they help
+them achieve their current goals. For example type-driven
+autocomplete, or type-driven API documentation, are of immediate
+benefit. Traditional typechecking can be useful, for example for
+catching spelling mistakes, but for most goal-driven developers, the
+type system should help or get out of the way.
 
 \subsection{Type-driven development}
 
@@ -166,7 +187,8 @@ even to creators who are not explicitly providing types.
 Goal: \emph{provide type information even for ill-typed or syntactically invalid programs.}
 
 Programs spend much of their time under development in an ill-typed or incomplete state, even if the
-final artifact is well-typed. Tools should support this by providing type information even for ill-typed
+final artifact is well-typed. If tools such as autocomplete and API documentation are type-driven,
+this means that tooling needs to rely on type information even for ill-typed
 or syntactically invalid programs. An analogy is infallible parsers, which perform error recovery and
 provide an AST for all input texts, even if they don't adhere to the parser's syntax.
 
@@ -178,32 +200,30 @@ $\Gamma \vdash M \Rightarrow N : T$ where $N$ is an output term
 where some subterms are \emph{flagged} as having type errors, written $\squnder{N}$. Write $\erase(N)$
 for the result of erasing flaggings: $\erase(\squnder{N}) = \erase(N)$.
 
-%% For example the usual
-%% type rules for field access becomes:
-%% \[
-%%   \infer{
-%%     \Gamma \vdash M \Rightarrow M' : T
-%%   }{
-%%     \Gamma \vdash M.\ell \Rightarrow M'.\ell : U
-%%   }
-%%   [
-%%     T = \{ \overline{\ell:U} \} \mbox{ and } (\ell:U) \in (\overline{\ell:U})
-%%   ]
-%% \]
-%% but there is also a rule for unsuccessful field access:  
-%% \[
-%%   \infer{
-%%     \Gamma \vdash M \Rightarrow M' : T
-%%   }{
-%%     \Gamma \vdash M.\ell \Rightarrow \squnder{M'.\ell} : U
-%%   }
-%%   [
-%%     T = \{ \overline{\ell:U} \} \mbox{ implies } \ell \not\in \overline{\ell}
-%%   ]
-%% \]
-%% In this type rule, $U$ is unconstrained.
-
-The goal of infallible types is that every term can be typed:
+For example, in Lua, the $\STRING.\FIND$ function expects two strings, and returns the
+offsets for that string:
+\[
+  \STRING.\FIND(\strlit{hello}, \strlit{ell}) \rightarrow (2, 4)
+\qquad
+  \STRING.\FIND(\strlit{world}, \strlit{ell}) \rightarrow (\NIL, \NIL)
+\]
+and in Luau it has the type:
+\[
+  \STRING.\FIND : (\STRING, \STRING) \rightarrow (\NUMBER?, \NUMBER?)
+\]
+In a conventional type system, there is no judgment for ill-typed terms
+such as $\STRING.\FIND(\strlit{hello}, 37)$ but in an infallible system we flag the error
+and approximate the type, for example:
+\[
+  {} \vdash
+  \STRING.\FIND(\strlit{hello}, 37)
+  \Rightarrow
+  \squnder{\STRING.\FIND(\strlit{hello}, 37)}
+  :
+  (\NUMBER?, \NUMBER?)
+\]
+The goal of infallible types is that every term has a typing judgment
+given by flagging ill-typed subterms:
 \begin{itemize}
 \item \emph{Typability}: for every $M$ and $\Gamma$,
   there are $N$ and $T$ such that $\Gamma \vdash M \Rightarrow N : T$.
@@ -224,8 +244,11 @@ there is a large body of work on type error reporting
 (see, for example, the survey in~\cite[Ch.~3]{TopQuality})
 and on type-directed program repair
 (see, for example, the survey in~\cite[Ch.~3]{RepairingTypeErrors}),
-but not type repair, or on
-the semantics of programs with type errors. Many compilers perform
+but less on type repair.
+The closest work is Hazel's~\cite{Hazel} \emph{typed holes}
+where $\squnder{N}$ is treated as a partially-filled hole in the program,
+though in that work partially-filled holes are not erased at run-time.
+Many compilers perform
 error recovery during typechecking, but do not provide a semantics
 for programs with type errors.
 
@@ -250,15 +273,34 @@ for any value $V$ we have $\squnder{V} \rightarrow V$, then show:
 \item \emph{Progress}: if ${} \vdash M \Rightarrow N : T$, then either $N \rightarrow N'$ or $N$ is a value or $N$ has a flagged subterm.
 \item \emph{Preservation}: if ${} \vdash M \Rightarrow N : T$ and $N \rightarrow N'$ then  $M \rightarrow^*M'$ and ${} \vdash M' \Rightarrow N' : T$.
 \end{itemize}
-Some issues raised by infallible types:
+For example in typechecking the program:
+\[
+  \LOCAL (i,j) = \STRING.\FIND(x, y);
+  \IF i \THEN \PRINT(j-i) \END
+\]
+the interesting case is $i-j$ in a context where  $i$ has type
+$\NUMBER$ (since it is guarded by the $\IF$) but $j$ has type
+$\NUMBER?$. Since subtraction has type $(\NUMBER, \NUMBER) \rightarrow \NUMBER$,
+this is a type error, so the relevant typing judgment is:
+\[\begin{array}{r@{}l}
+  x: \STRING, y: \STRING \vdash {}&
+  (\LOCAL (i,j) = \STRING.\FIND(x, y);
+  \IF i \THEN \PRINT(j-i) \END) \\
+  \Rightarrow {}&
+  (\LOCAL (i,j) = \STRING.\FIND(x, y);
+  \IF i \THEN \PRINT(\squnder{j-i}) \END)
+\end{array}\]
+Some issues raised by soundness for infallible types:
 \begin{itemize}
 \item How should the judgments and their metatheory be set up?
 \item How should type inference and generic functions be handled?
 \item Is the operational semantics of flagged values
   ($\squnder{V} \rightarrow V$) the right one?
-\item Will higher-order code require wrappers on functions? 
 \end{itemize}
-\emph{Related work}: gradual typing and blame analysis, e.g.~\cite{GradualTyping,WellTyped,Contracts}
+\emph{Related work}: gradual typing and blame analysis, e.g.~\cite{GradualTyping,WellTyped,Contracts}.
+The main difference between this approach and that of migratory typing~\cite{MigratoryTyping}
+is that (due to backward compatibility with existing Lua) we cannot introduce
+extra code during migration.
 
 \subsection{Nonstrict types}
 
@@ -266,7 +308,7 @@ Goal: \emph{no false positives.}
 
 For developers who are not interested in defect detection, type-driven
 tools and techniques such as autocomplete, API documentation
-and refactoring tools can still be useful.
+and type-driven refactoring are still useful.
 For such developers, Luau provides a
 \emph{nonstrict mode}, which we hope will eventually be useful for all
 developers.  This non-strict typing mode is particularly useful when
@@ -276,9 +318,15 @@ soundness, but instead has the goal of ``no false positives``, in the
 sense that any flagged code is guaranteed to produce a runtime error
 when executed.
 
-On the face of it, this is undecidable, since a program such as
+Our previous example was, in fact, a false positive since a programmer
+can make use of the fact that $\STRING.\FIND(x, y)$ is either $\NIL$
+in both results or neither, so if $i$ is non-$\NIL$ then so is $j$.
+This is discussed in the English-language documentation but not reflected
+in the type. So flagging $(i - j)$ is a false positive.
+
+On the face of it, detecting all errors without false positives is undecidable, since a program such as
 $(\IF f() \THEN \ERROR \END)$ will produce a runtime error when $f()$ is
-$\TRUE$, but we can aim for a weaker property: that all flagged code
+$\TRUE$. Instead we can aim for a weaker property: that all flagged code
 is either dead code or will produce an error. Either of these is a
 defect, so deserves flagging, even if the tool does not know
 which reason applies.
@@ -293,16 +341,13 @@ if it is of the form $\evCtx[\squnder{V}]$. We can then define:
 Some issues raised by nonstrict types:
 \begin{itemize}
 
-\item Under this definition, any function that will terminate is unflagged, so
-  flagging will often move from function definitions to call sites.
+\item Will nonstrict types result in errors being flagged in function call sites
+  rather than definitions?
 
-\item This definition will not allow an unchecked use of an optional value
-  to be flagged, for example if $f() : \NUMBER?$ (meaning $f$ may optionally return a number)
-  then a strict type system can flag $1 + f()$ but a nonstrict one cannot.
-
-\item Property update of tables in languages like Luau always succeeds
+\item In Luau, ill-typed property update of most tables succeeds
   (the property is inserted if it did not exist), and so functions which
-  update properties cannot be flagged.
+  update properties cannot be flagged. Can we still provide meaningful
+  error messages in such cases?
 
 \item Does nonstrict typing require whole program analysis,
   to find all the possible types a property might be updated with?
@@ -310,7 +355,7 @@ Some issues raised by nonstrict types:
 \item The natural formulation of function types in a nonstrict setting
   is that of~\cite{SuccessTyping}: if $f: T \rightarrow U$ and $f(V) \rightarrow^* W$
   then $V:T$ and $W:U$. This formulation is \emph{covariant} in $T$,
-  not \emph{contavariant}; what impact does this have?
+  not \emph{contravariant}; what impact does this have?
   
 \end{itemize}
 \emph{Related work}: success types~\cite{SuccessTyping} and incorrectness logic~\cite{IncorrectnessLogic}.
@@ -343,40 +388,35 @@ Some questions raised by mixed-mode types:
 \item Is strict-mode code sound when it relies on non-strict code,
   which has weaker invariants?
 
+\item How can we avoid introducing function wrappers in higher-order code
+  at the strict/nonstrict boundary?
+
 \end{itemize}
-\emph{Related work}: this appears to be an under-explored area.
+\emph{Related work}: there has been work on interoperability between different type systems,
+notably~\cite{LinkingTypes}, but there the overall goals of the systems were similar safety properties.
+In our case, the two type systems have different goals.
 
 \subsection{Type inference}
 
 Goal: \emph{infer types to allow gradual adoption of type annotations.}
 
-Roblox, for many years, used the Lua language, which is dynamically typed and possesses a
-very weak type system. Due to this large quantity of pre-existing dynamically-typed code,
-it is essential for the type system to function even in the absence of type annotations,
-in order to make the type features of Luau gradually adoptable. This means that Luau needs
-to be able to infer types for symbols without any annotations being present, to the best of
-its ability. This precludes syntactical rules such as Rust's requirement that all function
-parameters be annotated with their type~\cite[Ch. 3.3]{RustBook}.
+Since backward compatibility with existing code is important, we have
+to provide types for code without explicit annotations. Moreover, we
+want to make use of type-directed tools such as autocomplete, so we
+cannot adopt the common strategy of treating all untyped variables as
+having type $\ANY$. This leads us to type inference.
 
-This requirement presents challenges for the type inference algorithm, because Luau may not have
-enough information to determine the type of a given program. In non-strict mode in particular,
-which sees use in existing codebases, we cannot rely on the presence of type annotations. We also
-cannot require that the user provide them if Luau cannot deduce the type of a symbol. In cases
-such as this, we must admit defeat and assume that the code is correct, to fulfill non-strict
-mode's goal of ``no false positives''. We do this by saying that the result of the operation is
-$\mathsf{any}$, a type that can be converted to and from any other type freely.
+To make use of type-driven technologies for programs
+without explicit type annotations, we use a type inference algorithm.
+Since Luau includes System~F, type inference is undecidable~\cite{Boehm85},
+but we can still make use of heuristics such as local type inference~\cite{LocalTypeInference}.
 
-In strict mode, Luau is not so limited, and in pursuit of the strict-mode goal of ``no false
-negatives'', we may surface errors to the user indicating that the type inference system requires
-more information, in the form of annotations, in order to type-check a piece of code. This code,
-for example, requires a type annotation in order for Luau to determine the return type of the function (since Luau does not know if ``+'' refers to built-in addition on numbers, or a user-defined method):
-
-\lstset{language=[5.1]Lua}
-\begin{lstlisting}
-function f(a, b)
-  return a + b
-end
-\end{lstlisting}
+It remains to be seen if type inference can satisfy the goals of
+strict and non-strict types. The current Luau system
+infers different types in the two modes, which is unsatisfactory as it
+makes changing mode a non-local breaking change. In addition,
+non-strict inference is currently too imprecise to support
+type-directed tools such as autocomplete.
 
 Some questions raised by type inference:
 \begin{itemize}
@@ -384,10 +424,11 @@ Some questions raised by type inference:
 \item How many cases in strict mode cannot be inferred by the type inference system? Minimizing
   this kind of error is desirable, to make the type system as unobtrusive as possible.
 \item Can something like the Rust traits system~\cite{RustBook} or Haskell classes~\cite{TypeClasses} be used to provide types for overloaded operators, without hopelessly confusing learners?
-
+\item Type inference currently infers monotypes for unannotated
+  functions, in contrast to QuickLook~\cite{QuickLook}, which can infer generic types.
+  Will this be good enough for idiomatic Luau scripts?
 \item Can type inference be used to infer the same types in strict and nonstrict mode, to ease migrating between modes, with the only difference being error reporting?
 \end{itemize}
-
 \emph{Related work}: there is a large body of work on type inference, largely summarized in~\cite{TAPL}.
 
 \section{Conclusions}
@@ -395,7 +436,7 @@ Some questions raised by type inference:
 In this paper, we have presented some of the goals of the Luau type
 system, and how they map to the needs of the Roblox creator
 community. We have also explored how these goals differ from traditional
-type systems, where it is necessary to accomodate the unique needs of
+type systems, where it is necessary to accommodate the unique needs of
 the Roblox platform. We have sketched what a solution might look like;
 all that remains is to draw the owl~\cite{HowToDrawAnOwl}.
 
