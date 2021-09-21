@@ -11,22 +11,104 @@
 \setbeamercolor{title}{bg=bluish}
 \setbeamercolor{frametitle}{bg=bluish}
 \setbeamercolor{background canvas}{bg=background}
+\setbeamercolor{itemize item}{fg=bluish}
+\setbeamercolor{part name}{fg=background}
+\setbeamercolor{part title}{bg=bluish}
 \setbeamertemplate{footline}[text line]{\hfill\raisebox{5ex}{\insertshorttitle~~~~\insertframenumber/\inserttotalframenumber~~~~\includegraphics[width=5em]{Logo-Roblox-Black-Full.png}}}
+\AtBeginPart{{\setbeamertemplate{footline}{}\frame{\partpage}}}
 
-\title{Goals of the\\Luau Type System}
+\title{Goals of the Luau~Type~System}
 \author{Lily Brown \and Andy Friesen \and Alan Jeffrey}
 \institute[Roblox]{\includegraphics[width=15em]{Logo-Roblox-Black-Full.png}}
 \date[HATRA '21]{\textit{Human Aspects of Types and Reasoning Assistants} 2021}
 
 \begin{document}
 
-{\setbeamertemplate{footline}{}
-\frame{\titlepage}}
+{\setbeamertemplate{footline}{}\frame{\titlepage}}
+
+\part{Needs of the Roblox Platform}
 
 \begin{frame}
-\frametitle{Thank you!}
-Any questions?
+
+\frametitle{Roblox}
+
+A platform for creating shared immersive 3D experiences: 
+\begin{itemize}
+  \item \textbf{Many}: 20 million experiences, 8 million creators.
+  \item \textbf{At scale}: e.g.~\emph{Adopt Me!} has 10 billion plays.
+  \item \textbf{Young}: 200+ kids' coding camps in 65+ countries.
+  \item \textbf{Professional}: 345k creators monetizing experiences.
+\end{itemize}
+A very heterogenous community.
 
 \end{frame}
+
+\begin{frame}
+
+\frametitle{Roblox developer community}
+
+All developers are important:
+\begin{itemize}
+  \item \textbf{Learners}: energetic creative communmity.
+  \item \textbf{Professionals}: high-quality experiences.
+  \item \textbf{Everyone inbetween}: some learners become professionals!
+\end{itemize}
+Satisfying everyone is sometimes challenging.
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Roblox Studio}
+
+Demo time!
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Learners have immediate goals}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Professionals have long-term goals}
+
+\end{frame}
+
+\part{Goals of the Luau Type System}
+
+\begin{frame}
+
+\frametitle{Infallible types}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Strict types}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Nontrict types}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Mixing types}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Type inference}
+
+\end{frame}
+
+\part{Thank you!}
 
 \end{document}
