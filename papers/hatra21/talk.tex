@@ -17,6 +17,8 @@
 \setbeamertemplate{footline}[text line]{\hfill\raisebox{5ex}{\insertshorttitle~~~~\insertframenumber/\inserttotalframenumber~~~~\includegraphics[width=5em]{Logo-Roblox-Black-Full.png}}}
 \AtBeginPart{{\setbeamertemplate{footline}{}\frame{\partpage}}}
 
+\newcommand{\erase}{\mathsf{erase}}
+
 \title{Goals of the Luau~Type~System}
 \author{Lily Brown \and Andy Friesen \and Alan Jeffrey}
 \institute[Roblox]{\includegraphics[width=15em]{Logo-Roblox-Black-Full.png}}
@@ -26,7 +28,7 @@
 
 {\setbeamertemplate{footline}{}\frame{\titlepage}}
 
-\part{Needs of the Roblox Platform}
+\part{Creator Goals}
 
 \begin{frame}
 
@@ -49,7 +51,7 @@ A very heterogenous community.
 
 All developers are important:
 \begin{itemize}
-  \item \textbf{Learners}: energetic creative communmity.
+  \item \textbf{Learners}: energetic creative community.
   \item \textbf{Professionals}: high-quality experiences.
   \item \textbf{Everyone inbetween}: some learners become professionals!
 \end{itemize}
@@ -69,19 +71,52 @@ Demo time!
 
 \frametitle{Learners have immediate goals}
 
+E.g. ``when a player steps on the button, advance the slide''.
+\begin{itemize}
+  \item Most goals can be met by the 3D environment editor.
+  \item Some need programming, e.g. reacting to collisions or timers.
+  \item Very different onboarding than ``let's learn to program''.
+  \item ``Google Stack Overflow'' is a common workflow.
+  \item Type-driven tools (e.g. autocomplete or API help) are useful.
+  \item Some type errors (e.g. catching typos) are useful, but many are not.
+\end{itemize}
+Type systems should help or get out of the way.
+
 \end{frame}
 
 \begin{frame}
 
 \frametitle{Professionals have long-term goals}
 
+E.g. ``decrease user churn'' or ``improve frame rate''.
+\begin{itemize}
+\item Code planning
+\item Code refactoring
+\item Defect detection
+\end{itemize}
+Type-driven development is a useful technique!
+
 \end{frame}
 
-\part{Goals of the Luau Type System}
+\part{Luau Type System}
 
 \begin{frame}
 
 \frametitle{Infallible types}
+
+\emph{Goal}: support type-driven tools (e.g. autocomplete) for all programs.
+\begin{itemize}
+\item Traditional typing judgment: $\Gamma\vdash M:T$
+\item Infallible judgment: $\Gamma\vdash M \Rightarrow N:T$, where $N$ may flag type errors
+\item For every $M$ and $\Gamma$,
+  there are $N$ and $T$ such that $\Gamma \vdash M \Rightarrow N : T$.
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Type error reporting, program repair.
+\item Typed holes (e.g. in Hazel).
+\end{itemize}
 
 \end{frame}
 
@@ -89,11 +124,41 @@ Demo time!
 
 \frametitle{Strict types}
 
+\emph{Goal}: no false negatives.
+
+\begin{itemize}
+\item \emph{Strict mode} enabled by developers who want defect detection.
+\item \emph{Business as usual} soundness via progress + preservation.
+\item \emph{Gradual types} for programs with flagged type errors.
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Lots and lots for type safety.
+\item Gradual typing, blame analysis, migratory types\dots
+\end{itemize}
+
 \end{frame}
 
 \begin{frame}
 
-\frametitle{Nontrict types}
+\frametitle{Nonstrict types}
+
+\emph{Goal}: no false positives.
+
+\begin{itemize}
+\item \emph{Nonstrict mode} enabled by developers who want type-drive tools.
+\item Not even obvious how to state the goals!
+\item A shot at it: a program is \emph{incorrectly flagged} if it contains
+  a flagged value (i.e.~a flagged program has successfully terminated).
+\item Is progress + correct flagging what we want?
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Success types (e.g. Erlang Dialyzer).
+\item Incorrectness Logic.
+\end{itemize}
 
 \end{frame}
 
@@ -101,14 +166,42 @@ Demo time!
 
 \frametitle{Mixing types}
 
+Goal: \emph{support mixed strict/nonstrict development}.
+
+\begin{itemize}
+\item Strict/nonstrict mode is enabled per-module.
+\item What happens when a codebase is mixed?
+\item Combine progress + preservation with progress + correct flagging?
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Not much?
+\end{itemize}
+  
 \end{frame}
 
 \begin{frame}
 
 \frametitle{Type inference}
 
+Goal: \emph{provide benefits of type-directed tools to everyone}.
+
+\begin{itemize}
+\item Infer types for all variables, don't just give them type any.
+\item Luau includes System F, so everything is undecidable. Yay heuristics!
+\item Currently, strict and nonstrict mode infer different types. Boo!
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Lots.
+\end{itemize}
+
 \end{frame}
 
 \part{Thank you!}
+
+\part{Roblox is hiring!}
 
 \end{document}
