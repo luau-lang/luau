@@ -38,10 +38,10 @@ A platform for creating shared immersive 3D experiences:
 \begin{itemize}
   \item \textbf{Many}: 20 million experiences, 8 million creators.
   \item \textbf{At scale}: e.g.~\emph{Adopt Me!} has 10 billion plays.
-  \item \textbf{Young}: 200+ kids' coding camps in 65+ countries.
+  \item \textbf{Learners}: e.g.~200+ kids' coding camps in 65+ countries.
   \item \textbf{Professional}: 345k creators monetizing experiences.
 \end{itemize}
-A very heterogenous community.
+A very heterogeneous community.
 
 \end{frame}
 
@@ -73,12 +73,12 @@ Demo time!
 
 E.g. ``when a player steps on the button, advance the slide''.
 \begin{itemize}
-  \item Most goals can be met by the 3D environment editor.
-  \item Some need programming, e.g. reacting to collisions or timers.
-  \item Very different onboarding than ``let's learn to program''.
-  \item ``Google Stack Overflow'' is a common workflow.
-  \item Type-driven tools (e.g. autocomplete or API help) are useful.
-  \item Some type errors (e.g. catching typos) are useful, but many are not.
+  \item \textbf{3D scene editor} meets most goals, e.g.~model parts.
+  \item \textbf{Programming} is needed for reacting to events, e.g.~collisions.
+  \item \textbf{Onboarding} is very different from ``let's learn to program''.
+  \item \textbf{Google Stack Overflow} is a common workflow.
+  \item \textbf{Type-driven tools} are useful, e.g.~autocomplete or API help.
+  \item \textbf{Type errors} may be useful (e.g.~catching typos) but some are not.
 \end{itemize}
 Type systems should help or get out of the way.
 
@@ -90,9 +90,9 @@ Type systems should help or get out of the way.
 
 E.g. ``decrease user churn'' or ``improve frame rate''.
 \begin{itemize}
-\item Code planning
-\item Code refactoring
-\item Defect detection
+\item \textbf{Code planning}: programs are incomplete.
+\item \textbf{Code refactoring}: programs change.
+\item \textbf{Defect detection}: programs have bugs.
 \end{itemize}
 Type-driven development is a useful technique!
 
@@ -104,12 +104,11 @@ Type-driven development is a useful technique!
 
 \frametitle{Infallible types}
 
-\emph{Goal}: support type-driven tools (e.g. autocomplete) for all programs.
+Goal: \emph{support type-driven tools (e.g. autocomplete) for all programs.}
 \begin{itemize}
-\item Traditional typing judgment: $\Gamma\vdash M:T$
-\item Infallible judgment: $\Gamma\vdash M \Rightarrow N:T$, where $N$ may flag type errors
-\item For every $M$ and $\Gamma$,
-  there are $N$ and $T$ such that $\Gamma \vdash M \Rightarrow N : T$.
+\item \textbf{Traditional typing judgment} says nothing about ill-typed terms.
+\item \textbf{Infallible judgment}: every term gets a type.
+\item \textbf{Flag type errors}: elaboration introduces \emph{flagged} subterms.
 \end{itemize}
 
 \emph{Related work}:
@@ -124,12 +123,12 @@ Type-driven development is a useful technique!
 
 \frametitle{Strict types}
 
-\emph{Goal}: no false negatives.
+Goal: \emph{no false negatives}.
 
 \begin{itemize}
-\item \emph{Strict mode} enabled by developers who want defect detection.
-\item \emph{Business as usual} soundness via progress + preservation.
-\item \emph{Gradual types} for programs with flagged type errors.
+\item \textbf{Strict mode} enabled by developers who want defect detection.
+\item \textbf{Business as usual} soundness via progress + preservation.
+\item \textbf{Gradual types} for programs with flagged type errors.
 \end{itemize}
 
 \emph{Related work}:
@@ -144,14 +143,14 @@ Type-driven development is a useful technique!
 
 \frametitle{Nonstrict types}
 
-\emph{Goal}: no false positives.
+Goal: \emph{no false positives}.
 
 \begin{itemize}
-\item \emph{Nonstrict mode} enabled by developers who want type-drive tools.
-\item Not even obvious how to state the goals!
-\item A shot at it: a program is \emph{incorrectly flagged} if it contains
+\item \textbf{Nonstrict mode} enabled by developers who want type-drive tools.
+\item \textbf{Victory condition} does not have an obvious definition!
+\item \textbf{A shot at it}: a program is \emph{incorrectly flagged} if it contains
   a flagged value (i.e.~a flagged program has successfully terminated).
-\item Is progress + correct flagging what we want?
+\item \textbf{Progress + correct flagging} is what we want???
 \end{itemize}
 
 \emph{Related work}:
@@ -169,14 +168,13 @@ Type-driven development is a useful technique!
 Goal: \emph{support mixed strict/nonstrict development}.
 
 \begin{itemize}
-\item Strict/nonstrict mode is enabled per-module.
-\item What happens when a codebase is mixed?
-\item Combine progress + preservation with progress + correct flagging?
+\item \textbf{Per-module} strict/nonstrict mode.
+\item \textbf{Combined} progress + preservation with progress + correct flagging?
 \end{itemize}
 
 \emph{Related work}:
 \begin{itemize}
-\item Not much?
+\item Some on mixed languages, but with shared safety properties.
 \end{itemize}
   
 \end{frame}
@@ -188,20 +186,18 @@ Goal: \emph{support mixed strict/nonstrict development}.
 Goal: \emph{provide benefits of type-directed tools to everyone}.
 
 \begin{itemize}
-\item Infer types for all variables, don't just give them type any.
-\item Luau includes System F, so everything is undecidable. Yay heuristics!
-\item Currently, strict and nonstrict mode infer different types. Boo!
+\item \textbf{Infer types} for all variables, don't just give them type any.
+\item \textbf{System F} is in Luau, so everything is undecidable. Yay heuristics!
+\item \textbf{Different modes} currently infer different types. Boo!
 \end{itemize}
 
 \emph{Related work}:
 \begin{itemize}
-\item Lots.
+\item Lots, though not on mixed modes.
 \end{itemize}
 
 \end{frame}
 
-\part{Thank you!}
-
-\part{Roblox is hiring!}
+\part{Thank you!\\Roblox is hiring!}
 
 \end{document}
