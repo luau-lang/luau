@@ -35,7 +35,7 @@ the system to be unsound, for example:
 
 ```lua
 local t = { u = {} }
-local u : { p = 37 } = { p = 37, q = "hi" }
+local u : { p: number } = { p = 37, q = "hi" }
 t = { u = u }
 local x: number? = t.u["p"]
 local y: number? = t.u["q"] -- This is "hi" at run-time
