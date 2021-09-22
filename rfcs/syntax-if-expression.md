@@ -20,7 +20,7 @@ To solve these problems, we propose introducing a first-class ternary conditiona
 
 Concretely, the `if-then-else` expression must match `if <expr> then <expr> else <expr>`; it can also contain an arbitrary number of `elseif` clauses, like `if <expr> then <expr> elseif <expr> then <expr> else <expr>`. Note that in either case, `else` is mandatory.
 
-The result of the expression is the then-expression when condition is truthful (not `nil` or `false`) and else-expression otherwise.
+The result of the expression is the then-expression when condition is truthful (not `nil` or `false`) and else-expression otherwise. Only one of the two possible resulting expressions is evaluated.
 
 Example:
 
