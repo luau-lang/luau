@@ -317,42 +317,6 @@ local account: Account = Account.new("Alexander", 500)
              --^^^^^^^ not ok, 'Account' does not exist
 ```
 
-## Type refinements
-
-When we check the type of a value, what we're doing is we're refining the type, hence "type refinement." Currently, the support for this is somewhat basic.
-
-Using `type` comparison:
-```lua
-local stringOrNumber: string | number = "foo"
-
-if type(x) == "string" then
-    local onlyString: string = stringOrNumber -- ok
-    local onlyNumber: number = stringOrNumber -- not ok
-end
-
-local onlyString: string = stringOrNumber -- not ok
-local onlyNumber: number = stringOrNumber -- not ok
-```
-
-Using truthy test:
-```lua
-local maybeString: string? = nil
-
-if maybeString then
-    local onlyString: string = maybeString -- ok
-end
-```
-
-And using `assert` will work with the above type guards:
-```lua
-local stringOrNumber: string | number = "foo"
-
-assert(type(stringOrNumber) == "string")
-
-local onlyString: string = stringOrNumber -- ok
-local onlyNumber: number = stringOrNumber -- not ok
-```
-
 ## Roblox types
 
 Roblox supports a rich set of classes and data types, [documented here](https://developer.roblox.com/en-us/api-reference). All of them are readily available for the type checker to use by their name (e.g. `Part` or `RaycastResult`).
