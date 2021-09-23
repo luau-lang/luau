@@ -2,7 +2,7 @@
 
 ## Motivation
 
-Luau supports reclusive type aliases, but with an important restriction:
+Luau supports recursive type aliases, but with an important restriction:
 users can declare functions of recursive types, such as:
 ```lua
   type Tree<a> = { data: a, children: {Tree<a>} }
