@@ -150,32 +150,6 @@ t : { get @metatable : T, p : number }
 
 *This is a possibly breaking change.*
 
-### Require
-
-A `require`d module's properties should be read-only by default.
-
-If module A is:
-```lua
---!strict
-local exports = {}
-exports.p = 0
-return exports
-``
-
-and module B is:
-```lua
---!strict
-local imports = require(A)
-```
-
-then we should have types
-```
-exports : { p: number }
-imports : { get p: number }
-```
-
-*This is a possibly breaking change.*
-
 ## Drawbacks
 
 This is adding to the complexity budget for users,
