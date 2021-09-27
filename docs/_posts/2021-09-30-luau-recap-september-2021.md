@@ -42,12 +42,14 @@ local x = y
  * Luau now infers the result of `Instance:Clone()` much more accurately.
  * Luau type guard refinements now support more arbitrary cases, for instance `typeof(foo) ~= "Instance"` eliminates anything not a subclass of Instance.
 
-
 ## Performance improvements
 
- * We optimized the performance of the `Vector3.new` constructor.
+ * `Vector3.new` constructor has been optimized and is now ~2x faster
+ * A previously implemented optimization for table size prediction has been enhanced to predict final table size when `setmetatable` is used, such as `local self = setmetatable({}, Klass)`
+ * Method calls for user-specified objects have been optimized and are now 2-4% faster
+ * `debug.traceback` is now 1.5x faster, although `debug.info` is likely still superior for performance-conscious code
+ * Creating table literals with explicit numeric indices, such as `{ [1] = 42 }`, is now noticeably faster, although list-style construction is still recommended.
 
 ## Other improvements
 
- * We fixed some GC issues where objects could become "zombies".
- * We relaxed the Parallel Lua constraints when dispatching deferred events.
+ * The existing 'TableLiteral' lint now flags cases when table literals have duplicate numeric indices, such as `{ [1] = 1, [1] = 2 }`
