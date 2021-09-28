@@ -6,7 +6,7 @@ Instead of indexing on string objects returning `nil` for keys that aren't metho
 
 ## Motivation
 
-string is the only non-primitive type, other than tables, that supports indexing by default. This depends on the host configuration, but by default all versions of Lua and Luau
+string is the only type other than tables that supports indexing by default. This depends on the host configuration, but by default all versions of Lua and Luau
 configure the global metatable for string type to be `{ __index = string }`, where `string` here is the global string function table, containing methods such as `format` and `sub`.
 
 This is necessary to support method calls[^1] on string objects, such as `("%d"):format(42)`. As a byproduct of metatable lookup rules, it also means that using a key that doesn't
