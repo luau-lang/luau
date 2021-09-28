@@ -37,7 +37,6 @@ aren't present.
 Instead, we're going to use a chain of two metatables like this (pseudocode):
 
 ```lua
--- variant 1
 MT1 = { __index = MT2 }
 MT2 = { ...string fields } with metatable MT3
 MT3 = { __index = noindex }
@@ -50,20 +49,12 @@ second-level metatable lookup which will call `noindex` function, producing an e
 As a result, some programs may change behavior and start generating errors when previously they produced `nil`. The premise of this proposal is that code like this likely
 is incorrect to begin with, and the error is just being hidden.
 
-Note that the pseudo-code above is a sketch that is easy to understand, but in practice there's two alternative formulations where one of the tables uses itself as a metatable:
+Note that the pseudo-code above is a sketch that is easy to understand, but in practice there's an alternative formulations where one of the tables uses itself as a metatable:
 
 ```lua
--- potentially more efficient variant 2
-MT1 = { ... string fields, __index = MT2 } with metatable MT1
-MT2 = { __index = noindex }
-
--- potentially more efficient variant 3
 MT1 = { __index = MT2 }
 MT2 = { ... string fields, __index = noindex } with metatable MT2
 ```
-
-It is likely that variant 2 is the most efficient one because it results in just a single table (MT1) being accessed on fast paths, but we will use whichever variant
-ends up being faster in practice.
 
 ## Drawbacks
 
