@@ -33,7 +33,7 @@ type Swapper = { swap : <X, Y>(Point<X, Y>) -> Point<Y, X> }
 
 People may remember that back in
 [April](https://devforum.roblox.com/t/luau-recap-april-2021/) we
-announced generic functions, nut then had to disable them. That was
+announced generic functions, but then had to disable them. That was
 because [DataBrain](https://devforum.roblox.com/u/databrain) discovered a [nasty
 interaction](https://devforum.roblox.com/t/recent-type-system-regressions-for-generic-parametered-functions/)
 between `typeof` and generics, which meant that it was possible to
