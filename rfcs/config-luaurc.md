@@ -19,9 +19,8 @@ applied. When multiple files are used, the file closer to the .lua file override
 
 .luaurc is a JSON file that can also contain comments and trailing commas. The file can have the following keys:
 
-- `"mode"`: type checking mode, can be one of "nocheck", "nonstrict", "strict"
-- `"lint"`: lints to enable; points to an array of string literals that correspond to the names of linting rules (see https://luau-lang.org/lint), or `"*"` that means "all rules"
-- `"nolint"`: lints to disable; points to an array of string literals or `"*"`
+- `"languageMode"`: type checking mode, can be one of "nocheck", "nonstrict", "strict"
+- `"lint"`: lints to enable; points to an object that maps string literals that correspond to the names of linting rules (see https://luau-lang.org/lint), or `"*"` that means "all rules", to a boolean (to enable/disable the lint)
 - `"lintErrors"`: a boolean that controls whether lint issues are reported as errors or warnings (off by default)
 - `"typeErrors"`: a boolean that controls whether type issues are reported as errors or warnings (on by default)
 - `"globals"`: extra global values; points to an array of strings where each string names a global that the type checker and linter must assume is valid and of type `any`
@@ -31,14 +30,11 @@ Example of a valid .luaurc file:
 ```json5
 {
 	"mode": "nonstrict",
-	"lint": "*",
-	"nolint": ["LocalUnused"],
+	"lint": { "*": true, "LocalUnused": false },
 	"lintErrors": true,
 	"globals": ["expect"] // TestEZ
 }
 ```
-
-In addition to the JSON file, for consistency this proposal suggests allowing to *enable* lints on a per-file basis with `--!lint` hot comment, just like you can disable them with `--!nolint`.
 
 Note that in absence of a configuration file, we will use default settings: mode will be set to nonstrict, a set of lint warnings is going to be enabled by default (this proposal doesn't detail that set - that will be subject to a different proposal), type checking issues are going to be treated as errors, lint issues are going to be treated as warnings.
 
@@ -47,7 +43,7 @@ Note that in absence of a configuration file, we will use default settings: mode
 Today we support .robloxrc files; this proposal will keep parsing legacy specification of configuration for compatibility:
 
 - Top-level `"language"` key can refer to an object that has `"mode"` key that also defines language mode
-- Top-level `"lint"` key can refer to an object that has lint names as keys and `"disabled"`/`"enabled"`/`"fatal"` as values.
+- Top-level `"lint"` object values can refer to a string `"disabled"`/`"enabled"`/`"fatal"` instead of a boolean as a value.
 
 These keys are only going to be supported for compatibility and only when the file name is .robloxrc (which is only going to be parsed by internal Roblox command line tools but this proposal mentions it for completeness).
 
@@ -59,7 +55,7 @@ File-based JSON configuration may or may not map cleanly to environments that do
 
 Using JSON5 instead of vanilla JSON limits the interoperability.
 
-There's no way to force specific lints to be fatal, although this can be solved in the future by expanding "lintErrors" to be optionally an array of strings.
+There's no way to force specific lints to be fatal, although this can be solved in the future by promoting the "compatibility" feature where one can specify a string to a non-compatibility feature.
 
 ## Alternatives
 
