@@ -93,7 +93,7 @@ t.g = function() ... end
 
 For example, if we define:
 ```lua
-  type RWFactory<A> { build : () -> A }
+  type RWFactory<A> = { build : () -> A }
 ```
 
 then we do *not* have that `RWFactory<Dog>` is a subtype of `RWFactory<Animal>` 
@@ -107,7 +107,7 @@ since the build method is read-write, so users can update it:
 
 but if we define:
 ```lua
-  type ROFactory<A> { get build : () -> A }
+  type ROFactory<A> = { get build : () -> A }
 ```
 
 then we do have that `ROFactory<Dog>` is a subtype of `ROFactory<Animal>` 
