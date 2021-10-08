@@ -87,7 +87,7 @@ end
 ```
 has inferred type:
 ```
-f: (t: { p: set number, get q: number }) -> ()
+f: (t: { set p: number, get q: number }) -> ()
 ```
 indicating that `p` is used write-only but `q` is used read-only.
 
@@ -109,9 +109,9 @@ contravariant. These are sometimes useful, for example:
 
 ```lua
 function move(src, tgt)
-  for i,v in ipairs(src)
+  for i,v in ipairs(src) do
     tgt[i] = src[i]
-    src[i] = null
+    src[i] = nil
   end
 end
 ```
