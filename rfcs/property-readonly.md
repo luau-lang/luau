@@ -11,7 +11,7 @@ type system does not track this. As a result, users can write (and
 indeed due to autocomplete, an encouraged to write) programs with
 run-time errors.
 
-In addition, user code may have properties (such as module exports)
+In addition, user code may have properties (such as methods)
 that are expected to be used without modification. Currently there is
 no way for user code to indicate this, even if it has explicit type
 annotations.
@@ -96,7 +96,7 @@ For example, if we define:
   type RWFactory<A> { build : () -> A }
 ```
 
-then we do *not* have `RWFactory<Dog>` is a subtype of `RWFactory<Animal>` 
+then we do *not* have that `RWFactory<Dog>` is a subtype of `RWFactory<Animal>` 
 since the build method is read-write, so users can update it:
 ```lua
   local mkdog : RWFactory<Dog> = { build = Dog.new }
@@ -110,7 +110,7 @@ but if we define:
   type ROFactory<A> { get build : () -> A }
 ```
 
-then we do have `ROFactory<Dog>` is a subtype of `ROFactory<Animal>` 
+then we do have that `ROFactory<Dog>` is a subtype of `ROFactory<Animal>` 
 since the build method is read-write, so users can update it:
 ```lua
   local mkdog : ROFactory<Dog> = { build = Dog.new }
@@ -133,23 +133,6 @@ Methods in classes should be read-only by default.
 Many of the Roblox APIs an be marked as having getters but not
 setters, which will improve accuracy of type checking for Roblox APIs.
 
-### Metatables
-
-The setmetatable function should produce a read-only metatable by default.
-
-```lua
-local T = {}
-function t:m() ... end
-local t = setmetatable(T, { p = 0 })
-```
-
-should have type
-```
-t : { get @metatable : T, p : number }
-```
-
-*This is a possibly breaking change.*
-
 ## Drawbacks
 
 This is adding to the complexity budget for users,
@@ -160,6 +143,6 @@ who will be faced with inferred get modifiers on many properties.
 Rather than making read-write access the default, we could make read-only the
 default and add a new modifier for read-write. This is not backwards compatible.
 
-We could continue with read-write access to methods, metatables and module exports,
+We could continue with read-write access to methods,
 which means no breaking changes, but means that users may be faced with type
 errors such as "`Factory<Dog>` is not a subtype of `Factory<Animal>`".
