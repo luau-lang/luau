@@ -18,10 +18,10 @@ To make an existing table read-only, one needs to combine these mechanisms, by c
 
 ## Design
 
-This proposal proposes formalizing the notion of "read-only" tables by providing a new table functions:
+This proposal proposes formalizing the notion of "read-only" tables by providing two new table functions:
 
-`table.freeze(t)`: given a non-frozen table t, freezes it; fails when t is not a table or is already frozen. Returns t.
-`table.isfrozen(t)`: given a table t, returns a boolean indicating the frozen status; fails when t is not a table.
+- `table.freeze(t)`: given a non-frozen table t, freezes it; fails when t is not a table or is already frozen. Returns t.
+- `table.isfrozen(t)`: given a table t, returns a boolean indicating the frozen status; fails when t is not a table.
 
 When a table is frozen, the following is true:
 
@@ -32,7 +32,7 @@ When a table is frozen, the following is true:
 
 This feature is useful for two reasons:
 
-a) It allows an easier way to expose sandboxed objects that aren't possible to monkey-patch for security reasons. We actually already have support for freezing and use it internally on various builtin tables like math, we just don't expose it to Lua.
+a) It allows an easier way to expose sandboxed objects that aren't possible to monkey-patch for security reasons. We actually already have support for freezing and use it internally on various builtin tables like `math`, we just don't expose it to Lua.
 
 b) It allows an easier way to expose immutable objects for consistency/correctness reasons. For example, Cryo library provides an implementation of immutable data structures; with this functionality, it's possible to implement a lighter-weight library by, for example, extending a table with methods to return mutated versions of the table, but retaining the usual table interface
 
