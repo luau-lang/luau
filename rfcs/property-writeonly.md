@@ -149,8 +149,6 @@ gives read-write properties with different types.
 If we infer such types, we may wish to present them differently, for
 example TypeScript allows both a getter and a setter.
 
-This may be useful for Roblox scripts that reparent elements in the DM.
-
 ## Drawbacks
 
 This is adding to the complexity budget for users, who will be faced
