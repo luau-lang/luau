@@ -27,8 +27,10 @@ sudo tlmgr install preprint
 sudo tlmgr install libertine
 sudo tlmgr install inconsolata
 sudo tlmgr install newtx
-sudo tlmgr install latexmk
-```
+sudo tlmgr install latexmk`
+sudo tlmgr install montserrat
+sudo tlmgr install ly1
+``
 
 ## Building the paper
 

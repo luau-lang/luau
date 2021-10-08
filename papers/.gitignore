@@ -7,3 +7,6 @@
 *.log
 *.out
 *.xcp
+*.nav
+*.snm
+*.toc

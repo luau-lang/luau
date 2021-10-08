@@ -1,0 +1,203 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usecolortheme{whale}
+\setbeamertemplate{navigation symbols}{}
+\definecolor{background}{rgb}{0.945,0.941,0.96}
+\definecolor{bluish}{rgb}{0.188,0.455,0.863}
+\usepackage{montserrat}
+\setbeamerfont{frametitle}{size=\Large,series=\bfseries}
+\setbeamerfont{title}{size=\Huge,series=\bfseries}
+\setbeamerfont{date}{shape=\itshape}
+\setbeamercolor{title}{bg=bluish}
+\setbeamercolor{frametitle}{bg=bluish}
+\setbeamercolor{background canvas}{bg=background}
+\setbeamercolor{itemize item}{fg=bluish}
+\setbeamercolor{part name}{fg=background}
+\setbeamercolor{part title}{bg=bluish}
+\setbeamertemplate{footline}[text line]{\hfill\raisebox{5ex}{\insertshorttitle~~~~\insertframenumber/\inserttotalframenumber~~~~\includegraphics[width=5em]{Logo-Roblox-Black-Full.png}}}
+\AtBeginPart{{\setbeamertemplate{footline}{}\frame{\partpage}}}
+
+\newcommand{\erase}{\mathsf{erase}}
+
+\title{Goals of the Luau~Type~System}
+\author{Lily Brown \and Andy Friesen \and Alan Jeffrey}
+\institute[Roblox]{\includegraphics[width=15em]{Logo-Roblox-Black-Full.png}}
+\date[HATRA '21]{\textit{Human Aspects of Types and Reasoning Assistants} 2021}
+
+\begin{document}
+
+{\setbeamertemplate{footline}{}\frame{\titlepage}}
+
+\part{Creator Goals}
+
+\begin{frame}
+
+\frametitle{Roblox}
+
+A platform for creating shared immersive 3D experiences: 
+\begin{itemize}
+  \item \textbf{Many}: 20 million experiences, 8 million creators.
+  \item \textbf{At scale}: e.g.~\emph{Adopt Me!} has 10 billion plays.
+  \item \textbf{Learners}: e.g.~200+ kids' coding camps in 65+ countries.
+  \item \textbf{Professional}: 345k creators monetizing experiences.
+\end{itemize}
+A very heterogeneous community.
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Roblox developer community}
+
+All developers are important:
+\begin{itemize}
+  \item \textbf{Learners}: energetic creative community.
+  \item \textbf{Professionals}: high-quality experiences.
+  \item \textbf{Everyone inbetween}: some learners become professionals!
+\end{itemize}
+Satisfying everyone is sometimes challenging.
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Roblox Studio}
+
+Demo time!
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Learners have immediate goals}
+
+E.g. ``when a player steps on the button, advance the slide''.
+\begin{itemize}
+  \item \textbf{3D scene editor} meets most goals, e.g.~model parts.
+  \item \textbf{Programming} is needed for reacting to events, e.g.~collisions.
+  \item \textbf{Onboarding} is very different from ``let's learn to program''.
+  \item \textbf{Google Stack Overflow} is a common workflow.
+  \item \textbf{Type-driven tools} are useful, e.g.~autocomplete or API help.
+  \item \textbf{Type errors} may be useful (e.g.~catching typos) but some are not.
+\end{itemize}
+Type systems should help or get out of the way.
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Professionals have long-term goals}
+
+E.g. ``decrease user churn'' or ``improve frame rate''.
+\begin{itemize}
+\item \textbf{Code planning}: programs are incomplete.
+\item \textbf{Code refactoring}: programs change.
+\item \textbf{Defect detection}: programs have bugs.
+\end{itemize}
+Type-driven development is a useful technique!
+
+\end{frame}
+
+\part{Luau Type System}
+
+\begin{frame}
+
+\frametitle{Infallible types}
+
+Goal: \emph{support type-driven tools (e.g. autocomplete) for all programs.}
+\begin{itemize}
+\item \textbf{Traditional typing judgment} says nothing about ill-typed terms.
+\item \textbf{Infallible judgment}: every term gets a type.
+\item \textbf{Flag type errors}: elaboration introduces \emph{flagged} subterms.
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Type error reporting, program repair.
+\item Typed holes (e.g. in Hazel).
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Strict types}
+
+Goal: \emph{no false negatives}.
+
+\begin{itemize}
+\item \textbf{Strict mode} enabled by developers who want defect detection.
+\item \textbf{Business as usual} soundness via progress + preservation.
+\item \textbf{Gradual types} for programs with flagged type errors.
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Lots and lots for type safety.
+\item Gradual typing, blame analysis, migratory types\dots
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Nonstrict types}
+
+Goal: \emph{no false positives}.
+
+\begin{itemize}
+\item \textbf{Nonstrict mode} enabled by developers who want type-drive tools.
+\item \textbf{Victory condition} does not have an obvious definition!
+\item \textbf{A shot at it}: a program is \emph{incorrectly flagged} if it contains
+  a flagged value (i.e.~a flagged program has successfully terminated).
+\item \textbf{Progress + correct flagging} is what we want???
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Success types (e.g. Erlang Dialyzer).
+\item Incorrectness Logic.
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Mixing types}
+
+Goal: \emph{support mixed strict/nonstrict development}.
+
+\begin{itemize}
+\item \textbf{Per-module} strict/nonstrict mode.
+\item \textbf{Combined} progress + preservation with progress + correct flagging?
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Some on mixed languages, but with shared safety properties.
+\end{itemize}
+  
+\end{frame}
+
+\begin{frame}
+
+\frametitle{Type inference}
+
+Goal: \emph{provide benefits of type-directed tools to everyone}.
+
+\begin{itemize}
+\item \textbf{Infer types} for all variables.  Resist the urge to give up and ascribe a top type when an error is encountered.
+\item \textbf{System F} is in Luau, so everything is undecidable. Yay heuristics!
+\item \textbf{Different modes} currently infer different types. Boo!
+\end{itemize}
+
+\emph{Related work}:
+\begin{itemize}
+\item Lots, though not on mixed modes.
+\end{itemize}
+
+\end{frame}
+
+\part{Thank you!\\Roblox is hiring!}
+
+\end{document}
