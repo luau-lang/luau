@@ -91,6 +91,23 @@ f: (t: { set p: number, get q: number }) -> ()
 ```
 indicating that `p` is used write-only but `q` is used read-only.
 
+### Adding read-only and write-only properties
+
+There are various points type inference adds properties to types, we now have to consider how to treat each of these.
+
+When reading a property from a free table, we should add a read-only
+property if there is no such property already. If there is already a
+write-only property, we should make it read-write.
+
+When writing a property to a free table, we should add a write-only
+property if there is no such property already. If there is already a
+read-only property, we should make it read-write.
+
+When writing a property to an unsealed table, we should add a read-write
+property if there is no such property already.
+
+When declaring a method in a table or class, we should add a read-only property for the method.
+
 ### Subtyping
 
 Write-only properties are contravariant:
