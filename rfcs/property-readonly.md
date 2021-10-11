@@ -2,7 +2,7 @@
 
 ## Summary
 
-Allow properties of classes and tables to be marked as read-only.
+Allow properties of classes and tables to be inferred as read-only.
 
 ## Motivation
 
