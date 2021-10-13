@@ -93,7 +93,7 @@ indicating that `p` is used write-only but `q` is used read-only.
 
 ### Adding read-only and write-only properties
 
-There are various points type inference adds properties to types, we now have to consider how to treat each of these.
+There are various points where type inference adds properties to types, we now have to consider how to treat each of these.
 
 When reading a property from a free table, we should add a read-only
 property if there is no such property already. If there is already a
