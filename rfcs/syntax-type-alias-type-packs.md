@@ -15,7 +15,7 @@ type Y = X<number, string> -- invalid number of arguments
 
 Additionally, while a simple introduction of these generic type packs into the scope will provide an ability to reference them in function declarations, we want to be able to use them to instantiate other type aliases as well.
 
-Declaration syntax also supports multiple type packs, but we don't have defined semantics on instantiation of such alias.
+Declaration syntax also supports multiple type packs, but we don't have defined semantics on instantiation of such type alias.
 
 ## Design
 
@@ -38,12 +38,14 @@ type X<T...> = --
 type A<S...> = X<S...> -- T... = (S...)
 ```
 
-Similar to function calls, we want to be able to assign multiple regular types to a single type pack:
+Similar to function calls, we want to be able to assign zero or more regular types to a single type pack:
 ```lua
-type A = X                    -- T... = (). Note: check 'Alternatives'
+type A = X<>                  -- T... = ()
 type B = X<number>            -- T... = (number)
 type C = X<number, string>    -- T... = (number, string)
 ```
+
+Definition of `A` doesn't parse right now, we would like to make it legal going forward.
 
 Variadic types can also be assigned to type alias type pack:
 ```lua
@@ -54,14 +56,20 @@ type E = X<number, ...string> -- T... = (number, ...string)
 Multiple regular types can be assigned together with a type pack argument in a tail position:
 ```lua
 type F<S...> = X<number, S...> -- T... = (number, S...)
-type G<S...> = X<S..., number> -- error, type arguments can't follow type pack arguments
+type G<S...> = X<number, string, S...> -- T... = (number, string, S...)
+```
+
+Regular type parameters cannot follow type pack parameters:
+```lua
+type H<S...> = X<S..., number> -- error, type parameters can't follow type pack parameters
 ```
 
 ### Multiple type pack parameters
 
 We have to keep in mind that it is also possible to declare a type alias that takes multiple type pack parameters.
 
-And since we only allow type pack arguments after regular type arguments, trailing regular types with a type pack that follows are combined into a single type pack argument:
+Similar to the previous examples, type parameters that haven't been matched with type arguments are combined together with the next type pack (if present) into the first type pack.
+Type pack parameters after the first one have to be type packs:
 ```lua
 type Y<T..., U...> = --
 
@@ -81,6 +89,32 @@ type W<T, U..., V...> = --
 type H<S..., R...> = W<number, S..., R...>         -- U... = S..., V... = R...
 type I<S..., R...> = W<number, string, S..., R...> -- U... = (string, S...), V... = R...
 ```
+
+### Explicit type pack syntax
+
+To enable additional control for the content of a type pack, especially in cases where multiple type pack parameters are expected, we introduce an explicit type pack syntax for use in type alias instantiation.
+
+Similar to variadic types `...a` and generic type packs `T...`, explicit type packs can only be used at type pack positions:
+```lua
+type Y<T..., U...> = (T...) -> (U...)
+
+type F1 = Y<(number, string), (boolean)>        -- T... = (number, string), U... = (boolean)
+type F2 = Y<(), ()>                             -- T... = (), U... = ()
+type F3<S...> = Y<string, S..., (number, S...)> -- T... = (string, S...), U... = (number, S...)
+```
+
+In type parameter list, types inside the parentheses always produce a type pack.
+This is in contrast to function return type pack annotation, where `() -> number` is the same as `() -> (number)`.
+
+This is a breaking change.
+
+Users can already have type alias instantiations like these:
+```lua
+type X<T> = T?
+type A = X<(number)> -- valid right now, typechecking error after this RFC
+```
+
+Explicit type pack syntax is not available in other type pack annotation contexts.
 
 ## Drawbacks
 
@@ -114,49 +148,31 @@ We wouldn't be able to differentiate if an instantiation results in a type or a 
 
 Support for variadic types in the middle of a type pack can be found in TypeScript's tuples.
 
-### Explicit type pack syntax
-
-To enable additional control for the content of a type pack, we would have liked to introduce an explicit type pack syntax.
-
-Similar to variadic types `...a` and generic type packs `T...`, explicit type packs can only be used at type pack positions:
-```lua
-type Y<T..., U...> = (T...) -> (U...)
-
-type F1 = Y<(number, string), (boolean)>        -- T... = (number, string), U... = (boolean)
-type F2 = Y<(), ()>                             -- T... = (), U... = ()
-type F3<S...> = Y<string, S..., (number, S...)> -- T... = (string, S...), U... = (number, S...)
-```
-
-This explicit type pack syntax could've been used in other syntax positions where type packs are allowed:
-```lua
-local function f(...: (number, ...string)) end
-local function g(...: (number, (string, number)) end
-local function h(): (number, (string, ...boolean)) return 1, 's', true, false end
-```
-
-Unfortunately, our syntax supports placing parenthesis around the type:
-```lua
-local a: number
-local b: (number)
-```
-
-This means that the syntax around type packs is ambiguous:
-```lua
-type Y<T..., U...> = (T...) -> (U...)
-
-type A = Y<(number), (number)> -- will resolve as Y<number, number>
-
-local function f(...: (number)) end -- '...' is a '...number', not a type pack with a single element
-```
-
 ## Alternatives
 
-The syntax we use right now to instantiate type alias with a single type pack parameter to an empty type pack is to not specify the argument list at all:
-```lua
-type X<T...> = --
+### Backwards compatibility for single type in parentheses
 
-type A = X     -- ok
-type B = X<>   -- error
+It is possible to allow single element type pack parameter assignment to a type argument:
+```lua
+type X<T> = T?
+type A = X<(number)>
 ```
 
-This is the current parser behavior and while we could introduce `X<>` as an alternative, without a warning/deprecation/epoch system we might not be able to disallow the `X` syntax.
+This is not proposed to keep separation between type and type packs more clear.
+If we supported warning generation, we could create a deprecation period, but since our typechecking errors don't block compilation, it is not that critical.
+
+### Function return type syntax for explicit type packs
+
+Another option that was considered is to parse `(T)` as `T`, like we do for return type annotation.
+
+This option complicates the match ruleset since the typechecker will never know if the user has written `T` or `(T)` so each regular type could be a single element type pack and vice versa.
+```lua
+type X<T...>
+type C = X<number, number> -- T... = (number, number)
+type D = X<(number), (number)> -- T... = (number, number)
+
+type Y<T..., U...>
+
+--- two items that were enough to satisfy only a single T... in X are enough to satisfy two T..., U... in Y
+type E = Y<number, number> -- T... = (number), U... = (number)
+```
