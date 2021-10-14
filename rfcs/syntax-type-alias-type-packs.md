@@ -106,12 +106,13 @@ type F3<S...> = Y<string, S..., (number, S...)> -- T... = (string, S...), U... =
 In type parameter list, types inside the parentheses always produce a type pack.
 This is in contrast to function return type pack annotation, where `() -> number` is the same as `() -> (number)`.
 
-This is a breaking change.
-
-Users can already have type alias instantiations like these:
+However, to preserve backwards-compatibility with optional parenthesis around regular types, type alias instantiation is allowed to assign a non-variadic type pack parameter with a single element to a type argument:
 ```lua
-type X<T> = T?
-type A = X<(number)> -- valid right now, typechecking error after this RFC
+type X<T, U> = (T) -> U?
+type A = X<(number), (string)> -- T = number, U = string
+
+type Y<T...> = (T...) -> ()
+type B = Y<(number), (string)> -- error: too many type pack parameters
 ```
 
 Explicit type pack syntax is not available in other type pack annotation contexts.
@@ -128,6 +129,8 @@ type X = Car<number, string, boolean> -- number
 type Y<S...> = Car<S...>              -- error, not enough regular type arguments
 type Z = Y<number, string, boolean>   -- error, Y doesn't have a valid definition
 ```
+
+With our immediate instantiation, at the point of `Car<S...>`, we only know that `S...` is a type pack, but contents are not known.
 
 Splitting off a single type is is a common pattern with variadic templates in C++, but we don't allow type alias overloads, so use cases are more limited.
 
@@ -150,17 +153,6 @@ Support for variadic types in the middle of a type pack can be found in TypeScri
 
 ## Alternatives
 
-### Backwards compatibility for single type in parentheses
-
-It is possible to allow single element type pack parameter assignment to a type argument:
-```lua
-type X<T> = T?
-type A = X<(number)>
-```
-
-This is not proposed to keep separation between type and type packs more clear.
-If we supported warning generation, we could create a deprecation period, but since our typechecking errors don't block compilation, it is not that critical.
-
 ### Function return type syntax for explicit type packs
 
 Another option that was considered is to parse `(T)` as `T`, like we do for return type annotation.
@@ -176,3 +168,17 @@ type Y<T..., U...>
 --- two items that were enough to satisfy only a single T... in X are enough to satisfy two T..., U... in Y
 type E = Y<number, number> -- T... = (number), U... = (number)
 ```
+
+### Special mark for single type type packs
+
+In the Rust language, there is a special disambiguation syntax for single element tuples and single element type packs using a trailing comma:
+```rust
+(Type,)
+```
+
+In Python, the same idea is used for single element tuple values:
+```python
+value = (1, )
+```
+
+Since our current ruleset no longer has a problem with single element type tuples, I don't think we need syntax-directed disambiguation option like this one.
