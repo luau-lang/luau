@@ -8,7 +8,7 @@ Luau comes equipped with a standard library of functions designed to manipulate 
 scripts to interact with the host environment - it's expected that embedding applications provide extra functionality on top of this and limit or sandbox the system access
 appropriately, if necessary. For example, Roblox provides [a rich API to interact with the 3D environment and limited APIs to interact with external services](https://developer.roblox.com/en-us/api-reference).
 
-This page documents the available builtin libraries and functions.
+This page documents the available builtin libraries and functions. All of these are accessible by default by any script, assuming the host environment exposes them (which is usually a safe assumption outside of extremely constrained environments).
 
 ## Global functions
 
@@ -64,17 +64,72 @@ unpack
 
 ## math library
 
-abs
-acos
-asin
-atan2
-atan
-ceil
-cosh
-cos
-deg
-exp
-floor
+```
+function abs(n: number): number
+```
+
+Returns the absolute value of `n`. Returns NaN if the input is NaN. 
+
+```
+function acos(n: number): number
+```
+
+Returns the arc cosine of `n`, expressed in radians. Returns a value in `[0, pi]` range. Returns NaN if the input is not in `[-1, +1]` range.
+
+```
+function asin(n: number): number
+```
+
+Returns the arc sine of `n`, expressed in radians. Returns a value in `[-pi/2, +pi/2]` range. Returns NaN if the input is not in `[-1, +1]` range.
+
+```
+function atan2(y: number, x: number): number
+```
+
+Returns the arc tangent of `y/x`, expressed in radians. The function takes into account the sign of both arguments in order to determine the quadrant. Returns a value in `[-pi, pi]` range.
+
+```
+function atan(n: number): number
+```
+
+Returns the arc tangent of `n`, expressed in radians. Returns a value in `[-pi/2, pi-2]` range.
+
+```
+function ceil(n: number): number
+```
+
+Rounds `n` upwards to the next integer boundary.
+
+```
+function cosh(n: number): number
+```
+
+Returns the hyberbolic cosine of `n`.
+
+```
+function cos(n: number): number
+```
+
+Returns the cosine of `n`, which is an angle in radians. Returns a value in `[0, 1]` range.
+
+```
+function deg(n: number): number
+```
+
+Converts `n` from radians to degrees and returns the result.
+
+```
+function exp(n: number): number
+```
+
+Returns the base-e exponent of `n`, that is `e^n`.
+
+```
+function floor(n: number): number
+```
+
+Rounds `n` downwards to previous integer boundary.
+
 fmod
 frexp
 ldexp
