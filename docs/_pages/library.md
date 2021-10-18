@@ -65,81 +65,132 @@ unpack
 ## math library
 
 ```
-function abs(n: number): number
+function math.abs(n: number): number
 ```
 
 Returns the absolute value of `n`. Returns NaN if the input is NaN. 
 
 ```
-function acos(n: number): number
+function math.acos(n: number): number
 ```
 
 Returns the arc cosine of `n`, expressed in radians. Returns a value in `[0, pi]` range. Returns NaN if the input is not in `[-1, +1]` range.
 
 ```
-function asin(n: number): number
+function math.asin(n: number): number
 ```
 
 Returns the arc sine of `n`, expressed in radians. Returns a value in `[-pi/2, +pi/2]` range. Returns NaN if the input is not in `[-1, +1]` range.
 
 ```
-function atan2(y: number, x: number): number
+function math.atan2(y: number, x: number): number
 ```
 
 Returns the arc tangent of `y/x`, expressed in radians. The function takes into account the sign of both arguments in order to determine the quadrant. Returns a value in `[-pi, pi]` range.
 
 ```
-function atan(n: number): number
+function math.atan(n: number): number
 ```
 
 Returns the arc tangent of `n`, expressed in radians. Returns a value in `[-pi/2, pi-2]` range.
 
 ```
-function ceil(n: number): number
+function math.ceil(n: number): number
 ```
 
 Rounds `n` upwards to the next integer boundary.
 
 ```
-function cosh(n: number): number
+function math.cosh(n: number): number
 ```
 
 Returns the hyberbolic cosine of `n`.
 
 ```
-function cos(n: number): number
+function math.cos(n: number): number
 ```
 
 Returns the cosine of `n`, which is an angle in radians. Returns a value in `[0, 1]` range.
 
 ```
-function deg(n: number): number
+function math.deg(n: number): number
 ```
 
 Converts `n` from radians to degrees and returns the result.
 
 ```
-function exp(n: number): number
+function math.exp(n: number): number
 ```
 
 Returns the base-e exponent of `n`, that is `e^n`.
 
 ```
-function floor(n: number): number
+function math.floor(n: number): number
 ```
 
 Rounds `n` downwards to previous integer boundary.
 
-fmod
-frexp
-ldexp
-log10
-log
-max
-min
-modf
-pow
-rad
+```
+function math.fmod(x: number, y: number): number
+```
+
+Returns the remainder of `x` modulo `y`, rounded towards zero. Returns NaN if `y` is zero.
+
+```
+function math.frexp(n: number): (number, number)
+```
+
+Splits the number into a significand (a number in `[-1, +1]` range) and binary exponent such that `n = s * 2^e`, and returns `s, e`.
+
+```
+function math.ldexp(s: number, e: number): number
+```
+
+Given the significand and a binary exponent, returns a number `s * 2^e`.
+
+```
+function math.log10(n: number): number
+```
+
+Returns base-10 logarithm of the input number. Returns NaN if the input is negative, and negative infinity if the input is 0.
+Equivalent to `math.log(n, 10)`.
+
+```
+function math.log(n: number, base: number?): number
+```
+
+Returns logarithm of the input number in the specified base; base defaults to `e`. Returns NaN if the input is negative, and negative infinity if the input is 0.
+
+```
+function math.max(list: ...number): number
+```
+
+Returns the maximum number of the input arguments. The function requires at least one input and will error if zero parameters are passed. If one of the inputs is a NaN, the result may or may not be a NaN.
+
+```
+function math.min(list: ...number): number
+```
+
+Returns the minimum number of the input arguments. The function requires at least one input and will error if zero parameters are passed. If one of the inputs is a NaN, the result may or may not be a NaN.
+
+```
+function math.modf(n: number): (number, number)
+```
+
+Returns the integer and fractional part of the input number. Both the integer and fractional part have the same sign as the input number, e.g. `math.modf(-1.5)` returns `-1, -0.5`.
+
+```
+function math.pow(x: number, y: number): number
+```
+
+Returns `x` raised to the power of `y`.
+
+```
+function math.rad(n: number): number
+```
+
+Converts `n` from degrees to radians and returns the result.
+
 random
 randomseed
 sinh
