@@ -60,19 +60,123 @@ ipairs
 pairs
 pcall
 xpcall
+unpack
 
 ## math library
 
+abs
+acos
+asin
+atan2
+atan
+ceil
+cosh
+cos
+deg
+exp
+floor
+fmod
+frexp
+ldexp
+log10
+log
+max
+min
+modf
+pow
+rad
+random
+randomseed
+sinh
+sin
+sqrt
+tanh
+tan
+noise
+clamp
+sign
+round
+
 ## table library
+
+concat
+foreach
+foreachi
+getn
+maxn
+insert
+remove
+sort
+pack
+unpack
+move
+create
+find
+clear
+freeze
+isfrozen
 
 ## string library
 
+byte
+char
+find
+format
+gmatch
+gsub
+len
+lower
+match
+rep
+reverse
+sub
+upper
+split
+pack
+packsize
+unpack
+
 ## coroutine library
+
+create
+running
+status
+wrap
+yield
+isyieldable
+resume
 
 ## bit32 library
 
+arshift
+band
+bnot
+bor
+bxor
+btest
+extract
+lrotate
+lshift
+replace
+rrotate
+rshift
+
 ## utf8 library
+
+offset
+codepoint
+char
+len
+codes
 
 ## os library
 
+clock
+date
+difftime
+time
+
 ## debug library
+
+info
+traceback
