@@ -61,3 +61,18 @@ pairs
 pcall
 xpcall
 
+## math library
+
+## table library
+
+## string library
+
+## coroutine library
+
+## bit32 library
+
+## utf8 library
+
+## os library
+
+## debug library
