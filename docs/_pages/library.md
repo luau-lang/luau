@@ -191,17 +191,73 @@ function math.rad(n: number): number
 
 Converts `n` from degrees to radians and returns the result.
 
-random
-randomseed
-sinh
-sin
-sqrt
-tanh
-tan
-noise
-clamp
-sign
-round
+```
+function math.random(): number
+function math.random(n: number): number
+function math.random(min: number, max: number): number
+```
+
+Returns a random number using the global random number generator. A zero-argument version returns a number in `[0, 1]` range. A one-argument version returns a number in `[1, n]` range. A two-argument version returns a number in `[min, max]` range. The input arguments are truncated to integers, so `math.random(1.5)` always returns 1.
+
+```
+function math.randomseed(seed: number)
+```
+
+Reseeds the global random number generator; subsequent calls to `math.random` will generate a deterministic sequence of numbers that only depends on `seed`.
+
+```
+function math.sinh(n: number): number
+```
+
+Returns a hyperbolic sine of `n`.
+
+```
+function math.sin(n: number): number
+```
+
+Returns the sine of `n`, which is an angle in radians. Returns a value in `[0, 1]` range.
+
+```
+function math.sqrt(n: number): number
+```
+
+Returns the square root of `n`. Returns NaN if the input is negative.
+
+```
+function math.tanh(n: number): number
+```
+
+Returns the hyperbolic tangent of `n`.
+
+```
+function math.tan(n: number): number
+```
+
+Returns the tangent of `n`, which is an angle in radians.
+
+```
+function math.noise(x: number, y: number?, z: number?): number
+```
+
+Returns 3D Perlin noise value for the point `(x, y, z)` (`y` and `z` default to zero if absent). Returns a value in `[-1, 1]` range.
+
+```
+function math.clamp(n: number, min: number, max: number): number
+```
+
+Returns `n` if the number is in `[min, max]` range; otherwise, returns `min` when `n < min`, and `max` otherwise. The function errors if `min > max`.
+
+```
+function math.sign(n: number): number
+```
+
+Returns `-1` if `n` is negative, `1` if `n` is positive, and `0` if `n` is zero.
+
+```
+function math.round(n: number): number
+```
+
+Rounds `n` to the nearest integer boundary.
 
 ## table library
 
