@@ -18,15 +18,15 @@ While most library functions are provided as part of a library like `table`, a f
 function assert<T>(value: T, message: string?): T
 ```
 
-`assert` checks if the value is truthful; if it's not (which means it's `false` or `nil`), it throws an error. The error message can be customized with an optional parameter.
+`assert` checks if the value is truthful; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
 Upon success the function returns the `condition` argument.
 
 ```
 function error<T>(message: T, level: number?)
 ```
 
-`error` throws an error with the specified object. Note that errors don't have to be strings, although they often are by convention; various error handling mechanisms like `pcall`
-preserve the error type. When `level` is specified, the error thrown is turned into a string that contains call frame information for the caller at level `level`, where `1` refers
+`error` raises an error with the specified object. Note that errors don't have to be strings, although they often are by convention; various error handling mechanisms like `pcall`
+preserve the error type. When `level` is specified, the error raised is turned into a string that contains call frame information for the caller at level `level`, where `1` refers
 to the function that called `error`. This can be useful to attribute the errors to callers, for example `error("Expected a valid object", 2)` highlights the caller of the function
 that called `error` instead of the function itself in the callstack.
 
@@ -145,14 +145,14 @@ Returns the triple (generator, state, nil) that can be used to traverse the tabl
 function pcall(f: function, args: ...any): (boolean, ...any)
 ```
 
-Calls function `f` with parameters `args`. If the function suceeds, returns `true` followed by all return values of `f`. If the function throws an error, returns `false` followed by the error object.
+Calls function `f` with parameters `args`. If the function suceeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
 Note that `f` can yield, which results in the entire coroutine yielding as well.
 
 ```
 function xpcall(f: function, e: function, args: ...any): (boolean, ...any)
 ```
 
-Calls function `f` with parameters `args`. If the function succeeds,  returns `true` followed by all return values of `f`. If the function throws an error, calls `e` with the error object as an argument, and returns `false` followed by all return values of `e`.
+Calls function `f` with parameters `args`. If the function succeeds,  returns `true` followed by all return values of `f`. If the function raises an error, calls `e` with the error object as an argument, and returns `false` followed by all return values of `e`.
 Note that `f` can yield, which results in the entire coroutine yielding as well.
 `e` can neither yield nor error - if it does raise an error, `xpcall` returns with `false` followed by a special error message.
 
