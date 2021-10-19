@@ -87,7 +87,8 @@ function rawset<K, V>(t: { [K] : V }, k: K, v: V)
 Assigns table field `k` to the value `v`. This operation bypasses metatables/`__newindex`.
 
 ```
-function select<T>(i: number | string, args: ...T): T
+function select<T>(i: string, args: ...T): number
+function select<T>(i: number, args: ...T): T
 ```
 
 When called with `'#'` as the first argument, returns the number of remaining parameters passed. Otherwise, returns the parameter with the specified index.
