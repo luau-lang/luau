@@ -632,31 +632,31 @@ All functions in the `bit32` library treat input numbers as 32-bit unsigned inte
 function bit32.arshift(n: number, i: number): number
 ```
 
-Shift `n` by `i` bits to the right (if `i` is negative, performs a left shift instead). The most significant bit of `n` is propagated during the shift.
+Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift.
 
 ```
 function bit32.band(args: ...number): number
 ```
 
-Perform a bitwise `and` of all input numbers and return the result. If the function is called with no arguments, an integer with all bits set to 1 is returned.
+Performs a bitwise `and` of all input numbers and returns the result. If the function is called with no arguments, an integer with all bits set to 1 is returned.
 
 ```
 function bit32.bnot(n: number): number
 ```
 
-Return a bitwise negation of the input number.
+Returns a bitwise negation of the input number.
 
 ```
 function bit32.bor(args: ...number): number
 ```
 
-Perform a bitwise `or` of all input numbers and return the result. If the function is called with no arguments, zero is returned.
+Performs a bitwise `or` of all input numbers and returns the result. If the function is called with no arguments, zero is returned.
 
 ```
 function bit32.bxor(args: ...number): number
 ```
 
-Perform a bitwise `xor` (exclusive or) of all input numbers and return the result. If the function is called with no arguments, zero is returned.
+Performs a bitwise `xor` (exclusive or) of all input numbers and returns the result. If the function is called with no arguments, zero is returned.
 
 ```
 function bit32.btest(args: ...number): boolean
@@ -668,37 +668,37 @@ Perform a bitwise `and` of all input numbers, and return `true` iff the result i
 function bit32.extract(n: number, f: number, w: number?): number
 ```
 
-Extract bits at positions `[f..w]` and return the resulting integer. `w` defaults to `f+1`, so a two-argument version of `extract` returns the bit value at position `f`.
+Extracts bits at positions `[f..w]` and returns the resulting integer. `w` defaults to `f+1`, so a two-argument version of `extract` returns the bit value at position `f`.
 
 ```
 function bit32.lrotate(n: number, i: number): number
 ```
 
-Rotate `n` to the left by `i` bits (if `i` is negative, a right rotate is performed instead); the bits that are shifted past the bit width are shifted back from the right.
+Rotates `n` to the left by `i` bits (if `i` is negative, a right rotate is performed instead); the bits that are shifted past the bit width are shifted back from the right.
 
 ```
 function bit32.lshift(n: number, i: number): number
 ```
 
-Shift `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead).
+Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead).
 
 ```
 function bit32.replace(n: number, r: number, f: number, w: number?): number
 ```
 
-Replace bits at positions `[f..w]` of number `n` with `r` and return the resulting integer. `w` defaults to `f+1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result.
+Replaces bits at positions `[f..w]` of number `n` with `r` and returns the resulting integer. `w` defaults to `f+1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result.
 
 ```
 function bit32.rrotate(n: number, i: number): number
 ```
 
-Rotate `n` to the right by `i` bits (if `i` is negative, a left rotate is performed instead); the bits that are shifted past the bit width are shifted back from the left.
+Rotates `n` to the right by `i` bits (if `i` is negative, a left rotate is performed instead); the bits that are shifted past the bit width are shifted back from the left.
 
 ```
 function bit32.rshift(n: number, i: number): number
 ```
 
-Shift `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead).
+Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead).
 
 ## utf8 library
 
