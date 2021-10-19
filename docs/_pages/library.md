@@ -39,28 +39,128 @@ garbage collector, and as such at any given point in time the heap may contain b
 consumption from the operating system perspective and can fluctuate over time as garbage collector frees objects.
 
 ```
-function getfenv(target: any?): table
+function getfenv(target: (function | number)?): table
 ```
 
-getmetatable
-next
-newproxy
-print
-rawequal
-rawget
-rawset
-select
-setfenv
-setmetatable
-tonumber
-tostring
-type
-typeof
-ipairs
-pairs
-pcall
-xpcall
-unpack
+Returns the environment table for target function; when `target` is not a function, it must be a number corresponding to the caller stack index, where 1 means the function that calls `getfenv`, and the environment table is returned for the corresponding function from the call stack. When `target` is omitted it defaults to `1`, so `getfenv()` returns the environment table for the calling function.
+
+```
+function getmetatable(obj: any): table?
+```
+
+Returns the metatable for the specified object; when object is not a table or a userdata, the returned metatable is shared between all objects of the same type. Note that when metatable is protected (has a `__metatable` key), the value corresponding to that key is returned instead and may not be a table.
+
+```
+function next<K, V>(t: { [K]: V }, i: K?): (K, V)?
+```
+
+Given the table `t`, returns the next key-value pair after `i` in the table traversal order, or nothing if `i` is the last key. When `i` is `nil`, returns the first key-value pair instead.
+
+```
+function newproxy(mt: boolean?): userdata
+```
+
+Creates a new untyped userdata object; when `mt` is true, the new object has an empty metatable that can be modified using `getmetatable`.
+
+```
+function print(args: ...any)
+```
+
+Prints all arguments to the standard output, using Tab as a separator.
+
+```
+function rawequal(a: any, b: any): boolean
+```
+
+Returns true iff `a` and `b` have the same type and point to the same object (for garbage collected types) or are equal (for value types).
+
+```
+function rawget<K, V>(t: { [K]: V }, k: K): V?
+```
+
+Performs a table lookup with index `k` and returns the resulting value, if present in the table, or nil. This operation bypasses metatables/`__index`.
+
+```
+function rawset<K, V>(t: { [K] : V }, k: K, v: V)
+```
+
+Assigns table field `k` to the value `v`. This operation bypasses metatables/`__newindex`.
+
+```
+function select(i: number | string, args: ...any): any
+```
+
+When called with `'#'` as the first argument, returns the number of remaining parameters passed. Otherwise, returns the parameter with the specified index.
+Index can be specified from the start of the arguments (using 1 as the first argument), or from the end (using -1 as the last argument).
+
+```
+function setfenv(target: function | number, env: table)
+```
+
+Changes the environment table for target function to `env`; when `target` is not a function, it must be a number corresponding to the caller stack index, where 1 means the function that calls `setfenv`, and the environment table is returned for the corresponding function from the call stack.
+
+```
+function setmetatable(t: table, mt: table?)
+```
+
+Changes metatable for the given table. Note that unlike `getmetatable`, this function only works on tables. If the table already has a protected metatable (has a `__metatable` field), this function errors.
+
+```
+function tonumber(s: string, base: number?): number?
+```
+
+Converts the input string to the number in base `base` (default 10) and returns the resulting number. If the conversion fails, returns `nil` instead.
+
+```
+function tostring(obj: any): string
+```
+
+Converts the input object to string and returns the result. If the object has a metatable with `__tostring` field, that method is called to perform the conversion.
+
+```
+function type(obj: any): string
+```
+
+Returns the type of the object; returns "userdata" for userdata objects.
+
+```
+function typeof(obj: any): string
+```
+
+Returns the type of the object; for userdata objects that have a metatable with the `__type` field, returns the value for that key.
+
+```
+function ipairs(t: table): <iterator>
+```
+
+Returns the triple (generator, state, nil) that can be used to traverse the table using a `for` loop. The traversal results in key-value pairs for the numeric portion of the table; key starts from 1 and increases by 1 on each iteration. The traversal terminates when reaching the first `nil` value (so `ipairs` can't be used to traverse array-like tables with holes).
+
+```
+function pairs(t: table): <iterator>
+```
+
+Returns the triple (generator, state, nil) that can be used to traverse the table using a `for` loop. The traversal results in key-value pairs for all keys in the table, numeric and otherwise, but doesn't have a defined order.
+
+```
+function pcall(f: function, args: ...any): (boolean, ...any)
+```
+
+Calls function `f` with parameters `args`. If the function suceeds, returns `true` followed by all return values of `f`. If the function throws an error, returns `false` followed by the error object.
+Note that `f` can yield, which results in the entire coroutine yielding as well.
+
+```
+function xpcall(f: function, e: function, args: ...any): (boolean, ...any)
+```
+
+Calls function `f` with parameters `args`. If the function succeeds,  returns `true` followed by all return values of `f`. If the function throws an error, calls `e` with the error object as an argument, and returns `false` followed by all return values of `e`.
+Note that `f` can yield, which results in the entire coroutine yielding as well.
+`e` can neither yield nor error - if it does raise an error, `xpcall` returns with `false` followed by a special error message.
+
+```
+function unpack<V>(a: {V}, f: number?, t: number?): ...V
+```
+
+Returns all values of `a` with indices in `[f..t]` range. `f` defaults to 1 and `t` defaults to `#a`.
 
 ## math library
 
