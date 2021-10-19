@@ -22,7 +22,7 @@ function assert<T>(value: T, message: string?): T
 Upon success the function returns the `condition` argument.
 
 ```
-function error<T>(message: T, level: number?)
+function error(object: any, level: number?)
 ```
 
 `error` raises an error with the specified object. Note that errors don't have to be strings, although they often are by convention; various error handling mechanisms like `pcall`
@@ -87,7 +87,7 @@ function rawset<K, V>(t: { [K] : V }, k: K, v: V)
 Assigns table field `k` to the value `v`. This operation bypasses metatables/`__newindex`.
 
 ```
-function select(i: number | string, args: ...any): any
+function select<T>(i: number | string, args: ...T): T
 ```
 
 When called with `'#'` as the first argument, returns the number of remaining parameters passed. Otherwise, returns the parameter with the specified index.
