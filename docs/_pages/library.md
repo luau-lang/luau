@@ -88,10 +88,10 @@ Assigns table field `k` to the value `v`. This operation bypasses metatables/`__
 
 ```
 function select<T>(i: string, args: ...T): number
-function select<T>(i: number, args: ...T): T
+function select<T>(i: number, args: ...T): ...T
 ```
 
-When called with `'#'` as the first argument, returns the number of remaining parameters passed. Otherwise, returns the parameter with the specified index.
+When called with `'#'` as the first argument, returns the number of remaining parameters passed. Otherwise, returns the subset of parameters starting with the specified index.
 Index can be specified from the start of the arguments (using 1 as the first argument), or from the end (using -1 as the last argument).
 
 ```
