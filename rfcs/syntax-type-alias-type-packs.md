@@ -49,45 +49,34 @@ Definition of `A` doesn't parse right now, we would like to make it legal going 
 
 Variadic types can also be assigned to type alias type pack:
 ```lua
-type D = X<...number>         -- T... = (...number)
-type E = X<number, ...string> -- T... = (number, ...string)
-```
-
-Multiple regular types can be assigned together with a type pack argument in a tail position:
-```lua
-type F<S...> = X<number, S...> -- T... = (number, S...)
-type G<S...> = X<number, string, S...> -- T... = (number, string, S...)
-```
-
-Regular type parameters cannot follow type pack parameters:
-```lua
-type H<S...> = X<S..., number> -- error, type parameters can't follow type pack parameters
+type D = X<...number>           -- T... = (...number)
 ```
 
 ### Multiple type pack parameters
 
 We have to keep in mind that it is also possible to declare a type alias that takes multiple type pack parameters.
 
-Similar to the previous examples, type parameters that haven't been matched with type arguments are combined together with the next type pack (if present) into the first type pack.
+Again, type parameters that haven't been matched with type arguments are combined together into the first type pack.
+After the first type pack parameter was assigned, following type parameters are not allowed.
 Type pack parameters after the first one have to be type packs:
 ```lua
 type Y<T..., U...> = --
 
-type A<S...> = Y<S..., S...>              -- T... = (S...), U... = (S...)
-type B<S...> = Y<number, ...string, S...> -- T... = (number, ...string), U... = S...
-type C<S...> = Y<number, string, S...>    -- error, T... = (number, string, S...), but U... = undefined
+type A<S...> = Y<S..., S...>              -- T... = S..., U... = S...
+type B<S...> = Y<...string, S...>         -- T... = (...string), U... = S...
+type C<S...> = Y<number, string, S...>    -- T... = (number, string), U... = S...
 type D = Y<...number>                     -- error, T = (...number), but U... = undefined, not (...number) even though one infinite set is enough to fill two, we may have '...number' inside a type pack argument and we'll be unable to see its content
+type E<S...> = Y<S..., number, string>    -- error, type parameters are not allowed after a type pack
 
 type Z<T, U...> = --
 
-type E<S...> = Z<number, S...>         -- T = number, U... = (S...)
-type F<S...> = Z<number, string, S...> -- T = number, U... = (string, S...)
+type F<S...> = Z<number, S...>         -- T = number, U... = S...
 type G<S...> = Z<S...>                 -- error, not enough regular type arguments, can't split the front of S... into T
 
 type W<T, U..., V...> = --
 
-type H<S..., R...> = W<number, S..., R...>         -- U... = S..., V... = R...
-type I<S..., R...> = W<number, string, S..., R...> -- U... = (string, S...), V... = R...
+type H<S..., R...> = W<number, S..., R...>  -- U... = S..., V... = R...
+type I<S...> = W<number, string, S...>      -- U... = (string), V... = S...
 ```
 
 ### Explicit type pack syntax
@@ -98,9 +87,9 @@ Similar to variadic types `...a` and generic type packs `T...`, explicit type pa
 ```lua
 type Y<T..., U...> = (T...) -> (U...)
 
-type F1 = Y<(number, string), (boolean)>        -- T... = (number, string), U... = (boolean)
-type F2 = Y<(), ()>                             -- T... = (), U... = ()
-type F3<S...> = Y<string, S..., (number, S...)> -- T... = (string, S...), U... = (number, S...)
+type F1 = Y<(number, string), (boolean)>          -- T... = (number, string), U... = (boolean)
+type F2 = Y<(), ()>                               -- T... = (), U... = ()
+type F3<S...> = Y<string, number, (number, S...)> -- T... = (string, number), U... = (number, S...)
 ```
 
 In type parameter list, types inside the parentheses always produce a type pack.
@@ -110,6 +99,7 @@ However, to preserve backwards-compatibility with optional parenthesis around re
 ```lua
 type X<T, U> = (T) -> U?
 type A = X<(number), (string)> -- T = number, U = string
+type A = X<(number), string>   -- same
 
 type Y<T...> = (T...) -> ()
 type B = Y<(number), (string)> -- error: too many type pack parameters
@@ -182,3 +172,45 @@ value = (1, )
 ```
 
 Since our current ruleset no longer has a problem with single element type tuples, I don't think we need syntax-directed disambiguation option like this one.
+
+### Only type pack arguments for type pack parameters
+
+One option that we have is to remove implicit pack assignment from a set of types and always require new explicit type pack syntax:
+
+```lua
+type X<T...> = --
+
+type B = X<>                  -- invalid
+type C = X<number>            -- invalid
+type D = X<number, string>    -- invalid
+
+type B = X<()>                -- T... = ()
+type C = X<(number)>          -- T... = (number)
+type D = X<(number, string)>  -- T... = (number, string)
+```
+
+But this doesn't allow users to define type aliases where they only care about a few types and use the rest as a 'tail':
+
+```lua
+type X<T, U, Rest...> = (T, U, Rest...) -> Rest...
+
+type A = X<number, string, ()> -- forced to use a type pack when there are no tail elements
+```
+
+It also makes it harder to change the type parameter count without fixing up the instantiations.
+
+### Combining types together with the following type pack into a single argument
+
+Earlier version of the proposal allowed types to be combined together with a type pack as a tail:
+```lua
+type X<T...> = --
+
+type A<S...> = X<number, S...> --- T... = (number, S...)
+```
+
+But this syntax resulted in some confusing behavior when multiple type pack arguments are expected:
+```lua
+type Y<T..., U...> = --
+
+type B = Y<number, (string, number)> -- not enough type pack parameters
+```
