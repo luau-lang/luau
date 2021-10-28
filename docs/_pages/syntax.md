@@ -189,7 +189,7 @@ For more information please refer to [typechecking documentation](typecheck).
 
 ## If-then-else expressions
 
-In addition to supporting standard if *statements*, luau has added support for if *expressions*.  Syntactically, `if-then-else` expressions look very similar to if statements.  However instead of conditionally executing blocks of code, if expressions conditionally evaluate expressions and return the value produced as a result. Also, unlike if statements, if expressions do not terminate with the `end` keyword.
+In addition to supporting standard if *statements*, Luau adds support for if *expressions*.  Syntactically, `if-then-else` expressions look very similar to if statements.  However instead of conditionally executing blocks of code, if expressions conditionally evaluate expressions and return the value produced as a result. Also, unlike if statements, if expressions do not terminate with the `end` keyword.
 
 Here is a simple example of an `if-then-else` expression:
 ```lua
