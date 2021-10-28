@@ -186,3 +186,21 @@ local a: M.Point = {x=5, y=6}
 ```
 
 For more information please refer to [typechecking documentation](typecheck).
+
+## If-then-else expressions
+
+In addition to supporting standard if *statements*, Luau adds support for if *expressions*.  Syntactically, `if-then-else` expressions look very similar to if statements.  However instead of conditionally executing blocks of code, if expressions conditionally evaluate expressions and return the value produced as a result. Also, unlike if statements, if expressions do not terminate with the `end` keyword.
+
+Here is a simple example of an `if-then-else` expression:
+```lua
+local maxValue = if a > b then a else b
+```
+
+`if-then-else` expressions may occur in any place a regular expression is used.  The `if-then-else` expression must match `if <expr> then <expr> else <expr>`; it can also contain an arbitrary number of `elseif` clauses, like `if <expr> then <expr> elseif <expr> then <expr> else <expr>`. Note that in either case, `else` is mandatory.  
+
+Here's is an example demonstrating `elseif`:
+```lua
+local sign = if x < 0 then -1 elseif x > 0 then 1 else 0
+```
+
+**Note:** In Luau, the `if-then-else` expression is preferred vs the standard Lua idiom of writing `if a and b or c` (which roughly simulates a ternary operator).  However, the Lua idiom may return an unexpected result if `b` evaluates to false.  The `if-then-else` expression will behave as expected in all situations.
