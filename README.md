@@ -17,7 +17,8 @@ Luau is an embeddable language, but it also comes with two command-line tools by
 
 `luau-analyze` is a command-line type checker and linter; given a set of input files, it produces errors/warnings according to the file configuration, which can be customized by using `--!` comments in the files or [`.luaurc`](https://github.com/Roblox/luau/blob/master/rfcs/config-luaurc.md) files. For details please refer to [type checking]( https://luau-lang.org/typecheck) and [linting](https://luau-lang.org/lint) documentation.
 
-The easiest way to get the command-line binaries is to use [artifact uploads](https://github.com/Roblox/luau/actions/workflows/release.yml) that are available for every commit to master.
+You can download the binaries from [a recent release](https://github.com/Roblox/luau/releases).
+
 
 # Building
 

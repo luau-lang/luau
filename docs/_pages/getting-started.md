@@ -4,7 +4,7 @@ title: Getting Started
 toc: true
 ---
 
-To get started with Luau you need to use `luau` command line binary to run your code and `luau-analyze` to run static analysis (including type checking and linting). You can download these from [Artifacts on a recent build](https://github.com/Roblox/luau/actions/workflows/release.yml).
+To get started with Luau you need to use `luau` command line binary to run your code and `luau-analyze` to run static analysis (including type checking and linting). You can download these from [a recent release](https://github.com/Roblox/luau/releases).
 
 ## Creating a script
 
