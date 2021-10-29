@@ -4,25 +4,11 @@ title: Getting Started
 toc: true
 ---
 
-To get started with Luau you need to install Roblox Studio, which you can download [here](https://www.roblox.com/create). 
-
-## Creating a place
-
-If you just want to experiment with the language itself, you can create a simple baseplate game.
-
-<figure>
-  <img src="{{ site.url }}{{ site.baseurl }}/assets/images/create-new-place.png">
-</figure>
+To get started with Luau you need to use `luau` command line binary to run your code and `luau-analyze` to run static analysis (including type checking and linting). You can download these from [Artifacts on a recent build](https://github.com/Roblox/luau/actions/workflows/release.yml).
 
 ## Creating a script
 
-To create your own testing script, go to ServerScriptService in the explorer tree and add a Script object.
-
-<figure>
-  <img src="{{ site.url }}{{ site.baseurl }}/assets/images/create-script.png">
-</figure>
-
-Double-click on the script object and paste this:
+To create your own testing script, create a new file with `.lua` as the extension:
 
 ```lua
 function ispositive(x)
@@ -40,7 +26,9 @@ print(isfoo("bar"))
 print(isfoo(1))
 ```
 
-Note that there are no warnings about calling ``ispositive()`` with a string, or calling ``isfoo()`` a number. 
+You can now run the file using `luau test.lua` and analyze it using `luau-analyze test.lua`.
+
+Note that there are no warnings about calling ``ispositive()`` with a string, or calling ``isfoo()`` a number. This is because the type checking uses non-strict mode by default, which is lenient in how it infers types used by the program.
 
 ## Type inference
 
@@ -55,25 +43,18 @@ end
 
 print(ispositive(1))
 print(ispositive("2"))
-
-function isfoo(a)
-    return a == "foo"
-end
-
-print(isfoo("bar"))
-print(isfoo(1))
 ```
 
 In ``strict`` mode, Luau will infer types based on analysis of the code flow. There is also ``nonstrict`` mode, where analysis is more conservative and types are more frequently inferred as ``any`` to reduce cases where legitimate code is flagged with warnings.
 
-In this case, Luau will use the ``return x > 0`` statement to infer that ``ispositive()`` is a function taking an integer and returning a boolean. Similarly, it will use the ``return a == "foo"`` statement to infer that ``isfoo()`` is a function taking a string and returning a boolean. Note that in both cases, it was not necessary to add any explicit type annotations.
+In this case, Luau will use the ``return x > 0`` statement to infer that ``ispositive()`` is a function taking a number and returning a boolean. Note that in this case, it was not necessary to add any explicit type annotations.
 
-Based on Luau's type inference, the editor now highlights the incorrect calls to ``ispositive()`` and ``isfoo()``:
+Based on Luau's type inference, the analysis tool will now flag the incorrect call to ``ispositive()``:
 
-<figure>
-  <img src="{{ site.url }}{{ site.baseurl }}/assets/images/error-ispositive.png">
-  <img src="{{ site.url }}{{ site.baseurl }}/assets/images/error-isfoo.png">
-</figure>
+```
+$ luau-analyze test.lua
+test.lua(7,18): TypeError: Type 'string' could not be converted into 'number'
+```
 
 ## Annotations
 
@@ -110,9 +91,11 @@ result = ispositive(1)
 
 Oops -- we're returning string values, but we forgot to update the function return type. Since we've told Luau that ``ispositive()`` returns a boolean (and that's how we're using it), the call site isn't flagged as an error. But because the annotation doesn't match our code, we get a warning in the function body itself:
 
-<figure>
-  <img src="{{ site.url }}{{ site.baseurl }}/assets/images/error-ispositive-string.png">
-</figure>
+```
+$ luau-analyze test.lua
+test.lua(5,9): TypeError: Type 'string' could not be converted into 'boolean'
+test.lua(7,9): TypeError: Type 'string' could not be converted into 'boolean'
+```
 
 The fix is simple; just change the annotation to declare the return type as a string:
 
@@ -133,9 +116,10 @@ result = ispositive(1)
 
 Well, almost - since we declared ``result`` as a boolean, the call site is now flagged:
 
-<figure>
-  <img src="{{ site.url }}{{ site.baseurl }}/assets/images/error-ispositive-boolean.png">
-</figure>
+```
+$ luau-analyze test.lua
+test.lua(12,10): TypeError: Type 'string' could not be converted into 'boolean'
+```
 
 If we update the type of the local variable, everything is good. Note that we could also just let Luau infer the type of ``result`` by changing it to the single line version ``local result = ispositive(1)``.
 
