@@ -143,5 +143,13 @@ We have now added a restriction on how generic type parameters can be used in re
 ## Performance improvements
 
 An improvement to the Stop-The-World (atomic in Lua terms) stage of the garbage collector was made to reduce time taken by that step by 4x factor.
+While this step only happens once during a GC cycle, it cannot be split into small parts and long times were visible as frame time spikes.
 
-While this step only happens once during a GC cycle, it cannot be split into small parts and long times were visible as frame time spikes (lag).
+Table construction and resize was optimized further; as a result, many instances of table construction see 10-20% improvements
+for smaller tables on all platforms and 20%+ improvements on Windows.
+
+Bytecode compiler has been optimized for giant table literals, resulting in 3x higher compilation throughput for certain files on AMD Zen architecture.
+
+Coroutine resumption has been optimized and is now ~10% faster for coroutine-heavy code.
+
+Array reads and writes are also now a bit faster resulting in 1-3% lift in array-heavy benchmarks.
