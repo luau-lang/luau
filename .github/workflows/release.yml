@@ -1,0 +1,34 @@
+name: release
+
+on:
+  push:
+    branches:
+      - 'master'
+    paths-ignore:
+      - 'docs/**'
+      - 'papers/**'
+      - 'rfcs/**'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu, macos, windows]
+    name: ${{matrix.os}}
+    runs-on: ${{matrix.os}}-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: configure
+      run: cmake . -DCMAKE_BUILD_TYPE=Release
+    - name: build
+      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release
+    - uses: actions/upload-artifact@v2
+      if: matrix.os != 'windows'
+      with:
+        name: luau-${{matrix.os}}
+        path: luau*
+    - uses: actions/upload-artifact@v2
+      if: matrix.os == 'windows'
+      with:
+        name: luau-${{matrix.os}}
+        path: Release\luau*.exe
