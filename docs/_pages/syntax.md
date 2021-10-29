@@ -203,4 +203,4 @@ Here's is an example demonstrating `elseif`:
 local sign = if x < 0 then -1 elseif x > 0 then 1 else 0
 ```
 
-**Note:** In Luau, the `if-then-else` expression is preferred vs the standard Lua idiom of writing `if a and b or c` (which roughly simulates a ternary operator).  However, the Lua idiom may return an unexpected result if `b` evaluates to false.  The `if-then-else` expression will behave as expected in all situations.
+**Note:** In Luau, the `if-then-else` expression is preferred vs the standard Lua idiom of writing `a and b or c` (which roughly simulates a ternary operator).  However, the Lua idiom may return an unexpected result if `b` evaluates to false.  The `if-then-else` expression will behave as expected in all situations.
