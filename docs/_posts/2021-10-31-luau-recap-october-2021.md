@@ -73,7 +73,7 @@ end
 
 Support for `or` constraints allowed us to handle additional scenarios with `and` and `not` expressions to reduce false positives after specific type guards.
 
-And speaking of type guards, we now correctly handle sub-class releationships in those checks:
+And speaking of type guards, we now correctly handle sub-class relationships in those checks:
 ```lua
 --!strict
 local function f(x: Part | Folder | string)
@@ -144,4 +144,4 @@ We have now added a restriction on how generic type parameters can be used in re
 
 An improvement to the Stop-The-World (atomic in Lua terms) stage of the garbage collector was made to reduce time taken by that step by 4x factor.
 
-While this step only happens once during a GC cycle, it cannot be split into small parts and long times were visibile as frame time spikes (lag).
+While this step only happens once during a GC cycle, it cannot be split into small parts and long times were visible as frame time spikes (lag).
