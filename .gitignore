@@ -1,5 +1,7 @@
-# Emacs
-*~
-
-# MacOS
-.DS_Store
+^build/
+^coverage/
+^fuzz/luau.pb.*
+^crash-*
+^default.prof*
+^fuzz-*
+^luau$
