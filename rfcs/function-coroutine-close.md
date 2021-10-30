@@ -22,6 +22,8 @@ We implement Lua 5.4 behavior exactly with the exception of to-be-closed variabl
 
 The `co` argument must be a coroutine object (of type `thread`).
 
+After closing the coroutine, it gets transitioned to dead state which means that `coroutine.status` will return `"dead"` and attempts to resume the coroutine will fail. In addition, the coroutine stack (which can be accessed via `debug.traceback` or `debug.info`) will become empty.
+
 ## Drawbacks
 
 None known, as this function doesn't introduce any existing states to coroutines, and is similar to running the coroutine to completion/error.
