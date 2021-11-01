@@ -69,6 +69,11 @@ jobs:
     - name: make coverage
       run: |
         CXX=clang++-10 make -j2 config=coverage coverage
+    - name: upload coverage
+      uses: coverallsapp/github-action@master
+      with:
+        path-to-lcov: ./coverage.info
+        github-token: ${{ secrets.GITHUB_TOKEN }}
     - uses: actions/upload-artifact@v2
       with:
         name: coverage
