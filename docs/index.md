@@ -6,13 +6,12 @@ permalink: /
 header:
   overlay_color: #000
   overlay_filter: 0.8
-  overlay_image: /assets/images/luau-header.png
   actions:
     - label: Learn More
       url: /why
 
 excerpt: >
-  Lua*u* (lowercase *u*, /ˈlu.aʊ/) is a fast, small, safe, gradually typed embeddable scripting language derived from Lua. It is used by Roblox game developers to write game code, as well as by Roblox engineers to implement large parts of the user-facing application code as well as portions of the editor (Roblox Studio) as plugins.
+  Lua*u* (lowercase *u*, /ˈlu.aʊ/) is a fast, small, safe, gradually typed embeddable scripting language derived from Lua.
 
 feature_row1:
   - 
