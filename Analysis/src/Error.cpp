@@ -122,12 +122,10 @@ struct ErrorConverter
             return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " +
                    std::to_string(e.actual) + " " + actualVerb + " returned here";
         case CountMismatch::Result:
-            if (e.expected > e.actual)
-                return "Function returns " + std::to_string(e.expected) + " values, but there " + actualVerb +
-                       " only " + std::to_string(e.actual) + " value" + actualS + " to unpack into";
-            else
-                return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " +
-                       std::to_string(e.actual) + " are required here";
+            // It is alright if right hand side produces more values than the
+            // left hand side accepts. In this context consider only the opposite case.
+            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " +
+                   std::to_string(e.actual) + " are required here";
         case CountMismatch::Arg:
             return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
         }
