@@ -626,11 +626,11 @@ void Unifier::tryUnify_(TypePackId superTp, TypePackId subTp, bool isFunctionCal
                 }
 
                 // This is a bit weird because we don't actually know expected vs actual.  We just know
-                // subtype vs supertype.  If we are checking a return value, we swap these to produce
-                // the expected error message.
+                // subtype vs supertype.  If we are checking the values returned by a function, we swap
+                // these to produce the expected error message.
                 size_t expectedSize = size(superTp);
                 size_t actualSize = size(subTp);
-                if (ctx == CountMismatch::Result || ctx == CountMismatch::Return)
+                if (ctx == CountMismatch::Result)
                     std::swap(expectedSize, actualSize);
                 errors.push_back(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
 
