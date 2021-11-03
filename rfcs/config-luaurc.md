@@ -29,20 +29,20 @@ Example of a valid .luaurc file:
 
 ```json5
 {
-	"mode": "nonstrict",
+	"languageMode": "nonstrict",
 	"lint": { "*": true, "LocalUnused": false },
 	"lintErrors": true,
 	"globals": ["expect"] // TestEZ
 }
 ```
 
-Note that in absence of a configuration file, we will use default settings: mode will be set to nonstrict, a set of lint warnings is going to be enabled by default (this proposal doesn't detail that set - that will be subject to a different proposal), type checking issues are going to be treated as errors, lint issues are going to be treated as warnings.
+Note that in absence of a configuration file, we will use default settings: languageMode will be set to nonstrict, a set of lint warnings is going to be enabled by default (this proposal doesn't detail that set - that will be subject to a different proposal), type checking issues are going to be treated as errors, lint issues are going to be treated as warnings.
 
 ## Design -- compatibility
 
 Today we support .robloxrc files; this proposal will keep parsing legacy specification of configuration for compatibility:
 
-- Top-level `"language"` key can refer to an object that has `"mode"` key that also defines language mode
+- Top-level `"language"` key can refer to an object that has `"languageMode"` key that also defines language mode
 - Top-level `"lint"` object values can refer to a string `"disabled"`/`"enabled"`/`"fatal"` instead of a boolean as a value.
 
 These keys are only going to be supported for compatibility and only when the file name is .robloxrc (which is only going to be parsed by internal Roblox command line tools but this proposal mentions it for completeness).
