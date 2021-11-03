@@ -61,7 +61,7 @@ feature_row3:
   - 
     title: Performance
     excerpt: >
-        In addition to a completely custom front end that implements parsing, linting and type checking, Luau runtime features new bytecode, interpreter and compiler that are heavily tuned for performance. Luau currently does not implement Just-In-Time compilation, but its interpreter is often competitive with LuaJIT interpreter on a wide set of benchmarks. We continue to optimize the runtime and rewrite portions of it to be even more efficient, including plans for a new garbage collector and further library optimizations, as well as an eventual JIT/AOT option. While our overall goal is to minimize the amount of time programmers spend tuning performance, some details about the performance characteristics are [provided for inquisitive minds](performance).
+        In addition to a completely custom front end that implements parsing, linting and type checking, Luau runtime features new bytecode, interpreter and compiler that are heavily tuned for performance. Luau currently does not implement Just-In-Time compilation, but its interpreter can be competitive with LuaJIT interpreter depending on the program. We continue to optimize the runtime and rewrite portions of it to be even more efficient. While our overall goal is to minimize the amount of time programmers spend tuning performance, some details about the performance characteristics are [provided for inquisitive minds](performance).
     url: /performance
     btn_label: Learn More
     btn_class: "btn--primary"
@@ -69,7 +69,10 @@ feature_row3:
   -
     title: Libraries
     excerpt: >
-        As a language, Luau is a full superset of Lua 5.1. As far as standard library is concerned, some functions had to be removed from the builtin libraries, and some functions had to be added. Additionally, Luau is currently only runnable from the context of the Roblox engine, which exposes a large API surface [documented on Roblox developer portal](https://developer.roblox.com/en-us/api-reference).
+        As a language, Luau is a full superset of Lua 5.1. As far as standard library is concerned, some functions had to be removed from the builtin libraries, and some functions had to be added. When Luau is embedded into an application, the scripts normally get access to extra library features that are application-specific.
+    url: /library
+    btn_label: Learn More
+    btn_class: "btn--primary"
 
 ---
 
