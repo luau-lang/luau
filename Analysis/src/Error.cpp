@@ -112,21 +112,22 @@ struct ErrorConverter
 
     std::string operator()(const Luau::CountMismatch& e) const
     {
+        const std::string expectedS = e.expected == 1 ? "" : "s";
+        const std::string actualS = e.actual == 1 ? "" : "s";
+        const std::string actualVerb = e.actual == 1 ? "is" : "are";
+
         switch (e.context)
         {
         case CountMismatch::Return:
-        {
-            const std::string expectedS = e.expected == 1 ? "" : "s";
-            const std::string actualS = e.actual == 1 ? "is" : "are";
-            return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " + std::to_string(e.actual) + " " + actualS +
-                   " returned here";
-        }
+            return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " +
+                   std::to_string(e.actual) + " " + actualVerb + " returned here";
         case CountMismatch::Result:
             if (e.expected > e.actual)
-                return "Function returns " + std::to_string(e.expected) + " values but there are only " + std::to_string(e.expected) +
-                       " values to unpack them into.";
+                return "Function returns " + std::to_string(e.expected) + " values, but there " + actualVerb +
+                       " only " + std::to_string(e.actual) + " value" + actualS + " to unpack into";
             else
-                return "Function only returns " + std::to_string(e.expected) + " values. " + std::to_string(e.actual) + " are required here";
+                return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " +
+                       std::to_string(e.actual) + " are required here";
         case CountMismatch::Arg:
             return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
         }

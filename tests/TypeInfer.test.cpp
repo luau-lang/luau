@@ -3251,7 +3251,30 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK(acm->context == CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 1);
+    CHECK_EQ(acm->actual, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "not_enough_return_values")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        function f()
+            return 55, ""
+        end
+
+        local a = f()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 2);
+    CHECK_EQ(acm->actual, 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
@@ -3269,6 +3292,8 @@ TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
     CHECK_EQ(acm->context, CountMismatch::Return);
+    CHECK_EQ(acm->expected, 2);
+    CHECK_EQ(acm->actual, 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_unary_minus")
