@@ -15,9 +15,9 @@ Luau is a new language that started from Lua 5.1 and kept evolving while keeping
 
 We’re incredibly grateful for the foundation that Lua has been—it’s been a joy to build on top of! So now we want to give back to the community at large.
 
-Starting today, Luau (https://luau-lang.org) is no longer an inseparable part of Roblox platform; it’s a separate, open-source language.
+Starting today, [Luau](https://luau-lang.org) is no longer an inseparable part of Roblox platform; it’s a separate, open-source language.
 
-Luau is available at https://github.com/Roblox/luau and comes with the source code for the language runtime and all associated tooling: compiler, type checker, linter. The code is available to anyone, free of charge, under the terms of MIT License. We’re happy to accept contributions to the language, whether that’s documentation or source code.
+Luau is available at [https://github.com/Roblox/luau](https://github.com/Roblox/luau) and comes with the source code for the language runtime and all associated tooling: compiler, type checker, linter. The code is available to anyone, free of charge, under the terms of MIT License. We’re happy to accept contributions to the language, whether that’s documentation or source code.
 
 The language evolution is driven by an RFC process that is also open to the public.
 
