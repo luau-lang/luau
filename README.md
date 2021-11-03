@@ -32,7 +32,7 @@ cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config RelWithDebInfo
 
 To integrate Luau into your CMake application projects, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
 
-```
+```cpp
 std::string bytecode = Luau::compile(source); // needs Luau/Compiler.h include
 if (luau_load(L, chunkname, bytecode.data(), bytecode.size()) == 0)
     return 1; /* return chunk main function */
