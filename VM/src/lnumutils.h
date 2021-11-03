@@ -29,7 +29,18 @@ inline bool luai_vecisnan(const float* a)
 LUAU_FASTMATH_BEGIN
 inline double luai_nummod(double a, double b)
 {
-    return a - floor(a / b) * b;
+    // The old definition "a - floor(a / b) * b" is flawed:
+    // * If 'b' is math.huge, the result should be 'a' but it results in NaN
+    // * If 'a / b' results in (+/-)Infinity, it results in (+/-)Infinity depending on the sign of 'a' when it shouldn't be
+    double r = fmod(a, b);
+
+    // Ensure the result is the same sign as the divisor
+    if (r == 0.0)
+        r = b < 0.0 ? -0.0 : 0.0;
+    else if ((r < 0.0) != (b < 0.0))
+        r += b;
+
+    return r;
 }
 LUAU_FASTMATH_END
 

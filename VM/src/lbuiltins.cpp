@@ -266,6 +266,9 @@ static int luauF_max(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
     {
         double r = nvalue(arg0);
 
+        if (r != r)
+            return -1;
+
         for (int i = 2; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
@@ -273,7 +276,13 @@ static int luauF_max(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 
             double a = nvalue(args + (i - 2));
 
-            r = (a > r) ? a : r;
+	    if (a != a)
+                return -1;
+
+            if (a == 0.0 && r == 0.0)
+                r = 1.0 / a < 0 && 1.0 / r < 0.0 ? -0.0 : 0.0;
+            else
+                r = (a > r) ? a : r;
         }
 
         setnvalue(res, r);
@@ -289,6 +298,9 @@ static int luauF_min(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
     {
         double r = nvalue(arg0);
 
+        if (r != r)
+            return -1;
+
         for (int i = 2; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
@@ -296,7 +308,13 @@ static int luauF_min(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 
             double a = nvalue(args + (i - 2));
 
-            r = (a < r) ? a : r;
+            if (a != a)
+                return -1;
+
+            if (a == 0.0 && r == 0.0)
+                r = 1.0 / a > 0.0 && 1.0 / r > 0.0 ? 0.0 : -0.0;
+            else
+                r = (a < r) ? a : r;
         }
 
         setnvalue(res, r);

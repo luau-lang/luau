@@ -2966,7 +2966,14 @@ struct Compiler
                 if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
                 {
                     result.type = Constant::Type_Number;
-                    result.valueNumber = la.valueNumber - floor(la.valueNumber / ra.valueNumber) * ra.valueNumber;
+		    double r = fmod(la.valueNumber, ra.valueNumber);
+
+		    if (r == 0.0)
+		        r = ra.valueNumber < 0.0 ? -0.0 : 0.0;
+		    else if ((r < 0) != (ra.valueNumber < 0))
+			r += ra.valueNumber;
+
+		    result.valueNumber = r;
                 }
                 break;
 
