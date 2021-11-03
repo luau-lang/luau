@@ -8,7 +8,7 @@ Luau is safe to embed. Broadly speaking, this means that even in the face of unt
 
 This safety is achieved through a combination of removing features from the standard library that are unsafe, adding features to the VM that make it possible to implement sandboxing and isolation, and making sure the implementation is safe from memory safety issues using fuzzing.
 
-Of course, since the entire stack is implemented in C++, the sandboxing isn't formally proven - in theory, compiler or the standard library can have exploitable vulnerabilities. In practice these are usually found and fixed quickly. While implementing the stack in a safer language such as Rust would make it easier to provide these guarantees, to our knowledge (based on existing code) this would make it impossible to reach the level of performance required.
+Of course, since the entire stack is implemented in C++, the sandboxing isn't formally proven - in theory, compiler or the standard library can have exploitable vulnerabilities. In practice these are usually found and fixed quickly. While implementing the stack in a safer language such as Rust would make it easier to provide these guarantees, to our knowledge (based on prior art) this would make it difficult to reach the level of performance required.
 
 ## Library
 
