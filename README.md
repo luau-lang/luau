@@ -27,7 +27,8 @@ To build Luau tools or tests yourself, you can use CMake on all platforms, or al
 ```sh
 mkdir cmake && cd cmake
 cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config RelWithDebInfo
+cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
+cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
 ```
 
 To integrate Luau into your CMake application projects, at the minimum you'll need to depend on `Luau.Compiler` and `Luau.VM` projects. From there you need to create a new Luau state (using Lua 5.x API such as `lua_newstate`), compile source to bytecode and load it into the VM like this:
