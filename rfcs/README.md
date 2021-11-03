@@ -29,8 +29,6 @@ To open an RFC, a Pull Request must be opened which creates a new Markdown file 
 
 **Please make sure to add `rfc` label to PRs *before* creating them!** This makes sure that our automatic notifications work correctly.
 
-> Note: we currently don't accept community contributions for RFCs, although this will likely change in the future.
-
 Every open RFC will be open for at least two calendar weeks. This is to make sure that there is sufficient time to review the proposal and raise concerns or suggest improvements. The discussion points should be reflected on the PR comments; when discussion happens outside of the comment stream, the points salient to the RFC should be summarized as a followup.
 
 When the initial comment period expires, the RFC can be merged if there's consensus that the change is important and that the details of the syntax/semantics presented are workable. The decision to merge the RFC is made by the Luau team.
