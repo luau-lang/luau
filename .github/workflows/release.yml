@@ -8,6 +8,7 @@ on:
       - 'docs/**'
       - 'papers/**'
       - 'rfcs/**'
+      - '*.md'
 
 jobs:
   build:
