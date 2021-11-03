@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - 'master'
+      - 'docs/**'
+      - 'papers/**'
+      - 'rfcs/**'
+      - '*.md'
   pull_request:
     paths-ignore:
       - 'docs/**'
