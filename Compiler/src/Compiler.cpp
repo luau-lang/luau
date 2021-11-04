@@ -714,7 +714,7 @@ struct Compiler
     // compile expr to target temp register
     // if the expr (or not expr if onlyTruth is false) is truthful, jump via skipJump
     // if the expr (or not expr if onlyTruth is false) is falsy, fall through (target isn't guaranteed to be updated in this case)
-    // if target is omitted, then the jump behavior is the same - skipJump or fallthrough depending on the truthfulness of the expression
+    // if target is omitted, then the jump behavior is the same - skipJump or fallthrough depending on the truthiness of the expression
     void compileConditionValue(AstExpr* node, const uint8_t* target, std::vector<size_t>& skipJump, bool onlyTruth)
     {
         // Optimization: we don't need to compute constant values
