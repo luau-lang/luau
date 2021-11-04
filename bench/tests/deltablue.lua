@@ -614,7 +614,7 @@ end
 
 --
 -- Attempt to satisfy the given constraint and, if successful,
--- incrementally update the dataflow graph.  Details: If satifying
+-- incrementally update the dataflow graph.  Details: If satisfying
 -- the constraint is successful, it may override a weaker constraint
 -- on its output. The algorithm attempts to resatisfy that
 -- constraint using some other method. This process is repeated
