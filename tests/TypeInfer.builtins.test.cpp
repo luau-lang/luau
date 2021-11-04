@@ -359,7 +359,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_correctly_infers_type_of_array_2_args_o
     CHECK_EQ(typeChecker.stringType, requireType("s"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_corrrectly_infers_type_of_array_3_args_overload")
+TEST_CASE_FIXTURE(Fixture, "table_insert_correctly_infers_type_of_array_3_args_overload")
 {
     CheckResult result = check(R"(
         local t = {}
