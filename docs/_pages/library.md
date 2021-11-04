@@ -205,7 +205,7 @@ Rounds `n` upwards to the next integer boundary.
 function math.cosh(n: number): number
 ```
 
-Returns the hyberbolic cosine of `n`.
+Returns the hyperbolic cosine of `n`.
 
 ```
 function math.cos(n: number): number
