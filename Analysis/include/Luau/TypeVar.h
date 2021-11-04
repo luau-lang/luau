@@ -389,7 +389,7 @@ const std::string* getName(TypeId type);
 // Checks whether a union contains all types of another union.
 bool isSubset(const UnionTypeVar& super, const UnionTypeVar& sub);
 
-// Checks if a type conains generic type binders
+// Checks if a type contains generic type binders
 bool isGeneric(const TypeId ty);
 
 // Checks if a type may be instantiated to one containing generic type binders
