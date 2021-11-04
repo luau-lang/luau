@@ -2582,7 +2582,7 @@ TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
         --!strict
         local x = nil
         function f() g() end
-        -- make sure print(x) doen't get toposorted here, breaking the mutual block
+        -- make sure print(x) doesn't get toposorted here, breaking the mutual block
         function g() x = f end
         print(x)
     )");
