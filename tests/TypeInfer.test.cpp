@@ -3062,7 +3062,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_while")
     CHECK_EQ(us->name, "a");
 }
 
-TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indeces")
+TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indices")
 {
     CheckResult result = check(R"(
         local key
