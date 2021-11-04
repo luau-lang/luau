@@ -1,5 +1,7 @@
 # Configure analysis via .luaurc
 
+**Status**: Implemented
+
 ## Summary
 
 Introduces a way to configure type checker and linter using JSON-like .luaurc files

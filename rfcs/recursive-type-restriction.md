@@ -1,5 +1,11 @@
 # Recursive type restriction
 
+**Status**: Implemented
+
+## Summary
+
+Restrict generic type aliases to only be able to refer to the exact same instantiation of the generic that's being declared.
+
 ## Motivation
 
 Luau supports recursive type aliases, but with an important restriction:

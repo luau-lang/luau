@@ -1,5 +1,7 @@
 # Generic functions
 
+**Status**: Implemented
+
 ## Summary
 
 Extend the syntax and semantics of functions to support explicit generic functions, which can bind type parameters as well as data parameters.
