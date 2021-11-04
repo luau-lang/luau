@@ -426,4 +426,4 @@ a = {a = 15}
 -- assert(select(2, coroutine.resume(co)) == a.a)
 
 
-return'OK'
+return 'OK'

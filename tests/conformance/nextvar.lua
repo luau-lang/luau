@@ -368,9 +368,9 @@ assert(next(a,nil) == 1000 and next(a,1000) == nil)
 assert(next({}) == nil)
 assert(next({}, nil) == nil)
 
-for a,b in pairs{} do error"not here" end
-for i=1,0 do error'not here' end
-for i=0,1,-1 do error'not here' end
+for a,b in pairs{} do error("not here") end
+for i=1,0 do error("not here") end
+for i=0,1,-1 do error("not here") end
 a = nil; for i=1,1 do assert(not a); a=1 end; assert(a)
 a = nil; for i=1,1,-1 do assert(not a); a=1 end; assert(a)
 

@@ -34,15 +34,15 @@ assert(doit("error('hi', 0)") == 'hi')
 assert(doit("unpack({}, 1, n=2^30)"))
 assert(doit("a=math.sin()"))
 assert(not doit("tostring(1)") and doit("tostring()"))
-assert(doit"tonumber()")
-assert(doit"repeat until 1; a")
+assert(doit("tonumber()"))
+assert(doit("repeat until 1; a"))
 checksyntax("break label", "", "label", 1)
-assert(doit";")
-assert(doit"a=1;;")
-assert(doit"return;;")
-assert(doit"assert(false)")
-assert(doit"assert(nil)")
-assert(doit"a=math.sin\n(3)")
+assert(doit(";"))
+assert(doit("a=1;;"))
+assert(doit("return;;"))
+assert(doit("assert(false)"))
+assert(doit("assert(nil)"))
+assert(doit("a=math.sin\n(3)"))
 assert(doit("function a (... , ...) end"))
 assert(doit("function a (, ...) end"))
 
@@ -59,7 +59,7 @@ checkmessage("a=1; local a,bbbb=2,3; a = math.sin(1) and bbbb(3)",
        "local 'bbbb'")
 checkmessage("a={}; do local a=1 end a:bbbb(3)", "method 'bbbb'")
 checkmessage("local a={}; a.bbbb(3)", "field 'bbbb'")
-assert(not string.find(doit"a={13}; local bbbb=1; a[bbbb](3)", "'bbbb'"))
+assert(not string.find(doit("a={13}; local bbbb=1; a[bbbb](3)"), "'bbbb'"))
 checkmessage("a={13}; local bbbb=1; a[bbbb](3)", "number")
 
 aaa = nil
@@ -67,14 +67,14 @@ checkmessage("aaa.bbb:ddd(9)", "global 'aaa'")
 checkmessage("local aaa={bbb=1}; aaa.bbb:ddd(9)", "field 'bbb'")
 checkmessage("local aaa={bbb={}}; aaa.bbb:ddd(9)", "method 'ddd'")
 checkmessage("local a,b,c; (function () a = b+1 end)()", "upvalue 'b'")
-assert(not doit"local aaa={bbb={ddd=next}}; aaa.bbb:ddd(nil)")
+assert(not doit("local aaa={bbb={ddd=next}}; aaa.bbb:ddd(nil)"))
 
 checkmessage("b=1; local aaa='a'; x=aaa+b", "local 'aaa'")
 checkmessage("aaa={}; x=3/aaa", "global 'aaa'")
 checkmessage("aaa='2'; b=nil;x=aaa*b", "global 'b'")
 checkmessage("aaa={}; x=-aaa", "global 'aaa'")
-assert(not string.find(doit"aaa={}; x=(aaa or aaa)+(aaa and aaa)", "'aaa'"))
-assert(not string.find(doit"aaa={}; (aaa or aaa)()", "'aaa'"))
+assert(not string.find(doit("aaa={}; x=(aaa or aaa)+(aaa and aaa)"), "'aaa'"))
+assert(not string.find(doit("aaa={}; (aaa or aaa)()"), "'aaa'"))
 
 checkmessage([[aaa=9
 repeat until 3==3
@@ -122,10 +122,10 @@ function lineerror (s)
   return line and line+0
 end
 
-assert(lineerror"local a\n for i=1,'a' do \n print(i) \n end" == 2)
--- assert(lineerror"\n local a \n for k,v in 3 \n do \n print(k) \n end" == 3)
--- assert(lineerror"\n\n for k,v in \n 3 \n do \n print(k) \n end" == 4)
-assert(lineerror"function a.x.y ()\na=a+1\nend" == 1)
+assert(lineerror("local a\n for i=1,'a' do \n print(i) \n end") == 2)
+-- assert(lineerror("\n local a \n for k,v in 3 \n do \n print(k) \n end") == 3)
+-- assert(lineerror("\n\n for k,v in \n 3 \n do \n print(k) \n end") == 4)
+assert(lineerror("function a.x.y ()\na=a+1\nend") == 1)
 
 local p = [[
 function g() f() end
