@@ -21,7 +21,7 @@ local bench = script and require(script.Parent.bench_support) or require("bench_
 -- This implementation of the DeltaBlue benchmark is derived
 -- from the Smalltalk implementation by John Maloney and Mario
 -- Wolczko. Some parts have been translated directly, whereas
--- others have been modified more aggresively to make it feel
+-- others have been modified more aggressively to make it feel
 -- more like a JavaScript program.
 
 
