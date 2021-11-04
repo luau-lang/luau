@@ -18,7 +18,7 @@ While most library functions are provided as part of a library like `table`, a f
 function assert<T>(value: T, message: string?): T
 ```
 
-`assert` checks if the value is truthful; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
+`assert` checks if the value is truthy; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
 Upon success the function returns the `condition` argument.
 
 ```

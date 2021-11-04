@@ -208,14 +208,14 @@ enum LuauOpcode
     LOP_MODK,
     LOP_POWK,
 
-    // AND, OR: perform `and` or `or` operation (selecting first or second register based on whether the first one is truthful) and put the result into target register
+    // AND, OR: perform `and` or `or` operation (selecting first or second register based on whether the first one is truthy) and put the result into target register
     // A: target register
     // B: source register 1
     // C: source register 2
     LOP_AND,
     LOP_OR,
 
-    // ANDK, ORK: perform `and` or `or` operation (selecting source register or constant based on whether the source register is truthful) and put the result into target register
+    // ANDK, ORK: perform `and` or `or` operation (selecting source register or constant based on whether the source register is truthy) and put the result into target register
     // A: target register
     // B: source register
     // C: constant table index (0..255)

@@ -712,7 +712,7 @@ struct Compiler
     }
 
     // compile expr to target temp register
-    // if the expr (or not expr if onlyTruth is false) is truthful, jump via skipJump
+    // if the expr (or not expr if onlyTruth is false) is truthy, jump via skipJump
     // if the expr (or not expr if onlyTruth is false) is falsy, fall through (target isn't guaranteed to be updated in this case)
     // if target is omitted, then the jump behavior is the same - skipJump or fallthrough depending on the truthiness of the expression
     void compileConditionValue(AstExpr* node, const uint8_t* target, std::vector<size_t>& skipJump, bool onlyTruth)
@@ -722,7 +722,7 @@ struct Compiler
 
         if (cv && cv->type != Constant::Type_Unknown)
         {
-            // note that we only need to compute the value if it's truthful; otherwise we cal fall through
+            // note that we only need to compute the value if it's truthy; otherwise we cal fall through
             if (cv->isTruthful() == onlyTruth)
             {
                 if (target)
@@ -741,7 +741,7 @@ struct Compiler
             case AstExprBinary::And:
             case AstExprBinary::Or:
             {
-                // disambiguation: there's 4 cases (we only need truthful or falsy results based on onlyTruth)
+                // disambiguation: there's 4 cases (we only need truthy or falsy results based on onlyTruth)
                 // onlyTruth = 1: a and b transforms to a ? b : dontcare
                 // onlyTruth = 1: a or b transforms to a ? a : a
                 // onlyTruth = 0: a and b transforms to !a ? a : b
@@ -786,7 +786,7 @@ struct Compiler
                 {
                     // since target is a temp register, we'll initialize it to 1, and then jump if the comparison is true
                     // if the comparison is false, we'll fallthrough and target will still be 1 but target has unspecified value for falsy results
-                    // when we only care about falsy values instead of truthful values, the process is the same but with flipped conditionals
+                    // when we only care about falsy values instead of truthy values, the process is the same but with flipped conditionals
                     bytecode.emitABC(LOP_LOADB, *target, onlyTruth ? 1 : 0, 0);
                 }
 
