@@ -4885,7 +4885,7 @@ f(function(a) return a.x + a.y end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // An optional funciton is accepted, but since we already provide a function, nil can be ignored
+    // An optional function is accepted, but since we already provide a function, nil can be ignored
     result = check(R"(
 type Table = { x: number, y: number }
 local function f(a: ((Table) -> number)?) if a then return a({x = 1, y = 2}) else return 0 end end

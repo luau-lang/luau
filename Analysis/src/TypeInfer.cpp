@@ -412,7 +412,7 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         // ```
         // These both call each other, so `f` will be ordered before `g`, so the call to `g`
         // is typechecked before `g` has had its body checked. For this reason, there's three
-        // types for each functuion: before its body is checked, during checking its body,
+        // types for each function: before its body is checked, during checking its body,
         // and after its body is checked.
         //
         // We currently treat the before-type and the during-type as the same,
