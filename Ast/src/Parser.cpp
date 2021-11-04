@@ -1535,7 +1535,7 @@ AstType* Parser::parseSimpleTypeAnnotation()
     {
         Location location = lexer.current().location;
 
-        // For a missing type annoation, capture 'space' between last token and the next one
+        // For a missing type annotation, capture 'space' between last token and the next one
         location = Location(lexer.previousLocation().end, lexer.current().location.begin);
 
         return reportTypeAnnotationError(location, {}, /*isMissing*/ true, "Expected type, got %s", lexer.current().toString().c_str());

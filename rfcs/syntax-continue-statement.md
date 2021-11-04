@@ -56,7 +56,7 @@ end
 
 These rules are simple to implement. In any Lua parser there is already a point where you have to disambiguate an identifier that starts an assignment statement (`foo = 5`) from an identifier that starts a function call (`foo(5)`). It's one of the few, if not the only, place in the Lua grammar where single token lookahead is not sufficient to parse Lua, because you could have `foo.bar(5)` or `foo.bar=5` or `foo.bar(5)[6] = 7`.
 
-Because of this, we need to parse the entire left hand side of an assignment statement (primaryexpr in Lua's BNF) and then check if it was a function call; if not, we'd expect it to be an assignment statement.
+Because of this, we need to parse the entire left hand side of an assignment statement (primaryexp in Lua's BNF) and then check if it was a function call; if not, we'd expect it to be an assignment statement.
 
 Alternatively in this specific case we could parse "continue", parse the next token, and if it's one of the exclusion list above, roll the parser state back and re-parse the non-continue statement. Our lexer currently doesn't support rollbacks but it's also an easy strategy that other implementations might employ for `continue` specifically.
 

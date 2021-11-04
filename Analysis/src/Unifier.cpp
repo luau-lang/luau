@@ -1025,7 +1025,7 @@ void Unifier::tryUnifySealedTables(TypeId left, TypeId right, bool isIntersectio
     // If the superTy/left is an immediate part of an intersection type, do not do extra-property check.
     // Otherwise, we would falsely generate an extra-property-error for 's' in this code:
     // local a: {n: number} & {s: string} = {n=1, s=""}
-    // When checking agaist the table '{n: number}'.
+    // When checking against the table '{n: number}'.
     if (!isIntersection && lt->state != TableState::Unsealed && !lt->indexer)
     {
         // Check for extra properties in the subTy

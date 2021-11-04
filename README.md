@@ -45,7 +45,7 @@ To gain advantage of many performance improvements it's highly recommended to us
 
 # Testing
 
-Luau has an internal test suite; in CMake builds it is split into two targets, `Luau.UnitTest` (for bytecode compiler and type checker/linter tests) and `Luau.Conformance` (for VM tests). The unit tests are written in C++, whereas the conformance tests are largerly written in Luau (see `tests/conformance`).
+Luau has an internal test suite; in CMake builds it is split into two targets, `Luau.UnitTest` (for bytecode compiler and type checker/linter tests) and `Luau.Conformance` (for VM tests). The unit tests are written in C++, whereas the conformance tests are largely written in Luau (see `tests/conformance`).
 
 Makefile builds combine both into a single target and can be ran via `make test`.
 

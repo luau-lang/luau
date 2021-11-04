@@ -412,7 +412,7 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         // ```
         // These both call each other, so `f` will be ordered before `g`, so the call to `g`
         // is typechecked before `g` has had its body checked. For this reason, there's three
-        // types for each functuion: before its body is checked, during checking its body,
+        // types for each function: before its body is checked, during checking its body,
         // and after its body is checked.
         //
         // We currently treat the before-type and the during-type as the same,
@@ -1076,7 +1076,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         checkFunctionBody(funScope, ty, *function.func);
 
         // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
-        // in case this function has a differing signature. The signature discrepency will be caught in checkBlock.
+        // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
         if (previouslyDefined)
             globalBindings[name] = oldBinding;
         else
@@ -3150,7 +3150,7 @@ void TypeChecker::checkArgumentList(
     const ScopePtr& scope, Unifier& state, TypePackId argPack, TypePackId paramPack, const std::vector<Location>& argLocations)
 {
     /* Important terminology refresher:
-     * A function requires paramaters.
+     * A function requires parameters.
      * To call a function, you supply arguments.
      */
     TypePackIterator argIter = begin(argPack);

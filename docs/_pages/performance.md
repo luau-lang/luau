@@ -88,7 +88,7 @@ The mechanism works by directly invoking a highly specialized and optimized impl
 
 As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, all functions from `math` and `bit32`, and some functions from `string` and `table` library.
 
-> Note: The partial specialization mechanism is cute in that for `assert`, it only specializes on truthful conditions; hopefully performance of `assert(false)` isn't crucial for most code!
+> Note: The partial specialization mechanism is cute in that for `assert`, it only specializes on truthy conditions; hopefully performance of `assert(false)` isn't crucial for most code!
 
 ## Optimized table iteration
 

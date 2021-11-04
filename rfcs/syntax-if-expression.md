@@ -12,7 +12,7 @@ Introduce a form of ternary conditional using `if cond then value else alternati
 
 Luau does not have a first-class ternary operator; when a ternary operator is needed, it is usually emulated with `and/or` expression, such as `cond and value or alternative`.
 
-This expression evaluates to `value` if `cond` and `value` are truthful, and `alternative` otherwise. In particular it means that when `value` is `false` or `nil`, the result of the entire expression is `alternative` even when `cond` is truthful - which doesn't match the expected ternary logic and is a frequent source of subtle errors.
+This expression evaluates to `value` if `cond` and `value` are truthy, and `alternative` otherwise. In particular it means that when `value` is `false` or `nil`, the result of the entire expression is `alternative` even when `cond` is truthy - which doesn't match the expected ternary logic and is a frequent source of subtle errors.
 
 Instead of `and/or`, `if/else` statement can be used but since that requires a separate mutable variable, this option isn't ergonomic. An immediately invoked function expression is also unergonomic and results in performance issues at runtime.
 
@@ -22,7 +22,7 @@ To solve these problems, we propose introducing a first-class ternary conditiona
 
 Concretely, the `if-then-else` expression must match `if <expr> then <expr> else <expr>`; it can also contain an arbitrary number of `elseif` clauses, like `if <expr> then <expr> elseif <expr> then <expr> else <expr>`. Note that in either case, `else` is mandatory.
 
-The result of the expression is the then-expression when condition is truthful (not `nil` or `false`) and else-expression otherwise. Only one of the two possible resulting expressions is evaluated.
+The result of the expression is the then-expression when condition is truthy (not `nil` or `false`) and else-expression otherwise. Only one of the two possible resulting expressions is evaluated.
 
 Example:
 

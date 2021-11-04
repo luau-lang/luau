@@ -169,7 +169,7 @@ struct RequireTracer : AstVisitor
 
         result.exprs[call] = fileResolver->concat(*rootName, v);
 
-        // 'WaitForChild' can be used on modules that are not awailable at the typecheck time, but will be awailable at runtime
+        // 'WaitForChild' can be used on modules that are not available at the typecheck time, but will be available at runtime
         // If we fail to find such module, we will not report an UnknownRequire error
         if (FFlag::LuauTraceRequireLookupChild && indexName->index == "WaitForChild")
             result.optional[call] = true;

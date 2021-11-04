@@ -532,7 +532,7 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
                 status = LUA_ERRERR;
         }
 
-        // an error occured, check if we have a protected error callback
+        // an error occurred, check if we have a protected error callback
         if (L->global->cb.debugprotectederror)
         {
             L->global->cb.debugprotectederror(L);

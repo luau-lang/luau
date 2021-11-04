@@ -14,7 +14,7 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("ProvisionalTests");
 
-// These tests check for behavior that differes from the final behavior we'd
+// These tests check for behavior that differs from the final behavior we'd
 // like to have.  They serve to document the current state of the typechecker.
 // When making future improvements, its very likely these tests will break and
 // will need to be replaced.

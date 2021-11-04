@@ -52,7 +52,7 @@ TEST_CASE_FIXTURE(Fixture, "allow_more_specific_assign")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "disallow_less_specifc_assign")
+TEST_CASE_FIXTURE(Fixture, "disallow_less_specific_assign")
 {
     CheckResult result = check(R"(
         local a:number = 10
@@ -63,7 +63,7 @@ TEST_CASE_FIXTURE(Fixture, "disallow_less_specifc_assign")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "disallow_less_specifc_assign2")
+TEST_CASE_FIXTURE(Fixture, "disallow_less_specific_assign2")
 {
     CheckResult result = check(R"(
         local a:number? = 10

@@ -1461,7 +1461,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                             result.erase(std::string(stringKey->value.data, stringKey->value.size));
                     }
 
-                    // If we know for sure that a key is being written, do not offer general epxression suggestions
+                    // If we know for sure that a key is being written, do not offer general expression suggestions
                     if (!key)
                         autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position, result);
 

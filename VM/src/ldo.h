@@ -37,7 +37,7 @@
 /* results from luaD_precall */
 #define PCRLUA 0   /* initiated a call to a Lua function */
 #define PCRC 1     /* did a call to a C function */
-#define PCRYIELD 2 /* C funtion yielded */
+#define PCRYIELD 2 /* C function yielded */
 
 /* type of protected functions, to be ran by `runprotected' */
 typedef void (*Pfunc)(lua_State* L, void* ud);

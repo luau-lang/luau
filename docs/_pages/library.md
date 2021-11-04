@@ -18,7 +18,7 @@ While most library functions are provided as part of a library like `table`, a f
 function assert<T>(value: T, message: string?): T
 ```
 
-`assert` checks if the value is truthful; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
+`assert` checks if the value is truthy; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
 Upon success the function returns the `condition` argument.
 
 ```
@@ -146,7 +146,7 @@ Returns the triple (generator, state, nil) that can be used to traverse the tabl
 function pcall(f: function, args: ...any): (boolean, ...any)
 ```
 
-Calls function `f` with parameters `args`. If the function suceeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
+Calls function `f` with parameters `args`. If the function succeeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
 Note that `f` can yield, which results in the entire coroutine yielding as well.
 
 ```
@@ -205,7 +205,7 @@ Rounds `n` upwards to the next integer boundary.
 function math.cosh(n: number): number
 ```
 
-Returns the hyberbolic cosine of `n`.
+Returns the hyperbolic cosine of `n`.
 
 ```
 function math.cos(n: number): number
@@ -792,4 +792,4 @@ function debug.traceback(co: thread, msg: string?, level: number?): string
 function debug.traceback(msg: string?, level: number?): string
 ```
 
-Produces a stringifed callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.
+Produces a stringified callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.

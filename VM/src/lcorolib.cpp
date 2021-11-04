@@ -25,7 +25,7 @@ static int costatus(lua_State* L, lua_State* co)
         return CO_SUS;
     if (co->status == LUA_BREAK)
         return CO_NOR;
-    if (co->status != 0) /* some error occured */
+    if (co->status != 0) /* some error occurred */
         return CO_DEAD;
     if (co->ci != co->base_ci) /* does it have frames? */
         return CO_NOR;

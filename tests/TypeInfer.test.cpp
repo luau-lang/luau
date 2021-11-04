@@ -405,7 +405,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_error_on_factory_not_returning_the_right
 
         for p in primes2() do print(p) end -- mismatch in argument types, prime_iter takes {}, number, we are given {}, string
 
-        for p in primes3() do print(p) end -- no errror
+        for p in primes3() do print(p) end -- no error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
@@ -2582,7 +2582,7 @@ TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
         --!strict
         local x = nil
         function f() g() end
-        -- make sure print(x) doen't get toposorted here, breaking the mutual block
+        -- make sure print(x) doesn't get toposorted here, breaking the mutual block
         function g() x = f end
         print(x)
     )");
@@ -3062,7 +3062,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_while")
     CHECK_EQ(us->name, "a");
 }
 
-TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indeces")
+TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indices")
 {
     CheckResult result = check(R"(
         local key
@@ -4885,7 +4885,7 @@ f(function(a) return a.x + a.y end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // An optional funciton is accepted, but since we already provide a function, nil can be ignored
+    // An optional function is accepted, but since we already provide a function, nil can be ignored
     result = check(R"(
 type Table = { x: number, y: number }
 local function f(a: ((Table) -> number)?) if a then return a({x = 1, y = 2}) else return 0 end end
@@ -4913,7 +4913,7 @@ f(function(a: number, b, c) return c and a + b or b - a end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // Anonymous function has a varyadic pack
+    // Anonymous function has a variadic pack
     result = check(R"(
 type Table = { x: number, y: number }
 local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
@@ -4932,7 +4932,7 @@ f(function(a, b, c, ...) return a + b end)
     LUAU_REQUIRE_ERRORS(result);
     CHECK_EQ("Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'", toString(result.errors[0]));
 
-    // Infer from varyadic packs into elements
+    // Infer from variadic packs into elements
     result = check(R"(
 function f(a: (...number) -> number) return a(1, 2) end
 f(function(a, b) return a + b end)
@@ -4940,7 +4940,7 @@ f(function(a, b) return a + b end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // Infer from varyadic packs into varyadic packs
+    // Infer from variadic packs into variadic packs
     result = check(R"(
 type Table = { x: number, y: number }
 function f(a: (...Table) -> number) return a({x = 1, y = 2}, {x = 3, y = 4}) end

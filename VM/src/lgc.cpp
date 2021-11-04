@@ -884,7 +884,7 @@ void luaC_step(lua_State* L, bool assist)
         g->gcstats.currcycle.explicitwork += lim;
 
     int lastgcstate = g->gcstate;
-    double lastttimestamp = lua_clock();
+    double lasttimestamp = lua_clock();
 
     // always perform at least one single step
     do
@@ -899,14 +899,14 @@ void luaC_step(lua_State* L, bool assist)
 
             double now = lua_clock();
 
-            recordGcStateTime(g, lastgcstate, now - lastttimestamp, assist);
+            recordGcStateTime(g, lastgcstate, now - lasttimestamp, assist);
 
-            lastttimestamp = now;
+            lasttimestamp = now;
             lastgcstate = g->gcstate;
         }
     } while (lim > 0 && g->gcstate != GCSpause);
 
-    recordGcStateTime(g, lastgcstate, lua_clock() - lastttimestamp, assist);
+    recordGcStateTime(g, lastgcstate, lua_clock() - lasttimestamp, assist);
 
     // at the end of the last cycle
     if (g->gcstate == GCSpause)

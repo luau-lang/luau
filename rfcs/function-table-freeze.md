@@ -44,7 +44,7 @@ To limit the use of `table.freeze` to cases when table contents can be freely ma
 
 Exposing the internal "readonly" feature may have an impact on interoperability between scripts - for example, it becomes possible to freeze some tables that scripts may be expecting to have write access to from other scripts. Since we don't provide a way to unfreeze tables and freezing a table with a locked metatable fails, in theory the impact should not be any worse than allowing to change a metatable, but the full extents are unclear.
 
-There may be existing code in the VM that allows changing frozen tables in ways that are benign to the current sanboxing code, but expose a "gap" in the implementation that becomes significant with this feature; thus we would need to audit all table writes when implementing this.
+There may be existing code in the VM that allows changing frozen tables in ways that are benign to the current sandboxing code, but expose a "gap" in the implementation that becomes significant with this feature; thus we would need to audit all table writes when implementing this.
 
 ## Alternatives
 
