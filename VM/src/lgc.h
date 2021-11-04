@@ -28,7 +28,7 @@ LUAU_FASTFLAG(LuauGcFullSkipInactiveThreads)
 #define keepinvariant(g) ((g)->gcstate == GCSpropagate || (g)->gcstate == GCSpropagateagain)
 
 /*
-** some userful bit tricks
+** some useful bit tricks
 */
 #define resetbits(x, m) ((x) &= cast_to(uint8_t, ~(m)))
 #define setbits(x, m) ((x) |= (m))
