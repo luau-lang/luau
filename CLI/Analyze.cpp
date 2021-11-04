@@ -228,8 +228,15 @@ int main(int argc, char** argv)
         if (isDirectory(argv[i]))
         {
             traverseDirectory(argv[i], [&](const std::string& name) {
-                if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                // Look for .luau first and if absent, fall back to .lua
+                if (name.length() > 5 && name.rfind(".luau") == name.length() - 5)
+                {
                     failed += !analyzeFile(frontend, name.c_str(), format, annotate);
+                }
+                else if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                {
+                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
+                }
             });
         }
         else
@@ -248,5 +255,3 @@ int main(int argc, char** argv)
 
     return (format == ReportFormat::Luacheck) ? 0 : failed;
 }
-
-
