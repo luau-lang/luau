@@ -1076,7 +1076,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         checkFunctionBody(funScope, ty, *function.func);
 
         // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
-        // in case this function has a differing signature. The signature discrepency will be caught in checkBlock.
+        // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
         if (previouslyDefined)
             globalBindings[name] = oldBinding;
         else
