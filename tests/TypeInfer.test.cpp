@@ -4913,7 +4913,7 @@ f(function(a: number, b, c) return c and a + b or b - a end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // Anonymous function has a varyadic pack
+    // Anonymous function has a variadic pack
     result = check(R"(
 type Table = { x: number, y: number }
 local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
@@ -4932,7 +4932,7 @@ f(function(a, b, c, ...) return a + b end)
     LUAU_REQUIRE_ERRORS(result);
     CHECK_EQ("Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'", toString(result.errors[0]));
 
-    // Infer from varyadic packs into elements
+    // Infer from variadic packs into elements
     result = check(R"(
 function f(a: (...number) -> number) return a(1, 2) end
 f(function(a, b) return a + b end)
@@ -4940,7 +4940,7 @@ f(function(a, b) return a + b end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // Infer from varyadic packs into varyadic packs
+    // Infer from variadic packs into variadic packs
     result = check(R"(
 type Table = { x: number, y: number }
 function f(a: (...Table) -> number) return a({x = 1, y = 2}, {x = 3, y = 4}) end
