@@ -76,7 +76,7 @@ struct luaL_Buffer
     char buffer[LUA_BUFFERSIZE];
 };
 
-// when internal buffer storage is exhaused, a mutable string value 'storage' will be placed on the stack
+// when internal buffer storage is exhausted, a mutable string value 'storage' will be placed on the stack
 // in general, functions expect the mutable string buffer to be placed on top of the stack (top-1)
 // with the exception of luaL_addvalue that expects the value at the top and string buffer further away (top-2)
 // functions that accept a 'boxloc' support string buffer placement at any location in the stack
