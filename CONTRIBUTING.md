@@ -47,6 +47,12 @@ You can run the tests yourself using `make test` or using `cmake` to build `Luau
 
 When making code changes please try to make sure they are covered by an existing test or add a new test accordingly.
 
+## Performance
+
+One of the central feature of Luau is performance; our runtime in particular is heavily optimized for high performance and low memory consumption, and code is generally carefully tuned to result in close to optimal assembly for x64 and AArch64 architectures. The analysis code is not optimized to the same level of detail, but performance is still very important to make sure that we can support interactive IDE features.
+
+As such, it's important to make sure that the changes, including bug fixes, improve or at least do not regress performance. For VM this can be validated by running `bench.py` script from `bench` folder on two binaries built in Release mode, before and after the changes, although note that our benchmark coverage is not complete and in some cases additional performance testing will be necessary to determine if the change can be merged.
+
 ## Feature flags
 
 For large bug fixes or features that apply to the Luau components and not just the CLI tools, we may ask that you introduce a feature flag to gate your changes. The feature flags use `LUAU_FASTFLAG` macro family defined in `Luau/Common.h` and allow us to ensure that the change can be safely shipped, enabled, and rolled back on the Roblox platform when the change makes it into our production codebase. The tests run the code with flags in their default state and enabled state as well to ensure correctness.
