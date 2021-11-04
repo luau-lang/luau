@@ -3150,7 +3150,7 @@ void TypeChecker::checkArgumentList(
     const ScopePtr& scope, Unifier& state, TypePackId argPack, TypePackId paramPack, const std::vector<Location>& argLocations)
 {
     /* Important terminology refresher:
-     * A function requires paramaters.
+     * A function requires parameters.
      * To call a function, you supply arguments.
      */
     TypePackIterator argIter = begin(argPack);
