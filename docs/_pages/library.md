@@ -792,4 +792,4 @@ function debug.traceback(co: thread, msg: string?, level: number?): string
 function debug.traceback(msg: string?, level: number?): string
 ```
 
-Produces a stringifed callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.
+Produces a stringified callstack of the given thread, or the current thread, starting with level `level`. If `msg` is specified, then the resulting callstack includes the string before the callstack output, separated with a newline. The format of the callstack is human-readable and subject to change.
