@@ -405,7 +405,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_error_on_factory_not_returning_the_right
 
         for p in primes2() do print(p) end -- mismatch in argument types, prime_iter takes {}, number, we are given {}, string
 
-        for p in primes3() do print(p) end -- no errror
+        for p in primes3() do print(p) end -- no error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
