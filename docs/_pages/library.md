@@ -146,7 +146,7 @@ Returns the triple (generator, state, nil) that can be used to traverse the tabl
 function pcall(f: function, args: ...any): (boolean, ...any)
 ```
 
-Calls function `f` with parameters `args`. If the function suceeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
+Calls function `f` with parameters `args`. If the function succeeds, returns `true` followed by all return values of `f`. If the function raises an error, returns `false` followed by the error object.
 Note that `f` can yield, which results in the entire coroutine yielding as well.
 
 ```
