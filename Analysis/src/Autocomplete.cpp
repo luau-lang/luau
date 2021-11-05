@@ -196,7 +196,8 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 
     auto canUnify = [&typeArena, &module](TypeId expectedType, TypeId actualType) {
         InternalErrorReporter iceReporter;
-        Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, &iceReporter);
+        UnifierSharedState unifierState(&iceReporter);
+        Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, unifierState);
 
         unifier.tryUnify(expectedType, actualType);
 
@@ -210,10 +211,10 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         return TypeCorrectKind::None;
 
     auto it = module.astExpectedTypes.find(expr);
-    if (it == module.astExpectedTypes.end())
+    if (!it)
         return TypeCorrectKind::None;
 
-    TypeId expectedType = follow(it->second);
+    TypeId expectedType = follow(*it);
 
     if (canUnify(expectedType, ty))
         return TypeCorrectKind::Correct;
@@ -682,10 +683,10 @@ static std::optional<bool> functionIsExpectedAt(const Module& module, AstNode* n
         return std::nullopt;
 
     auto it = module.astExpectedTypes.find(expr);
-    if (it == module.astExpectedTypes.end())
+    if (!it)
         return std::nullopt;
 
-    TypeId expectedType = follow(it->second);
+    TypeId expectedType = follow(*it);
 
     if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(expectedType))
         return true;
@@ -784,9 +785,9 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
 
                 if (AstExprCall* exprCall = expr->as<AstExprCall>())
                 {
-                    if (auto it = module.astTypes.find(exprCall->func); it != module.astTypes.end())
+                    if (auto it = module.astTypes.find(exprCall->func))
                     {
-                        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(it->second)))
+                        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*it)))
                         {
                             if (auto ty = tryGetTypePackTypeAt(ftv->retType, tailPos))
                                 inferredType = *ty;
@@ -798,8 +799,8 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
                     if (tailPos != 0)
                         break;
 
-                    if (auto it = module.astTypes.find(expr); it != module.astTypes.end())
-                        inferredType = it->second;
+                    if (auto it = module.astTypes.find(expr))
+                        inferredType = *it;
                 }
 
                 if (inferredType)
@@ -815,10 +816,10 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
         auto tryGetExpectedFunctionType = [](const Module& module, AstExpr* expr) -> const FunctionTypeVar* {
             auto it = module.astExpectedTypes.find(expr);
 
-            if (it == module.astExpectedTypes.end())
+            if (!it)
                 return nullptr;
 
-            TypeId ty = follow(it->second);
+            TypeId ty = follow(*it);
 
             if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
                 return ftv;
@@ -1129,9 +1130,8 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
 
     if (node->is<AstExprIndexName>())
     {
-        auto it = module.astTypes.find(node->asExpr());
-        if (it != module.astTypes.end())
-            autocompleteProps(module, typeArena, it->second, PropIndexType::Point, ancestry, result);
+        if (auto it = module.astTypes.find(node->asExpr()))
+            autocompleteProps(module, typeArena, *it, PropIndexType::Point, ancestry, result);
     }
     else if (FFlag::LuauIfElseExpressionAnalysisSupport && autocompleteIfElseExpression(node, ancestry, position, result))
         return;
@@ -1203,13 +1203,13 @@ static std::optional<const ClassTypeVar*> getMethodContainingClass(const ModuleP
         return std::nullopt;
     }
 
-    auto parentIter = module->astTypes.find(parentExpr);
-    if (parentIter == module->astTypes.end())
+    auto parentIt = module->astTypes.find(parentExpr);
+    if (!parentIt)
     {
         return std::nullopt;
     }
 
-    Luau::TypeId parentType = Luau::follow(parentIter->second);
+    Luau::TypeId parentType = Luau::follow(*parentIt);
 
     if (auto parentClass = Luau::get<ClassTypeVar>(parentType))
     {
@@ -1250,8 +1250,8 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    auto iter = module->astTypes.find(candidate->func);
-    if (iter == module->astTypes.end())
+    auto it = module->astTypes.find(candidate->func);
+    if (!it)
     {
         return std::nullopt;
     }
@@ -1267,7 +1267,7 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     };
 
-    auto followedId = Luau::follow(iter->second);
+    auto followedId = Luau::follow(*it);
     if (auto functionType = Luau::get<FunctionTypeVar>(followedId))
     {
         return performCallback(functionType);
@@ -1316,10 +1316,10 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     if (auto indexName = node->as<AstExprIndexName>())
     {
         auto it = module->astTypes.find(indexName->expr);
-        if (it == module->astTypes.end())
+        if (!it)
             return {};
 
-        TypeId ty = follow(it->second);
+        TypeId ty = follow(*it);
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
         if (isString(ty))
@@ -1447,9 +1447,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             // If item doesn't have a key, maybe the value is actually the key
             if (key ? key == node : node->is<AstExprGlobal>() && value == node)
             {
-                if (auto it = module->astExpectedTypes.find(exprTable); it != module->astExpectedTypes.end())
+                if (auto it = module->astExpectedTypes.find(exprTable))
                 {
-                    auto result = autocompleteProps(*module, typeArena, it->second, PropIndexType::Key, finder.ancestry);
+                    auto result = autocompleteProps(*module, typeArena, *it, PropIndexType::Key, finder.ancestry);
 
                     // Remove keys that are already completed
                     for (const auto& item : exprTable->items)
@@ -1485,9 +1485,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         {
             if (auto idxExpr = finder.ancestry.at(finder.ancestry.size() - 2)->as<AstExprIndexExpr>())
             {
-                if (auto it = module->astTypes.find(idxExpr->expr); it != module->astTypes.end())
+                if (auto it = module->astTypes.find(idxExpr->expr))
                 {
-                    return {autocompleteProps(*module, typeArena, follow(it->second), PropIndexType::Point, finder.ancestry), finder.ancestry};
+                    return {autocompleteProps(*module, typeArena, follow(*it), PropIndexType::Point, finder.ancestry), finder.ancestry};
                 }
             }
         }

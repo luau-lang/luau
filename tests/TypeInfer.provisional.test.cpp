@@ -9,6 +9,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
 using namespace Luau;
 
@@ -30,6 +31,8 @@ TEST_SUITE_BEGIN("ProvisionalTests");
  */
 TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 {
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+
     const std::string code = R"(
         function f(a)
             if type(a) == "boolean" then
@@ -40,16 +43,30 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expected = R"(
-        function f(a:{fn:()->(free)}): ()
+    const std::string old_expected = R"(
+        function f(a:{fn:()->(free,free...)}): ()
             if type(a) == 'boolean'then
                 local a1:boolean=a
             elseif a.fn()then
-                local a2:{fn:()->(free)}=a
+                local a2:{fn:()->(free,free...)}=a
             end
         end
     )";
-    CHECK_EQ(expected, decorateWithTypes(code));
+
+    const std::string expected = R"(
+        function f(a:{fn:()->(a,b...)}): ()
+            if type(a) == 'boolean'then
+                local a1:boolean=a
+            elseif a.fn()then
+                local a2:{fn:()->(a,b...)}=a
+            end
+        end
+    )";
+
+    if (FFlag::LuauQuantifyInPlace2)
+        CHECK_EQ(expected, decorateWithTypes(code));
+    else
+        CHECK_EQ(old_expected, decorateWithTypes(code));
 }
 
 TEST_CASE_FIXTURE(Fixture, "xpcall_returns_what_f_returns")
@@ -231,16 +248,7 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
         local r2 = b == a
     )");
 
-    if (FFlag::LuauEqConstraint)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(toString(result.errors[0]), "Type '{| x: string |}?' could not be converted into 'number | string'");
-        CHECK_EQ(toString(result.errors[1]), "Type 'number | string' could not be converted into '{| x: string |}?'");
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 // Belongs in TypeInfer.refinements.test.cpp.
@@ -270,8 +278,8 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 
 TEST_CASE_FIXTURE(Fixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
-    ScopedFastInt sffi{"LuauTarjanChildLimit", 50};
-    ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 50};
+    ScopedFastInt sffi{"LuauTarjanChildLimit", 1};
+    ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 1};
 
     CheckResult result = check(R"LUA(
         local Result
@@ -540,6 +548,25 @@ TEST_CASE_FIXTURE(Fixture, "bail_early_on_typescript_port_of_Result_type" * doct
         dumpErrors(result);
         FAIL("Expected a UnificationTooComplex error");
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local function setNumber(t: { p: number? }, x:number) t.p = x end
+        local function getString(t: { p: string? }):string return t.p or "" end
+        -- This shouldn't type-check!
+        local function oh(x:number): string
+          local t: {} = {}
+          setNumber(t, x)
+          return getString(t)
+        end
+        local s: string = oh(37)
+    )");
+
+    // Really this should return an error, but it doesn't
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 // Should be in TypeInfer.tables.test.cpp

@@ -11,6 +11,7 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauGenericFunctions)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace
 {
@@ -280,10 +281,19 @@ struct Printer
 
     void visualizeTypePackAnnotation(const AstTypePack& annotation)
     {
-        if (const AstTypePackVariadic* variadic = annotation.as<AstTypePackVariadic>())
+        if (const AstTypePackVariadic* variadicTp = annotation.as<AstTypePackVariadic>())
         {
             writer.symbol("...");
-            visualizeTypeAnnotation(*variadic->variadicType);
+            visualizeTypeAnnotation(*variadicTp->variadicType);
+        }
+        else if (const AstTypePackGeneric* genericTp = annotation.as<AstTypePackGeneric>())
+        {
+            writer.symbol(genericTp->genericName.value);
+            writer.symbol("...");
+        }
+        else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
+        {
+            visualizeTypeList(explicitTp->typeList, true);
         }
         else
         {
@@ -807,7 +817,7 @@ struct Printer
 
                 writer.keyword("type");
                 writer.identifier(a->name.value);
-                if (a->generics.size > 0)
+                if (a->generics.size > 0 || (FFlag::LuauTypeAliasPacks && a->genericPacks.size > 0))
                 {
                     writer.symbol("<");
                     CommaSeparatorInserter comma(writer);
@@ -817,6 +827,17 @@ struct Printer
                         comma();
                         writer.identifier(o.value);
                     }
+
+                    if (FFlag::LuauTypeAliasPacks)
+                    {
+                        for (auto o : a->genericPacks)
+                        {
+                            comma();
+                            writer.identifier(o.value);
+                            writer.symbol("...");
+                        }
+                    }
+
                     writer.symbol(">");
                 }
                 writer.maybeSpace(a->type->location.begin, 2);
@@ -960,15 +981,20 @@ struct Printer
         if (const auto& a = typeAnnotation.as<AstTypeReference>())
         {
             writer.write(a->name.value);
-            if (a->generics.size > 0)
+            if (a->parameters.size > 0)
             {
                 CommaSeparatorInserter comma(writer);
                 writer.symbol("<");
-                for (auto o : a->generics)
+                for (auto o : a->parameters)
                 {
                     comma();
-                    visualizeTypeAnnotation(*o);
+
+                    if (o.type)
+                        visualizeTypeAnnotation(*o.type);
+                    else
+                        visualizeTypePackAnnotation(*o.typePack);
                 }
+
                 writer.symbol(">");
             }
         }

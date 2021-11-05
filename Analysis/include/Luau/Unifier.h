@@ -6,6 +6,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Module.h" // FIXME: For TypeArena.  It merits breaking out into its own header.
+#include "Luau/UnifierSharedState.h"
 
 #include <unordered_set>
 
@@ -36,12 +37,20 @@ struct Unifier
     Variance variance = Covariant;
     CountMismatch::Context ctx = CountMismatch::Arg;
 
-    std::shared_ptr<UnifierCounters> counters;
-    InternalErrorReporter* iceHandler;
+    UnifierCounters* counters;
+    UnifierCounters countersData;
 
-    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, InternalErrorReporter* iceHandler);
-    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::vector<std::pair<TypeId, TypeId>>& seen, const Location& location,
-        Variance variance, InternalErrorReporter* iceHandler, const std::shared_ptr<UnifierCounters>& counters = nullptr);
+    std::shared_ptr<UnifierCounters> counters_DEPRECATED;
+
+    UnifierSharedState& sharedState;
+
+    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, UnifierSharedState& sharedState);
+    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::vector<std::pair<TypeId, TypeId>>& ownedSeen, const Location& location,
+        Variance variance, UnifierSharedState& sharedState, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED = nullptr,
+        UnifierCounters* counters = nullptr);
+    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
+        Variance variance, UnifierSharedState& sharedState, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED = nullptr,
+        UnifierCounters* counters = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId superTy, TypeId subTy);
@@ -58,11 +67,14 @@ private:
     void tryUnifyPrimitives(TypeId superTy, TypeId subTy);
     void tryUnifyFunctions(TypeId superTy, TypeId subTy, bool isFunctionCall = false);
     void tryUnifyTables(TypeId left, TypeId right, bool isIntersection = false);
+    void DEPRECATED_tryUnifyTables(TypeId left, TypeId right, bool isIntersection = false);
     void tryUnifyFreeTable(TypeId free, TypeId other);
     void tryUnifySealedTables(TypeId left, TypeId right, bool isIntersection);
     void tryUnifyWithMetatable(TypeId metatable, TypeId other, bool reversed);
     void tryUnifyWithClass(TypeId superTy, TypeId subTy, bool reversed);
     void tryUnify(const TableIndexer& superIndexer, const TableIndexer& subIndexer);
+    TypeId deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen = {});
+    void cacheResult(TypeId superTy, TypeId subTy);
 
 public:
     void tryUnify(TypePackId superTy, TypePackId subTy, bool isFunctionCall = false);
@@ -80,9 +92,9 @@ private:
 public:
     // Report an "infinite type error" if the type "needle" already occurs within "haystack"
     void occursCheck(TypeId needle, TypeId haystack);
-    void occursCheck(std::unordered_set<TypeId>& seen, TypeId needle, TypeId haystack);
+    void occursCheck(std::unordered_set<TypeId>& seen_DEPRECATED, DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
     void occursCheck(TypePackId needle, TypePackId haystack);
-    void occursCheck(std::unordered_set<TypePackId>& seen, TypePackId needle, TypePackId haystack);
+    void occursCheck(std::unordered_set<TypePackId>& seen_DEPRECATED, DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     Unifier makeChildUnifier();
 
@@ -93,6 +105,10 @@ private:
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);
+
+    // Remove with FFlagLuauCacheUnifyTableResults
+    DenseHashSet<TypeId> tempSeenTy_DEPRECATED{nullptr};
+    DenseHashSet<TypePackId> tempSeenTp_DEPRECATED{nullptr};
 };
 
 } // namespace Luau

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/ToString.h"
 
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
@@ -9,10 +10,9 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauToStringFollowsBoundTo)
-LUAU_FASTFLAG(LuauExtraNilRecovery)
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
 LUAU_FASTFLAGVARIABLE(LuauInstantiatedTypeParamRecursion, false)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
 {
@@ -59,6 +59,13 @@ struct FindCyclicTypes
         {
             for (TypeId itp : ttv.instantiatedTypeParams)
                 visitTypeVar(itp, *this, seen);
+
+            if (FFlag::LuauTypeAliasPacks)
+            {
+                for (TypePackId itp : ttv.instantiatedTypePackParams)
+                    visitTypeVar(itp, *this, seen);
+            }
+
             return exhaustive;
         }
 
@@ -149,15 +156,6 @@ struct StringifierState
         auto iter = seen.find(ttv);
         if (iter != seen.end())
             seen.erase(iter);
-    }
-
-    static std::string generateName(size_t i)
-    {
-        std::string n;
-        n = char('a' + i % 26);
-        if (i >= 26)
-            n += std::to_string(i / 26);
-        return n;
     }
 
     std::string getName(TypeId ty)
@@ -258,23 +256,60 @@ struct TypeVarStringifier
     void stringify(TypePackId tp);
     void stringify(TypePackId tpid, const std::vector<std::optional<FunctionArgument>>& names);
 
-    void stringify(const std::vector<TypeId>& types)
+    void stringify(const std::vector<TypeId>& types, const std::vector<TypePackId>& typePacks)
     {
-        if (types.size() == 0)
+        if (types.size() == 0 && (!FFlag::LuauTypeAliasPacks || typePacks.size() == 0))
             return;
 
-        if (types.size())
+        if (types.size() || (FFlag::LuauTypeAliasPacks && typePacks.size()))
             state.emit("<");
 
-        for (size_t i = 0; i < types.size(); ++i)
+        if (FFlag::LuauTypeAliasPacks)
         {
-            if (i > 0)
-                state.emit(", ");
+            bool first = true;
 
-            stringify(types[i]);
+            for (TypeId ty : types)
+            {
+                if (!first)
+                    state.emit(", ");
+                first = false;
+
+                stringify(ty);
+            }
+
+            bool singleTp = typePacks.size() == 1;
+
+            for (TypePackId tp : typePacks)
+            {
+                if (isEmpty(tp) && singleTp)
+                    continue;
+
+                if (!first)
+                    state.emit(", ");
+                else
+                    first = false;
+
+                if (!singleTp)
+                    state.emit("(");
+
+                stringify(tp);
+
+                if (!singleTp)
+                    state.emit(")");
+            }
+        }
+        else
+        {
+            for (size_t i = 0; i < types.size(); ++i)
+            {
+                if (i > 0)
+                    state.emit(", ");
+
+                stringify(types[i]);
+            }
         }
 
-        if (types.size())
+        if (types.size() || (FFlag::LuauTypeAliasPacks && typePacks.size()))
             state.emit(">");
     }
 
@@ -388,7 +423,7 @@ struct TypeVarStringifier
 
     void operator()(TypeId, const TableTypeVar& ttv)
     {
-        if (FFlag::LuauToStringFollowsBoundTo && ttv.boundTo)
+        if (ttv.boundTo)
             return stringify(*ttv.boundTo);
 
         if (!state.exhaustive)
@@ -411,14 +446,14 @@ struct TypeVarStringifier
                 }
 
                 state.emit(*ttv.name);
-                stringify(ttv.instantiatedTypeParams);
+                stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
             if (ttv.syntheticName)
             {
                 state.result.invalid = true;
                 state.emit(*ttv.syntheticName);
-                stringify(ttv.instantiatedTypeParams);
+                stringify(ttv.instantiatedTypeParams, ttv.instantiatedTypePackParams);
                 return;
             }
         }
@@ -539,8 +574,7 @@ struct TypeVarStringifier
         std::vector<std::string> results = {};
         for (auto el : &uv)
         {
-            if (FFlag::LuauExtraNilRecovery || FFlag::LuauAddMissingFollow)
-                el = follow(el);
+            el = follow(el);
 
             if (isNil(el))
             {
@@ -604,8 +638,7 @@ struct TypeVarStringifier
         std::vector<std::string> results = {};
         for (auto el : uv.parts)
         {
-            if (FFlag::LuauExtraNilRecovery || FFlag::LuauAddMissingFollow)
-                el = follow(el);
+            el = follow(el);
 
             std::string saved = std::move(state.result.name);
 
@@ -900,12 +933,25 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
             result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
 
-            if (ttv->instantiatedTypeParams.empty())
+            if (ttv->instantiatedTypeParams.empty() && (!FFlag::LuauTypeAliasPacks || ttv->instantiatedTypePackParams.empty()))
                 return result;
 
             std::vector<std::string> params;
             for (TypeId tp : ttv->instantiatedTypeParams)
                 params.push_back(toString(tp));
+
+            if (FFlag::LuauTypeAliasPacks)
+            {
+                // Doesn't preserve grouping of multiple type packs
+                // But this is under a parent block of code that is being removed later
+                for (TypePackId tp : ttv->instantiatedTypePackParams)
+                {
+                    std::string content = toString(tp);
+
+                    if (!content.empty())
+                        params.push_back(std::move(content));
+                }
+            }
 
             result.name += "<" + join(params, ", ") + ">";
             return result;
@@ -950,30 +996,37 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
             result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
 
-            if (ttv->instantiatedTypeParams.empty())
-                return result;
-
-            result.name += "<";
-
-            bool first = true;
-            for (TypeId ty : ttv->instantiatedTypeParams)
+            if (FFlag::LuauTypeAliasPacks)
             {
-                if (!first)
-                    result.name += ", ";
-                else
-                    first = false;
-
-                tvs.stringify(ty);
-            }
-
-            if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
-            {
-                result.truncated = true;
-                result.name += "... <TRUNCATED>";
+                tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
             }
             else
             {
-                result.name += ">";
+                if (ttv->instantiatedTypeParams.empty() && (!FFlag::LuauTypeAliasPacks || ttv->instantiatedTypePackParams.empty()))
+                    return result;
+
+                result.name += "<";
+
+                bool first = true;
+                for (TypeId ty : ttv->instantiatedTypeParams)
+                {
+                    if (!first)
+                        result.name += ", ";
+                    else
+                        first = false;
+
+                    tvs.stringify(ty);
+                }
+
+                if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
+                {
+                    result.truncated = true;
+                    result.name += "... <TRUNCATED>";
+                }
+                else
+                {
+                    result.name += ">";
+                }
             }
 
             return result;
@@ -1137,6 +1190,15 @@ void dump(TypePackId ty)
     opts.exhaustive = true;
     opts.functionTypeArguments = true;
     printf("%s\n", toString(ty, opts).c_str());
+}
+
+std::string generateName(size_t i)
+{
+    std::string n;
+    n = char('a' + i % 26);
+    if (i >= 26)
+        n += std::to_string(i / 26);
+    return n;
 }
 
 } // namespace Luau

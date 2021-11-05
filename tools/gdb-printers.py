@@ -11,9 +11,9 @@ class VariantPrinter:
         return type.name + " [" + str(value) + "]"
 
 def match_printer(val):
-	type = val.type.strip_typedefs()
-	if type.name and type.name.startswith('Luau::Variant<'):
-		return VariantPrinter(val)
-	return None
+    type = val.type.strip_typedefs()
+    if type.name and type.name.startswith('Luau::Variant<'):
+        return VariantPrinter(val)
+    return None
 
 gdb.pretty_printers.append(match_printer)

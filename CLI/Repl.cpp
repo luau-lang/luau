@@ -179,7 +179,7 @@ static std::string runCode(lua_State* L, const std::string& source)
         {
             error = "thread yielded unexpectedly";
         }
-        else if (const char* str = lua_tostring(L, -1))
+        else if (const char* str = lua_tostring(T, -1))
         {
             error = str;
         }

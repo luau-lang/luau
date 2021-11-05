@@ -21,5 +21,7 @@ pages:
     url: /compatibility
   - title: Typechecking
     url: /typecheck
+  - title: Profiling
+    url: /profile
   - title: Library
     url: /library

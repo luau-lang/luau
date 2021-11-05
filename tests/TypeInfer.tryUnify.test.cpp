@@ -1,11 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
+
+LUAU_FASTFLAG(LuauQuantifyInPlace2);
 
 using namespace Luau;
 
@@ -14,7 +17,8 @@ struct TryUnifyFixture : Fixture
     TypeArena arena;
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
-    Unifier state{&arena, Mode::Strict, globalScope, Location{}, Variance::Covariant, &iceHandler};
+    UnifierSharedState unifierState{&iceHandler};
+    Unifier state{&arena, Mode::Strict, globalScope, Location{}, Variance::Covariant, unifierState};
 };
 
 TEST_SUITE_BEGIN("TryUnifyTests");
@@ -138,7 +142,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails"
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("(number) -> (boolean)", toString(requireType("f")));
+    if (FFlag::LuauQuantifyInPlace2)
+        CHECK_EQ("(number) -> boolean", toString(requireType("f")));
+    else
+        CHECK_EQ("(number) -> (boolean)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")

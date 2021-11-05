@@ -264,6 +264,10 @@ public:
     {
         return false;
     }
+    virtual bool visit(class AstTypePackExplicit* node)
+    {
+        return visit((class AstTypePack*)node);
+    }
     virtual bool visit(class AstTypePackVariadic* node)
     {
         return visit((class AstTypePack*)node);
@@ -930,12 +934,14 @@ class AstStatTypeAlias : public AstStat
 public:
     LUAU_RTTI(AstStatTypeAlias)
 
-    AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstName>& generics, AstType* type, bool exported);
+    AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks,
+        AstType* type, bool exported);
 
     void visit(AstVisitor* visitor) override;
 
     AstName name;
     AstArray<AstName> generics;
+    AstArray<AstName> genericPacks;
     AstType* type;
     bool exported;
 };
@@ -1007,19 +1013,28 @@ public:
     }
 };
 
+// Don't have Luau::Variant available, it's a bit of an overhead, but a plain struct is nice to use
+struct AstTypeOrPack
+{
+    AstType* type = nullptr;
+    AstTypePack* typePack = nullptr;
+};
+
 class AstTypeReference : public AstType
 {
 public:
     LUAU_RTTI(AstTypeReference)
 
-    AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, const AstArray<AstType*>& generics = {});
+    AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, bool hasParameterList = false,
+        const AstArray<AstTypeOrPack>& parameters = {});
 
     void visit(AstVisitor* visitor) override;
 
     bool hasPrefix;
+    bool hasParameterList;
     AstName prefix;
     AstName name;
-    AstArray<AstType*> generics;
+    AstArray<AstTypeOrPack> parameters;
 };
 
 struct AstTableProp
@@ -1150,6 +1165,18 @@ public:
         : AstNode(classIndex, location)
     {
     }
+};
+
+class AstTypePackExplicit : public AstTypePack
+{
+public:
+    LUAU_RTTI(AstTypePackExplicit)
+
+    AstTypePackExplicit(const Location& location, AstTypeList typeList);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstTypeList typeList;
 };
 
 class AstTypePackVariadic : public AstTypePack

@@ -15,12 +15,6 @@ struct Module;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-struct ModuleInfo
-{
-    ModuleName name;
-    bool optional = false;
-};
-
 struct ModuleResolver
 {
     virtual ~ModuleResolver() {}

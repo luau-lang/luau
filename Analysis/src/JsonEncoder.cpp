@@ -3,6 +3,9 @@
 
 #include "Luau/Ast.h"
 #include "Luau/StringUtils.h"
+#include "Luau/Common.h"
+
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
 {
@@ -612,6 +615,12 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstStatTypeAlias", [&]() {
             PROP(name);
             PROP(generics);
+
+            if (FFlag::LuauTypeAliasPacks)
+            {
+                PROP(genericPacks);
+            }
+
             PROP(type);
             PROP(exported);
         });
@@ -664,13 +673,21 @@ struct AstJsonEncoder : public AstVisitor
         });
     }
 
+    void write(struct AstTypeOrPack node)
+    {
+        if (node.type)
+            write(node.type);
+        else
+            write(node.typePack);
+    }
+
     void write(class AstTypeReference* node)
     {
         writeNode(node, "AstTypeReference", [&]() {
             if (node->hasPrefix)
                 PROP(prefix);
             PROP(name);
-            PROP(generics);
+            PROP(parameters);
         });
     }
 
@@ -731,6 +748,13 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstTypeError", [&]() {
             PROP(types);
             PROP(messageIndex);
+        });
+    }
+
+    void write(class AstTypePackExplicit* node)
+    {
+        writeNode(node, "AstTypePackExplicit", [&]() {
+            PROP(typeList);
         });
     }
 
@@ -1013,6 +1037,12 @@ struct AstJsonEncoder : public AstVisitor
     }
 
     bool visit(class AstTypePack* node) override
+    {
+        write(node);
+        return false;
+    }
+
+    bool visit(class AstTypePackExplicit* node) override
     {
         write(node);
         return false;

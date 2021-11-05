@@ -11,7 +11,7 @@
 LUAU_FASTFLAG(LuauParseGenericFunctions)
 LUAU_FASTFLAG(LuauGenericFunctions)
 LUAU_FASTFLAG(LuauRankNTypes)
-LUAU_FASTFLAG(LuauStringMetatable)
+LUAU_FASTFLAG(LuauNewRequireTrace)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -104,18 +104,6 @@ void attachMagicFunction(TypeId ty, MagicFunction fn)
         ftv->magicFunction = fn;
     else
         LUAU_ASSERT(!"Got a non functional type");
-}
-
-void attachFunctionTag(TypeId ty, std::string tag)
-{
-    if (auto ftv = getMutable<FunctionTypeVar>(ty))
-    {
-        ftv->tags.emplace_back(std::move(tag));
-    }
-    else
-    {
-        LUAU_ASSERT(!"Got a non functional type");
-    }
 }
 
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol)
@@ -218,7 +206,6 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     TypePackId anyTypePack = typeChecker.anyTypePack;
 
     TypePackId numberVariadicList = arena.addTypePack(TypePackVar{VariadicTypePack{numberType}});
-    TypePackId stringVariadicList = arena.addTypePack(TypePackVar{VariadicTypePack{stringType}});
     TypePackId listOfAtLeastOneNumber = arena.addTypePack(TypePack{{numberType}, numberVariadicList});
 
     TypeId listOfAtLeastOneNumberToNumberType = arena.addType(FunctionTypeVar{
@@ -255,85 +242,18 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     TypeId genericV = arena.addType(GenericTypeVar{"V"});
     TypeId mapOfKtoV = arena.addType(TableTypeVar{{}, TableIndexer(genericK, genericV), typeChecker.globalScope->level});
 
-    if (FFlag::LuauStringMetatable)
+    std::optional<TypeId> stringMetatableTy = getMetatable(singletonTypes.stringType);
+    LUAU_ASSERT(stringMetatableTy);
+    const TableTypeVar* stringMetatableTable = get<TableTypeVar>(follow(*stringMetatableTy));
+    LUAU_ASSERT(stringMetatableTable);
+
+    auto it = stringMetatableTable->props.find("__index");
+    LUAU_ASSERT(it != stringMetatableTable->props.end());
+
+    addGlobalBinding(typeChecker, "string", it->second.type, "@luau");
+
+    if (!FFlag::LuauParseGenericFunctions || !FFlag::LuauGenericFunctions)
     {
-        std::optional<TypeId> stringMetatableTy = getMetatable(singletonTypes.stringType);
-        LUAU_ASSERT(stringMetatableTy);
-        const TableTypeVar* stringMetatableTable = get<TableTypeVar>(follow(*stringMetatableTy));
-        LUAU_ASSERT(stringMetatableTable);
-
-        auto it = stringMetatableTable->props.find("__index");
-        LUAU_ASSERT(it != stringMetatableTable->props.end());
-
-        TypeId stringLib = it->second.type;
-        addGlobalBinding(typeChecker, "string", stringLib, "@luau");
-    }
-
-    if (FFlag::LuauParseGenericFunctions && FFlag::LuauGenericFunctions)
-    {
-        if (!FFlag::LuauStringMetatable)
-        {
-            TypeId stringLibTy = getGlobalBinding(typeChecker, "string");
-            TableTypeVar* stringLib = getMutable<TableTypeVar>(stringLibTy);
-            TypeId replArgType = makeUnion(
-                arena, {stringType,
-                           arena.addType(TableTypeVar({}, TableIndexer(stringType, stringType), typeChecker.globalScope->level, TableState::Generic)),
-                           makeFunction(arena, std::nullopt, {stringType}, {stringType})});
-            TypeId gsubFunc = makeFunction(arena, stringType, {stringType, replArgType, optionalNumber}, {stringType, numberType});
-
-            stringLib->props["gsub"] = makeProperty(gsubFunc, "@luau/global/string.gsub");
-        }
-    }
-    else
-    {
-        if (!FFlag::LuauStringMetatable)
-        {
-            TypeId stringToStringType = makeFunction(arena, std::nullopt, {stringType}, {stringType});
-
-            TypeId gmatchFunc = makeFunction(arena, stringType, {stringType}, {arena.addType(FunctionTypeVar{emptyPack, stringVariadicList})});
-
-            TypeId replArgType = makeUnion(
-                arena, {stringType,
-                           arena.addType(TableTypeVar({}, TableIndexer(stringType, stringType), typeChecker.globalScope->level, TableState::Generic)),
-                           makeFunction(arena, std::nullopt, {stringType}, {stringType})});
-            TypeId gsubFunc = makeFunction(arena, stringType, {stringType, replArgType, optionalNumber}, {stringType, numberType});
-
-            TypeId formatFn = arena.addType(FunctionTypeVar{arena.addTypePack(TypePack{{stringType}, anyTypePack}), oneStringPack});
-
-            TableTypeVar::Props stringLib = {
-                // FIXME string.byte "can" return a pack of numbers, but only if 2nd or 3rd arguments were supplied
-                {"byte", {makeFunction(arena, stringType, {optionalNumber, optionalNumber}, {optionalNumber})}},
-                // FIXME char takes a variadic pack of numbers
-                {"char", {makeFunction(arena, std::nullopt, {numberType, optionalNumber, optionalNumber, optionalNumber}, {stringType})}},
-                {"find", {makeFunction(arena, stringType, {stringType, optionalNumber, optionalBoolean}, {optionalNumber, optionalNumber})}},
-                {"format", {formatFn}}, // FIXME
-                {"gmatch", {gmatchFunc}},
-                {"gsub", {gsubFunc}},
-                {"len", {makeFunction(arena, stringType, {}, {numberType})}},
-                {"lower", {stringToStringType}},
-                {"match", {makeFunction(arena, stringType, {stringType, optionalNumber}, {optionalString})}},
-                {"rep", {makeFunction(arena, stringType, {numberType}, {stringType})}},
-                {"reverse", {stringToStringType}},
-                {"sub", {makeFunction(arena, stringType, {numberType, optionalNumber}, {stringType})}},
-                {"upper", {stringToStringType}},
-                {"split", {makeFunction(arena, stringType, {stringType, optionalString},
-                              {arena.addType(TableTypeVar{{}, TableIndexer{numberType, stringType}, typeChecker.globalScope->level})})}},
-                {"pack", {arena.addType(FunctionTypeVar{
-                             arena.addTypePack(TypePack{{stringType}, anyTypePack}),
-                             oneStringPack,
-                         })}},
-                {"packsize", {makeFunction(arena, stringType, {}, {numberType})}},
-                {"unpack", {arena.addType(FunctionTypeVar{
-                               arena.addTypePack(TypePack{{stringType, stringType, optionalNumber}}),
-                               anyTypePack,
-                           })}},
-            };
-
-            assignPropDocumentationSymbols(stringLib, "@luau/global/string");
-            addGlobalBinding(typeChecker, "string",
-                arena.addType(TableTypeVar{stringLib, std::nullopt, typeChecker.globalScope->level, TableState::Sealed}), "@luau");
-        }
-
         TableTypeVar::Props debugLib{
             {"info", {makeIntersection(arena,
                          {
@@ -601,9 +521,6 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     auto tableLib = getMutable<TableTypeVar>(getGlobalBinding(typeChecker, "table"));
     attachMagicFunction(tableLib->props["pack"].type, magicFunctionPack);
 
-    auto stringLib = getMutable<TableTypeVar>(getGlobalBinding(typeChecker, "string"));
-    attachMagicFunction(stringLib->props["format"].type, magicFunctionFormat);
-
     attachMagicFunction(getGlobalBinding(typeChecker, "require"), magicFunctionRequire);
 }
 
@@ -791,10 +708,10 @@ static std::optional<ExprResult<TypePackId>> magicFunctionRequire(
         return std::nullopt;
     }
 
-    AstExpr* require = expr.args.data[0];
-
-    if (!checkRequirePath(typechecker, require))
+    if (!checkRequirePath(typechecker, expr.args.data[0]))
         return std::nullopt;
+
+    const AstExpr* require = FFlag::LuauNewRequireTrace ? &expr : expr.args.data[0];
 
     if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, *require))
         return ExprResult<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};

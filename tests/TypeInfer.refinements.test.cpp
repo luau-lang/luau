@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 
 #include "Fixture.h"
@@ -6,8 +7,8 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauWeakEqConstraint)
-LUAU_FASTFLAG(LuauImprovedTypeGuardPredicate2)
 LUAU_FASTFLAG(LuauOrPredicate)
+LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
 using namespace Luau;
 
@@ -199,16 +200,8 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_only_look_up_types_from_global_scope")
         end
     )");
 
-    if (FFlag::LuauImprovedTypeGuardPredicate2)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Type 'number' has no overlap with 'string'", toString(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Type 'string' could not be converted into 'boolean'", toString(result.errors[0]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'number' has no overlap with 'string'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
@@ -526,8 +519,6 @@ TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
 
 TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(x)
             if type(x) == "vector" then
@@ -544,8 +535,6 @@ TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
 
 TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local t = {"hello"}
         local v = t[2]
@@ -573,8 +562,6 @@ TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true"
 
 TEST_CASE_FIXTURE(Fixture, "typeguard_not_to_be_string")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(x: string | number | boolean)
             if type(x) ~= "string" then
@@ -593,8 +580,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_not_to_be_string")
 
 TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_table")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(x: string | {x: number} | {y: boolean})
             if type(x) == "table" then
@@ -613,8 +598,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_table")
 
 TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_functions")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function weird(x: string | ((number) -> string))
             if type(x) == "function" then
@@ -698,8 +681,6 @@ struct RefinementClassFixture : Fixture
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(vec)
             local X, Y, Z = vec.X, vec.Y, vec.Z
@@ -718,16 +699,20 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
 
     CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28}))); // type(vec) == "vector"
 
-    CHECK_EQ("Type '{- X: a, Y: b, Z: c -}' could not be converted into 'Instance'", toString(result.errors[0]));
+    if (FFlag::LuauQuantifyInPlace2)
+        CHECK_EQ("Type '{+ X: a, Y: b, Z: c +}' could not be converted into 'Instance'", toString(result.errors[0]));
+    else
+        CHECK_EQ("Type '{- X: a, Y: b, Z: c -}' could not be converted into 'Instance'", toString(result.errors[0]));
     CHECK_EQ("*unknown*", toString(requireTypeAtPosition({7, 28}))); // typeof(vec) == "Instance"
 
-    CHECK_EQ("{- X: a, Y: b, Z: c -}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
+   if (FFlag::LuauQuantifyInPlace2)
+        CHECK_EQ("{+ X: a, Y: b, Z: c +}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
+    else
+        CHECK_EQ("{- X: a, Y: b, Z: c -}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
 }
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to_vector")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(x: Instance | Vector3)
             if typeof(x) == "Vector3" then
@@ -746,8 +731,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(x: string | number | Instance | Vector3)
             if type(x) == "userdata" then
@@ -766,10 +749,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauImprovedTypeGuardPredicate2", true},
-        {"LuauTypeGuardPeelsAwaySubclasses", true},
-    };
+    ScopedFastFlag sff{"LuauTypeGuardPeelsAwaySubclasses", true};
 
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
@@ -789,10 +769,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauImprovedTypeGuardPredicate2", true},
-        {"LuauTypeGuardPeelsAwaySubclasses", true},
-    };
+    ScopedFastFlag sff{"LuauTypeGuardPeelsAwaySubclasses", true};
 
     CheckResult result = check(R"(
         local function f(x: Part | Folder | Instance | string | Vector3 | any)
@@ -812,10 +789,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is_table")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauOrPredicate", true},
-        {"LuauImprovedTypeGuardPredicate2", true},
-    };
+    ScopedFastFlag sff{"LuauOrPredicate", true};
 
     CheckResult result = check(R"(
         --!nonstrict
@@ -839,7 +813,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
 {
     ScopedFastFlag sffs[] = {
         {"LuauOrPredicate", true},
-        {"LuauImprovedTypeGuardPredicate2", true},
         {"LuauTypeGuardPeelsAwaySubclasses", true},
     };
 
@@ -861,8 +834,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
 
 TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         type XYCoord = {x: number} & {y: number}
         local function f(t: XYCoord?)
@@ -882,8 +853,6 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
 
 TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         type SomeOverloadedFunction = ((number) -> string) & ((string) -> number)
         local function f(g: SomeOverloadedFunction?)
@@ -903,8 +872,6 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
 
 TEST_CASE_FIXTURE(Fixture, "type_guard_warns_on_no_overlapping_types_only_when_sense_is_true")
 {
-    ScopedFastFlag sff2{"LuauImprovedTypeGuardPredicate2", true};
-
     CheckResult result = check(R"(
         local function f(t: {x: number})
             if type(t) ~= "table" then
@@ -999,10 +966,7 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b2")
 
 TEST_CASE_FIXTURE(Fixture, "either_number_or_string")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauOrPredicate", true},
-        {"LuauImprovedTypeGuardPredicate2", true},
-    };
+    ScopedFastFlag sff{"LuauOrPredicate", true};
 
     CheckResult result = check(R"(
         local function f(x: any)
@@ -1036,10 +1000,7 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 
 TEST_CASE_FIXTURE(Fixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauOrPredicate", true},
-        {"LuauImprovedTypeGuardPredicate2", true},
-    };
+    ScopedFastFlag sff{"LuauOrPredicate", true};
 
     CheckResult result = check(R"(
         local a: (number | string)?
@@ -1057,10 +1018,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
 
 TEST_CASE_FIXTURE(Fixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauOrPredicate", true},
-        {"LuauImprovedTypeGuardPredicate2", true},
-    };
+    ScopedFastFlag sff{"LuauOrPredicate", true};
 
     // This bug came up because there was a mistake in Luau::merge where zipping on two maps would produce the wrong merged result.
     CheckResult result = check(R"(
@@ -1081,10 +1039,7 @@ TEST_CASE_FIXTURE(Fixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
 
 TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_number_or_string")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauOrPredicate", true},
-        {"LuauImprovedTypeGuardPredicate2", true},
-    };
+    ScopedFastFlag sff{"LuauOrPredicate", true};
 
     CheckResult result = check(R"(
         local function f(a: string | number | boolean)

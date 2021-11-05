@@ -52,8 +52,6 @@
 // `T`, and the type of `f` are in the same SCC, which is why `f` gets
 // replaced.
 
-LUAU_FASTFLAG(DebugLuauTrackOwningArena)
-
 namespace Luau
 {
 
@@ -188,20 +186,12 @@ struct Substitution : FindDirty
     template<typename T>
     TypeId addType(const T& tv)
     {
-        TypeId allocated = currentModule->internalTypes.typeVars.allocate(tv);
-        if (FFlag::DebugLuauTrackOwningArena)
-            asMutable(allocated)->owningArena = &currentModule->internalTypes;
-
-        return allocated;
+        return currentModule->internalTypes.addType(tv);
     }
     template<typename T>
     TypePackId addTypePack(const T& tp)
     {
-        TypePackId allocated = currentModule->internalTypes.typePacks.allocate(tp);
-        if (FFlag::DebugLuauTrackOwningArena)
-            asMutable(allocated)->owningArena = &currentModule->internalTypes;
-
-        return allocated;
+        return currentModule->internalTypes.addTypePack(TypePackVar{tp});
     }
 };
 

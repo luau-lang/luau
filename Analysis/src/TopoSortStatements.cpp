@@ -298,7 +298,14 @@ struct ArcCollector : public AstVisitor
 
 struct ContainsFunctionCall : public AstVisitor
 {
+    bool alsoReturn = false;
     bool result = false;
+
+    ContainsFunctionCall() = default;
+    explicit ContainsFunctionCall(bool alsoReturn)
+        : alsoReturn(alsoReturn)
+    {
+    }
 
     bool visit(AstExpr*) override
     {
@@ -316,6 +323,17 @@ struct ContainsFunctionCall : public AstVisitor
         // for in loops perform an implicit function call as part of the iterator protocol
         result = true;
         return false;
+    }
+
+    bool visit(AstStatReturn* stat) override
+    {
+        if (alsoReturn)
+        {
+            result = true;
+            return false;
+        }
+        else
+            return AstVisitor::visit(stat);
     }
 
     bool visit(AstExprFunction*) override
@@ -475,6 +493,13 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
 bool containsFunctionCall(const AstStat& stat)
 {
     detail::ContainsFunctionCall cfc;
+    const_cast<AstStat&>(stat).visit(&cfc);
+    return cfc.result;
+}
+
+bool containsFunctionCallOrReturn(const AstStat& stat)
+{
+    detail::ContainsFunctionCall cfc{true};
     const_cast<AstStat&>(stat).visit(&cfc);
     return cfc.result;
 }

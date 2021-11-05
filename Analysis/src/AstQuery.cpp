@@ -2,6 +2,7 @@
 #include "Luau/AstQuery.h"
 
 #include "Luau/Module.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 #include "Luau/ToString.h"
@@ -143,8 +144,8 @@ std::optional<TypeId> findTypeAtPosition(const Module& module, const SourceModul
 {
     if (auto expr = findExprAtPosition(sourceModule, pos))
     {
-        if (auto it = module.astTypes.find(expr); it != module.astTypes.end())
-            return it->second;
+        if (auto it = module.astTypes.find(expr))
+            return *it;
     }
 
     return std::nullopt;
@@ -154,8 +155,8 @@ std::optional<TypeId> findExpectedTypeAtPosition(const Module& module, const Sou
 {
     if (auto expr = findExprAtPosition(sourceModule, pos))
     {
-        if (auto it = module.astExpectedTypes.find(expr); it != module.astExpectedTypes.end())
-            return it->second;
+        if (auto it = module.astExpectedTypes.find(expr))
+            return *it;
     }
 
     return std::nullopt;
@@ -322,9 +323,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 TypeId matchingOverload = nullptr;
                 if (parentExpr && parentExpr->is<AstExprCall>())
                 {
-                    if (auto it = module.astOverloadResolvedTypes.find(parentExpr); it != module.astOverloadResolvedTypes.end())
+                    if (auto it = module.astOverloadResolvedTypes.find(parentExpr))
                     {
-                        matchingOverload = it->second;
+                        matchingOverload = *it;
                     }
                 }
 
@@ -345,9 +346,9 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
     {
         if (AstExprIndexName* indexName = targetExpr->as<AstExprIndexName>())
         {
-            if (auto it = module.astTypes.find(indexName->expr); it != module.astTypes.end())
+            if (auto it = module.astTypes.find(indexName->expr))
             {
-                TypeId parentTy = follow(it->second);
+                TypeId parentTy = follow(*it);
                 if (const TableTypeVar* ttv = get<TableTypeVar>(parentTy))
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())

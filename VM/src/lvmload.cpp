@@ -12,7 +12,32 @@
 
 #include <string.h>
 
-#include <vector>
+// TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
+template<typename T>
+struct TempBuffer
+{
+    lua_State* L;
+    T* data;
+    size_t count;
+
+    TempBuffer(lua_State* L, size_t count)
+        : L(L)
+        , data(luaM_newarray(L, count, T, 0))
+        , count(count)
+    {
+    }
+
+    ~TempBuffer()
+    {
+        luaM_freearray(L, data, count, T, 0);
+    }
+
+    T& operator[](size_t index)
+    {
+        LUAU_ASSERT(index < count);
+        return data[index];
+    }
+};
 
 void luaV_getimport(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil)
 {
@@ -67,7 +92,7 @@ static unsigned int readVarInt(const char* data, size_t size, size_t& offset)
     return result;
 }
 
-static TString* readString(std::vector<TString*>& strings, const char* data, size_t size, size_t& offset)
+static TString* readString(TempBuffer<TString*>& strings, const char* data, size_t size, size_t& offset)
 {
     unsigned int id = readVarInt(data, size, offset);
 
@@ -133,6 +158,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     }
 
     // pause GC for the duration of deserialization - some objects we're creating aren't rooted
+    // TODO: if an allocation error happens mid-load, we do not unpause GC!
     size_t GCthreshold = L->global->GCthreshold;
     L->global->GCthreshold = SIZE_MAX;
 
@@ -144,7 +170,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     // string table
     unsigned int stringCount = readVarInt(data, size, offset);
-    std::vector<TString*> strings(stringCount);
+    TempBuffer<TString*> strings(L, stringCount);
 
     for (unsigned int i = 0; i < stringCount; ++i)
     {
@@ -156,7 +182,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
 
     // proto table
     unsigned int protoCount = readVarInt(data, size, offset);
-    std::vector<Proto*> protos(protoCount);
+    TempBuffer<Proto*> protos(L, protoCount);
 
     for (unsigned int i = 0; i < protoCount; ++i)
     {
@@ -319,6 +345,8 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     // "main" proto is pushed to Lua stack
     uint32_t mainid = readVarInt(data, size, offset);
     Proto* main = protos[mainid];
+
+    luaC_checkthreadsleep(L);
 
     Closure* cl = luaF_newLclosure(L, 0, envt, main);
     setclvalue(L, L->top, cl);

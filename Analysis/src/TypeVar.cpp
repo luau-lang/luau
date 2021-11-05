@@ -19,11 +19,10 @@
 
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
-LUAU_FASTFLAG(LuauImprovedTypeGuardPredicate2)
-LUAU_FASTFLAGVARIABLE(LuauToStringFollowsBoundTo, false)
 LUAU_FASTFLAG(LuauRankNTypes)
-LUAU_FASTFLAGVARIABLE(LuauStringMetatable, false)
 LUAU_FASTFLAG(LuauTypeGuardPeelsAwaySubclasses)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
+LUAU_FASTFLAGVARIABLE(LuauRefactorTagging, false)
 
 namespace Luau
 {
@@ -193,27 +192,11 @@ bool isOptional(TypeId ty)
 
 bool isTableIntersection(TypeId ty)
 {
-    if (FFlag::LuauImprovedTypeGuardPredicate2)
-    {
-        if (!get<IntersectionTypeVar>(follow(ty)))
-            return false;
-
-        std::vector<TypeId> parts = flattenIntersection(ty);
-        return std::all_of(parts.begin(), parts.end(), getTableType);
-    }
-    else
-    {
-        if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
-        {
-            for (TypeId part : itv->parts)
-            {
-                if (getTableType(follow(part)))
-                    return true;
-            }
-        }
-
+    if (!get<IntersectionTypeVar>(follow(ty)))
         return false;
-    }
+
+    std::vector<TypeId> parts = flattenIntersection(ty);
+    return std::all_of(parts.begin(), parts.end(), getTableType);
 }
 
 bool isOverloadedFunction(TypeId ty)
@@ -235,8 +218,7 @@ std::optional<TypeId> getMetatable(TypeId type)
         return mtType->metatable;
     else if (const ClassTypeVar* classType = get<ClassTypeVar>(type))
         return classType->metatable;
-    else if (const PrimitiveTypeVar* primitiveType = get<PrimitiveTypeVar>(type);
-             FFlag::LuauStringMetatable && primitiveType && primitiveType->metatable)
+    else if (const PrimitiveTypeVar* primitiveType = get<PrimitiveTypeVar>(type); primitiveType && primitiveType->metatable)
     {
         LUAU_ASSERT(primitiveType->type == PrimitiveTypeVar::String);
         return primitiveType->metatable;
@@ -871,6 +853,12 @@ void StateDot::visitChildren(TypeId ty, int index)
         }
         for (TypeId itp : ttv->instantiatedTypeParams)
             visitChild(itp, index, "typeParam");
+
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            for (TypePackId itp : ttv->instantiatedTypePackParams)
+                visitChild(itp, index, "typePackParam");
+        }
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
@@ -1500,6 +1488,88 @@ std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)
         return {*out};
 
     return {};
+}
+
+static Tags* getTags(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        return &ftv->tags;
+    else if (auto ttv = getMutable<TableTypeVar>(ty))
+        return &ttv->tags;
+    else if (auto ctv = getMutable<ClassTypeVar>(ty))
+        return &ctv->tags;
+
+    return nullptr;
+}
+
+void attachTag(TypeId ty, const std::string& tagName)
+{
+    if (!FFlag::LuauRefactorTagging)
+    {
+        if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        {
+            ftv->tags.emplace_back(tagName);
+        }
+        else
+        {
+            LUAU_ASSERT(!"Got a non functional type");
+        }
+    }
+    else
+    {
+        if (auto tags = getTags(ty))
+            tags->push_back(tagName);
+        else
+            LUAU_ASSERT(!"This TypeId does not support tags");
+    }
+}
+
+void attachTag(Property& prop, const std::string& tagName)
+{
+    LUAU_ASSERT(FFlag::LuauRefactorTagging);
+
+    prop.tags.push_back(tagName);
+}
+
+// We would ideally not expose this because it could cause a footgun.
+// If the Base class has a tag and you ask if Derived has that tag, it would return false.
+// Unfortunately, there's already use cases that's hard to disentangle. For now, we expose it.
+bool hasTag(const Tags& tags, const std::string& tagName)
+{
+    LUAU_ASSERT(FFlag::LuauRefactorTagging);
+    return std::find(tags.begin(), tags.end(), tagName) != tags.end();
+}
+
+bool hasTag(TypeId ty, const std::string& tagName)
+{
+    ty = follow(ty);
+
+    // We special case classes because getTags only returns a pointer to one vector of tags.
+    // But classes has multiple vector of tags, represented throughout the hierarchy.
+    if (auto ctv = get<ClassTypeVar>(ty))
+    {
+        while (ctv)
+        {
+            if (hasTag(ctv->tags, tagName))
+                return true;
+            else if (!ctv->parent)
+                return false;
+
+            ctv = get<ClassTypeVar>(*ctv->parent);
+            LUAU_ASSERT(ctv);
+        }
+    }
+    else if (auto tags = getTags(ty))
+        return hasTag(*tags, tagName);
+
+    return false;
+}
+
+bool hasTag(const Property& prop, const std::string& tagName)
+{
+    return hasTag(prop.tags, tagName);
 }
 
 } // namespace Luau

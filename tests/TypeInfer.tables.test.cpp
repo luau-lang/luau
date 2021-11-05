@@ -46,6 +46,21 @@ TEST_CASE_FIXTURE(Fixture, "augment_table")
     CHECK(tType->props.find("foo") != tType->props.end());
 }
 
+TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
+{
+    CheckResult result = check("local t = { p = {} }  t.p.foo = 'bar'");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TableTypeVar* tType = getMutable<TableTypeVar>(requireType("t"));
+    REQUIRE(tType != nullptr);
+
+    REQUIRE(tType->props.find("p") != tType->props.end());
+    const TableTypeVar* pType = get<TableTypeVar>(tType->props["p"].type);
+    REQUIRE(pType != nullptr);
+
+    CHECK(pType->props.find("foo") != pType->props.end());
+}
+
 TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
 {
     CheckResult result = check("local t = {prop=999}    t.foo = 'bar'");
@@ -260,6 +275,8 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification")
 
 TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
 {
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
     CheckResult result = check(R"(
         local a = {}
         a.x = 99
@@ -272,10 +289,11 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeError& err = result.errors[0];
-    UnknownProperty* error = get<UnknownProperty>(err);
+    MissingProperties* error = get<MissingProperties>(err);
     REQUIRE(error != nullptr);
+    REQUIRE(error->properties.size() == 1);
 
-    CHECK_EQ(error->key, "y");
+    CHECK_EQ("y", error->properties[0]);
     // TODO(rblanckaert): Revist when we can bind self at function creation time
     // CHECK_EQ(err.location, Location(Position{5, 19}, Position{5, 25}));
 
@@ -328,6 +346,8 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_1")
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
 {
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
     CheckResult result = check(R"(
         --!strict
         function foo(o)
@@ -340,14 +360,17 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    UnknownProperty* error = get<UnknownProperty>(result.errors[0]);
+    MissingProperties* error = get<MissingProperties>(result.errors[0]);
     REQUIRE(error != nullptr);
+    REQUIRE(error->properties.size() == 1);
 
-    CHECK_EQ("baz", error->key);
+    CHECK_EQ("baz", error->properties[0]);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_3")
 {
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
     CheckResult result = check(R"(
         local T = {}
         T.bar = 'hello'
@@ -359,8 +382,11 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_3")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     TypeError& err = result.errors[0];
-    UnknownProperty* error = get<UnknownProperty>(err);
+    MissingProperties* error = get<MissingProperties>(err);
     REQUIRE(error != nullptr);
+    REQUIRE(error->properties.size() == 1);
+
+    CHECK_EQ("baz", error->properties[0]);
 
     // TODO(rblanckaert): Revist when we can bind self at function creation time
     /*
@@ -448,6 +474,73 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_add_property_to_free_table")
     dumpErrors(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_assignment")
+{
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local t = { u = {} }
+        t = { u = { p = 37 } }
+        t = { u = { q = "hi" } }
+        local x = t.u.p
+        local y = t.u.q
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number?", toString(requireType("x")));
+    CHECK_EQ("string?", toString(requireType("y")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_function_call")
+{
+    CheckResult result = check(R"(
+        --!strict
+        function get(x) return x.opts["MYOPT"] end
+        function set(x,y) x.opts["MYOPT"] = y end
+        local t = { opts = {} }
+        set(t,37)
+        local x = get(t)
+    )");
+
+    // Currently this errors but it shouldn't, since set only needs write access
+    // TODO: file a JIRA for this
+    LUAU_REQUIRE_ERRORS(result);
+    // CHECK_EQ("number?", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "width_subtyping")
+{
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function f(x : { q : number })
+           x.q = 8
+        end
+        local t : { q : number, r : string } = { q = 8, r = "hi" }
+        f(t)
+        local x : string = t.r
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "width_subtyping_needs_covariance")
+{
+    CheckResult result = check(R"(
+        --!strict
+        function f(x : { p : { q : number }})
+           x.p = { q = 8, r = 5 }
+        end
+        local t : { p : { q : number, r : string } } = { p = { q = 8, r = "hi" } }
+        f(t) -- Shouldn't typecheck
+        local x : string = t.p.r -- x is 5
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "infer_array")
 {
     CheckResult result = check(R"(
@@ -524,7 +617,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     REQUIRE_EQ(indexer.indexType, typeChecker.numberType);
 
-    REQUIRE(nullptr != get<GenericTypeVar>(indexer.indexResultType));
+    REQUIRE(nullptr != get<GenericTypeVar>(follow(indexer.indexResultType)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "indexers_quantification_2")
@@ -676,16 +769,27 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_for_left_unsealed_table_from_right_han
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "sealed_table_value_must_not_infer_an_indexer")
+TEST_CASE_FIXTURE(Fixture, "sealed_table_value_can_infer_an_indexer")
 {
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
     CheckResult result = check(R"(
         local t: { a: string, [number]: string } = { a = "foo" }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
 
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm != nullptr);
+TEST_CASE_FIXTURE(Fixture, "array_factory_function")
+{
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
+    CheckResult result = check(R"(
+        function empty() return {} end
+        local array: {string} = empty()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "sealed_table_indexers_must_unify")
@@ -752,37 +856,6 @@ TEST_CASE_FIXTURE(Fixture, "indexing_from_a_table_should_prefer_properties_when_
     CHECK_EQ(*typeChecker.numberType, *requireType("b2"));
 
     CHECK_EQ(*typeChecker.numberType, *requireType("c"));
-
-    CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[0]), "Expected a TypeMismatch but got " << result.errors[0]);
-}
-
-TEST_CASE_FIXTURE(Fixture, "indexing_from_a_table_with_a_string")
-{
-    ScopedFastFlag fflag("LuauIndexTablesWithIndexers", true);
-
-    CheckResult result = check(R"(
-        local t: { a: string }
-        function f(x: string) return t[x] end
-        local a = f("a")
-        local b = f("b")
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(*typeChecker.anyType, *requireType("a"));
-    CHECK_EQ(*typeChecker.anyType, *requireType("b"));
-}
-
-TEST_CASE_FIXTURE(Fixture, "indexing_from_a_table_with_a_number")
-{
-    ScopedFastFlag fflag("LuauIndexTablesWithIndexers", true);
-
-    CheckResult result = check(R"(
-        local t = { a = true }
-        function f(x: number) return t[x] end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_MESSAGE(nullptr != get<TypeMismatch>(result.errors[0]), "Expected a TypeMismatch but got " << result.errors[0]);
 }
@@ -1392,6 +1465,8 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
 {
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
     CheckResult result = check(R"(
         local function foo(a: {[string]: number, a: string}) end
         foo({ a = 1 })
@@ -1402,8 +1477,21 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
     ToStringOptions o{/* exhaustive= */ true};
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ("string", toString(tm->wantedType, o));
-    CHECK_EQ("number", toString(tm->givenType, o));
+    CHECK_EQ("{| [string]: number, a: string |}", toString(tm->wantedType, o));
+    CHECK_EQ("{| a: number |}", toString(tm->givenType, o));
+}
+
+TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer4")
+{
+    CheckResult result = check(R"(
+        local function foo(a: {[string]: number, a: string}, i: string)
+            return a[i]
+        end
+        local hi: number = foo({ a = "hi" }, "a") -- shouldn't typecheck since at runtime hi is "hi"
+    )");
+
+    // This typechecks but shouldn't
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multiple_errors")
@@ -1446,22 +1534,32 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multi
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_dont_report_multiple_errors")
 {
     CheckResult result = check(R"(
-        local vec3 = {x = 1, y = 2, z = 3}
-        local vec1 = {x = 1}
+        local vec3 = {{x = 1, y = 2, z = 3}}
+        local vec1 = {{x = 1}}
 
         vec1 = vec3
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    MissingProperties* mp = get<MissingProperties>(result.errors[0]);
-    REQUIRE(mp);
-    CHECK_EQ(mp->context, MissingProperties::Extra);
-    REQUIRE_EQ(2, mp->properties.size());
-    CHECK_EQ(mp->properties[0], "y");
-    CHECK_EQ(mp->properties[1], "z");
-    CHECK_EQ("vec1", toString(mp->superType));
-    CHECK_EQ("vec3", toString(mp->subType));
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("vec1", toString(tm->wantedType));
+    CHECK_EQ("vec3", toString(tm->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_is_ok")
+{
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
+    CheckResult result = check(R"(
+        local vec3 = {x = 1, y = 2, z = 3}
+        local vec1 = {x = 1}
+
+        vec1 = vec3
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_mismatch_on_massive_table_is_cut_short")
@@ -1822,6 +1920,34 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in_nonstrict")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        local buttons = {}
+        table.insert(buttons, { a = 1 })
+        table.insert(buttons, { a = 2, b = true })
+        table.insert(buttons, { a = 3 })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in_strict")
+{
+    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local buttons = {}
+        table.insert(buttons, { a = 1 })
+        table.insert(buttons, { a = 2, b = true })
+        table.insert(buttons, { a = 3 })
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 
 #include "Fixture.h"
@@ -416,8 +417,6 @@ function foo(a, b) return a(b) end
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
 {
-    ScopedFastFlag sff{"LuauToStringFollowsBoundTo", true};
-
     TypeVar tv1{TableTypeVar{}};
     TableTypeVar* ttv = getMutable<TableTypeVar>(&tv1);
     ttv->state = TableState::Sealed;
