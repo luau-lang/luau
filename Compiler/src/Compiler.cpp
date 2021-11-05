@@ -2465,9 +2465,10 @@ struct Compiler
         }
         else if (node->is<AstStatBreak>())
         {
+            LUAU_ASSERT(!loops.empty());
+
             // before exiting out of the loop, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            LUAU_ASSERT(!loops.empty());
             closeLocals(loops.back().localOffset);
 
             size_t label = bytecode.emitLabel();
