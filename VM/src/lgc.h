@@ -6,8 +6,6 @@
 #include "lobject.h"
 #include "lstate.h"
 
-LUAU_FASTFLAG(LuauGcFullSkipInactiveThreads)
-
 /*
 ** Possible states of the Garbage Collector
 */
@@ -25,10 +23,10 @@ LUAU_FASTFLAG(LuauGcFullSkipInactiveThreads)
 ** still-black objects. The invariant is restored when sweep ends and
 ** all objects are white again.
 */
-#define keepinvariant(g) ((g)->gcstate == GCSpropagate || (g)->gcstate == GCSpropagateagain)
+#define keepinvariant(g) ((g)->gcstate == GCSpropagate || (g)->gcstate == GCSpropagateagain || (g)->gcstate == GCSatomic)
 
 /*
-** some userful bit tricks
+** some useful bit tricks
 */
 #define resetbits(x, m) ((x) &= cast_to(uint8_t, ~(m)))
 #define setbits(x, m) ((x) |= (m))

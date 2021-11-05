@@ -171,7 +171,7 @@ struct RequireTracerOld : AstVisitor
 
         result.exprs[call] = {fileResolver->concat(*rootName, v)};
 
-        // 'WaitForChild' can be used on modules that are not awailable at the typecheck time, but will be awailable at runtime
+        // 'WaitForChild' can be used on modules that are not available at the typecheck time, but will be available at runtime
         // If we fail to find such module, we will not report an UnknownRequire error
         if (FFlag::LuauTraceRequireLookupChild && indexName->index == "WaitForChild")
             result.exprs[call].optional = true;
@@ -182,7 +182,7 @@ struct RequireTracerOld : AstVisitor
 
 struct RequireTracer : AstVisitor
 {
-    RequireTracer(RequireTraceResult& result, FileResolver * fileResolver, const ModuleName& currentModuleName)
+    RequireTracer(RequireTraceResult& result, FileResolver* fileResolver, const ModuleName& currentModuleName)
         : result(result)
         , fileResolver(fileResolver)
         , currentModuleName(currentModuleName)
@@ -260,7 +260,7 @@ struct RequireTracer : AstVisitor
         // seed worklist with require arguments
         work.reserve(requires.size());
 
-        for (AstExprCall* require: requires)
+        for (AstExprCall* require : requires)
             work.push_back(require->args.data[0]);
 
         // push all dependent expressions to the work stack; note that the vector is modified during traversal

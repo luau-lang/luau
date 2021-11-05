@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Parser.h"
+#include "Luau/Quantify.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
 #include "Luau/Substitution.h"
@@ -33,18 +34,16 @@ LUAU_FASTFLAGVARIABLE(LuauCloneCorrectlyBeforeMutatingTableType, false)
 LUAU_FASTFLAGVARIABLE(LuauStoreMatchingOverloadFnType, false)
 LUAU_FASTFLAGVARIABLE(LuauRankNTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauOrPredicate, false)
-LUAU_FASTFLAGVARIABLE(LuauExtraNilRecovery, false)
-LUAU_FASTFLAGVARIABLE(LuauMissingUnionPropertyError, false)
 LUAU_FASTFLAGVARIABLE(LuauInferReturnAssertAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauAddMissingFollow, false)
 LUAU_FASTFLAGVARIABLE(LuauTypeGuardPeelsAwaySubclasses, false)
 LUAU_FASTFLAGVARIABLE(LuauSlightlyMoreFlexibleBinaryPredicates, false)
-LUAU_FASTFLAGVARIABLE(LuauInferFunctionArgsFix, false)
 LUAU_FASTFLAGVARIABLE(LuauFollowInTypeFunApply, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionAnalysisSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauStrictRequire, false)
 LUAU_FASTFLAG(LuauSubstitutionDontReplaceIgnoredTypes)
+LUAU_FASTFLAGVARIABLE(LuauQuantifyInPlace2, false)
 LUAU_FASTFLAG(LuauNewRequireTrace)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
 
@@ -215,6 +214,7 @@ static bool isMetamethod(const Name& name)
 TypeChecker::TypeChecker(ModuleResolver* resolver, InternalErrorReporter* iceHandler)
     : resolver(resolver)
     , iceHandler(iceHandler)
+    , unifierState(iceHandler)
     , nilType(singletonTypes.nilType)
     , numberType(singletonTypes.numberType)
     , stringType(singletonTypes.stringType)
@@ -370,13 +370,18 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         return;
     }
 
+    int subLevel = 0;
+
     std::vector<AstStat*> sorted(block.body.data, block.body.data + block.body.size);
     toposort(sorted);
 
     for (const auto& stat : sorted)
     {
         if (const auto& typealias = stat->as<AstStatTypeAlias>())
-            check(scope, *typealias, true);
+        {
+            check(scope, *typealias, subLevel, true);
+            ++subLevel;
+        }
     }
 
     auto protoIter = sorted.begin();
@@ -399,8 +404,6 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         }
     };
 
-    int subLevel = 0;
-
     while (protoIter != sorted.end())
     {
         // protoIter walks forward
@@ -416,7 +419,7 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         // ```
         // These both call each other, so `f` will be ordered before `g`, so the call to `g`
         // is typechecked before `g` has had its body checked. For this reason, there's three
-        // types for each functuion: before its body is checked, during checking its body,
+        // types for each function: before its body is checked, during checking its body,
         // and after its body is checked.
         //
         // We currently treat the before-type and the during-type as the same,
@@ -433,7 +436,7 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         // function f<a>(x:a):a local x: number = g(37) return x end
         // function g(x:number):number return f(x) end
         // ```
-        if (containsFunctionCall(**protoIter))
+        if (FFlag::LuauQuantifyInPlace2 ? containsFunctionCallOrReturn(**protoIter) : containsFunctionCall(**protoIter))
         {
             while (checkIter != protoIter)
             {
@@ -1080,7 +1083,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         checkFunctionBody(funScope, ty, *function.func);
 
         // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
-        // in case this function has a differing signature. The signature discrepency will be caught in checkBlock.
+        // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
         if (previouslyDefined)
             globalBindings[name] = oldBinding;
         else
@@ -1161,7 +1164,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         scope->bindings[function.name] = {quantify(scope, ty, function.name->location), function.name->location};
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias, bool forwardDeclare)
+void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel, bool forwardDeclare)
 {
     // This function should be called at most twice for each type alias.
     // Once with forwardDeclare, and once without.
@@ -1189,11 +1192,12 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         }
         else
         {
-            ScopePtr aliasScope = childScope(scope, typealias.location);
+            ScopePtr aliasScope =
+                FFlag::LuauQuantifyInPlace2 ? childScope(scope, typealias.location, subLevel) : childScope(scope, typealias.location);
 
             if (FFlag::LuauTypeAliasPacks)
             {
-                auto [generics, genericPacks] = createGenericTypes(aliasScope, typealias, typealias.generics, typealias.genericPacks);
+                auto [generics, genericPacks] = createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks);
 
                 TypeId ty = (FFlag::LuauRankNTypes ? freshType(aliasScope) : DEPRECATED_freshType(scope, true));
                 FreeTypeVar* ftv = getMutable<FreeTypeVar>(ty);
@@ -1418,7 +1422,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFunction& glo
 {
     ScopePtr funScope = childFunctionScope(scope, global.location);
 
-    auto [generics, genericPacks] = createGenericTypes(funScope, global, global.generics, global.genericPacks);
+    auto [generics, genericPacks] = createGenericTypes(funScope, std::nullopt, global, global.generics, global.genericPacks);
 
     TypePackId argPack = resolveTypePack(funScope, global.params);
     TypePackId retPack = resolveTypePack(funScope, global.retTypes);
@@ -1610,24 +1614,10 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIn
         if (std::optional<TypeId> ty = resolveLValue(scope, *lvalue))
             return {*ty, {TruthyPredicate{std::move(*lvalue), expr.location}}};
 
-    if (FFlag::LuauExtraNilRecovery)
-        lhsType = stripFromNilAndReport(lhsType, expr.expr->location);
+    lhsType = stripFromNilAndReport(lhsType, expr.expr->location);
 
     if (std::optional<TypeId> ty = getIndexTypeFromType(scope, lhsType, name, expr.location, true))
         return {*ty};
-
-    if (!FFlag::LuauMissingUnionPropertyError)
-        reportError(expr.indexLocation, UnknownProperty{lhsType, expr.index.value});
-
-    if (!FFlag::LuauExtraNilRecovery)
-    {
-        // Try to recover using a union without 'nil' options
-        if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(lhsType))
-        {
-            if (std::optional<TypeId> ty = getIndexTypeFromType(scope, *strippedUnion, name, expr.location, false))
-                return {*ty};
-        }
-    }
 
     return {errorType};
 }
@@ -1694,61 +1684,37 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
     }
     else if (const UnionTypeVar* utv = get<UnionTypeVar>(type))
     {
-        if (FFlag::LuauMissingUnionPropertyError)
+        std::vector<TypeId> goodOptions;
+        std::vector<TypeId> badOptions;
+
+        for (TypeId t : utv)
         {
-            std::vector<TypeId> goodOptions;
-            std::vector<TypeId> badOptions;
+            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
 
-            for (TypeId t : utv)
-            {
-                RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
-
-                if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, false))
-                    goodOptions.push_back(*ty);
-                else
-                    badOptions.push_back(t);
-            }
-
-            if (!badOptions.empty())
-            {
-                if (addErrors)
-                {
-                    if (goodOptions.empty())
-                        reportError(location, UnknownProperty{type, name});
-                    else
-                        reportError(location, MissingUnionProperty{type, badOptions, name});
-                }
-                return std::nullopt;
-            }
-
-            std::vector<TypeId> result = reduceUnion(goodOptions);
-
-            if (result.size() == 1)
-                return result[0];
-
-            return addType(UnionTypeVar{std::move(result)});
+            if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, false))
+                goodOptions.push_back(*ty);
+            else
+                badOptions.push_back(t);
         }
-        else
+
+        if (!badOptions.empty())
         {
-            std::vector<TypeId> options;
-
-            for (TypeId t : utv->options)
+            if (addErrors)
             {
-                RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
-
-                if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, false))
-                    options.push_back(*ty);
+                if (goodOptions.empty())
+                    reportError(location, UnknownProperty{type, name});
                 else
-                    return std::nullopt;
+                    reportError(location, MissingUnionProperty{type, badOptions, name});
             }
-
-            std::vector<TypeId> result = reduceUnion(options);
-
-            if (result.size() == 1)
-                return result[0];
-
-            return addType(UnionTypeVar{std::move(result)});
+            return std::nullopt;
         }
+
+        std::vector<TypeId> result = reduceUnion(goodOptions);
+
+        if (result.size() == 1)
+            return result[0];
+
+        return addType(UnionTypeVar{std::move(result)});
     }
     else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(type))
     {
@@ -1765,7 +1731,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
         // If no parts of the intersection had the property we looked up for, it never existed at all.
         if (parts.empty())
         {
-            if (FFlag::LuauMissingUnionPropertyError && addErrors)
+            if (addErrors)
                 reportError(location, UnknownProperty{type, name});
             return std::nullopt;
         }
@@ -1779,7 +1745,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
         return addType(IntersectionTypeVar{result});
     }
 
-    if (FFlag::LuauMissingUnionPropertyError && addErrors)
+    if (addErrors)
         reportError(location, UnknownProperty{type, name});
 
     return std::nullopt;
@@ -2062,8 +2028,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprUn
     case AstExprUnary::Len:
         tablify(operandType);
 
-        if (FFlag::LuauExtraNilRecovery)
-            operandType = stripFromNilAndReport(operandType, expr.location);
+        operandType = stripFromNilAndReport(operandType, expr.location);
 
         if (get<ErrorTypeVar>(operandType))
             return {errorType};
@@ -2635,8 +2600,7 @@ std::pair<TypeId, TypeId*> TypeChecker::checkLValueBinding(const ScopePtr& scope
 
     Name name = expr.index.value;
 
-    if (FFlag::LuauExtraNilRecovery)
-        lhs = stripFromNilAndReport(lhs, expr.expr->location);
+    lhs = stripFromNilAndReport(lhs, expr.expr->location);
 
     if (TableTypeVar* lhsTable = getMutableTableType(lhs))
     {
@@ -2710,8 +2674,7 @@ std::pair<TypeId, TypeId*> TypeChecker::checkLValueBinding(const ScopePtr& scope
     TypeId exprType = checkExpr(scope, *expr.expr).type;
     tablify(exprType);
 
-    if (FFlag::LuauExtraNilRecovery)
-        exprType = stripFromNilAndReport(exprType, expr.expr->location);
+    exprType = stripFromNilAndReport(exprType, expr.expr->location);
 
     TypeId indexType = checkExpr(scope, *expr.index).type;
 
@@ -2738,10 +2701,7 @@ std::pair<TypeId, TypeId*> TypeChecker::checkLValueBinding(const ScopePtr& scope
 
     if (!exprTable)
     {
-        if (FFlag::LuauExtraNilRecovery)
-            reportError(TypeError{expr.expr->location, NotATable{exprType}});
-        else
-            reportError(TypeError{expr.location, NotATable{exprType}});
+        reportError(TypeError{expr.expr->location, NotATable{exprType}});
         return std::pair(errorType, nullptr);
     }
 
@@ -2910,7 +2870,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
 
     if (FFlag::LuauGenericFunctions)
     {
-        std::tie(generics, genericPacks) = createGenericTypes(funScope, expr, expr.generics, expr.genericPacks);
+        std::tie(generics, genericPacks) = createGenericTypes(funScope, std::nullopt, expr, expr.generics, expr.genericPacks);
     }
 
     TypePackId retPack;
@@ -3016,9 +2976,6 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
                 if (expectedArgsCurr != expectedArgsEnd)
                 {
                     argType = *expectedArgsCurr;
-
-                    if (!FFlag::LuauInferFunctionArgsFix)
-                        ++expectedArgsCurr;
                 }
                 else if (auto expectedArgsTail = expectedArgsCurr.tail())
                 {
@@ -3034,7 +2991,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
         funScope->bindings[local] = {argType, local->location};
         argTypes.push_back(argType);
 
-        if (FFlag::LuauInferFunctionArgsFix && expectedArgsCurr != expectedArgsEnd)
+        if (expectedArgsCurr != expectedArgsEnd)
             ++expectedArgsCurr;
     }
 
@@ -3170,7 +3127,7 @@ void TypeChecker::checkArgumentList(
     const ScopePtr& scope, Unifier& state, TypePackId argPack, TypePackId paramPack, const std::vector<Location>& argLocations)
 {
     /* Important terminology refresher:
-     * A function requires paramaters.
+     * A function requires parameters.
      * To call a function, you supply arguments.
      */
     TypePackIterator argIter = begin(argPack);
@@ -3402,8 +3359,7 @@ ExprResult<TypePackId> TypeChecker::checkExprPack(const ScopePtr& scope, const A
         if (!FFlag::LuauRankNTypes)
             instantiate(scope, selfType, expr.func->location);
 
-        if (FFlag::LuauExtraNilRecovery)
-            selfType = stripFromNilAndReport(selfType, expr.func->location);
+        selfType = stripFromNilAndReport(selfType, expr.func->location);
 
         if (std::optional<TypeId> propTy = getIndexTypeFromType(scope, selfType, indexExpr->index.value, expr.location, true))
         {
@@ -3412,34 +3368,8 @@ ExprResult<TypePackId> TypeChecker::checkExprPack(const ScopePtr& scope, const A
         }
         else
         {
-            if (!FFlag::LuauMissingUnionPropertyError)
-                reportError(indexExpr->indexLocation, UnknownProperty{selfType, indexExpr->index.value});
-
-            if (!FFlag::LuauExtraNilRecovery)
-            {
-                // Try to recover using a union without 'nil' options
-                if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(selfType))
-                {
-                    if (std::optional<TypeId> propTy = getIndexTypeFromType(scope, *strippedUnion, indexExpr->index.value, expr.location, false))
-                    {
-                        selfType = *strippedUnion;
-
-                        functionType = *propTy;
-                        actualFunctionType = instantiate(scope, functionType, expr.func->location);
-                    }
-                }
-
-                if (!actualFunctionType)
-                {
-                    functionType = errorType;
-                    actualFunctionType = errorType;
-                }
-            }
-            else
-            {
-                functionType = errorType;
-                actualFunctionType = errorType;
-            }
+            functionType = errorType;
+            actualFunctionType = errorType;
         }
     }
     else
@@ -3555,8 +3485,7 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
     TypePackId argPack, TypePack* args, const std::vector<Location>& argLocations, const ExprResult<TypePackId>& argListResult,
     std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<OverloadErrorEntry>& errors)
 {
-    if (FFlag::LuauExtraNilRecovery)
-        fn = stripFromNilAndReport(fn, expr.func->location);
+    fn = stripFromNilAndReport(fn, expr.func->location);
 
     if (get<AnyTypeVar>(fn))
     {
@@ -4283,6 +4212,12 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
     if (!ftv || !ftv->generics.empty() || !ftv->genericPacks.empty())
         return ty;
 
+    if (FFlag::LuauQuantifyInPlace2)
+    {
+        Luau::quantify(currentModule, ty, scope->level);
+        return ty;
+    }
+
     quantification.level = scope->level;
     quantification.generics.clear();
     quantification.genericPacks.clear();
@@ -4491,12 +4426,12 @@ void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
 
 Unifier TypeChecker::mkUnifier(const Location& location)
 {
-    return Unifier{&currentModule->internalTypes, currentModule->mode, globalScope, location, Variance::Covariant, iceHandler};
+    return Unifier{&currentModule->internalTypes, currentModule->mode, globalScope, location, Variance::Covariant, unifierState};
 }
 
 Unifier TypeChecker::mkUnifier(const std::vector<std::pair<TypeId, TypeId>>& seen, const Location& location)
 {
-    return Unifier{&currentModule->internalTypes, currentModule->mode, globalScope, seen, location, Variance::Covariant, iceHandler};
+    return Unifier{&currentModule->internalTypes, currentModule->mode, globalScope, seen, location, Variance::Covariant, unifierState};
 }
 
 TypeId TypeChecker::freshType(const ScopePtr& scope)
@@ -4753,7 +4688,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
 
         if (FFlag::LuauGenericFunctions)
         {
-            std::tie(generics, genericPacks) = createGenericTypes(funcScope, annotation, func->generics, func->genericPacks);
+            std::tie(generics, genericPacks) = createGenericTypes(funcScope, std::nullopt, annotation, func->generics, func->genericPacks);
         }
 
         // TODO: better error message CLI-39912
@@ -5041,9 +4976,11 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
 }
 
 std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGenericTypes(
-    const ScopePtr& scope, const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames)
+    const ScopePtr& scope, std::optional<TypeLevel> levelOpt, const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames)
 {
     LUAU_ASSERT(scope->parent);
+
+    const TypeLevel level = (FFlag::LuauQuantifyInPlace2 && levelOpt) ? *levelOpt : scope->level;
 
     std::vector<TypeId> generics;
     for (const AstName& generic : genericNames)
@@ -5063,12 +5000,12 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGener
         {
             TypeId& cached = scope->parent->typeAliasTypeParameters[n];
             if (!cached)
-                cached = addType(GenericTypeVar{scope->level, n});
+                cached = addType(GenericTypeVar{level, n});
             g = cached;
         }
         else
         {
-            g = addType(Unifiable::Generic{scope->level, n});
+            g = addType(Unifiable::Generic{level, n});
         }
 
         generics.push_back(g);
@@ -5093,12 +5030,12 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGener
         {
             TypePackId& cached = scope->parent->typeAliasTypePackParameters[n];
             if (!cached)
-                cached = addTypePack(TypePackVar{Unifiable::Generic{scope->level, n}});
+                cached = addTypePack(TypePackVar{Unifiable::Generic{level, n}});
             g = cached;
         }
         else
         {
-            g = addTypePack(TypePackVar{Unifiable::Generic{scope->level, n}});
+            g = addTypePack(TypePackVar{Unifiable::Generic{level, n}});
         }
 
         genericPacks.push_back(g);

@@ -169,7 +169,17 @@ static std::string runCode(lua_State* L, const std::string& source)
     }
     else
     {
-        std::string error = (status == LUA_YIELD) ? "thread yielded unexpectedly" : lua_tostring(T, -1);
+        std::string error;
+
+        if (status == LUA_YIELD)
+        {
+            error = "thread yielded unexpectedly";
+        }
+        else if (const char* str = lua_tostring(T, -1))
+        {
+            error = str;
+        }
+
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
 
@@ -322,7 +332,17 @@ static bool runFile(const char* name, lua_State* GL)
     }
     else
     {
-        std::string error = (status == LUA_YIELD) ? "thread yielded unexpectedly" : lua_tostring(L, -1);
+        std::string error;
+
+        if (status == LUA_YIELD)
+        {
+            error = "thread yielded unexpectedly";
+        }
+        else if (const char* str = lua_tostring(L, -1))
+        {
+            error = str;
+        }
+
         error += "\nstacktrace:\n";
         error += lua_debugtrace(L);
 

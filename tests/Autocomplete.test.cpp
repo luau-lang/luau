@@ -1596,7 +1596,7 @@ TEST_CASE_FIXTURE(ACFixture, "type_correct_argument_type_suggestion")
 local function target(a: number, b: string) return a + #b end
 
 local function d(a: n@1, b)
-	return target(a, b)
+    return target(a, b)
 end
     )");
 
@@ -1609,7 +1609,7 @@ end
 local function target(a: number, b: string) return a + #b end
 
 local function d(a, b: s@1)
-	return target(a, b)
+    return target(a, b)
 end
     )");
 
@@ -1622,7 +1622,7 @@ end
 local function target(a: number, b: string) return a + #b end
 
 local function d(a:@1 @2, b)
-	return target(a, b)
+    return target(a, b)
 end
     )");
 
@@ -1640,7 +1640,7 @@ end
 local function target(a: number, b: string) return a + #b end
 
 local function d(a, b: @1)@2: number
-	return target(a, b)
+    return target(a, b)
 end
     )");
 
@@ -1682,7 +1682,7 @@ local x = target(function(a: n@1
 local function target(callback: (a: number, b: string) -> number) return callback(4, "hello") end
 
 local x = target(function(a: n@1, b: @2)
-	return a + #b
+    return a + #b
 end)
     )");
 
@@ -1700,7 +1700,7 @@ end)
 local function target(callback: (...number) -> number) return callback(1, 2, 3) end
 
 local x = target(function(a: n@1)
-	return a
+    return a
 end
     )");
 
@@ -1716,7 +1716,7 @@ TEST_CASE_FIXTURE(ACFixture, "type_correct_expected_argument_type_pack_suggestio
 local function target(callback: (...number) -> number) return callback(1, 2, 3) end
 
 local x = target(function(...:n@1)
-	return a
+    return a
 end
     )");
 
@@ -1729,7 +1729,7 @@ end
 local function target(callback: (...number) -> number) return callback(1, 2, 3) end
 
 local x = target(function(a:number, b:number, ...:@1)
-	return a + b
+    return a + b
 end
     )");
 
@@ -1745,7 +1745,7 @@ TEST_CASE_FIXTURE(ACFixture, "type_correct_expected_return_type_suggestion")
 local function target(callback: () -> number) return callback() end
 
 local x = target(function(): n@1
-	return 1
+    return 1
 end
     )");
 
@@ -1758,7 +1758,7 @@ end
 local function target(callback: () -> (number, number)) return callback() end
 
 local x = target(function(): (number, n@1
-	return 1, 2
+    return 1, 2
 end
     )");
 
@@ -1774,7 +1774,7 @@ TEST_CASE_FIXTURE(ACFixture, "type_correct_expected_return_type_pack_suggestion"
 local function target(callback: () -> ...number) return callback() end
 
 local x = target(function(): ...n@1
-	return 1, 2, 3
+    return 1, 2, 3
 end
     )");
 
@@ -1787,7 +1787,7 @@ end
 local function target(callback: () -> ...number) return callback() end
 
 local x = target(function(): (number, number, ...n@1
-	return 1, 2, 3
+    return 1, 2, 3
 end
     )");
 

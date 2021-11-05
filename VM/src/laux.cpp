@@ -313,7 +313,7 @@ static size_t getnextbuffersize(lua_State* L, size_t currentsize, size_t desired
 {
     size_t newsize = currentsize + currentsize / 2;
 
-    // check for size oveflow
+    // check for size overflow
     if (SIZE_MAX - desiredsize < currentsize)
         luaL_error(L, "buffer too large");
 

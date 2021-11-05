@@ -1,4 +1,5 @@
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+.SUFFIXES:
 MAKEFLAGS+=-r -j8
 COMMA=,
 
@@ -107,6 +108,7 @@ coverage: $(TESTS_TARGET)
 	rm default.profraw default-flags.profraw
 	llvm-cov show -format=html -show-instantiations=false -show-line-counts=true -show-region-summary=false -ignore-filename-regex=\(tests\|extern\)/.* -output-dir=coverage --instr-profile default.profdata build/coverage/luau-tests
 	llvm-cov report -ignore-filename-regex=\(tests\|extern\)/.* -show-region-summary=false --instr-profile default.profdata build/coverage/luau-tests
+	llvm-cov export -format lcov --instr-profile default.profdata build/coverage/luau-tests >coverage.info
 
 format:
 	find . -name '*.h' -or -name '*.cpp' | xargs clang-format -i

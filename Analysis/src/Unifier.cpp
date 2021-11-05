@@ -7,6 +7,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/TimeTrace.h"
+#include "Luau/VisitTypeVar.h"
 
 #include <algorithm>
 
@@ -22,9 +23,99 @@ LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
 LUAU_FASTFLAGVARIABLE(LuauSealedTableUnifyOptionalFix, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursCheckOkWithRecursiveFunctions, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckOpts, false)
+LUAU_FASTFLAG(LuauShareTxnSeen);
+LUAU_FASTFLAGVARIABLE(LuauCacheUnifyTableResults, false)
 
 namespace Luau
 {
+struct SkipCacheForType
+{
+    SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType)
+        : skipCacheForType(skipCacheForType)
+    {
+    }
+
+    void cycle(TypeId) {}
+    void cycle(TypePackId) {}
+
+    bool operator()(TypeId ty, const FreeTypeVar& ftv)
+    {
+        result = true;
+        return false;
+    }
+
+    bool operator()(TypeId ty, const BoundTypeVar& btv)
+    {
+        result = true;
+        return false;
+    }
+
+    bool operator()(TypeId ty, const GenericTypeVar& btv)
+    {
+        result = true;
+        return false;
+    }
+
+    bool operator()(TypeId ty, const TableTypeVar&)
+    {
+        TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
+
+        if (ttv.boundTo)
+        {
+            result = true;
+            return false;
+        }
+
+        if (ttv.state != TableState::Sealed)
+        {
+            result = true;
+            return false;
+        }
+
+        return true;
+    }
+
+    template<typename T>
+    bool operator()(TypeId ty, const T& t)
+    {
+        const bool* prev = skipCacheForType.find(ty);
+
+        if (prev && *prev)
+        {
+            result = true;
+            return false;
+        }
+
+        return true;
+    }
+
+    template<typename T>
+    bool operator()(TypePackId, const T&)
+    {
+        return true;
+    }
+
+    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    {
+        result = true;
+        return false;
+    }
+
+    bool operator()(TypePackId tp, const BoundTypePack& ftp)
+    {
+        result = true;
+        return false;
+    }
+
+    bool operator()(TypePackId tp, const GenericTypePack& ftp)
+    {
+        result = true;
+        return false;
+    }
+
+    const DenseHashMap<TypeId, bool>& skipCacheForType;
+    bool result = false;
+};
 
 static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
 {
@@ -39,7 +130,7 @@ static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
         return *it;
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, InternalErrorReporter* iceHandler)
+Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, UnifierSharedState& sharedState)
     : types(types)
     , mode(mode)
     , globalScope(std::move(globalScope))
@@ -47,24 +138,39 @@ Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Locati
     , variance(variance)
     , counters(&countersData)
     , counters_DEPRECATED(std::make_shared<UnifierCounters>())
-    , iceHandler(iceHandler)
+    , sharedState(sharedState)
 {
-    LUAU_ASSERT(iceHandler);
+    LUAU_ASSERT(sharedState.iceHandler);
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::vector<std::pair<TypeId, TypeId>>& seen, const Location& location,
-    Variance variance, InternalErrorReporter* iceHandler, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED, UnifierCounters* counters)
+Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::vector<std::pair<TypeId, TypeId>>& ownedSeen, const Location& location,
+    Variance variance, UnifierSharedState& sharedState, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED, UnifierCounters* counters)
     : types(types)
     , mode(mode)
     , globalScope(std::move(globalScope))
-    , log(seen)
+    , log(ownedSeen)
     , location(location)
     , variance(variance)
     , counters(counters ? counters : &countersData)
     , counters_DEPRECATED(counters_DEPRECATED ? counters_DEPRECATED : std::make_shared<UnifierCounters>())
-    , iceHandler(iceHandler)
+    , sharedState(sharedState)
 {
-    LUAU_ASSERT(iceHandler);
+    LUAU_ASSERT(sharedState.iceHandler);
+}
+
+Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
+    Variance variance, UnifierSharedState& sharedState, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED, UnifierCounters* counters)
+    : types(types)
+    , mode(mode)
+    , globalScope(std::move(globalScope))
+    , log(sharedSeen)
+    , location(location)
+    , variance(variance)
+    , counters(counters ? counters : &countersData)
+    , counters_DEPRECATED(counters_DEPRECATED ? counters_DEPRECATED : std::make_shared<UnifierCounters>())
+    , sharedState(sharedState)
+{
+    LUAU_ASSERT(sharedState.iceHandler);
 }
 
 void Unifier::tryUnify(TypeId superTy, TypeId subTy, bool isFunctionCall, bool isIntersection)
@@ -74,7 +180,7 @@ void Unifier::tryUnify(TypeId superTy, TypeId subTy, bool isFunctionCall, bool i
     else
         counters_DEPRECATED->iterationCount = 0;
 
-    return tryUnify_(superTy, subTy, isFunctionCall, isIntersection);
+    tryUnify_(superTy, subTy, isFunctionCall, isIntersection);
 }
 
 void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool isIntersection)
@@ -206,6 +312,13 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
     if (get<ErrorTypeVar>(subTy) || get<AnyTypeVar>(subTy))
         return tryUnifyWithAny(subTy, superTy);
 
+    bool cacheEnabled = FFlag::LuauCacheUnifyTableResults && !isFunctionCall && !isIntersection;
+    auto& cache = sharedState.cachedUnify;
+
+    // What if the types are immutable and we proved their relation before
+    if (cacheEnabled && cache.contains({superTy, subTy}) && (variance == Covariant || cache.contains({subTy, superTy})))
+        return;
+
     // If we have seen this pair of types before, we are currently recursing into cyclic types.
     // Here, we assume that the types unify.  If they do not, we will find out as we roll back
     // the stack.
@@ -257,6 +370,8 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
 
         if (FFlag::LuauUnionHeuristic)
         {
+            bool found = false;
+
             const std::string* subName = getName(subTy);
             if (subName)
             {
@@ -264,6 +379,21 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
                 {
                     const std::string* optionName = getName(uv->options[i]);
                     if (optionName && *optionName == *subName)
+                    {
+                        found = true;
+                        startIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (!found && cacheEnabled)
+            {
+                for (size_t i = 0; i < uv->options.size(); ++i)
+                {
+                    TypeId type = uv->options[i];
+
+                    if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
                     {
                         startIndex = i;
                         break;
@@ -311,8 +441,25 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
         bool found = false;
         std::optional<TypeError> unificationTooComplex;
 
-        for (TypeId type : uv->parts)
+        size_t startIndex = 0;
+
+        if (cacheEnabled)
         {
+            for (size_t i = 0; i < uv->parts.size(); ++i)
+            {
+                TypeId type = uv->parts[i];
+
+                if (cache.contains({superTy, type}) && (variance == Covariant || cache.contains({type, superTy})))
+                {
+                    startIndex = i;
+                    break;
+                }
+            }
+        }
+
+        for (size_t i = 0; i < uv->parts.size(); ++i)
+        {
+            TypeId type = uv->parts[(i + startIndex) % uv->parts.size()];
             Unifier innerState = makeChildUnifier();
             innerState.tryUnify_(superTy, type, isFunctionCall);
 
@@ -342,7 +489,12 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
         tryUnifyFunctions(superTy, subTy, isFunctionCall);
 
     else if (get<TableTypeVar>(superTy) && get<TableTypeVar>(subTy))
+    {
         tryUnifyTables(superTy, subTy, isIntersection);
+
+        if (cacheEnabled && errors.empty())
+            cacheResult(superTy, subTy);
+    }
 
     // tryUnifyWithMetatable assumes its first argument is a MetatableTypeVar. The check is otherwise symmetrical.
     else if (get<MetatableTypeVar>(superTy))
@@ -362,6 +514,41 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
         errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
 
     log.popSeen(superTy, subTy);
+}
+
+void Unifier::cacheResult(TypeId superTy, TypeId subTy)
+{
+    LUAU_ASSERT(FFlag::LuauCacheUnifyTableResults);
+
+    bool* superTyInfo = sharedState.skipCacheForType.find(superTy);
+
+    if (superTyInfo && *superTyInfo)
+        return;
+
+    bool* subTyInfo = sharedState.skipCacheForType.find(subTy);
+
+    if (subTyInfo && *subTyInfo)
+        return;
+
+    auto skipCacheFor = [this](TypeId ty) {
+        SkipCacheForType visitor{sharedState.skipCacheForType};
+        visitTypeVarOnce(ty, visitor, sharedState.seenAny);
+
+        sharedState.skipCacheForType[ty] = visitor.result;
+
+        return visitor.result;
+    };
+
+    if (!superTyInfo && skipCacheFor(superTy))
+        return;
+
+    if (!subTyInfo && skipCacheFor(subTy))
+        return;
+
+    sharedState.cachedUnify.insert({superTy, subTy});
+
+    if (variance == Invariant)
+        sharedState.cachedUnify.insert({subTy, superTy});
 }
 
 struct WeirdIter
@@ -459,7 +646,7 @@ void Unifier::tryUnify(TypePackId superTp, TypePackId subTp, bool isFunctionCall
     else
         counters_DEPRECATED->iterationCount = 0;
 
-    return tryUnify_(superTp, subTp, isFunctionCall);
+    tryUnify_(superTp, subTp, isFunctionCall);
 }
 
 /*
@@ -650,11 +837,11 @@ void Unifier::tryUnify_(TypePackId superTp, TypePackId subTp, bool isFunctionCal
                 }
 
                 // This is a bit weird because we don't actually know expected vs actual.  We just know
-                // subtype vs supertype.  If we are checking a return value, we swap these to produce
-                // the expected error message.
+                // subtype vs supertype.  If we are checking the values returned by a function, we swap
+                // these to produce the expected error message.
                 size_t expectedSize = size(superTp);
                 size_t actualSize = size(subTp);
-                if (ctx == CountMismatch::Result || ctx == CountMismatch::Return)
+                if (ctx == CountMismatch::Result)
                     std::swap(expectedSize, actualSize);
                 errors.push_back(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
 
@@ -797,6 +984,40 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
     std::vector<std::string> missingProperties;
     std::vector<std::string> extraProperties;
 
+    // Optimization: First test that the property sets are compatible without doing any recursive unification
+    if (FFlag::LuauTableUnificationEarlyTest && !rt->indexer && rt->state != TableState::Free)
+    {
+        for (const auto& [propName, superProp] : lt->props)
+        {
+            auto subIter = rt->props.find(propName);
+            if (subIter == rt->props.end() && !isOptional(superProp.type) && !get<AnyTypeVar>(follow(superProp.type)))
+                missingProperties.push_back(propName);
+        }
+
+        if (!missingProperties.empty())
+        {
+            errors.push_back(TypeError{location, MissingProperties{left, right, std::move(missingProperties)}});
+            return;
+        }
+    }
+
+    // And vice versa if we're invariant
+    if (FFlag::LuauTableUnificationEarlyTest && variance == Invariant && !lt->indexer && lt->state != TableState::Unsealed && lt->state != TableState::Free)
+    {
+        for (const auto& [propName, subProp] : rt->props)
+        {
+            auto superIter = lt->props.find(propName);
+            if (superIter == lt->props.end() && !isOptional(subProp.type) && !get<AnyTypeVar>(follow(subProp.type)))
+                extraProperties.push_back(propName);
+        }
+
+        if (!extraProperties.empty())
+        {
+            errors.push_back(TypeError{location, MissingProperties{left, right, std::move(extraProperties), MissingProperties::Extra}});
+            return;
+        }
+    }
+    
     // Reminder: left is the supertype, right is the subtype.
     // Width subtyping: any property in the supertype must be in the subtype,
     // and the types must agree.
@@ -833,9 +1054,10 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
                 innerState.log.rollback();
         }
         else if (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type)))
-            // TODO: this case is unsound, but without it our test suite fails. CLI-46031
-            // TODO: should isOptional(anyType) be true?
-            {}
+        // TODO: this case is unsound, but without it our test suite fails. CLI-46031
+        // TODO: should isOptional(anyType) be true?
+        {
+        }
         else if (rt->state == TableState::Free)
         {
             log(rt);
@@ -878,11 +1100,13 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
             lt->props[name] = clone;
         }
         else if (variance == Covariant)
-            {}
+        {
+        }
         else if (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type)))
-            // TODO: this case is unsound, but without it our test suite fails. CLI-46031
-            // TODO: should isOptional(anyType) be true?
-            {}
+        // TODO: this case is unsound, but without it our test suite fails. CLI-46031
+        // TODO: should isOptional(anyType) be true?
+        {
+        }
         else if (lt->state == TableState::Free)
         {
             log(lt);
@@ -980,10 +1204,10 @@ TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> see
         TableTypeVar* resultTtv = getMutable<TableTypeVar>(result);
         for (auto& [name, prop] : resultTtv->props)
             prop.type = deeplyOptional(prop.type, seen);
-        return types->addType(UnionTypeVar{{ singletonTypes.nilType, result }});;
+        return types->addType(UnionTypeVar{{singletonTypes.nilType, result}});
     }
     else
-        return types->addType(UnionTypeVar{{ singletonTypes.nilType, ty }});
+        return types->addType(UnionTypeVar{{singletonTypes.nilType, ty}});
 }
 
 void Unifier::DEPRECATED_tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
@@ -1247,7 +1471,7 @@ void Unifier::tryUnifySealedTables(TypeId left, TypeId right, bool isIntersectio
     // If the superTy/left is an immediate part of an intersection type, do not do extra-property check.
     // Otherwise, we would falsely generate an extra-property-error for 's' in this code:
     // local a: {n: number} & {s: string} = {n=1, s=""}
-    // When checking agaist the table '{n: number}'.
+    // When checking against the table '{n: number}'.
     if (!isIntersection && lt->state != TableState::Unsealed && !lt->indexer)
     {
         // Check for extra properties in the subTy
@@ -1697,10 +1921,20 @@ void Unifier::tryUnifyWithAny(TypeId any, TypeId ty)
     {
         std::vector<TypeId> queue = {ty};
 
-        tempSeenTy.clear();
-        tempSeenTp.clear();
+        if (FFlag::LuauCacheUnifyTableResults)
+        {
+            sharedState.tempSeenTy.clear();
+            sharedState.tempSeenTp.clear();
 
-        Luau::tryUnifyWithAny(queue, *this, tempSeenTy, tempSeenTp, singletonTypes.anyType, anyTP);
+            Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, singletonTypes.anyType, anyTP);
+        }
+        else
+        {
+            tempSeenTy_DEPRECATED.clear();
+            tempSeenTp_DEPRECATED.clear();
+
+            Luau::tryUnifyWithAny(queue, *this, tempSeenTy_DEPRECATED, tempSeenTp_DEPRECATED, singletonTypes.anyType, anyTP);
+        }
     }
     else
     {
@@ -1721,12 +1955,24 @@ void Unifier::tryUnifyWithAny(TypePackId any, TypePackId ty)
     {
         std::vector<TypeId> queue;
 
-        tempSeenTy.clear();
-        tempSeenTp.clear();
+        if (FFlag::LuauCacheUnifyTableResults)
+        {
+            sharedState.tempSeenTy.clear();
+            sharedState.tempSeenTp.clear();
 
-        queueTypePack(queue, tempSeenTp, *this, ty, any);
+            queueTypePack(queue, sharedState.tempSeenTp, *this, ty, any);
 
-        Luau::tryUnifyWithAny(queue, *this, tempSeenTy, tempSeenTp, anyTy, any);
+            Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, anyTy, any);
+        }
+        else
+        {
+            tempSeenTy_DEPRECATED.clear();
+            tempSeenTp_DEPRECATED.clear();
+
+            queueTypePack(queue, tempSeenTp_DEPRECATED, *this, ty, any);
+
+            Luau::tryUnifyWithAny(queue, *this, tempSeenTy_DEPRECATED, tempSeenTp_DEPRECATED, anyTy, any);
+        }
     }
     else
     {
@@ -1775,10 +2021,20 @@ void Unifier::occursCheck(TypeId needle, TypeId haystack)
 {
     std::unordered_set<TypeId> seen_DEPRECATED;
 
-    if (FFlag::LuauTypecheckOpts)
-        tempSeenTy.clear();
+    if (FFlag::LuauCacheUnifyTableResults)
+    {
+        if (FFlag::LuauTypecheckOpts)
+            sharedState.tempSeenTy.clear();
 
-    return occursCheck(seen_DEPRECATED, tempSeenTy, needle, haystack);
+        return occursCheck(seen_DEPRECATED, sharedState.tempSeenTy, needle, haystack);
+    }
+    else
+    {
+        if (FFlag::LuauTypecheckOpts)
+            tempSeenTy_DEPRECATED.clear();
+
+        return occursCheck(seen_DEPRECATED, tempSeenTy_DEPRECATED, needle, haystack);
+    }
 }
 
 void Unifier::occursCheck(std::unordered_set<TypeId>& seen_DEPRECATED, DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
@@ -1851,10 +2107,20 @@ void Unifier::occursCheck(TypePackId needle, TypePackId haystack)
 {
     std::unordered_set<TypePackId> seen_DEPRECATED;
 
-    if (FFlag::LuauTypecheckOpts)
-        tempSeenTp.clear();
+    if (FFlag::LuauCacheUnifyTableResults)
+    {
+        if (FFlag::LuauTypecheckOpts)
+            sharedState.tempSeenTp.clear();
 
-    return occursCheck(seen_DEPRECATED, tempSeenTp, needle, haystack);
+        return occursCheck(seen_DEPRECATED, sharedState.tempSeenTp, needle, haystack);
+    }
+    else
+    {
+        if (FFlag::LuauTypecheckOpts)
+            tempSeenTp_DEPRECATED.clear();
+
+        return occursCheck(seen_DEPRECATED, tempSeenTp_DEPRECATED, needle, haystack);
+    }
 }
 
 void Unifier::occursCheck(std::unordered_set<TypePackId>& seen_DEPRECATED, DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
@@ -1922,7 +2188,10 @@ void Unifier::occursCheck(std::unordered_set<TypePackId>& seen_DEPRECATED, Dense
 
 Unifier Unifier::makeChildUnifier()
 {
-    return Unifier{types, mode, globalScope, log.seen, location, variance, iceHandler, counters_DEPRECATED, counters};
+    if (FFlag::LuauShareTxnSeen)
+        return Unifier{types, mode, globalScope, log.sharedSeen, location, variance, sharedState, counters_DEPRECATED, counters};
+    else
+        return Unifier{types, mode, globalScope, log.ownedSeen, location, variance, sharedState, counters_DEPRECATED, counters};
 }
 
 bool Unifier::isNonstrictMode() const
@@ -1940,12 +2209,12 @@ void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId 
 
 void Unifier::ice(const std::string& message, const Location& location)
 {
-    iceHandler->ice(message, location);
+    sharedState.iceHandler->ice(message, location);
 }
 
 void Unifier::ice(const std::string& message)
 {
-    iceHandler->ice(message);
+    sharedState.iceHandler->ice(message);
 }
 
 } // namespace Luau

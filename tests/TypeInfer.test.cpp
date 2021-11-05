@@ -180,7 +180,12 @@ TEST_CASE_FIXTURE(Fixture, "expr_statement")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
 {
-    CheckResult result = check("function id(x) return x end    local a = id(55)    local b = id(nil)");
+    CheckResult result = check(R"(
+        function id(x) return x end
+        local a = id(55)
+        local b = id(nil)
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
@@ -406,7 +411,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_error_on_factory_not_returning_the_right
 
         for p in primes2() do print(p) end -- mismatch in argument types, prime_iter takes {}, number, we are given {}, string
 
-        for p in primes3() do print(p) end -- no errror
+        for p in primes3() do print(p) end -- no error
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
@@ -1889,7 +1894,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
 
     REQUIRE_EQ(2, argVec.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(argVec[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
     REQUIRE(fType != nullptr);
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
@@ -1926,7 +1931,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 
     REQUIRE_EQ(6, argVec.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(argVec[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
     REQUIRE(fType != nullptr);
 }
 
@@ -2549,7 +2554,7 @@ TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
         --!strict
         local x = nil
         function f() g() end
-        -- make sure print(x) doen't get toposorted here, breaking the mutual block
+        -- make sure print(x) doesn't get toposorted here, breaking the mutual block
         function g() x = f end
         print(x)
     )");
@@ -2987,7 +2992,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_while")
     CHECK_EQ(us->name, "a");
 }
 
-TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indeces")
+TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indices")
 {
     CheckResult result = check(R"(
         local key
@@ -3176,7 +3181,24 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK(acm->context == CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 1);
+    CHECK_EQ(acm->actual, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "ignored_return_values")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        function f()
+            return 55, ""
+        end
+
+        local a = f()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
@@ -3194,6 +3216,8 @@ TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
     CHECK_EQ(acm->context, CountMismatch::Return);
+    CHECK_EQ(acm->expected, 2);
+    CHECK_EQ(acm->actual, 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_unary_minus")
@@ -3823,10 +3847,10 @@ local T: any
 T = {}
 T.__index = T
 function T.new(...)
-	local self = {}
-	setmetatable(self, T)
-	self:construct(...)
-	return self
+    local self = {}
+    setmetatable(self, T)
+    self:construct(...)
+    return self
 end
 function T:construct(index)
 end
@@ -4049,11 +4073,11 @@ function n:Clone() end
 local m = {}
 
 function m.a(x)
-	x:Clone()
+    x:Clone()
 end
 
 function m.b()
-	m.a(n)
+    m.a(n)
 end
 
 return m
@@ -4374,8 +4398,6 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
 {
-    ScopedFastFlag luauInferFunctionArgsFix("LuauInferFunctionArgsFix", true);
-
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
 type Table = { x: number, y: number }
@@ -4385,7 +4407,7 @@ f(function(a) return a.x + a.y end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // An optional funciton is accepted, but since we already provide a function, nil can be ignored
+    // An optional function is accepted, but since we already provide a function, nil can be ignored
     result = check(R"(
 type Table = { x: number, y: number }
 local function f(a: ((Table) -> number)?) if a then return a({x = 1, y = 2}) else return 0 end end
@@ -4413,7 +4435,7 @@ f(function(a: number, b, c) return c and a + b or b - a end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // Anonymous function has a varyadic pack
+    // Anonymous function has a variadic pack
     result = check(R"(
 type Table = { x: number, y: number }
 local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
@@ -4432,7 +4454,7 @@ f(function(a, b, c, ...) return a + b end)
     LUAU_REQUIRE_ERRORS(result);
     CHECK_EQ("Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'", toString(result.errors[0]));
 
-    // Infer from varyadic packs into elements
+    // Infer from variadic packs into elements
     result = check(R"(
 function f(a: (...number) -> number) return a(1, 2) end
 f(function(a, b) return a + b end)
@@ -4440,7 +4462,7 @@ f(function(a, b) return a + b end)
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // Infer from varyadic packs into varyadic packs
+    // Infer from variadic packs into variadic packs
     result = check(R"(
 type Table = { x: number, y: number }
 function f(a: (...Table) -> number) return a({x = 1, y = 2}, {x = 3, y = 4}) end
@@ -4662,7 +4684,6 @@ TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 {
     ScopedFastFlag sffs[] = {
         {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-        {"LuauExtraNilRecovery", true},
     };
 
     CheckResult result = check(R"(
@@ -4679,7 +4700,6 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 {
     ScopedFastFlag sffs[] = {
         {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-        {"LuauExtraNilRecovery", true},
     };
 
     CheckResult result = check(R"(

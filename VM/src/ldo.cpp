@@ -18,6 +18,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauExceptionMessageFix, false)
+LUAU_FASTFLAGVARIABLE(LuauCcallRestoreFix, false)
 
 /*
 ** {======================================================
@@ -536,7 +537,13 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
                 status = LUA_ERRERR;
         }
 
-        // an error occured, check if we have a protected error callback
+        if (FFlag::LuauCcallRestoreFix)
+        {
+            // Restore nCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
+            L->nCcalls = oldnCcalls;
+        }
+
+        // an error occurred, check if we have a protected error callback
         if (L->global->cb.debugprotectederror)
         {
             L->global->cb.debugprotectederror(L);
@@ -549,7 +556,10 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
         StkId oldtop = restorestack(L, old_top);
         luaF_close(L, oldtop); /* close eventual pending closures */
         seterrorobj(L, status, oldtop);
-        L->nCcalls = oldnCcalls;
+        if (!FFlag::LuauCcallRestoreFix)
+        {
+            L->nCcalls = oldnCcalls;
+        }
         L->ci = restoreci(L, old_ci);
         L->base = L->ci->base;
         restore_stack_limit(L);

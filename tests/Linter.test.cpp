@@ -791,13 +791,13 @@ TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsShouldNotProduceWarnings")
 {
     LintResult result = lint(R"(--!strict
 type InputData = {
-	id: number,
-	inputType: EnumItem,
-	inputState: EnumItem,
-	updated: number,
-	position: Vector3,
-	keyCode: EnumItem,
-	name: string
+    id: number,
+    inputType: EnumItem,
+    inputState: EnumItem,
+    updated: number,
+    position: Vector3,
+    keyCode: EnumItem,
+    name: string
 }
 )");
 
