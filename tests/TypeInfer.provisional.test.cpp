@@ -9,6 +9,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
 using namespace Luau;
 
@@ -42,7 +43,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string expected = R"(
+    const std::string old_expected = R"(
         function f(a:{fn:()->(free,free...)}): ()
             if type(a) == 'boolean'then
                 local a1:boolean=a
@@ -51,7 +52,21 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
             end
         end
     )";
-    CHECK_EQ(expected, decorateWithTypes(code));
+
+    const std::string expected = R"(
+        function f(a:{fn:()->(a,b...)}): ()
+            if type(a) == 'boolean'then
+                local a1:boolean=a
+            elseif a.fn()then
+                local a2:{fn:()->(a,b...)}=a
+            end
+        end
+    )";
+
+    if (FFlag::LuauQuantifyInPlace2)
+        CHECK_EQ(expected, decorateWithTypes(code));
+    else
+        CHECK_EQ(old_expected, decorateWithTypes(code));
 }
 
 TEST_CASE_FIXTURE(Fixture, "xpcall_returns_what_f_returns")
@@ -263,8 +278,8 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 
 TEST_CASE_FIXTURE(Fixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
-    ScopedFastInt sffi{"LuauTarjanChildLimit", 50};
-    ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 50};
+    ScopedFastInt sffi{"LuauTarjanChildLimit", 1};
+    ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 1};
 
     CheckResult result = check(R"LUA(
         local Result

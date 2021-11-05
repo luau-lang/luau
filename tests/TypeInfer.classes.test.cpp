@@ -437,8 +437,6 @@ TEST_CASE_FIXTURE(ClassFixture, "class_unification_type_mismatch_is_correct_orde
 
 TEST_CASE_FIXTURE(ClassFixture, "optional_class_field_access_error")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 local b: Vector2? = nil
 local a = b.X + b.Z
