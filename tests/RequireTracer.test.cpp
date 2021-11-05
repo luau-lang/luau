@@ -57,6 +57,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_local")
 {
     AstStatBlock* block = parse(R"(
         local m = workspace.Foo.Bar.Baz
+        require(m)
     )");
 
     RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
@@ -70,22 +71,22 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_local")
     AstExprIndexName* value = loc->values.data[0]->as<AstExprIndexName>();
     REQUIRE(value);
     REQUIRE(result.exprs.contains(value));
-    CHECK_EQ("workspace/Foo/Bar/Baz", result.exprs[value]);
+    CHECK_EQ("workspace/Foo/Bar/Baz", result.exprs[value].name);
 
     value = value->expr->as<AstExprIndexName>();
     REQUIRE(value);
     REQUIRE(result.exprs.contains(value));
-    CHECK_EQ("workspace/Foo/Bar", result.exprs[value]);
+    CHECK_EQ("workspace/Foo/Bar", result.exprs[value].name);
 
     value = value->expr->as<AstExprIndexName>();
     REQUIRE(value);
     REQUIRE(result.exprs.contains(value));
-    CHECK_EQ("workspace/Foo", result.exprs[value]);
+    CHECK_EQ("workspace/Foo", result.exprs[value].name);
 
     AstExprGlobal* workspace = value->expr->as<AstExprGlobal>();
     REQUIRE(workspace);
     REQUIRE(result.exprs.contains(workspace));
-    CHECK_EQ("workspace", result.exprs[workspace]);
+    CHECK_EQ("workspace", result.exprs[workspace].name);
 }
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "trace_transitive_local")
@@ -93,9 +94,10 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_transitive_local")
     AstStatBlock* block = parse(R"(
         local m = workspace.Foo.Bar.Baz
         local n = m.Quux
+        require(n)
     )");
 
-    REQUIRE_EQ(2, block->body.size);
+    REQUIRE_EQ(3, block->body.size);
 
     RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
 
@@ -104,13 +106,13 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_transitive_local")
     REQUIRE_EQ(1, local->vars.size);
 
     REQUIRE(result.exprs.contains(local->values.data[0]));
-    CHECK_EQ("workspace/Foo/Bar/Baz/Quux", result.exprs[local->values.data[0]]);
+    CHECK_EQ("workspace/Foo/Bar/Baz/Quux", result.exprs[local->values.data[0]].name);
 }
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "trace_function_arguments")
 {
     AstStatBlock* block = parse(R"(
-        local M = require(workspace.Game.Thing, workspace.Something.Else)
+        local M = require(workspace.Game.Thing)
     )");
     REQUIRE_EQ(1, block->body.size);
 
@@ -124,52 +126,9 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_function_arguments")
     AstExprCall* call = local->values.data[0]->as<AstExprCall>();
     REQUIRE(call != nullptr);
 
-    REQUIRE_EQ(2, call->args.size);
-
-    CHECK_EQ("workspace/Game/Thing", result.exprs[call->args.data[0]]);
-    CHECK_EQ("workspace/Something/Else", result.exprs[call->args.data[1]]);
-}
-
-TEST_CASE_FIXTURE(RequireTracerFixture, "follow_GetService_calls")
-{
-    AstStatBlock* block = parse(R"(
-        local R = game:GetService('ReplicatedStorage').Roact
-        local Roact = require(R)
-    )");
-    REQUIRE_EQ(2, block->body.size);
-
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
-
-    AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
-    REQUIRE(local != nullptr);
-
-    CHECK_EQ("game/ReplicatedStorage/Roact", result.exprs[local->values.data[0]]);
-
-    AstStatLocal* local2 = block->body.data[1]->as<AstStatLocal>();
-    REQUIRE(local2 != nullptr);
-    REQUIRE_EQ(1, local2->values.size);
-
-    AstExprCall* call = local2->values.data[0]->as<AstExprCall>();
-    REQUIRE(call != nullptr);
     REQUIRE_EQ(1, call->args.size);
 
-    CHECK_EQ("game/ReplicatedStorage/Roact", result.exprs[call->args.data[0]]);
-}
-
-TEST_CASE_FIXTURE(RequireTracerFixture, "follow_WaitForChild_calls")
-{
-    ScopedFastFlag luauTraceRequireLookupChild("LuauTraceRequireLookupChild", true);
-
-    AstStatBlock* block = parse(R"(
-local A = require(workspace:WaitForChild('ReplicatedStorage').Content)
-local B = require(workspace:FindFirstChild('ReplicatedFirst').Data)
-    )");
-
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
-
-    REQUIRE_EQ(2, result.requires.size());
-    CHECK_EQ("workspace/ReplicatedStorage/Content", result.requires[0].first);
-    CHECK_EQ("workspace/ReplicatedFirst/Data", result.requires[1].first);
+    CHECK_EQ("workspace/Game/Thing", result.exprs[call->args.data[0]].name);
 }
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof")
@@ -200,22 +159,23 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof")
     REQUIRE(call != nullptr);
     REQUIRE_EQ(1, call->args.size);
 
-    CHECK_EQ("workspace/CoolThing", result.exprs[call->args.data[0]]);
+    CHECK_EQ("workspace/CoolThing", result.exprs[call->args.data[0]].name);
 }
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "follow_string_indexexpr")
 {
     AstStatBlock* block = parse(R"(
         local R = game["Test"]
+        require(R)
     )");
-    REQUIRE_EQ(1, block->body.size);
+    REQUIRE_EQ(2, block->body.size);
 
     RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
 
     AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
     REQUIRE(local != nullptr);
 
-    CHECK_EQ("game/Test", result.exprs[local->values.data[0]]);
+    CHECK_EQ("game/Test", result.exprs[local->values.data[0]].name);
 }
 
 TEST_SUITE_END();

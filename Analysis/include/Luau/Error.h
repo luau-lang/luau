@@ -120,6 +120,7 @@ struct IncorrectGenericParameterCount
     Name name;
     TypeFun typeFun;
     size_t actualParameters;
+    size_t actualPackParameters;
 
     bool operator==(const IncorrectGenericParameterCount& rhs) const;
 };

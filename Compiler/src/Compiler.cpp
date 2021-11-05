@@ -4,6 +4,7 @@
 #include "Luau/Parser.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
+#include "Luau/TimeTrace.h"
 
 #include <algorithm>
 #include <bitset>
@@ -137,6 +138,11 @@ struct Compiler
 
     uint32_t compileFunction(AstExprFunction* func)
     {
+        LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
+
+        if (func->debugname.value)
+            LUAU_TIMETRACE_ARGUMENT("name", func->debugname.value);
+
         LUAU_ASSERT(!functions.contains(func));
         LUAU_ASSERT(regTop == 0 && stackSize == 0 && localStack.empty() && upvals.empty());
 
@@ -3686,6 +3692,8 @@ struct Compiler
 
 void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstNameTable& names, const CompileOptions& options)
 {
+    LUAU_TIMETRACE_SCOPE("compileOrThrow", "Compiler");
+
     Compiler compiler(bytecode, options);
 
     // since access to some global objects may result in values that change over time, we block table imports
@@ -3748,6 +3756,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const 
 
 std::string compile(const std::string& source, const CompileOptions& options, const ParseOptions& parseOptions, BytecodeEncoder* encoder)
 {
+    LUAU_TIMETRACE_SCOPE("compile", "Compiler");
+
     Allocator allocator;
     AstNameTable names(allocator);
     ParseResult result = Parser::parse(source.c_str(), source.size(), names, allocator, parseOptions);

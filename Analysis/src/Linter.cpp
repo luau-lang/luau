@@ -3,6 +3,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/Module.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/StringUtils.h"
 #include "Luau/Common.h"
@@ -12,6 +13,7 @@
 #include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LuauLinterUnknownTypeVectorAware, false)
+LUAU_FASTFLAGVARIABLE(LuauLinterTableMoveZero, false)
 
 namespace Luau
 {
@@ -85,10 +87,10 @@ struct LintContext
             return std::nullopt;
 
         auto it = module->astTypes.find(expr);
-        if (it == module->astTypes.end())
+        if (!it)
             return std::nullopt;
 
-        return it->second;
+        return *it;
     }
 };
 
@@ -2142,6 +2144,19 @@ private:
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
                     "table.remove will remove the value before the last element, which is likely a bug; consider removing the second argument or "
                     "wrap it in parentheses to silence");
+        }
+
+        if (FFlag::LuauLinterTableMoveZero && func->index == "move" && node->args.size >= 4)
+        {
+            // table.move(t, 0, _, _)
+            if (isConstant(args[1], 0.0))
+                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
+                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+
+            // table.move(t, _, _, 0)
+            else if (isConstant(args[3], 0.0))
+                emitWarning(*context, LintWarning::Code_TableOperations, args[3]->location,
+                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
         }
 
         return true;

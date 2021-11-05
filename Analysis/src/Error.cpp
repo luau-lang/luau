@@ -7,14 +7,60 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauFasterStringifier)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
-static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, bool isTypeArgs = false)
+static std::string wrongNumberOfArgsString_DEPRECATED(size_t expectedCount, size_t actualCount, bool isTypeArgs = false)
 {
     std::string s = "expects " + std::to_string(expectedCount) + " ";
 
     if (isTypeArgs)
         s += "type ";
+
+    s += "argument";
+    if (expectedCount != 1)
+        s += "s";
+
+    s += ", but ";
+
+    if (actualCount == 0)
+    {
+        s += "none";
+    }
+    else
+    {
+        if (actualCount < expectedCount)
+            s += "only ";
+
+        s += std::to_string(actualCount);
+    }
+
+    s += (actualCount == 1) ? " is" : " are";
+
+    s += " specified";
+
+    return s;
+}
+
+static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
+{
+    std::string s;
+
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        s = "expects ";
+
+        if (isVariadic)
+            s += "at least ";
+
+        s += std::to_string(expectedCount) + " ";
+    }
+    else
+    {
+        s = "expects " + std::to_string(expectedCount) + " ";
+    }
+
+    if (argPrefix)
+        s += std::string(argPrefix) + " ";
 
     s += "argument";
     if (expectedCount != 1)
@@ -127,7 +173,10 @@ struct ErrorConverter
             return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " +
                    std::to_string(e.actual) + " are required here";
         case CountMismatch::Arg:
-            return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
+            if (FFlag::LuauTypeAliasPacks)
+                return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
+            else
+                return "Argument count mismatch. Function " + wrongNumberOfArgsString_DEPRECATED(e.expected, e.actual);
         }
 
         LUAU_ASSERT(!"Unknown context");
@@ -159,13 +208,16 @@ struct ErrorConverter
 
     std::string operator()(const Luau::UnknownRequire& e) const
     {
-        return "Unknown require: " + e.modulePath;
+        if (e.modulePath.empty())
+            return "Unknown require: unsupported path";
+        else
+            return "Unknown require: " + e.modulePath;
     }
 
     std::string operator()(const Luau::IncorrectGenericParameterCount& e) const
     {
         std::string name = e.name;
-        if (!e.typeFun.typeParams.empty())
+        if (!e.typeFun.typeParams.empty() || (FFlag::LuauTypeAliasPacks && !e.typeFun.typePackParams.empty()))
         {
             name += "<";
             bool first = true;
@@ -178,10 +230,37 @@ struct ErrorConverter
 
                 name += toString(t);
             }
+
+            if (FFlag::LuauTypeAliasPacks)
+            {
+                for (TypePackId t : e.typeFun.typePackParams)
+                {
+                    if (first)
+                        first = false;
+                    else
+                        name += ", ";
+
+                    name += toString(t);
+                }
+            }
+
             name += ">";
         }
 
-        return "Generic type '" + name + "' " + wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, /*isTypeArgs*/ true);
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            if (e.typeFun.typeParams.size() != e.actualParameters)
+                return "Generic type '" + name + "' " +
+                       wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, "type", !e.typeFun.typePackParams.empty());
+
+            return "Generic type '" + name + "' " +
+                   wrongNumberOfArgsString(e.typeFun.typePackParams.size(), e.actualPackParameters, "type pack", /*isVariadic*/ false);
+        }
+        else
+        {
+            return "Generic type '" + name + "' " +
+                   wrongNumberOfArgsString_DEPRECATED(e.typeFun.typeParams.size(), e.actualParameters, /*isTypeArgs*/ true);
+        }
     }
 
     std::string operator()(const Luau::SyntaxError& e) const
@@ -470,9 +549,26 @@ bool IncorrectGenericParameterCount::operator==(const IncorrectGenericParameterC
     if (typeFun.typeParams.size() != rhs.typeFun.typeParams.size())
         return false;
 
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        if (typeFun.typePackParams.size() != rhs.typeFun.typePackParams.size())
+            return false;
+    }
+
     for (size_t i = 0; i < typeFun.typeParams.size(); ++i)
+    {
         if (typeFun.typeParams[i] != rhs.typeFun.typeParams[i])
             return false;
+    }
+
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        for (size_t i = 0; i < typeFun.typePackParams.size(); ++i)
+        {
+            if (typeFun.typePackParams[i] != rhs.typeFun.typePackParams[i])
+                return false;
+        }
+    }
 
     return true;
 }

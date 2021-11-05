@@ -8,9 +8,13 @@
 #include "lmem.h"
 #include "lvm.h"
 
-#include <stdexcept>
-
+#if LUA_USE_LONGJMP
 #include <setjmp.h>
+#include <stdlib.h>
+#else
+#include <stdexcept>
+#endif
+
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauExceptionMessageFix, false)
@@ -51,8 +55,8 @@ l_noret luaD_throw(lua_State* L, int errcode)
         longjmp(jb->buf, 1);
     }
 
-    if (L->global->panic)
-        L->global->panic(L, errcode);
+    if (L->global->cb.panic)
+        L->global->cb.panic(L, errcode);
 
     abort();
 }

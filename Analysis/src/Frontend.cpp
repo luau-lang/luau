@@ -1,9 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Frontend.h"
 
+#include "Luau/Common.h"
 #include "Luau/Config.h"
 #include "Luau/FileResolver.h"
+#include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
+#include "Luau/TimeTrace.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
 #include "Luau/Common.h"
@@ -19,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauSecondTypecheckKnowsTheDataModel, false)
 LUAU_FASTFLAGVARIABLE(LuauResolveModuleNameWithoutACurrentModule, false)
 LUAU_FASTFLAG(LuauTraceRequireLookupChild)
 LUAU_FASTFLAGVARIABLE(LuauPersistDefinitionFileTypes, false)
+LUAU_FASTFLAG(LuauNewRequireTrace)
 
 namespace Luau
 {
@@ -69,6 +73,8 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
 
 LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
 {
+    LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
+
     Luau::Allocator allocator;
     Luau::AstNameTable names(allocator);
 
@@ -350,6 +356,9 @@ FrontendModuleResolver::FrontendModuleResolver(Frontend* frontend)
 
 CheckResult Frontend::check(const ModuleName& name)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+
     CheckResult checkResult;
 
     auto it = sourceNodes.find(name);
@@ -479,6 +488,9 @@ CheckResult Frontend::check(const ModuleName& name)
 
 bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::parseGraph", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("root", root.c_str());
+
     // https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
     enum Mark
     {
@@ -597,6 +609,9 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
 
 LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+
     CheckResult checkResult;
     auto [_sourceNode, sourceModule] = getSourceNode(checkResult, name);
 
@@ -608,6 +623,8 @@ LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOption
 
 std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view source, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::lintFragment", "Frontend");
+
     const Config& config = configResolver->getConfig("");
 
     SourceModule sourceModule = parse(ModuleName{}, source, config.parseOptions);
@@ -627,6 +644,9 @@ std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view sour
 
 CheckResult Frontend::check(const SourceModule& module)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
+
     const Config& config = configResolver->getConfig(module.name);
 
     Mode mode = module.mode.value_or(config.mode);
@@ -648,6 +668,9 @@ CheckResult Frontend::check(const SourceModule& module)
 
 LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
+
     const Config& config = configResolver->getConfig(module.name);
 
     LintOptions options = enabledLintWarnings.value_or(config.enabledLint);
@@ -746,6 +769,9 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
 std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& checkResult, const ModuleName& name)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::getSourceNode", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+
     auto it = sourceNodes.find(name);
     if (it != sourceNodes.end() && !it->second.dirty)
     {
@@ -815,6 +841,9 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
  */
 SourceModule Frontend::parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions)
 {
+    LUAU_TIMETRACE_SCOPE("Frontend::parse", "Frontend");
+    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+
     SourceModule sourceModule;
 
     double timestamp = getTimestamp();
@@ -864,20 +893,11 @@ std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const Module
 
     const auto& exprs = it->second.exprs;
 
-    const ModuleName* relativeName = exprs.find(&pathExpr);
-    if (!relativeName || relativeName->empty())
+    const ModuleInfo* info = exprs.find(&pathExpr);
+    if (!info || (!FFlag::LuauNewRequireTrace && info->name.empty()))
         return std::nullopt;
 
-    if (FFlag::LuauTraceRequireLookupChild)
-    {
-        const bool* optional = it->second.optional.find(&pathExpr);
-
-        return {{*relativeName, optional ? *optional : false}};
-    }
-    else
-    {
-        return {{*relativeName, false}};
-    }
+    return *info;
 }
 
 const ModulePtr FrontendModuleResolver::getModule(const ModuleName& moduleName) const
@@ -891,12 +911,15 @@ const ModulePtr FrontendModuleResolver::getModule(const ModuleName& moduleName) 
 
 bool FrontendModuleResolver::moduleExists(const ModuleName& moduleName) const
 {
-    return frontend->fileResolver->moduleExists(moduleName);
+    if (FFlag::LuauNewRequireTrace)
+        return frontend->sourceNodes.count(moduleName) != 0;
+    else
+        return frontend->fileResolver->moduleExists(moduleName);
 }
 
 std::string FrontendModuleResolver::getHumanReadableModuleName(const ModuleName& moduleName) const
 {
-    return frontend->fileResolver->getHumanReadableModuleName_(moduleName).value_or(moduleName);
+    return frontend->fileResolver->getHumanReadableModuleName(moduleName);
 }
 
 ScopePtr Frontend::addEnvironment(const std::string& environmentName)
