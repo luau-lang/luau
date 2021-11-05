@@ -32,9 +32,7 @@ This produces an SVG file that can be opened in a browser (the image below is cl
 
 [![profile.svg](/assets/images/chess-profile.svg)](/assets/images/chess-profile.svg)
 
-In a flame graph visualization, the individual bars represent function calls, the width represents how much of the total program runtime they execute, and the deepness of the
-red color represents how expensive they are based on their speed and how many times they are called: Dark Red bars are often the best targets for optimization, followed by
-Bright Red, Dark Orange, Light Orange, Dark Yellow, Light Yellow. This is a fantastic visualization technique that allows you to hone in on the specific bottlenecks affecting
+In a flame graph visualization, the individual bars represent function calls, the width represents how much of the total program runtime they execute, and the nesting matches the call stack encountered during program execution. This is a fantastic visualization technique that allows you to hone in on the specific bottlenecks affecting
 your program performance, optimize those exact bottlenecks, and then re-generate the profile data and visualizer, and look for the next set of true bottlenecks (if any).
 
 Hovering your mouse cursor over individual sections will display detailed function information in the status bar and in a tooltip. If you want to Search for a specific named
