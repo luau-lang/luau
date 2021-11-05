@@ -74,16 +74,12 @@ logDogName(getLogger(), dog?.name, dog?.owner?:getDisplayName())
 
 Failing the nil-safety check early would make the entire expression nil, for instance `dog?.body.legs` would resolve to `nil` if `dog` is nil, rather than resolve `dog?.body` into nil, then turning into `nil.legs`.
 
-Because functions can also be nil, the safe navigation operator will also support `x?()`, which will only call `x` if it is not nil.
-
 The list of valid operators to follow the safe navigation operator would be:
 
 ```lua
 dog?.name
 dog?.getName()
 dog?:getName()
-dogs?[1]
-getDog?()
 ```
 
 The operator must be used in the context of either a call or an index, and so:
@@ -100,7 +96,7 @@ The type of an expression using the nil-safety operator would simply resolve to 
 
 ## Drawbacks
 
-As with all syntax additions, this adds complexity to the parsing of expressions, and the execution of cancelling the rest of the expression could prove challenging. It would need to be respected in several different potential grammars, including function calls and indexes (most notably in the case of parsing difficulty, `[1]` style indexing).
+As with all syntax additions, this adds complexity to the parsing of expressions, and the execution of cancelling the rest of the expression could prove challenging.
 
 Furthermore, with the proposed syntax, it might lock off other uses of `?` within code (and not types) for the future as being ambiguous.
 
@@ -108,3 +104,4 @@ Furthermore, with the proposed syntax, it might lock off other uses of `?` withi
 
 Doing nothing is an option, as current standard if-checks already work, as well as the `and` trick in other use cases, but as shown before this can create some hard to read code, and nil values are common enough that the safe navigation operator is welcome.
 
+Supporting optional calls/indexes, such as `x?[1]` and `x?()`, while not out of scope, are likely too fringe to support, while adding on a significant amount of parsing difficulty, especially in the case of shorthand function calls, such as `x?{}` and `x?""`.
