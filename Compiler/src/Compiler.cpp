@@ -2478,12 +2478,13 @@ struct Compiler
         }
         else if (AstStatContinue* stat = node->as<AstStatContinue>())
         {
+            LUAU_ASSERT(!loops.empty());
+
             if (loops.back().untilCondition)
                 validateContinueUntil(stat, loops.back().untilCondition);
 
             // before continuing, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            LUAU_ASSERT(!loops.empty());
             closeLocals(loops.back().localOffset);
 
             size_t label = bytecode.emitLabel();
