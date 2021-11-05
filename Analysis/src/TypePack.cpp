@@ -209,6 +209,19 @@ size_t size(TypePackId tp)
         return 0;
 }
 
+bool finite(TypePackId tp)
+{
+    tp = follow(tp);
+
+    if (auto pack = get<TypePack>(tp))
+        return pack->tail ? finite(*pack->tail) : true;
+
+    if (auto pack = get<VariadicTypePack>(tp))
+        return false;
+
+    return true;
+}
+
 size_t size(const TypePack& tp)
 {
     size_t result = tp.head.size();

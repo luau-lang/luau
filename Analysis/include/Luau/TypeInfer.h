@@ -86,7 +86,10 @@ struct ApplyTypeFunction : Substitution
 {
     TypeLevel level;
     bool encounteredForwardedType;
-    std::unordered_map<TypeId, TypeId> arguments;
+    std::unordered_map<TypeId, TypeId> typeArguments;
+    std::unordered_map<TypePackId, TypePackId> typePackArguments;
+    bool ignoreChildren(TypeId ty) override;
+    bool ignoreChildren(TypePackId tp) override;
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId tp) override;
     TypeId clean(TypeId ty) override;
@@ -328,7 +331,8 @@ private:
     TypeId resolveType(const ScopePtr& scope, const AstType& annotation, bool canBeGeneric = false);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& types);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypePack& annotation);
-    TypeId instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams, const Location& location);
+    TypeId instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams,
+        const std::vector<TypePackId>& typePackParams, const Location& location);
 
     // Note: `scope` must be a fresh scope.
     std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(
@@ -396,54 +400,6 @@ public:
 private:
     int checkRecursionCount = 0;
     int recursionCount = 0;
-};
-
-struct Binding
-{
-    TypeId typeId;
-    Location location;
-    bool deprecated = false;
-    std::string deprecatedSuggestion;
-    std::optional<std::string> documentationSymbol;
-};
-
-struct Scope
-{
-    explicit Scope(TypePackId returnType);                    // root scope
-    explicit Scope(const ScopePtr& parent, int subLevel = 0); // child scope.  Parent must not be nullptr.
-
-    const ScopePtr parent; // null for the root
-    std::unordered_map<Symbol, Binding> bindings;
-    TypePackId returnType;
-    bool breakOk = false;
-    std::optional<TypePackId> varargPack;
-
-    TypeLevel level;
-
-    std::unordered_map<Name, TypeFun> exportedTypeBindings;
-    std::unordered_map<Name, TypeFun> privateTypeBindings;
-    std::unordered_map<Name, Location> typeAliasLocations;
-
-    std::unordered_map<Name, std::unordered_map<Name, TypeFun>> importedTypeBindings;
-
-    std::optional<TypeId> lookup(const Symbol& name);
-
-    std::optional<TypeFun> lookupType(const Name& name);
-    std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name);
-
-    std::unordered_map<Name, TypePackId> privateTypePackBindings;
-    std::optional<TypePackId> lookupPack(const Name& name);
-
-    // WARNING: This function linearly scans for a string key of equal value!  It is thus O(n**2)
-    std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true);
-
-    RefinementMap refinements;
-
-    // For mutually recursive type aliases, it's important that
-    // they use the same types for the same names.
-    // For instance, in `type Tree<T> { data: T, children: Forest<T> } type Forest<T> = {Tree<T>}`
-    // we need that the generic type `T` in both cases is the same, so we use a cache.
-    std::unordered_map<Name, TypeId> typeAliasParameters;
 };
 
 // Unit test hook

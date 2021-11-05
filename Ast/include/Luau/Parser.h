@@ -218,13 +218,14 @@ private:
 
     AstTableIndexer* parseTableIndexerAnnotation();
 
-    AstType* parseFunctionTypeAnnotation();
+    AstTypeOrPack parseFunctionTypeAnnotation(bool allowPack);
     AstType* parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<AstName> generics, AstArray<AstName> genericPacks,
         AstArray<AstType*>& params, AstArray<std::optional<AstArgumentName>>& paramNames, AstTypePack* varargAnnotation);
 
     AstType* parseTableTypeAnnotation();
-    AstType* parseSimpleTypeAnnotation();
+    AstTypeOrPack parseSimpleTypeAnnotation(bool allowPack);
 
+    AstTypeOrPack parseTypeOrPackAnnotation();
     AstType* parseTypeAnnotation(TempVector<AstType*>& parts, const Location& begin);
     AstType* parseTypeAnnotation();
 
@@ -284,7 +285,7 @@ private:
     std::pair<AstArray<AstName>, AstArray<AstName>> parseGenericTypeListIfFFlagParseGenericFunctions();
 
     // `<' typeAnnotation[, ...] `>'
-    AstArray<AstType*> parseTypeParams();
+    AstArray<AstTypeOrPack> parseTypeParams();
 
     AstExpr* parseString();
 
@@ -413,6 +414,7 @@ private:
     std::vector<AstLocal*> scratchLocal;
     std::vector<AstTableProp> scratchTableTypeProps;
     std::vector<AstType*> scratchAnnotation;
+    std::vector<AstTypeOrPack> scratchTypeOrPackAnnotation;
     std::vector<AstDeclaredClassProp> scratchDeclaredClassProps;
     std::vector<AstExprTable::Item> scratchItem;
     std::vector<AstArgumentName> scratchArgName;

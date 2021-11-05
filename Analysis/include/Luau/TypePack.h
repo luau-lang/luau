@@ -117,7 +117,8 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 
 TypePackId follow(TypePackId tp);
 
-size_t size(const TypePackId tp);
+size_t size(TypePackId tp);
+bool finite(TypePackId tp);
 size_t size(const TypePack& tp);
 std::optional<TypeId> first(TypePackId tp);
 

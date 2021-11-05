@@ -2519,4 +2519,19 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_type_pack_type_parameters")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    AstStat* stat = parse(R"(
+type Packed<T...> = () -> T...
+
+type A<X...> = Packed<X...>
+type B<X...> = Packed<...number>
+type C<X...> = Packed<(number, X...)>
+    )");
+    REQUIRE(stat != nullptr);
+}
+
 TEST_SUITE_END();

@@ -30,6 +30,8 @@ TEST_SUITE_BEGIN("ProvisionalTests");
  */
 TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 {
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+
     const std::string code = R"(
         function f(a)
             if type(a) == "boolean" then
@@ -41,11 +43,11 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     )";
 
     const std::string expected = R"(
-        function f(a:{fn:()->(free)}): ()
+        function f(a:{fn:()->(free,free...)}): ()
             if type(a) == 'boolean'then
                 local a1:boolean=a
             elseif a.fn()then
-                local a2:{fn:()->(free)}=a
+                local a2:{fn:()->(free,free...)}=a
             end
         end
     )";
@@ -231,16 +233,7 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
         local r2 = b == a
     )");
 
-    if (FFlag::LuauEqConstraint)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(toString(result.errors[0]), "Type '{| x: string |}?' could not be converted into 'number | string'");
-        CHECK_EQ(toString(result.errors[1]), "Type 'number | string' could not be converted into '{| x: string |}?'");
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 // Belongs in TypeInfer.refinements.test.cpp.
@@ -540,6 +533,25 @@ TEST_CASE_FIXTURE(Fixture, "bail_early_on_typescript_port_of_Result_type" * doct
         dumpErrors(result);
         FAIL("Expected a UnificationTooComplex error");
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local function setNumber(t: { p: number? }, x:number) t.p = x end
+        local function getString(t: { p: string? }):string return t.p or "" end
+        -- This shouldn't type-check!
+        local function oh(x:number): string
+          local t: {} = {}
+          setNumber(t, x)
+          return getString(t)
+        end
+        local s: string = oh(37)
+    )");
+
+    // Really this should return an error, but it doesn't
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 // Should be in TypeInfer.tables.test.cpp
