@@ -1,4 +1,4 @@
-# nil-navigation postfix operator (?)
+# Safe navigation postfix operator (?)
 
 ## Summary
 
@@ -64,7 +64,7 @@ logDogName(logger, name, displayName)
 
 ## Design
 
-The nil-navigation operator will make all of these smooth, by supporting `x?.y` and similar indexing operators. `dog?.name` would resolve to `nil` if `dog` was nil, or the name otherwise. `owner?.handshake()` would only call `handshake` if `owner` is not nil.
+The safe navigation operator will make all of these smooth, by supporting `x?.y` and similar indexing operators. `dog?.name` would resolve to `nil` if `dog` was nil, or the name otherwise. `owner?.handshake()` would only call `handshake` if `owner` is not nil.
 
 The long example would turn into:
 
@@ -74,9 +74,9 @@ logDogName(getLogger(), dog?.name, dog?.owner?:getDisplayName())
 
 Failing the nil-safety check early would make the entire expression nil, for instance `dog?.body.legs` would resolve to `nil` if `dog` is nil, rather than resolve `dog?.body` into nil, then turning into `nil.legs`.
 
-Because functions can also be nil, the nil-navigation operator will also support `x?()`, which will only call `x` if it is not nil.
+Because functions can also be nil, the safe navigation operator will also support `x?()`, which will only call `x` if it is not nil.
 
-The list of valid operators to follow the nil-navigation operator would be:
+The list of valid operators to follow the safe navigation operator would be:
 
 ```lua
 dog?.name
@@ -99,7 +99,7 @@ This syntax would be based on expressions, and not identifiers, meaning that `(x
 The type of an expression using the nil-safety operator would simply resolve to the expression, nillable. Meaning if `dog.name` was a `string`, then `dog?.name` would be `string?`.
 
 ### Linting
-Though not required, lints to prevent superfluous use of the nil-navigation operator would be welcome.
+Though not required, lints to prevent superfluous use of the safe navigation operator would be welcome.
 
 For example, if `dog` has a property `body` (which cannot be nil), which has a property `legs`, then `dog?.body.legs` is valid, as `dog?.body` being nil will cancel the rest of the expression. However, a user might instead write `dog?.body?.legs`, perhaps expecting `dog?.body` to resolve to nil, but still indexing `legs`.
 
@@ -113,5 +113,5 @@ Furthermore, with the proposed syntax, it might lock off other uses of `?` withi
 
 ## Alternatives
 
-Doing nothing is an option, as current standard if-checks already work, as well as the `and` trick in other use cases, but as shown before this can create some hard to read code, and nil values are common enough that the nil-navigation operator is welcome.
+Doing nothing is an option, as current standard if-checks already work, as well as the `and` trick in other use cases, but as shown before this can create some hard to read code, and nil values are common enough that the safe navigation operator is welcome.
 
