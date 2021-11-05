@@ -51,7 +51,7 @@ LDFLAGS=
 
 # temporary, for older gcc versions as they treat var in `if (type var = val)` as unused
 ifeq ($(findstring g++,$(shell $(CXX) --version)),g++)
-CXXFLAGS+=-Wno-unused
+	CXXFLAGS+=-Wno-unused
 endif
 
 # configuration-specific flags
