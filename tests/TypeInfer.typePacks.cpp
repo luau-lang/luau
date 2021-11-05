@@ -294,4 +294,370 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type Packed<T...> = (T...) -> T...
+local a: Packed<>
+local b: Packed<number>
+local c: Packed<string, number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto tf = lookupType("Packed");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf), "(T...) -> (T...)");
+    CHECK_EQ(toString(requireType("a")), "() -> ()");
+    CHECK_EQ(toString(requireType("b")), "(number) -> number");
+    CHECK_EQ(toString(requireType("c")), "(string, number) -> (string, number)");
+
+    result = check(R"(
+-- (U..., T) cannot be parsed right now
+type Packed<T, U...> = { f: (a: T, U...) -> (T, U...) }
+local a: Packed<number>
+local b: Packed<string, number>
+local c: Packed<string, number, boolean>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    tf = lookupType("Packed");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf), "Packed<T, U...>");
+    CHECK_EQ(toString(*tf, {true}), "{| f: (T, U...) -> (T, U...) |}");
+
+    auto ttvA = get<TableTypeVar>(requireType("a"));
+    REQUIRE(ttvA);
+    CHECK_EQ(toString(requireType("a")), "Packed<number>");
+    CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
+    REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
+    REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
+    CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
+    CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
+
+    auto ttvB = get<TableTypeVar>(requireType("b"));
+    REQUIRE(ttvB);
+    CHECK_EQ(toString(requireType("b")), "Packed<string, number>");
+    CHECK_EQ(toString(requireType("b"), {true}), "{| f: (string, number) -> (string, number) |}");
+    REQUIRE(ttvB->instantiatedTypeParams.size() == 1);
+    REQUIRE(ttvB->instantiatedTypePackParams.size() == 1);
+    CHECK_EQ(toString(ttvB->instantiatedTypeParams[0], {true}), "string");
+    CHECK_EQ(toString(ttvB->instantiatedTypePackParams[0], {true}), "number");
+
+    auto ttvC = get<TableTypeVar>(requireType("c"));
+    REQUIRE(ttvC);
+    CHECK_EQ(toString(requireType("c")), "Packed<string, number, boolean>");
+    CHECK_EQ(toString(requireType("c"), {true}), "{| f: (string, number, boolean) -> (string, number, boolean) |}");
+    REQUIRE(ttvC->instantiatedTypeParams.size() == 1);
+    REQUIRE(ttvC->instantiatedTypePackParams.size() == 1);
+    CHECK_EQ(toString(ttvC->instantiatedTypeParams[0], {true}), "string");
+    CHECK_EQ(toString(ttvC->instantiatedTypePackParams[0], {true}), "number, boolean");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_import")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    fileResolver.source["game/A"] = R"(
+export type Packed<T, U...> = { a: T, b: (U...) -> () }
+return {}
+    )";
+
+    CheckResult aResult = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = check(R"(
+local Import = require(game.A)
+local a: Import.Packed<number>
+local b: Import.Packed<string, number>
+local c: Import.Packed<string, number, boolean>
+local d: { a: typeof(c) }
+    )");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    auto tf = lookupImportedType("Import", "Packed");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf), "Packed<T, U...>");
+    CHECK_EQ(toString(*tf, {true}), "{| a: T, b: (U...) -> () |}");
+
+    CHECK_EQ(toString(requireType("a"), {true}), "{| a: number, b: () -> () |}");
+    CHECK_EQ(toString(requireType("b"), {true}), "{| a: string, b: (number) -> () |}");
+    CHECK_EQ(toString(requireType("c"), {true}), "{| a: string, b: (number, boolean) -> () |}");
+    CHECK_EQ(toString(requireType("d")), "{| a: Packed<string, number, boolean> |}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_pack_type_parameters")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    fileResolver.source["game/A"] = R"(
+export type Packed<T, U...> = { a: T, b: (U...) -> () }
+return {}
+    )";
+
+    CheckResult cResult = check(R"(
+local Import = require(game.A)
+type Alias<S, T, R...> = Import.Packed<S, (T, R...)>
+local a: Alias<string, number, boolean>
+
+type B<X...> = Import.Packed<string, X...>
+type C<X...> = Import.Packed<string, (number, X...)>
+    )");
+    LUAU_REQUIRE_NO_ERRORS(cResult);
+
+    auto tf = lookupType("Alias");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf), "Alias<S, T, R...>");
+    CHECK_EQ(toString(*tf, {true}), "{| a: S, b: (T, R...) -> () |}");
+
+    CHECK_EQ(toString(requireType("a"), {true}), "{| a: string, b: (number, boolean) -> () |}");
+
+    tf = lookupType("B");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf), "B<X...>");
+    CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (X...) -> () |}");
+
+    tf = lookupType("C");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf), "C<X...>");
+    CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (number, X...) -> () |}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_nested")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type Packed1<T...> = (T...) -> (T...)
+type Packed2<T...> = (Packed1<T...>, T...) -> (Packed1<T...>, T...)
+type Packed3<T...> = (Packed2<T...>, T...) -> (Packed2<T...>, T...)
+type Packed4<T...> = (Packed3<T...>, T...) -> (Packed3<T...>, T...)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto tf = lookupType("Packed4");
+    REQUIRE(tf);
+    CHECK_EQ(toString(*tf),
+        "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...) -> "
+        "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_variadic")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type X<T...> = (T...) -> (string, T...)
+
+type D = X<...number>
+type E = X<(number, ...string)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("D")), "(...number) -> (string, ...number)");
+    CHECK_EQ(toString(*lookupType("E")), "(number, ...string) -> (string, number, ...string)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_multi")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type Y<T..., U...> = (T...) -> (U...)
+type A<S...> = Y<S..., S...>
+type B<S...> = Y<(number, ...string), S...>
+
+type Z<T, U...> = (T) -> (U...)
+type E<S...> = Z<number, S...>
+type F<S...> = Z<number, (string, S...)>
+
+type W<T, U..., V...> = (T, U...) -> (T, V...)
+type H<S..., R...> = W<number, S..., R...>
+type I<S..., R...> = W<number, (string, S...), R...>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("A")), "(S...) -> (S...)");
+    CHECK_EQ(toString(*lookupType("B")), "(number, ...string) -> (S...)");
+
+    CHECK_EQ(toString(*lookupType("E")), "(number) -> (S...)");
+    CHECK_EQ(toString(*lookupType("F")), "(number) -> (string, S...)");
+
+    CHECK_EQ(toString(*lookupType("H")), "(number, S...) -> (number, R...)");
+    CHECK_EQ(toString(*lookupType("I")), "(number, string, S...) -> (number, R...)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type X<T...> = (T...) -> (T...)
+
+type A<S...> = X<(S...)>
+type B = X<()>
+type C = X<(number)>
+type D = X<(number, string)>
+type E = X<(...number)>
+type F = X<(string, ...number)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("A")), "(S...) -> (S...)");
+    CHECK_EQ(toString(*lookupType("B")), "() -> ()");
+    CHECK_EQ(toString(*lookupType("C")), "(number) -> number");
+    CHECK_EQ(toString(*lookupType("D")), "(number, string) -> (number, string)");
+    CHECK_EQ(toString(*lookupType("E")), "(...number) -> (...number)");
+    CHECK_EQ(toString(*lookupType("F")), "(string, ...number) -> (string, ...number)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type Y<T..., U...> = (T...) -> (U...)
+
+type A = Y<(number, string), (boolean)>
+type B = Y<(), ()>
+type C<S...> = Y<...string, (number, S...)>
+type D<X...> = Y<X..., (number, string, X...)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("A")), "(number, string) -> boolean");
+    CHECK_EQ(toString(*lookupType("B")), "() -> ()");
+    CHECK_EQ(toString(*lookupType("C")), "(...string) -> (number, S...)");
+    CHECK_EQ(toString(*lookupType("D")), "(X...) -> (number, string, X...)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi_tostring")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+    ScopedFastFlag luauInstantiatedTypeParamRecursion("LuauInstantiatedTypeParamRecursion", true); // For correct toString block
+
+    CheckResult result = check(R"(
+type Y<T..., U...> = { f: (T...) -> (U...) }
+
+local a: Y<(number, string), (boolean)>
+local b: Y<(), ()>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<(number, string), (boolean)>");
+    CHECK_EQ(toString(requireType("b")), "Y<(), ()>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_backwards_compatible")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type X<T> = () -> T
+type Y<T, U> = (T) -> U
+
+type A = X<(number)>
+type B = Y<(number), (boolean)>
+type C = Y<(number), boolean>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("A")), "() -> number");
+    CHECK_EQ(toString(*lookupType("B")), "(number) -> boolean");
+    CHECK_EQ(toString(*lookupType("C")), "(number) -> boolean");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_errors")
+{
+    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
+    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
+    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
+
+    CheckResult result = check(R"(
+type Packed<T, U, V...> = (T, U) -> (V...)
+local b: Packed<number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T, U, V...>' expects at least 2 type arguments, but only 1 is specified");
+
+    result = check(R"(
+type Packed<T, U> = (T, U) -> ()
+type B<X...> = Packed<number, string, X...>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T, U>' expects 0 type pack arguments, but 1 is specified");
+
+    result = check(R"(
+type Packed<T..., U...> = (T...) -> (U...)
+type Other<S...> = Packed<S..., string>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type parameters must come before type pack parameters");
+
+    result = check(R"(
+type Packed<T, U> = (T) -> U
+type Other<S...> = Packed<number, S...>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T, U>' expects 2 type arguments, but only 1 is specified");
+
+    result = check(R"(
+type Packed<T...> = (T...) -> T...
+local a: Packed
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
+
+    result = check(R"(
+type Packed<T..., U...> = (T...) -> (U...)
+type Other = Packed<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but none are specified");
+
+    result = check(R"(
+type Packed<T..., U...> = (T...) -> (U...)
+type Other = Packed<number, string>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but only 1 is specified");
+}
+
 TEST_SUITE_END();

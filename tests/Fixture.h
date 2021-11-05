@@ -65,6 +65,8 @@ struct TestFileResolver
     }
 
     std::optional<ModuleName> fromAstFragment(AstExpr* expr) const override;
+    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override;
+
     ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override;
     std::optional<ModuleName> getParentModuleName(const ModuleName& name) const override;
 

@@ -111,10 +111,23 @@ struct CliFileResolver : Luau::FileResolver
         return Luau::SourceCode{*source, Luau::SourceCode::Module};
     }
 
+    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node) override
+    {
+        if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
+        {
+            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".lua";
+
+            return {{name}};
+        }
+
+        return std::nullopt;
+    }
+
     bool moduleExists(const Luau::ModuleName& name) const override
     {
         return !!readFile(name);
     }
+
 
     std::optional<Luau::ModuleName> fromAstFragment(Luau::AstExpr* expr) const override
     {
@@ -127,11 +140,6 @@ struct CliFileResolver : Luau::FileResolver
     }
 
     std::optional<Luau::ModuleName> getParentModuleName(const Luau::ModuleName& name) const override
-    {
-        return std::nullopt;
-    }
-
-    std::optional<std::string> getEnvironmentForModule(const Luau::ModuleName& name) const override
     {
         return std::nullopt;
     }

@@ -228,6 +228,7 @@ struct TableTypeVar
 
     std::map<Name, Location> methodDefinitionLocations;
     std::vector<TypeId> instantiatedTypeParams;
+    std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;
 
     std::optional<TypeId> boundTo;
@@ -284,8 +285,9 @@ struct ClassTypeVar
 
 struct TypeFun
 {
-    /// These should all be generic
+    // These should all be generic
     std::vector<TypeId> typeParams;
+    std::vector<TypePackId> typePackParams;
 
     /** The underlying type.
      *
@@ -293,6 +295,20 @@ struct TypeFun
      * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
      */
     TypeId type;
+
+    TypeFun() = default;
+    TypeFun(std::vector<TypeId> typeParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , type(type)
+    {
+    }
+
+    TypeFun(std::vector<TypeId> typeParams, std::vector<TypePackId> typePackParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , typePackParams(std::move(typePackParams))
+        , type(type)
+    {
+    }
 };
 
 // Anything!  All static checking is off.
@@ -523,9 +539,5 @@ UnionTypeVarIterator end(const UnionTypeVar* utv);
 
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
-
-// TEMP: Clip this prototype with FFlag::LuauStringMetatable
-std::optional<ExprResult<TypePackId>> magicFunctionFormat(
-    struct TypeChecker& typechecker, const std::shared_ptr<struct Scope>& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
 
 } // namespace Luau

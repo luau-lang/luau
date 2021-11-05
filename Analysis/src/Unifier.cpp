@@ -3,23 +3,25 @@
 
 #include "Luau/Common.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/Scope.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/TimeTrace.h"
 
 #include <algorithm>
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
-LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 0);
-LUAU_FASTFLAGVARIABLE(LuauLogTableTypeVarBoundTo, false)
+LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 2000);
 LUAU_FASTFLAG(LuauGenericFunctions)
+LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance, false);
 LUAU_FASTFLAGVARIABLE(LuauDontMutatePersistentFunctions, false)
 LUAU_FASTFLAG(LuauRankNTypes)
-LUAU_FASTFLAG(LuauStringMetatable)
 LUAU_FASTFLAGVARIABLE(LuauUnionHeuristic, false)
 LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
 LUAU_FASTFLAGVARIABLE(LuauSealedTableUnifyOptionalFix, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursCheckOkWithRecursiveFunctions, false)
+LUAU_FASTFLAGVARIABLE(LuauTypecheckOpts, false)
 
 namespace Luau
 {
@@ -43,21 +45,23 @@ Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Locati
     , globalScope(std::move(globalScope))
     , location(location)
     , variance(variance)
-    , counters(std::make_shared<UnifierCounters>())
+    , counters(&countersData)
+    , counters_DEPRECATED(std::make_shared<UnifierCounters>())
     , iceHandler(iceHandler)
 {
     LUAU_ASSERT(iceHandler);
 }
 
 Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::vector<std::pair<TypeId, TypeId>>& seen, const Location& location,
-    Variance variance, InternalErrorReporter* iceHandler, const std::shared_ptr<UnifierCounters>& counters)
+    Variance variance, InternalErrorReporter* iceHandler, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED, UnifierCounters* counters)
     : types(types)
     , mode(mode)
     , globalScope(std::move(globalScope))
     , log(seen)
     , location(location)
     , variance(variance)
-    , counters(counters ? counters : std::make_shared<UnifierCounters>())
+    , counters(counters ? counters : &countersData)
+    , counters_DEPRECATED(counters_DEPRECATED ? counters_DEPRECATED : std::make_shared<UnifierCounters>())
     , iceHandler(iceHandler)
 {
     LUAU_ASSERT(iceHandler);
@@ -65,16 +69,26 @@ Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::v
 
 void Unifier::tryUnify(TypeId superTy, TypeId subTy, bool isFunctionCall, bool isIntersection)
 {
-    counters->iterationCount = 0;
+    if (FFlag::LuauTypecheckOpts)
+        counters->iterationCount = 0;
+    else
+        counters_DEPRECATED->iterationCount = 0;
+
     return tryUnify_(superTy, subTy, isFunctionCall, isIntersection);
 }
 
 void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool isIntersection)
 {
-    RecursionLimiter _ra(&counters->recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(
+        FFlag::LuauTypecheckOpts ? &counters->recursionCount : &counters_DEPRECATED->recursionCount, FInt::LuauTypeInferRecursionLimit);
 
-    ++counters->iterationCount;
-    if (FInt::LuauTypeInferIterationLimit > 0 && FInt::LuauTypeInferIterationLimit < counters->iterationCount)
+    if (FFlag::LuauTypecheckOpts)
+        ++counters->iterationCount;
+    else
+        ++counters_DEPRECATED->iterationCount;
+
+    if (FInt::LuauTypeInferIterationLimit > 0 &&
+        FInt::LuauTypeInferIterationLimit < (FFlag::LuauTypecheckOpts ? counters->iterationCount : counters_DEPRECATED->iterationCount))
     {
         errors.push_back(TypeError{location, UnificationTooComplex{}});
         return;
@@ -440,7 +454,11 @@ ErrorVec Unifier::canUnify(TypePackId superTy, TypePackId subTy, bool isFunction
 
 void Unifier::tryUnify(TypePackId superTp, TypePackId subTp, bool isFunctionCall)
 {
-    counters->iterationCount = 0;
+    if (FFlag::LuauTypecheckOpts)
+        counters->iterationCount = 0;
+    else
+        counters_DEPRECATED->iterationCount = 0;
+
     return tryUnify_(superTp, subTp, isFunctionCall);
 }
 
@@ -450,10 +468,16 @@ void Unifier::tryUnify(TypePackId superTp, TypePackId subTp, bool isFunctionCall
  */
 void Unifier::tryUnify_(TypePackId superTp, TypePackId subTp, bool isFunctionCall)
 {
-    RecursionLimiter _ra(&counters->recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(
+        FFlag::LuauTypecheckOpts ? &counters->recursionCount : &counters_DEPRECATED->recursionCount, FInt::LuauTypeInferRecursionLimit);
 
-    ++counters->iterationCount;
-    if (FInt::LuauTypeInferIterationLimit > 0 && FInt::LuauTypeInferIterationLimit < counters->iterationCount)
+    if (FFlag::LuauTypecheckOpts)
+        ++counters->iterationCount;
+    else
+        ++counters_DEPRECATED->iterationCount;
+
+    if (FInt::LuauTypeInferIterationLimit > 0 &&
+        FInt::LuauTypeInferIterationLimit < (FFlag::LuauTypecheckOpts ? counters->iterationCount : counters_DEPRECATED->iterationCount))
     {
         errors.push_back(TypeError{location, UnificationTooComplex{}});
         return;
@@ -762,9 +786,210 @@ struct Resetter
 
 void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
 {
-    std::unique_ptr<Resetter> resetter;
+    if (!FFlag::LuauTableSubtypingVariance)
+        return DEPRECATED_tryUnifyTables(left, right, isIntersection);
 
-    resetter.reset(new Resetter{&variance});
+    TableTypeVar* lt = getMutable<TableTypeVar>(left);
+    TableTypeVar* rt = getMutable<TableTypeVar>(right);
+    if (!lt || !rt)
+        ice("passed non-table types to unifyTables");
+
+    std::vector<std::string> missingProperties;
+    std::vector<std::string> extraProperties;
+
+    // Reminder: left is the supertype, right is the subtype.
+    // Width subtyping: any property in the supertype must be in the subtype,
+    // and the types must agree.
+    for (const auto& [name, prop] : lt->props)
+    {
+        const auto& r = rt->props.find(name);
+        if (r != rt->props.end())
+        {
+            // TODO: read-only properties don't need invariance
+            Resetter resetter{&variance};
+            variance = Invariant;
+
+            Unifier innerState = makeChildUnifier();
+            innerState.tryUnify_(prop.type, r->second.type);
+            checkChildUnifierTypeMismatch(innerState.errors, left, right);
+            if (innerState.errors.empty())
+                log.concat(std::move(innerState.log));
+            else
+                innerState.log.rollback();
+        }
+        else if (rt->indexer && isString(rt->indexer->indexType))
+        {
+            // TODO: read-only indexers don't need invariance
+            // TODO: really we should only allow this if prop.type is optional.
+            Resetter resetter{&variance};
+            variance = Invariant;
+
+            Unifier innerState = makeChildUnifier();
+            innerState.tryUnify_(prop.type, rt->indexer->indexResultType);
+            checkChildUnifierTypeMismatch(innerState.errors, left, right);
+            if (innerState.errors.empty())
+                log.concat(std::move(innerState.log));
+            else
+                innerState.log.rollback();
+        }
+        else if (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type)))
+            // TODO: this case is unsound, but without it our test suite fails. CLI-46031
+            // TODO: should isOptional(anyType) be true?
+            {}
+        else if (rt->state == TableState::Free)
+        {
+            log(rt);
+            rt->props[name] = prop;
+        }
+        else
+            missingProperties.push_back(name);
+    }
+
+    for (const auto& [name, prop] : rt->props)
+    {
+        if (lt->props.count(name))
+        {
+            // If both lt and rt contain the property, then
+            // we're done since we already unified them above
+        }
+        else if (lt->indexer && isString(lt->indexer->indexType))
+        {
+            // TODO: read-only indexers don't need invariance
+            // TODO: really we should only allow this if prop.type is optional.
+            Resetter resetter{&variance};
+            variance = Invariant;
+
+            Unifier innerState = makeChildUnifier();
+            innerState.tryUnify_(prop.type, lt->indexer->indexResultType);
+            checkChildUnifierTypeMismatch(innerState.errors, left, right);
+            if (innerState.errors.empty())
+                log.concat(std::move(innerState.log));
+            else
+                innerState.log.rollback();
+        }
+        else if (lt->state == TableState::Unsealed)
+        {
+            // TODO: this case is unsound when variance is Invariant, but without it lua-apps fails to typecheck.
+            // TODO: file a JIRA
+            // TODO: hopefully readonly/writeonly properties will fix this.
+            Property clone = prop;
+            clone.type = deeplyOptional(clone.type);
+            log(lt);
+            lt->props[name] = clone;
+        }
+        else if (variance == Covariant)
+            {}
+        else if (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type)))
+            // TODO: this case is unsound, but without it our test suite fails. CLI-46031
+            // TODO: should isOptional(anyType) be true?
+            {}
+        else if (lt->state == TableState::Free)
+        {
+            log(lt);
+            lt->props[name] = prop;
+        }
+        else
+            extraProperties.push_back(name);
+    }
+
+    // Unify indexers
+    if (lt->indexer && rt->indexer)
+    {
+        // TODO: read-only indexers don't need invariance
+        Resetter resetter{&variance};
+        variance = Invariant;
+
+        Unifier innerState = makeChildUnifier();
+        innerState.tryUnify(*lt->indexer, *rt->indexer);
+        checkChildUnifierTypeMismatch(innerState.errors, left, right);
+        if (innerState.errors.empty())
+            log.concat(std::move(innerState.log));
+        else
+            innerState.log.rollback();
+    }
+    else if (lt->indexer)
+    {
+        if (rt->state == TableState::Unsealed || rt->state == TableState::Free)
+        {
+            // passing/assigning a table without an indexer to something that has one
+            // e.g. table.insert(t, 1) where t is a non-sealed table and doesn't have an indexer.
+            // TODO: we only need to do this if the supertype's indexer is read/write
+            // since that can add indexed elements.
+            log(rt);
+            rt->indexer = lt->indexer;
+        }
+    }
+    else if (rt->indexer && variance == Invariant)
+    {
+        // Symmetric if we are invariant
+        if (lt->state == TableState::Unsealed || lt->state == TableState::Free)
+        {
+            log(lt);
+            lt->indexer = rt->indexer;
+        }
+    }
+
+    if (!missingProperties.empty())
+    {
+        errors.push_back(TypeError{location, MissingProperties{left, right, std::move(missingProperties)}});
+        return;
+    }
+
+    if (!extraProperties.empty())
+    {
+        errors.push_back(TypeError{location, MissingProperties{left, right, std::move(extraProperties), MissingProperties::Extra}});
+        return;
+    }
+
+    /*
+     * TypeVars are commonly cyclic, so it is entirely possible
+     * for unifying a property of a table to change the table itself!
+     * We need to check for this and start over if we notice this occurring.
+     *
+     * I believe this is guaranteed to terminate eventually because this will
+     * only happen when a free table is bound to another table.
+     */
+    if (lt->boundTo || rt->boundTo)
+        return tryUnify_(left, right);
+
+    if (lt->state == TableState::Free)
+    {
+        log(lt);
+        lt->boundTo = right;
+    }
+    else if (rt->state == TableState::Free)
+    {
+        log(rt);
+        rt->boundTo = left;
+    }
+}
+
+TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen)
+{
+    ty = follow(ty);
+    if (get<AnyTypeVar>(ty))
+        return ty;
+    else if (isOptional(ty))
+        return ty;
+    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+    {
+        TypeId& result = seen[ty];
+        if (result)
+            return result;
+        result = types->addType(*ttv);
+        TableTypeVar* resultTtv = getMutable<TableTypeVar>(result);
+        for (auto& [name, prop] : resultTtv->props)
+            prop.type = deeplyOptional(prop.type, seen);
+        return types->addType(UnionTypeVar{{ singletonTypes.nilType, result }});;
+    }
+    else
+        return types->addType(UnionTypeVar{{ singletonTypes.nilType, ty }});
+}
+
+void Unifier::DEPRECATED_tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
+{
+    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance);
+    Resetter resetter{&variance};
     variance = Invariant;
 
     TableTypeVar* lt = getMutable<TableTypeVar>(left);
@@ -894,10 +1119,7 @@ void Unifier::tryUnifyFreeTable(TypeId freeTypeId, TypeId otherTypeId)
 
     if (!freeTable->boundTo && otherTable->state != TableState::Free)
     {
-        if (FFlag::LuauLogTableTypeVarBoundTo)
-            log(freeTable);
-        else
-            log(freeTypeId);
+        log(freeTable);
         freeTable->boundTo = otherTypeId;
     }
 }
@@ -1196,15 +1418,66 @@ void Unifier::tryUnify(const TableIndexer& superIndexer, const TableIndexer& sub
     tryUnify_(superIndexer.indexResultType, subIndexer.indexResultType);
 }
 
-static void queueTypePack(
+static void queueTypePack_DEPRECATED(
     std::vector<TypeId>& queue, std::unordered_set<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)
 {
+    LUAU_ASSERT(!FFlag::LuauTypecheckOpts);
+
     while (true)
     {
         if (FFlag::LuauAddMissingFollow)
             a = follow(a);
 
         if (seenTypePacks.count(a))
+            break;
+        seenTypePacks.insert(a);
+
+        if (FFlag::LuauAddMissingFollow)
+        {
+            if (get<Unifiable::Free>(a))
+            {
+                state.log(a);
+                *asMutable(a) = Unifiable::Bound{anyTypePack};
+            }
+            else if (auto tp = get<TypePack>(a))
+            {
+                queue.insert(queue.end(), tp->head.begin(), tp->head.end());
+                if (tp->tail)
+                    a = *tp->tail;
+                else
+                    break;
+            }
+        }
+        else
+        {
+            if (get<Unifiable::Free>(a))
+            {
+                state.log(a);
+                *asMutable(a) = Unifiable::Bound{anyTypePack};
+            }
+
+            if (auto tp = get<TypePack>(a))
+            {
+                queue.insert(queue.end(), tp->head.begin(), tp->head.end());
+                if (tp->tail)
+                    a = *tp->tail;
+                else
+                    break;
+            }
+        }
+    }
+}
+
+static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)
+{
+    LUAU_ASSERT(FFlag::LuauTypecheckOpts);
+
+    while (true)
+    {
+        if (FFlag::LuauAddMissingFollow)
+            a = follow(a);
+
+        if (seenTypePacks.find(a))
             break;
         seenTypePacks.insert(a);
 
@@ -1297,9 +1570,11 @@ void Unifier::tryUnifyVariadics(TypePackId superTp, TypePackId subTp, bool rever
     }
 }
 
-static void tryUnifyWithAny(
+static void tryUnifyWithAny_DEPRECATED(
     std::vector<TypeId>& queue, Unifier& state, std::unordered_set<TypePackId>& seenTypePacks, TypeId anyType, TypePackId anyTypePack)
 {
+    LUAU_ASSERT(!FFlag::LuauTypecheckOpts);
+
     std::unordered_set<TypeId> seen;
 
     while (!queue.empty())
@@ -1307,6 +1582,59 @@ static void tryUnifyWithAny(
         TypeId ty = follow(queue.back());
         queue.pop_back();
         if (seen.count(ty))
+            continue;
+        seen.insert(ty);
+
+        if (get<FreeTypeVar>(ty))
+        {
+            state.log(ty);
+            *asMutable(ty) = BoundTypeVar{anyType};
+        }
+        else if (auto fun = get<FunctionTypeVar>(ty))
+        {
+            queueTypePack_DEPRECATED(queue, seenTypePacks, state, fun->argTypes, anyTypePack);
+            queueTypePack_DEPRECATED(queue, seenTypePacks, state, fun->retType, anyTypePack);
+        }
+        else if (auto table = get<TableTypeVar>(ty))
+        {
+            for (const auto& [_name, prop] : table->props)
+                queue.push_back(prop.type);
+
+            if (table->indexer)
+            {
+                queue.push_back(table->indexer->indexType);
+                queue.push_back(table->indexer->indexResultType);
+            }
+        }
+        else if (auto mt = get<MetatableTypeVar>(ty))
+        {
+            queue.push_back(mt->table);
+            queue.push_back(mt->metatable);
+        }
+        else if (get<ClassTypeVar>(ty))
+        {
+            // ClassTypeVars never contain free typevars.
+        }
+        else if (auto union_ = get<UnionTypeVar>(ty))
+            queue.insert(queue.end(), union_->options.begin(), union_->options.end());
+        else if (auto intersection = get<IntersectionTypeVar>(ty))
+            queue.insert(queue.end(), intersection->parts.begin(), intersection->parts.end());
+        else
+        {
+        } // Primitives, any, errors, and generics are left untouched.
+    }
+}
+
+static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHashSet<TypeId>& seen, DenseHashSet<TypePackId>& seenTypePacks,
+    TypeId anyType, TypePackId anyTypePack)
+{
+    LUAU_ASSERT(FFlag::LuauTypecheckOpts);
+
+    while (!queue.empty())
+    {
+        TypeId ty = follow(queue.back());
+        queue.pop_back();
+        if (seen.find(ty))
             continue;
         seen.insert(ty);
 
@@ -1354,14 +1682,33 @@ void Unifier::tryUnifyWithAny(TypeId any, TypeId ty)
 {
     LUAU_ASSERT(get<AnyTypeVar>(any) || get<ErrorTypeVar>(any));
 
+    if (FFlag::LuauTypecheckOpts)
+    {
+        // These types are not visited in general loop below
+        if (get<PrimitiveTypeVar>(ty) || get<AnyTypeVar>(ty) || get<ClassTypeVar>(ty))
+            return;
+    }
+
     const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{singletonTypes.anyType}});
 
     const TypePackId anyTP = get<AnyTypeVar>(any) ? anyTypePack : types->addTypePack(TypePackVar{Unifiable::Error{}});
 
-    std::unordered_set<TypePackId> seenTypePacks;
-    std::vector<TypeId> queue = {ty};
+    if (FFlag::LuauTypecheckOpts)
+    {
+        std::vector<TypeId> queue = {ty};
 
-    Luau::tryUnifyWithAny(queue, *this, seenTypePacks, singletonTypes.anyType, anyTP);
+        tempSeenTy.clear();
+        tempSeenTp.clear();
+
+        Luau::tryUnifyWithAny(queue, *this, tempSeenTy, tempSeenTp, singletonTypes.anyType, anyTP);
+    }
+    else
+    {
+        std::unordered_set<TypePackId> seenTypePacks;
+        std::vector<TypeId> queue = {ty};
+
+        Luau::tryUnifyWithAny_DEPRECATED(queue, *this, seenTypePacks, singletonTypes.anyType, anyTP);
+    }
 }
 
 void Unifier::tryUnifyWithAny(TypePackId any, TypePackId ty)
@@ -1370,12 +1717,26 @@ void Unifier::tryUnifyWithAny(TypePackId any, TypePackId ty)
 
     const TypeId anyTy = singletonTypes.errorType;
 
-    std::unordered_set<TypePackId> seenTypePacks;
-    std::vector<TypeId> queue;
+    if (FFlag::LuauTypecheckOpts)
+    {
+        std::vector<TypeId> queue;
 
-    queueTypePack(queue, seenTypePacks, *this, ty, any);
+        tempSeenTy.clear();
+        tempSeenTp.clear();
 
-    Luau::tryUnifyWithAny(queue, *this, seenTypePacks, anyTy, any);
+        queueTypePack(queue, tempSeenTp, *this, ty, any);
+
+        Luau::tryUnifyWithAny(queue, *this, tempSeenTy, tempSeenTp, anyTy, any);
+    }
+    else
+    {
+        std::unordered_set<TypePackId> seenTypePacks;
+        std::vector<TypeId> queue;
+
+        queueTypePack_DEPRECATED(queue, seenTypePacks, *this, ty, any);
+
+        Luau::tryUnifyWithAny_DEPRECATED(queue, *this, seenTypePacks, anyTy, any);
+    }
 }
 
 std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, Name name)
@@ -1386,21 +1747,6 @@ std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, N
 std::optional<TypeId> Unifier::findMetatableEntry(TypeId type, std::string entry)
 {
     type = follow(type);
-
-    if (!FFlag::LuauStringMetatable)
-    {
-        if (const PrimitiveTypeVar* primType = get<PrimitiveTypeVar>(type))
-        {
-            if (primType->type != PrimitiveTypeVar::String || "__index" != entry)
-                return std::nullopt;
-
-            auto found = globalScope->bindings.find(AstName{"string"});
-            if (found == globalScope->bindings.end())
-                return std::nullopt;
-            else
-                return found->second.typeId;
-        }
-    }
 
     std::optional<TypeId> metatable = getMetatable(type);
     if (!metatable)
@@ -1427,21 +1773,36 @@ std::optional<TypeId> Unifier::findMetatableEntry(TypeId type, std::string entry
 
 void Unifier::occursCheck(TypeId needle, TypeId haystack)
 {
-    std::unordered_set<TypeId> seen;
-    return occursCheck(seen, needle, haystack);
+    std::unordered_set<TypeId> seen_DEPRECATED;
+
+    if (FFlag::LuauTypecheckOpts)
+        tempSeenTy.clear();
+
+    return occursCheck(seen_DEPRECATED, tempSeenTy, needle, haystack);
 }
 
-void Unifier::occursCheck(std::unordered_set<TypeId>& seen, TypeId needle, TypeId haystack)
+void Unifier::occursCheck(std::unordered_set<TypeId>& seen_DEPRECATED, DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
-    RecursionLimiter _ra(&counters->recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(
+        FFlag::LuauTypecheckOpts ? &counters->recursionCount : &counters_DEPRECATED->recursionCount, FInt::LuauTypeInferRecursionLimit);
 
     needle = follow(needle);
     haystack = follow(haystack);
 
-    if (seen.end() != seen.find(haystack))
-        return;
+    if (FFlag::LuauTypecheckOpts)
+    {
+        if (seen.find(haystack))
+            return;
 
-    seen.insert(haystack);
+        seen.insert(haystack);
+    }
+    else
+    {
+        if (seen_DEPRECATED.end() != seen_DEPRECATED.find(haystack))
+            return;
+
+        seen_DEPRECATED.insert(haystack);
+    }
 
     if (get<Unifiable::Error>(needle))
         return;
@@ -1458,7 +1819,7 @@ void Unifier::occursCheck(std::unordered_set<TypeId>& seen, TypeId needle, TypeI
     }
 
     auto check = [&](TypeId tv) {
-        occursCheck(seen, needle, tv);
+        occursCheck(seen_DEPRECATED, seen, needle, tv);
     };
 
     if (get<FreeTypeVar>(haystack))
@@ -1488,19 +1849,33 @@ void Unifier::occursCheck(std::unordered_set<TypeId>& seen, TypeId needle, TypeI
 
 void Unifier::occursCheck(TypePackId needle, TypePackId haystack)
 {
-    std::unordered_set<TypePackId> seen;
-    return occursCheck(seen, needle, haystack);
+    std::unordered_set<TypePackId> seen_DEPRECATED;
+
+    if (FFlag::LuauTypecheckOpts)
+        tempSeenTp.clear();
+
+    return occursCheck(seen_DEPRECATED, tempSeenTp, needle, haystack);
 }
 
-void Unifier::occursCheck(std::unordered_set<TypePackId>& seen, TypePackId needle, TypePackId haystack)
+void Unifier::occursCheck(std::unordered_set<TypePackId>& seen_DEPRECATED, DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
 {
     needle = follow(needle);
     haystack = follow(haystack);
 
-    if (seen.find(haystack) != seen.end())
-        return;
+    if (FFlag::LuauTypecheckOpts)
+    {
+        if (seen.find(haystack))
+            return;
 
-    seen.insert(haystack);
+        seen.insert(haystack);
+    }
+    else
+    {
+        if (seen_DEPRECATED.end() != seen_DEPRECATED.find(haystack))
+            return;
+
+        seen_DEPRECATED.insert(haystack);
+    }
 
     if (get<Unifiable::Error>(needle))
         return;
@@ -1508,7 +1883,8 @@ void Unifier::occursCheck(std::unordered_set<TypePackId>& seen, TypePackId needl
     if (!get<Unifiable::Free>(needle))
         ice("Expected needle pack to be free");
 
-    RecursionLimiter _ra(&counters->recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(
+        FFlag::LuauTypecheckOpts ? &counters->recursionCount : &counters_DEPRECATED->recursionCount, FInt::LuauTypeInferRecursionLimit);
 
     while (!get<ErrorTypeVar>(haystack))
     {
@@ -1528,8 +1904,8 @@ void Unifier::occursCheck(std::unordered_set<TypePackId>& seen, TypePackId needl
                 {
                     if (auto f = get<FunctionTypeVar>(FFlag::LuauAddMissingFollow ? follow(ty) : ty))
                     {
-                        occursCheck(seen, needle, f->argTypes);
-                        occursCheck(seen, needle, f->retType);
+                        occursCheck(seen_DEPRECATED, seen, needle, f->argTypes);
+                        occursCheck(seen_DEPRECATED, seen, needle, f->retType);
                     }
                 }
             }
@@ -1546,7 +1922,7 @@ void Unifier::occursCheck(std::unordered_set<TypePackId>& seen, TypePackId needl
 
 Unifier Unifier::makeChildUnifier()
 {
-    return Unifier{types, mode, globalScope, log.seen, location, variance, iceHandler, counters};
+    return Unifier{types, mode, globalScope, log.seen, location, variance, iceHandler, counters_DEPRECATED, counters};
 }
 
 bool Unifier::isNonstrictMode() const

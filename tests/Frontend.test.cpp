@@ -58,6 +58,35 @@ struct NaiveFileResolver : NullFileResolver
         return std::nullopt;
     }
 
+    std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override
+    {
+        if (AstExprGlobal* g = expr->as<AstExprGlobal>())
+        {
+            if (g->name == "Modules")
+                return ModuleInfo{"Modules"};
+
+            if (g->name == "game")
+                return ModuleInfo{"game"};
+        }
+        else if (AstExprIndexName* i = expr->as<AstExprIndexName>())
+        {
+            if (context)
+                return ModuleInfo{context->name + '/' + i->index.value, context->optional};
+        }
+        else if (AstExprCall* call = expr->as<AstExprCall>(); call && call->self && call->args.size >= 1 && context)
+        {
+            if (AstExprConstantString* index = call->args.data[0]->as<AstExprConstantString>())
+            {
+                AstName func = call->func->as<AstExprIndexName>()->index;
+
+                if (func == "GetService" && context->name == "game")
+                    return ModuleInfo{"game/" + std::string(index->value.data, index->value.size)};
+            }
+        }
+
+        return std::nullopt;
+    }
+
     ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override
     {
         return lhs + "/" + ModuleName(rhs);
@@ -528,7 +557,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "ignore_require_to_nonexistent_file")
 {
     fileResolver.source["Modules/A"] = R"(
         local Modules = script
-        local B = require(Modules.B :: any)
+        local B = require(Modules.B) :: any
     )";
 
     CheckResult result = frontend.check("Modules/A");

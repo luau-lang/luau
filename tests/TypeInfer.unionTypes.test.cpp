@@ -237,21 +237,7 @@ TEST_CASE_FIXTURE(Fixture, "union_equality_comparisons")
         local z = a == c
     )");
 
-    if (FFlag::LuauEqConstraint)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(*typeChecker.booleanType, *requireType("x"));
-        CHECK_EQ(*typeChecker.booleanType, *requireType("y"));
-
-        TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-        REQUIRE(tm);
-        CHECK_EQ("(number | string)?", toString(*tm->wantedType));
-        CHECK_EQ("boolean | number", toString(*tm->givenType));
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_union_members")

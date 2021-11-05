@@ -90,10 +90,12 @@ struct Module
     TypeArena internalTypes;
 
     std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
-    std::unordered_map<const AstExpr*, TypeId> astTypes;
-    std::unordered_map<const AstExpr*, TypeId> astExpectedTypes;
-    std::unordered_map<const AstExpr*, TypeId> astOriginalCallTypes;
-    std::unordered_map<const AstExpr*, TypeId> astOverloadResolvedTypes;
+
+    DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astOverloadResolvedTypes{nullptr};
+
     std::unordered_map<Name, TypeId> declaredGlobals;
     ErrorVec errors;
     Mode mode;

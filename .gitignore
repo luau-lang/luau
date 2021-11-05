@@ -1,0 +1,7 @@
+^build/
+^coverage/
+^fuzz/luau.pb.*
+^crash-*
+^default.prof*
+^fuzz-*
+^luau$

@@ -1,10 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeUtils.h"
 
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
-
-LUAU_FASTFLAG(LuauStringMetatable)
 
 namespace Luau
 {
@@ -12,21 +11,6 @@ namespace Luau
 std::optional<TypeId> findMetatableEntry(ErrorVec& errors, const ScopePtr& globalScope, TypeId type, std::string entry, Location location)
 {
     type = follow(type);
-
-    if (!FFlag::LuauStringMetatable)
-    {
-        if (const PrimitiveTypeVar* primType = get<PrimitiveTypeVar>(type))
-        {
-            if (primType->type != PrimitiveTypeVar::String || "__index" != entry)
-                return std::nullopt;
-
-            auto it = globalScope->bindings.find(AstName{"string"});
-            if (it != globalScope->bindings.end())
-                return it->second.typeId;
-            else
-                return std::nullopt;
-        }
-    }
 
     std::optional<TypeId> metatable = getMetatable(type);
     if (!metatable)

@@ -5,6 +5,7 @@
 #include "Luau/Module.h"
 #include "Luau/Parser.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
@@ -12,6 +13,7 @@
 #include <string>
 
 LUAU_FASTFLAG(LuauGenericFunctions)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
@@ -33,7 +35,6 @@ static char* allocateString(Luau::Allocator& allocator, const char* format, Data
 
 namespace Luau
 {
-
 class TypeRehydrationVisitor
 {
     mutable std::map<void*, int> seen;
@@ -56,6 +57,8 @@ public:
         , options(options)
     {
     }
+
+    AstTypePack* rehydrate(TypePackId tp) const;
 
     AstType* operator()(const PrimitiveTypeVar& ptv) const
     {
@@ -85,16 +88,24 @@ public:
 
         if (ttv.name && options.bannedNames.find(*ttv.name) == options.bannedNames.end())
         {
-            AstArray<AstType*> generics;
-            generics.size = ttv.instantiatedTypeParams.size();
-            generics.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * generics.size));
+            AstArray<AstTypeOrPack> parameters;
+            parameters.size = ttv.instantiatedTypeParams.size();
+            parameters.data = static_cast<AstTypeOrPack*>(allocator->allocate(sizeof(AstTypeOrPack) * parameters.size));
 
             for (size_t i = 0; i < ttv.instantiatedTypeParams.size(); ++i)
             {
-                generics.data[i] = Luau::visit(*this, ttv.instantiatedTypeParams[i]->ty);
+                parameters.data[i] = {Luau::visit(*this, ttv.instantiatedTypeParams[i]->ty), {}};
             }
 
-            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName(ttv.name->c_str()), generics);
+            if (FFlag::LuauTypeAliasPacks)
+            {
+                for (size_t i = 0; i < ttv.instantiatedTypePackParams.size(); ++i)
+                {
+                    parameters.data[i] = {{}, rehydrate(ttv.instantiatedTypePackParams[i])};
+                }
+            }
+
+            return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName(ttv.name->c_str()), parameters.size != 0, parameters);
         }
 
         if (hasSeen(&ttv))
@@ -222,10 +233,17 @@ public:
         AstTypePack* argTailAnnotation = nullptr;
         if (argTail)
         {
-            TypePackId tail = *argTail;
-            if (const VariadicTypePack* vtp = get<VariadicTypePack>(tail))
+            if (FFlag::LuauTypeAliasPacks)
             {
-                argTailAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*this, vtp->ty->ty));
+                argTailAnnotation = rehydrate(*argTail);
+            }
+            else
+            {
+                TypePackId tail = *argTail;
+                if (const VariadicTypePack* vtp = get<VariadicTypePack>(tail))
+                {
+                    argTailAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*this, vtp->ty->ty));
+                }
             }
         }
 
@@ -255,10 +273,17 @@ public:
         AstTypePack* retTailAnnotation = nullptr;
         if (retTail)
         {
-            TypePackId tail = *retTail;
-            if (const VariadicTypePack* vtp = get<VariadicTypePack>(tail))
+            if (FFlag::LuauTypeAliasPacks)
             {
-                retTailAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*this, vtp->ty->ty));
+                retTailAnnotation = rehydrate(*retTail);
+            }
+            else
+            {
+                TypePackId tail = *retTail;
+                if (const VariadicTypePack* vtp = get<VariadicTypePack>(tail))
+                {
+                    retTailAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*this, vtp->ty->ty));
+                }
             }
         }
 
@@ -312,6 +337,68 @@ private:
     Allocator* allocator;
     const TypeRehydrationOptions& options;
 };
+
+class TypePackRehydrationVisitor
+{
+public:
+    TypePackRehydrationVisitor(Allocator* allocator, const TypeRehydrationVisitor& typeVisitor)
+        : allocator(allocator)
+        , typeVisitor(typeVisitor)
+    {
+    }
+
+    AstTypePack* operator()(const BoundTypePack& btp) const
+    {
+        return Luau::visit(*this, btp.boundTo->ty);
+    }
+
+    AstTypePack* operator()(const TypePack& tp) const
+    {
+        AstArray<AstType*> head;
+        head.size = tp.head.size();
+        head.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * tp.head.size()));
+
+        for (size_t i = 0; i < tp.head.size(); i++)
+            head.data[i] = Luau::visit(typeVisitor, tp.head[i]->ty);
+
+        AstTypePack* tail = nullptr;
+
+        if (tp.tail)
+            tail = Luau::visit(*this, (*tp.tail)->ty);
+
+        return allocator->alloc<AstTypePackExplicit>(Location(), AstTypeList{head, tail});
+    }
+
+    AstTypePack* operator()(const VariadicTypePack& vtp) const
+    {
+        return allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(typeVisitor, vtp.ty->ty));
+    }
+
+    AstTypePack* operator()(const GenericTypePack& gtp) const
+    {
+        return allocator->alloc<AstTypePackGeneric>(Location(), AstName(gtp.name.c_str()));
+    }
+
+    AstTypePack* operator()(const FreeTypePack& gtp) const
+    {
+        return allocator->alloc<AstTypePackGeneric>(Location(), AstName("free"));
+    }
+
+    AstTypePack* operator()(const Unifiable::Error&) const
+    {
+        return allocator->alloc<AstTypePackGeneric>(Location(), AstName("Unifiable<Error>"));
+    }
+
+private:
+    Allocator* allocator;
+    const TypeRehydrationVisitor& typeVisitor;
+};
+
+AstTypePack* TypeRehydrationVisitor::rehydrate(TypePackId tp) const
+{
+    TypePackRehydrationVisitor tprv(allocator, *this);
+    return Luau::visit(tprv, tp->ty);
+}
 
 class TypeAttacher : public AstVisitor
 {
@@ -406,9 +493,16 @@ public:
 
                 if (tail)
                 {
-                    TypePackId tailPack = *tail;
-                    if (const VariadicTypePack* vtp = get<VariadicTypePack>(tailPack))
-                        variadicAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), typeAst(vtp->ty));
+                    if (FFlag::LuauTypeAliasPacks)
+                    {
+                        variadicAnnotation = TypeRehydrationVisitor(allocator).rehydrate(*tail);
+                    }
+                    else
+                    {
+                        TypePackId tailPack = *tail;
+                        if (const VariadicTypePack* vtp = get<VariadicTypePack>(tailPack))
+                            variadicAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), typeAst(vtp->ty));
+                    }
                 }
 
                 fn->returnAnnotation = AstTypeList{typeAstPack(ret), variadicAnnotation};

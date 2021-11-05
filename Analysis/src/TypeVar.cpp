@@ -19,11 +19,9 @@
 
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
-LUAU_FASTFLAG(LuauImprovedTypeGuardPredicate2)
-LUAU_FASTFLAGVARIABLE(LuauToStringFollowsBoundTo, false)
 LUAU_FASTFLAG(LuauRankNTypes)
-LUAU_FASTFLAGVARIABLE(LuauStringMetatable, false)
 LUAU_FASTFLAG(LuauTypeGuardPeelsAwaySubclasses)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
 {
@@ -193,27 +191,11 @@ bool isOptional(TypeId ty)
 
 bool isTableIntersection(TypeId ty)
 {
-    if (FFlag::LuauImprovedTypeGuardPredicate2)
-    {
-        if (!get<IntersectionTypeVar>(follow(ty)))
-            return false;
-
-        std::vector<TypeId> parts = flattenIntersection(ty);
-        return std::all_of(parts.begin(), parts.end(), getTableType);
-    }
-    else
-    {
-        if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
-        {
-            for (TypeId part : itv->parts)
-            {
-                if (getTableType(follow(part)))
-                    return true;
-            }
-        }
-
+    if (!get<IntersectionTypeVar>(follow(ty)))
         return false;
-    }
+
+    std::vector<TypeId> parts = flattenIntersection(ty);
+    return std::all_of(parts.begin(), parts.end(), getTableType);
 }
 
 bool isOverloadedFunction(TypeId ty)
@@ -236,7 +218,7 @@ std::optional<TypeId> getMetatable(TypeId type)
     else if (const ClassTypeVar* classType = get<ClassTypeVar>(type))
         return classType->metatable;
     else if (const PrimitiveTypeVar* primitiveType = get<PrimitiveTypeVar>(type);
-             FFlag::LuauStringMetatable && primitiveType && primitiveType->metatable)
+             primitiveType && primitiveType->metatable)
     {
         LUAU_ASSERT(primitiveType->type == PrimitiveTypeVar::String);
         return primitiveType->metatable;
@@ -871,6 +853,12 @@ void StateDot::visitChildren(TypeId ty, int index)
         }
         for (TypeId itp : ttv->instantiatedTypeParams)
             visitChild(itp, index, "typeParam");
+
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            for (TypePackId itp : ttv->instantiatedTypePackParams)
+                visitChild(itp, index, "typePackParam");
+        }
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
