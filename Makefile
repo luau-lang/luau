@@ -49,7 +49,10 @@ OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(VM_OBJECTS) $(T
 CXXFLAGS=-g -Wall -Werror
 LDFLAGS=
 
-CXXFLAGS+=-Wno-unused # temporary, for older gcc versions
+# temporary, for older gcc versions as they treat var in `if (type var = val)` as unused
+ifeq ($(findstring g++,$(shell $(CXX) --version)),g++)
+CXXFLAGS+=-Wno-unused
+endif
 
 # configuration-specific flags
 ifeq ($(config),release)
