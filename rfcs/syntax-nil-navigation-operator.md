@@ -12,7 +12,7 @@ Currently, attempting to index `dog.name` while caring for `dog` being nil requi
 
 ```lua
 local dogName = nil
-if dog.name ~= nil then
+if dog ~= nil then
     dogName = dog.name
 end
 ```
