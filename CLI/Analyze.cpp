@@ -115,7 +115,12 @@ struct CliFileResolver : Luau::FileResolver
     {
         if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
         {
-            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".lua";
+            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".luau";
+            if (!moduleExists(name))
+            {
+                // fall back to .lua if a module with .luau doesn't exist
+                name = std::string(expr->value.data, expr->value.size) + ".lua";
+            }
 
             return {{name}};
         }
