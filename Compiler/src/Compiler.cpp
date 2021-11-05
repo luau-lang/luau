@@ -2892,6 +2892,7 @@ struct Compiler
                     result.valueNumber = -arg.valueNumber;
                 }
                 break;
+
             case AstExprUnary::Len:
                 if (arg.type == Constant::Type_String)
                 {
@@ -2899,6 +2900,7 @@ struct Compiler
                     result.valueNumber = double(arg.valueString.size);
                 }
                 break;
+
             default:
                 LUAU_ASSERT(!"Unexpected unary operation");
             }
