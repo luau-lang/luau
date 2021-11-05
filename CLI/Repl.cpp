@@ -249,6 +249,34 @@ static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::
     completeIndexer(L, editBuffer, start, completions);
 }
 
+#ifdef LUAU_WEB_REPL
+extern "C"
+{
+    const char* executeOnce(const char* source)
+    {
+        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+
+        setupState(L);
+
+        luaL_sandboxthread(L);
+
+        linenoise::SetCompletionCallback([L](const char* editBuffer, std::vector<std::string>& completions) {
+            completeRepl(L, editBuffer, completions);
+        });
+
+        std::string error = runCode(L, source);
+
+        if (error.length())
+        {
+            fprintf(stdout, "%s\n", error.c_str());
+        }
+
+        return error.c_str();
+    }
+}
+#endif
+
 static void runRepl()
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
@@ -420,6 +448,7 @@ static int assertionHandler(const char* expr, const char* file, int line)
     return 1;
 }
 
+#ifndef LUAU_WEB_REPL
 int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
@@ -428,6 +457,7 @@ int main(int argc, char** argv)
         if (strncmp(flag->name, "Luau", 4) == 0)
             flag->value = true;
 
+    executeCode("print'asd'");
     if (argc == 1)
     {
         runRepl();
@@ -511,5 +541,4 @@ int main(int argc, char** argv)
         return failed;
     }
 }
-
-
+#endif

@@ -157,6 +157,16 @@ if(TARGET Luau.Repl.CLI)
         CLI/Repl.cpp)
 endif()
 
+if (TARGET Luau.Repl.Web)
+    # Luau.Repl.Web Sources
+    target_sources(Luau.Repl.Web PRIVATE
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+        CLI/Profiler.h
+        CLI/Profiler.cpp
+        CLI/Repl.cpp)
+endif()
+
 if(TARGET Luau.Analyze.CLI)
     # Luau.Analyze.CLI Sources
     target_sources(Luau.Analyze.CLI PRIVATE

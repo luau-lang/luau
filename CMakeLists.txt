@@ -6,8 +6,10 @@ endif()
 
 cmake_minimum_required(VERSION 3.0)
 project(Luau LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
 
 option(LUAU_BUILD_CLI "Build CLI" ON)
+option(LUAU_BUILD_WEB_REPL "Build Web CLI" ON)
 option(LUAU_BUILD_TESTS "Build tests" ON)
 
 add_library(Luau.Ast STATIC)
@@ -15,19 +17,50 @@ add_library(Luau.Compiler STATIC)
 add_library(Luau.Analysis STATIC)
 add_library(Luau.VM STATIC)
 
-if(LUAU_BUILD_CLI)
-    add_executable(Luau.Repl.CLI)
-    add_executable(Luau.Analyze.CLI)
+if(LUAU_BUILD_WEB_REPL AND EMSCRIPTEN)
+    # this is a hack, disable cli and tests since we're compiling using emscripten
+    set(LUAU_BUILD_CLI OFF)
+    set(LUAU_BUILD_TESTS OFF)
 
-    # This also adds target `name` on Linux/macOS and `name.exe` on Windows
-    set_target_properties(Luau.Repl.CLI PROPERTIES OUTPUT_NAME luau)
-    set_target_properties(Luau.Analyze.CLI PROPERTIES OUTPUT_NAME luau-analyze)
+    add_definitions(-DLUAU_WEB_REPL)
+    
+    # luau web repl
+    add_executable(Luau.Repl.Web)
+
+    # configuration below
+    target_compile_options(Luau.Repl.Web PRIVATE ${LUAU_OPTIONS})
+
+    target_include_directories(Luau.Repl.Web PRIVATE extern)
+    target_link_libraries(Luau.Repl.Web PRIVATE Luau.Compiler Luau.VM)
+
+    if(UNIX)
+        target_link_libraries(Luau.Repl.Web PRIVATE pthread)
+    endif()
+
+    # declare exported functions to emscripten
+    target_link_options(Luau.Repl.Web PRIVATE -sEXPORTED_FUNCTIONS=['_executeOnce'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'])
+       
+    # copy html directory
+    add_custom_command(TARGET Luau.Repl.Web PRE_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/CLI/html ${CMAKE_BINARY_DIR}/webrepl)
+
+    # custom output directory for webm + js file
+    set_target_properties(Luau.Repl.Web PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/webrepl/luau)
+else()
+    if(LUAU_BUILD_CLI)
+        add_executable(Luau.Repl.CLI)
+        add_executable(Luau.Analyze.CLI)
+
+        # This also adds target `name` on Linux/macOS and `name.exe` on Windows
+        set_target_properties(Luau.Repl.CLI PROPERTIES OUTPUT_NAME luau)
+        set_target_properties(Luau.Analyze.CLI PROPERTIES OUTPUT_NAME luau-analyze)
+    endif()
+
+    if(LUAU_BUILD_TESTS)
+        add_executable(Luau.UnitTest)
+        add_executable(Luau.Conformance)
+    endif()
 endif()
 
-if(LUAU_BUILD_TESTS)
-    add_executable(Luau.UnitTest)
-    add_executable(Luau.Conformance)
-endif()
 include(Sources.cmake)
 
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
@@ -54,7 +87,8 @@ else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
     list(APPEND LUAU_OPTIONS -Werror) # Warnings are errors
 
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # temporary hot fix (removes need for commenting out line above when compiling with Clang)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
         list(APPEND LUAU_OPTIONS -Wno-unused) # GCC considers variables declared/checked in if() as unused
     endif()
 endif()
