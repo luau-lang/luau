@@ -2900,6 +2900,11 @@ struct Compiler
                 break;
 
             case AstExprUnary::Len:
+                if (arg.type == Constant::Type_String)
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = double(arg.valueString.size);
+                }
                 break;
 
             default:
