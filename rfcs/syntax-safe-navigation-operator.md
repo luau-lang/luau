@@ -92,7 +92,16 @@ local value = x?
 
 This syntax would be based on expressions, and not identifiers, meaning that `(x or y)?.call()` would be valid syntax.
 
-The type of an expression using the nil-safety operator would simply resolve to the expression, nillable. Meaning if `dog.name` was a `string`, then `dog?.name` would be `string?`.
+### Type
+If the expression is typed as an optional, then the resulting type would be the final expression, also optional. Otherwise, it'll just be the resulting type if `?` wasn't used.
+
+```lua
+local optionalObject: { name: string }?
+local optionalObjectName = optionalObject?.name -- resolves to `string?`
+
+local nonOptionalObject: { name: string }
+local nonOptionalObjectName = nonOptionalObject?.name -- resolves to `string`
+```
 
 ## Drawbacks
 
