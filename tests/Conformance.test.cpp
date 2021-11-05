@@ -801,4 +801,17 @@ TEST_CASE("IfElseExpression")
     runConformance("ifelseexpr.lua");
 }
 
+TEST_CASE("TagMethodError")
+{
+    ScopedFastFlag sff{"LuauCcallRestoreFix", true};
+
+    runConformance("tmerror.lua", [](lua_State* L) {
+        auto* cb = lua_callbacks(L);
+
+        cb->debugprotectederror = [](lua_State* L) {
+            CHECK(lua_isyieldable(L));
+        };
+    });
+}
+
 TEST_SUITE_END();

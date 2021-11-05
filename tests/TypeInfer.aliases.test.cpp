@@ -554,4 +554,54 @@ TEST_CASE_FIXTURE(Fixture, "non_recursive_aliases_that_reuse_a_generic_name")
     CHECK_EQ("{number | string}", toString(requireType("p"), {true}));
 }
 
+/*
+ * We had a problem where all type aliases would be prototyped into a child scope that happened
+ * to have the same level.  This caused a problem where, if a sibling function referred to that
+ * type alias in its type signature, it would erroneously be quantified away, even though it doesn't
+ * actually belong to the function.
+ *
+ * We solved this by ascribing a unique subLevel to each prototyped alias.
+ */
+TEST_CASE_FIXTURE(Fixture, "do_not_quantify_unresolved_aliases")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        local KeyPool = {}
+
+        local function newkey(pool: KeyPool, index)
+            return {}
+        end
+
+        function newKeyPool()
+            local pool = {
+                available = {} :: {Key},
+            }
+
+            return setmetatable(pool, KeyPool)
+        end
+
+        export type KeyPool = typeof(newKeyPool())
+        export type Key = typeof(newkey(newKeyPool(), 1))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+/*
+ * We keep a cache of type alias onto TypeVar to prevent infinite types from
+ * being constructed via recursive or corecursive aliases.  We have to adjust
+ * the TypeLevels of those generic TypeVars so that the unifier doesn't think
+ * they have improperly leaked out of their scope.
+ */
+TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_scope_if_they_are_reused_in_multiple_aliases")
+{
+    CheckResult result = check(R"(
+        type Array<T> = {T}
+        type Exclude<T, V> = T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

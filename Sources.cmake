@@ -46,6 +46,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Module.h
     Analysis/include/Luau/ModuleResolver.h
     Analysis/include/Luau/Predicate.h
+    Analysis/include/Luau/Quantify.h
     Analysis/include/Luau/RecursionCounter.h
     Analysis/include/Luau/RequireTracer.h
     Analysis/include/Luau/Scope.h
@@ -63,6 +64,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeVar.h
     Analysis/include/Luau/Unifiable.h
     Analysis/include/Luau/Unifier.h
+    Analysis/include/Luau/UnifierSharedState.h
     Analysis/include/Luau/Variant.h
     Analysis/include/Luau/VisitTypeVar.h
 
@@ -77,6 +79,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Linter.cpp
     Analysis/src/Module.cpp
     Analysis/src/Predicate.cpp
+    Analysis/src/Quantify.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
     Analysis/src/Substitution.cpp

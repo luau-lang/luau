@@ -182,7 +182,7 @@ struct RequireTracerOld : AstVisitor
 
 struct RequireTracer : AstVisitor
 {
-    RequireTracer(RequireTraceResult& result, FileResolver * fileResolver, const ModuleName& currentModuleName)
+    RequireTracer(RequireTraceResult& result, FileResolver* fileResolver, const ModuleName& currentModuleName)
         : result(result)
         , fileResolver(fileResolver)
         , currentModuleName(currentModuleName)
@@ -260,7 +260,7 @@ struct RequireTracer : AstVisitor
         // seed worklist with require arguments
         work.reserve(requires.size());
 
-        for (AstExprCall* require: requires)
+        for (AstExprCall* require : requires)
             work.push_back(require->args.data[0]);
 
         // push all dependent expressions to the work stack; note that the vector is modified during traversal

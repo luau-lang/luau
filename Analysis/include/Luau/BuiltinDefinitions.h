@@ -34,7 +34,6 @@ TypeId makeFunction( // Polymorphic
     std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames, std::initializer_list<TypeId> retTypes);
 
 void attachMagicFunction(TypeId ty, MagicFunction fn);
-void attachFunctionTag(TypeId ty, std::string constraint);
 
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol = std::nullopt);
 void assignPropDocumentationSymbols(TableTypeVar::Props& props, const std::string& baseName);

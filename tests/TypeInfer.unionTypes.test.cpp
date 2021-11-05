@@ -181,8 +181,6 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_optional_property")
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
 {
-    ScopedFastFlag luauMissingUnionPropertyError("LuauMissingUnionPropertyError", true);
-
     CheckResult result = check(R"(
         type A = {x: number}
         type B = {}
@@ -242,8 +240,6 @@ TEST_CASE_FIXTURE(Fixture, "union_equality_comparisons")
 
 TEST_CASE_FIXTURE(Fixture, "optional_union_members")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 local a = { a = { x = 1, y = 2 }, b = 3 }
 type A = typeof(a)
@@ -259,8 +255,6 @@ local c = bf.a.y
 
 TEST_CASE_FIXTURE(Fixture, "optional_union_functions")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 local a = {}
 function a.foo(x:number, y:number) return x + y end
@@ -276,8 +270,6 @@ local c = b.foo(1, 2)
 
 TEST_CASE_FIXTURE(Fixture, "optional_union_methods")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 local a = {}
 function a:foo(x:number, y:number) return x + y end
@@ -310,8 +302,6 @@ return f()
 
 TEST_CASE_FIXTURE(Fixture, "optional_field_access_error")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 type A = { x: number }
 local b: A? = { x = 2 }
@@ -327,8 +317,6 @@ local d = b.y
 
 TEST_CASE_FIXTURE(Fixture, "optional_index_error")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 type A = {number}
 local a: A? = {1, 2, 3}
@@ -341,8 +329,6 @@ local b = a[1]
 
 TEST_CASE_FIXTURE(Fixture, "optional_call_error")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 type A = (number) -> number
 local a: A? = function(a) return -a end
@@ -355,8 +341,6 @@ local b = a(4)
 
 TEST_CASE_FIXTURE(Fixture, "optional_assignment_errors")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 type A = { x: number }
 local a: A? = { x = 2 }
@@ -378,8 +362,6 @@ a.x = 2
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 type A = {number}
 local a: A? = {1, 2, 3}
@@ -392,9 +374,6 @@ local b = #a
 
 TEST_CASE_FIXTURE(Fixture, "optional_missing_key_error_details")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-    ScopedFastFlag luauMissingUnionPropertyError("LuauMissingUnionPropertyError", true);
-
     CheckResult result = check(R"(
 type A = { x: number, y: number }
 type B = { x: number, y: number }
