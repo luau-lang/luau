@@ -2,7 +2,8 @@
 
 ## Summary
 
-Introduce syntax to navigate through `nil` values.
+Introduce syntax to navigate through `nil` values, or short-circuit with `nil` if it was encountered.
+
 
 ## Motivation
 
