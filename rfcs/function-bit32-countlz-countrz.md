@@ -12,7 +12,7 @@ All CPUs have instructions to determine the position of first/last set bit in an
 - Scanning set bits in an integer, which allows efficient traversal of compact representation of bitmaps
 - Allocating bits out of a bitmap quickly
 
-Today it's possible to approximate `countlz` using `floor` and `log` but this approximation is relatively slow; approximating `ccountrz` is difficult without iterating through each bit.
+Today it's possible to approximate `countlz` using `floor` and `log` but this approximation is relatively slow; approximating `countrz` is difficult without iterating through each bit.
 
 ## Design
 
