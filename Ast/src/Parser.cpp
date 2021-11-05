@@ -2379,15 +2379,12 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
         Lexeme begin = lexer.current();
         nextLexeme();
 
-        bool seenPack = false;
         while (true)
         {
             if (FFlag::LuauParseTypePackTypeParameters)
             {
                 if (shouldParseTypePackAnnotation(lexer))
                 {
-                    seenPack = true;
-
                     auto typePack = parseTypePackAnnotation();
 
                     if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
@@ -2399,8 +2396,6 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
                     if (typePack)
                     {
-                        seenPack = true;
-
                         if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
                             parameters.push_back({{}, typePack});
                     }
