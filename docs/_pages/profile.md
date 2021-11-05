@@ -56,4 +56,4 @@ This profiler doesn't track leaf C functions and instead attributes the time spe
 slow, consider not just the work it does immediately but also the library functions it calls.
 
 This profiler tracks time consumed by Luau thread stacks; when a thread calls another thread via `coroutine.resume`, the time spent is not attributed to the parent thread that's
-waiting for resume results. This limitation will be removed in the future in the future.
+waiting for resume results. This limitation will be removed in the future.
