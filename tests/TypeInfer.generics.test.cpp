@@ -695,4 +695,25 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
     CHECK(requireType("y1") == requireType("y2"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "bound_tables_do_not_clone_original_fields")
+{
+    ScopedFastFlag luauRankNTypes{"LuauRankNTypes", true};
+    ScopedFastFlag luauCloneBoundTables{"LuauCloneBoundTables", true};
+
+    CheckResult result = check(R"(
+local exports = {}
+local nested = {}
+
+nested.name = function(t, k)
+    local a = t.x.y
+    return rawget(t, k)
+end
+
+exports.nested = nested
+return exports
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

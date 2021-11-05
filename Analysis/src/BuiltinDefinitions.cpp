@@ -106,18 +106,6 @@ void attachMagicFunction(TypeId ty, MagicFunction fn)
         LUAU_ASSERT(!"Got a non functional type");
 }
 
-void attachFunctionTag(TypeId ty, std::string tag)
-{
-    if (auto ftv = getMutable<FunctionTypeVar>(ty))
-    {
-        ftv->tags.emplace_back(std::move(tag));
-    }
-    else
-    {
-        LUAU_ASSERT(!"Got a non functional type");
-    }
-}
-
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol)
 {
     return {

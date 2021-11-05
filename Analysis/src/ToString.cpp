@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauExtraNilRecovery)
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
 LUAU_FASTFLAGVARIABLE(LuauInstantiatedTypeParamRecursion, false)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
@@ -157,15 +156,6 @@ struct StringifierState
         auto iter = seen.find(ttv);
         if (iter != seen.end())
             seen.erase(iter);
-    }
-
-    static std::string generateName(size_t i)
-    {
-        std::string n;
-        n = char('a' + i % 26);
-        if (i >= 26)
-            n += std::to_string(i / 26);
-        return n;
     }
 
     std::string getName(TypeId ty)
@@ -584,8 +574,7 @@ struct TypeVarStringifier
         std::vector<std::string> results = {};
         for (auto el : &uv)
         {
-            if (FFlag::LuauExtraNilRecovery || FFlag::LuauAddMissingFollow)
-                el = follow(el);
+            el = follow(el);
 
             if (isNil(el))
             {
@@ -649,8 +638,7 @@ struct TypeVarStringifier
         std::vector<std::string> results = {};
         for (auto el : uv.parts)
         {
-            if (FFlag::LuauExtraNilRecovery || FFlag::LuauAddMissingFollow)
-                el = follow(el);
+            el = follow(el);
 
             std::string saved = std::move(state.result.name);
 
@@ -1202,6 +1190,15 @@ void dump(TypePackId ty)
     opts.exhaustive = true;
     opts.functionTypeArguments = true;
     printf("%s\n", toString(ty, opts).c_str());
+}
+
+std::string generateName(size_t i)
+{
+    std::string n;
+    n = char('a' + i % 26);
+    if (i >= 26)
+        n += std::to_string(i / 26);
+    return n;
 }
 
 } // namespace Luau

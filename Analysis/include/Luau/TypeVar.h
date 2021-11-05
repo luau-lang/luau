@@ -540,4 +540,11 @@ UnionTypeVarIterator end(const UnionTypeVar* utv);
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 
+void attachTag(TypeId ty, const std::string& tagName);
+void attachTag(Property& prop, const std::string& tagName);
+
+bool hasTag(TypeId ty, const std::string& tagName);
+bool hasTag(const Property& prop, const std::string& tagName);
+bool hasTag(const Tags& tags, const std::string& tagName); // Do not use in new work.
+
 } // namespace Luau

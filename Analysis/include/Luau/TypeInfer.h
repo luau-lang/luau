@@ -11,6 +11,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
+#include "Luau/UnifierSharedState.h"
 
 #include <memory>
 #include <unordered_map>
@@ -121,7 +122,7 @@ struct TypeChecker
     void check(const ScopePtr& scope, const AstStatForIn& forin);
     void check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatFunction& function);
     void check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function);
-    void check(const ScopePtr& scope, const AstStatTypeAlias& typealias, bool forwardDeclare = false);
+    void check(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0, bool forwardDeclare = false);
     void check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass);
     void check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
 
@@ -336,7 +337,7 @@ private:
 
     // Note: `scope` must be a fresh scope.
     std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(
-        const ScopePtr& scope, const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
+        const ScopePtr& scope, std::optional<TypeLevel> levelOpt, const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
 
 public:
     ErrorVec resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);
@@ -382,6 +383,8 @@ public:
 
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     InternalErrorReporter* iceHandler;
+
+    UnifierSharedState unifierState;
 
 public:
     const TypeId nilType;

@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauGcFullSkipInactiveThreads)
-
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -1153,7 +1151,7 @@ void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
     Udata* u = luaS_newudata(L, sz + sizeof(dtor), UTAG_IDTOR);
-    memcpy(u->data + sz, &dtor, sizeof(dtor));
+    memcpy(&u->data + sz, &dtor, sizeof(dtor));
     setuvalue(L, L->top, u);
     api_incr_top(L);
     return u->data;

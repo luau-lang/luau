@@ -15,6 +15,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
 LUAU_FASTFLAG(LuauSecondTypecheckKnowsTheDataModel)
 LUAU_FASTFLAG(LuauCaptureBrokenCommentSpans)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
+LUAU_FASTFLAGVARIABLE(LuauCloneBoundTables, false)
 
 namespace Luau
 {
@@ -299,6 +300,14 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
 
 void TypeCloner::operator()(const TableTypeVar& t)
 {
+    // If table is now bound to another one, we ignore the content of the original
+    if (FFlag::LuauCloneBoundTables && t.boundTo)
+    {
+        TypeId boundTo = clone(*t.boundTo, dest, seenTypes, seenTypePacks, encounteredFreeType);
+        seenTypes[typeId] = boundTo;
+        return;
+    }
+
     TypeId result = dest.addType(TableTypeVar{});
     TableTypeVar* ttv = getMutable<TableTypeVar>(result);
     LUAU_ASSERT(ttv != nullptr);
@@ -321,8 +330,11 @@ void TypeCloner::operator()(const TableTypeVar& t)
         ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, seenTypes, seenTypePacks, encounteredFreeType),
             clone(t.indexer->indexResultType, dest, seenTypes, seenTypePacks, encounteredFreeType)};
 
-    if (t.boundTo)
-        ttv->boundTo = clone(*t.boundTo, dest, seenTypes, seenTypePacks, encounteredFreeType);
+    if (!FFlag::LuauCloneBoundTables)
+    {
+        if (t.boundTo)
+            ttv->boundTo = clone(*t.boundTo, dest, seenTypes, seenTypePacks, encounteredFreeType);
+    }
 
     for (TypeId& arg : ttv->instantiatedTypeParams)
         arg = clone(arg, dest, seenTypes, seenTypePacks, encounteredFreeType);
@@ -335,7 +347,7 @@ void TypeCloner::operator()(const TableTypeVar& t)
 
     if (ttv->state == TableState::Free)
     {
-        if (!t.boundTo)
+        if (FFlag::LuauCloneBoundTables || !t.boundTo)
         {
             if (encounteredFreeType)
                 *encounteredFreeType = true;
