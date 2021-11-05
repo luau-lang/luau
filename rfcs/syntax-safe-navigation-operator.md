@@ -98,13 +98,6 @@ This syntax would be based on expressions, and not identifiers, meaning that `(x
 
 The type of an expression using the nil-safety operator would simply resolve to the expression, nillable. Meaning if `dog.name` was a `string`, then `dog?.name` would be `string?`.
 
-### Linting
-Though not required, lints to prevent superfluous use of the safe navigation operator would be welcome.
-
-For example, if `dog` has a property `body` (which cannot be nil), which has a property `legs`, then `dog?.body.legs` is valid, as `dog?.body` being nil will cancel the rest of the expression. However, a user might instead write `dog?.body?.legs`, perhaps expecting `dog?.body` to resolve to nil, but still indexing `legs`.
-
-It would be nice to lint this if `dog.body`'s type does not support nil.
-
 ## Drawbacks
 
 As with all syntax additions, this adds complexity to the parsing of expressions, and the execution of cancelling the rest of the expression could prove challenging. It would need to be respected in several different potential grammars, including function calls and indexes (most notably in the case of parsing difficulty, `[1]` style indexing).
