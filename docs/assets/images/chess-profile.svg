@@ -1,0 +1,1356 @@
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg version="1.1" width="1200" height="304" onload="init(evt)" viewBox="0 0 1200 304" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<!-- Flame graph stack visualization. See https://github.com/brendangregg/FlameGraph for latest version, and http://www.brendangregg.com/flamegraphs.html for examples. -->
+<defs>
+    <linearGradient id="background" y1="0" y2="1" x1="0" x2="0" >
+        <stop stop-color="#eeeeee" offset="5%" />
+        <stop stop-color="#eeeeb0" offset="95%" />
+    </linearGradient>
+</defs>
+<style type="text/css">
+    text { font-family:Verdana; font-size:12px; fill:rgb(0,0,0); }
+    #search, #ignorecase { opacity:0.1; cursor:pointer; }
+    #search:hover, #search.show, #ignorecase:hover, #ignorecase.show { opacity:1; }
+    #subtitle { text-anchor:middle; font-color:rgb(160,160,160); }
+    #title { text-anchor:middle; font-size:17px}
+    #unzoom { cursor:pointer; }
+    #frames > *:hover { stroke:black; stroke-width:0.5; cursor:pointer; }
+    .hide { display:none; }
+    .parent { opacity:0.5; }
+</style>
+<script type="text/ecmascript">
+<![CDATA[
+    "use strict";
+    var details, searchbtn, unzoombtn, matchedtxt, svg, searching, currentSearchTerm, ignorecase, ignorecaseBtn;
+    function init(evt) {
+        details = document.getElementById("details").firstChild;
+        searchbtn = document.getElementById("search");
+        ignorecaseBtn = document.getElementById("ignorecase");
+        unzoombtn = document.getElementById("unzoom");
+        matchedtxt = document.getElementById("matched");
+        svg = document.getElementsByTagName("svg")[0];
+        searching = 0;
+        currentSearchTerm = null;
+    }
+
+    window.addEventListener("click", function(e) {
+        var target = find_group(e.target);
+        if (target) {
+            if (target.nodeName == "a") {
+                if (e.ctrlKey === false) return;
+                e.preventDefault();
+            }
+            if (target.classList.contains("parent")) unzoom();
+            zoom(target);
+        }
+        else if (e.target.id == "unzoom") unzoom();
+        else if (e.target.id == "search") search_prompt();
+        else if (e.target.id == "ignorecase") toggle_ignorecase();
+    }, false)
+
+    // mouse-over for info
+    // show
+    window.addEventListener("mouseover", function(e) {
+        var target = find_group(e.target);
+        if (target) details.nodeValue = g_to_text(target);
+    }, false)
+
+    // clear
+    window.addEventListener("mouseout", function(e) {
+        var target = find_group(e.target);
+        if (target) details.nodeValue = ' ';
+    }, false)
+
+    // ctrl-F for search
+    window.addEventListener("keydown",function (e) {
+        if (e.keyCode === 114 || (e.ctrlKey && e.keyCode === 70)) {
+            e.preventDefault();
+            search_prompt();
+        }
+    }, false)
+
+    // ctrl-I to toggle case-sensitive search
+    window.addEventListener("keydown",function (e) {
+        if (e.ctrlKey && e.keyCode === 73) {
+            e.preventDefault();
+            toggle_ignorecase();
+        }
+    }, false)
+
+    // functions
+    function find_child(node, selector) {
+        var children = node.querySelectorAll(selector);
+        if (children.length) return children[0];
+        return;
+    }
+    function find_group(node) {
+        var parent = node.parentElement;
+        if (!parent) return;
+        if (parent.id == "frames") return node;
+        return find_group(parent);
+    }
+    function orig_save(e, attr, val) {
+        if (e.attributes["_orig_" + attr] != undefined) return;
+        if (e.attributes[attr] == undefined) return;
+        if (val == undefined) val = e.attributes[attr].value;
+        e.setAttribute("_orig_" + attr, val);
+    }
+    function orig_load(e, attr) {
+        if (e.attributes["_orig_"+attr] == undefined) return;
+        e.attributes[attr].value = e.attributes["_orig_" + attr].value;
+        e.removeAttribute("_orig_"+attr);
+    }
+    function g_to_text(e) {
+        var text = find_child(e, "details").firstChild.nodeValue;
+        return (text)
+    }
+    function g_to_func(e) {
+        var child = find_child(e, "rawtext");
+        return child ? child.textContent : null;
+    }
+    function update_text(e) {
+        var r = find_child(e, "rect");
+        var t = find_child(e, "text");
+        var w = parseFloat(r.attributes.width.value) -3;
+        var txt = find_child(e, "rawtext").textContent.replace(/\([^(]*\)$/,"");
+        t.attributes.x.value = parseFloat(r.attributes.x.value) + 3;
+
+        // Smaller than this size won't fit anything
+        if (w < 2 * 12 * 0.59) {
+            t.textContent = "";
+            return;
+        }
+
+        t.textContent = txt;
+        // Fit in full text width
+        if (/^ *$/.test(txt) || t.getSubStringLength(0, txt.length) < w)
+            return;
+
+        for (var x = txt.length - 2; x > 0; x--) {
+            if (t.getSubStringLength(0, x + 2) <= w) {
+                t.textContent = txt.substring(0, x) + "..";
+                return;
+            }
+        }
+        t.textContent = "";
+    }
+
+    // zoom
+    function zoom_reset(e) {
+        if (e.attributes != undefined) {
+            orig_load(e, "x");
+            orig_load(e, "width");
+        }
+        if (e.childNodes == undefined) return;
+        for (var i = 0, c = e.childNodes; i < c.length; i++) {
+            zoom_reset(c[i]);
+        }
+    }
+    function zoom_child(e, x, ratio) {
+        if (e.attributes != undefined) {
+            if (e.attributes.x != undefined) {
+                orig_save(e, "x");
+                e.attributes.x.value = (parseFloat(e.attributes.x.value) - x - 10) * ratio + 10;
+                if (e.tagName == "text")
+                    e.attributes.x.value = find_child(e.parentNode, "rect[x]").attributes.x.value + 3;
+            }
+            if (e.attributes.width != undefined) {
+                orig_save(e, "width");
+                e.attributes.width.value = parseFloat(e.attributes.width.value) * ratio;
+            }
+        }
+
+        if (e.childNodes == undefined) return;
+        for (var i = 0, c = e.childNodes; i < c.length; i++) {
+            zoom_child(c[i], x - 10, ratio);
+        }
+    }
+    function zoom_parent(e) {
+        if (e.attributes) {
+            if (e.attributes.x != undefined) {
+                orig_save(e, "x");
+                e.attributes.x.value = 10;
+            }
+            if (e.attributes.width != undefined) {
+                orig_save(e, "width");
+                e.attributes.width.value = parseInt(svg.width.baseVal.value) - (10 * 2);
+            }
+        }
+        if (e.childNodes == undefined) return;
+        for (var i = 0, c = e.childNodes; i < c.length; i++) {
+            zoom_parent(c[i]);
+        }
+    }
+    function zoom(node) {
+        var attr = find_child(node, "rect").attributes;
+        var width = parseFloat(attr.width.value);
+        var xmin = parseFloat(attr.x.value);
+        var xmax = parseFloat(xmin + width);
+        var ymin = parseFloat(attr.y.value);
+        var ratio = (svg.width.baseVal.value - 2 * 10) / width;
+
+        // XXX: Workaround for JavaScript float issues (fix me)
+        var fudge = 0.0001;
+
+        unzoombtn.classList.remove("hide");
+
+        var el = document.getElementById("frames").children;
+        for (var i = 0; i < el.length; i++) {
+            var e = el[i];
+            var a = find_child(e, "rect").attributes;
+            var ex = parseFloat(a.x.value);
+            var ew = parseFloat(a.width.value);
+            var upstack;
+            // Is it an ancestor
+            if (1 == 1) {
+                upstack = parseFloat(a.y.value) > ymin;
+            } else {
+                upstack = parseFloat(a.y.value) < ymin;
+            }
+            if (upstack) {
+                // Direct ancestor
+                if (ex <= xmin && (ex+ew+fudge) >= xmax) {
+                    e.classList.add("parent");
+                    zoom_parent(e);
+                    update_text(e);
+                }
+                // not in current path
+                else
+                    e.classList.add("hide");
+            }
+            // Children maybe
+            else {
+                // no common path
+                if (ex < xmin || ex + fudge >= xmax) {
+                    e.classList.add("hide");
+                }
+                else {
+                    zoom_child(e, xmin, ratio);
+                    update_text(e);
+                }
+            }
+        }
+        search();
+    }
+    function unzoom() {
+        unzoombtn.classList.add("hide");
+        var el = document.getElementById("frames").children;
+        for(var i = 0; i < el.length; i++) {
+            el[i].classList.remove("parent");
+            el[i].classList.remove("hide");
+            zoom_reset(el[i]);
+            update_text(el[i]);
+        }
+        search();
+    }
+
+    // search
+    function toggle_ignorecase() {
+        ignorecase = !ignorecase;
+        if (ignorecase) {
+            ignorecaseBtn.classList.add("show");
+        } else {
+            ignorecaseBtn.classList.remove("show");
+        }
+        reset_search();
+        search();
+    }
+    function reset_search() {
+        var el = document.querySelectorAll("#frames rect");
+        for (var i = 0; i < el.length; i++) {
+            orig_load(el[i], "fill")
+        }
+    }
+    function search_prompt() {
+        if (!searching) {
+            var term = prompt("Enter a search term (regexp " +
+                "allowed, eg: ^ext4_)"
+                + (ignorecase ? ", ignoring case" : "")
+                + "\nPress Ctrl-i to toggle case sensitivity", "");
+            if (term != null) {
+                currentSearchTerm = term;
+                search();
+            }
+        } else {
+            reset_search();
+            searching = 0;
+            currentSearchTerm = null;
+            searchbtn.classList.remove("show");
+            searchbtn.firstChild.nodeValue = "Search"
+            matchedtxt.classList.add("hide");
+            matchedtxt.firstChild.nodeValue = ""
+        }
+    }
+    function search(term) {
+        if (currentSearchTerm === null) return;
+        var term = currentSearchTerm;
+
+        var re = new RegExp(term, ignorecase ? 'i' : '');
+        var el = document.getElementById("frames").children;
+        var matches = new Object();
+        var maxwidth = 0;
+        for (var i = 0; i < el.length; i++) {
+            var e = el[i];
+            var func = g_to_func(e);
+            var rect = find_child(e, "rect");
+            if (func == null || rect == null)
+                continue;
+
+            // Save max width. Only works as we have a root frame
+            var w = parseFloat(rect.attributes.width.value);
+            if (w > maxwidth)
+                maxwidth = w;
+
+            if (func.match(re)) {
+                // highlight
+                var x = parseFloat(rect.attributes.x.value);
+                orig_save(rect, "fill");
+                rect.attributes.fill.value = "rgb(230,0,230)";
+
+                // remember matches
+                if (matches[x] == undefined) {
+                    matches[x] = w;
+                } else {
+                    if (w > matches[x]) {
+                        // overwrite with parent
+                        matches[x] = w;
+                    }
+                }
+                searching = 1;
+            }
+        }
+        if (!searching)
+            return;
+
+        searchbtn.classList.add("show");
+        searchbtn.firstChild.nodeValue = "Reset Search";
+
+        // calculate percent matched, excluding vertical overlap
+        var count = 0;
+        var lastx = -1;
+        var lastw = 0;
+        var keys = Array();
+        for (k in matches) {
+            if (matches.hasOwnProperty(k))
+                keys.push(k);
+        }
+        // sort the matched frames by their x location
+        // ascending, then width descending
+        keys.sort(function(a, b){
+            return a - b;
+        });
+        // Step through frames saving only the biggest bottom-up frames
+        // thanks to the sort order. This relies on the tree property
+        // where children are always smaller than their parents.
+        var fudge = 0.0001; // JavaScript floating point
+        for (var k in keys) {
+            var x = parseFloat(keys[k]);
+            var w = matches[keys[k]];
+            if (x >= lastx + lastw - fudge) {
+                count += w;
+                lastx = x;
+                lastw = w;
+            }
+        }
+        // display matched percent
+        matchedtxt.classList.remove("hide");
+        var pct = 100 * count / maxwidth;
+        if (pct != 100) pct = pct.toFixed(1)
+        matchedtxt.firstChild.nodeValue = "Matched: " + pct + "%";
+    }
+]]>
+</script>
+<rect x="0.0" y="0" width="1200.0" height="304.0" fill="url(#background)"  />
+<text id="title" x="600.00" y="24" >Flame Graph</text>
+<text id="unzoom" x="10.00" y="24" class="hide">Reset Zoom</text>
+<text id="search" x="1090.00" y="24" >Search</text>
+<text id="ignorecase" x="1174.00" y="24" >ic</text>
+<text id="matched" x="1090.00" y="291" > </text>
+<text id="details" x="10.00" y="291" > </text>
+<g id="frames">
+
+<g>
+<title></title>
+<details>Function:  [:0] (31,070 usec, 100.0%); self: 0 usec</details>
+<rect x='10.0' y='256' width='1180.0' height='15' fill='rgb(250,211,50)' rx='2' ry='2' />
+<text x='13.0' y='266.5'></text>
+<rawtext></rawtext>
+</g>
+<g>
+<title>
+chess.lua:3</title>
+<details>Function:  [chess.lua:3] (31,070 usec, 100.0%); self: 770 usec</details>
+<rect x='10.0' y='240' width='1180.0' height='15' fill='rgb(251,126,1)' rx='2' ry='2' />
+<text x='13.0' y='250.5'></text>
+<rawtext></rawtext>
+</g>
+<g>
+<title>test
+chess.lua:510</title>
+<details>Function: test [chess.lua:510] (30,300 usec, 97.5%); self: 0 usec</details>
+<rect x='10.0' y='224' width='1150.756356614097' height='15' fill='rgb(246,126,22)' rx='2' ry='2' />
+<text x='13.0' y='234.5'>test</text>
+<rawtext>test</rawtext>
+</g>
+<g>
+<title>moveList
+chess.lua:453</title>
+<details>Function: moveList [chess.lua:453] (30,300 usec, 97.5%); self: 0 usec</details>
+<rect x='10.0' y='208' width='1150.756356614097' height='15' fill='rgb(248,170,43)' rx='2' ry='2' />
+<text x='13.0' y='218.5'>moveList</text>
+<rawtext>moveList</rawtext>
+</g>
+<g>
+<title>pmoves
+chess.lua:310</title>
+<details>Function: pmoves [chess.lua:310] (500 usec, 1.6%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='192' width='18.989378822014807' height='15' fill='rgb(254,126,21)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='202.5'></text>
+<rawtext>pmoves</rawtext>
+</g>
+<g>
+<title>illegalyChecked
+chess.lua:476</title>
+<details>Function: illegalyChecked [chess.lua:476] (28,700 usec, 92.4%); self: 300 usec</details>
+<rect x='10.0' y='192' width='1089.99034438365' height='15' fill='rgb(234,116,10)' rx='2' ry='2' />
+<text x='13.0' y='202.5'>illegalyChecked</text>
+<rawtext>illegalyChecked</rawtext>
+</g>
+<g>
+<title>applyMove
+chess.lua:490</title>
+<details>Function: applyMove [chess.lua:490] (1,100 usec, 3.5%); self: 200 usec</details>
+<rect x='1099.99034438365' y='192' width='41.776633408432566' height='15' fill='rgb(228,144,28)' rx='2' ry='2' />
+<text x='1102.99034438365' y='202.5'>app..</text>
+<rawtext>applyMove</rawtext>
+</g>
+<g>
+<title>generate
+chess.lua:319</title>
+<details>Function: generate [chess.lua:319] (500 usec, 1.6%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='176' width='18.989378822014807' height='15' fill='rgb(217,13,40)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='186.5'></text>
+<rawtext>generate</rawtext>
+</g>
+<g>
+<title>pmoves
+chess.lua:310</title>
+<details>Function: pmoves [chess.lua:310] (27,400 usec, 88.2%); self: 100 usec</details>
+<rect x='10.0' y='176' width='1040.6179594464113' height='15' fill='rgb(254,126,21)' rx='2' ry='2' />
+<text x='13.0' y='186.5'>pmoves</text>
+<rawtext>pmoves</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (200 usec, 0.6%); self: 0 usec</details>
+<rect x='1077.203089797232' y='176' width='7.595751528805922' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='1080.203089797232' y='186.5'></text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>set
+chess.lua:195</title>
+<details>Function: set [chess.lua:195] (300 usec, 1.0%); self: 0 usec</details>
+<rect x='1065.8094625040233' y='176' width='11.393627293208883' height='15' fill='rgb(229,100,20)' rx='2' ry='2' />
+<text x='1068.8094625040233' y='186.5'></text>
+<rawtext>set</rawtext>
+</g>
+<g>
+<title>ctz
+chess.lua:141</title>
+<details>Function: ctz [chess.lua:141] (400 usec, 1.3%); self: 400 usec</details>
+<rect x='1050.6179594464113' y='176' width='15.191503057611843' height='15' fill='rgb(241,147,50)' rx='2' ry='2' />
+<text x='1053.6179594464113' y='186.5'></text>
+<rawtext>ctz</rawtext>
+</g>
+<g>
+<title>empty
+chess.lua:137</title>
+<details>Function: empty [chess.lua:137] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1084.798841326038' y='176' width='3.797875764402961' height='15' fill='rgb(253,102,48)' rx='2' ry='2' />
+<text x='1087.798841326038' y='186.5'></text>
+<rawtext>empty</rawtext>
+</g>
+<g>
+<title>updateCache
+chess.lua:283</title>
+<details>Function: updateCache [chess.lua:283] (600 usec, 1.9%); self: 0 usec</details>
+<rect x='1099.99034438365' y='176' width='22.787254586417767' height='15' fill='rgb(247,152,19)' rx='2' ry='2' />
+<text x='1102.99034438365' y='186.5'>u..</text>
+<rawtext>updateCache</rawtext>
+</g>
+<g>
+<title>set
+chess.lua:195</title>
+<details>Function: set [chess.lua:195] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1122.7775989700676' y='176' width='3.797875764402961' height='15' fill='rgb(229,100,20)' rx='2' ry='2' />
+<text x='1125.7775989700676' y='186.5'></text>
+<rawtext>set</rawtext>
+</g>
+<g>
+<title>index
+chess.lua:274</title>
+<details>Function: index [chess.lua:274] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1126.5754747344706' y='176' width='3.797875764402961' height='15' fill='rgb(209,149,23)' rx='2' ry='2' />
+<text x='1129.5754747344706' y='186.5'></text>
+<rawtext>index</rawtext>
+</g>
+<g>
+<title>new
+chess.lua:228</title>
+<details>Function: new [chess.lua:228] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1130.3733504988736' y='176' width='3.797875764402961' height='15' fill='rgb(243,97,1)' rx='2' ry='2' />
+<text x='1133.3733504988736' y='186.5'></text>
+<rawtext>new</rawtext>
+</g>
+<g>
+<title>move
+chess.lua:109</title>
+<details>Function: move [chess.lua:109] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1156.9584808496943' y='160' width='3.797875764402961' height='15' fill='rgb(242,166,17)' rx='2' ry='2' />
+<text x='1159.9584808496943' y='170.5'></text>
+<rawtext>move</rawtext>
+</g>
+<g>
+<title>isolate
+chess.lua:304</title>
+<details>Function: isolate [chess.lua:304] (400 usec, 1.3%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='160' width='15.191503057611843' height='15' fill='rgb(229,165,0)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='170.5'></text>
+<rawtext>isolate</rawtext>
+</g>
+<g>
+<title>generate
+chess.lua:319</title>
+<details>Function: generate [chess.lua:319] (27,300 usec, 87.9%); self: 2,700 usec</details>
+<rect x='10.0' y='160' width='1036.8200836820083' height='15' fill='rgb(217,13,40)' rx='2' ry='2' />
+<text x='13.0' y='170.5'>generate</text>
+<rawtext>generate</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (200 usec, 0.6%); self: 200 usec</details>
+<rect x='1077.203089797232' y='160' width='7.595751528805922' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1080.203089797232' y='170.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='1065.8094625040233' y='160' width='11.393627293208883' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1068.8094625040233' y='170.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>bor
+chess.lua:129</title>
+<details>Function: bor [chess.lua:129] (600 usec, 1.9%); self: 200 usec</details>
+<rect x='1099.99034438365' y='160' width='22.787254586417767' height='15' fill='rgb(229,37,24)' rx='2' ry='2' />
+<text x='1102.99034438365' y='170.5'>bor</text>
+<rawtext>bor</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1122.7775989700676' y='160' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1125.7775989700676' y='170.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1130.3733504988736' y='160' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='1133.3733504988736' y='170.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>right
+chess.lua:101</title>
+<details>Function: right [chess.lua:101] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1156.9584808496943' y='144' width='3.797875764402961' height='15' fill='rgb(252,227,47)' rx='2' ry='2' />
+<text x='1159.9584808496943' y='154.5'></text>
+<rawtext>right</rawtext>
+</g>
+<g>
+<title>map
+chess.lua:295</title>
+<details>Function: map [chess.lua:295] (400 usec, 1.3%); self: 100 usec</details>
+<rect x='1141.7669777920823' y='144' width='15.191503057611843' height='15' fill='rgb(214,23,14)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='154.5'></text>
+<rawtext>map</rawtext>
+</g>
+<g>
+<title>move
+chess.lua:109</title>
+<details>Function: move [chess.lua:109] (4,400 usec, 14.2%); self: 800 usec</details>
+<rect x='503.7238493723849' y='144' width='167.10653363373027' height='15' fill='rgb(242,166,17)' rx='2' ry='2' />
+<text x='506.7238493723849' y='154.5'>move</text>
+<rawtext>move</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (1,900 usec, 6.1%); self: 400 usec</details>
+<rect x='670.8303830061153' y='144' width='72.15963952365627' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='673.8303830061153' y='154.5'>band</text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>isolate
+chess.lua:304</title>
+<details>Function: isolate [chess.lua:304] (13,000 usec, 41.8%); self: 0 usec</details>
+<rect x='10.0' y='144' width='493.7238493723849' height='15' fill='rgb(229,165,0)' rx='2' ry='2' />
+<text x='13.0' y='154.5'>isolate</text>
+<rawtext>isolate</rawtext>
+</g>
+<g>
+<title>index
+chess.lua:274</title>
+<details>Function: index [chess.lua:274] (700 usec, 2.3%); self: 200 usec</details>
+<rect x='845.5326681686514' y='144' width='26.58513035082073' height='15' fill='rgb(209,149,23)' rx='2' ry='2' />
+<text x='848.5326681686514' y='154.5'>i..</text>
+<rawtext>index</rawtext>
+</g>
+<g>
+<title>down
+chess.lua:97</title>
+<details>Function: down [chess.lua:97] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='940.4795622787254' y='144' width='3.797875764402961' height='15' fill='rgb(247,50,21)' rx='2' ry='2' />
+<text x='943.4795622787254' y='154.5'></text>
+<rawtext>down</rawtext>
+</g>
+<g>
+<title>left
+chess.lua:105</title>
+<details>Function: left [chess.lua:105] (1,000 usec, 3.2%); self: 100 usec</details>
+<rect x='742.9900225297714' y='144' width='37.97875764402961' height='15' fill='rgb(215,215,24)' rx='2' ry='2' />
+<text x='745.9900225297714' y='154.5'>left</text>
+<rawtext>left</rawtext>
+</g>
+<g>
+<title>up
+chess.lua:93</title>
+<details>Function: up [chess.lua:93] (600 usec, 1.9%); self: 100 usec</details>
+<rect x='872.1177985194721' y='144' width='22.787254586417767' height='15' fill='rgb(252,108,45)' rx='2' ry='2' />
+<text x='875.1177985194721' y='154.5'>up</text>
+<rawtext>up</rawtext>
+</g>
+<g>
+<title>right
+chess.lua:101</title>
+<details>Function: right [chess.lua:101] (800 usec, 2.6%); self: 100 usec</details>
+<rect x='815.1496620534277' y='144' width='30.383006115223687' height='15' fill='rgb(252,227,47)' rx='2' ry='2' />
+<text x='818.1496620534277' y='154.5'>ri..</text>
+<rawtext>right</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (500 usec, 1.6%); self: 500 usec</details>
+<rect x='894.9050531058899' y='144' width='18.989378822014807' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='897.9050531058899' y='154.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>bor
+chess.lua:129</title>
+<details>Function: bor [chess.lua:129] (900 usec, 2.9%); self: 400 usec</details>
+<rect x='780.9687801738011' y='144' width='34.18088187962665' height='15' fill='rgb(229,37,24)' rx='2' ry='2' />
+<text x='783.9687801738011' y='154.5'>bor</text>
+<rawtext>bor</rawtext>
+</g>
+<g>
+<title>empty
+chess.lua:137</title>
+<details>Function: empty [chess.lua:137] (400 usec, 1.3%); self: 400 usec</details>
+<rect x='913.8944319279047' y='144' width='15.191503057611843' height='15' fill='rgb(253,102,48)' rx='2' ry='2' />
+<text x='916.8944319279047' y='154.5'></text>
+<rawtext>empty</rawtext>
+</g>
+<g>
+<title>some
+chess.lua:207</title>
+<details>Function: some [chess.lua:207] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='929.0859349855166' y='144' width='11.393627293208883' height='15' fill='rgb(222,115,25)' rx='2' ry='2' />
+<text x='932.0859349855166' y='154.5'></text>
+<rawtext>some</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1065.8094625040233' y='144' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='1068.8094625040233' y='154.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (400 usec, 1.3%); self: 100 usec</details>
+<rect x='1099.99034438365' y='144' width='15.191503057611843' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1102.99034438365' y='154.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>lshift
+chess.lua:164</title>
+<details>Function: lshift [chess.lua:164] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1156.9584808496943' y='128' width='3.797875764402961' height='15' fill='rgb(229,41,54)' rx='2' ry='2' />
+<text x='1159.9584808496943' y='138.5'></text>
+<rawtext>lshift</rawtext>
+</g>
+<g>
+<title>updateCache
+chess.lua:283</title>
+<details>Function: updateCache [chess.lua:283] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1149.3627293208883' y='128' width='3.797875764402961' height='15' fill='rgb(247,152,19)' rx='2' ry='2' />
+<text x='1152.3627293208883' y='138.5'></text>
+<rawtext>updateCache</rawtext>
+</g>
+<g>
+<title>
+chess.lua:305</title>
+<details>Function:  [chess.lua:305] (200 usec, 0.6%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='128' width='7.595751528805922' height='15' fill='rgb(224,74,45)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='138.5'></text>
+<rawtext></rawtext>
+</g>
+<g>
+<title>right
+chess.lua:101</title>
+<details>Function: right [chess.lua:101] (1,800 usec, 5.8%); self: 300 usec</details>
+<rect x='503.7238493723849' y='128' width='68.3617637592533' height='15' fill='rgb(252,227,47)' rx='2' ry='2' />
+<text x='506.7238493723849' y='138.5'>right</text>
+<rawtext>right</rawtext>
+</g>
+<g>
+<title>up
+chess.lua:93</title>
+<details>Function: up [chess.lua:93] (400 usec, 1.3%); self: 200 usec</details>
+<rect x='613.8622465400708' y='128' width='15.191503057611843' height='15' fill='rgb(252,108,45)' rx='2' ry='2' />
+<text x='616.8622465400708' y='138.5'></text>
+<rawtext>up</rawtext>
+</g>
+<g>
+<title>left
+chess.lua:105</title>
+<details>Function: left [chess.lua:105] (1,100 usec, 3.5%); self: 100 usec</details>
+<rect x='572.0856131316382' y='128' width='41.776633408432566' height='15' fill='rgb(215,215,24)' rx='2' ry='2' />
+<text x='575.0856131316382' y='138.5'>left</text>
+<rawtext>left</rawtext>
+</g>
+<g>
+<title>down
+chess.lua:97</title>
+<details>Function: down [chess.lua:97] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='629.0537495976826' y='128' width='11.393627293208883' height='15' fill='rgb(247,50,21)' rx='2' ry='2' />
+<text x='632.0537495976826' y='138.5'></text>
+<rawtext>down</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (1,500 usec, 4.8%); self: 700 usec</details>
+<rect x='670.8303830061153' y='128' width='56.96813646604441' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='673.8303830061153' y='138.5'>from</text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>map
+chess.lua:295</title>
+<details>Function: map [chess.lua:295] (13,000 usec, 41.8%); self: 300 usec</details>
+<rect x='10.0' y='128' width='493.7238493723849' height='15' fill='rgb(214,23,14)' rx='2' ry='2' />
+<text x='13.0' y='138.5'>map</text>
+<rawtext>map</rawtext>
+</g>
+<g>
+<title>index
+chess.lua:187</title>
+<details>Function: index [chess.lua:187] (500 usec, 1.6%); self: 500 usec</details>
+<rect x='845.5326681686514' y='128' width='18.989378822014807' height='15' fill='rgb(230,4,0)' rx='2' ry='2' />
+<text x='848.5326681686514' y='138.5'></text>
+<rawtext>index</rawtext>
+</g>
+<g>
+<title>rshift
+chess.lua:176</title>
+<details>Function: rshift [chess.lua:176] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='940.4795622787254' y='128' width='3.797875764402961' height='15' fill='rgb(237,207,51)' rx='2' ry='2' />
+<text x='943.4795622787254' y='138.5'></text>
+<rawtext>rshift</rawtext>
+</g>
+<g>
+<title>rshift
+chess.lua:176</title>
+<details>Function: rshift [chess.lua:176] (300 usec, 1.0%); self: 100 usec</details>
+<rect x='758.1815255873832' y='128' width='11.393627293208883' height='15' fill='rgb(237,207,51)' rx='2' ry='2' />
+<text x='761.1815255873832' y='138.5'></text>
+<rawtext>rshift</rawtext>
+</g>
+<g>
+<title>inverse
+chess.lua:133</title>
+<details>Function: inverse [chess.lua:133] (400 usec, 1.3%); self: 100 usec</details>
+<rect x='742.9900225297714' y='128' width='15.191503057611843' height='15' fill='rgb(225,209,19)' rx='2' ry='2' />
+<text x='745.9900225297714' y='138.5'></text>
+<rawtext>inverse</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (200 usec, 0.6%); self: 100 usec</details>
+<rect x='769.5751528805922' y='128' width='7.595751528805922' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='772.5751528805922' y='138.5'></text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>lshift
+chess.lua:164</title>
+<details>Function: lshift [chess.lua:164] (500 usec, 1.6%); self: 200 usec</details>
+<rect x='872.1177985194721' y='128' width='18.989378822014807' height='15' fill='rgb(229,41,54)' rx='2' ry='2' />
+<text x='875.1177985194721' y='138.5'></text>
+<rawtext>lshift</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='815.1496620534277' y='128' width='11.393627293208883' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='818.1496620534277' y='138.5'></text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>inverse
+chess.lua:133</title>
+<details>Function: inverse [chess.lua:133] (300 usec, 1.0%); self: 0 usec</details>
+<rect x='826.5432893466367' y='128' width='11.393627293208883' height='15' fill='rgb(225,209,19)' rx='2' ry='2' />
+<text x='829.5432893466367' y='138.5'></text>
+<rawtext>inverse</rawtext>
+</g>
+<g>
+<title>lshift
+chess.lua:164</title>
+<details>Function: lshift [chess.lua:164] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='837.9369166398455' y='128' width='3.797875764402961' height='15' fill='rgb(229,41,54)' rx='2' ry='2' />
+<text x='840.9369166398455' y='138.5'></text>
+<rawtext>lshift</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (500 usec, 1.6%); self: 300 usec</details>
+<rect x='780.9687801738011' y='128' width='18.989378822014807' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='783.9687801738011' y='138.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>set
+chess.lua:195</title>
+<details>Function: set [chess.lua:195] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='929.0859349855166' y='128' width='3.797875764402961' height='15' fill='rgb(229,100,20)' rx='2' ry='2' />
+<text x='932.0859349855166' y='138.5'></text>
+<rawtext>set</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (300 usec, 1.0%); self: 300 usec</details>
+<rect x='1099.99034438365' y='128' width='11.393627293208883' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='1102.99034438365' y='138.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1156.9584808496943' y='112' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1159.9584808496943' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>isolate
+chess.lua:203</title>
+<details>Function: isolate [chess.lua:203] (200 usec, 0.6%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='112' width='7.595751528805922' height='15' fill='rgb(211,30,33)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='122.5'></text>
+<rawtext>isolate</rawtext>
+</g>
+<g>
+<title>inverse
+chess.lua:133</title>
+<details>Function: inverse [chess.lua:133] (200 usec, 0.6%); self: 200 usec</details>
+<rect x='553.0962343096234' y='112' width='7.595751528805922' height='15' fill='rgb(225,209,19)' rx='2' ry='2' />
+<text x='556.0962343096234' y='122.5'></text>
+<rawtext>inverse</rawtext>
+</g>
+<g>
+<title>lshift
+chess.lua:164</title>
+<details>Function: lshift [chess.lua:164] (900 usec, 2.9%); self: 300 usec</details>
+<rect x='503.7238493723849' y='112' width='34.18088187962665' height='15' fill='rgb(229,41,54)' rx='2' ry='2' />
+<text x='506.7238493723849' y='122.5'>ls..</text>
+<rawtext>lshift</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (400 usec, 1.3%); self: 300 usec</details>
+<rect x='537.9047312520116' y='112' width='15.191503057611843' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='540.9047312520116' y='122.5'></text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>lshift
+chess.lua:164</title>
+<details>Function: lshift [chess.lua:164] (200 usec, 0.6%); self: 100 usec</details>
+<rect x='613.8622465400708' y='112' width='7.595751528805922' height='15' fill='rgb(229,41,54)' rx='2' ry='2' />
+<text x='616.8622465400708' y='122.5'></text>
+<rawtext>lshift</rawtext>
+</g>
+<g>
+<title>rshift
+chess.lua:176</title>
+<details>Function: rshift [chess.lua:176] (400 usec, 1.3%); self: 100 usec</details>
+<rect x='591.074991953653' y='112' width='15.191503057611843' height='15' fill='rgb(237,207,51)' rx='2' ry='2' />
+<text x='594.074991953653' y='122.5'></text>
+<rawtext>rshift</rawtext>
+</g>
+<g>
+<title>inverse
+chess.lua:133</title>
+<details>Function: inverse [chess.lua:133] (500 usec, 1.6%); self: 0 usec</details>
+<rect x='572.0856131316382' y='112' width='18.989378822014807' height='15' fill='rgb(225,209,19)' rx='2' ry='2' />
+<text x='575.0856131316382' y='122.5'></text>
+<rawtext>inverse</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='606.266495011265' y='112' width='3.797875764402961' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='609.266495011265' y='122.5'></text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>rshift
+chess.lua:176</title>
+<details>Function: rshift [chess.lua:176] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='629.0537495976826' y='112' width='3.797875764402961' height='15' fill='rgb(237,207,51)' rx='2' ry='2' />
+<text x='632.0537495976826' y='122.5'></text>
+<rawtext>rshift</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (800 usec, 2.6%); self: 800 usec</details>
+<rect x='670.8303830061153' y='112' width='30.383006115223687' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='673.8303830061153' y='122.5'>GC</text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>updateCache
+chess.lua:283</title>
+<details>Function: updateCache [chess.lua:283] (3,800 usec, 12.2%); self: 500 usec</details>
+<rect x='302.436433859028' y='112' width='144.31927904731253' height='15' fill='rgb(247,152,19)' rx='2' ry='2' />
+<text x='305.436433859028' y='122.5'>updateCache</text>
+<rawtext>updateCache</rawtext>
+</g>
+<g>
+<title>
+chess.lua:305</title>
+<details>Function:  [chess.lua:305] (7,700 usec, 24.8%); self: 300 usec</details>
+<rect x='10.0' y='112' width='292.436433859028' height='15' fill='rgb(224,74,45)' rx='2' ry='2' />
+<text x='13.0' y='122.5'></text>
+<rawtext></rawtext>
+</g>
+<g>
+<title>new
+chess.lua:228</title>
+<details>Function: new [chess.lua:228] (1,200 usec, 3.9%); self: 1,000 usec</details>
+<rect x='446.7557129063405' y='112' width='45.57450917283553' height='15' fill='rgb(243,97,1)' rx='2' ry='2' />
+<text x='449.7557129063405' y='122.5'>new</text>
+<rawtext>new</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (200 usec, 0.6%); self: 100 usec</details>
+<rect x='758.1815255873832' y='112' width='7.595751528805922' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='761.1815255873832' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='742.9900225297714' y='112' width='11.393627293208883' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='745.9900225297714' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='769.5751528805922' y='112' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='772.5751528805922' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='872.1177985194721' y='112' width='11.393627293208883' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='875.1177985194721' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='815.1496620534277' y='112' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='818.1496620534277' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (300 usec, 1.0%); self: 200 usec</details>
+<rect x='826.5432893466367' y='112' width='11.393627293208883' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='829.5432893466367' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (200 usec, 0.6%); self: 200 usec</details>
+<rect x='780.9687801738011' y='112' width='7.595751528805922' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='783.9687801738011' y='122.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='929.0859349855166' y='112' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='932.0859349855166' y='122.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1156.9584808496943' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='1159.9584808496943' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>some
+chess.lua:207</title>
+<details>Function: some [chess.lua:207] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='96' width='3.797875764402961' height='15' fill='rgb(222,115,25)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='106.5'></text>
+<rawtext>some</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1145.5648535564853' y='96' width='3.797875764402961' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='1148.5648535564853' y='106.5'></text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (600 usec, 1.9%); self: 200 usec</details>
+<rect x='503.7238493723849' y='96' width='22.787254586417767' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='506.7238493723849' y='106.5'>f..</text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='537.9047312520116' y='96' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='540.9047312520116' y='106.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='613.8622465400708' y='96' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='616.8622465400708' y='106.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (300 usec, 1.0%); self: 100 usec</details>
+<rect x='591.074991953653' y='96' width='11.393627293208883' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='594.074991953653' y='106.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (500 usec, 1.6%); self: 100 usec</details>
+<rect x='572.0856131316382' y='96' width='18.989378822014807' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='575.0856131316382' y='106.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='606.266495011265' y='96' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='609.266495011265' y='106.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='629.0537495976826' y='96' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='632.0537495976826' y='106.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>bor
+chess.lua:129</title>
+<details>Function: bor [chess.lua:129] (2,900 usec, 9.3%); self: 900 usec</details>
+<rect x='302.436433859028' y='96' width='110.13839716768587' height='15' fill='rgb(229,37,24)' rx='2' ry='2' />
+<text x='305.436433859028' y='106.5'>bor</text>
+<rawtext>bor</rawtext>
+</g>
+<g>
+<title>inverse
+chess.lua:133</title>
+<details>Function: inverse [chess.lua:133] (400 usec, 1.3%); self: 100 usec</details>
+<rect x='412.57483102671387' y='96' width='15.191503057611843' height='15' fill='rgb(225,209,19)' rx='2' ry='2' />
+<text x='415.57483102671387' y='106.5'></text>
+<rawtext>inverse</rawtext>
+</g>
+<g>
+<title>isolate
+chess.lua:203</title>
+<details>Function: isolate [chess.lua:203] (7,400 usec, 23.8%); self: 700 usec</details>
+<rect x='10.0' y='96' width='281.0428065658191' height='15' fill='rgb(211,30,33)' rx='2' ry='2' />
+<text x='13.0' y='106.5'>isolate</text>
+<rawtext>isolate</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (200 usec, 0.6%); self: 200 usec</details>
+<rect x='446.7557129063405' y='96' width='7.595751528805922' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='449.7557129063405' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='758.1815255873832' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='761.1815255873832' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='742.9900225297714' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='745.9900225297714' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='769.5751528805922' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='772.5751528805922' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='872.1177985194721' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='875.1177985194721' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='815.1496620534277' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='818.1496620534277' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='826.5432893466367' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='829.5432893466367' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='929.0859349855166' y='96' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='932.0859349855166' y='106.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>set
+chess.lua:195</title>
+<details>Function: set [chess.lua:195] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1141.7669777920823' y='80' width='3.797875764402961' height='15' fill='rgb(229,100,20)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='90.5'></text>
+<rawtext>set</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 0 usec</details>
+<rect x='1145.5648535564853' y='80' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1148.5648535564853' y='90.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (400 usec, 1.3%); self: 400 usec</details>
+<rect x='503.7238493723849' y='80' width='15.191503057611843' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='506.7238493723849' y='90.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='537.9047312520116' y='80' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='540.9047312520116' y='90.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (200 usec, 0.6%); self: 200 usec</details>
+<rect x='591.074991953653' y='80' width='7.595751528805922' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='594.074991953653' y='90.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (400 usec, 1.3%); self: 400 usec</details>
+<rect x='572.0856131316382' y='80' width='15.191503057611843' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='575.0856131316382' y='90.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='606.266495011265' y='80' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='609.266495011265' y='90.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='629.0537495976826' y='80' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='632.0537495976826' y='90.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (2,000 usec, 6.4%); self: 1,100 usec</details>
+<rect x='302.436433859028' y='80' width='75.95751528805923' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='305.436433859028' y='90.5'>from</text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (300 usec, 1.0%); self: 0 usec</details>
+<rect x='412.57483102671387' y='80' width='11.393627293208883' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='415.57483102671387' y='90.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>some
+chess.lua:207</title>
+<details>Function: some [chess.lua:207] (4,100 usec, 13.2%); self: 1,000 usec</details>
+<rect x='10.0' y='80' width='155.7129063405214' height='15' fill='rgb(222,115,25)' rx='2' ry='2' />
+<text x='13.0' y='90.5'>some</text>
+<rawtext>some</rawtext>
+</g>
+<g>
+<title>band
+chess.lua:125</title>
+<details>Function: band [chess.lua:125] (2,600 usec, 8.4%); self: 900 usec</details>
+<rect x='165.7129063405214' y='80' width='98.74476987447699' height='15' fill='rgb(234,134,9)' rx='2' ry='2' />
+<text x='168.7129063405214' y='90.5'>band</text>
+<rawtext>band</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1141.7669777920823' y='64' width='3.797875764402961' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='1144.7669777920823' y='74.5'></text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (100 usec, 0.3%); self: 100 usec</details>
+<rect x='1145.5648535564853' y='64' width='3.797875764402961' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='1148.5648535564853' y='74.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (900 usec, 2.9%); self: 900 usec</details>
+<rect x='302.436433859028' y='64' width='34.18088187962665' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='305.436433859028' y='74.5'>GC</text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (300 usec, 1.0%); self: 300 usec</details>
+<rect x='412.57483102671387' y='64' width='11.393627293208883' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='415.57483102671387' y='74.5'></text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>set
+chess.lua:195</title>
+<details>Function: set [chess.lua:195] (3,100 usec, 10.0%); self: 1,500 usec</details>
+<rect x='10.0' y='64' width='117.7341486964918' height='15' fill='rgb(229,100,20)' rx='2' ry='2' />
+<text x='13.0' y='74.5'>set</text>
+<rawtext>set</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (1,700 usec, 5.5%); self: 800 usec</details>
+<rect x='165.7129063405214' y='64' width='64.56388799485033' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='168.7129063405214' y='74.5'>from</text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>from
+chess.lua:75</title>
+<details>Function: from [chess.lua:75] (1,600 usec, 5.1%); self: 1,000 usec</details>
+<rect x='10.0' y='48' width='60.76601223044737' height='15' fill='rgb(243,132,23)' rx='2' ry='2' />
+<text x='13.0' y='58.5'>from</text>
+<rawtext>from</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (900 usec, 2.9%); self: 900 usec</details>
+<rect x='165.7129063405214' y='48' width='34.18088187962665' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='168.7129063405214' y='58.5'>GC</text>
+<rawtext>GC</rawtext>
+</g>
+<g>
+<title>GC</title>
+<details>Function: GC [GC:0] (600 usec, 1.9%); self: 600 usec</details>
+<rect x='10.0' y='32' width='22.787254586417767' height='15' fill='rgb(226,66,24)' rx='2' ry='2' />
+<text x='13.0' y='42.5'>GC</text>
+<rawtext>GC</rawtext>
+</g>
+</g>
+</svg>
+
