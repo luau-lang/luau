@@ -54,9 +54,7 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
     Luau::CheckResult cr;
 
     if (frontend.isDirty(name))
-    {
         cr = frontend.check(name);
-    }
 
     if (!frontend.getSourceModule(name))
     {
