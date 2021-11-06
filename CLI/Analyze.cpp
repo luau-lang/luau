@@ -34,8 +34,10 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
     }
 }
 
-static void reportError(ReportFormat format, const char* name, const Luau::TypeError& error)
+static void reportError(ReportFormat format, const Luau::TypeError& error)
 {
+    const char* name = error.moduleName.c_str();
+
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
         report(format, name, error.location, "SyntaxError", syntaxError->message.c_str());
     else
@@ -49,7 +51,10 @@ static void reportWarning(ReportFormat format, const char* name, const Luau::Lin
 
 static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat format, bool annotate)
 {
-    Luau::CheckResult cr = frontend.check(name);
+    Luau::CheckResult cr;
+
+    if (frontend.isDirty(name))
+        cr = frontend.check(name);
 
     if (!frontend.getSourceModule(name))
     {
@@ -58,7 +63,7 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
     }
 
     for (auto& error : cr.errors)
-        reportError(format, name, error);
+        reportError(format, error);
 
     Luau::LintResult lr = frontend.lint(name);
 
