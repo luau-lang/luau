@@ -51,7 +51,12 @@ static void reportWarning(ReportFormat format, const char* name, const Luau::Lin
 
 static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat format, bool annotate)
 {
-    Luau::CheckResult cr = frontend.check(name);
+    Luau::CheckResult cr;
+
+    if (frontend.isDirty(name))
+    {
+        cr = frontend.check(name);
+    }
 
     if (!frontend.getSourceModule(name))
     {
