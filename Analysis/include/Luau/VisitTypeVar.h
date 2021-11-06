@@ -1,8 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
 #include "Luau/TypeVar.h"
 #include "Luau/TypePack.h"
+
+LUAU_FASTFLAG(LuauCacheUnifyTableResults)
 
 namespace Luau
 {
@@ -32,17 +35,33 @@ inline bool hasSeen(std::unordered_set<void*>& seen, const void* tv)
     return !seen.insert(ttv).second;
 }
 
+inline bool hasSeen(DenseHashSet<void*>& seen, const void* tv)
+{
+    void* ttv = const_cast<void*>(tv);
+
+    if (seen.contains(ttv))
+        return true;
+
+    seen.insert(ttv);
+    return false;
+}
+
 inline void unsee(std::unordered_set<void*>& seen, const void* tv)
 {
     void* ttv = const_cast<void*>(tv);
     seen.erase(ttv);
 }
 
-template<typename F>
-void visit(TypePackId tp, F& f, std::unordered_set<void*>& seen);
+inline void unsee(DenseHashSet<void*>& seen, const void* tv)
+{
+    // When DenseHashSet is used for 'visitOnce', where don't forget visited elements
+}
 
-template<typename F>
-void visit(TypeId ty, F& f, std::unordered_set<void*>& seen)
+template<typename F, typename Set>
+void visit(TypePackId tp, F& f, Set& seen);
+
+template<typename F, typename Set>
+void visit(TypeId ty, F& f, Set& seen)
 {
     if (visit_detail::hasSeen(seen, ty))
     {
@@ -79,15 +98,23 @@ void visit(TypeId ty, F& f, std::unordered_set<void*>& seen)
 
     else if (auto ttv = get<TableTypeVar>(ty))
     {
+        // Some visitors want to see bound tables, that's why we visit the original type
         if (apply(ty, *ttv, seen, f))
         {
-            for (auto& [_name, prop] : ttv->props)
-                visit(prop.type, f, seen);
-
-            if (ttv->indexer)
+            if (FFlag::LuauCacheUnifyTableResults && ttv->boundTo)
             {
-                visit(ttv->indexer->indexType, f, seen);
-                visit(ttv->indexer->indexResultType, f, seen);
+                visit(*ttv->boundTo, f, seen);
+            }
+            else
+            {
+                for (auto& [_name, prop] : ttv->props)
+                    visit(prop.type, f, seen);
+
+                if (ttv->indexer)
+                {
+                    visit(ttv->indexer->indexType, f, seen);
+                    visit(ttv->indexer->indexResultType, f, seen);
+                }
             }
         }
     }
@@ -140,8 +167,8 @@ void visit(TypeId ty, F& f, std::unordered_set<void*>& seen)
     visit_detail::unsee(seen, ty);
 }
 
-template<typename F>
-void visit(TypePackId tp, F& f, std::unordered_set<void*>& seen)
+template<typename F, typename Set>
+void visit(TypePackId tp, F& f, Set& seen)
 {
     if (visit_detail::hasSeen(seen, tp))
     {
@@ -182,6 +209,7 @@ void visit(TypePackId tp, F& f, std::unordered_set<void*>& seen)
 
     visit_detail::unsee(seen, tp);
 }
+
 } // namespace visit_detail
 
 template<typename TID, typename F>
@@ -194,6 +222,13 @@ template<typename TID, typename F>
 void visitTypeVar(TID ty, F& f)
 {
     std::unordered_set<void*> seen;
+    visit_detail::visit(ty, f, seen);
+}
+
+template<typename TID, typename F>
+void visitTypeVarOnce(TID ty, F& f, DenseHashSet<void*>& seen)
+{
+    seen.clear();
     visit_detail::visit(ty, f, seen);
 }
 

@@ -77,7 +77,10 @@ struct GlobalContext
         // Ideally we would want all ThreadContext destructors to run
         // But in VS, not all thread_local object instances are destroyed
         for (ThreadContext* context : threads)
-            context->flushEvents();
+        {
+            if (!context->events.empty())
+                context->flushEvents();
+        }
 
         if (traceFile)
             fclose(traceFile);

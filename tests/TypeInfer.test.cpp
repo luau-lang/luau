@@ -180,7 +180,12 @@ TEST_CASE_FIXTURE(Fixture, "expr_statement")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
 {
-    CheckResult result = check("function id(x) return x end    local a = id(55)    local b = id(nil)");
+    CheckResult result = check(R"(
+        function id(x) return x end
+        local a = id(55)
+        local b = id(nil)
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
@@ -1889,7 +1894,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
 
     REQUIRE_EQ(2, argVec.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(argVec[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
     REQUIRE(fType != nullptr);
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
@@ -1926,7 +1931,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 
     REQUIRE_EQ(6, argVec.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(argVec[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
     REQUIRE(fType != nullptr);
 }
 
@@ -3842,10 +3847,10 @@ local T: any
 T = {}
 T.__index = T
 function T.new(...)
-	local self = {}
-	setmetatable(self, T)
-	self:construct(...)
-	return self
+    local self = {}
+    setmetatable(self, T)
+    self:construct(...)
+    return self
 end
 function T:construct(index)
 end
@@ -4068,11 +4073,11 @@ function n:Clone() end
 local m = {}
 
 function m.a(x)
-	x:Clone()
+    x:Clone()
 end
 
 function m.b()
-	m.a(n)
+    m.a(n)
 end
 
 return m
@@ -4393,8 +4398,6 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
 {
-    ScopedFastFlag luauInferFunctionArgsFix("LuauInferFunctionArgsFix", true);
-
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
 type Table = { x: number, y: number }
@@ -4681,7 +4684,6 @@ TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 {
     ScopedFastFlag sffs[] = {
         {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-        {"LuauExtraNilRecovery", true},
     };
 
     CheckResult result = check(R"(
@@ -4698,7 +4700,6 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 {
     ScopedFastFlag sffs[] = {
         {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-        {"LuauExtraNilRecovery", true},
     };
 
     CheckResult result = check(R"(

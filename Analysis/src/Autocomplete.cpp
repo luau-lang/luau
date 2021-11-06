@@ -196,7 +196,8 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 
     auto canUnify = [&typeArena, &module](TypeId expectedType, TypeId actualType) {
         InternalErrorReporter iceReporter;
-        Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, &iceReporter);
+        UnifierSharedState unifierState(&iceReporter);
+        Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, unifierState);
 
         unifier.tryUnify(expectedType, actualType);
 

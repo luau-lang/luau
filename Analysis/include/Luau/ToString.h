@@ -69,4 +69,6 @@ std::string toString(const TypePackVar& tp, const ToStringOptions& opts = {});
 void dump(TypeId ty);
 void dump(TypePackId ty);
 
+std::string generateName(size_t n);
+
 } // namespace Luau

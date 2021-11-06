@@ -617,7 +617,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_get_quantified_too")
 
     REQUIRE_EQ(indexer.indexType, typeChecker.numberType);
 
-    REQUIRE(nullptr != get<GenericTypeVar>(indexer.indexResultType));
+    REQUIRE(nullptr != get<GenericTypeVar>(follow(indexer.indexResultType)));
 }
 
 TEST_CASE_FIXTURE(Fixture, "indexers_quantification_2")

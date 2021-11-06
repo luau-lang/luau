@@ -194,20 +194,20 @@ LUAU_NOINLINE std::pair<uint16_t, Luau::TimeTrace::ThreadContext&> createScopeDa
 } // namespace Luau
 
 // Regular scope
-#define LUAU_TIMETRACE_SCOPE(name, category)                                       \
+#define LUAU_TIMETRACE_SCOPE(name, category) \
     static auto lttScopeStatic = Luau::TimeTrace::createScopeData(name, category); \
     Luau::TimeTrace::Scope lttScope(lttScopeStatic.second, lttScopeStatic.first)
 
 // A scope without nested scopes that may be skipped if the time it took is less than the threshold
-#define LUAU_TIMETRACE_OPTIONAL_TAIL_SCOPE(name, category, microsec)                      \
+#define LUAU_TIMETRACE_OPTIONAL_TAIL_SCOPE(name, category, microsec) \
     static auto lttScopeStaticOptTail = Luau::TimeTrace::createScopeData(name, category); \
     Luau::TimeTrace::OptionalTailScope lttScope(lttScopeStaticOptTail.second, lttScopeStaticOptTail.first, microsec)
 
 // Extra key/value data can be added to regular scopes
-#define LUAU_TIMETRACE_ARGUMENT(name, value)                  \
-    do                                                        \
-    {                                                         \
-        if (FFlag::DebugLuauTimeTracing)                      \
+#define LUAU_TIMETRACE_ARGUMENT(name, value) \
+    do \
+    { \
+        if (FFlag::DebugLuauTimeTracing) \
             lttScopeStatic.second.eventArgument(name, value); \
     } while (false)
 
@@ -216,8 +216,8 @@ LUAU_NOINLINE std::pair<uint16_t, Luau::TimeTrace::ThreadContext&> createScopeDa
 #define LUAU_TIMETRACE_SCOPE(name, category)
 #define LUAU_TIMETRACE_OPTIONAL_TAIL_SCOPE(name, category, microsec)
 #define LUAU_TIMETRACE_ARGUMENT(name, value) \
-    do                                       \
-    {                                        \
+    do \
+    { \
     } while (false)
 
 #endif

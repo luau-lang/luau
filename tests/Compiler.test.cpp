@@ -768,11 +768,11 @@ TEST_CASE("CaptureSelf")
 local MaterialsListClass = {}
 
 function MaterialsListClass:_MakeToolTip(guiElement, text)
-	local function updateTooltipPosition()
-		self._tweakingTooltipFrame = 5
-	end
+    local function updateTooltipPosition()
+        self._tweakingTooltipFrame = 5
+    end
 
-	updateTooltipPosition()
+    updateTooltipPosition()
 end
 
 return MaterialsListClass
@@ -2001,14 +2001,14 @@ TEST_CASE("UpvaluesLoopsBytecode")
 {
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	for i=1,10 do
+    for i=1,10 do
         i = i
-		foo(function() return i end)
-		if bar then
-			break
-		end
-	end
-	return 0
+        foo(function() return i end)
+        if bar then
+            break
+        end
+    end
+    return 0
 end
 )",
                         1),
@@ -2035,14 +2035,14 @@ RETURN R0 1
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	for i in ipairs(data) do
+    for i in ipairs(data) do
         i = i
-		foo(function() return i end)
-		if bar then
-			break
-		end
-	end
-	return 0
+        foo(function() return i end)
+        if bar then
+            break
+        end
+    end
+    return 0
 end
 )",
                         1),
@@ -2068,17 +2068,17 @@ RETURN R0 1
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	local i = 0
-	while i < 5 do
-		local j
+    local i = 0
+    while i < 5 do
+        local j
         j = i
-		foo(function() return j end)
-		i = i + 1
-		if bar then
-			break
-		end
-	end
-	return 0
+        foo(function() return j end)
+        i = i + 1
+        if bar then
+            break
+        end
+    end
+    return 0
 end
 )",
                         1),
@@ -2105,17 +2105,17 @@ RETURN R1 1
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	local i = 0
-	repeat
-		local j
+    local i = 0
+    repeat
+        local j
         j = i
-		foo(function() return j end)
-		i = i + 1
-		if bar then
-			break
-		end
-	until i < 5
-	return 0
+        foo(function() return j end)
+        i = i + 1
+        if bar then
+            break
+        end
+    until i < 5
+    return 0
 end
 )",
                         1),
@@ -2304,10 +2304,10 @@ local Value1, Value2, Value3 = ...
 local Table = {}
 
 Table.SubTable["Key"] = {
-	Key1 = Value1,
-	Key2 = Value2,
-	Key3 = Value3,
-	Key4 = true,
+    Key1 = Value1,
+    Key2 = Value2,
+    Key3 = Value3,
+    Key4 = true,
 }
 )");
 
