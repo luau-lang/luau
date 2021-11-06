@@ -103,6 +103,9 @@ local nonOptionalObject: { name: string }
 local nonOptionalObjectName = nonOptionalObject?.name -- resolves to `string`
 ```
 
+### Assignment
+`x?.y = z` is not supported, and will be reported as a syntax error.
+
 ## Drawbacks
 
 As with all syntax additions, this adds complexity to the parsing of expressions, and the execution of cancelling the rest of the expression could prove challenging.
@@ -114,3 +117,5 @@ Furthermore, with the proposed syntax, it might lock off other uses of `?` withi
 Doing nothing is an option, as current standard if-checks already work, as well as the `and` trick in other use cases, but as shown before this can create some hard to read code, and nil values are common enough that the safe navigation operator is welcome.
 
 Supporting optional calls/indexes, such as `x?[1]` and `x?()`, while not out of scope, are likely too fringe to support, while adding on a significant amount of parsing difficulty, especially in the case of shorthand function calls, such as `x?{}` and `x?""`.
+
+It is possible to make `x?.y = z` resolve to only setting `x.y` is `x` is nil, but assignments silently failing can be seen as surprising.
