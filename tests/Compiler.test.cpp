@@ -1168,6 +1168,17 @@ RETURN R0 1
 )");
 }
 
+TEST_CASE("ConstantFoldStringLen")
+{
+    CHECK_EQ("\n" + compileFunction0("return #'string', #'', #'a', #('b')"), R"(
+LOADN R0 6
+LOADN R1 0
+LOADN R2 1
+LOADN R3 1
+RETURN R0 4
+)");
+}
+
 TEST_CASE("ConstantFoldCompare")
 {
     // ordered comparisons

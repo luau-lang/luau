@@ -46,16 +46,6 @@ This is using the VM feature that is not accessible from scripts, that prevents 
 
 By itself this would mean that code that runs in Luau can't use globals at all, since assigning globals would fail. While this is feasible, in Roblox we solve this by creating a new global table for each script, that uses `__index` to point to the builtin global table. This safely sandboxes the builtin globals while still allowing writing globals from each script. This also means that short of exposing special shared globals from the host, all scripts are isolated from each other.
 
-## Thread identity
-
-Environment-level sandboxing is sufficient to implement separation between trusted code and untrusted code, assuming that `getfenv`/`setfenv` are either unavailable (removed from the globals), or that trusted code never interfaces with untrusted code (which prevents untrusted code from ever getting access to trusted functions). When running trusted code, it's possible to inject extra globals from the host into that global table, providing access to special APIs.
-
-However, in some cases it's desirable to restrict access to functions that are exposed both to trusted and untrusted code. For example, both may have access to `game` global, but `game` may expose methods that should only work from trusted code.
-
-To achieve this, each thread in Luau has a security identity, which can only be set by the host. Newly created threads inherit identities from the parent thread, and functions exposed from the host can validate the identity of the calling thread. This makes it possible to provide APIs to trusted code while limiting the access from untrusted code.
-
-> Note: to achieve an even stronger guarantee of isolation between trusted and untrusted code, it's possible to run it in different Luau VMs, which is what Roblox does for extra safety.
-
 ## `__gc`
 
 Lua 5.1 exposes a `__gc` metamethod for userdata, which can be used on proxies (`newproxy`) to hook into garbage collector. Later versions of Lua extend this mechanism to work on tables.

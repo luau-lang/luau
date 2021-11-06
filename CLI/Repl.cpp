@@ -51,9 +51,13 @@ static int lua_require(lua_State* L)
         return finishrequire(L);
     lua_pop(L, 1);
 
-    std::optional<std::string> source = readFile(name + ".lua");
+    std::optional<std::string> source = readFile(name + ".luau");
     if (!source)
-        luaL_argerrorL(L, 1, ("error loading " + name).c_str());
+    {
+        source = readFile(name + ".lua"); // try .lua if .luau doesn't exist
+        if (!source)
+            luaL_argerrorL(L, 1, ("error loading " + name).c_str()); // if neither .luau nor .lua exist, we have an error
+    }
 
     // module needs to run in a new thread, isolated from the rest
     lua_State* GL = lua_mainthread(L);
