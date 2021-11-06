@@ -241,9 +241,9 @@ int main(int argc, char** argv)
         if (isDirectory(argv[i]))
         {
             traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !analyzeFile(frontend, name.c_str(), format, annotate);
-                });
+                if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
+            });
         }
         else
         {
