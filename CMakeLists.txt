@@ -38,7 +38,7 @@ if(LUAU_BUILD_WEB_REPL AND EMSCRIPTEN)
     endif()
 
     # declare exported functions to emscripten
-    target_link_options(Luau.Repl.Web PRIVATE -sEXPORTED_FUNCTIONS=['_executeOnce'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'])
+    target_link_options(Luau.Repl.Web PRIVATE -sEXPORTED_FUNCTIONS=['_getExceptionFromPtr','_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -sNO_DISABLE_EXCEPTION_CATCHING)
        
     # copy html directory
     add_custom_command(TARGET Luau.Repl.Web PRE_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/CLI/html ${CMAKE_BINARY_DIR}/webrepl)

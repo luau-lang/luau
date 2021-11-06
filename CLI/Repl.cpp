@@ -252,7 +252,16 @@ static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::
 #ifdef LUAU_WEB_REPL
 extern "C"
 {
-    const char* executeOnce(const char* source)
+    // Luau errors are exceptions (see luaD_throw) which cannot be directly
+    // handled by emscripten. However we can recieve the pointer in JS and
+    // pass it through to this method to get the string content of the
+    // exception.
+    const char* getExceptionFromPtr(int ptr)
+    {
+        return reinterpret_cast<std::exception*>(ptr)->what();
+    }
+
+    void executeScript(const char* source)
     {
         std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
         lua_State* L = globalState.get();
@@ -271,8 +280,6 @@ extern "C"
         {
             fprintf(stdout, "%s\n", error.c_str());
         }
-
-        return error.c_str();
     }
 }
 #endif
@@ -457,7 +464,6 @@ int main(int argc, char** argv)
         if (strncmp(flag->name, "Luau", 4) == 0)
             flag->value = true;
 
-    executeCode("print'asd'");
     if (argc == 1)
     {
         runRepl();
