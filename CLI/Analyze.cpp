@@ -34,8 +34,10 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
     }
 }
 
-static void reportError(ReportFormat format, const char* name, const Luau::TypeError& error)
+static void reportError(ReportFormat format, const Luau::TypeError& error)
 {
+    const char* name = error.moduleName.c_str();
+
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
         report(format, name, error.location, "SyntaxError", syntaxError->message.c_str());
     else
@@ -58,7 +60,7 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
     }
 
     for (auto& error : cr.errors)
-        reportError(format, name, error);
+        reportError(format, error);
 
     Luau::LintResult lr = frontend.lint(name);
 
@@ -236,9 +238,9 @@ int main(int argc, char** argv)
         if (isDirectory(argv[i]))
         {
             traverseDirectory(argv[i], [&](const std::string& name) {
-                if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
-            });
+                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                        failed += !analyzeFile(frontend, name.c_str(), format, annotate);
+                });
         }
         else
         {
