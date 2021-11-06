@@ -115,7 +115,12 @@ struct CliFileResolver : Luau::FileResolver
     {
         if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
         {
-            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".lua";
+            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".luau";
+            if (!moduleExists(name))
+            {
+                // fall back to .lua if a module with .luau doesn't exist
+                name = std::string(expr->value.data, expr->value.size) + ".lua";
+            }
 
             return {{name}};
         }
@@ -236,8 +241,15 @@ int main(int argc, char** argv)
         if (isDirectory(argv[i]))
         {
             traverseDirectory(argv[i], [&](const std::string& name) {
-                if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                // Look for .luau first and if absent, fall back to .lua
+                if (name.length() > 5 && name.rfind(".luau") == name.length() - 5)
+                {
                     failed += !analyzeFile(frontend, name.c_str(), format, annotate);
+                }
+                else if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                {
+                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
+                }
             });
         }
         else
@@ -256,5 +268,3 @@ int main(int argc, char** argv)
 
     return (format == ReportFormat::Luacheck) ? 0 : failed;
 }
-
-
