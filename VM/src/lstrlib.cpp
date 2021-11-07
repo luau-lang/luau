@@ -1119,7 +1119,7 @@ static int str_split(lua_State* L)
 static const union
 {
     int dummy;
-    char little; /* true iff machine is little endian */
+    char little; /* true if machine is little endian */
 } nativeendian = {1};
 
 /* assume we need to align for double & pointers */
