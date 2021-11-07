@@ -189,8 +189,6 @@ typedef struct global_State
 
     GCStats gcstats;
 
-    void* userdata;
-
 } global_State;
 // clang-format on
 

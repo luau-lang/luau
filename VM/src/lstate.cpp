@@ -181,7 +181,6 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
 
     g->cb = lua_Callbacks();
     g->gcstats = GCStats();
-    g->userdata = NULL;
 
     if (luaD_rawrunprotected(L, f_luaopen, NULL) != 0)
     {
