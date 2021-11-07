@@ -46,6 +46,16 @@ This is using the VM feature that is not accessible from scripts, that prevents 
 
 By itself this would mean that code that runs in Luau can't use globals at all, since assigning globals would fail. While this is feasible, in Roblox we solve this by creating a new global table for each script, that uses `__index` to point to the builtin global table. This safely sandboxes the builtin globals while still allowing writing globals from each script. This also means that short of exposing special shared globals from the host, all scripts are isolated from each other.
 
+## Thread userdata
+
+Environment-level sandboxing is sufficient to implement separation between trusted code and untrusted code, assuming that `getfenv`/`setfenv` are either unavailable (removed from the globals), or that trusted code never interfaces with untrusted code (which prevents untrusted code from ever getting access to trusted functions). When running trusted code, it's possible to inject extra globals from the host into that global table, providing access to special APIs.
+
+However, in some cases it's desirable to restrict access to functions that are exposed both to trusted and untrusted code. For example, both may have access to `game` global, but `game` may expose methods that should only work from trusted code.
+
+To help with this, each thread in Luau has a userdata pointer, which can only be set or accessed by the host. This pointer can identify the calling thread in a unique way, and also store the thread's permissions. Trusted functions can read the userdata to validate the permissions of the calling thread and allow or deny access accordingly. The host can also set up a callback for newly created threads to inherit their userdata from the parent thread. This makes it possible to provide APIs to trusted code while limiting the access from untrusted code.
+
+For example, Roblox uses thread userdata to assign a security identity to each thread, which is a numerical constant that defines which types of trusted functions the thread is allowed to perform. Untrusted code receives an untrusted context, trusted code receives a trusted context, and trusted functions verify the identity of the calling thread by checking the userdata. Other permission models are possible as well, due to the flexibility of the API (userdata can be anything).
+
 ## `__gc`
 
 Lua 5.1 exposes a `__gc` metamethod for userdata, which can be used on proxies (`newproxy`) to hook into garbage collector. Later versions of Lua extend this mechanism to work on tables.
