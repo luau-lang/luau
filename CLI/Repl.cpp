@@ -404,6 +404,39 @@ static bool compileFile(const char* name)
     }
 }
 
+static bool dumpFile(const char* name) {
+    std::optional<std::string> source = readFile(name);
+    if (!source)
+    {
+        printf("Error opening %s\n", name);
+        return false;
+    }
+
+    try
+    {
+        Luau::BytecodeBuilder bcb;
+        Luau::compileOrThrow(bcb, *source);
+
+        std::string Bytecode = bcb.getBytecode();
+        std::ofstream out("luau.out");
+        out << Bytecode;
+        out.close();
+
+        return true;
+    }
+    catch (Luau::ParseErrors& e)
+    {
+        for (auto& error : e.getErrors())
+            reportError(name, error);
+        return false;
+    }
+    catch (Luau::CompileError& e)
+    {
+        reportError(name, e);
+        return false;
+    }
+}
+
 static void displayHelp(const char* argv0)
 {
     printf("Usage: %s [--mode] [options] [file list]\n", argv0);
@@ -413,6 +446,7 @@ static void displayHelp(const char* argv0)
     printf("Available modes:\n");
     printf("  omitted: compile and run input files one by one\n");
     printf("  --compile: compile input files and output resulting bytecode\n");
+    printf("  --binary: compile input file and save binary bytecode blob to luau.out\n");
     printf("\n");
     printf("Available options:\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
@@ -442,6 +476,15 @@ int main(int argc, char** argv)
     {
         displayHelp(argv[0]);
         return 0;
+    }
+
+    if (argc >= 2 && strcmp(argv[1], "--binary") == 0) {
+        if (!argv[2]) {
+            printf("Please input a file\n");
+            return 1;
+        }
+
+        return !dumpFile(argv[2]);
     }
 
     if (argc >= 2 && strcmp(argv[1], "--compile") == 0)
