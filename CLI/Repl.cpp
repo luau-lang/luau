@@ -456,7 +456,7 @@ int main(int argc, char** argv)
             if (isDirectory(argv[i]))
             {
                 traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                    if (name.length() > 4 && (name.rfind(".lua") == name.length() - 4 || name.rfind(".luau") == name.length() - 5))
                         failed += !compileFile(name.c_str());
                 });
             }
@@ -496,7 +496,7 @@ int main(int argc, char** argv)
             if (isDirectory(argv[i]))
             {
                 traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                    if (name.length() > 4 && (name.rfind(".lua") == name.length() - 4 || name.rfind(".luau") == name.length() - 5))
                         failed += !runFile(name.c_str(), L);
                 });
             }

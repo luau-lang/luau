@@ -810,7 +810,7 @@ def run(args, argsubcb):
             for filename in files:
                 filepath = subdir + os.sep + filename
 
-                if filename.endswith(".lua"):
+                if filename.endswith(".luau"):
                     if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
                         runTest(subdir, filename, filepath)
 

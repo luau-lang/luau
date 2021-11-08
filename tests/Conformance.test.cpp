@@ -225,119 +225,119 @@ TEST_SUITE_BEGIN("Conformance");
 
 TEST_CASE("Assert")
 {
-    runConformance("assert.lua");
+    runConformance("assert.luau");
 }
 
 TEST_CASE("Basic")
 {
-    runConformance("basic.lua");
+    runConformance("basic.luau");
 }
 
 TEST_CASE("Math")
 {
-    runConformance("math.lua");
+    runConformance("math.luau");
 }
 
 TEST_CASE("Table")
 {
     ScopedFastFlag sff("LuauTableFreeze", true);
 
-    runConformance("nextvar.lua");
+    runConformance("nextvar.luau");
 }
 
 TEST_CASE("PatternMatch")
 {
-    runConformance("pm.lua");
+    runConformance("pm.luau");
 }
 
 TEST_CASE("Sort")
 {
-    runConformance("sort.lua");
+    runConformance("sort.luau");
 }
 
 TEST_CASE("Move")
 {
-    runConformance("move.lua");
+    runConformance("move.luau");
 }
 
 TEST_CASE("Clear")
 {
-    runConformance("clear.lua");
+    runConformance("clear.luau");
 }
 
 TEST_CASE("Strings")
 {
-    runConformance("strings.lua");
+    runConformance("strings.luau");
 }
 
 TEST_CASE("VarArg")
 {
-    runConformance("vararg.lua");
+    runConformance("vararg.luau");
 }
 
 TEST_CASE("Locals")
 {
-    runConformance("locals.lua");
+    runConformance("locals.luau");
 }
 
 TEST_CASE("Literals")
 {
-    runConformance("literals.lua");
+    runConformance("literals.luau");
 }
 
 TEST_CASE("Errors")
 {
-    runConformance("errors.lua");
+    runConformance("errors.luau");
 }
 
 TEST_CASE("Events")
 {
-    runConformance("events.lua");
+    runConformance("events.luau");
 }
 
 TEST_CASE("Constructs")
 {
-    runConformance("constructs.lua");
+    runConformance("constructs.luau");
 }
 
 TEST_CASE("Closure")
 {
-    runConformance("closure.lua");
+    runConformance("closure.luau");
 }
 
 TEST_CASE("Calls")
 {
-    runConformance("calls.lua");
+    runConformance("calls.luau");
 }
 
 TEST_CASE("Attrib")
 {
-    runConformance("attrib.lua");
+    runConformance("attrib.luau");
 }
 
 TEST_CASE("GC")
 {
-    runConformance("gc.lua");
+    runConformance("gc.luau");
 }
 
 TEST_CASE("Bitwise")
 {
-    runConformance("bitwise.lua");
+    runConformance("bitwise.luau");
 }
 
 TEST_CASE("UTF8")
 {
-    runConformance("utf8.lua");
+    runConformance("utf8.luau");
 }
 
 TEST_CASE("Coroutine")
 {
-    runConformance("coroutine.lua");
+    runConformance("coroutine.luau");
 }
 
 TEST_CASE("PCall")
 {
-    runConformance("pcall.lua", [](lua_State* L) {
+    runConformance("pcall.luau", [](lua_State* L) {
         lua_pushcfunction(L, [](lua_State* L) -> int {
 #if LUA_USE_LONGJMP
             luaL_error(L, "oops");
@@ -359,12 +359,12 @@ TEST_CASE("PCall")
 
 TEST_CASE("Pack")
 {
-    runConformance("tpack.lua");
+    runConformance("tpack.luau");
 }
 
 TEST_CASE("Vector")
 {
-    runConformance("vector.lua", [](lua_State* L) {
+    runConformance("vector.luau", [](lua_State* L) {
         lua_pushcfunction(L, lua_vector);
         lua_setglobal(L, "vector");
 
@@ -448,7 +448,7 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    runConformance("types.lua", [](lua_State* L) {
+    runConformance("types.luau", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
         Luau::TypeChecker env(&moduleResolver, &iceHandler);
@@ -470,12 +470,12 @@ TEST_CASE("Types")
 
 TEST_CASE("DateTime")
 {
-    runConformance("datetime.lua");
+    runConformance("datetime.luau");
 }
 
 TEST_CASE("Debug")
 {
-    runConformance("debug.lua");
+    runConformance("debug.luau");
 }
 
 TEST_CASE("Debugger")
@@ -487,7 +487,7 @@ TEST_CASE("Debugger")
     interruptedthread = nullptr;
 
     runConformance(
-        "debugger.lua",
+        "debugger.luau",
         [](lua_State* L) {
             lua_Callbacks* cb = lua_callbacks(L);
 
@@ -757,7 +757,7 @@ TEST_CASE("ExceptionObject")
         }
     };
 
-    StateRef globalState = runConformance("exceptions.lua", nullptr, nullptr, lua_newstate(reallocFunc, nullptr));
+    StateRef globalState = runConformance("exceptions.luau", nullptr, nullptr, lua_newstate(reallocFunc, nullptr));
     lua_State* L = globalState.get();
 
     {
@@ -798,14 +798,14 @@ TEST_CASE("IfElseExpression")
 {
     ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
 
-    runConformance("ifelseexpr.lua");
+    runConformance("ifelseexpr.luau");
 }
 
 TEST_CASE("TagMethodError")
 {
     ScopedFastFlag sff{"LuauCcallRestoreFix", true};
 
-    runConformance("tmerror.lua", [](lua_State* L) {
+    runConformance("tmerror.luau", [](lua_State* L) {
         auto* cb = lua_callbacks(L);
 
         cb->debugprotectederror = [](lua_State* L) {
