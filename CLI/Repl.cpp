@@ -174,7 +174,7 @@ static std::string runCode(lua_State* L, const std::string& source)
     else
     {
         std::string error;
-
+        
         if (status == LUA_YIELD)
         {
             error = "thread yielded unexpectedly";
@@ -187,6 +187,11 @@ static std::string runCode(lua_State* L, const std::string& source)
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
 
+#ifdef __EMSCRIPTEN__
+        // nicer formatting for errors in web repl
+        error = "Error:" + error;
+#endif
+
         fprintf(stdout, "%s", error.c_str());
     }
 
@@ -197,16 +202,7 @@ static std::string runCode(lua_State* L, const std::string& source)
 #ifdef __EMSCRIPTEN__
 extern "C"
 {
-    // Luau errors are exceptions (see luaD_throw) which cannot be directly
-    // handled by emscripten. However we can recieve the pointer in JS and
-    // pass it through to this method to get the string content of the
-    // exception.
-    const char* getExceptionFromPtr(int ptr)
-    {
-        return reinterpret_cast<std::exception*>(ptr)->what();
-    }
-
-    void executeScript(const char* source)
+    const char* executeScript(const char* source)
     {
         // setup flags
         for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
@@ -220,14 +216,18 @@ extern "C"
         // setup state
         setupState(L);
 
+        // sandbox thread
+        luaL_sandboxthread(L);
+
         // run code + collect error
         std::string error = runCode(L, source);
 
         // output error(s)
         if (error.length())
         {
-            fprintf(stdout, "%s\n", error.c_str());
+            return std::move(error.c_str());
         }
+        return NULL;
     }
 }
 #endif

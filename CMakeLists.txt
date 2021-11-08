@@ -19,6 +19,9 @@ if(LUAU_BUILD_CLI)
     add_executable(Luau.Repl.CLI)
     if(NOT EMSCRIPTEN)
         add_executable(Luau.Analyze.CLI)
+    else()
+        # add -fexceptions for emscripten to allow exceptions to be caught in C++
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fexceptions")
     endif()
 
     # This also adds target `name` on Linux/macOS and `name.exe` on Windows
@@ -85,7 +88,7 @@ if(LUAU_BUILD_CLI)
 
     if(EMSCRIPTEN)
         # declare exported functions to emscripten
-        target_link_options(Luau.Repl.CLI PRIVATE -sEXPORTED_FUNCTIONS=['_getExceptionFromPtr','_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -sNO_DISABLE_EXCEPTION_CATCHING)
+        target_link_options(Luau.Repl.CLI PRIVATE -sEXPORTED_FUNCTIONS=['_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -fexceptions)
 
         # custom output directory for wasm + js file
         set_target_properties(Luau.Repl.CLI PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/docs/assets/luau)

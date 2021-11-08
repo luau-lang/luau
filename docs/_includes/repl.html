@@ -25,12 +25,11 @@
 
 <script>
     function output(text) {
-        document.getElementById("output").value += new Date().toLocaleTimeString() + ": " + text + "\n";
+        document.getElementById("output").value += "[" + new Date().toLocaleTimeString() + "] " + text.replace('stdin:', '') + "\n";
     }
 
     var Module = {
-        'print': function (msg) { output(msg) },
-        'printErr': function (err) { } // potentially unused?
+        'print': function (msg) { output(msg) }
     };
 
     function clearInput() {
@@ -42,12 +41,10 @@
     }
 
     function executeScript() {
-        try {
-            Module.ccall('executeScript', null, ['string'], [document.getElementById("script").value]);
-        }
-        catch (e) {
-            output(Module.ccall('getExceptionFromPtr', 'string', ['number'], [e]).replace('stdin', '[ERROR]'));
+        var err = Module.ccall('executeScript', 'string', ['string'], [document.getElementById("script").value]);
+        if (err) {
+            output('Error:' + err.replace('stdin:', ''));
         }
     }
 </script>
-<script async src="assets/luau/Luau.Repl.Web.js"></script>
+<script async src="assets/luau/luau.js"></script>
