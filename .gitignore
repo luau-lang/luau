@@ -5,3 +5,4 @@
 ^default.prof*
 ^fuzz-*
 ^luau$
+/.vs

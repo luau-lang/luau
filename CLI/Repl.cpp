@@ -51,9 +51,13 @@ static int lua_require(lua_State* L)
         return finishrequire(L);
     lua_pop(L, 1);
 
-    std::optional<std::string> source = readFile(name + ".lua");
+    std::optional<std::string> source = readFile(name + ".luau");
     if (!source)
-        luaL_argerrorL(L, 1, ("error loading " + name).c_str());
+    {
+        source = readFile(name + ".lua"); // try .lua if .luau doesn't exist
+        if (!source)
+            luaL_argerrorL(L, 1, ("error loading " + name).c_str()); // if neither .luau nor .lua exist, we have an error
+    }
 
     // module needs to run in a new thread, isolated from the rest
     lua_State* GL = lua_mainthread(L);
@@ -170,7 +174,7 @@ static std::string runCode(lua_State* L, const std::string& source)
     else
     {
         std::string error;
-
+        
         if (status == LUA_YIELD)
         {
             error = "thread yielded unexpectedly";
@@ -183,6 +187,11 @@ static std::string runCode(lua_State* L, const std::string& source)
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
 
+#ifdef __EMSCRIPTEN__
+        // nicer formatting for errors in web repl
+        error = "Error:" + error;
+#endif
+
         fprintf(stdout, "%s", error.c_str());
     }
 
@@ -190,6 +199,41 @@ static std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
+#ifdef __EMSCRIPTEN__
+extern "C"
+{
+    const char* executeScript(const char* source)
+    {
+        // setup flags
+        for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+            if (strncmp(flag->name, "Luau", 4) == 0)
+                flag->value = true;
+
+        // create new state
+        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+
+        // setup state
+        setupState(L);
+
+        // sandbox thread
+        luaL_sandboxthread(L);
+
+        // run code + collect error
+        std::string error = runCode(L, source);
+
+        // output error(s)
+        if (error.length())
+        {
+            return std::move(error.c_str());
+        }
+        return NULL;
+    }
+}
+#endif
+
+// Excluded from emscripten compilation to avoid -Wunused-function errors.
+#ifndef __EMSCRIPTEN__
 static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, std::vector<std::string>& completions)
 {
     std::string_view lookup = editBuffer + start;
@@ -511,5 +555,4 @@ int main(int argc, char** argv)
         return failed;
     }
 }
-
-
+#endif

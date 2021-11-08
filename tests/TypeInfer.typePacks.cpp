@@ -98,10 +98,10 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
     std::vector<TypeId> applyArgs = flatten(applyType->argTypes).first;
     REQUIRE_EQ(3, applyArgs.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(applyArgs[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(applyArgs[0]));
     REQUIRE(fType != nullptr);
 
-    const FunctionTypeVar* gType = get<FunctionTypeVar>(applyArgs[1]);
+    const FunctionTypeVar* gType = get<FunctionTypeVar>(follow(applyArgs[1]));
     REQUIRE(gType != nullptr);
 
     std::vector<TypeId> gArgs = flatten(gType->argTypes).first;
@@ -285,7 +285,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_argument_tail")
 {
     CheckResult result = check(R"(
 local _ = function():((...any)->(...any),()->())
-	return function() end, function() end
+    return function() end, function() end
 end
 for y in _() do
 end

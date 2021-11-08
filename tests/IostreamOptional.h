@@ -2,6 +2,9 @@
 #pragma once
 
 #include <ostream>
+#include <optional>
+
+namespace std {
 
 inline std::ostream& operator<<(std::ostream& lhs, const std::nullopt_t&)
 {
@@ -9,10 +12,12 @@ inline std::ostream& operator<<(std::ostream& lhs, const std::nullopt_t&)
 }
 
 template<typename T>
-std::ostream& operator<<(std::ostream& lhs, const std::optional<T>& t)
+auto operator<<(std::ostream& lhs, const std::optional<T>& t) -> decltype(lhs << *t) // SFINAE to only instantiate << for supported types
 {
     if (t)
         return lhs << *t;
     else
         return lhs << "none";
 }
+
+} // namespace std

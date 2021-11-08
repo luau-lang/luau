@@ -23,6 +23,7 @@ LUAU_FASTFLAGVARIABLE(LuauResolveModuleNameWithoutACurrentModule, false)
 LUAU_FASTFLAG(LuauTraceRequireLookupChild)
 LUAU_FASTFLAGVARIABLE(LuauPersistDefinitionFileTypes, false)
 LUAU_FASTFLAG(LuauNewRequireTrace)
+LUAU_FASTFLAGVARIABLE(LuauClearScopes, false)
 
 namespace Luau
 {
@@ -248,7 +249,7 @@ struct RequireCycle
 // Note that this is O(V^2) for a fully connected graph and produces O(V) paths of length O(V)
 // However, when the graph is acyclic, this is O(V), as well as when only the first cycle is needed (stopAtFirst=true)
 std::vector<RequireCycle> getRequireCycles(
-    const std::unordered_map<ModuleName, SourceNode>& sourceNodes, const SourceNode* start, bool stopAtFirst = false)
+    const FileResolver* resolver, const std::unordered_map<ModuleName, SourceNode>& sourceNodes, const SourceNode* start, bool stopAtFirst = false)
 {
     std::vector<RequireCycle> result;
 
@@ -282,9 +283,9 @@ std::vector<RequireCycle> getRequireCycles(
                 if (top == start)
                 {
                     for (const SourceNode* node : path)
-                        cycle.push_back(node->name);
+                        cycle.push_back(resolver->getHumanReadableModuleName(node->name));
 
-                    cycle.push_back(top->name);
+                    cycle.push_back(resolver->getHumanReadableModuleName(top->name));
                     break;
                 }
             }
@@ -404,7 +405,7 @@ CheckResult Frontend::check(const ModuleName& name)
         // however, for now getRequireCycles isn't expensive in practice on the cases we care about, and long term
         // all correct programs must be acyclic so this code triggers rarely
         if (cycleDetected)
-            requireCycles = getRequireCycles(sourceNodes, &sourceNode, mode == Mode::NoCheck);
+            requireCycles = getRequireCycles(fileResolver, sourceNodes, &sourceNode, mode == Mode::NoCheck);
 
         // This is used by the type checker to replace the resulting type of cyclic modules with any
         sourceModule.cyclic = !requireCycles.empty();
@@ -458,6 +459,8 @@ CheckResult Frontend::check(const ModuleName& name)
             module->astTypes.clear();
             module->astExpectedTypes.clear();
             module->astOriginalCallTypes.clear();
+            if (FFlag::LuauClearScopes)
+                module->scopes.resize(1);
         }
 
         if (mode != Mode::NoCheck)

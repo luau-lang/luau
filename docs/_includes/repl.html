@@ -1,0 +1,50 @@
+<form>
+    <div>
+        <label>Script:</label>
+        <br>
+        <textarea rows="10" cols="70" id="script">print("Hello World!")</textarea>
+        <br><br>
+        <button onclick="clearInput(); return false;">
+            Clear Input
+        </button>
+        <button onclick="executeScript(); return false;">
+            Run
+        </button>
+    </div>
+    <br><br>
+    <div>
+        <label>Output:</label>
+        <br>
+        <textarea readonly rows="10" cols="70" id="output"></textarea>
+        <br><br>
+        <button onclick="clearOutput(); return false;">
+            Clear Output
+        </button>
+    </div>
+</form>
+
+<script>
+    function output(text) {
+        document.getElementById("output").value += "[" + new Date().toLocaleTimeString() + "] " + text.replace('stdin:', '') + "\n";
+    }
+
+    var Module = {
+        'print': function (msg) { output(msg) }
+    };
+
+    function clearInput() {
+        document.getElementById("script").value = "";
+    }
+
+    function clearOutput() {
+        document.getElementById("output").value = "";
+    }
+
+    function executeScript() {
+        var err = Module.ccall('executeScript', 'string', ['string'], [document.getElementById("script").value]);
+        if (err) {
+            output('Error:' + err.replace('stdin:', ''));
+        }
+    }
+</script>
+<script async src="assets/luau/luau.js"></script>

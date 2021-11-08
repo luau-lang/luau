@@ -265,4 +265,64 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     CHECK_EQ("{ f: t1 } where t1 = () -> { f: () -> { f: ({ f: t1 }) -> (), signal: { f: (any) -> () } } }", toString(result));
 }
 
+TEST_CASE("tagging_tables")
+{
+    ScopedFastFlag sff{"LuauRefactorTagging", true};
+
+    TypeVar ttv{TableTypeVar{}};
+    CHECK(!Luau::hasTag(&ttv, "foo"));
+    Luau::attachTag(&ttv, "foo");
+    CHECK(Luau::hasTag(&ttv, "foo"));
+}
+
+TEST_CASE("tagging_classes")
+{
+    ScopedFastFlag sff{"LuauRefactorTagging", true};
+
+    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr}};
+    CHECK(!Luau::hasTag(&base, "foo"));
+    Luau::attachTag(&base, "foo");
+    CHECK(Luau::hasTag(&base, "foo"));
+}
+
+TEST_CASE("tagging_subclasses")
+{
+    ScopedFastFlag sff{"LuauRefactorTagging", true};
+
+    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr}};
+    TypeVar derived{ClassTypeVar{"Derived", {}, &base, std::nullopt, {}, nullptr}};
+
+    CHECK(!Luau::hasTag(&base, "foo"));
+    CHECK(!Luau::hasTag(&derived, "foo"));
+
+    Luau::attachTag(&base, "foo");
+    CHECK(Luau::hasTag(&base, "foo"));
+    CHECK(Luau::hasTag(&derived, "foo"));
+
+    Luau::attachTag(&derived, "bar");
+    CHECK(!Luau::hasTag(&base, "bar"));
+    CHECK(Luau::hasTag(&derived, "bar"));
+}
+
+TEST_CASE("tagging_functions")
+{
+    ScopedFastFlag sff{"LuauRefactorTagging", true};
+
+    TypePackVar empty{TypePack{}};
+    TypeVar ftv{FunctionTypeVar{&empty, &empty}};
+    CHECK(!Luau::hasTag(&ftv, "foo"));
+    Luau::attachTag(&ftv, "foo");
+    CHECK(Luau::hasTag(&ftv, "foo"));
+}
+
+TEST_CASE("tagging_props")
+{
+    ScopedFastFlag sff{"LuauRefactorTagging", true};
+
+    Property prop{};
+    CHECK(!Luau::hasTag(prop, "foo"));
+    Luau::attachTag(prop, "foo");
+    CHECK(Luau::hasTag(prop, "foo"));
+}
+
 TEST_SUITE_END();

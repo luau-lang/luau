@@ -199,7 +199,7 @@ static void* luaM_newblock(lua_State* L, int sizeClass)
 
     if (page->freeNext >= 0)
     {
-        block = page->data + page->freeNext;
+        block = &page->data + page->freeNext;
         ASAN_UNPOISON_MEMORY_REGION(block, page->blockSize);
 
         page->freeNext -= page->blockSize;
