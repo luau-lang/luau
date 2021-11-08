@@ -10,6 +10,7 @@
 #include "ldo.h"
 #include "lvm.h"
 #include "lnumutils.h"
+#include "ldebug.h"
 
 #include <string.h>
 
@@ -703,6 +704,8 @@ void lua_setreadonly(lua_State* L, int objindex, bool value)
     const TValue* o = index2adr(L, objindex);
     api_check(L, ttistable(o));
     Table* t = hvalue(o);
+    if (value && obj2gco(t) == gcvalue(registry(L)))
+        luaG_runerror(L, "Attempt to set the registry to readonly");
     t->readonly = value;
     return;
 }
