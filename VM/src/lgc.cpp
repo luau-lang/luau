@@ -617,6 +617,8 @@ static void markroot(lua_State* L)
     markvalue(g, registry(L));
     markmt(g);
     g->gcstate = GCSpropagate;
+    if (g->cb.gc)
+        g->cb.gc(L);
 }
 
 static size_t remarkupvals(global_State* g)
