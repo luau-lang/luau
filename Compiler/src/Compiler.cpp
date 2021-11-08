@@ -14,6 +14,7 @@ LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresFenv, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresUpval, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
+LUAU_FASTFLAG(LuauGenericSpecialGlobals)
 
 namespace Luau
 {
@@ -21,6 +22,8 @@ namespace Luau
 static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
+
+static const char* kSpecialGlobals[] = {"Game", "Workspace", "_G", "game", "plugin", "script", "shared", "workspace"};
 
 CompileError::CompileError(const Location& location, const std::string& message)
     : location(location)
@@ -3702,21 +3705,30 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     Compiler compiler(bytecode, options);
 
     // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
+    if (FFlag::LuauGenericSpecialGlobals)
     {
         AstName name = names.get("_G");
 
         if (name.value)
             compiler.globals[name].writable = true;
-    }
 
-    if (options.mutableGlobalNames)
-        for (const char** ptr = options.mutableGlobalNames; *ptr != NULL; ++ptr)
+        if (options.mutableGlobalNames)
+            for (const char** ptr = options.mutableGlobalNames; *ptr != NULL; ++ptr)
+            {
+                AstName name = names.get(*ptr);
+
+                if (name.value)
+                    compiler.globals[name].writable = true;
+            }
+    } else {
+        for (const char* global : kSpecialGlobals)
         {
-            AstName name = names.get(*ptr);
+            AstName name = names.get(global);
 
             if (name.value)
                 compiler.globals[name].writable = true;
         }
+    }
 
     // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
     Compiler::AssignmentVisitor assignmentVisitor(&compiler);
