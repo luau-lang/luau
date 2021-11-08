@@ -3703,7 +3703,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
 
     Compiler compiler(bytecode, options);
 
-    // since access to some global objects may result in values that change over time, we block table imports
+    // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
     for (const char* global : kSpecialGlobals)
     {
         AstName name = names.get(global);
@@ -3711,6 +3711,15 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
         if (name.value)
             compiler.globals[name].special = true;
     }
+
+    if (options.mutableGlobalNames)
+        for (const char** ptr = options.mutableGlobalNames; ptr; ptr += sizeof(const char*))
+        {
+            AstName name = names.get(*ptr);
+
+            if (name.value)
+                compiler.globals[name].special = true;
+        }
 
     // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
     Compiler::AssignmentVisitor assignmentVisitor(&compiler);
