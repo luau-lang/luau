@@ -39,12 +39,9 @@ if(LUAU_BUILD_WEB_REPL AND EMSCRIPTEN)
 
     # declare exported functions to emscripten
     target_link_options(Luau.Repl.Web PRIVATE -sEXPORTED_FUNCTIONS=['_getExceptionFromPtr','_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -sNO_DISABLE_EXCEPTION_CATCHING)
-       
-    # copy html directory
-    add_custom_command(TARGET Luau.Repl.Web PRE_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/CLI/html ${CMAKE_BINARY_DIR}/webrepl)
 
     # custom output directory for webm + js file
-    set_target_properties(Luau.Repl.Web PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/webrepl/luau)
+    set_target_properties(Luau.Repl.Web PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/docs/assets/luau)
 else()
     if(LUAU_BUILD_CLI)
         add_executable(Luau.Repl.CLI)
