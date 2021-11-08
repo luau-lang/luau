@@ -2,7 +2,7 @@
 
 ## Summary
 
-New string interpolation syntax, and extending `string.format` to accept any arbitrary values without being exact about its types.
+New string interpolation syntax.
 
 ## Motivation
 
@@ -13,36 +13,35 @@ The problems with `string.format` are many.
    * `%d` casts the number into `long long`, which has a lower max value than `double` and does not support decimals.
    * `%f` by default will format to the millionths, e.g. `5.5` is `5.500000`.
    * `%g` by default will format up to the hundred thousandths, e.g. `5.5` is `5.5` and `5.5312389` is `5.53123`. It will also convert the number to scientific notation when it encounters a number equal to or greater than 10^6.
-   * To not lose precision, you need to use `%s`, but even so the type checker assumes you actually wanted strings.
+   * To not lose too much precision, you need to use `%s`, but even so the type checker assumes you actually wanted strings.
 3. No support for `boolean`. You must use `%s` **and** call `tostring`.
 4. No support for values implementing the `__tostring` metamethod.
-5. Having to use parentheses around string literals just to call a method of it.
+5. Using `%` is in itself a dangerous operation within `string.format`.
+   * `"Your health is %d% so you need to heal up."` causes a runtime error because `% so` is actually parsed as `(%s)o` and now requires a corresponding string.
+6. Having to use parentheses around string literals just to call a method of it.
 
 ## Design
 
-To fix issue #5, we will need new syntax in order to not change the meaning of existing strings. There are a few components of this new expression:
+To fix all of those issues, we need to do a few things.
+
+1. A new string interpolation expression (fixes #5, #6)
+2. Extend `string.format` to accept values of arbitrary types (fixes #1, #2, #3, #4)
+
+Because we care about backward compatibility, we need some new syntax in order to not change the meaning of existing strings. There are a few components of this new expression:
 
 1. A string chunk (`` `...{ ``, `}...{`, and `` }...` ``) where `...` is a range of 0 to many characters.
    * `%` escapes `%` and `{`, whereas `\` escapes `` ` ``.
    * Restriction: the string interpolation literal must have at least one value to interpolate. We do not need 3 ways to express a single line string literal.
+   * The pairs must be on the same line (unless a `\` escapes the newline) but expressions needn't be on the same line.
 2. An expression between the braces. This is the value that will be interpolated into the string.
-3. Formatting style may follow the expression, delimited by `,`.
-   * Restriction: the formatting style must be constant at parse time.
-   * The formatting style will follow the same syntax as pre-existing syntax in `string.format`.
+3. Formatting specification may follow the expression, delimited by an unambiguous character.
+   * Restriction: the formatting specification must be constant at parse time.
+   * The syntax for formatting specification and a delimiter is undefined in this RFC. A future RFC will implement this.
 
 To put the above into formal EBNF grammar:
 
 ```
-fmtflags ::= `-' | `+' | ` ' | `#' | `0'
-fmtwidth ::= <NUMBER> [<NUMBER>]
-fmtprecision ::= `.' <NUMBER> [<NUMBER>]
-fmtspecifier ::= `c' | `d' | `i' | `e' | `E' | `f' | `g' | `G' | `o' | `q' | `s' | `u' | `x' | `X'
-
-interpfmt ::= [fmtflags][fmtwidth][fmtprecision][fmtspecifier]
-
-interpexp ::= exp [`,' interpfmt]
-
-stringinterp ::= <INTERP_BEGIN> interpfmt {<INTERP_MID> interpexp} <INTERP_END>
+stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
 ```
 
 Which, in actual Luau code, will look like the following:
@@ -52,49 +51,72 @@ local world = "world"
 print(`Hello {world}!`)
 --> Hello world!
 
-print(`0x{3735928559,X}`)
---> 0xDEADBEEF
-
 local combo = {5, 2, 8, 9}
 print(`The lock combinations are: {table.concat(combo, ", ")}`)
 --> The lock combinations are: 5, 2, 8, 9
+
+local set1 = Set.new({0, 1, 3})
+local set2 = Set.new({0, 5, 4})
+print(`{set1} ∪ {set2} = {Set.union(set1, set2)}`)
+--> {0, 1, 3} ∪ {0, 5, 4} = {0, 1, 3, 4, 5}
+
+print(`Some example escaping the braces %{like so}`)
+print(`% that doesn't escape anything is part of the string...`)
+print(`%% will escape the second %...`)
+print(`Some text that also includes \`...`)
+--> Some example escaping the braces {like so}
+--> % that doesn't escape anything is part of the string...
+--> % will escape the second %...
+--> Some text that also includes `...
 ```
 
-To fix issues #1, #2, #3, and #4, we will also want to extend `string.format` to accept braces after `%`. This is currently an invalid token, so this is a backward compatible extension. Unfortunately, formatting style cannot immediately follow `%` because `%d{}` is already valid and parses as `(%d){}`.
+As for how newlines are handled, they are handled the same as other string literals. Any text between the `{}` delimiters are not considered part of the string, hence newlines are OK. The main thing is that one opening pair will scan until either a closing pair is encountered, or an unescaped newline.
 
-The extended syntax will allow the following ``%{[<NUMBER>][`,' interpfmt]}`` to be parsed as one token.
+```
+local name = "Luau"
 
-To put that into perspective:
+print(`Welcome to {
+    Luau
+}!`)
+--> Welcome to Luau!
+
+print(`Welcome to \
+{Luau}!`)
+--> Welcome to
+--  Luau!
+```
+
+This expression will not be allowed to come after a `prefixexp`. I believe this is fully additive, so a future RFC may allow allow this. So for now, we explicitly reject the following:
+
+```
+local name = "world"
+print`Hello {world}`
+```
+
+Since the string interpolation expression is going to be lowered into a `string.format` call, we'll also need to extend `string.format`. The bare minimum to support the lowering is to add a new token whose definition is to perform a `tostring` call. `%a` is currently an invalid token, so this is a backward compatible extension. `%a` will have the same behavior as if `tostring` was called.
 
 ```lua
-print(string.format("%{} %{}", 1, 2))
+print(string.format("%a %a", 1, 2))
 --> 1 2
-
-print(string.format("%{2} %{1}", 1, 2))
---> 2 1
-
-print(string.format("0x%{,X}", 3735928559))
---> 0xDEADBEEF
-```
-
-One additional thing to be aware of is that explicit positional numbers will not affect `string.format`'s internal offset. That is, `%{2}` will immediately get the 2nd value, irrespective of the offset. `%{}` will increment the offset and then get the value at that offset.
-
-```lua
-print(string.format("%{2} %{} %{} %{1} %{}", 1, 2, 3))
---> 2 1 2 1 3
 ```
 
 The offset must always be within bound of the numbers of values passed to `string.format`.
 
 ```lua
-local function return_nothing() end
+local function return_one_thing() return "hi" end
 local function return_two_nils() return nil, nil end
 
-print(string.format("%{2} %{}", return_nothing()))
---> error: missing arguments
+print(string.format("%a", return_one_thing()))
+--> "hi"
 
-print(string.format("%{2} %{}", return_two_nils()))
+print(string.format("%a", Set.new({1, 2, 3})))
+--> {1, 2, 3}
+
+print(string.format("%a %a", return_two_nils()))
 --> nil nil
+
+print(string.format("%a %a %a", return_two_nils()))
+--> error: value #3 is missing, got 2
 ```
 
 ## Drawbacks
@@ -103,11 +125,9 @@ If we want to use backticks for other purposes, it may introduce some potential 
 
 If we were to naively compile the expression into a `string.format` call, then implementation details would be observable if you write `` `Your health is {hp}% so you need to heal up.` ``. We would need to implicitly insert a `%` character anytime one shows up in a string interpolation token (escaping `%` wouldn't show up in the token at all). Otherwise attempting to run this will produce a runtime error where the `%s` token is missing its corresponding string value. 
 
-This also increases the complexity of parsing `string.format` across the board. We would now have 3 copies of the parsing logic, one in the parser, one in the VM, and one in the type checker. Having a single source of truth for the syntax of `string.format` is ideal, but may be futile.
-
-Another drawback is that we might lose an opportunity to come up with a new formatting style syntax and semantics. If we care about that opportunity, we could leave that to be undefined in this RFC and have a future RFC define it. For example, `string.format` is missing a way to center-justify a value with a fill character. Hexadecimal/octal conversions does not include the prefix. There's also no binary conversion. If we take `string.format`'s existing formatting style syntax, it may not be compatible with future formatting style extensions.
-
 ## Alternatives
+
+Rather than coming up with a new syntax (which doesn't help issue #5 and #6) and extending `string.format` to accept `%a`, we could just make `%s` call `tostring` and be done. However, doing so would cause programs to be more lenient and the type checker would have no way to infer strings from a `string.format` call. To preserve that, we would need a different token anyway.
 
 Language   | Syntax                | Conclusion
 ----------:|:----------------------|:-----------
