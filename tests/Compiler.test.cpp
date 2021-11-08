@@ -3749,7 +3749,7 @@ RETURN R0 0
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::CompileOptions options;
     const char* mutableGlobals[] = {"Game", "Workspace", "game", "plugin", "script", "shared", "workspace", NULL};
-    options.mutableGlobalNames = &mutableGlobals[0];
+    options.mutableGlobals = &mutableGlobals[0];
     Luau::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(

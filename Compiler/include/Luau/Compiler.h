@@ -39,7 +39,7 @@ struct CompileOptions
 
     // array of globals that are mutable; disables the import optimization for fields accessed through them
     // use NULL to end the array
-    const char** mutableGlobalNames = nullptr;
+    const char** mutableGlobals = nullptr;
 };
 
 class CompileError : public std::exception

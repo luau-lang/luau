@@ -3710,8 +3710,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
         if (AstName name = names.get("_G"); name.value)
             compiler.globals[name].writable = true;
 
-        if (options.mutableGlobalNames)
-            for (const char** ptr = options.mutableGlobalNames; *ptr != NULL; ++ptr)
+        if (options.mutableGlobals)
+            for (const char** ptr = options.mutableGlobals; *ptr != NULL; ++ptr)
             {
                 if (AstName name = names.get(*ptr); name.value)
                     compiler.globals[name].writable = true;
