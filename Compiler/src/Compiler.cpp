@@ -22,8 +22,6 @@ static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
 
-static const char* kSpecialGlobals[] = {"_G"};
-
 CompileError::CompileError(const Location& location, const std::string& message)
     : location(location)
     , message(message)
@@ -3704,9 +3702,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     Compiler compiler(bytecode, options);
 
     // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
-    for (const char* global : kSpecialGlobals)
     {
-        AstName name = names.get(global);
+        AstName name = names.get("_G");
 
         if (name.value)
             compiler.globals[name].writable = true;
