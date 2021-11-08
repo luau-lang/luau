@@ -6,10 +6,8 @@ endif()
 
 cmake_minimum_required(VERSION 3.0)
 project(Luau LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 17)
 
 option(LUAU_BUILD_CLI "Build CLI" ON)
-option(LUAU_BUILD_WEB_REPL "Build Web CLI" ON)
 option(LUAU_BUILD_TESTS "Build tests" ON)
 
 add_library(Luau.Ast STATIC)
@@ -17,45 +15,23 @@ add_library(Luau.Compiler STATIC)
 add_library(Luau.Analysis STATIC)
 add_library(Luau.VM STATIC)
 
-if(LUAU_BUILD_WEB_REPL AND EMSCRIPTEN)
-    # this is a hack, disable cli and tests since we're compiling using emscripten
-    set(LUAU_BUILD_CLI OFF)
-    set(LUAU_BUILD_TESTS OFF)
-
-    add_definitions(-DLUAU_WEB_REPL)
-    
-    # luau web repl
-    add_executable(Luau.Repl.Web)
-
-    # configuration below
-    target_compile_options(Luau.Repl.Web PRIVATE ${LUAU_OPTIONS})
-
-    target_include_directories(Luau.Repl.Web PRIVATE extern)
-    target_link_libraries(Luau.Repl.Web PRIVATE Luau.Compiler Luau.VM)
-
-    if(UNIX)
-        target_link_libraries(Luau.Repl.Web PRIVATE pthread)
+if(LUAU_BUILD_CLI)
+    add_executable(Luau.Repl.CLI)
+    if(NOT EMSCRIPTEN)
+        add_executable(Luau.Analyze.CLI)
     endif()
 
-    # declare exported functions to emscripten
-    target_link_options(Luau.Repl.Web PRIVATE -sEXPORTED_FUNCTIONS=['_getExceptionFromPtr','_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -sNO_DISABLE_EXCEPTION_CATCHING)
+    # This also adds target `name` on Linux/macOS and `name.exe` on Windows
+    set_target_properties(Luau.Repl.CLI PROPERTIES OUTPUT_NAME luau)
 
-    # custom output directory for webm + js file
-    set_target_properties(Luau.Repl.Web PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/docs/assets/luau)
-else()
-    if(LUAU_BUILD_CLI)
-        add_executable(Luau.Repl.CLI)
-        add_executable(Luau.Analyze.CLI)
-
-        # This also adds target `name` on Linux/macOS and `name.exe` on Windows
-        set_target_properties(Luau.Repl.CLI PROPERTIES OUTPUT_NAME luau)
+    if(NOT EMSCRIPTEN)
         set_target_properties(Luau.Analyze.CLI PROPERTIES OUTPUT_NAME luau-analyze)
     endif()
+endif()
 
-    if(LUAU_BUILD_TESTS)
-        add_executable(Luau.UnitTest)
-        add_executable(Luau.Conformance)
-    endif()
+if(LUAU_BUILD_TESTS AND NOT EMSCRIPTEN)
+    add_executable(Luau.UnitTest)
+    add_executable(Luau.Conformance)
 endif()
 
 include(Sources.cmake)
@@ -83,11 +59,6 @@ if(MSVC)
 else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
     list(APPEND LUAU_OPTIONS -Werror) # Warnings are errors
-
-    # temporary hot fix (removes need for commenting out line above when compiling with Clang)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        list(APPEND LUAU_OPTIONS -Wno-unused) # GCC considers variables declared/checked in if() as unused
-    endif()
 endif()
 
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
@@ -96,7 +67,10 @@ target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
 
 if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Repl.CLI PRIVATE ${LUAU_OPTIONS})
-    target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})
+
+    if(NOT EMSCRIPTEN)
+        target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})
+    endif()
 
     target_include_directories(Luau.Repl.CLI PRIVATE extern)
     target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.VM)
@@ -105,10 +79,20 @@ if(LUAU_BUILD_CLI)
         target_link_libraries(Luau.Repl.CLI PRIVATE pthread)
     endif()
 
-    target_link_libraries(Luau.Analyze.CLI PRIVATE Luau.Analysis)
+    if(NOT EMSCRIPTEN)
+        target_link_libraries(Luau.Analyze.CLI PRIVATE Luau.Analysis)
+    endif()
+
+    if(EMSCRIPTEN)
+        # declare exported functions to emscripten
+        target_link_options(Luau.Repl.CLI PRIVATE -sEXPORTED_FUNCTIONS=['_getExceptionFromPtr','_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -sNO_DISABLE_EXCEPTION_CATCHING)
+
+        # custom output directory for wasm + js file
+        set_target_properties(Luau.Repl.CLI PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/docs/assets/luau)
+    endif()
 endif()
 
-if(LUAU_BUILD_TESTS)
+if(LUAU_BUILD_TESTS AND NOT EMSCRIPTEN)
     target_compile_options(Luau.UnitTest PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.UnitTest PRIVATE extern)
     target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Compiler)

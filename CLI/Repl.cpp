@@ -194,6 +194,46 @@ static std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
+#ifdef __EMSCRIPTEN__
+extern "C"
+{
+    // Luau errors are exceptions (see luaD_throw) which cannot be directly
+    // handled by emscripten. However we can recieve the pointer in JS and
+    // pass it through to this method to get the string content of the
+    // exception.
+    const char* getExceptionFromPtr(int ptr)
+    {
+        return reinterpret_cast<std::exception*>(ptr)->what();
+    }
+
+    void executeScript(const char* source)
+    {
+        // setup flags
+        for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+            if (strncmp(flag->name, "Luau", 4) == 0)
+                flag->value = true;
+
+        // create new state
+        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+
+        // setup state
+        setupState(L);
+
+        // run code + collect error
+        std::string error = runCode(L, source);
+
+        // output error(s)
+        if (error.length())
+        {
+            fprintf(stdout, "%s\n", error.c_str());
+        }
+    }
+}
+#endif
+
+// Excluded from emscripten compilation to avoid -Wunused-function errors.
+#ifndef __EMSCRIPTEN__
 static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, std::vector<std::string>& completions)
 {
     std::string_view lookup = editBuffer + start;
@@ -252,41 +292,6 @@ static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::
     lua_getglobal(L, "_G");
     completeIndexer(L, editBuffer, start, completions);
 }
-
-#ifdef LUAU_WEB_REPL
-extern "C"
-{
-    // Luau errors are exceptions (see luaD_throw) which cannot be directly
-    // handled by emscripten. However we can recieve the pointer in JS and
-    // pass it through to this method to get the string content of the
-    // exception.
-    const char* getExceptionFromPtr(int ptr)
-    {
-        return reinterpret_cast<std::exception*>(ptr)->what();
-    }
-
-    void executeScript(const char* source)
-    {
-        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
-        lua_State* L = globalState.get();
-
-        setupState(L);
-
-        luaL_sandboxthread(L);
-
-        linenoise::SetCompletionCallback([L](const char* editBuffer, std::vector<std::string>& completions) {
-            completeRepl(L, editBuffer, completions);
-        });
-
-        std::string error = runCode(L, source);
-
-        if (error.length())
-        {
-            fprintf(stdout, "%s\n", error.c_str());
-        }
-    }
-}
-#endif
 
 static void runRepl()
 {
@@ -459,7 +464,6 @@ static int assertionHandler(const char* expr, const char* file, int line)
     return 1;
 }
 
-#ifndef LUAU_WEB_REPL
 int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
