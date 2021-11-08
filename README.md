@@ -31,7 +31,7 @@ cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
 cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
 ```
 
-Alternatively, on Linus/macOS you can use make:
+Alternatively, on Linux/macOS you can use make:
 
 ```sh
 make config=release luau luau-analyze
