@@ -22,7 +22,7 @@ static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
 
-static const char* kSpecialGlobals[] = {"Game", "Workspace", "_G", "game", "plugin", "script", "shared", "workspace"};
+static const char* kSpecialGlobals[] = {"_G"};
 
 CompileError::CompileError(const Location& location, const std::string& message)
     : location(location)
