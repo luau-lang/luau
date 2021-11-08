@@ -3707,25 +3707,19 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
     if (FFlag::LuauGenericSpecialGlobals)
     {
-        AstName name = names.get("_G");
-
-        if (name.value)
+        if (AstName name = names.get("_G"); name.value)
             compiler.globals[name].writable = true;
 
         if (options.mutableGlobalNames)
             for (const char** ptr = options.mutableGlobalNames; *ptr != NULL; ++ptr)
             {
-                AstName name = names.get(*ptr);
-
-                if (name.value)
+                if (AstName name = names.get(*ptr); name.value)
                     compiler.globals[name].writable = true;
             }
     } else {
         for (const char* global : kSpecialGlobals)
         {
-            AstName name = names.get(global);
-
-            if (name.value)
+            if (AstName name = names.get(global); name.value)
                 compiler.globals[name].writable = true;
         }
     }
