@@ -449,7 +449,8 @@ LUALIB_API int luaopen_base(lua_State* L)
 
     /* open lib into global table */
     luaL_register(L, "_G", base_funcs);
-    lua_pushliteral(L, "Luau");
+    lua_pushliteral(L, "Luau 0.503"); /* set _VERSION to display the version of Luau currently in use */
+
     lua_setglobal(L, "_VERSION"); /* set global _VERSION */
 
     /* `ipairs' and `pairs' need auxiliary functions as upvalues */
