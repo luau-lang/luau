@@ -102,7 +102,6 @@ jobs:
     - name: build
       run: |
         cmake --build . --target Luau.Repl.CLI --config Debug # as seen above but only Repl.CLI.
-    - name: upload-artifacts
     - uses: actions/upload-artifact@v2
       with:
         name: luau-web-artifacts
