@@ -20,8 +20,9 @@
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
 // If luauF_* succeeds, it needs to return *all* requested arguments, filling results with nil as appropriate.
 // On input, nparams refers to the actual number of arguments (0+), whereas nresults contains LUA_MULTRET for arbitrary returns or 0+ for a
-// fixed-length return Because of this, and the fact that "extra" returned values will be ignored, implementations below typically check that nresults
-// is <= expected number, which covers the LUA_MULTRET case.
+// fixed-length return
+// Because of this, and the fact that "extra" returned values will be ignored, implementations below typically check that nresults is <= expected
+// number, which covers the LUA_MULTRET case.
 
 static int luauF_assert(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
