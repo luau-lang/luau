@@ -3673,8 +3673,6 @@ RETURN R0 0
 
 TEST_CASE("LuauGenericSpecialGlobals")
 {
-    FFlag::LuauGenericSpecialGlobals.value = false;
-
     const char* source = R"(
 print()
 Game.print()
@@ -3687,8 +3685,11 @@ shared.print()
 workspace.print()
 )";
 
-    // Check Roblox globals are here
-    CHECK_EQ("\n" + compileFunction0(source), R"(
+    {
+        ScopedFastFlag genericSpecialGlobals{"LuauGenericSpecialGlobals", false};
+
+        // Check Roblox globals are here
+        CHECK_EQ("\n" + compileFunction0(source), R"(
 GETIMPORT R0 1
 CALL R0 0 0
 GETIMPORT R1 3
@@ -3717,8 +3718,9 @@ GETTABLEKS R0 R1 K0
 CALL R0 0 0
 RETURN R0 0
 )");
+    }
 
-    FFlag::LuauGenericSpecialGlobals.value = true;
+    ScopedFastFlag genericSpecialGlobals{"LuauGenericSpecialGlobals", true};
 
     // Check Roblox globals are no longer here
     CHECK_EQ("\n" + compileFunction0(source), R"(
