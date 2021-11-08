@@ -3716,7 +3716,9 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
                 if (AstName name = names.get(*ptr); name.value)
                     compiler.globals[name].writable = true;
             }
-    } else {
+    }
+    else
+    {
         for (const char* global : kSpecialGlobals)
         {
             if (AstName name = names.get(global); name.value)
