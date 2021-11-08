@@ -160,9 +160,6 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
     {
         std::vector<std::string> hotcomments;
 
-        if (p.lexer.current().type == '#' && p.lexer.lookahead().type == '!')
-            p.lexer.nextline();
-
         while (isComment(p.lexer.current()) || (FFlag::LuauCaptureBrokenCommentSpans && p.lexer.current().type == Lexeme::BrokenComment))
         {
             const char* text = p.lexer.current().data;

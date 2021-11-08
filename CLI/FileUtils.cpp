@@ -67,6 +67,17 @@ std::optional<std::string> readFile(const std::string& name)
     if (read != size_t(length))
         return std::nullopt;
 
+    // Skip first line if it's a comment
+    if (length != 0 && result[0] == '#')
+    {
+        auto newLine = result.find('\n');
+
+        if (newLine != std::string::npos)
+            result.erase(0, newLine);
+        else
+            result.clear();
+    }
+
     return result;
 }
 
