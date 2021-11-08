@@ -48,7 +48,7 @@ typedef struct lua_TValue
 {
     Value value;
     int extra;
-    int tt;
+    uint8_t tt;
 } TValue;
 
 /* Macros to test type */

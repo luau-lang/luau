@@ -58,7 +58,7 @@ typedef void* (*lua_Alloc)(lua_State* L, void* ud, void* ptr, size_t osize, size
  * grep "ORDER TYPE"
  */
 // clang-format off
-enum lua_Type
+enum lua_Type: uint8_t
 {
     LUA_TNIL = 0,     /* must be 0 due to lua_isnoneornil */
     LUA_TBOOLEAN = 1, /* must be 1 due to l_isfalse */
