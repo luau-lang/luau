@@ -13,8 +13,8 @@
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresFenv, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresUpval, false)
+LUAU_FASTFLAGVARIABLE(LuauGenericSpecialGlobals, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
-LUAU_FASTFLAG(LuauGenericSpecialGlobals)
 
 namespace Luau
 {
