@@ -3710,7 +3710,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     }
 
     if (options.mutableGlobalNames)
-        for (const char** ptr = options.mutableGlobalNames; ptr; ptr += sizeof(const char*))
+        for (const char** ptr = options.mutableGlobalNames; *ptr != NULL; ptr += sizeof(const char*))
         {
             AstName name = names.get(*ptr);
 
