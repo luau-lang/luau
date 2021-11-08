@@ -346,6 +346,8 @@ struct lua_Debug
  * can only be changed when the VM is not running any code */
 struct lua_Callbacks
 {
+    void* userdata; /* arbitrary userdata pointer that is never overwritten by Luau */
+
     void (*interrupt)(lua_State* L, int gc);  /* gets called at safepoints (loop back edges, call/ret, gc) if set */
     void (*panic)(lua_State* L, int errcode); /* gets called when an unprotected error is raised (if longjmp is used) */
 
@@ -356,8 +358,6 @@ struct lua_Callbacks
     void (*debugstep)(lua_State* L, lua_Debug* ar);      /* gets called after each instruction in single step mode */
     void (*debuginterrupt)(lua_State* L, lua_Debug* ar); /* gets called when thread execution is interrupted by break in another thread */
     void (*debugprotectederror)(lua_State* L);           /* gets called when protected call results in an error */
-
-    void* userdata; /* arbitrary userdata pointer that is never overwritten by Luau */
 };
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
