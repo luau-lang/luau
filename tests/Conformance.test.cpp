@@ -683,7 +683,7 @@ TEST_CASE("Reference")
 
 TEST_CASE("ApiFunctionCalls")
 {
-    StateRef globalState = runConformance("apicalls.lua");
+    StateRef globalState = runConformance("apicalls.luau");
     lua_State* L = globalState.get();
 
     lua_getfield(L, LUA_GLOBALSINDEX, "add");

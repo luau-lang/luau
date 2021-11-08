@@ -63,7 +63,7 @@ assert(baz(1, "n") == "baz")
 assert(baz(2, "n") == "") -- main/anonymous
 assert(baz(3, "n") == nil)
 assert(baz(0, "s") == "[C]")
-assert(baz(1, "s") == "debug.lua")
+assert(baz(1, "s") == "debug.luau")
 assert(baz(0, "l") == -1)
 assert(baz(1, "l") > 42)
 assert(baz(0, "f") == debug.info)
