@@ -13,6 +13,12 @@
 
 #include <memory>
 
+enum class CompileFormat
+{
+    Default,
+    Binary
+};
+
 static int lua_loadstring(lua_State* L)
 {
     size_t l = 0;
@@ -370,7 +376,7 @@ static void reportError(const char* name, const Luau::CompileError& error)
     report(name, error.getLocation(), "CompileError", error.what());
 }
 
-static bool compileFile(const char* name)
+static bool compileFile(const char* name, CompileFormat format)
 {
     std::optional<std::string> source = readFile(name);
     if (!source)
@@ -387,40 +393,15 @@ static bool compileFile(const char* name)
 
         Luau::compileOrThrow(bcb, *source);
 
-        printf("%s", bcb.dumpEverything().c_str());
-
-        return true;
-    }
-    catch (Luau::ParseErrors& e)
-    {
-        for (auto& error : e.getErrors())
-            reportError(name, error);
-        return false;
-    }
-    catch (Luau::CompileError& e)
-    {
-        reportError(name, e);
-        return false;
-    }
-}
-
-static bool dumpFile(const char* name) {
-    std::optional<std::string> source = readFile(name);
-    if (!source)
-    {
-        printf("Error opening %s\n", name);
-        return false;
-    }
-
-    try
-    {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, *source);
-
-        std::string Bytecode = bcb.getBytecode();
-        std::ofstream out("luau.out");
-        out << Bytecode;
-        out.close();
+        switch (format)
+        {
+        case CompileFormat::Default:
+            printf("%s", bcb.dumpEverything().c_str());
+            break;
+        case CompileFormat::Binary:
+            printf("%s", bcb.getBytecode().data());
+            break;
+        }
 
         return true;
     }
@@ -445,8 +426,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available modes:\n");
     printf("  omitted: compile and run input files one by one\n");
-    printf("  --compile: compile input files and output resulting bytecode\n");
-    printf("  --binary: compile input file and save binary bytecode blob to luau.out\n");
+    printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary or text)\n");
     printf("\n");
     printf("Available options:\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
@@ -478,16 +458,7 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (argc >= 2 && strcmp(argv[1], "--binary") == 0) {
-        if (!argv[2]) {
-            printf("Please input a file\n");
-            return 1;
-        }
-
-        return !dumpFile(argv[2]);
-    }
-
-    if (argc >= 2 && strcmp(argv[1], "--compile") == 0)
+    if (argc >= 2 && strcmp(argv[1], "--compile=text") == 0 || strcmp(argv[1], "--compile") == 0)
     {
         int failed = 0;
 
@@ -500,12 +471,37 @@ int main(int argc, char** argv)
             {
                 traverseDirectory(argv[i], [&](const std::string& name) {
                     if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !compileFile(name.c_str());
+                        failed += !compileFile(name.c_str(), CompileFormat::Default);
                 });
             }
             else
             {
-                failed += !compileFile(argv[i]);
+                failed += !compileFile(argv[i], CompileFormat::Default);
+            }
+        }
+
+        return failed;
+    }
+
+    if (argc >= 2 && strcmp(argv[1], "--compile=binary") == 0)
+    {
+        int failed = 0;
+
+        for (int i = 2; i < argc; ++i)
+        {
+            if (argv[i][0] == '-')
+                continue;
+
+            if (isDirectory(argv[i]))
+            {
+                traverseDirectory(argv[i], [&](const std::string& name) {
+                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                        failed += !compileFile(name.c_str(), CompileFormat::Binary);
+                });
+            }
+            else
+            {
+                failed += !compileFile(argv[i], CompileFormat::Binary);
             }
         }
 
