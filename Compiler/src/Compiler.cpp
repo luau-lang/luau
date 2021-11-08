@@ -1277,7 +1277,7 @@ struct Compiler
     {
         const Global* global = globals.find(expr->name);
 
-        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->special));
+        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->writable));
     }
 
     void compileExprIndexName(AstExprIndexName* expr, uint8_t target)
@@ -3447,7 +3447,7 @@ struct Compiler
 
     struct Global
     {
-        bool special = false;
+        bool writable = false;
         bool written = false;
     };
 
@@ -3505,7 +3505,7 @@ struct Compiler
             {
                 Global* g = globals.find(object->name);
 
-                return !g || (!g->special && !g->written) ? Builtin{object->name, expr->index} : Builtin();
+                return !g || (!g->writable && !g->written) ? Builtin{object->name, expr->index} : Builtin();
             }
             else
             {
@@ -3709,7 +3709,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
         AstName name = names.get(global);
 
         if (name.value)
-            compiler.globals[name].special = true;
+            compiler.globals[name].writable = true;
     }
 
     if (options.mutableGlobalNames)
@@ -3718,7 +3718,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
             AstName name = names.get(*ptr);
 
             if (name.value)
-                compiler.globals[name].special = true;
+                compiler.globals[name].writable = true;
         }
 
     // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
