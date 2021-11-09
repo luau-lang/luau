@@ -204,6 +204,9 @@ extern "C"
 {
     const char* executeScript(const char* source)
     {
+        // static string for caching result (prevents dangling ptr on function exit)
+        static std::string result;
+
         // setup flags
         for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
             if (strncmp(flag->name, "Luau", 4) == 0)
@@ -221,9 +224,8 @@ extern "C"
 
         // run code + collect error
         std::string error = runCode(L, source);
-
-        // output error(s)
-        static std::string result = error;
+        result  = error;
+        
         if (error.length())
         {
             return result.c_str();
