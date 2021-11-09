@@ -14,8 +14,8 @@
 #include <memory>
 
 #ifdef _WIN32
-    #include <io.h>
-    #include <fcntl.h>
+#include <io.h>
+#include <fcntl.h>
 #endif
 
 enum class CompileFormat
@@ -404,12 +404,7 @@ static bool compileFile(const char* name, CompileFormat format)
             printf("%s", bcb.dumpEverything().c_str());
             break;
         case CompileFormat::Binary:
-            #ifdef _WIN32
-                _setmode(_fileno(stdout), _O_BINARY);
-            #endif
-
-            std::string Bytecode = bcb.getBytecode();
-            fwrite(Bytecode.c_str(), 1, Bytecode.size(), stdout);
+            fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
             break;
         }
 
@@ -470,13 +465,16 @@ int main(int argc, char** argv)
 
 
     if (argc >= 2 && strncmp(argv[1], "--compile", strlen("--compile")) == 0)
-    {   
+    {
         CompileFormat format = CompileFormat::Default;
 
-        if (strcmp(argv[1], "--compile=binary") == 0) 
-        {
+        if (strcmp(argv[1], "--compile=binary") == 0)
             format = CompileFormat::Binary;
-        }
+
+#ifdef _WIN32
+        if (format == CompileFormat::Binary)
+            _setmode(_fileno(stdout), _O_BINARY);
+#endif
 
         int failed = 0;
 
@@ -488,7 +486,9 @@ int main(int argc, char** argv)
             if (isDirectory(argv[i]))
             {
                 traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                    if (name.length() > 5 && name.rfind(".luau") == name.length() - 5)
+                        failed += !compileFile(name.c_str(), format);
+                    else if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
                         failed += !compileFile(name.c_str(), format);
                 });
             }
