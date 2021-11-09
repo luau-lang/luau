@@ -223,9 +223,10 @@ extern "C"
         std::string error = runCode(L, source);
 
         // output error(s)
+        static std::string result = error;
         if (error.length())
         {
-            return std::move(error.c_str());
+            return result.c_str();
         }
         return NULL;
     }

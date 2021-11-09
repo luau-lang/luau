@@ -33,3 +33,31 @@ jobs:
       with:
         name: luau-${{matrix.os}}
         path: Release\luau*.exe
+  web:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: setup emsdk
+      uses: mymindstorm/setup-emsdk@v9
+      with:
+        version: 1.38.40
+        actions-cache-folder: 'emsdk-cache'
+    - name: verify emsdk
+      run: |
+        emcc -v # verify emscripten installed successfully
+    - name: cmake configure
+      run: |
+        emcmake cmake .
+    - name: build
+      run: |
+        cmake --build . --target Luau.Repl.CLI --config Debug # as seen above but only Repl.CLI.
+    - uses: actions/upload-artifact@v2
+      with:
+        name: luau.wasm
+        path: docs/assets/luau/luau.wasm
+        if-no-files-found: error
+    - uses: actions/upload-artifact@v2
+      with:
+        name: luau.js
+        path: docs/assets/luau/luau.js
+        if-no-files-found: error
