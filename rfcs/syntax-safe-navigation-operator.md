@@ -77,9 +77,9 @@ Failing the nil-safety check early would make the entire expression nil, for ins
 The list of valid operators to follow the safe navigation operator would be:
 
 ```lua
-dog?.name == if dog == nil then nil else dog.name
-dog?.getName() == if dog == nil then nil else dog.getName()
-dog?:getName(args) == if dog == nil then nil else dog:getName(args)
+dog?.name --[[ is the same as ]] if dog == nil then nil else dog.name
+dog?.getName() --[[ is the same as ]] if dog == nil then nil else dog.getName()
+dog?:getName(args) --[[ is the same as ]] if dog == nil then nil else dog:getName(args)
 ```
 
 When using safe navigation to call a function, the short circuiting will prevent the arguments from being evaluated in the case of nil.
