@@ -13,6 +13,11 @@
 
 #include <memory>
 
+#ifdef _WIN32
+    #include <io.h>
+    #include <fcntl.h>
+#endif
+
 enum class CompileFormat
 {
     Default,
@@ -399,7 +404,12 @@ static bool compileFile(const char* name, CompileFormat format)
             printf("%s", bcb.dumpEverything().c_str());
             break;
         case CompileFormat::Binary:
-            printf("%s", bcb.getBytecode().data());
+            #ifdef _WIN32
+                _setmode(_fileno(stdout), _O_BINARY);
+            #endif
+
+            std::string Bytecode = bcb.getBytecode();
+            fwrite(Bytecode.c_str(), 1, Bytecode.size(), stdout);
             break;
         }
 
@@ -458,33 +468,16 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if ((argc >= 2 && strcmp(argv[1], "--compile=text") == 0) || strcmp(argv[1], "--compile") == 0)
-    {
-        int failed = 0;
 
-        for (int i = 2; i < argc; ++i)
+    if (argc >= 2 && strncmp(argv[1], "--compile", strlen("--compile")) == 0)
+    {   
+        CompileFormat format = CompileFormat::Default;
+
+        if (strcmp(argv[1], "--compile=binary") == 0) 
         {
-            if (argv[i][0] == '-')
-                continue;
-
-            if (isDirectory(argv[i]))
-            {
-                traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !compileFile(name.c_str(), CompileFormat::Default);
-                });
-            }
-            else
-            {
-                failed += !compileFile(argv[i], CompileFormat::Default);
-            }
+            format = CompileFormat::Binary;
         }
 
-        return failed;
-    }
-
-    if (argc >= 2 && strcmp(argv[1], "--compile=binary") == 0)
-    {
         int failed = 0;
 
         for (int i = 2; i < argc; ++i)
@@ -496,12 +489,12 @@ int main(int argc, char** argv)
             {
                 traverseDirectory(argv[i], [&](const std::string& name) {
                     if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !compileFile(name.c_str(), CompileFormat::Binary);
+                        failed += !compileFile(name.c_str(), format);
                 });
             }
             else
             {
-                failed += !compileFile(argv[i], CompileFormat::Binary);
+                failed += !compileFile(argv[i], format);
             }
         }
 
