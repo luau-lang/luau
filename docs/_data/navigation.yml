@@ -27,3 +27,7 @@ pages:
     url: /profile
   - title: Library
     url: /library
+
+# Remove demo pages until solution is found
+#  - title: Demo
+#    url: /demo

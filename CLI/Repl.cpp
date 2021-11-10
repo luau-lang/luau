@@ -198,6 +198,11 @@ static std::string runCode(lua_State* L, const std::string& source)
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
 
+#ifdef __EMSCRIPTEN__
+        // nicer formatting for errors in web repl
+        error = "Error:" + error;
+#endif
+
         fprintf(stdout, "%s", error.c_str());
     }
 
@@ -205,6 +210,44 @@ static std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
+#ifdef __EMSCRIPTEN__
+extern "C"
+{
+    const char* executeScript(const char* source)
+    {
+        // static string for caching result (prevents dangling ptr on function exit)
+        static std::string result;
+
+        // setup flags
+        for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+            if (strncmp(flag->name, "Luau", 4) == 0)
+                flag->value = true;
+
+        // create new state
+        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+
+        // setup state
+        setupState(L);
+
+        // sandbox thread
+        luaL_sandboxthread(L);
+
+        // run code + collect error
+        std::string error = runCode(L, source);
+        result  = error;
+        
+        if (error.length())
+        {
+            return result.c_str();
+        }
+        return NULL;
+    }
+}
+#endif
+
+// Excluded from emscripten compilation to avoid -Wunused-function errors.
+#ifndef __EMSCRIPTEN__
 static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, std::vector<std::string>& completions)
 {
     std::string_view lookup = editBuffer + start;
@@ -547,3 +590,4 @@ int main(int argc, char** argv)
         return failed;
     }
 }
+#endif
