@@ -351,6 +351,30 @@ local onlyString: string = stringOrNumber -- ok
 local onlyNumber: number = stringOrNumber -- not ok
 ```
 
+## Typecasts
+
+Expressions may be typecast using `::`.  Typecasting is useful for specifying the type of an expression when the automatically inferred type is too generic.
+
+For example, consider the following table constructor where the intent is to store a table of names:
+```lua
+local myTable = {names = {}}
+table.insert(myTable.names, 42)         -- Inserting a number ought to cause a type error, but doesn't
+```
+
+In order to specify the type of the `names` table a typecast may be used: 
+
+```lua
+local myTable = {names = {} :: {string}}
+table.insert(myTable.names, 42)         -- not ok, invalid 'number' to 'string' conversion
+```
+
+A typecast itself is also type checked to ensure the conversion specified is a valid one:
+```lua
+local number = 1
+local value = number :: any             -- ok, 'number' is a subtype of 'any'
+local flag = number :: boolean          -- not ok, invalid 'number' to 'boolean' conversion
+```
+
 ## Roblox types
 
 Roblox supports a rich set of classes and data types, [documented here](https://developer.roblox.com/en-us/api-reference). All of them are readily available for the type checker to use by their name (e.g. `Part` or `RaycastResult`).
@@ -397,3 +421,10 @@ return module
 ```
 
 There are some caveats here though. For instance, the require path must be resolvable statically, otherwise Luau cannot accurately type check it.
+
+### Cyclic module dependencies
+
+Cyclic module dependencies can cause problems for the type checker.  In order to break a module dependency cycle a typecast of the module to `any` may be used:
+```lua
+local myModule = require(MyModule) :: any
+```
