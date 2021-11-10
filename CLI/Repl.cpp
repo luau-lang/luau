@@ -13,6 +13,17 @@
 
 #include <memory>
 
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+enum class CompileFormat
+{
+    Default,
+    Binary
+};
+
 static int lua_loadstring(lua_State* L)
 {
     size_t l = 0;
@@ -204,6 +215,9 @@ extern "C"
 {
     const char* executeScript(const char* source)
     {
+        // static string for caching result (prevents dangling ptr on function exit)
+        static std::string result;
+
         // setup flags
         for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
             if (strncmp(flag->name, "Luau", 4) == 0)
@@ -221,11 +235,11 @@ extern "C"
 
         // run code + collect error
         std::string error = runCode(L, source);
-
-        // output error(s)
+        result  = error;
+        
         if (error.length())
         {
-            return std::move(error.c_str());
+            return result.c_str();
         }
         return NULL;
     }
@@ -410,7 +424,7 @@ static void reportError(const char* name, const Luau::CompileError& error)
     report(name, error.getLocation(), "CompileError", error.what());
 }
 
-static bool compileFile(const char* name)
+static bool compileFile(const char* name, CompileFormat format)
 {
     std::optional<std::string> source = readFile(name);
     if (!source)
@@ -427,7 +441,15 @@ static bool compileFile(const char* name)
 
         Luau::compileOrThrow(bcb, *source);
 
-        printf("%s", bcb.dumpEverything().c_str());
+        switch (format)
+        {
+        case CompileFormat::Default:
+            printf("%s", bcb.dumpEverything().c_str());
+            break;
+        case CompileFormat::Binary:
+            fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
+            break;
+        }
 
         return true;
     }
@@ -452,7 +474,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available modes:\n");
     printf("  omitted: compile and run input files one by one\n");
-    printf("  --compile: compile input files and output resulting bytecode\n");
+    printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary or text)\n");
     printf("\n");
     printf("Available options:\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
@@ -484,8 +506,19 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (argc >= 2 && strcmp(argv[1], "--compile") == 0)
+
+    if (argc >= 2 && strncmp(argv[1], "--compile", strlen("--compile")) == 0)
     {
+        CompileFormat format = CompileFormat::Default;
+
+        if (strcmp(argv[1], "--compile=binary") == 0)
+            format = CompileFormat::Binary;
+
+#ifdef _WIN32
+        if (format == CompileFormat::Binary)
+            _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
         int failed = 0;
 
         for (int i = 2; i < argc; ++i)
@@ -496,13 +529,15 @@ int main(int argc, char** argv)
             if (isDirectory(argv[i]))
             {
                 traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !compileFile(name.c_str());
+                    if (name.length() > 5 && name.rfind(".luau") == name.length() - 5)
+                        failed += !compileFile(name.c_str(), format);
+                    else if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
+                        failed += !compileFile(name.c_str(), format);
                 });
             }
             else
             {
-                failed += !compileFile(argv[i]);
+                failed += !compileFile(argv[i], format);
             }
         }
 

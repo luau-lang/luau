@@ -8,7 +8,7 @@ To get started with Luau you need to use `luau` command line binary to run your 
 
 ## Creating a script
 
-To create your own testing script, create a new file with `.lua` as the extension:
+To create your own testing script, create a new file with `.luau` as the extension:
 
 ```lua
 function ispositive(x)
@@ -26,7 +26,7 @@ print(isfoo("bar"))
 print(isfoo(1))
 ```
 
-You can now run the file using `luau test.lua` and analyze it using `luau-analyze test.lua`.
+You can now run the file using `luau test.luau` and analyze it using `luau-analyze test.luau`.
 
 Note that there are no warnings about calling ``ispositive()`` with a string, or calling ``isfoo()`` a number. This is because the type checking uses non-strict mode by default, which is lenient in how it infers types used by the program.
 
@@ -52,8 +52,8 @@ In this case, Luau will use the ``return x > 0`` statement to infer that ``ispos
 Based on Luau's type inference, the analysis tool will now flag the incorrect call to ``ispositive()``:
 
 ```
-$ luau-analyze test.lua
-test.lua(7,18): TypeError: Type 'string' could not be converted into 'number'
+$ luau-analyze test.luau
+test.luau(7,18): TypeError: Type 'string' could not be converted into 'number'
 ```
 
 ## Annotations
@@ -92,9 +92,9 @@ result = ispositive(1)
 Oops -- we're returning string values, but we forgot to update the function return type. Since we've told Luau that ``ispositive()`` returns a boolean (and that's how we're using it), the call site isn't flagged as an error. But because the annotation doesn't match our code, we get a warning in the function body itself:
 
 ```
-$ luau-analyze test.lua
-test.lua(5,9): TypeError: Type 'string' could not be converted into 'boolean'
-test.lua(7,9): TypeError: Type 'string' could not be converted into 'boolean'
+$ luau-analyze test.luau
+test.luau(5,9): TypeError: Type 'string' could not be converted into 'boolean'
+test.luau(7,9): TypeError: Type 'string' could not be converted into 'boolean'
 ```
 
 The fix is simple; just change the annotation to declare the return type as a string:
@@ -117,8 +117,8 @@ result = ispositive(1)
 Well, almost - since we declared ``result`` as a boolean, the call site is now flagged:
 
 ```
-$ luau-analyze test.lua
-test.lua(12,10): TypeError: Type 'string' could not be converted into 'boolean'
+$ luau-analyze test.luau
+test.luau(12,10): TypeError: Type 'string' could not be converted into 'boolean'
 ```
 
 If we update the type of the local variable, everything is good. Note that we could also just let Luau infer the type of ``result`` by changing it to the single line version ``local result = ispositive(1)``.
