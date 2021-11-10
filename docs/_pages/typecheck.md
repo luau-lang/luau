@@ -368,11 +368,11 @@ local myTable = {names = {} :: {string}}
 table.insert(myTable.names, 42)         -- not ok, invalid 'number' to 'string' conversion
 ```
 
-A typecast itself is also type checked to ensure the conversion specified is a valid one:
+A typecast itself is also type checked to ensure the conversion is made to a subtype of the expression's type or `any`:
 ```lua
-local number = 1
-local value = number :: any             -- ok, 'number' is a subtype of 'any'
-local flag = number :: boolean          -- not ok, invalid 'number' to 'boolean' conversion
+local numericValue = 1
+local value = numericValue :: any             -- ok, all expressions may be cast to 'any'
+local flag = numericValue :: boolean          -- not ok, invalid 'number' to 'boolean' conversion
 ```
 
 ## Roblox types
