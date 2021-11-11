@@ -93,10 +93,10 @@ local name = "world"
 print`Hello {world}`
 ```
 
-Since the string interpolation expression is going to be lowered into a `string.format` call, we'll also need to extend `string.format`. The bare minimum to support the lowering is to add a new token whose definition is to perform a `tostring` call. `%a` is currently an invalid token, so this is a backward compatible extension. `%a` will have the same behavior as if `tostring` was called.
+Since the string interpolation expression is going to be lowered into a `string.format` call, we'll also need to extend `string.format`. The bare minimum to support the lowering is to add a new token whose definition is to perform a `tostring` call. `%*` is currently an invalid token, so this is a backward compatible extension. This RFC shall define `%*` to have the same behavior as if `tostring` was called.
 
 ```lua
-print(string.format("%a %a", 1, 2))
+print(string.format("%* %*", 1, 2))
 --> 1 2
 ```
 
@@ -106,16 +106,16 @@ The offset must always be within bound of the numbers of values passed to `strin
 local function return_one_thing() return "hi" end
 local function return_two_nils() return nil, nil end
 
-print(string.format("%a", return_one_thing()))
+print(string.format("%*", return_one_thing()))
 --> "hi"
 
-print(string.format("%a", Set.new({1, 2, 3})))
+print(string.format("%*", Set.new({1, 2, 3})))
 --> {1, 2, 3}
 
-print(string.format("%a %a", return_two_nils()))
+print(string.format("%* %*", return_two_nils()))
 --> nil nil
 
-print(string.format("%a %a %a", return_two_nils()))
+print(string.format("%* %* %*", return_two_nils()))
 --> error: value #3 is missing, got 2
 ```
 
@@ -127,7 +127,7 @@ If we were to naively compile the expression into a `string.format` call, then i
 
 ## Alternatives
 
-Rather than coming up with a new syntax (which doesn't help issue #5 and #6) and extending `string.format` to accept `%a`, we could just make `%s` call `tostring` and be done. However, doing so would cause programs to be more lenient and the type checker would have no way to infer strings from a `string.format` call. To preserve that, we would need a different token anyway.
+Rather than coming up with a new syntax (which doesn't help issue #5 and #6) and extending `string.format` to accept an extra token, we could just make `%s` call `tostring` and be done. However, doing so would cause programs to be more lenient and the type checker would have no way to infer strings from a `string.format` call. To preserve that, we would need a different token anyway.
 
 Language   | Syntax                | Conclusion
 ----------:|:----------------------|:-----------
@@ -137,6 +137,4 @@ Ruby       | `"Hello #{name}"`     | Rejected because it changes the meaning of 
 JavaScript | `` `Hello ${name}` `` | Viable option as long as we don't intend to use backticks for other purposes.
 C#         | `$"Hello {name}"`     | Viable option and guarantees no ambiguities with future syntax.
 
-This leaves us with only two syntax that already exists in other programming languages. The current proposal are for backticks, so the only backward compatible alternative are `$""` literals. We don't necessarily need to use `$` symbol here, but if we were to choose a different symbol, `#` cannot be used.
-
-I picked backticks because it doesn't require us to add a stack of closing delimiters in the lexer to make sure each nested string interpolation literals are correctly closed with its opening pair. You only have to count them.
+This leaves us with only two syntax that already exists in other programming languages. The current proposal are for backticks, so the only backward compatible alternative are `$""` literals. We don't necessarily need to use `$` symbol here, but if we were to choose a different symbol, `#` cannot be used. I picked backticks because it doesn't require us to add a stack of closing delimiters in the lexer to make sure each nested string interpolation literals are correctly closed with its opening pair. You only have to count them.
