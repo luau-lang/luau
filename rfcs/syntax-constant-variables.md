@@ -41,6 +41,8 @@ const foo = 1
 foo = 5 -- error here
 ```
 
+Shadowing a constant would not be supported because it goes against the idea of a constant and variable shadowing is widely considered to be a mistake when it occurs (Luau has a lint against doing this). This is inconsistent with how normal variables function, but mistakes should not be repeated just for the sake of consistency.
+
 ---
 
 There would be no type restrictions for what could be set as a constant. Given that tables and userdata **must** be allowed as constants for them to be useful, there isn't much of a point in restricting what types can be set as a constant. Userdata must be allowed because almost every useful datatype in Roblox is a userdata under the hood, and it should be possible to set them as a constant. Tables must be allowed for a very similar reason, as they're a basic part of Luau and a significant amount of user code uses them for custom datatypes.
