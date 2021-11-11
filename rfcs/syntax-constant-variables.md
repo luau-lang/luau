@@ -65,7 +65,7 @@ The semantics of the proposed implementation may be confusing to people. Constan
 
 Python does not have constants and relies upon convention to indicate what is and isn't a constant. This is what Luau currently does. This has the drawback of making users trust that a 'constant' isn't ever changed, which isn't always easy to verify. It is however very practical provided every user obeys the suggestion of not modifying constants.
 
-JavaScript *does* have constants that are declared in a similar manner (`const foo = bar;`) but have a caveat: constants are not immutable, they are effectively just read-only variables. This is basically worse than nothing and not worth the parsing and runtime cost since it comes with almost none of the benefits and all of the downsides. Most interpreted languages that have constants are either this or worse (Ruby, as an example, doesn't even make the variable readonly)
+JavaScript *does* have constants that are declared in a similar manner (`const foo = bar;`) but have a caveat: constants are not immutable, they are effectively just read-only variables. This is basically the same as this proposal but without freezing tables, meaning it has all of the drawbacks of this implementation but relatively few advantages. Most interpreted languages that have constants are either this or worse (Ruby, as an example, doesn't even make the variable readonly).
 
 Constants could be limited to primitives and perhaps tables, guaranteeing that they are real constants and potentially allowing for compiler optimizations that aren't possible with arbitrary data type support. The usability limitation prevented this from being seriously considered, as not supporting userdata is considered to be a non-starter.
 
