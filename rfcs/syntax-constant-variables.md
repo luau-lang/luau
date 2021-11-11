@@ -49,17 +49,17 @@ There would be no type restrictions for what could be set as a constant. Given t
 
 Tables should be frozen when they're made constants to try to prevent tampering from other code. This isn't a security concern in of itself since any tables exposed to third parties are already open to being frozen, and people shouldn't be overwriting their own constants to begin with.
 
-Userdata will by their nature be have to left mutable since there's no good way to freeze them (this is also undesirable behavior with far-reaching consequences). In Roblox, userdata is generally immutable anyway (with notable exceptions like Instances) so this is considered acceptable. In the future, it may be possible to lint against writing to userdata, but it will never be possible to prevent it during runtime without being invasive.
+Userdata will by their nature be have to left mutable since there's no good way to freeze them (this is also undesirable behavior with far-reaching consequences). In Roblox, userdata is generally immutable anyway (with notable exceptions like Instances) so this is considered acceptable. In the future, it may be possible to lint against writing to userdata constants, but it will never be possible to prevent it during runtime without being invasive.
 
 Coroutines are problematic under this proposal because they are stateful, and there is currently no suggested remedy for this issue. However, given coroutines are already a fairly advanced feature of Luau, there's probably no significant usability concern to allowing them to be set as a constant.
 
 ## Drawbacks
 
-Constants complicate garbage collection because they are read-only once defined. This prevents things like tables and userdata from being garbage collected properly once declared as constants, which means it is on the user to not box themselves into a corner by defining unnecessary constants. This is mitigated by constants being scoped, but for long-living constants, especially for strings, tables, and userdata, it may be a problem.
+Constants complicate garbage collection because they are read-only once defined. This prevents things like tables and userdata from being garbage collected properly once declared as constants, which means it is on the user to not box themselves into a corner by defining unnecessary constants. This is mitigated by constants being scoped, but for long-living constants, it may be a problem.
 
 This would introduce a new context-sensitive keyword, which complicates parsing and hurts readability in cases like `const const = foo` or `local const = foo`.
 
-The semantics of the proposed implementation may be confusing to people. Constants should be actual constants, but Luau constants would have to not be so strict as to be unusable in environments like Roblox. This has lead to a design like the one proposed, where constants aren't necessarily constants and may in fact be mutable in the case of userdata or may have a state like coroutines.
+The semantics of the proposed implementation may be confusing to people. Constants should be actual constants, but Luau constants would have to not be so strict as to be unusable in environments like Roblox. This has lead to a design like the one proposed, where constants aren't necessarily constants and may in fact be mutable or have a state, as with userdata and coroutines.
 
 ## Alternatives
 
@@ -67,7 +67,7 @@ Python does not have constants and relies upon convention to indicate what is an
 
 JavaScript *does* have constants that are declared in a similar manner (`const foo = bar;`) but have a caveat: constants are not immutable, they are effectively just read-only variables. This is basically the same as this proposal but without freezing tables, meaning it has all of the drawbacks of this implementation but relatively few advantages. Most interpreted languages that have constants are either this or worse (Ruby, as an example, doesn't even make the variable readonly).
 
-Constants could be limited to primitives and perhaps tables, guaranteeing that they are real constants and potentially allowing for compiler optimizations that aren't possible with arbitrary data type support. The usability limitation prevented this from being seriously considered, as not supporting userdata is considered to be a non-starter.
+Constants could be limited to primitives and perhaps tables, guaranteeing that they are real constants and potentially allowing for compiler optimizations that aren't possible with arbitrary data type support. The usability limitation prevented this from being seriously considered, as not supporting userdata is a non-starter.
 
 Freezing userdata was also — briefly — considered but the consequences of this are too severe, especially for environments like Roblox.
 
