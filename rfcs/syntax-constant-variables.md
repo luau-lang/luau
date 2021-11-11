@@ -59,7 +59,7 @@ Constants complicate garbage collection because they are read-only once defined.
 
 This would introduce a new context-sensitive keyword, which complicates parsing and hurts readability in cases like `const const = foo` or `local const = foo`.
 
-The semantics of the proposed implementation may be confusing to people. Constants should be actual constants, but this syntax has to not be so strict as to be unusable in environments like Roblox. This has lead to a design like the one proposed, where constants aren't necessarily constants and may in fact be mutable in the case of userdata or may have a state like coroutines.
+The semantics of the proposed implementation may be confusing to people. Constants should be actual constants, but Luau constants would have to not be so strict as to be unusable in environments like Roblox. This has lead to a design like the one proposed, where constants aren't necessarily constants and may in fact be mutable in the case of userdata or may have a state like coroutines.
 
 ## Alternatives
 
