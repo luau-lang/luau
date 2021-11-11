@@ -496,7 +496,7 @@ static bool canSuggestInferredType(ScopePtr scope, TypeId ty)
         return false;
 
     // No syntax for unnamed tables with a metatable
-    if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+    if (get<MetatableTypeVar>(ty))
         return false;
 
     if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
@@ -688,7 +688,7 @@ static std::optional<bool> functionIsExpectedAt(const Module& module, AstNode* n
 
     TypeId expectedType = follow(*it);
 
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(expectedType))
+    if (get<FunctionTypeVar>(expectedType))
         return true;
 
     if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(expectedType))

@@ -749,9 +749,9 @@ void StateDot::visitChild(TypeId ty, int parentIndex, const char* linkName)
 
     if (opts.duplicatePrimitives && canDuplicatePrimitive(ty))
     {
-        if (const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(ty))
+        if (get<PrimitiveTypeVar>(ty))
             formatAppend(result, "n%d [label=\"%s\"];\n", index, toStringDetailed(ty, {}).name.c_str());
-        else if (const AnyTypeVar* atv = get<AnyTypeVar>(ty))
+        else if (get<AnyTypeVar>(ty))
             formatAppend(result, "n%d [label=\"any\"];\n", index);
     }
     else
@@ -902,19 +902,19 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const AnyTypeVar* atv = get<AnyTypeVar>(ty))
+    else if (get<AnyTypeVar>(ty))
     {
         formatAppend(result, "AnyTypeVar %d", index);
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(ty))
+    else if (get<PrimitiveTypeVar>(ty))
     {
         formatAppend(result, "PrimitiveTypeVar %s", toStringDetailed(ty, {}).name.c_str());
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const ErrorTypeVar* etv = get<ErrorTypeVar>(ty))
+    else if (get<ErrorTypeVar>(ty))
     {
         formatAppend(result, "ErrorTypeVar %d", index);
         finishNodeLabel(ty);
@@ -994,7 +994,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
         finishNodeLabel(tp);
         finishNode();
     }
-    else if (const Unifiable::Error* etp = get<Unifiable::Error>(tp))
+    else if (get<Unifiable::Error>(tp))
     {
         formatAppend(result, "ErrorTypePack %d", index);
         finishNodeLabel(tp);

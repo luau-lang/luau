@@ -216,7 +216,7 @@ bool finite(TypePackId tp)
     if (auto pack = get<TypePack>(tp))
         return pack->tail ? finite(*pack->tail) : true;
 
-    if (auto pack = get<VariadicTypePack>(tp))
+    if (get<VariadicTypePack>(tp))
         return false;
 
     return true;

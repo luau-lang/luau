@@ -2129,7 +2129,7 @@ TypeId TypeChecker::checkRelationalOperation(
         if (!isNonstrictMode() && !isOrOp)
             return ty;
 
-        if (auto i = get<UnionTypeVar>(ty))
+        if (get<UnionTypeVar>(ty))
         {
             std::optional<TypeId> cleaned = tryStripUnionFromNil(ty);
 
