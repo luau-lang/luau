@@ -8,8 +8,6 @@
 #include <optional>
 #include <set>
 
-LUAU_FASTFLAG(LuauAddMissingFollow)
-
 namespace Luau
 {
 
@@ -128,13 +126,10 @@ TypePack* asMutable(const TypePack* tp);
 template<typename T>
 const T* get(TypePackId tp)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tp);
+    LUAU_ASSERT(tp);
 
-        if constexpr (!std::is_same_v<T, BoundTypePack>)
-            LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypePack>)
+        LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
 
     return get_if<T>(&(tp->ty));
 }
@@ -142,13 +137,10 @@ const T* get(TypePackId tp)
 template<typename T>
 T* getMutable(TypePackId tp)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tp);
+    LUAU_ASSERT(tp);
 
-        if constexpr (!std::is_same_v<T, BoundTypePack>)
-            LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypePack>)
+        LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
 
     return get_if<T>(&(asMutable(tp)->ty));
 }

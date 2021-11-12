@@ -171,9 +171,6 @@ TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_classes")
 
 TEST_CASE_FIXTURE(Fixture, "declaring_generic_functions")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
     loadDefinition(R"(
         declare function f<a, b>(a: a, b: b): string
         declare function g<a..., b...>(...: a...): b...

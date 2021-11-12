@@ -263,8 +263,6 @@ public:
      *
      */
     TypeId instantiate(const ScopePtr& scope, TypeId ty, Location location);
-    // Removed by FFlag::LuauRankNTypes
-    TypePackId DEPRECATED_instantiate(const ScopePtr& scope, TypePackId ty, Location location);
 
     // Replace any free types or type packs by `any`.
     // This is used when exporting types from modules, to make sure free types don't leak.
@@ -298,8 +296,6 @@ private:
     // Produce a new free type var.
     TypeId freshType(const ScopePtr& scope);
     TypeId freshType(TypeLevel level);
-    TypeId DEPRECATED_freshType(const ScopePtr& scope, bool canBeGeneric = false);
-    TypeId DEPRECATED_freshType(TypeLevel level, bool canBeGeneric = false);
 
     // Returns nullopt if the predicate filters down the TypeId to 0 options.
     std::optional<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
@@ -326,10 +322,8 @@ private:
     TypePackId addTypePack(std::initializer_list<TypeId>&& ty);
     TypePackId freshTypePack(const ScopePtr& scope);
     TypePackId freshTypePack(TypeLevel level);
-    TypePackId DEPRECATED_freshTypePack(const ScopePtr& scope, bool canBeGeneric = false);
-    TypePackId DEPRECATED_freshTypePack(TypeLevel level, bool canBeGeneric = false);
 
-    TypeId resolveType(const ScopePtr& scope, const AstType& annotation, bool canBeGeneric = false);
+    TypeId resolveType(const ScopePtr& scope, const AstType& annotation);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& types);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypePack& annotation);
     TypeId instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams,

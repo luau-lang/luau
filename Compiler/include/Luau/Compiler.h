@@ -36,6 +36,9 @@ struct CompileOptions
     // global builtin to construct vectors; disabled by default
     const char* vectorLib = nullptr;
     const char* vectorCtor = nullptr;
+
+    // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
+    const char** mutableGlobals = nullptr;
 };
 
 class CompileError : public std::exception

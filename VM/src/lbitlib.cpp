@@ -4,6 +4,8 @@
 
 #include "lnumutils.h"
 
+LUAU_FASTFLAGVARIABLE(LuauBit32Count, false)
+
 #define ALLONES ~0u
 #define NBITS int(8 * sizeof(unsigned))
 
@@ -177,6 +179,44 @@ static int b_replace(lua_State* L)
     return 1;
 }
 
+static int b_countlz(lua_State* L)
+{
+    if (!FFlag::LuauBit32Count)
+        luaL_error(L, "bit32.countlz isn't enabled");
+
+    b_uint v = luaL_checkunsigned(L, 1);
+
+    b_uint r = NBITS;
+    for (int i = 0; i < NBITS; ++i)
+        if (v & (1u << (NBITS - 1 - i)))
+        {
+            r = i;
+            break;
+        }
+
+    lua_pushunsigned(L, r);
+    return 1;
+}
+
+static int b_countrz(lua_State* L)
+{
+    if (!FFlag::LuauBit32Count)
+        luaL_error(L, "bit32.countrz isn't enabled");
+
+    b_uint v = luaL_checkunsigned(L, 1);
+
+    b_uint r = NBITS;
+    for (int i = 0; i < NBITS; ++i)
+        if (v & (1u << i))
+        {
+            r = i;
+            break;
+        }
+
+    lua_pushunsigned(L, r);
+    return 1;
+}
+
 static const luaL_Reg bitlib[] = {
     {"arshift", b_arshift},
     {"band", b_and},
@@ -190,6 +230,8 @@ static const luaL_Reg bitlib[] = {
     {"replace", b_replace},
     {"rrotate", b_rrot},
     {"rshift", b_rshift},
+    {"countlz", b_countlz},
+    {"countrz", b_countrz},
     {NULL, NULL},
 };
 

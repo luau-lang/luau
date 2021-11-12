@@ -10,13 +10,13 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsParserFix, false)
-LUAU_FASTFLAGVARIABLE(LuauParseGenericFunctions, false)
 LUAU_FASTFLAGVARIABLE(LuauCaptureBrokenCommentSpans, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
 LUAU_FASTFLAGVARIABLE(LuauTypeAliasPacks, false)
 LUAU_FASTFLAGVARIABLE(LuauParseTypePackTypeParameters, false)
+LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
+LUAU_FASTFLAGVARIABLE(LuauParseGenericFunctionTypeBegin, false)
 
 namespace Luau
 {
@@ -957,7 +957,7 @@ AstStat* Parser::parseAssignment(AstExpr* initial)
     {
         nextLexeme();
 
-        AstExpr* expr = parsePrimaryExpr(/* asStatement= */ false);
+        AstExpr* expr = parsePrimaryExpr(/* asStatement= */ FFlag::LuauFixAmbiguousErrorRecoveryInAssign);
 
         if (!isExprLValue(expr))
             expr = reportExprError(expr->location, copy({expr}), "Assigned expression must be a variable or a field");
@@ -995,7 +995,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 {
     Location start = matchFunction.location;
 
-    auto [generics, genericPacks] = parseGenericTypeListIfFFlagParseGenericFunctions();
+    auto [generics, genericPacks] = parseGenericTypeList();
 
     Lexeme matchParen = lexer.current();
     expectAndConsume('(', "function");
@@ -1343,19 +1343,18 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
 {
     incrementRecursionCounter("type annotation");
 
-    bool monomorphic = !(FFlag::LuauParseGenericFunctions && lexer.current().type == '<');
-
-    auto [generics, genericPacks] = parseGenericTypeListIfFFlagParseGenericFunctions();
+    bool monomorphic = lexer.current().type != '<';
 
     Lexeme begin = lexer.current();
 
-    if (FFlag::LuauGenericFunctionsParserFix)
-        expectAndConsume('(', "function parameters");
-    else
-    {
-        LUAU_ASSERT(begin.type == '(');
-        nextLexeme(); // (
-    }
+    auto [generics, genericPacks] = parseGenericTypeList();
+
+    Lexeme parameterStart = lexer.current();
+
+    if (!FFlag::LuauParseGenericFunctionTypeBegin)
+        begin = parameterStart;
+
+    expectAndConsume('(', "function parameters");
 
     matchRecoveryStopOnToken[Lexeme::SkinnyArrow]++;
 
@@ -1366,7 +1365,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
     if (lexer.current().type != ')')
         varargAnnotation = parseTypeList(params, names);
 
-    expectMatchAndConsume(')', begin, true);
+    expectMatchAndConsume(')', parameterStart, true);
 
     matchRecoveryStopOnToken[Lexeme::SkinnyArrow]--;
 
@@ -1585,7 +1584,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     {
         return {parseTableTypeAnnotation(), {}};
     }
-    else if (lexer.current().type == '(' || (FFlag::LuauParseGenericFunctions && lexer.current().type == '<'))
+    else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionTypeAnnotation(allowPack);
     }
@@ -2315,19 +2314,6 @@ Parser::Name Parser::parseIndexName(const char* context, const Position& previou
     return Name(nameError, location);
 }
 
-std::pair<AstArray<AstName>, AstArray<AstName>> Parser::parseGenericTypeListIfFFlagParseGenericFunctions()
-{
-    if (FFlag::LuauParseGenericFunctions)
-        return Parser::parseGenericTypeList();
-    AstArray<AstName> generics;
-    AstArray<AstName> genericPacks;
-    generics.size = 0;
-    generics.data = nullptr;
-    genericPacks.size = 0;
-    genericPacks.data = nullptr;
-    return std::pair(generics, genericPacks);
-}
-
 std::pair<AstArray<AstName>, AstArray<AstName>> Parser::parseGenericTypeList()
 {
     TempVector<AstName> names{scratchName};
@@ -2342,7 +2328,7 @@ std::pair<AstArray<AstName>, AstArray<AstName>> Parser::parseGenericTypeList()
         while (true)
         {
             AstName name = parseName().name;
-            if (FFlag::LuauParseGenericFunctions && lexer.current().type == Lexeme::Dot3)
+            if (lexer.current().type == Lexeme::Dot3)
             {
                 seenPack = true;
                 nextLexeme();
@@ -2379,15 +2365,12 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
         Lexeme begin = lexer.current();
         nextLexeme();
 
-        bool seenPack = false;
         while (true)
         {
             if (FFlag::LuauParseTypePackTypeParameters)
             {
                 if (shouldParseTypePackAnnotation(lexer))
                 {
-                    seenPack = true;
-
                     auto typePack = parseTypePackAnnotation();
 
                     if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
@@ -2399,8 +2382,6 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
                     if (typePack)
                     {
-                        seenPack = true;
-
                         if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
                             parameters.push_back({{}, typePack});
                     }

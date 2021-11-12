@@ -11,8 +11,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauGenericFunctions);
-
 TEST_SUITE_BEGIN("TypeVarTests");
 
 TEST_CASE_FIXTURE(Fixture, "primitives_are_equal")

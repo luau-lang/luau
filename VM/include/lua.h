@@ -213,6 +213,8 @@ LUA_API int lua_resume(lua_State* L, lua_State* from, int narg);
 LUA_API int lua_resumeerror(lua_State* L, lua_State* from);
 LUA_API int lua_status(lua_State* L);
 LUA_API int lua_isyieldable(lua_State* L);
+LUA_API void* lua_getthreaddata(lua_State* L);
+LUA_API void lua_setthreaddata(lua_State* L, void* data);
 
 /*
 ** garbage-collection function and options
@@ -346,6 +348,8 @@ struct lua_Debug
  * can only be changed when the VM is not running any code */
 struct lua_Callbacks
 {
+    void* userdata; /* arbitrary userdata pointer that is never overwritten by Luau */
+
     void (*interrupt)(lua_State* L, int gc);  /* gets called at safepoints (loop back edges, call/ret, gc) if set */
     void (*panic)(lua_State* L, int errcode); /* gets called when an unprotected error is raised (if longjmp is used) */
 

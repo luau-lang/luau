@@ -178,9 +178,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_variadic_pack_with_error_should_wor
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
 {
-    ScopedFastFlag sffs2{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         --!strict
         local function f<T>(...: T): ...T
@@ -199,8 +196,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
-    ScopedFastFlag sffs2("LuauGenericFunctions", true);
-
     CheckResult result = check(R"(
         --!strict
         table.insert()

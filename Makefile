@@ -49,7 +49,10 @@ OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(VM_OBJECTS) $(T
 CXXFLAGS=-g -Wall -Werror
 LDFLAGS=
 
-CXXFLAGS+=-Wno-unused # temporary, for older gcc versions
+# temporary, for older gcc versions as they treat var in `if (type var = val)` as unused
+ifeq ($(findstring g++,$(shell $(CXX) --version)),g++)
+	CXXFLAGS+=-Wno-unused
+endif
 
 # configuration-specific flags
 ifeq ($(config),release)
@@ -134,11 +137,10 @@ $(TESTS_TARGET) $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET):
 
 # executable targets for fuzzing
 fuzz-%: $(BUILD)/fuzz/%.cpp.o $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET)
+	$(CXX) $^ $(LDFLAGS) -o $@
+
 fuzz-proto: $(BUILD)/fuzz/proto.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET) | build/libprotobuf-mutator
 fuzz-prototest: $(BUILD)/fuzz/prototest.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET) | build/libprotobuf-mutator
-
-fuzz-%:
-	$(CXX) $^ $(LDFLAGS) -o $@
 
 # static library targets
 $(AST_TARGET): $(AST_OBJECTS)

@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauFixAmbiguousErrorRecoveryInAssign)
+
 using namespace Luau;
 
 namespace
@@ -624,10 +626,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
             local a: { [string]: number, [number]: string }
         )"),
         "Cannot have more than one table indexer");
-
-    ScopedFastFlag sffs1{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauGenericFunctionsParserFix", true};
-    ScopedFastFlag sffs3{"LuauParseGenericFunctions", true};
 
     CHECK_EQ(getParseError(R"(
             type T = <a>foo
@@ -1624,6 +1622,20 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         "statements");
 
     CHECK(result3.errors.size() == 1);
+
+    auto result4 = matchParseError(R"(
+        local t = {}
+        function f() return t end
+        t.x, (f)
+        ().y = 5, 6
+    )",
+        "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
+        "statements");
+
+    if (FFlag::LuauFixAmbiguousErrorRecoveryInAssign)
+        CHECK(result4.errors.size() == 1);
+    else
+        CHECK(result4.errors.size() == 5);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_varargs")
@@ -1824,9 +1836,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
 
 TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
 {
-    // Doesn't need LuauGenericFunctions
-    ScopedFastFlag sffs{"LuauParseGenericFunctions", true};
-
     ParseResult result = parseEx(R"(
         function f<a...>(...: a...)
         end
@@ -1861,9 +1870,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_declaration_parsing")
 {
-    // Doesn't need LuauGenericFunctions
-    ScopedFastFlag sffs{"LuauParseGenericFunctions", true};
-
     ParseResult result = parseEx(R"(
         declare function f<a, b, c...>()
     )");
@@ -1953,12 +1959,7 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
     matchParseError("type MyFunc = (a: number, b: string, c: number) -> (d: number, e: string, f: number)",
         "Expected '->' when parsing function type, got <eof>");
 
-    {
-        ScopedFastFlag luauParseGenericFunctions{"LuauParseGenericFunctions", true};
-        ScopedFastFlag luauGenericFunctionsParserFix{"LuauGenericFunctionsParserFix", true};
-
-        matchParseError("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'");
-    }
+    matchParseError("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'");
 }
 
 TEST_SUITE_END();
@@ -2362,8 +2363,6 @@ type Fn = (
         CHECK_EQ("Expected '->' when parsing function type, got ')'", e.getErrors().front().getMessage());
     }
 
-    ScopedFastFlag sffs3{"LuauParseGenericFunctions", true};
-
     try
     {
         parse(R"(type Fn = (any, string | number | <a>()) -> any)");
@@ -2397,8 +2396,6 @@ TEST_CASE_FIXTURE(Fixture, "AstName_comparison")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_list_recovery")
 {
-    ScopedFastFlag luauParseGenericFunctions{"LuauParseGenericFunctions", true};
-
     try
     {
         parse(R"(
@@ -2521,7 +2518,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_pack_type_parameters")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
     AstStat* stat = parse(R"(
@@ -2532,6 +2528,11 @@ type B<X...> = Packed<...number>
 type C<X...> = Packed<(number, X...)>
     )");
     REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_type_matching_parenthesis")
+{
+    matchParseError("local a: <T>(number -> string", "Expected ')' (to close '(' at column 13), got '->'");
 }
 
 TEST_SUITE_END();

@@ -476,6 +476,16 @@ struct ProtoToLuau
         print(expr.right());
     }
 
+    void print(const luau::ExprIfElse& expr)
+    {
+        source += " if ";
+        print(expr.cond());
+        source += " then ";
+        print(expr.then());
+        source += " else ";
+        print(expr.else_());
+    }
+
     void print(const luau::LValue& expr)
     {
         if (expr.has_local())

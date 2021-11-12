@@ -19,6 +19,7 @@ message Expr {
 		ExprTable table = 13;
 		ExprUnary unary = 14;
 		ExprBinary binary = 15;
+		ExprIfElse ifelse = 16;
 	}
 }
 
@@ -147,6 +148,12 @@ message ExprBinary {
 	required Op op = 1;
 	required Expr left = 2;
 	required Expr right = 3;
+}
+
+message ExprIfElse {
+	required Expr cond = 1;
+	required Expr then = 2;
+	required Expr else = 3; 
 }
 
 message LValue {

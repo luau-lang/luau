@@ -400,8 +400,6 @@ local e = a.z
 
 TEST_CASE_FIXTURE(Fixture, "unify_sealed_table_union_check")
 {
-    ScopedFastFlag luauSealedTableUnifyOptionalFix("LuauSealedTableUnifyOptionalFix", true);
-
     CheckResult result = check(R"(
 local x: { x: number } = { x = 3 }
 type A = number?
@@ -424,6 +422,45 @@ y = x
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
+{
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+type X = { x: number }
+type Y = { y: number }
+type Z = { z: number }
+
+type XYZ = X | Y | Z
+
+local a: XYZ
+local b: { w: number } = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'X | Y | Z' could not be converted into '{| w: number |}'
+caused by:
+  Not all union options are compatible. Table type 'X' not compatible with type '{| w: number |}' because the former is missing field 'w')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
+{
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+type X = { x: number }
+type Y = { y: number }
+type Z = { z: number }
+
+type XYZ = X | Y | Z
+
+local a: XYZ = { w = 4 }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'a' could not be converted into 'X | Y | Z'; none of the union options are compatible)");
 }
 
 TEST_SUITE_END();

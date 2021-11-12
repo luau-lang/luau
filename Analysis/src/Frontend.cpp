@@ -18,11 +18,10 @@
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckTwice, false)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTFLAGVARIABLE(LuauSecondTypecheckKnowsTheDataModel, false)
 LUAU_FASTFLAGVARIABLE(LuauResolveModuleNameWithoutACurrentModule, false)
 LUAU_FASTFLAG(LuauTraceRequireLookupChild)
 LUAU_FASTFLAGVARIABLE(LuauPersistDefinitionFileTypes, false)
-LUAU_FASTFLAG(LuauNewRequireTrace)
+LUAU_FASTFLAG(LuauNewRequireTrace2)
 LUAU_FASTFLAGVARIABLE(LuauClearScopes, false)
 
 namespace Luau
@@ -415,7 +414,7 @@ CheckResult Frontend::check(const ModuleName& name)
         // If we're typechecking twice, we do so.
         // The second typecheck is always in strict mode with DM awareness
         // to provide better typen information for IDE features.
-        if (options.typecheckTwice && FFlag::LuauSecondTypecheckKnowsTheDataModel)
+        if (options.typecheckTwice)
         {
             ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict);
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
@@ -897,7 +896,7 @@ std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const Module
     const auto& exprs = it->second.exprs;
 
     const ModuleInfo* info = exprs.find(&pathExpr);
-    if (!info || (!FFlag::LuauNewRequireTrace && info->name.empty()))
+    if (!info || (!FFlag::LuauNewRequireTrace2 && info->name.empty()))
         return std::nullopt;
 
     return *info;
@@ -914,7 +913,7 @@ const ModulePtr FrontendModuleResolver::getModule(const ModuleName& moduleName) 
 
 bool FrontendModuleResolver::moduleExists(const ModuleName& moduleName) const
 {
-    if (FFlag::LuauNewRequireTrace)
+    if (FFlag::LuauNewRequireTrace2)
         return frontend->sourceNodes.count(moduleName) != 0;
     else
         return frontend->fileResolver->moduleExists(moduleName);

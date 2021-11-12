@@ -703,6 +703,7 @@ void lua_setreadonly(lua_State* L, int objindex, bool value)
     const TValue* o = index2adr(L, objindex);
     api_check(L, ttistable(o));
     Table* t = hvalue(o);
+    api_check(L, t != hvalue(registry(L)));
     t->readonly = value;
     return;
 }
@@ -985,6 +986,16 @@ int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
 int lua_status(lua_State* L)
 {
     return L->status;
+}
+
+void* lua_getthreaddata(lua_State* L)
+{
+    return L->userdata;
+}
+
+void lua_setthreaddata(lua_State* L, void* data)
+{
+    L->userdata = data;
 }
 
 /*

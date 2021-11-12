@@ -45,7 +45,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "prop")
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "event_callback_arg")
 {
     ScopedFastFlag sffs[] = {
-        {"LuauDontMutatePersistentFunctions", true},
         {"LuauPersistDefinitionFileTypes", true},
     };
 
