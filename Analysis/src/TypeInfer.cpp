@@ -5030,7 +5030,8 @@ void TypeChecker::resolve(const IsAPredicate& isaP, ErrorVec& errVec, Refinement
                 return isaP.ty;
         }
 
-        return std::nullopt;
+        std::optional<TypeId> res = std::nullopt;
+        return res;
     };
 
     std::optional<TypeId> ty = resolveLValue(refis, scope, isaP.lvalue);
