@@ -60,6 +60,7 @@ local set2 = Set.new({0, 5, 4})
 print(`{set1} ∪ {set2} = {Set.union(set1, set2)}`)
 --> {0, 1, 3} ∪ {0, 5, 4} = {0, 1, 3, 4, 5}
 
+-- For illustrative purposes. These are illegal specifically because they don't interpolate anything.
 print(`Some example escaping the braces %{like so}`)
 print(`% that doesn't escape anything is part of the string...`)
 print(`%% will escape the second %...`)
@@ -76,12 +77,12 @@ As for how newlines are handled, they are handled the same as other string liter
 local name = "Luau"
 
 print(`Welcome to {
-    Luau
+    name
 }!`)
 --> Welcome to Luau!
 
 print(`Welcome to \
-{Luau}!`)
+{name}!`)
 --> Welcome to
 --  Luau!
 ```
@@ -90,7 +91,7 @@ This expression will not be allowed to come after a `prefixexp`. I believe this 
 
 ```
 local name = "world"
-print`Hello {world}`
+print`Hello {name}`
 ```
 
 Since the string interpolation expression is going to be lowered into a `string.format` call, we'll also need to extend `string.format`. The bare minimum to support the lowering is to add a new token whose definition is to perform a `tostring` call. `%*` is currently an invalid token, so this is a backward compatible extension. This RFC shall define `%*` to have the same behavior as if `tostring` was called.
