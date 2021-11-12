@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(LuauPreloadClosures)
 LUAU_FASTFLAG(LuauPreloadClosuresFenv)
 LUAU_FASTFLAG(LuauPreloadClosuresUpval)
+LUAU_FASTFLAG(LuauGenericSpecialGlobals)
 
 using namespace Luau;
 
@@ -1165,6 +1166,17 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("return (2 + 2) * 2"), R"(
 LOADN R0 8
 RETURN R0 1
+)");
+}
+
+TEST_CASE("ConstantFoldStringLen")
+{
+    CHECK_EQ("\n" + compileFunction0("return #'string', #'', #'a', #('b')"), R"(
+LOADN R0 6
+LOADN R1 0
+LOADN R2 1
+LOADN R3 1
+RETURN R0 4
 )");
 }
 
@@ -3655,6 +3667,120 @@ NEWCLOSURE R5 P2
 CAPTURE VAL R3
 CALL R4 1 0
 FORNLOOP R0 -7
+RETURN R0 0
+)");
+}
+
+TEST_CASE("LuauGenericSpecialGlobals")
+{
+    const char* source = R"(
+print()
+Game.print()
+Workspace.print()
+_G.print()
+game.print()
+plugin.print()
+script.print()
+shared.print()
+workspace.print()
+)";
+
+    {
+        ScopedFastFlag genericSpecialGlobals{"LuauGenericSpecialGlobals", false};
+
+        // Check Roblox globals are here
+        CHECK_EQ("\n" + compileFunction0(source), R"(
+GETIMPORT R0 1
+CALL R0 0 0
+GETIMPORT R1 3
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 5
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 7
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 9
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 11
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 13
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 15
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 17
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+RETURN R0 0
+)");
+    }
+
+    ScopedFastFlag genericSpecialGlobals{"LuauGenericSpecialGlobals", true};
+
+    // Check Roblox globals are no longer here
+    CHECK_EQ("\n" + compileFunction0(source), R"(
+GETIMPORT R0 1
+CALL R0 0 0
+GETIMPORT R0 3
+CALL R0 0 0
+GETIMPORT R0 5
+CALL R0 0 0
+GETIMPORT R1 7
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R0 9
+CALL R0 0 0
+GETIMPORT R0 11
+CALL R0 0 0
+GETIMPORT R0 13
+CALL R0 0 0
+GETIMPORT R0 15
+CALL R0 0 0
+GETIMPORT R0 17
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // Check we can add them back
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::CompileOptions options;
+    const char* mutableGlobals[] = {"Game", "Workspace", "game", "plugin", "script", "shared", "workspace", NULL};
+    options.mutableGlobals = &mutableGlobals[0];
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETIMPORT R0 1
+CALL R0 0 0
+GETIMPORT R1 3
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 5
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 7
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 9
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 11
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 13
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 15
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 17
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
 RETURN R0 0
 )");
 }

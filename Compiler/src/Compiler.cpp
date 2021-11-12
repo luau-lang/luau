@@ -13,6 +13,7 @@
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresFenv, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresUpval, false)
+LUAU_FASTFLAGVARIABLE(LuauGenericSpecialGlobals, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
 
 namespace Luau
@@ -1277,7 +1278,7 @@ struct Compiler
     {
         const Global* global = globals.find(expr->name);
 
-        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->special));
+        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->writable));
     }
 
     void compileExprIndexName(AstExprIndexName* expr, uint8_t target)
@@ -2465,9 +2466,10 @@ struct Compiler
         }
         else if (node->is<AstStatBreak>())
         {
+            LUAU_ASSERT(!loops.empty());
+
             // before exiting out of the loop, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            LUAU_ASSERT(!loops.empty());
             closeLocals(loops.back().localOffset);
 
             size_t label = bytecode.emitLabel();
@@ -2478,12 +2480,13 @@ struct Compiler
         }
         else if (AstStatContinue* stat = node->as<AstStatContinue>())
         {
+            LUAU_ASSERT(!loops.empty());
+
             if (loops.back().untilCondition)
                 validateContinueUntil(stat, loops.back().untilCondition);
 
             // before continuing, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            LUAU_ASSERT(!loops.empty());
             closeLocals(loops.back().localOffset);
 
             size_t label = bytecode.emitLabel();
@@ -2900,6 +2903,11 @@ struct Compiler
                 break;
 
             case AstExprUnary::Len:
+                if (arg.type == Constant::Type_String)
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = double(arg.valueString.size);
+                }
                 break;
 
             default:
@@ -3440,7 +3448,7 @@ struct Compiler
 
     struct Global
     {
-        bool special = false;
+        bool writable = false;
         bool written = false;
     };
 
@@ -3498,7 +3506,7 @@ struct Compiler
             {
                 Global* g = globals.find(object->name);
 
-                return !g || (!g->special && !g->written) ? Builtin{object->name, expr->index} : Builtin();
+                return !g || (!g->writable && !g->written) ? Builtin{object->name, expr->index} : Builtin();
             }
             else
             {
@@ -3696,13 +3704,26 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
 
     Compiler compiler(bytecode, options);
 
-    // since access to some global objects may result in values that change over time, we block table imports
-    for (const char* global : kSpecialGlobals)
+    // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
+    if (FFlag::LuauGenericSpecialGlobals)
     {
-        AstName name = names.get(global);
+        if (AstName name = names.get("_G"); name.value)
+            compiler.globals[name].writable = true;
 
-        if (name.value)
-            compiler.globals[name].special = true;
+        if (options.mutableGlobals)
+            for (const char** ptr = options.mutableGlobals; *ptr != NULL; ++ptr)
+            {
+                if (AstName name = names.get(*ptr); name.value)
+                    compiler.globals[name].writable = true;
+            }
+    }
+    else
+    {
+        for (const char* global : kSpecialGlobals)
+        {
+            if (AstName name = names.get(global); name.value)
+                compiler.globals[name].writable = true;
+        }
     }
 
     // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
