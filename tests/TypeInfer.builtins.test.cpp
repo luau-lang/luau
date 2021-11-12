@@ -444,8 +444,6 @@ TEST_CASE_FIXTURE(Fixture, "os_time_takes_optional_date_table")
 
 TEST_CASE_FIXTURE(Fixture, "thread_is_a_type")
 {
-    ScopedFastFlag sff{"LuauDontMutatePersistentFunctions", true};
-
     CheckResult result = check(R"(
         local co = coroutine.create(function() end)
     )");
@@ -456,8 +454,6 @@ TEST_CASE_FIXTURE(Fixture, "thread_is_a_type")
 
 TEST_CASE_FIXTURE(Fixture, "coroutine_resume_anything_goes")
 {
-    ScopedFastFlag sff{"LuauDontMutatePersistentFunctions", true};
-
     CheckResult result = check(R"(
         local function nifty(x, y)
             print(x, y)
@@ -476,8 +472,6 @@ TEST_CASE_FIXTURE(Fixture, "coroutine_resume_anything_goes")
 
 TEST_CASE_FIXTURE(Fixture, "coroutine_wrap_anything_goes")
 {
-    ScopedFastFlag sff{"LuauDontMutatePersistentFunctions", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local function nifty(x, y)
@@ -822,8 +816,6 @@ TEST_CASE_FIXTURE(Fixture, "string_format_report_all_type_errors_at_correct_posi
 
 TEST_CASE_FIXTURE(Fixture, "dont_add_definitions_to_persistent_types")
 {
-    ScopedFastFlag sff{"LuauDontMutatePersistentFunctions", true};
-
     CheckResult result = check(R"(
         local f = math.sin
         local function g(x) return math.sin(x) end

@@ -33,8 +33,6 @@ TEST_SUITE_BEGIN("Predicate");
 
 TEST_CASE_FIXTURE(Fixture, "Luau_merge_hashmap_order")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     RefinementMap m{
         {"b", typeChecker.stringType},
         {"c", typeChecker.numberType},
@@ -61,8 +59,6 @@ TEST_CASE_FIXTURE(Fixture, "Luau_merge_hashmap_order")
 
 TEST_CASE_FIXTURE(Fixture, "Luau_merge_hashmap_order2")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     RefinementMap m{
         {"a", typeChecker.stringType},
         {"b", typeChecker.stringType},
@@ -89,8 +85,6 @@ TEST_CASE_FIXTURE(Fixture, "Luau_merge_hashmap_order2")
 
 TEST_CASE_FIXTURE(Fixture, "one_map_has_overlap_at_end_whereas_other_has_it_in_start")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     RefinementMap m{
         {"a", typeChecker.stringType},
         {"b", typeChecker.numberType},

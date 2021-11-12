@@ -18,7 +18,6 @@
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
-LUAU_FASTFLAG(LuauAddMissingFollow)
 
 namespace Luau
 {
@@ -413,13 +412,17 @@ bool maybeGeneric(const TypeId ty);
 
 struct SingletonTypes
 {
-    const TypeId nilType = &nilType_;
-    const TypeId numberType = &numberType_;
-    const TypeId stringType = &stringType_;
-    const TypeId booleanType = &booleanType_;
-    const TypeId threadType = &threadType_;
-    const TypeId anyType = &anyType_;
-    const TypeId errorType = &errorType_;
+    const TypeId nilType;
+    const TypeId numberType;
+    const TypeId stringType;
+    const TypeId booleanType;
+    const TypeId threadType;
+    const TypeId anyType;
+    const TypeId errorType;
+    const TypeId optionalNumberType;
+
+    const TypePackId anyTypePack;
+    const TypePackId errorTypePack;
 
     SingletonTypes();
     SingletonTypes(const SingletonTypes&) = delete;
@@ -427,14 +430,6 @@ struct SingletonTypes
 
 private:
     std::unique_ptr<struct TypeArena> arena;
-    TypeVar nilType_;
-    TypeVar numberType_;
-    TypeVar stringType_;
-    TypeVar booleanType_;
-    TypeVar threadType_;
-    TypeVar anyType_;
-    TypeVar errorType_;
-
     TypeId makeStringMetatable();
 };
 
@@ -472,13 +467,10 @@ TypeVar* asMutable(TypeId ty);
 template<typename T>
 const T* get(TypeId tv)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tv);
+    LUAU_ASSERT(tv);
 
-        if constexpr (!std::is_same_v<T, BoundTypeVar>)
-            LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypeVar>)
+        LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
 
     return get_if<T>(&tv->ty);
 }
@@ -486,13 +478,10 @@ const T* get(TypeId tv)
 template<typename T>
 T* getMutable(TypeId tv)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tv);
+    LUAU_ASSERT(tv);
 
-        if constexpr (!std::is_same_v<T, BoundTypeVar>)
-            LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypeVar>)
+        LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
 
     return get_if<T>(&asMutable(tv)->ty);
 }

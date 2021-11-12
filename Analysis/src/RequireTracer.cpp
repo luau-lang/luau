@@ -5,7 +5,7 @@
 #include "Luau/Module.h"
 
 LUAU_FASTFLAGVARIABLE(LuauTraceRequireLookupChild, false)
-LUAU_FASTFLAGVARIABLE(LuauNewRequireTrace, false)
+LUAU_FASTFLAGVARIABLE(LuauNewRequireTrace2, false)
 
 namespace Luau
 {
@@ -19,7 +19,7 @@ struct RequireTracerOld : AstVisitor
         : fileResolver(fileResolver)
         , currentModuleName(currentModuleName)
     {
-        LUAU_ASSERT(!FFlag::LuauNewRequireTrace);
+        LUAU_ASSERT(!FFlag::LuauNewRequireTrace2);
     }
 
     FileResolver* const fileResolver;
@@ -188,7 +188,7 @@ struct RequireTracer : AstVisitor
         , currentModuleName(currentModuleName)
         , locals(nullptr)
     {
-        LUAU_ASSERT(FFlag::LuauNewRequireTrace);
+        LUAU_ASSERT(FFlag::LuauNewRequireTrace2);
     }
 
     bool visit(AstExprTypeAssertion* expr) override
@@ -332,7 +332,7 @@ struct RequireTracer : AstVisitor
 
 RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName)
 {
-    if (FFlag::LuauNewRequireTrace)
+    if (FFlag::LuauNewRequireTrace2)
     {
         RequireTraceResult result;
         RequireTracer tracer{result, fileResolver, currentModuleName};

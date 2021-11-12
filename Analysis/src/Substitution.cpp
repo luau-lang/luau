@@ -8,8 +8,6 @@
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 1000)
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionDontReplaceIgnoredTypes, false)
-LUAU_FASTFLAG(LuauSecondTypecheckKnowsTheDataModel)
-LUAU_FASTFLAG(LuauRankNTypes)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
@@ -19,7 +17,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
 {
     ty = follow(ty);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(ty))
+    if (ignoreChildren(ty))
         return;
 
     if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
@@ -68,7 +66,7 @@ void Tarjan::visitChildren(TypePackId tp, int index)
 {
     tp = follow(tp);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(tp))
+    if (ignoreChildren(tp))
         return;
 
     if (const TypePack* tpp = get<TypePack>(tp))
@@ -399,8 +397,7 @@ TypeId Substitution::clone(TypeId ty)
         if (FFlag::LuauTypeAliasPacks)
             clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
 
-        if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-            clone.tags = ttv->tags;
+        clone.tags = ttv->tags;
         result = addType(std::move(clone));
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
@@ -486,7 +483,7 @@ void Substitution::replaceChildren(TypeId ty)
 {
     ty = follow(ty);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(ty))
+    if (ignoreChildren(ty))
         return;
 
     if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
@@ -535,7 +532,7 @@ void Substitution::replaceChildren(TypePackId tp)
 {
     tp = follow(tp);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(tp))
+    if (ignoreChildren(tp))
         return;
 
     if (TypePack* tpp = getMutable<TypePack>(tp))

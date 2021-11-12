@@ -1950,4 +1950,76 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
+{
+    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true}; // Only for new path
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+type A = { x: number, y: number }
+type B = { x: number, y: string }
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property 'y' is not compatible. Type 'number' could not be converted into 'string')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
+{
+    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true}; // Only for new path
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+type AS = { x: number, y: number }
+type BS = { x: number, y: string }
+
+type A = { a: boolean, b: AS }
+type B = { a: boolean, b: BS }
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property 'b' is not compatible. Type 'AS' could not be converted into 'BS'
+caused by:
+  Property 'y' is not compatible. Type 'number' could not be converted into 'string')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_metatable_prop")
+{
+    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true}; // Only for new path
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+local a1 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
+local b1 = setmetatable({ x = 2, y = "hello" }, { __call = function(s) end });
+local c1: typeof(a1) = b1
+
+local a2 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
+local b2 = setmetatable({ x = 2, y = 4 }, { __call = function(s, t) end });
+local c2: typeof(a2) = b2
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
+caused by:
+  Type '{| x: number, y: string |}' could not be converted into '{| x: number, y: number |}'
+caused by:
+  Property 'y' is not compatible. Type 'string' could not be converted into 'number')");
+
+    CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+caused by:
+  Type '{| __call: (a, b) -> () |}' could not be converted into '{| __call: <a>(a) -> () |}'
+caused by:
+  Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()')");
+}
+
 TEST_SUITE_END();

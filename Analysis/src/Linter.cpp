@@ -12,9 +12,6 @@
 #include <math.h>
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLinterUnknownTypeVectorAware, false)
-LUAU_FASTFLAGVARIABLE(LuauLinterTableMoveZero, false)
-
 namespace Luau
 {
 
@@ -1110,10 +1107,7 @@ private:
 
                 if (g && g->name == "type")
                 {
-                    if (FFlag::LuauLinterUnknownTypeVectorAware)
-                        validateType(arg, {Kind_Primitive, Kind_Vector}, "primitive type");
-                    else
-                        validateType(arg, {Kind_Primitive}, "primitive type");
+                    validateType(arg, {Kind_Primitive, Kind_Vector}, "primitive type");
                 }
                 else if (g && g->name == "typeof")
                 {
@@ -2146,7 +2140,7 @@ private:
                     "wrap it in parentheses to silence");
         }
 
-        if (FFlag::LuauLinterTableMoveZero && func->index == "move" && node->args.size >= 4)
+        if (func->index == "move" && node->args.size >= 4)
         {
             // table.move(t, 0, _, _)
             if (isConstant(args[1], 0.0))

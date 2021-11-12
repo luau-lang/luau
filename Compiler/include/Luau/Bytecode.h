@@ -467,6 +467,10 @@ enum LuauBuiltinFunction
 
     // vector ctor
     LBF_VECTOR,
+
+    // bit32.count
+    LBF_BIT32_COUNTLZ,
+    LBF_BIT32_COUNTRZ,
 };
 
 // Capture type, used in LOP_CAPTURE

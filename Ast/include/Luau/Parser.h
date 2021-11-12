@@ -282,7 +282,6 @@ private:
 
     // `<' namelist `>'
     std::pair<AstArray<AstName>, AstArray<AstName>> parseGenericTypeList();
-    std::pair<AstArray<AstName>, AstArray<AstName>> parseGenericTypeListIfFFlagParseGenericFunctions();
 
     // `<' typeAnnotation[, ...] `>'
     AstArray<AstTypeOrPack> parseTypeParams();

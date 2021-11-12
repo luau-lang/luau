@@ -13,7 +13,6 @@
 #include <stdio.h>
 
 LUAU_FASTFLAGVARIABLE(LuauRescanGrayAgainForwardBarrier, false)
-LUAU_FASTFLAGVARIABLE(LuauConsolidatedStep, false)
 LUAU_FASTFLAGVARIABLE(LuauSeparateAtomic, false)
 
 LUAU_FASTFLAG(LuauArrayBoundary)
@@ -677,117 +676,6 @@ static size_t atomic(lua_State* L)
     return work;
 }
 
-static size_t singlestep(lua_State* L)
-{
-    size_t cost = 0;
-    global_State* g = L->global;
-    switch (g->gcstate)
-    {
-    case GCSpause:
-    {
-        markroot(L); /* start a new collection */
-        LUAU_ASSERT(g->gcstate == GCSpropagate);
-        break;
-    }
-    case GCSpropagate:
-    {
-        if (g->gray)
-        {
-            g->gcstats.currcycle.markitems++;
-
-            cost = propagatemark(g);
-        }
-        else
-        {
-            // perform one iteration over 'gray again' list
-            g->gray = g->grayagain;
-            g->grayagain = NULL;
-
-            g->gcstate = GCSpropagateagain;
-        }
-        break;
-    }
-    case GCSpropagateagain:
-    {
-        if (g->gray)
-        {
-            g->gcstats.currcycle.markitems++;
-
-            cost = propagatemark(g);
-        }
-        else /* no more `gray' objects */
-        {
-            if (FFlag::LuauSeparateAtomic)
-            {
-                g->gcstate = GCSatomic;
-            }
-            else
-            {
-                double starttimestamp = lua_clock();
-
-                g->gcstats.currcycle.atomicstarttimestamp = starttimestamp;
-                g->gcstats.currcycle.atomicstarttotalsizebytes = g->totalbytes;
-
-                atomic(L); /* finish mark phase */
-                LUAU_ASSERT(g->gcstate == GCSsweepstring);
-
-                g->gcstats.currcycle.atomictime += lua_clock() - starttimestamp;
-            }
-        }
-        break;
-    }
-    case GCSatomic:
-    {
-        g->gcstats.currcycle.atomicstarttimestamp = lua_clock();
-        g->gcstats.currcycle.atomicstarttotalsizebytes = g->totalbytes;
-
-        cost = atomic(L); /* finish mark phase */
-        LUAU_ASSERT(g->gcstate == GCSsweepstring);
-        break;
-    }
-    case GCSsweepstring:
-    {
-        size_t traversedcount = 0;
-        sweepwholelist(L, &g->strt.hash[g->sweepstrgc++], &traversedcount);
-
-        // nothing more to sweep?
-        if (g->sweepstrgc >= g->strt.size)
-        {
-            // sweep string buffer list and preserve used string count
-            uint32_t nuse = L->global->strt.nuse;
-            sweepwholelist(L, &g->strbufgc, &traversedcount);
-            L->global->strt.nuse = nuse;
-
-            g->gcstate = GCSsweep; // end sweep-string phase
-        }
-
-        g->gcstats.currcycle.sweepitems += traversedcount;
-
-        cost = GC_SWEEPCOST;
-        break;
-    }
-    case GCSsweep:
-    {
-        size_t traversedcount = 0;
-        g->sweepgc = sweeplist(L, g->sweepgc, GC_SWEEPMAX, &traversedcount);
-
-        g->gcstats.currcycle.sweepitems += traversedcount;
-
-        if (*g->sweepgc == NULL)
-        { /* nothing more to sweep? */
-            shrinkbuffers(L);
-            g->gcstate = GCSpause; /* end collection */
-        }
-        cost = GC_SWEEPMAX * GC_SWEEPCOST;
-        break;
-    }
-    default:
-        LUAU_ASSERT(!"Unexpected GC state");
-    }
-
-    return cost;
-}
-
 static size_t gcstep(lua_State* L, size_t limit)
 {
     size_t cost = 0;
@@ -980,37 +868,12 @@ void luaC_step(lua_State* L, bool assist)
     int lastgcstate = g->gcstate;
     double lasttimestamp = lua_clock();
 
-    if (FFlag::LuauConsolidatedStep)
-    {
-        size_t work = gcstep(L, lim);
+    size_t work = gcstep(L, lim);
 
-        if (assist)
-            g->gcstats.currcycle.assistwork += work;
-        else
-            g->gcstats.currcycle.explicitwork += work;
-    }
+    if (assist)
+        g->gcstats.currcycle.assistwork += work;
     else
-    {
-        // always perform at least one single step
-        do
-        {
-            lim -= singlestep(L);
-
-            // if we have switched to a different state, capture the duration of last stage
-            // this way we reduce the number of timer calls we make
-            if (lastgcstate != g->gcstate)
-            {
-                GC_INTERRUPT(lastgcstate);
-
-                double now = lua_clock();
-
-                recordGcStateTime(g, lastgcstate, now - lasttimestamp, assist);
-
-                lasttimestamp = now;
-                lastgcstate = g->gcstate;
-            }
-        } while (lim > 0 && g->gcstate != GCSpause);
-    }
+        g->gcstats.currcycle.explicitwork += work;
 
     recordGcStateTime(g, lastgcstate, lua_clock() - lasttimestamp, assist);
 
@@ -1037,14 +900,7 @@ void luaC_step(lua_State* L, bool assist)
             g->GCthreshold -= debt;
     }
 
-    if (FFlag::LuauConsolidatedStep)
-    {
-        GC_INTERRUPT(lastgcstate);
-    }
-    else
-    {
-        GC_INTERRUPT(g->gcstate);
-    }
+    GC_INTERRUPT(lastgcstate);
 }
 
 void luaC_fullgc(lua_State* L)
@@ -1070,10 +926,7 @@ void luaC_fullgc(lua_State* L)
     while (g->gcstate != GCSpause)
     {
         LUAU_ASSERT(g->gcstate == GCSsweepstring || g->gcstate == GCSsweep);
-        if (FFlag::LuauConsolidatedStep)
-            gcstep(L, SIZE_MAX);
-        else
-            singlestep(L);
+        gcstep(L, SIZE_MAX);
     }
 
     finishGcCycleStats(g);
@@ -1084,10 +937,7 @@ void luaC_fullgc(lua_State* L)
     markroot(L);
     while (g->gcstate != GCSpause)
     {
-        if (FFlag::LuauConsolidatedStep)
-            gcstep(L, SIZE_MAX);
-        else
-            singlestep(L);
+        gcstep(L, SIZE_MAX);
     }
     /* reclaim as much buffer memory as possible (shrinkbuffers() called during sweep is incremental) */
     shrinkbuffersfull(L);
