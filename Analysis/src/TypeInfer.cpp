@@ -5030,6 +5030,7 @@ void TypeChecker::resolve(const IsAPredicate& isaP, ErrorVec& errVec, Refinement
                 return isaP.ty;
         }
 
+        // local variable works around an odd gcc 9.3 warning: <anonymous> may be used uninitialized
         std::optional<TypeId> res = std::nullopt;
         return res;
     };
