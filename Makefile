@@ -46,12 +46,18 @@ endif
 OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(VM_OBJECTS) $(TESTS_OBJECTS) $(CLI_OBJECTS) $(FUZZ_OBJECTS)
 
 # common flags
-CXXFLAGS=-g -Wall -Werror
+CXXFLAGS=-g -Wall
 LDFLAGS=
 
-# temporary, for older gcc versions as they treat var in `if (type var = val)` as unused
+# some gcc versions treat var in `if (type var = val)` as unused
+# some gcc versions treat variables used in constexpr if blocks as unused
 ifeq ($(findstring g++,$(shell $(CXX) --version)),g++)
 	CXXFLAGS+=-Wno-unused
+endif
+
+# enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
+ifneq ($(werror),)
+	CXXFLAGS+=-Werror
 endif
 
 # configuration-specific flags

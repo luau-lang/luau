@@ -293,7 +293,7 @@ bool isGeneric(TypeId ty)
 bool maybeGeneric(TypeId ty)
 {
     ty = follow(ty);
-    if (auto ftv = get<FreeTypeVar>(ty))
+    if (get<FreeTypeVar>(ty))
         return true;
     else if (auto ttv = get<TableTypeVar>(ty))
     {
