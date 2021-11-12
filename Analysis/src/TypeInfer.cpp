@@ -1509,7 +1509,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprVa
         std::vector<TypeId> types = flatten(varargPack).first;
         return {!types.empty() ? types[0] : nilType};
     }
-    else if (auto ftp = get<FreeTypePack>(varargPack))
+    else if (get<FreeTypePack>(varargPack))
     {
         TypeId head = freshType(scope);
         TypePackId tail = freshTypePack(scope);
@@ -1539,7 +1539,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprCa
     {
         return {pack->head.empty() ? nilType : pack->head[0], std::move(result.predicates)};
     }
-    else if (auto ftp = get<Unifiable::Free>(retPack))
+    else if (get<Unifiable::Free>(retPack))
     {
         TypeId head = freshType(scope);
         TypePackId pack = addTypePack(TypePackVar{TypePack{{head}, freshTypePack(scope)}});

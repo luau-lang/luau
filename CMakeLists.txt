@@ -9,6 +9,7 @@ project(Luau LANGUAGES CXX)
 
 option(LUAU_BUILD_CLI "Build CLI" ON)
 option(LUAU_BUILD_TESTS "Build tests" ON)
+option(LUAU_WERROR "Warnings as errors" OFF)
 
 add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
@@ -57,11 +58,18 @@ set(LUAU_OPTIONS)
 
 if(MSVC)
     list(APPEND LUAU_OPTIONS /D_CRT_SECURE_NO_WARNINGS) # We need to use the portable CRT functions.
-    list(APPEND LUAU_OPTIONS /WX) # Warnings are errors
     list(APPEND LUAU_OPTIONS /MP) # Distribute single project compilation across multiple cores
 else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
-    list(APPEND LUAU_OPTIONS -Werror) # Warnings are errors
+endif()
+
+# Enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
+if(LUAU_WERROR)
+    if(MSVC)
+        list(APPEND LUAU_OPTIONS /WX) # Warnings are errors
+    else()
+        list(APPEND LUAU_OPTIONS -Werror) # Warnings are errors
+    endif()
 endif()
 
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
