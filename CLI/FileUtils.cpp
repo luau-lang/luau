@@ -142,6 +142,7 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
             joinPaths(buf, path.c_str(), data.d_name);
 
             int type = data.d_type;
+            int mode = -1;
 
             // we need to stat DT_UNKNOWN to be able to tell the type
             if (type == DT_UNKNOWN)
@@ -153,18 +154,18 @@ static bool traverseDirectoryRec(const std::string& path, const std::function<vo
                 lstat(buf.c_str(), &st);
 #endif
 
-                type = IFTODT(st.st_mode);
+                mode = st.st_mode;
             }
 
-            if (type == DT_DIR)
+            if (type == DT_DIR || mode == S_IFDIR)
             {
                 traverseDirectoryRec(buf, callback);
             }
-            else if (type == DT_REG)
+            else if (type == DT_REG || mode == S_IFREG)
             {
                 callback(buf);
             }
-            else if (type == DT_LNK)
+            else if (type == DT_LNK || mode == S_IFLNK)
             {
                 // Skip symbolic links to avoid handling cycles
             }
