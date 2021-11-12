@@ -13,7 +13,6 @@
 
 #include <string>
 
-LUAU_FASTFLAG(LuauGenericFunctions)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
@@ -203,39 +202,23 @@ public:
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("<Cycle>"));
 
         AstArray<AstName> generics;
-        if (FFlag::LuauGenericFunctions)
+        generics.size = ftv.generics.size();
+        generics.data = static_cast<AstName*>(allocator->allocate(sizeof(AstName) * generics.size));
+        size_t numGenerics = 0;
+        for (auto it = ftv.generics.begin(); it != ftv.generics.end(); ++it)
         {
-            generics.size = ftv.generics.size();
-            generics.data = static_cast<AstName*>(allocator->allocate(sizeof(AstName) * generics.size));
-            size_t i = 0;
-            for (auto it = ftv.generics.begin(); it != ftv.generics.end(); ++it)
-            {
-                if (auto gtv = get<GenericTypeVar>(*it))
-                    generics.data[i++] = AstName(gtv->name.c_str());
-            }
-        }
-        else
-        {
-            generics.size = 0;
-            generics.data = nullptr;
+            if (auto gtv = get<GenericTypeVar>(*it))
+                generics.data[numGenerics++] = AstName(gtv->name.c_str());
         }
 
         AstArray<AstName> genericPacks;
-        if (FFlag::LuauGenericFunctions)
+        genericPacks.size = ftv.genericPacks.size();
+        genericPacks.data = static_cast<AstName*>(allocator->allocate(sizeof(AstName) * genericPacks.size));
+        size_t numGenericPacks = 0;
+        for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
         {
-            genericPacks.size = ftv.genericPacks.size();
-            genericPacks.data = static_cast<AstName*>(allocator->allocate(sizeof(AstName) * genericPacks.size));
-            size_t i = 0;
-            for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
-            {
-                if (auto gtv = get<GenericTypeVar>(*it))
-                    genericPacks.data[i++] = AstName(gtv->name.c_str());
-            }
-        }
-        else
-        {
-            generics.size = 0;
-            generics.data = nullptr;
+            if (auto gtv = get<GenericTypeVar>(*it))
+                genericPacks.data[numGenericPacks++] = AstName(gtv->name.c_str());
         }
 
         AstArray<AstType*> argTypes;

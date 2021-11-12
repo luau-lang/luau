@@ -87,7 +87,6 @@ private:
     void tryUnifyWithAny(TypePackId any, TypePackId ty);
 
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name);
-    std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry);
 
 public:
     // Report an "infinite type error" if the type "needle" already occurs within "haystack"
@@ -102,6 +101,7 @@ private:
     bool isNonstrictMode() const;
 
     void checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId wantedType, TypeId givenType);
+    void checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, const std::string& prop, TypeId wantedType, TypeId givenType);
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);

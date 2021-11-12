@@ -247,9 +247,6 @@ TEST_CASE_FIXTURE(Fixture, "export_type_and_type_alias_are_duplicates")
 
 TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
 {
-    ScopedFastFlag sffs3{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         type Node<T> = { value: T, child: Node<T>? }
 

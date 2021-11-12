@@ -205,38 +205,48 @@ function Bitboard:empty()
 	return self.h == 0 and self.l == 0
 end
 
-function Bitboard:ctz()  
-	local target = self.l
-	local offset = 0
-	local result = 0
-
-	if target == 0 then
-		target = self.h
-		result = 32
+if not bit32.countrz then
+	local function ctz(v)
+		if v == 0 then return 32 end
+		local offset = 0
+		while bit32.extract(v, offset) == 0 do
+			offset = offset + 1
+		end
+		return offset
 	end
-
-	if target == 0 then
-		return 64
-	end
-
-	while bit32.extract(target, offset) == 0 do
-		offset = offset + 1
-	end
-
-	return result + offset
-end
-
-function Bitboard:ctzafter(start)
-	start = start + 1
-	if start < 32 then
-		for i=start,31 do
-			if bit32.extract(self.l, i) == 1 then return i end
+	function Bitboard:ctz()
+		local result = ctz(self.l)
+		if result == 32 then
+			return ctz(self.h) + 32
+		else
+			return result
 		end
 	end
-	for i=math.max(32,start),63 do
-		if bit32.extract(self.h, i-32) == 1 then return i end
+	function Bitboard:ctzafter(start)
+		start = start + 1
+		if start < 32 then
+			for i=start,31 do
+				if bit32.extract(self.l, i) == 1 then return i end
+			end
+		end
+		for i=math.max(32,start),63 do
+			if bit32.extract(self.h, i-32) == 1 then return i end
+		end
+		return 64
 	end
-	return 64
+else
+	function Bitboard:ctz()
+		local result = bit32.countrz(self.l)
+		if result == 32 then
+			return bit32.countrz(self.h) + 32
+		else
+			return result
+		end
+	end
+	function Bitboard:ctzafter(start)
+		local masked = self:band(Bitboard.full:lshift(start+1))
+		return masked:ctz()
+	end
 end
 
 
@@ -245,7 +255,7 @@ function Bitboard:lshift(amt)
 	if amt == 0 then return self end
 
 	if amt > 31 then
-		return Bitboard.from(0, bit32.lshift(self.l, amt-31))
+		return Bitboard.from(0, bit32.lshift(self.l, amt-32))
 	end
 
 	local l = bit32.lshift(self.l, amt)
@@ -832,12 +842,12 @@ end
 local testCases = {}
 local function addTest(...) table.insert(testCases, {...}) end
 
-addTest(StartingFen, 3, 8902)
-addTest("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0", 2, 2039)
-addTest("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0", 3, 2812)
-addTest("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 3, 9467)
-addTest("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 2, 1486)
-addTest("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 2, 2079)
+addTest(StartingFen, 2, 400)
+addTest("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 0", 1, 48)
+addTest("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 0", 2, 191)
+addTest("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1", 2, 264)
+addTest("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8", 1, 44)
+addTest("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10", 1, 46)
 
 
 local function chess()

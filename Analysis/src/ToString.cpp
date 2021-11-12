@@ -11,7 +11,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
-LUAU_FASTFLAGVARIABLE(LuauInstantiatedTypeParamRecursion, false)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
@@ -237,15 +236,6 @@ struct TypeVarStringifier
             return;
         }
 
-        if (!FFlag::LuauAddMissingFollow)
-        {
-            if (get<FreeTypeVar>(tv))
-            {
-                state.emit(state.getName(tv));
-                return;
-            }
-        }
-
         Luau::visit(
             [this, tv](auto&& t) {
                 return (*this)(tv, t);
@@ -316,11 +306,7 @@ struct TypeVarStringifier
     void operator()(TypeId ty, const Unifiable::Free& ftv)
     {
         state.result.invalid = true;
-
-        if (FFlag::LuauAddMissingFollow)
-            state.emit(state.getName(ty));
-        else
-            state.emit("<FREE>");
+        state.emit(state.getName(ty));
     }
 
     void operator()(TypeId, const BoundTypeVar& btv)
@@ -724,16 +710,6 @@ struct TypePackStringifier
             return;
         }
 
-        if (!FFlag::LuauAddMissingFollow)
-        {
-            if (get<FreeTypePack>(tp))
-            {
-                state.emit(state.getName(tp));
-                state.emit("...");
-                return;
-            }
-        }
-
         auto it = state.cycleTpNames.find(tp);
         if (it != state.cycleTpNames.end())
         {
@@ -821,16 +797,8 @@ struct TypePackStringifier
     void operator()(TypePackId tp, const FreeTypePack& pack)
     {
         state.result.invalid = true;
-
-        if (FFlag::LuauAddMissingFollow)
-        {
-            state.emit(state.getName(tp));
-            state.emit("...");
-        }
-        else
-        {
-            state.emit("<FREETP>");
-        }
+        state.emit(state.getName(tp));
+        state.emit("...");
     }
 
     void operator()(TypePackId, const BoundTypePack& btv)
@@ -864,23 +832,15 @@ static void assignCycleNames(const std::unordered_set<TypeId>& cycles, const std
         std::string name;
 
         // TODO: use the stringified type list if there are no cycles
-        if (FFlag::LuauInstantiatedTypeParamRecursion)
+        if (auto ttv = get<TableTypeVar>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
         {
-            if (auto ttv = get<TableTypeVar>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
-            {
-                // If we have a cycle type in type parameters, assign a cycle name for this named table
-                if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(), [&](auto&& el) {
-                        return cycles.count(follow(el));
-                    }) != ttv->instantiatedTypeParams.end())
-                    cycleNames[cycleTy] = ttv->name ? *ttv->name : *ttv->syntheticName;
+            // If we have a cycle type in type parameters, assign a cycle name for this named table
+            if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(), [&](auto&& el) {
+                    return cycles.count(follow(el));
+                }) != ttv->instantiatedTypeParams.end())
+                cycleNames[cycleTy] = ttv->name ? *ttv->name : *ttv->syntheticName;
 
-                continue;
-            }
-        }
-        else
-        {
-            if (auto ttv = get<TableTypeVar>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
-                continue;
+            continue;
         }
 
         name = "t" + std::to_string(nextIndex);
@@ -912,58 +872,6 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
     ToStringResult result;
 
-    if (!FFlag::LuauInstantiatedTypeParamRecursion && !opts.exhaustive)
-    {
-        if (auto ttv = get<TableTypeVar>(ty); ttv && (ttv->name || ttv->syntheticName))
-        {
-            if (ttv->syntheticName)
-                result.invalid = true;
-
-            // If scope if provided, add module name and check visibility
-            if (ttv->name && opts.scope)
-            {
-                auto [success, moduleName] = canUseTypeNameInScope(opts.scope, *ttv->name);
-
-                if (!success)
-                    result.invalid = true;
-
-                if (moduleName)
-                    result.name = format("%s.", moduleName->c_str());
-            }
-
-            result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
-
-            if (ttv->instantiatedTypeParams.empty() && (!FFlag::LuauTypeAliasPacks || ttv->instantiatedTypePackParams.empty()))
-                return result;
-
-            std::vector<std::string> params;
-            for (TypeId tp : ttv->instantiatedTypeParams)
-                params.push_back(toString(tp));
-
-            if (FFlag::LuauTypeAliasPacks)
-            {
-                // Doesn't preserve grouping of multiple type packs
-                // But this is under a parent block of code that is being removed later
-                for (TypePackId tp : ttv->instantiatedTypePackParams)
-                {
-                    std::string content = toString(tp);
-
-                    if (!content.empty())
-                        params.push_back(std::move(content));
-                }
-            }
-
-            result.name += "<" + join(params, ", ") + ">";
-            return result;
-        }
-        else if (auto mtv = get<MetatableTypeVar>(ty); mtv && mtv->syntheticName)
-        {
-            result.invalid = true;
-            result.name = *mtv->syntheticName;
-            return result;
-        }
-    }
-
     StringifierState state{opts, result, opts.nameMap};
 
     std::unordered_set<TypeId> cycles;
@@ -975,7 +883,7 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
     TypeVarStringifier tvs{state};
 
-    if (FFlag::LuauInstantiatedTypeParamRecursion && !opts.exhaustive)
+    if (!opts.exhaustive)
     {
         if (auto ttv = get<TableTypeVar>(ty); ttv && (ttv->name || ttv->syntheticName))
         {

@@ -1287,9 +1287,6 @@ local e: (n: n@5
 
 TEST_CASE_FIXTURE(ACFixture, "generic_types")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-
     check(R"(
 function f<Tee, Use>(a: T@1
 local b: string = "don't trip"

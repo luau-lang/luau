@@ -240,8 +240,6 @@ TEST_CASE("Math")
 
 TEST_CASE("Table")
 {
-    ScopedFastFlag sff("LuauTableFreeze", true);
-
     runConformance("nextvar.lua");
 }
 
@@ -322,6 +320,8 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
+    ScopedFastFlag sff("LuauBit32Count", true);
+
     runConformance("bitwise.lua");
 }
 
@@ -359,6 +359,8 @@ TEST_CASE("PCall")
 
 TEST_CASE("Pack")
 {
+    ScopedFastFlag sff{ "LuauStrPackUBCastFix", true };
+    
     runConformance("tpack.lua");
 }
 

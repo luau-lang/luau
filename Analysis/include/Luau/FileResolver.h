@@ -53,7 +53,7 @@ struct FileResolver
     }
 
     // DEPRECATED APIS
-    // These are going to be removed with LuauNewRequireTracer
+    // These are going to be removed with LuauNewRequireTrace2
     virtual bool moduleExists(const ModuleName& name) const = 0;
     virtual std::optional<ModuleName> fromAstFragment(AstExpr* expr) const = 0;
     virtual ModuleName concat(const ModuleName& lhs, std::string_view rhs) const = 0;

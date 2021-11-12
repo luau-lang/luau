@@ -3,8 +3,6 @@
 
 #include "Luau/Ast.h"
 
-LUAU_FASTFLAG(LuauOrPredicate)
-
 namespace Luau
 {
 
@@ -60,8 +58,6 @@ std::string toString(const LValue& lvalue)
 
 void merge(RefinementMap& l, const RefinementMap& r, std::function<TypeId(TypeId, TypeId)> f)
 {
-    LUAU_ASSERT(FFlag::LuauOrPredicate);
-
     auto itL = l.begin();
     auto itR = r.begin();
     while (itL != l.end() && itR != r.end())

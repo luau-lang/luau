@@ -341,4 +341,43 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_setmetatable")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_part")
+{
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+type X = { x: number }
+type Y = { y: number }
+type Z = { z: number }
+
+type XYZ = X & Y & Z
+
+local a: XYZ = 3
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'number' could not be converted into 'X & Y & Z'
+caused by:
+  Not all intersection parts are compatible. Type 'number' could not be converted into 'X')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
+{
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
+
+    CheckResult result = check(R"(
+type X = { x: number }
+type Y = { y: number }
+type Z = { z: number }
+
+type XYZ = X & Y & Z
+
+local a: XYZ
+local b: number = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'X & Y & Z' could not be converted into 'number'; none of the intersection parts are compatible)");
+}
+
 TEST_SUITE_END();

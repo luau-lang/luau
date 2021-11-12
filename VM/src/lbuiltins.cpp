@@ -1031,6 +1031,52 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
     return -1;
 }
 
+static int luauF_countlz(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+
+        unsigned n;
+        luai_num2unsigned(n, a1);
+
+#ifdef _MSC_VER
+        unsigned long rl;
+        int r = _BitScanReverse(&rl, n) ? 31 - int(rl) : 32;
+#else
+        int r = n == 0 ? 32 : __builtin_clz(n);
+#endif
+
+        setnvalue(res, double(r));
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_countrz(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+
+        unsigned n;
+        luai_num2unsigned(n, a1);
+
+#ifdef _MSC_VER
+        unsigned long rl;
+        int r = _BitScanForward(&rl, n) ? int(rl) : 32;
+#else
+        int r = n == 0 ? 32 : __builtin_ctz(n);
+#endif
+
+        setnvalue(res, double(r));
+        return 1;
+    }
+
+    return -1;
+}
+
 luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -1097,4 +1143,7 @@ luau_FastFunction luauF_table[256] = {
     luauF_tunpack,
 
     luauF_vector,
+
+    luauF_countlz,
+    luauF_countrz,
 };
