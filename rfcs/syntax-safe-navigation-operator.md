@@ -89,6 +89,15 @@ When using safe navigation to call a function, the short circuiting will prevent
 object?.doSomething(getValue())
 ```
 
+The short-circuiting is limited within the expression.
+
+```lua
+dog?.owner.name -- This will return nil if `dog` is nil
+(dog?.owner).name -- `(dog?.owner)` resolves to nil, of which `name` is then indexed. This will error at runtime if `dog` is nil.
+
+dog?.legs + 3 -- `dog?.legs` is resolved on its own, meaning this will error at runtime if it is nil (`nil + 3`)
+```
+
 The operator must be used in the context of either a call or an index, and so:
 
 ```lua
