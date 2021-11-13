@@ -882,8 +882,8 @@ int lua_setmetatable(lua_State* L, int objindex)
     case LUA_TFATUSERDATA:
     {
         mpvalue(obj) = (void*)mt;
-        if (mt)
-            luaC_objbarrier(L, uvalue(obj), mt);
+        //if (mt)
+            // TODO find the right barrier
         break;
     }
     default:
