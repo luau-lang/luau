@@ -32,17 +32,17 @@ LUAU_FASTFLAGVARIABLE(LuauArrayBoundary, false)
 
 static_assert(offsetof(LuaNode, val) == 0, "Unexpected Node memory layout, pointer cast in gval2slot is incorrect");
 // TKey is bitpacked for memory efficiency so we need to validate bit counts for worst case
-static_assert(TKey{{NULL}, 0, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough bits for tt");
-static_assert(TKey{{NULL}, 0, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
-static_assert(TKey{{NULL}, 0, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
+static_assert(TKey{{NULL}, {}, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough bits for tt");
+static_assert(TKey{{NULL}, {}, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
+static_assert(TKey{{NULL}, {}, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
 
 // reset cache of absent metamethods, cache is updated in luaT_gettm
 #define invalidateTMcache(t) t->flags = 0
 
 // empty hash data points to dummynode so that we can always dereference it
 const LuaNode luaH_dummynode = {
-    {{NULL}, 0, LUA_TNIL},   /* value */
-    {{NULL}, 0, LUA_TNIL, 0} /* key */
+    {{NULL}, {}, LUA_TNIL},   /* value */
+    {{NULL}, {}, LUA_TNIL, 0} /* key */
 };
 
 #define dummynode (&luaH_dummynode)

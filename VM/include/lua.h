@@ -65,6 +65,7 @@ enum lua_Type
 
     
     LUA_TLIGHTUSERDATA,
+    LUA_TFATUSERDATA,
     LUA_TNUMBER,
     LUA_TVECTOR,
 
@@ -166,6 +167,7 @@ LUA_API void lua_pushcfunction(
     lua_State* L, lua_CFunction fn, const char* debugname = NULL, int nup = 0, lua_Continuation cont = NULL);
 LUA_API void lua_pushboolean(lua_State* L, int b);
 LUA_API void lua_pushlightuserdata(lua_State* L, void* p);
+LUA_API void lua_pushfatuserdata(lua_State* L);
 LUA_API int lua_pushthread(lua_State* L);
 
 /*

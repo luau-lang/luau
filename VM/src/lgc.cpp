@@ -42,6 +42,8 @@ LUAU_FASTFLAG(LuauArrayBoundary)
         checkconsistency(o); \
         if (iscollectable(o) && iswhite(gcvalue(o))) \
             reallymarkobject(g, gcvalue(o)); \
+        else if (ttisfatuserdata(o) && mpvalue(o) && iswhite((GCObject*)mpvalue(o))) \
+            reallymarkobject(g, (GCObject*)mpvalue(o)); \
     }
 
 #define markobject(g, t) \

@@ -17,6 +17,7 @@ const char* const luaT_typenames[] = {
 
     
     "userdata",
+    "userdata",
     "number",
     "vector",
 
@@ -107,6 +108,9 @@ const TValue* luaT_gettmbyobj(lua_State* L, const TValue* o, TMS event)
         break;
     case LUA_TUSERDATA:
         mt = uvalue(o)->metatable;
+        break;
+    case LUA_TFATUSERDATA:
+        mt = (Table*)(mpvalue(o));
         break;
     default:
         mt = L->global->mt[ttype(o)];

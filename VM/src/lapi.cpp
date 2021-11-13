@@ -447,6 +447,8 @@ int lua_objlen(lua_State* L, int idx)
         return tsvalue(o)->len;
     case LUA_TUSERDATA:
         return uvalue(o)->len;
+    case LUA_TFATUSERDATA:
+        return LUAU_FATUSERDATA_WORDS;
     case LUA_TTABLE:
         return luaH_getn(hvalue(o));
     case LUA_TNUMBER:
@@ -473,6 +475,7 @@ void* lua_touserdata(lua_State* L, int idx)
     case LUA_TUSERDATA:
         return uvalue(o)->data;
     case LUA_TLIGHTUSERDATA:
+    case LUA_TFATUSERDATA:
         return pvalue(o);
     default:
         return NULL;
@@ -625,6 +628,15 @@ void lua_pushlightuserdata(lua_State* L, void* p)
     return;
 }
 
+const int UNINITIALIZED_FATUSERDATA[LUAU_FATUSERDATA_WORDS] = {};
+
+void lua_pushfatuserdata(lua_State* L)
+{
+    setmpvalue(L->top, 0, &UNINITIALIZED_FATUSERDATA);
+    api_incr_top(L);
+    return;
+}
+
 int lua_pushthread(lua_State* L)
 {
     luaC_checkthreadsleep(L);
@@ -739,6 +751,9 @@ int lua_getmetatable(lua_State* L, int objindex)
         break;
     case LUA_TUSERDATA:
         mt = uvalue(obj)->metatable;
+        break;
+    case LUA_TFATUSERDATA:
+        mt = (Table*)(mpvalue(obj));
         break;
     default:
         mt = L->global->mt[ttype(obj)];
@@ -860,6 +875,13 @@ int lua_setmetatable(lua_State* L, int objindex)
     case LUA_TUSERDATA:
     {
         uvalue(obj)->metatable = mt;
+        if (mt)
+            luaC_objbarrier(L, uvalue(obj), mt);
+        break;
+    }
+    case LUA_TFATUSERDATA:
+    {
+        mpvalue(obj) = (void*)mt;
         if (mt)
             luaC_objbarrier(L, uvalue(obj), mt);
         break;

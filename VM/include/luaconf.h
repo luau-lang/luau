@@ -102,6 +102,14 @@
 /* maximum number of captures supported by pattern matching */
 #define LUA_MAXCAPTURES 32
 
+/*
+@@ LUAU_FATUSERDATA_WORDS defines the amount of extra space embedded in
+@* fatuserdata values.
+** This inflates every value in the VM, so use it carefully.
+** At least 1 is required to store the `vector` value type.
+*/
+#define LUAU_FATUSERDATA_WORDS 1
+
 /* }================================================================== */
 
 /* Default number printing format and the string length limit */

@@ -47,7 +47,7 @@ typedef union
 typedef struct lua_TValue
 {
     Value value;
-    int extra;
+    int extra[LUAU_FATUSERDATA_WORDS];
     int tt;
 } TValue;
 
@@ -61,6 +61,7 @@ typedef struct lua_TValue
 #define ttisuserdata(o) (ttype(o) == LUA_TUSERDATA)
 #define ttisthread(o) (ttype(o) == LUA_TTHREAD)
 #define ttislightuserdata(o) (ttype(o) == LUA_TLIGHTUSERDATA)
+#define ttisfatuserdata(o) (ttype(o) == LUA_TFATUSERDATA)
 #define ttisvector(o) (ttype(o) == LUA_TVECTOR)
 #define ttisupval(o) (ttype(o) == LUA_TUPVAL)
 
@@ -68,6 +69,7 @@ typedef struct lua_TValue
 #define ttype(o) ((o)->tt)
 #define gcvalue(o) check_exp(iscollectable(o), (o)->value.gc)
 #define pvalue(o) check_exp(ttislightuserdata(o), (o)->value.p)
+#define mpvalue(o) check_exp(ttisfatuserdata(o), (o)->value.p)
 #define nvalue(o) check_exp(ttisnumber(o), (o)->value.n)
 #define vvalue(o) check_exp(ttisvector(o), (o)->value.v)
 #define tsvalue(o) check_exp(ttisstring(o), &(o)->value.gc->ts)
@@ -119,6 +121,14 @@ typedef struct lua_TValue
     { \
         TValue* i_o = (obj); \
         i_o->value.p = (x); \
+        i_o->tt = LUA_TLIGHTUSERDATA; \
+    }
+
+#define setmpvalue(obj, mt, data) \
+    { \
+        TValue* i_o = (obj); \
+        i_o->value.p = (void*)(mt); \
+        memcpy(&i_o->extra, data, LUAU_FATUSERDATA_WORDS * sizeof(int)); \
         i_o->tt = LUA_TLIGHTUSERDATA; \
     }
 
@@ -364,7 +374,7 @@ typedef struct Closure
 typedef struct TKey
 {
     ::Value value;
-    int extra;
+    int extra[LUAU_FATUSERDATA_WORDS];
     unsigned tt : 4;
     int next : 28; /* for chaining */
 } TKey;
@@ -381,7 +391,7 @@ typedef struct LuaNode
         LuaNode* n_ = (node); \
         const TValue* i_o = (obj); \
         n_->key.value = i_o->value; \
-        n_->key.extra = i_o->extra; \
+        memcpy(&n_->key.extra, &i_o->extra, LUAU_FATUSERDATA_WORDS * sizeof(int)); \
         n_->key.tt = i_o->tt; \
         checkliveness(L->global, i_o); \
     }
@@ -392,7 +402,7 @@ typedef struct LuaNode
         TValue* i_o = (obj); \
         const LuaNode* n_ = (node); \
         i_o->value = n_->key.value; \
-        i_o->extra = n_->key.extra; \
+        memcpy(&i_o->extra, &n_->key.extra, LUAU_FATUSERDATA_WORDS * sizeof(int)); \
         i_o->tt = n_->key.tt; \
         checkliveness(L->global, i_o); \
     }
