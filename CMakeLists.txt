@@ -87,7 +87,10 @@ if(LUAU_BUILD_CLI)
     target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.VM)
 
     if(UNIX)
-        target_link_libraries(Luau.Repl.CLI PRIVATE pthread)
+        find_library(LIBPTHREAD pthread)
+        if (LIBPTHREAD)
+            target_link_libraries(Luau.Repl.CLI PRIVATE pthread)
+        endif()
     endif()
 
     if(NOT EMSCRIPTEN)
