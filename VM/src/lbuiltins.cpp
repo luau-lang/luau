@@ -1016,6 +1016,23 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
     return -1;
 }
 
+#ifdef LUA_FLOAT4_VECTORS
+static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1) && ttisnumber(args + 2))
+    {
+        double x = nvalue(arg0);
+        double y = nvalue(args);
+        double z = nvalue(args + 1);
+        double w = nvalue(args + 2);
+
+        setvvalue(res, float(x), float(y), float(z), float(w));
+        return 1;
+    }
+
+    return -1;
+}
+#else
 static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
@@ -1030,6 +1047,7 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
 
     return -1;
 }
+#endif
 
 static int luauF_countlz(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {

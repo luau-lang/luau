@@ -31,10 +31,18 @@ LUAU_FASTFLAGVARIABLE(LuauArrayBoundary, false)
 #define MAXSIZE (1 << MAXBITS)
 
 static_assert(offsetof(LuaNode, val) == 0, "Unexpected Node memory layout, pointer cast in gval2slot is incorrect");
+
+#ifdef LUA_FLOAT4_VECTORS
+// TKey is bitpacked for memory efficiency so we need to validate bit counts for worst case
+static_assert(TKey{{NULL}, {0, 0}, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough bits for tt");
+static_assert(TKey{{NULL}, {0, 0}, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
+static_assert(TKey{{NULL}, {0, 0}, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
+#else
 // TKey is bitpacked for memory efficiency so we need to validate bit counts for worst case
 static_assert(TKey{{NULL}, 0, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough bits for tt");
 static_assert(TKey{{NULL}, 0, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
 static_assert(TKey{{NULL}, 0, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
+#endif
 
 // reset cache of absent metamethods, cache is updated in luaT_gettm
 #define invalidateTMcache(t) t->flags = 0
@@ -94,6 +102,31 @@ static LuaNode* hashnum(const Table* t, double n)
     return hashpow2(t, h2);
 }
 
+#ifdef LUA_FLOAT4_VECTORS
+static LuaNode* hashvec(const Table* t, const float* v)
+{
+    unsigned int i[4];
+    memcpy(i, v, sizeof(i));
+
+    // convert -0 to 0 to make sure they hash to the same value
+    i[0] = (i[0] == 0x8000000) ? 0 : i[0];
+    i[1] = (i[1] == 0x8000000) ? 0 : i[1];
+    i[2] = (i[2] == 0x8000000) ? 0 : i[2];
+    i[3] = (i[3] == 0x8000000) ? 0 : i[3];
+
+    // scramble bits to make sure that integer coordinates have entropy in lower bits
+    i[0] ^= i[0] >> 17;
+    i[1] ^= i[1] >> 17;
+    i[2] ^= i[2] >> 17;
+    i[3] ^= i[3] >> 17;
+
+    // Optimized Spatial Hashing for Collision Detection of Deformable Objects
+    unsigned int h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791);
+    h ^= i[3];  // TODO: proper hashing function for 4D vectors
+    
+    return hashpow2(t, h);
+}
+#else
 static LuaNode* hashvec(const Table* t, const float* v)
 {
     unsigned int i[3];
@@ -114,6 +147,7 @@ static LuaNode* hashvec(const Table* t, const float* v)
 
     return hashpow2(t, h);
 }
+#endif
 
 /*
 ** returns the `main' position of an element in a table (that is, the index

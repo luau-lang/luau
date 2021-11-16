@@ -550,12 +550,21 @@ void lua_pushunsigned(lua_State* L, unsigned u)
     return;
 }
 
+#ifdef LUA_FLOAT4_VECTORS
+void lua_pushvector(lua_State* L, float x, float y, float z, float w)
+{
+    setvvalue(L->top, x, y, z, w);
+    api_incr_top(L);
+    return;
+}
+#else
 void lua_pushvector(lua_State* L, float x, float y, float z)
 {
     setvvalue(L->top, x, y, z);
     api_incr_top(L);
     return;
 }
+#endif
 
 void lua_pushlstring(lua_State* L, const char* s, size_t len)
 {

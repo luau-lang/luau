@@ -462,7 +462,11 @@ LUALIB_API const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     case LUA_TVECTOR:
     {
         const float* v = lua_tovector(L, idx);
+#ifdef LUA_FLOAT4_VECTORS
+        lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2], v[3]);
+#else
         lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2]);
+#endif
         break;
     }
     default:

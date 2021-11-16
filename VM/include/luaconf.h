@@ -122,3 +122,5 @@
         void* s; \
         long l; \
     }
+
+#define LUA_FLOAT4_VECTORS

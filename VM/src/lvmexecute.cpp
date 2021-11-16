@@ -601,7 +601,14 @@ static void luau_execute(lua_State* L)
                         const char* name = getstr(tsvalue(kv));
                         int ic = (name[0] | ' ') - 'x';
 
+#ifdef LUA_FLOAT4_VECTORS
+                        if(name[0] == 'w')
+                            ic = 3;
+
+                        if (unsigned(ic) < 4 && name[1] == '\0')
+#else
                         if (unsigned(ic) < 3 && name[1] == '\0')
+#endif
                         {
                             setnvalue(ra, rb->value.v[ic]);
                             VM_NEXT();
@@ -1526,7 +1533,11 @@ static void luau_execute(lua_State* L)
                 {
                     const float* vb = rb->value.v;
                     const float* vc = rc->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
+#else
                     setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2]);
+#endif
                     VM_NEXT();
                 }
                 else
@@ -1572,7 +1583,11 @@ static void luau_execute(lua_State* L)
                 {
                     const float* vb = rb->value.v;
                     const float* vc = rc->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
+#else
                     setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2]);
+#endif
                     VM_NEXT();
                 }
                 else
@@ -1618,21 +1633,33 @@ static void luau_execute(lua_State* L)
                 {
                     const float* vb = rb->value.v;
                     float vc = cast_to(float, nvalue(rc));
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] * vc, vb[1] * vc, vb[2] * vc, vb[2] * vc);
+#else
                     setvvalue(ra, vb[0] * vc, vb[1] * vc, vb[2] * vc);
+#endif
                     VM_NEXT();
                 }
                 else if (ttisvector(rb) && ttisvector(rc))
                 {
                     const float* vb = rb->value.v;
                     const float* vc = rc->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
+#else
                     setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2]);
+#endif
                     VM_NEXT();
                 }
                 else if (ttisnumber(rb) && ttisvector(rc))
                 {
                     float vb = cast_to(float, nvalue(rb));
                     const float* vc = rc->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb * vc[0], vb * vc[1], vb * vc[2], vb * vc[3]);
+#else
                     setvvalue(ra, vb * vc[0], vb * vc[1], vb * vc[2]);
+#endif
                     VM_NEXT();
                 }
                 else
@@ -1679,21 +1706,33 @@ static void luau_execute(lua_State* L)
                 {
                     const float* vb = rb->value.v;
                     float vc = cast_to(float, nvalue(rc));
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
+#else
                     setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc);
+#endif
                     VM_NEXT();
                 }
                 else if (ttisvector(rb) && ttisvector(rc))
                 {
                     const float* vb = rb->value.v;
                     const float* vc = rc->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
+#else
                     setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2]);
+#endif
                     VM_NEXT();
                 }
                 else if (ttisnumber(rb) && ttisvector(rc))
                 {
                     float vb = cast_to(float, nvalue(rb));
                     const float* vc = rc->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb / vc[0], vb / vc[1], vb / vc[2], vb / vc[3]);
+#else
                     setvvalue(ra, vb / vc[0], vb / vc[1], vb / vc[2]);
+#endif
                     VM_NEXT();
                 }
                 else
@@ -1826,7 +1865,11 @@ static void luau_execute(lua_State* L)
                 {
                     const float* vb = rb->value.v;
                     float vc = cast_to(float, nvalue(kv));
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] * vc, vb[1] * vc, vb[2] * vc, vb[3] * vc);
+#else
                     setvvalue(ra, vb[0] * vc, vb[1] * vc, vb[2] * vc);
+#endif
                     VM_NEXT();
                 }
                 else
@@ -1872,7 +1915,11 @@ static void luau_execute(lua_State* L)
                 {
                     const float* vb = rb->value.v;
                     float vc = cast_to(float, nvalue(kv));
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc, vb[3] / vc);
+#else
                     setvvalue(ra, vb[0] / vc, vb[1] / vc, vb[2] / vc);
+#endif
                     VM_NEXT();
                 }
                 else
@@ -2037,7 +2084,11 @@ static void luau_execute(lua_State* L)
                 else if (ttisvector(rb))
                 {
                     const float* vb = rb->value.v;
+#ifdef LUA_FLOAT4_VECTORS
+                    setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
+#else
                     setvvalue(ra, -vb[0], -vb[1], -vb[2]);
+#endif
                     VM_NEXT();
                 }
                 else
