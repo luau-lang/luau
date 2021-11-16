@@ -124,3 +124,11 @@
     }
 
 #define LUA_FLOAT4_VECTORS
+
+#ifdef LUA_FLOAT4_VECTORS
+#define LUA_VECTOR_SIZE 4
+#else
+#define LUA_VECTOR_SIZE 3
+#endif
+
+#define LUA_EXTRA_VALUE_SIZE LUA_VECTOR_SIZE - 2	// note: this assumes vector size >= 2!

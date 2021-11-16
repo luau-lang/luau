@@ -47,11 +47,7 @@ typedef union
 typedef struct lua_TValue
 {
     Value value;
-#ifdef LUA_FLOAT4_VECTORS
-    int extra[2];
-#else
-    int extra;
-#endif
+    int extra[LUA_EXTRA_VALUE_SIZE];
     int tt;
 } TValue;
 
@@ -381,11 +377,7 @@ typedef struct Closure
 typedef struct TKey
 {
     ::Value value;
-#ifdef LUA_FLOAT4_VECTORS
-    int extra[2];
-#else
-    int extra;
-#endif
+    int extra[LUA_EXTRA_VALUE_SIZE];
     unsigned tt : 4;
     int next : 28; /* for chaining */
 } TKey;
@@ -396,15 +388,14 @@ typedef struct LuaNode
     TKey key;
 } LuaNode;
 
-#ifdef LUA_FLOAT4_VECTORS
 /* copy a value into a key */
 #define setnodekey(L, node, obj) \
     { \
         LuaNode* n_ = (node); \
         const TValue* i_o = (obj); \
         n_->key.value = i_o->value; \
-        n_->key.extra[0] = i_o->extra[0]; \
-        n_->key.extra[1] = i_o->extra[1]; \
+        for (int i = 0; i < LUA_EXTRA_VALUE_SIZE; i++) \
+            n_->key.extra[i] = i_o->extra[i]; \
         n_->key.tt = i_o->tt; \
         checkliveness(L->global, i_o); \
     }
@@ -415,34 +406,11 @@ typedef struct LuaNode
         TValue* i_o = (obj); \
         const LuaNode* n_ = (node); \
         i_o->value = n_->key.value; \
-        i_o->extra[0] = n_->key.extra[0]; \
-        i_o->extra[1] = n_->key.extra[1]; \
+        for (int i = 0; i < LUA_EXTRA_VALUE_SIZE; i++) \
+            i_o->extra[i] = n_->key.extra[i]; \
         i_o->tt = n_->key.tt; \
         checkliveness(L->global, i_o); \
     }
-#else
-/* copy a value into a key */
-#define setnodekey(L, node, obj) \
-    { \
-        LuaNode* n_ = (node); \
-        const TValue* i_o = (obj); \
-        n_->key.value = i_o->value; \
-        n_->key.extra = i_o->extra; \
-        n_->key.tt = i_o->tt; \
-        checkliveness(L->global, i_o); \
-    }
-
-/* copy a value from a key */
-#define getnodekey(L, obj, node) \
-    { \
-        TValue* i_o = (obj); \
-        const LuaNode* n_ = (node); \
-        i_o->value = n_->key.value; \
-        i_o->extra = n_->key.extra; \
-        i_o->tt = n_->key.tt; \
-        checkliveness(L->global, i_o); \
-    }
-#endif
 
 // clang-format off
 typedef struct Table
