@@ -194,9 +194,6 @@ TEST_CASE_FIXTURE(Fixture, "normal_conditional_expression_has_refinements")
 // Luau currently doesn't yet know how to allow assignments when the binding was refined.
 TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 {
-    ScopedFastFlag sffs2{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs5{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         type Node<T> = { value: T, child: Node<T>? }
 
@@ -596,11 +593,9 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 {
     ScopedFastFlag luauCloneCorrectlyBeforeMutatingTableType{"LuauCloneCorrectlyBeforeMutatingTableType", true};
-    ScopedFastFlag luauFollowInTypeFunApply{"LuauFollowInTypeFunApply", true};
-    ScopedFastFlag luauInstantiatedTypeParamRecursion{"LuauInstantiatedTypeParamRecursion", true};
 
     // Mutability in type function application right now can create strange recursive types
-    // TODO: instantiation right now is problematic, it this example should either leave the Table type alone
+    // TODO: instantiation right now is problematic, in this example should either leave the Table type alone
     // or it should rename the type to 'Self' so that the result will be 'Self<Table>'
     CheckResult result = check(R"(
 type Table = { a: number }

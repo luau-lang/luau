@@ -215,9 +215,6 @@ extern "C"
 {
     const char* executeScript(const char* source)
     {
-        // static string for caching result (prevents dangling ptr on function exit)
-        static std::string result;
-
         // setup flags
         for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
             if (strncmp(flag->name, "Luau", 4) == 0)
@@ -233,15 +230,13 @@ extern "C"
         // sandbox thread
         luaL_sandboxthread(L);
 
+        // static string for caching result (prevents dangling ptr on function exit)
+        static std::string result;
+
         // run code + collect error
-        std::string error = runCode(L, source);
-        result  = error;
-        
-        if (error.length())
-        {
-            return result.c_str();
-        }
-        return NULL;
+        result = runCode(L, source);
+
+        return result.empty() ? NULL : result.c_str();
     }
 }
 #endif
@@ -591,3 +586,4 @@ int main(int argc, char** argv)
     }
 }
 #endif
+

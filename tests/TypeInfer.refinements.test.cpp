@@ -7,7 +7,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauWeakEqConstraint)
-LUAU_FASTFLAG(LuauOrPredicate)
 LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
 using namespace Luau;
@@ -133,11 +132,8 @@ TEST_CASE_FIXTURE(Fixture, "or_predicate_with_truthy_predicates")
     CHECK_EQ("string?", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 26})));
 
-    if (FFlag::LuauOrPredicate)
-    {
-        CHECK_EQ("nil", toString(requireTypeAtPosition({6, 26})));
-        CHECK_EQ("nil", toString(requireTypeAtPosition({7, 26})));
-    }
+    CHECK_EQ("nil", toString(requireTypeAtPosition({6, 26})));
+    CHECK_EQ("nil", toString(requireTypeAtPosition({7, 26})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expr_carry_its_constraints")
@@ -283,6 +279,8 @@ TEST_CASE_FIXTURE(Fixture, "assert_non_binary_expressions_actually_resolve_const
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
+    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
         local t: {x: number?} = {x = nil}
@@ -293,7 +291,10 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type '{| x: number? |}' could not be converted into '{| x: number |}'", toString(result.errors[0]));
+    CHECK_EQ(R"(Type '{| x: number? |}' could not be converted into '{| x: number |}'
+caused by:
+  Property 'x' is not compatible. Type 'number?' could not be converted into 'number')",
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_another_lvalue")
@@ -749,8 +750,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 {
-    ScopedFastFlag sff{"LuauTypeGuardPeelsAwaySubclasses", true};
-
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
             if typeof(x) == "Instance" then
@@ -769,8 +768,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
 {
-    ScopedFastFlag sff{"LuauTypeGuardPeelsAwaySubclasses", true};
-
     CheckResult result = check(R"(
         local function f(x: Part | Folder | Instance | string | Vector3 | any)
             if typeof(x) == "Instance" then
@@ -789,8 +786,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is_table")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -811,11 +806,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauOrPredicate", true},
-        {"LuauTypeGuardPeelsAwaySubclasses", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
             if typeof(x) ~= "Instance" or not x:IsA("Part") then
@@ -890,8 +880,6 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_warns_on_no_overlapping_types_only_when_s
 
 TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(a: number?, b: number?)
             if (not a) or (not b) then
@@ -909,8 +897,6 @@ TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b")
 
 TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b2")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(a: number?, b: number?)
             if not (a and b) then
@@ -928,8 +914,6 @@ TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b2")
 
 TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(a: number?, b: number?)
             if (not a) and (not b) then
@@ -947,8 +931,6 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b")
 
 TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b2")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(a: number?, b: number?)
             if not (a or b) then
@@ -966,8 +948,6 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b2")
 
 TEST_CASE_FIXTURE(Fixture, "either_number_or_string")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(x: any)
             if type(x) == "number" or type(x) == "string" then
@@ -983,8 +963,6 @@ TEST_CASE_FIXTURE(Fixture, "either_number_or_string")
 
 TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(t: {x: boolean}?)
             if not t or t.x then
@@ -1000,8 +978,6 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
 
 TEST_CASE_FIXTURE(Fixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local a: (number | string)?
         assert(a)
@@ -1018,8 +994,6 @@ TEST_CASE_FIXTURE(Fixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
 
 TEST_CASE_FIXTURE(Fixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     // This bug came up because there was a mistake in Luau::merge where zipping on two maps would produce the wrong merged result.
     CheckResult result = check(R"(
         local function f(b: string | { x: string }, a)
@@ -1039,8 +1013,6 @@ TEST_CASE_FIXTURE(Fixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
 
 TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_number_or_string")
 {
-    ScopedFastFlag sff{"LuauOrPredicate", true};
-
     CheckResult result = check(R"(
         local function f(a: string | number | boolean)
             if type(a) ~= "number" and type(a) ~= "string" then

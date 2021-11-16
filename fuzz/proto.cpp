@@ -11,6 +11,7 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
 #include "Luau/ToString.h"
+#include "Luau/Transpiler.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -23,6 +24,7 @@ const bool kFuzzLinter = true;
 const bool kFuzzTypeck = true;
 const bool kFuzzVM = true;
 const bool kFuzzTypes = true;
+const bool kFuzzTranspile = true;
 
 static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
 
@@ -240,6 +242,11 @@ DEFINE_PROTO_FUZZER(const luau::StatBlock& message)
 
             toString(p.second.typeId, opts); // toString walks the entire type, making sure ASAN catches access to destroyed type arenas
         }
+    }
+
+    if (kFuzzTranspile && parseResult.root)
+    {
+        transpileWithTypes(*parseResult.root);
     }
 
     // run resulting bytecode

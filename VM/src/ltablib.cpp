@@ -9,8 +9,6 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauTableFreeze, false)
-
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -491,9 +489,6 @@ static int tclear(lua_State* L)
 
 static int tfreeze(lua_State* L)
 {
-    if (!FFlag::LuauTableFreeze)
-        luaG_runerror(L, "table.freeze is disabled");
-
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_argcheck(L, !lua_getreadonly(L, 1), 1, "table is already frozen");
     luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
@@ -506,9 +501,6 @@ static int tfreeze(lua_State* L)
 
 static int tisfrozen(lua_State* L)
 {
-    if (!FFlag::LuauTableFreeze)
-        luaG_runerror(L, "table.isfrozen is disabled");
-
     luaL_checktype(L, 1, LUA_TTABLE);
 
     lua_pushboolean(L, lua_getreadonly(L, 1));

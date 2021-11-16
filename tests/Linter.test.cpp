@@ -479,10 +479,6 @@ return foo1
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
-    ScopedFastFlag sff{"LuauLinterUnknownTypeVectorAware", true};
-
-    SourceModule sm;
-
     unfreeze(typeChecker.globalTypes);
     TableTypeVar::Props instanceProps{
         {"ClassName", {typeChecker.anyType}},
@@ -1400,8 +1396,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "TableOperations")
 {
-    ScopedFastFlag sff("LuauLinterTableMoveZero", true);
-
     LintResult result = lintTyped(R"(
 local t = {}
 local tt = {}

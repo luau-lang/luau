@@ -12,7 +12,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
-LUAU_FASTFLAG(LuauSecondTypecheckKnowsTheDataModel)
 LUAU_FASTFLAG(LuauCaptureBrokenCommentSpans)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
 LUAU_FASTFLAGVARIABLE(LuauCloneBoundTables, false)
@@ -290,9 +289,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
     for (TypePackId genericPack : t.genericPacks)
         ftv->genericPacks.push_back(clone(genericPack, dest, seenTypes, seenTypePacks, encounteredFreeType));
 
-    if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-        ftv->tags = t.tags;
-
+    ftv->tags = t.tags;
     ftv->argTypes = clone(t.argTypes, dest, seenTypes, seenTypePacks, encounteredFreeType);
     ftv->argNames = t.argNames;
     ftv->retType = clone(t.retType, dest, seenTypes, seenTypePacks, encounteredFreeType);
@@ -319,12 +316,7 @@ void TypeCloner::operator()(const TableTypeVar& t)
     ttv->level = TypeLevel{0, 0};
 
     for (const auto& [name, prop] : t.props)
-    {
-        if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-            ttv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
-        else
-            ttv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location};
-    }
+        ttv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
 
     if (t.indexer)
         ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, seenTypes, seenTypePacks, encounteredFreeType),
@@ -379,10 +371,7 @@ void TypeCloner::operator()(const ClassTypeVar& t)
     seenTypes[typeId] = result;
 
     for (const auto& [name, prop] : t.props)
-        if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-            ctv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
-        else
-            ctv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location};
+        ctv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
 
     if (t.parent)
         ctv->parent = clone(*t.parent, dest, seenTypes, seenTypePacks, encounteredFreeType);

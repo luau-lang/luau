@@ -259,9 +259,6 @@ TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names")
 
 TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names_generic")
 {
-    ScopedFastFlag luauGenericFunctions{"LuauGenericFunctions", true};
-    ScopedFastFlag luauParseGenericFunctions{"LuauParseGenericFunctions", true};
-
     CheckResult result = check("local function f<a...>(n: number, ...: a...): (a...) return ... end");
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -340,10 +337,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(Fixture, "toStringDetailed2")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauGenericFunctions", true},
-    };
-
     CheckResult result = check(R"(
         local base = {}
         function base:one() return 1 end
@@ -468,8 +461,6 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_inters
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 {
-    ScopedFastFlag luauInstantiatedTypeParamRecursion{"LuauInstantiatedTypeParamRecursion", true};
-
     TypeVar tableTy{TableTypeVar{}};
     TableTypeVar* ttv = getMutable<TableTypeVar>(&tableTy);
     ttv->name = "Table";

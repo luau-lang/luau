@@ -113,6 +113,20 @@ assert(bit32.replace(0, -1, 4) == 2^4)
 assert(bit32.replace(-1, 0, 31) == 2^31 - 1)
 assert(bit32.replace(-1, 0, 1, 2) == 2^32 - 7)
 
+-- testing countlz/countrc
+assert(bit32.countlz(0) == 32)
+assert(bit32.countlz(42) == 26)
+assert(bit32.countlz(0xffffffff) == 0)
+assert(bit32.countlz(0x80000000) == 0)
+assert(bit32.countlz(0x7fffffff) == 1)
+
+assert(bit32.countrz(0) == 32)
+assert(bit32.countrz(1) == 0)
+assert(bit32.countrz(42) == 1)
+assert(bit32.countrz(0x80000000) == 31)
+assert(bit32.countrz(0x40000000) == 30)
+assert(bit32.countrz(0x7fffffff) == 0)
+
 --[[
 This test verifies a fix in luauF_replace() where if the 4th
 parameter was not a number, but the first three are numbers, it will
@@ -136,5 +150,7 @@ assert(bit32.bxor("1", 3) == 2)
 assert(bit32.bxor(1, "3") == 2)
 assert(bit32.btest(1, "3") == true)
 assert(bit32.btest("1", 3) == true)
+assert(bit32.countlz("42") == 26)
+assert(bit32.countrz("42") == 1)
 
 return('OK')

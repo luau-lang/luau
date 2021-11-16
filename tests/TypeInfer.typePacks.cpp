@@ -296,7 +296,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -361,7 +360,6 @@ local c: Packed<string, number, boolean>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_import")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -395,7 +393,6 @@ local d: { a: typeof(c) }
 
 TEST_CASE_FIXTURE(Fixture, "type_pack_type_parameters")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -434,7 +431,6 @@ type C<X...> = Import.Packed<string, (number, X...)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_nested")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -456,7 +452,6 @@ type Packed4<T...> = (Packed3<T...>, T...) -> (Packed3<T...>, T...)
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_variadic")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -475,7 +470,6 @@ type E = X<(number, ...string)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_multi")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -507,7 +501,6 @@ type I<S..., R...> = W<number, (string, S...), R...>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -534,7 +527,6 @@ type F = X<(string, ...number)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -557,10 +549,8 @@ type D<X...> = Y<X..., (number, string, X...)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi_tostring")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-    ScopedFastFlag luauInstantiatedTypeParamRecursion("LuauInstantiatedTypeParamRecursion", true); // For correct toString block
 
     CheckResult result = check(R"(
 type Y<T..., U...> = { f: (T...) -> (U...) }
@@ -577,7 +567,6 @@ local b: Y<(), ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_backwards_compatible")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 
@@ -599,7 +588,6 @@ type C = Y<(number), boolean>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_errors")
 {
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
     ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
     ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
 

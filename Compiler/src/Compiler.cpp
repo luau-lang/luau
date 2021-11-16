@@ -15,6 +15,7 @@ LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresFenv, false)
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresUpval, false)
 LUAU_FASTFLAGVARIABLE(LuauGenericSpecialGlobals, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
+LUAU_FASTFLAGVARIABLE(LuauBit32CountBuiltin, false)
 
 namespace Luau
 {
@@ -23,6 +24,7 @@ static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
 
+// TODO: Remove with LuauGenericSpecialGlobals
 static const char* kSpecialGlobals[] = {"Game", "Workspace", "_G", "game", "plugin", "script", "shared", "workspace"};
 
 CompileError::CompileError(const Location& location, const std::string& message)
@@ -3637,6 +3639,10 @@ struct Compiler
                 return LBF_BIT32_RROTATE;
             if (builtin.method == "rshift")
                 return LBF_BIT32_RSHIFT;
+            if (builtin.method == "countlz" && FFlag::LuauBit32CountBuiltin)
+                return LBF_BIT32_COUNTLZ;
+            if (builtin.method == "countrz" && FFlag::LuauBit32CountBuiltin)
+                return LBF_BIT32_COUNTRZ;
         }
 
         if (builtin.object == "string")
@@ -3711,11 +3717,9 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
             compiler.globals[name].writable = true;
 
         if (options.mutableGlobals)
-            for (const char** ptr = options.mutableGlobals; *ptr != NULL; ++ptr)
-            {
+            for (const char** ptr = options.mutableGlobals; *ptr; ++ptr)
                 if (AstName name = names.get(*ptr); name.value)
                     compiler.globals[name].writable = true;
-            }
     }
     else
     {
@@ -3738,7 +3742,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     }
 
     // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
-    if (FFlag::LuauPreloadClosuresFenv && options.optimizationLevel >= 1)
+    if (FFlag::LuauPreloadClosuresFenv && options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
     {
         Compiler::FenvVisitor fenvVisitor(compiler.getfenvUsed, compiler.setfenvUsed);
         root->visit(&fenvVisitor);

@@ -988,6 +988,16 @@ int lua_status(lua_State* L)
     return L->status;
 }
 
+void* lua_getthreaddata(lua_State* L)
+{
+    return L->userdata;
+}
+
+void lua_setthreaddata(lua_State* L, void* data)
+{
+    L->userdata = data;
+}
+
 /*
 ** Garbage-collection function
 */

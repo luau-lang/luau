@@ -12,7 +12,6 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauSecondTypecheckKnowsTheDataModel)
 LUAU_FASTFLAGVARIABLE(ElseElseIfCompletionImprovements, false);
 LUAU_FASTFLAG(LuauIfElseExpressionAnalysisSupport)
 
@@ -369,20 +368,10 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
 
         while (iter != endIter)
         {
-            if (FFlag::LuauAddMissingFollow)
-            {
-                if (isNil(*iter))
-                    ++iter;
-                else
-                    break;
-            }
+            if (isNil(*iter))
+                ++iter;
             else
-            {
-                if (auto primTy = Luau::get<PrimitiveTypeVar>(*iter); primTy && primTy->type == PrimitiveTypeVar::NilType)
-                    ++iter;
-                else
-                    break;
-            }
+                break;
         }
 
         if (iter == endIter)
@@ -397,21 +386,10 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             AutocompleteEntryMap inner;
             std::unordered_set<TypeId> innerSeen = seen;
 
-            if (FFlag::LuauAddMissingFollow)
+            if (isNil(*iter))
             {
-                if (isNil(*iter))
-                {
-                    ++iter;
-                    continue;
-                }
-            }
-            else
-            {
-                if (auto innerPrimTy = Luau::get<PrimitiveTypeVar>(*iter); innerPrimTy && innerPrimTy->type == PrimitiveTypeVar::NilType)
-                {
-                    ++iter;
-                    continue;
-                }
+                ++iter;
+                continue;
             }
 
             autocompleteProps(module, typeArena, *iter, indexType, nodes, inner, innerSeen);
@@ -496,7 +474,7 @@ static bool canSuggestInferredType(ScopePtr scope, TypeId ty)
         return false;
 
     // No syntax for unnamed tables with a metatable
-    if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+    if (get<MetatableTypeVar>(ty))
         return false;
 
     if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
@@ -688,7 +666,7 @@ static std::optional<bool> functionIsExpectedAt(const Module& module, AstNode* n
 
     TypeId expectedType = follow(*it);
 
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(expectedType))
+    if (get<FunctionTypeVar>(expectedType))
         return true;
 
     if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(expectedType))
@@ -1519,10 +1497,10 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
         return {};
 
     TypeChecker& typeChecker =
-        (frontend.options.typecheckTwice && FFlag::LuauSecondTypecheckKnowsTheDataModel ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
+        (frontend.options.typecheckTwice ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
     ModulePtr module =
-        (frontend.options.typecheckTwice && FFlag::LuauSecondTypecheckKnowsTheDataModel ? frontend.moduleResolverForAutocomplete.getModule(moduleName)
-                                                                                        : frontend.moduleResolver.getModule(moduleName));
+        (frontend.options.typecheckTwice ? frontend.moduleResolverForAutocomplete.getModule(moduleName)
+                                         : frontend.moduleResolver.getModule(moduleName));
 
     if (!module)
         return {};
@@ -1550,7 +1528,7 @@ OwningAutocompleteResult autocompleteSource(Frontend& frontend, std::string_view
     sourceModule->commentLocations = std::move(result.commentLocations);
 
     TypeChecker& typeChecker =
-        (frontend.options.typecheckTwice && FFlag::LuauSecondTypecheckKnowsTheDataModel ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
+        (frontend.options.typecheckTwice ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
 
     ModulePtr module = typeChecker.check(*sourceModule, Mode::Strict);
 

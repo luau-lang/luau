@@ -3926,8 +3926,6 @@ local b: number = 1 or a
 
 TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
 {
-    ScopedFastFlag sffs2{"LuauGenericFunctions", true};
-
     CheckResult result = check(R"(
         --!strict
         local tbl = {}
@@ -4493,10 +4491,6 @@ f(function(x) print(x) end)
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument")
 {
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauRankNTypes("LuauRankNTypes", true);
-
     CheckResult result = check(R"(
 local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 return sum(2, 3, function(a, b) return a + b end)
@@ -4525,10 +4519,6 @@ local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} e
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
 {
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauRankNTypes("LuauRankNTypes", true);
-
     CheckResult result = check(R"(
 local function g1<T>(a: T, f: (T) -> T) return f(a) end
 local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
@@ -4579,10 +4569,6 @@ local a: TableWithFunc = { x = 3, y = 4, f = function(a, b) return a + b end }
 
 TEST_CASE_FIXTURE(Fixture, "do_not_infer_generic_functions")
 {
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauRankNTypes("LuauRankNTypes", true);
-
     CheckResult result = check(R"(
 local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 
@@ -4600,8 +4586,6 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local function f(): {string|number}
     return {1, "b", 3}
@@ -4625,8 +4609,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local function f()
     return {4, "b", 3} :: {string|number}
@@ -4638,8 +4620,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local a: (number, number) -> number = function(a, b) return a - b end
 
@@ -4655,8 +4635,6 @@ b, c = {2, "s"}, {"b", 4}
 
 TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types_mutable_lval")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local a = {}
 a.x = 2
@@ -4668,8 +4646,6 @@ a = setmetatable(a, { __call = function(x) end })
 
 TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 {
-    ScopedFastFlag sff{"LuauSlightlyMoreFlexibleBinaryPredicates", true};
-
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t and t.x or 5
@@ -4682,10 +4658,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 
 TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-    };
-
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t.x and t or 5
@@ -4698,10 +4670,6 @@ TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 
 TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-    };
-
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t and t.x == 5 or t.x == 31337
@@ -4714,7 +4682,7 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
-    ScopedFastFlag luauFollowInTypeFunApply("LuauFollowInTypeFunApply", true);
+    ScopedFastFlag luauCloneCorrectlyBeforeMutatingTableType{"LuauCloneCorrectlyBeforeMutatingTableType", true};
 
     CheckResult result = check(R"(
 type A = { x: number }

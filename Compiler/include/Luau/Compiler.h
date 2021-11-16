@@ -37,8 +37,7 @@ struct CompileOptions
     const char* vectorLib = nullptr;
     const char* vectorCtor = nullptr;
 
-    // array of globals that are mutable; disables the import optimization for fields accessed through them
-    // use NULL to end the array
+    // null-terminated array of globals that are mutable; disables the import optimization for fields accessed through these
     const char** mutableGlobals = nullptr;
 };
 

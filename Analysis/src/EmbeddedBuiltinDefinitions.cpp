@@ -1,9 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(LuauParseGenericFunctions)
-LUAU_FASTFLAG(LuauGenericFunctions)
-
 namespace Luau
 {
 
@@ -19,6 +16,8 @@ declare bit32: {
     bnot: (number) -> number,
     extract: (number, number, number?) -> number,
     replace: (number, number, number, number?) -> number,
+    countlz: (number) -> number,
+    countrz: (number) -> number,
 }
 
 declare math: {
@@ -103,15 +102,6 @@ declare _VERSION: string
 
 declare function gcinfo(): number
 
-)BUILTIN_SRC";
-
-std::string getBuiltinDefinitionSource()
-{
-    std::string src = kBuiltinDefinitionLuaSrc;
-
-    if (FFlag::LuauParseGenericFunctions && FFlag::LuauGenericFunctions)
-    {
-        src += R"(
             declare function print<T...>(...: T...)
 
             declare function type<T>(value: T): string
@@ -208,10 +198,12 @@ std::string getBuiltinDefinitionSource()
 
             -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
             declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
-        )";
-    }
 
-    return src;
+)BUILTIN_SRC";
+
+std::string getBuiltinDefinitionSource()
+{
+    return kBuiltinDefinitionLuaSrc;
 }
 
 } // namespace Luau
