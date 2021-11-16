@@ -1646,7 +1646,7 @@ static void luau_execute(lua_State* L)
                     float vb = cast_to(float, nvalue(rb));
                     const float* vc = rc->value.v;
                     for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                        ra->value.v[i] = vb + vc[i];
+                        ra->value.v[i] = vb * vc[i];
                     setttype(ra, LUA_TVECTOR);
                     VM_NEXT();
                 }
