@@ -45,7 +45,7 @@ introduce support for packed records where the table definition must use types a
 
 > TODO: It's going to be difficult to migrate to packed records. Is there anything we can do right now to keep this possibility open without enforcing types at runtime?
 
-The rest of this proposal goes into syntax and semantics.
+The rest of this proposal goes into syntax and semantics. The goal of this proposal is to solve the problem of object storage both for simple objects and for classes -- that is, if we add records we won't need to add classes.
 
 ### Record type
 
@@ -166,6 +166,10 @@ Of course, the type checker also knows that the record type has the metatable wi
 
 > TODO: Does the type checker need to understand the internal structure of the shape so that type checking works across modules, or is simply modeling this
 > as a metatable sufficient?
+
+### Object modeling
+
+> TODO: records don't support implementation inheritance and why it's a good thing
 
 ## Drawbacks
 
