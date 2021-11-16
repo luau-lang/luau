@@ -24,6 +24,8 @@ to associate methods with table structure in idiomatic OOP in Luau with tables. 
 3. Runtime overhead. While we heavily optimize table reads and writes in object-like scenario, there's still a non-zero cost that is paid for establishing the mapping
 from the index literal to the hash field. Method calls are similarly optimized but the optimization is restricted by the generality of table structure. Finally, large
 object size results in higher cache pressure which affects performance.
+4. Strictness of access. Today at runtime, reading an unknown key from the table returns `nil` and writing a new key just works. This creates significant amount of
+complexity in the type checker, as it has to differentiate between tables that are open for extension and closed via a set of heuristics, and results in easy to make mistakes in untyped code.
 
 Today, writing idiomatic objects in Luau is relatively straightforward but making idiomatic OOP type safe or maximally efficient is next to impossible.
 
