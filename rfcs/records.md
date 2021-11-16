@@ -52,6 +52,10 @@ The rest of this proposal goes into syntax and semantics.
 A record is a collectable object that stores the field values as a inline array of values (TValues) as well as a pointer to the shape. Shape is a table
 that stores various lookup data as implementation details as well as metafields. `type(r)` is `"record"`; `getmetatable(r)` can be used to retrieve the shape.
 
+Being a collectable object, records use raw equality by default when comparing using `==` or hashing; equality behavior can be overridden via `__eq`. From this
+perspective, one could think of records as a user-defined userdata type as opposed to a host-defined userdata type: both typically expose a strict set of fields,
+both are heap-allocated, both use contiguous storage.
+
 Shape contains field lookup data in extra storage that's only allocated for shape tables, as well as the regular table fields. The field lookup data is internal and
 immutable; for example, it might contain a string->index dictionary to be able to quickly locate fields in internal storage.
 
@@ -170,6 +174,9 @@ Adding a new data type that is cross-cutting (across syntax, semantics/compiler,
 The rigidity of records may make some applications hesitate to adopt them; e.g. you can't simply add a new field at a random point in the program, which some would
 argue makes the language less dynamic and therefore less convenient.
 
+Not enforcing type compatibility for typed records at runtime may make it difficult for us to optimize record storage more by removing the type tags (which could
+make record objects ~2x more efficient in some cases).
+
 ## Alternatives
 
 Instead of using explicit record types, we can make the VM recognize shapes of objects automatically, just like JavaScript implementations do. This requires a
@@ -181,3 +188,5 @@ properties, and access control. This would better map to other high level langua
 
 Instead of allowing records to have metatables, we could have separate dedicated storage for methods and come up with a new scheme for operator overloading. This
 would better map to other high level languages like C++ or C#, but would make the language less consistent.
+
+Instead of defining records separately from arrays, we could define interactions between records-stored-inside-arrays (achieving single-allocation arrays of compound objects) and arrays-stored-inside-records (making it possible to store a fixed size array in a record). Both of these really aren't compatible with TValue storage and result in dramatically higher implementation effort.
