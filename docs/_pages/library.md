@@ -761,6 +761,8 @@ function os.difftime(a: number, b: number): number
 
 Calculates the difference in seconds between `a` and `b`; provided for compatibility.
 
+It is adviced not to use `os.difftime(a, b)` for new work. Please use `a - b` instead.
+
 ```
 function os.time(t: table?): number
 ```
