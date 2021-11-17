@@ -398,6 +398,8 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
 
         if (vb && vc)
         {
+            setttype(ra, LUA_TVECTOR);
+
             switch (op)
             {
             case TM_ADD:
@@ -423,8 +425,6 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
             default:
                 break;
             }
-
-            setttype(ra, LUA_TVECTOR);
         }
         else if (vb)
         {
@@ -433,6 +433,8 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
             if (c)
             {
                 float nc = cast_to(float, nvalue(c));
+                setttype(ra, LUA_TVECTOR);
+
                 switch (op)
                 {
                 case TM_MUL:
@@ -446,7 +448,6 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
                 default:
                     break;
                 }
-                setttype(ra, LUA_TVECTOR);
             }
         }
         else if (vc)
@@ -456,6 +457,8 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
             if (b)
             {
                 float nb = cast_to(float, nvalue(b));
+                setttype(ra, LUA_TVECTOR);
+
                 switch (op)
                 {
                 case TM_MUL:
@@ -469,7 +472,6 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
                 default:
                     break;
                 }
-                setttype(ra, LUA_TVECTOR);
             }
         }
 
