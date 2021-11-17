@@ -127,7 +127,7 @@ languages like F#/C#/Kotlin implement record construction as a function call and
 is beautifully concise, but is a bit more difficult to migrate away from tables, and it's easy to mix up the names. Variants A are more verbose and either require
 an extra `new` context-specific keyword, or complex/awkward magic to keep construction efficient.
 
-In variants A, it would make sense to allow omission of any field, in which case it gets replaced with the default of `nil`. A future extension could be made to
+In variants A, it would make sense to allow omission of any field, in which case it gets replaced with the default of `nil`. A future extension (not part of this RFC) could be made to
 allow specification of default values at record definition time. Type checker would fail to type check record construction if fields that have non-optional types
 have the values omitted.
 
@@ -140,12 +140,17 @@ local X = require(path).X
 local r = new X(1, 2)
 ```
 
+### Generic records
+
+> TODO: This needs some thought; e.g., do we support explicit specification of record arguments at construction time and what's the syntax for that? Do we need to do this in the first proposal? This likely makes packed records effectively impossible to support at runtime without a huge amount of work, does that matter?
+
 ### Type checking records
 
 Records defined via a `record` statement can be used in type annotations as usual. The unification rules say that a table can unify with a record if the fields
 match, which makes records similar to sealed tables from the type checking perspective. (note, this is hand wavy on subtyping rules)
 
 > TODO: How do you export a record type? `export record` would be straightforward but potentially conflicts with future export statements for functions/values.
+> Alternatively, is `export type Record = Record` too awkward?
 
 The methods defined on the record object are type checked as usual, with one exception - the implicit `self` has the type of the record. This is crucial because
 this is the one big issue we can't resolve with metatable-based OOP for tables, but it works for records because `:` is slightly more magical.
