@@ -30,7 +30,7 @@ To fix all of those issues, we need to do a few things.
 Because we care about backward compatibility, we need some new syntax in order to not change the meaning of existing strings. There are a few components of this new expression:
 
 1. A string chunk (`` `...{ ``, `}...{`, and `` }...` ``) where `...` is a range of 0 to many characters.
-   * `%` escapes `%` and `{`, whereas `\` escapes `` ` ``.
+   * `\` escapes `` ` ``, `{`, and itself `\`.
    * Restriction: the string interpolation literal must have at least one value to interpolate. We do not need 3 ways to express a single line string literal.
    * The pairs must be on the same line (unless a `\` escapes the newline) but expressions needn't be on the same line.
 2. An expression between the braces. This is the value that will be interpolated into the string.
@@ -61,13 +61,13 @@ print(`{set1} ∪ {set2} = {Set.union(set1, set2)}`)
 --> {0, 1, 3} ∪ {0, 5, 4} = {0, 1, 3, 4, 5}
 
 -- For illustrative purposes. These are illegal specifically because they don't interpolate anything.
-print(`Some example escaping the braces %{like so}`)
-print(`% that doesn't escape anything is part of the string...`)
-print(`%% will escape the second %...`)
+print(`Some example escaping the braces \{like so}`)
+print(`backslash \ that escapes the space is not a part of the string...`)
+print(`backslash \\ will escape the second backslash...`)
 print(`Some text that also includes \`...`)
 --> Some example escaping the braces {like so}
---> % that doesn't escape anything is part of the string...
---> % will escape the second %...
+--> backslash that doesn't escape anything is part of the string...
+--> backslash \ will escape the second backslash...
 --> Some text that also includes `...
 ```
 
@@ -124,7 +124,7 @@ print(string.format("%* %* %*", return_two_nils()))
 
 If we want to use backticks for other purposes, it may introduce some potential ambiguity. One option to solve that is to only ever produce string interpolation tokens from the context of an expression. This is messy but doable because the parser and the lexer are already implemented to work in tandem. The other option is to pick a different delimiter syntax to keep backticks available for use in the future.
 
-If we were to naively compile the expression into a `string.format` call, then implementation details would be observable if you write `` `Your health is {hp}% so you need to heal up.` ``. We would need to implicitly insert a `%` character anytime one shows up in a string interpolation token (escaping `%` wouldn't show up in the token at all). Otherwise attempting to run this will produce a runtime error where the `%s` token is missing its corresponding string value. 
+If we were to naively compile the expression into a `string.format` call, then implementation details would be observable if you write `` `Your health is {hp}% so you need to heal up.` ``. When lowering the expression, we would need to implicitly insert a `%` character anytime one shows up in a string interpolation token. Otherwise attempting to run this will produce a runtime error where the `%s` token is missing its corresponding string value.
 
 ## Alternatives
 
