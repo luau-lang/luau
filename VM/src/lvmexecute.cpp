@@ -602,7 +602,8 @@ static void luau_execute(lua_State* L)
                         int ic = (name[0] | ' ') - 'x';
 
 #ifdef LUA_FLOAT4_VECTORS
-                        if(name[0] == 'w')
+                        // 'w' is before 'x' in ascii, so ic is -1 when the string is 'w'
+                        if (ic == -1)
                             ic = 3;
 #endif
 
