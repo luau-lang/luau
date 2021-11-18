@@ -560,7 +560,7 @@ void lua_pushvector(lua_State* L, float x, float y, float z, float w)
 #else
 void lua_pushvector(lua_State* L, float x, float y, float z)
 {
-    setvvalue(L->top, x, y, z);
+    setvvalue(L->top, x, y, z, 0.0f);
     api_incr_top(L);
     return;
 }

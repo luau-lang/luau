@@ -398,29 +398,22 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
 
         if (vb && vc)
         {
-            setttype(ra, LUA_TVECTOR);
-
             switch (op)
             {
             case TM_ADD:
-                for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                    ra->value.v[i] = vb[i] + vc[i];
+                setvvalue(ra, vb[0] + vc[0], vb[1] + vc[1], vb[2] + vc[2], vb[3] + vc[3]);
                 return;
             case TM_SUB:
-                for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                    ra->value.v[i] = vb[i] - vc[i];
+                setvvalue(ra, vb[0] - vc[0], vb[1] - vc[1], vb[2] - vc[2], vb[3] - vc[3]);
                 return;
             case TM_MUL:
-                for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                    ra->value.v[i] = vb[i] * vc[i];
+                setvvalue(ra, vb[0] * vc[0], vb[1] * vc[1], vb[2] * vc[2], vb[3] * vc[3]);
                 return;
             case TM_DIV:
-                for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                    ra->value.v[i] = vb[i] / vc[i];
+                setvvalue(ra, vb[0] / vc[0], vb[1] / vc[1], vb[2] / vc[2], vb[3] / vc[3]);
                 return;
             case TM_UNM:
-                for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                    ra->value.v[i] = -vb[i];
+                setvvalue(ra, -vb[0], -vb[1], -vb[2], -vb[3]);
                 return;
             default:
                 break;
@@ -433,17 +426,14 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
             if (c)
             {
                 float nc = cast_to(float, nvalue(c));
-                setttype(ra, LUA_TVECTOR);
 
                 switch (op)
                 {
                 case TM_MUL:
-                    for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                        ra->value.v[i] = vb[i] * nc;
+                    setvvalue(ra, vb[0] * nc, vb[1] * nc, vb[2] * nc, vb[3] * nc);
                     return;
                 case TM_DIV:
-                    for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                        ra->value.v[i] = vb[i] / nc;
+                    setvvalue(ra, vb[0] / nc, vb[1] / nc, vb[2] / nc, vb[3] / nc);
                     return;
                 default:
                     break;
@@ -457,17 +447,14 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
             if (b)
             {
                 float nb = cast_to(float, nvalue(b));
-                setttype(ra, LUA_TVECTOR);
 
                 switch (op)
                 {
                 case TM_MUL:
-                    for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                        ra->value.v[i] = nb * vc[i];
+                    setvvalue(ra, nb * vc[0], nb * vc[1], nb * vc[2], nb * vc[3]);
                     return;
                 case TM_DIV:
-                    for (int i = 0; i < LUA_VECTOR_SIZE; i++)
-                        ra->value.v[i] = nb / vc[i];
+                    setvvalue(ra, nb / vc[0], nb / vc[1], nb / vc[2], nb / vc[3]);
                     return;
                 default:
                     break;

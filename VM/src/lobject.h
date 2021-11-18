@@ -117,7 +117,7 @@ typedef struct lua_TValue
         i_o->tt = LUA_TVECTOR; \
     }
 #else
-#define setvvalue(obj, x, y, z) \
+#define setvvalue(obj, x, y, z, w) \
     { \
         TValue* i_o = (obj); \
         float* i_v = i_o->value.v; \
