@@ -394,8 +394,7 @@ typedef struct LuaNode
         LuaNode* n_ = (node); \
         const TValue* i_o = (obj); \
         n_->key.value = i_o->value; \
-        for (int i = 0; i < LUA_EXTRA_VALUE_SIZE; i++) \
-            n_->key.extra[i] = i_o->extra[i]; \
+        memcpy(n_->key.extra, i_o->extra, sizeof(n_->key.extra)); \
         n_->key.tt = i_o->tt; \
         checkliveness(L->global, i_o); \
     }
@@ -406,8 +405,7 @@ typedef struct LuaNode
         TValue* i_o = (obj); \
         const LuaNode* n_ = (node); \
         i_o->value = n_->key.value; \
-        for (int i = 0; i < LUA_EXTRA_VALUE_SIZE; i++) \
-            i_o->extra[i] = n_->key.extra[i]; \
+        memcpy(i_o->extra, n_->key.extra, sizeof(i_o->extra)); \
         i_o->tt = n_->key.tt; \
         checkliveness(L->global, i_o); \
     }
