@@ -48,6 +48,10 @@ since the structure of a record is immutable even if the contents isn't, this al
 bytes without implementation heroics, which is more than twice as efficient as table storage. For applications that use many objects this has potential to halve
 the memory footprint.
 
+Due to carefully specified access rules, records can be more efficient than tables as far as performance is concerned even without having type information at runtime.
+In the future, type feedback from the type checker into the compiler will allow us to implement even more efficient record access, especially when combined with native
+code generation -- and that implementation will not require complex shape caches and handling invalidation with associated deoptimizations and performance cliffs.
+
 Record fields use flexible types at runtime (we always allocate space for TValue and don't restrict writes into the record to a given type). In the future, we may
 introduce support for packed records where the table definition must use types and writes that don't abide by these types will trigger an error
 
