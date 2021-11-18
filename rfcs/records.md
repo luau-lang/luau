@@ -422,6 +422,21 @@ substantial amount of complicated machinery and heuristics, and likely can't be 
 without any changes to existing programs. This, however, leaves the problem of establishing complex relationships between object shape and method on the type level
 which requires heuristics with table-based OOP.
 
+Instead of using explicit record types, we can lower a similar ergonomic syntax onto a table-based runtime along with similar type-level rules for how to bind
+table methods to the table type. For example, we can still use the same `record X = { fields }` syntax that defines the type and a metatable simultaneously. If we setup
+the table shape with `__call` metamethod automatically, we'll get the same syntax for record construction as well - here's what the lowering could look like (generated code):
+
+```
+local Point = {}
+Point.__index = Point
+Point.__call = function(tab) return setmetatable(tab, Point) end
+
+type Point = { x: number, y: number, @metatable: typeof(Point) }
+```
+
+The rest would be handled by the type checker, including implicit `self` typing for methods declared on the table. In this alternative we'd need to either ignore the efficiency
+gains, or rely on the complex runtime machinery that automatically recognizes shapes via a combination of compiler analysis and runtime instrumentation.
+
 Instead of using record types that have minimal featureset, we could implement classes that have a more feature-rich OOP semantics, with inheritance, first class
 properties, and access control. This would better map to other high level languages like TypeScript/Python, but would make the language and runtime more complicated.
 
