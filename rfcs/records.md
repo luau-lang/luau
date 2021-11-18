@@ -27,7 +27,7 @@ object size results in higher cache pressure which affects performance.
 4. Strictness of access. Today at runtime, reading an unknown key from the table returns `nil` and writing a new key just works. This creates significant amount of
 complexity in the type checker, as it has to differentiate between tables that are open for extension and closed via a set of heuristics, and results in easy to make mistakes in untyped code.
 
-Today, writing idiomatic objects in Luau is relatively straightforward but making idiomatic OOP type safe or maximally efficient is next to impossible.
+Today, writing idiomatic objects in Luau is relatively straightforward but making idiomatic OOP type safe or maximally efficient is very difficult.
 
 ## Design
 
@@ -35,54 +35,67 @@ This proposal suggests solving these problems with a new data type, called recor
 a table, values associated with keys can be read or written to. Much like a table, it has a metatable that can be used to customize behavior of the object by providing
 extra operators (for arithmetics, stringification, etc.), as well as specifying methods.
 
-The difference between records and tables is that when creating a record, the VM allocates space for all values of all keys without having to duplicate the key data;
+Syntactically, the difference between records and tables is that defining the record simultaneously creates a type name for the record and a shape object for the record,
+that acts as a metatable and as a method table - this creates a single straightforward path for the users of the language to talk about objects with methods. In addition, we
+constrain the expected types for the methods in such a way that the connection between the record shape, the record methods, and the self type in those methods is defined
+a-priori, instead of us having to extract this information with heuristics that assume a specific metatable-based source assembly.
+
+In addition, a record object always has the final shape - it's impossible to create a record with missing fields, at least from the type checker perspective. This makes
+it easier to reason about the record types without having to model type states and without complex issues around method calls to partially complete tables.
+
+At runtime, the difference between records and tables is that when creating a record, the VM allocates space for all values of all keys without having to duplicate the key data;
 since the structure of a record is immutable even if the contents isn't, this allows a much more efficient representation. A 6-field record will take estimated `8+32+6*16=136`
 bytes without implementation heroics, which is more than twice as efficient as table storage. For applications that use many objects this has potential to halve
 the memory footprint.
 
 Record fields use flexible types at runtime (we always allocate space for TValue and don't restrict writes into the record to a given type). In the future, we may
-introduce support for packed records where the table definition must use types and writes that don't abide by these types will trigger an error.
-
-> TODO: It's going to be difficult to migrate to packed records. Is there anything we can do right now to keep this possibility open without enforcing types at runtime?
+introduce support for packed records where the table definition must use types and writes that don't abide by these types will trigger an error
 
 The rest of this proposal goes into syntax and semantics. The goal of this proposal is to solve the problem of object storage both for simple objects and for classes -- that is, if we add records we won't need to add classes.
 
 ### Record type
 
 A record is a collectable object that stores the field values as a inline array of values (TValues) as well as a pointer to the shape. Shape is a table
-that stores various lookup data as implementation details as well as metafields. `type(r)` is `"record"`; `getmetatable(r)` can be used to retrieve the shape.
+that stores various lookup data as implementation details as well as metafields.
+
+`type(r)` is `"record"`; `getmetatable(r)` can be used to retrieve the shape. `typeof(r)` is `$` followed by the name of the record as spelled in the source file.
+The prefix is required to make sure that builtin object types like `number` or host-provided userdata like `Vector3` can't be spoofed and confused with records.
+
+> TODO: Why `$`? :)
 
 Being a collectable object, records use raw equality by default when comparing using `==` or hashing; equality behavior can be overridden via `__eq`. From this
 perspective, one could think of records as a user-defined userdata type as opposed to a host-defined userdata type: both typically expose a strict set of fields,
 both are heap-allocated, both use contiguous storage.
 
-Shape contains field lookup data in extra storage that's only allocated for shape tables, as well as the regular table fields. The field lookup data is internal and
-immutable; for example, it might contain a string->index dictionary to be able to quickly locate fields in internal storage.
-
-> TODO: Still not fully set on whether we can get by without a first class shape type.
+Shape contains field lookup data in extra storage that's only allocated for shape tables, as well as methods and metamethods stored as regular table entries.
+The field lookup data is internal and immutable; for example, it might contain a string->index dictionary to be able to quickly locate fields in internal storage.
 
 Reading and writing fields from a record uses `.` or `[]` operator; like tables, passing the field name returns the field value. Unlike tables, if the field is not
 present in the table, the error is raised. This is in constrast with tables where `nil` is returned for unknown keys upon read; records are meant to be stricted than
 tables and as such returning `nil` will mask valuable errors, and make it more difficult to be strict about the types of the result.
 
-Invoking methods with `:` desugars into `getmetatable(obj).__index.method(obj, args)` instead of the usual `obj.method(obj, args)`. This is important because it allows to
-keep the method calls as efficient as possible, as they don't need to check whether the object has a given method.
+The field lookup does not use `__index` or `__newindex` metamethods (or the metatable in general).
 
-> TODO: Should we use `__namecall` instead of `__index`? It seems more consistent, but at the same time `__namecall` today expects a function so it might be best
+Invoking methods with `:` desugars into `getmetatable(obj).method(obj, args)` instead of the usual `obj.method(obj, args)`. This is important because it allows to
+keep the method calls as efficient as possible, as they don't need to check whether the record has a given method as a field.
+
+> TODO: Should we use `__namecall` instead of raw MT access? It seems more consistent, but at the same time `__namecall` today expects a function so it might be best
 > to leave it as is?
 
 > TODO: How do we expose the record keys? Should it be a builtin? Accessible through shape? Not available initially?
 
 ### Defining and constructing records
 
-To define a record, you need to create the shape, which you can do using the newly introduced syntax with a context-sensitive `record` keyword:
+To define a record, you need to create the shape, which you can do using the newly introduced syntax with a context-sensitive `record` keyword.
+
+> TODO: The draft RFC suggests two options for the syntax; only one will be chosen in the final version
 
 Syntax A:
 
 ```
 record Person = { name: string, age: number }
 
--- types can be omitted
+-- types can be omitted and default to any
 record Point = { x, y }
 ```
 
@@ -90,7 +103,7 @@ Syntax B:
 
 ```
 record Person(name: string, age: number)
--- types can be omitted
+-- types can be omitted and default to any
 record Point(x, y)
 ```
 
@@ -115,39 +128,63 @@ end
 Note that `Point` is simply a table and as such it can be used to store static methods as well; as it also serves as a metatable, metafields defined on this table
 will change the behavior of the record values. The shape isn't frozen automatically but can be frozen manually if desired via `table.freeze`.
 
-To create a record, you need to use a record constructor. This is where the draft design has four options, each goes with one of the syntax options.
+To create a record, you need to use a record constructor. This is done using call-like syntax:
 
-A1. Creation uses special syntax, `new Record { field = value ... }`. This is unsurprising and easy to implement, but verbose.
-A2. Creation uses existing Lua DSL syntax `Record { field = value, ... }`. This is concise but requires a slightly intricate bytecode design to keep efficient.
-B1. Creation uses special syntax, `new Record(value, ...)`. This is unsurprising and easy to implement, but verbose.
-B2. Creation uses existing Lua call syntax, `Record(value, ...)`. This is concise and reasonably easy to keep efficient.
+Syntax A:
+
+```
+local person = Person { name = "Bob", age = 42 }
+```
+
+Syntax B:
+
+```
+local person = Person("Bob", 42)
+```
 
 The big difference between variants A and B is whether you need to spell out field names at construction time. There's precedents for going either way; some
 languages like F#/C#/Kotlin implement record construction as a function call and when you define a record, you essentially define the record constructor. This
-is beautifully concise, but is a bit more difficult to migrate away from tables, and it's easy to mix up the names. Variants A are more verbose and either require
-an extra `new` context-specific keyword, or complex/awkward magic to keep construction efficient.
+is beautifully concise, but is a bit more difficult to migrate away from tables, and it's easy to mix up the names. Variant A is more verbose and requires a bit
+more magic at compile time to keep construction efficient.
 
-In variants A, it would make sense to allow omission of any field, in which case it gets replaced with the default of `nil`. A future extension (not part of this RFC) could be made to
+In variant A, it would make sense to allow omission of any field, in which case it gets replaced with the default of `nil`. A future extension (not part of this RFC) could be made to
 allow specification of default values at record definition time. Type checker would fail to type check record construction if fields that have non-optional types
 have the values omitted.
 
-In variants B, it would probably make sense to require exact number of values to be specified, or follow the usual function call syntax rules.
+In variant B, it would probably make sense to require exact number of values to be specified, or follow the usual function call syntax rules.
 
 Note that since records are first class objects, you can export or import a record through a module boundary in the usual way:
 
 ```
-local X = require(path).X
-local r = new X(1, 2)
+local HR = require(path)
+local r = HR.Person { name = "Bob", age = 42 } -- or HR.Person(1, 2) in variant B
 ```
 
 ### Generic records
 
-> TODO: This needs some thought; e.g., do we support explicit specification of record arguments at construction time and what's the syntax for that? Do we need to do this in the first proposal? This likely makes packed records effectively impossible to support at runtime without a huge amount of work, does that matter?
+At definition point, records can have generic arguments that can be used in the field type specification:
+
+```
+record Point<V> = { x: V, y: V }
+```
+
+When record names are used in type context, they use the standard generic instantiation syntax to specify the generic parameters:
+
+```
+local p: Point<number>
+```
+
+When record names are used in record literals, they don't specify the generic parameters. This is to avoid complexity with parsing `<` in expression context:
+
+```
+local p: Point<number> = Point { x = 1, y = 2 }
+```
+
+The generic type parameters are erased at runtime.
 
 ### Type checking records
 
-Records defined via a `record` statement can be used in type annotations as usual. The unification rules say that a table can unify with a record if the fields
-match, which makes records similar to sealed tables from the type checking perspective. (note, this is hand wavy on subtyping rules)
+Records defined via a `record` statement can be used in type annotations.
 
 > TODO: How do you export a record type? `export record` would be straightforward but potentially conflicts with future export statements for functions/values.
 > Alternatively, is `export type Record = Record` too awkward?
@@ -167,14 +204,147 @@ function Point.sum(self: Point): number
 end
 ```
 
-Of course, the type checker also knows that the record type has the metatable with the inferred type of the record shape.
+Of course, the type checker also knows that the record type has the metatable with the inferred type of the record shape. This gives us an advantage in that
+the use of the record type, whether explicit or inferred (via self), automatically gets access to both the correct definition of fields - which is specified
+explicitly and as such is correct - as well as the full definition of methods.
 
-> TODO: Does the type checker need to understand the internal structure of the shape so that type checking works across modules, or is simply modeling this
-> as a metatable sufficient?
+### Subtyping rules
+
+Given two record types, or a record and a table, how do we know whether one is a subtype of another? This brings up the question of whether records are nominal or structural.
+Note that this doesn't affect the behavior of record types at runtime, but does affect typechecking semantics.
+
+Today Luau type system supports nominal types, including table types with fixed structure (sealed tables), as well as nominal types (classes) used to model host API (userdata).
+
+Records could either be modeled as a structural construct like a sealed table, or as a nominal construct like a class.
+
+In the former case, record is a subtype of another record if the fields are a superset of the fields of the other record in names and types.
+In the latter case, record is a subtype of another record if they are the same record.
+
+In the latter case, the type variable needs to carry a stable identifier, for example the module the record came from as well as a locally unique identifier (e.g. iota) for the definition.
+This allows to carry these types across modules via `require` while maintaining the stable identity.
+
+In either case, the subtyping relationship between tables and records is structural and follows the is-a substitution principle. This is important because in code like this the inferred type is a table:
+
+```
+function f(p)
+    return p.x + p.y
+end
+```
+
+... and we'd like to be able to call `f` with a record as an argument.
+
+> TODO: This draft RFC doesn't make the decision between nominal vs structural subtyping of two record types; this choice is going to be finalized when the RFC goes out of draft.
 
 ### Object modeling
 
-> TODO: records don't support implementation inheritance and why it's a good thing
+With records, it becomes easy to model objects, which raises the question - do we need classes? Do we need traditional OOP features and if so, which ones?
+
+This RFC is designed to provide a minimal foundation for modeling objects with associated methods, without imposing restrictions, or providing extensive features. In the spirit of Lua, we add the minimal viable data structure
+with rigidly defined structure and do not do anything else.
+
+Records can be used as an equivalent of "plain old data" structs: a single-line record definition is usable without the introduction of any methods, simply as a data container. The functions can be defined externally or as methods,
+depending on the user preference.
+
+Records don't provide a facility for implementation inheritance: adding fields or methods to a record requires defining a new record. This is something that is possible to implement in the future, by extending the syntax to be able to
+provide the parent record when defining a new record shape, and requiring all fields to be specified. However, doing so is not only outside of the scope of this RFC, but also the author would like to note that implementation inheritance
+is often considered an anti-pattern and composition or interface inheritance are preferred instead.
+
+Records don't provide a facility for interface inheritance; however, existing support for table types along with subtyping rules allows records to be used when an "interface" table that defines methods is specified in the type signature.
+At runtime, access to tables or fields is uniform and as such interface inheritance "just works". In the future we may consider adding syntax for enforcing the fact that the record R implements interface I, which could be helpful for typed code.
+
+Records don't provide a facility for encapsulation: fields are readable and writeable. This is consistent with table fields; in the future, it would be possible to provide encapsulation as an option via extra attributes on fields, although
+it's not clear if this is a worthwhile addition at this point.
+
+Records don't provide a facility for computed properties: fields are used for data storage, and methods are used for function invocation. This can be changed in the future by allowing `__index`/`__newindex` invocation in cases when the field
+is missing on a record, or by introducing special facility for property invocation - however, doing so is likely to carry a runtime cost as well as make it more difficult to reason about the side effects of the code so it's not clear if this is
+a worthwhile addition at this point.
+
+In short, records are the minimum viable mechanism for OOP: they provide a way to bind data and code without requiring it, they provide a way to think about interface inheritance via dynamic dispatch and table type annotations, and they provide
+nothing else.
+
+In the future we may consider extending records with more features but in the spirit of minimalism and considering that many successfull languages don't have a full OOP featureset and OOP isn't universally considered to be the right
+way to model the world, we will be very careful in selecting features that we add to this data type.
+
+### Ergonomics
+
+Today it's possible to define objects using tables with metatables; this requires remembering a certain pattern that contains two magical lines, both relating to metatables:
+
+```
+local Point = {}
+Point.__index = Point
+
+function Point.new(x, y)
+    return setmetatable({x = x, y = y}, Point)
+end
+
+function Point.__add(l, r)
+    return Point.new(l.x + r.x, l.y + r.y)
+end
+
+function Point:sum()
+    return self.x + self.y
+end
+```
+
+This gets tricky when types are involved. The code specified above doesn't typecheck in strict mode; in particular, it doesn't contain a definition of the type Point.
+It's tempting to fix it as follows:
+
+```
+type Point = { x: number, y: number }
+
+local Point = {}
+Point.__index = Point
+
+function Point.new(x: number, y: number): Point
+    return setmetatable({x = x, y = y}, Point)
+end
+
+function Point.__add(l: Point, r: Point): Point
+    return Point.new(l.x + r.x, l.y + r.y)
+end
+
+function Point:sum(): number
+    return self.x + self.y
+end
+```
+
+However, this still doesn't typecheck - the setmetatable call returns a type that can't be converted to Point, and sum method doesn't know that self is a Point.
+Furthermore, because of how we typecheck methods, the inferred type for the `Point` table grows exponentially with the number of method interactions in certain cases,
+which results in very long type checking if limits are disabled or "code too complex" errors.
+
+We have plans to improve this in the future, and `:sum` can be fixed by switching to an explicit `self` although that then runs the risk of issuing confusing errors around
+use of `.` vs `:` in certain type error scenarios.
+
+Finally, note that the `Point` type here is incorrect as it doesn't contain the definitions of any methods so it's not useful externally. It's possible to use `typeof` like this:
+
+```
+type Point = typeof(Point.new(0, 0))
+```
+
+... but this doesn't always work due to complex issues with toposort in real-world code, is not intuitive, requires a specific non-intuitive order of declarations, makes it hard
+to specify the exact shape of the fields, and is even more difficult for generic code.
+
+Records solve all of these issues without requiring complex workarounds and result in code that is easier to read and reason about, and easier to teach:
+
+```
+record Point = { x: number, y: number }
+
+function Point.new(x: number, y: number): Point
+    return Point {x = x, y = y}
+end
+
+function Point.__add(l: Point, r: Point): Point
+    return Point.new(l.x + r.x, l.y + r.y)
+end
+
+function Point:sum(): number
+    return self.x + self.y
+end
+```
+
+This code is type-safe in strict mode under this proposal. It's also valuable to point out that this code was produced by taking the table-driven code, removing needless lines
+and replacing the `setmetatable` call with record constructor. The ease of conversion makes the author optimistic that the feature will be loved and adopted and won't introduce
+extra friction or confusion. This would also be a reason to prefer the syntactic variant A.
 
 ## Drawbacks
 
@@ -183,6 +353,10 @@ Adding a new data type that is cross-cutting (across syntax, semantics/compiler,
 The rigidity of records may make some applications hesitate to adopt them; e.g. you can't simply add a new field at a random point in the program, which some would
 argue makes the language less dynamic and therefore less convenient.
 
+By only supporting efficient representation of records, rather than all tables, we are only providing an optimization for new (or modified) code. JavaScript runtimes,
+in comparison, support shape optimizations for all objects, although that optimization is hidden and as such isn't always reliable and can result in performance cliffs in
+certain cases.
+
 Not enforcing type compatibility for typed records at runtime may make it difficult for us to optimize record storage more by removing the type tags (which could
 make record objects ~2x more efficient in some cases).
 
@@ -190,7 +364,8 @@ make record objects ~2x more efficient in some cases).
 
 Instead of using explicit record types, we can make the VM recognize shapes of objects automatically, just like JavaScript implementations do. This requires a
 substantial amount of complicated machinery and heuristics, and likely can't be as efficient as records in the long run, but it can result in close efficiency
-without any changes to existing programs. This, however, doesn't make type safety any easier.
+without any changes to existing programs. This, however, leaves the problem of establishing complex relationships between object shape and method on the type level
+which requires heuristics with table-based OOP.
 
 Instead of using record types that have minimal featureset, we could implement classes that have a more feature-rich OOP semantics, with inheritance, first class
 properties, and access control. This would better map to other high level languages like TypeScript/Python, but would make the language and runtime more complicated.
@@ -198,4 +373,6 @@ properties, and access control. This would better map to other high level langua
 Instead of allowing records to have metatables, we could have separate dedicated storage for methods and come up with a new scheme for operator overloading. This
 would better map to other high level languages like C++ or C#, but would make the language less consistent.
 
-Instead of defining records separately from arrays, we could define interactions between records-stored-inside-arrays (achieving single-allocation arrays of compound objects) and arrays-stored-inside-records (making it possible to store a fixed size array in a record). Both of these really aren't compatible with TValue storage and result in dramatically higher implementation effort.
+Instead of defining records separately from arrays, we could define interactions between records-stored-inside-arrays (achieving single-allocation arrays of compound objects)
+and arrays-stored-inside-records (making it possible to store a fixed size array in a record). Both of these really aren't compatible with TValue storage and result in
+higher implementation effort.
