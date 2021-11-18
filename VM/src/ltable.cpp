@@ -97,7 +97,7 @@ static LuaNode* hashnum(const Table* t, double n)
 
 static LuaNode* hashvec(const Table* t, const float* v)
 {
-    unsigned int i[4];
+    unsigned int i[LUA_VECTOR_SIZE];
     memcpy(i, v, sizeof(i));
 
     // convert -0 to 0 to make sure they hash to the same value
