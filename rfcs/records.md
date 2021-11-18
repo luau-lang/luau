@@ -92,7 +92,7 @@ To define a record, you need to create the shape, which you can do using the new
 
 Syntax A:
 
-```
+```lua
 record Person = { name: string, age: number }
 
 -- types can be omitted and default to any
@@ -101,7 +101,7 @@ record Point = { x, y }
 
 Syntax B:
 
-```
+```lua
 record Person(name: string, age: number)
 -- types can be omitted and default to any
 record Point(x, y)
@@ -111,7 +111,7 @@ This defines `Point` simultaneously as a local variable that corresponds to the 
 
 The resulting shape table automatically is set up to be a valid record shape, but can still be modified by adding methods to it:
 
-```
+```lua
 function Point.__add(l, r)
     return Point(l.x + r.x, l.y + r.y)
 end
@@ -132,13 +132,13 @@ To create a record, you need to use a record constructor. This is done using cal
 
 Syntax A:
 
-```
+```lua
 local person = Person { name = "Bob", age = 42 }
 ```
 
 Syntax B:
 
-```
+```lua
 local person = Person("Bob", 42)
 ```
 
@@ -155,7 +155,7 @@ In variant B, it would probably make sense to require exact number of values to 
 
 Note that since records are first class objects, you can export or import a record through a module boundary in the usual way:
 
-```
+```lua
 local HR = require(path)
 local r = HR.Person { name = "Bob", age = 42 } -- or HR.Person(1, 2) in variant B
 ```
@@ -164,19 +164,19 @@ local r = HR.Person { name = "Bob", age = 42 } -- or HR.Person(1, 2) in variant 
 
 At definition point, records can have generic arguments that can be used in the field type specification:
 
-```
+```lua
 record Point<V> = { x: V, y: V }
 ```
 
 When record names are used in type context, they use the standard generic instantiation syntax to specify the generic parameters:
 
-```
+```lua
 local p: Point<number>
 ```
 
 When record names are used in record literals, they don't specify the generic parameters. This is to avoid complexity with parsing `<` in expression context:
 
-```
+```lua
 local p: Point<number> = Point { x = 1, y = 2 }
 ```
 
@@ -194,7 +194,7 @@ this is the one big issue we haven't yet resolved with metatable-based OOP for t
 
 When `self` is explicit, the type needs to be specified manually, e.g. these definitions are equivalent:
 
-```
+```lua
 function Point:sum(): number
     return self.x + self.y
 end
@@ -224,7 +224,7 @@ In the latter case, the type variable needs to carry a stable identifier, for ex
 
 This allows to carry these types across modules via `require` while maintaining the stable identity; for example:
 
-```
+```lua
 -- module A
 export record R { ... }
 
@@ -244,7 +244,7 @@ local C = require(C)
 
 In either case, the subtyping relationship between tables and records is structural and follows the is-a substitution principle. This is important because in code like this the inferred type is a table:
 
-```
+```lua
 function f(p)
     return p.x + p.y
 end
@@ -252,7 +252,7 @@ end
 
 ... and we'd like to be able to call `f` with a record as an argument. This also allows us to use table types as interfaces that records comply to, for example this would typecheck:
 
-```
+```lua
 type Writer = { write: (Writer, string) -> () }
 
 record Printer = {}
@@ -300,7 +300,7 @@ way to model the world, we will be very careful in selecting features that we ad
 
 Today it's possible to define objects using tables with metatables; this requires remembering a certain pattern that contains two magical lines, both relating to metatables:
 
-```
+```lua
 local Point = {}
 Point.__index = Point
 
@@ -320,7 +320,7 @@ end
 This gets tricky when types are involved. The code specified above doesn't typecheck in strict mode; in particular, it doesn't contain a definition of the type Point.
 It's tempting to fix it as follows:
 
-```
+```lua
 type Point = { x: number, y: number }
 
 local Point = {}
@@ -348,16 +348,36 @@ use of `.` vs `:` in certain type error scenarios.
 
 Finally, note that the `Point` type here is incorrect as it doesn't contain the definitions of any methods so it's not useful externally. It's possible to use `typeof` like this:
 
-```
+```lua
 type Point = typeof(Point.new(0, 0))
 ```
 
 ... but this doesn't always work due to complex issues with toposort in real-world code, is not intuitive, requires a specific non-intuitive order of declarations, makes it hard
-to specify the exact shape of the fields, and is even more difficult for generic code.
+to specify the exact shape of the fields, and is even more difficult for generic code. For this simple example it does work, and along with `self` tweak this results in the following
+type-safe code:
+
+```lua
+local Point = {}
+Point.__index = Point
+
+function Point.new(x: number, y: number): Point
+    return setmetatable({x = x, y = y}, Point)
+end
+
+type Point = typeof(Point.new(0, 0))
+
+function Point.__add(l: Point, r: Point): Point
+    return Point.new(l.x + r.x, l.y + r.y)
+end
+
+function Point.sum(self: Point): number
+    return self.x + self.y
+end
+```
 
 Records solve all of these issues without requiring complex workarounds and result in code that is easier to read and reason about, and easier to teach:
 
-```
+```lua
 record Point = { x: number, y: number }
 
 function Point.new(x: number, y: number): Point
