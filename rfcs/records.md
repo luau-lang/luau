@@ -221,7 +221,26 @@ In the former case, record is a subtype of another record if the fields are a su
 In the latter case, record is a subtype of another record if they are the same record.
 
 In the latter case, the type variable needs to carry a stable identifier, for example the module the record came from as well as a locally unique identifier (e.g. iota) for the definition.
-This allows to carry these types across modules via `require` while maintaining the stable identity.
+
+This allows to carry these types across modules via `require` while maintaining the stable identity; for example:
+
+```
+-- module A
+export record R { ... }
+
+-- module B
+local A = require(A)
+export type R = A.R
+
+-- module C
+local A = require(A)
+export type R = A.R
+
+-- module D
+local B = require(B)
+local C = require(C)
+-- B.R and C.R are the same type because the source of the definition is the same and comes from module A
+```
 
 In either case, the subtyping relationship between tables and records is structural and follows the is-a substitution principle. This is important because in code like this the inferred type is a table:
 
@@ -231,7 +250,19 @@ function f(p)
 end
 ```
 
-... and we'd like to be able to call `f` with a record as an argument.
+... and we'd like to be able to call `f` with a record as an argument. This also allows us to use table types as interfaces that records comply to, for example this would typecheck:
+
+```
+type Writer = { write: (Writer, string) -> () }
+
+record Printer = {}
+
+function Printer:write(s: string)
+    print(s)
+end
+
+local w: Writer = Printer {}
+```
 
 > TODO: This draft RFC doesn't make the decision between nominal vs structural subtyping of two record types; this choice is going to be finalized when the RFC goes out of draft.
 
