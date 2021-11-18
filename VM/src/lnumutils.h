@@ -18,7 +18,7 @@
 
 inline bool luai_veceq(const float* a, const float* b)
 {
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2] && a[3] == b[3];
 #else
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2];
@@ -27,7 +27,7 @@ inline bool luai_veceq(const float* a, const float* b)
 
 inline bool luai_vecisnan(const float* a)
 {
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
     return a[0] != a[0] || a[1] != a[1] || a[2] != a[2] || a[3] != a[3];
 #else
     return a[0] != a[0] || a[1] != a[1] || a[2] != a[2];

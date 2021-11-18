@@ -601,7 +601,7 @@ static void luau_execute(lua_State* L)
                         const char* name = getstr(tsvalue(kv));
                         int ic = (name[0] | ' ') - 'x';
 
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
                         // 'w' is before 'x' in ascii, so ic is -1 when indexing with 'w'
                         if (ic == -1)
                             ic = 3;

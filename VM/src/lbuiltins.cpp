@@ -1018,7 +1018,7 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
 
 static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
     if (nparams >= 4 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1) && ttisnumber(args + 2))
 #else
     if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
@@ -1029,7 +1029,7 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
         double z = nvalue(args + 1);
         double w = 0.0;
 
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
         w = nvalue(args + 2);
 #endif
 

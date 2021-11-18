@@ -33,7 +33,7 @@
 #define ABISWITCH(x64, ms32, gcc32) (sizeof(void*) == 8 ? x64 : ms32)
 #endif
 
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
 static_assert(sizeof(TValue) == ABISWITCH(24, 24, 24), "size mismatch for value");
 static_assert(sizeof(LuaNode) == ABISWITCH(48, 48, 48), "size mismatch for table entry");
 #else

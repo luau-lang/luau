@@ -550,7 +550,7 @@ void lua_pushunsigned(lua_State* L, unsigned u)
     return;
 }
 
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
 void lua_pushvector(lua_State* L, float x, float y, float z, float w)
 {
     setvvalue(L->top, x, y, z, w);

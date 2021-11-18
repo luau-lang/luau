@@ -105,7 +105,7 @@ typedef struct lua_TValue
         i_o->tt = LUA_TNUMBER; \
     }
 
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
 #define setvvalue(obj, x, y, z, w) \
     { \
         TValue* i_o = (obj); \

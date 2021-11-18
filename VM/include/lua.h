@@ -157,7 +157,7 @@ LUA_API void lua_pushnil(lua_State* L);
 LUA_API void lua_pushnumber(lua_State* L, double n);
 LUA_API void lua_pushinteger(lua_State* L, int n);
 LUA_API void lua_pushunsigned(lua_State* L, unsigned n);
-#ifdef LUA_FLOAT4_VECTORS
+#if LUA_VECTOR_SIZE == 4
 LUA_API void lua_pushvector(lua_State* L, float x, float y, float z, float w);
 #else
 LUA_API void lua_pushvector(lua_State* L, float x, float y, float z);
