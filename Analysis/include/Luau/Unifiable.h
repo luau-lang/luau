@@ -105,6 +105,8 @@ private:
 
 struct Error
 {
+    // This constructor has to be public, since it's used in TypeVar and TypePack,
+    // but shouldn't be called directly. Please use errorRecoveryType() instead.
     Error();
 
     int index;

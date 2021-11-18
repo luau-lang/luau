@@ -34,4 +34,6 @@ bool equalsLower(std::string_view lhs, std::string_view rhs);
 
 size_t hashRange(const char* data, size_t size);
 
+std::string escape(std::string_view s);
+bool isIdentifier(std::string_view s);
 } // namespace Luau

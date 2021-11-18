@@ -223,3 +223,40 @@ std::optional<std::string> getParentPath(const std::string& path)
 
     return "";
 }
+
+static std::string getExtension(const std::string& path)
+{
+    std::string::size_type dot = path.find_last_of(".\\/");
+
+    if (dot == std::string::npos || path[dot] != '.')
+        return "";
+
+    return path.substr(dot);
+}
+
+std::vector<std::string> getSourceFiles(int argc, char** argv)
+{
+    std::vector<std::string> files;
+
+    for (int i = 1; i < argc; ++i)
+    {
+        if (argv[i][0] == '-')
+            continue;
+
+        if (isDirectory(argv[i]))
+        {
+            traverseDirectory(argv[i], [&](const std::string& name) {
+                std::string ext = getExtension(name);
+
+                if (ext == ".lua" || ext == ".luau")
+                    files.push_back(name);
+            });
+        }
+        else
+        {
+            files.push_back(argv[i]);
+        }
+    }
+
+    return files;
+}

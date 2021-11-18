@@ -22,7 +22,9 @@ LUAU_FASTFLAGVARIABLE(LuauTypecheckOpts, false)
 LUAU_FASTFLAG(LuauShareTxnSeen);
 LUAU_FASTFLAGVARIABLE(LuauCacheUnifyTableResults, false)
 LUAU_FASTFLAGVARIABLE(LuauExtendedTypeMismatchError, false)
+LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAGVARIABLE(LuauExtendedClassMismatchError, false)
+LUAU_FASTFLAG(LuauErrorRecoveryType);
 
 namespace Luau
 {
@@ -211,6 +213,7 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
     {
         occursCheck(subTy, superTy);
 
+        // The occurrence check might have caused superTy no longer to be a free type
         if (!get<ErrorTypeVar>(subTy))
         {
             log(subTy);
@@ -221,10 +224,20 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
     }
     else if (l && r)
     {
-        log(superTy);
+        if (!FFlag::LuauErrorRecoveryType)
+            log(superTy);
         occursCheck(superTy, subTy);
         r->level = min(r->level, l->level);
-        *asMutable(superTy) = BoundTypeVar(subTy);
+
+        // The occurrence check might have caused superTy no longer to be a free type
+        if (!FFlag::LuauErrorRecoveryType)
+            *asMutable(superTy) = BoundTypeVar(subTy);
+        else if (!get<ErrorTypeVar>(superTy))
+        {
+            log(superTy);
+            *asMutable(superTy) = BoundTypeVar(subTy);
+        }
+
         return;
     }
     else if (l)
@@ -240,6 +253,7 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
             return;
         }
 
+        // The occurrence check might have caused superTy no longer to be a free type
         if (!get<ErrorTypeVar>(superTy))
         {
             if (auto rightLevel = getMutableLevel(subTy))
@@ -251,6 +265,7 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
             log(superTy);
             *asMutable(superTy) = BoundTypeVar(subTy);
         }
+
         return;
     }
     else if (r)
@@ -512,6 +527,9 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
     else if (get<PrimitiveTypeVar>(superTy) && get<PrimitiveTypeVar>(subTy))
         tryUnifyPrimitives(superTy, subTy);
 
+    else if (FFlag::LuauSingletonTypes && (get<PrimitiveTypeVar>(superTy) || get<SingletonTypeVar>(superTy)) && get<SingletonTypeVar>(subTy))
+        tryUnifySingletons(superTy, subTy);
+
     else if (get<FunctionTypeVar>(superTy) && get<FunctionTypeVar>(subTy))
         tryUnifyFunctions(superTy, subTy, isFunctionCall);
 
@@ -723,17 +741,18 @@ void Unifier::tryUnify_(TypePackId superTp, TypePackId subTp, bool isFunctionCal
     {
         occursCheck(superTp, subTp);
 
+        // The occurrence check might have caused superTp no longer to be a free type
         if (!get<ErrorTypeVar>(superTp))
         {
             log(superTp);
             *asMutable(superTp) = Unifiable::Bound<TypePackId>(subTp);
         }
     }
-
     else if (get<Unifiable::Free>(subTp))
     {
         occursCheck(subTp, superTp);
 
+        // The occurrence check might have caused superTp no longer to be a free type
         if (!get<ErrorTypeVar>(subTp))
         {
             log(subTp);
@@ -874,13 +893,13 @@ void Unifier::tryUnify_(TypePackId superTp, TypePackId subTp, bool isFunctionCal
 
                 while (superIter.good())
                 {
-                    tryUnify_(singletonTypes.errorType, *superIter);
+                    tryUnify_(singletonTypes.errorRecoveryType(), *superIter);
                     superIter.advance();
                 }
 
                 while (subIter.good())
                 {
-                    tryUnify_(singletonTypes.errorType, *subIter);
+                    tryUnify_(singletonTypes.errorRecoveryType(), *subIter);
                     subIter.advance();
                 }
 
@@ -904,6 +923,27 @@ void Unifier::tryUnifyPrimitives(TypeId superTy, TypeId subTy)
 
     if (lp->type != rp->type)
         errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+}
+
+void Unifier::tryUnifySingletons(TypeId superTy, TypeId subTy)
+{
+    const PrimitiveTypeVar* lp = get<PrimitiveTypeVar>(superTy);
+    const SingletonTypeVar* ls = get<SingletonTypeVar>(superTy);
+    const SingletonTypeVar* rs = get<SingletonTypeVar>(subTy);
+
+    if ((!lp && !ls) || !rs)
+        ice("passed non singleton/primitive types to unifySingletons");
+
+    if (ls && *ls == *rs)
+        return;
+
+    if (lp && lp->type == PrimitiveTypeVar::Boolean && get<BoolSingleton>(rs) && variance == Covariant)
+        return;
+
+    if (lp && lp->type == PrimitiveTypeVar::String && get<StringSingleton>(rs) && variance == Covariant)
+        return;
+
+    errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
 }
 
 void Unifier::tryUnifyFunctions(TypeId superTy, TypeId subTy, bool isFunctionCall)
@@ -1023,7 +1063,8 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
     }
 
     // And vice versa if we're invariant
-    if (FFlag::LuauTableUnificationEarlyTest && variance == Invariant && !lt->indexer && lt->state != TableState::Unsealed && lt->state != TableState::Free)
+    if (FFlag::LuauTableUnificationEarlyTest && variance == Invariant && !lt->indexer && lt->state != TableState::Unsealed &&
+        lt->state != TableState::Free)
     {
         for (const auto& [propName, subProp] : rt->props)
         {
@@ -1038,7 +1079,7 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
             return;
         }
     }
-    
+
     // Reminder: left is the supertype, right is the subtype.
     // Width subtyping: any property in the supertype must be in the subtype,
     // and the types must agree.
@@ -1634,9 +1675,8 @@ void Unifier::tryUnifyWithClass(TypeId superTy, TypeId subTy, bool reversed)
             {
                 ok = false;
                 errors.push_back(TypeError{location, UnknownProperty{superTy, propName}});
-
                 if (!FFlag::LuauExtendedClassMismatchError)
-                    tryUnify_(prop.type, singletonTypes.errorType);
+                    tryUnify_(prop.type, singletonTypes.errorRecoveryType());
             }
             else
             {
@@ -1952,7 +1992,7 @@ void Unifier::tryUnifyWithAny(TypePackId any, TypePackId ty)
 {
     LUAU_ASSERT(get<Unifiable::Error>(any));
 
-    const TypeId anyTy = singletonTypes.errorType;
+    const TypeId anyTy = singletonTypes.errorRecoveryType();
 
     if (FFlag::LuauTypecheckOpts)
     {
@@ -2046,7 +2086,7 @@ void Unifier::occursCheck(std::unordered_set<TypeId>& seen_DEPRECATED, DenseHash
     {
         errors.push_back(TypeError{location, OccursCheckFailed{}});
         log(needle);
-        *asMutable(needle) = ErrorTypeVar{};
+        *asMutable(needle) = *singletonTypes.errorRecoveryType();
         return;
     }
 
@@ -2134,7 +2174,7 @@ void Unifier::occursCheck(std::unordered_set<TypePackId>& seen_DEPRECATED, Dense
         {
             errors.push_back(TypeError{location, OccursCheckFailed{}});
             log(needle);
-            *asMutable(needle) = ErrorTypeVar{};
+            *asMutable(needle) = *singletonTypes.errorRecoveryTypePack();
             return;
         }
 

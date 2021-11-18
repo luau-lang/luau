@@ -121,9 +121,26 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_u
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    TypeId bType = requireType("b");
+    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("*unknown*", toString(requireType("b")));
+}
 
-    CHECK_MESSAGE(get<ErrorTypeVar>(bType), "Should be an error: " << toString(bType));
+TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_constrained")
+{
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
+    CheckResult result = check(R"(
+        function f(arg: number) return arg end
+        local a
+        local b
+        local c = f(a, b)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("a", toString(requireType("a")));
+    CHECK_EQ("*unknown*", toString(requireType("b")));
+    CHECK_EQ("number", toString(requireType("c")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails")
@@ -165,15 +182,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_tails_respect_progress")
 
     state.tryUnify(&a, &b);
     CHECK(state.errors.empty());
-}
-
-TEST_CASE_FIXTURE(TryUnifyFixture, "unifying_variadic_pack_with_error_should_work")
-{
-    TypePackId variadicPack = arena.addTypePack(TypePackVar{VariadicTypePack{typeChecker.numberType}});
-    TypePackId errorPack = arena.addTypePack(TypePack{{typeChecker.numberType}, arena.addTypePack(TypePackVar{Unifiable::Error{}})});
-
-    state.tryUnify(variadicPack, errorPack);
-    REQUIRE_EQ(0, state.errors.size());
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")

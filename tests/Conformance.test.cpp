@@ -1,5 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Compiler.h"
+#include "lua.h"
+#include "lualib.h"
+#include "luacode.h"
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/ModuleResolver.h"
@@ -9,9 +11,6 @@
 
 #include "doctest.h"
 #include "ScopedFlags.h"
-
-#include "lua.h"
-#include "lualib.h"
 
 #include <fstream>
 #include <math.h>
@@ -49,8 +48,12 @@ static int lua_loadstring(lua_State* L)
 
     lua_setsafeenv(L, LUA_ENVIRONINDEX, false);
 
-    std::string bytecode = Luau::compile(std::string(s, l));
-    if (luau_load(L, chunkname, bytecode.data(), bytecode.size()) == 0)
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(s, l, nullptr, &bytecodeSize);
+    int result = luau_load(L, chunkname, bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    if (result == 0)
         return 1;
 
     lua_pushnil(L);
@@ -179,21 +182,17 @@ static StateRef runConformance(
 
     std::string chunkname = "=" + std::string(name);
 
-    Luau::CompileOptions copts;
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1; // default
     copts.debugLevel = 2;        // for debugger tests
     copts.vectorCtor = "vector"; // for vector tests
 
-    std::string bytecode = Luau::compile(source, copts);
-    int status = 0;
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), &copts, &bytecodeSize);
+    int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
+    free(bytecode);
 
-    if (luau_load(L, chunkname.c_str(), bytecode.data(), bytecode.size()) == 0)
-    {
-        status = lua_resume(L, nullptr, 0);
-    }
-    else
-    {
-        status = LUA_ERRSYNTAX;
-    }
+    int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
     while (yield && (status == LUA_YIELD || status == LUA_BREAK))
     {
@@ -332,53 +331,61 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
+    ScopedFastFlag sff("LuauCoroutineClose", true);
+
     runConformance("coroutine.lua");
+}
+
+static int cxxthrow(lua_State* L)
+{
+#if LUA_USE_LONGJMP
+    luaL_error(L, "oops");
+#else
+    throw std::runtime_error("oops");
+#endif
 }
 
 TEST_CASE("PCall")
 {
     runConformance("pcall.lua", [](lua_State* L) {
-        lua_pushcfunction(L, [](lua_State* L) -> int {
-#if LUA_USE_LONGJMP
-            luaL_error(L, "oops");
-#else
-            throw std::runtime_error("oops");
-#endif
-        });
+        lua_pushcfunction(L, cxxthrow, "cxxthrow");
         lua_setglobal(L, "cxxthrow");
 
-        lua_pushcfunction(L, [](lua_State* L) -> int {
-            lua_State* co = lua_tothread(L, 1);
-            lua_xmove(L, co, 1);
-            lua_resumeerror(co, L);
-            return 0;
-        });
+        lua_pushcfunction(
+            L,
+            [](lua_State* L) -> int {
+                lua_State* co = lua_tothread(L, 1);
+                lua_xmove(L, co, 1);
+                lua_resumeerror(co, L);
+                return 0;
+            },
+            "resumeerror");
         lua_setglobal(L, "resumeerror");
     });
 }
 
 TEST_CASE("Pack")
 {
-    ScopedFastFlag sff{ "LuauStrPackUBCastFix", true };
-    
+    ScopedFastFlag sff{"LuauStrPackUBCastFix", true};
+
     runConformance("tpack.lua");
 }
 
 TEST_CASE("Vector")
 {
     runConformance("vector.lua", [](lua_State* L) {
-        lua_pushcfunction(L, lua_vector);
+        lua_pushcfunction(L, lua_vector, "vector");
         lua_setglobal(L, "vector");
 
         lua_pushvector(L, 0.0f, 0.0f, 0.0f);
         luaL_newmetatable(L, "vector");
 
         lua_pushstring(L, "__index");
-        lua_pushcfunction(L, lua_vector_index);
+        lua_pushcfunction(L, lua_vector_index, nullptr);
         lua_settable(L, -3);
 
         lua_pushstring(L, "__namecall");
-        lua_pushcfunction(L, lua_vector_namecall);
+        lua_pushcfunction(L, lua_vector_namecall, nullptr);
         lua_settable(L, -3);
 
         lua_setreadonly(L, -1, true);
@@ -513,15 +520,19 @@ TEST_CASE("Debugger")
             };
 
             // add breakpoint() function
-            lua_pushcfunction(L, [](lua_State* L) -> int {
-                int line = luaL_checkinteger(L, 1);
+            lua_pushcfunction(
+                L,
+                [](lua_State* L) -> int {
+                    int line = luaL_checkinteger(L, 1);
+                    bool enabled = lua_isboolean(L, 2) ? lua_toboolean(L, 2) : true;
 
-                lua_Debug ar = {};
-                lua_getinfo(L, 1, "f", &ar);
+                    lua_Debug ar = {};
+                    lua_getinfo(L, 1, "f", &ar);
 
-                lua_breakpoint(L, -1, line, true);
-                return 0;
-            });
+                    lua_breakpoint(L, -1, line, enabled);
+                    return 0;
+                },
+                "breakpoint");
             lua_setglobal(L, "breakpoint");
         },
         [](lua_State* L) {
@@ -744,7 +755,7 @@ TEST_CASE("ExceptionObject")
         if (nsize == 0)
         {
             free(ptr);
-            return NULL;
+            return nullptr;
         }
         else if (nsize > 512 * 1024)
         {

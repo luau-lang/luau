@@ -124,6 +124,34 @@ void luaE_freethread(lua_State* L, lua_State* L1)
     luaM_free(L, L1, sizeof(lua_State), L1->memcat);
 }
 
+void lua_resetthread(lua_State* L)
+{
+    /* close upvalues before clearing anything */
+    luaF_close(L, L->stack);
+    /* clear call frames */
+    CallInfo* ci = L->base_ci;
+    ci->func = L->stack;
+    ci->base = ci->func + 1;
+    ci->top = ci->base + LUA_MINSTACK;
+    setnilvalue(ci->func);
+    L->ci = ci;
+    luaD_reallocCI(L, BASIC_CI_SIZE);
+    /* clear thread state */
+    L->status = LUA_OK;
+    L->base = L->ci->base;
+    L->top = L->ci->base;
+    L->nCcalls = L->baseCcalls = 0;
+    /* clear thread stack */
+    luaD_reallocstack(L, BASIC_STACK_SIZE);
+    for (int i = 0; i < L->stacksize; i++)
+        setnilvalue(L->stack + i);
+}
+
+int lua_isthreadreset(lua_State* L)
+{
+    return L->ci == L->base_ci && L->base == L->top && L->status == LUA_OK;
+}
+
 lua_State* lua_newstate(lua_Alloc f, void* ud)
 {
     int i;

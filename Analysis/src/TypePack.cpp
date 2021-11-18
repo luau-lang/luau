@@ -286,5 +286,4 @@ TypePack* asMutable(const TypePack* tp)
 {
     return const_cast<TypePack*>(tp);
 }
-
 } // namespace Luau

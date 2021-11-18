@@ -350,6 +350,23 @@ struct TypeVarStringifier
         }
     }
 
+    void operator()(TypeId, const SingletonTypeVar& stv)
+    {
+        if (const BoolSingleton* bs = Luau::get<BoolSingleton>(&stv))
+            state.emit(bs->value ? "true" : "false");
+        else if (const StringSingleton* ss = Luau::get<StringSingleton>(&stv))
+        {
+            state.emit("\"");
+            state.emit(escape(ss->value));
+            state.emit("\"");
+        }
+        else
+        {
+            LUAU_ASSERT(!"Unknown singleton type");
+            throw std::runtime_error("Unknown singleton type");
+        }
+    }
+
     void operator()(TypeId, const FunctionTypeVar& ftv)
     {
         if (state.hasSeen(&ftv))
@@ -359,6 +376,7 @@ struct TypeVarStringifier
             return;
         }
 
+        // We should not be respecting opts.hideNamedFunctionTypeParameters here.
         if (ftv.generics.size() > 0 || ftv.genericPacks.size() > 0)
         {
             state.emit("<");
@@ -514,7 +532,14 @@ struct TypeVarStringifier
                 break;
             }
 
-            state.emit(name);
+            if (isIdentifier(name))
+                state.emit(name);
+            else
+            {
+                state.emit("[\"");
+                state.emit(escape(name));
+                state.emit("\"]");
+            }
             state.emit(": ");
             stringify(prop.type);
             comma = true;
@@ -1082,6 +1107,94 @@ std::string toString(const TypeVar& tv, const ToStringOptions& opts)
 std::string toString(const TypePackVar& tp, const ToStringOptions& opts)
 {
     return toString(const_cast<TypePackId>(&tp), std::move(opts));
+}
+
+std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
+{
+    std::string s = prefix;
+
+    auto toString_ = [&opts](TypeId ty) -> std::string {
+        ToStringResult res = toStringDetailed(ty, opts);
+        opts.nameMap = std::move(res.nameMap);
+        return res.name;
+    };
+
+    auto toStringPack_ = [&opts](TypePackId ty) -> std::string {
+        ToStringResult res = toStringDetailed(ty, opts);
+        opts.nameMap = std::move(res.nameMap);
+        return res.name;
+    };
+
+    if (!opts.hideNamedFunctionTypeParameters && (!ftv.generics.empty() || !ftv.genericPacks.empty()))
+    {
+        s += "<";
+
+        bool first = true;
+        for (TypeId g : ftv.generics)
+        {
+            if (!first)
+                s += ", ";
+            first = false;
+            s += toString_(g);
+        }
+
+        for (TypePackId gp : ftv.genericPacks)
+        {
+            if (!first)
+                s += ", ";
+            first = false;
+            s += toStringPack_(gp);
+        }
+
+        s += ">";
+    }
+
+    s += "(";
+
+    auto argPackIter = begin(ftv.argTypes);
+    auto argNameIter = ftv.argNames.begin();
+
+    bool first = true;
+    while (argPackIter != end(ftv.argTypes))
+    {
+        if (!first)
+            s += ", ";
+        first = false;
+
+        // argNames is guaranteed to be equal to argTypes iff argNames is not empty.
+        // We don't currently respect opts.functionTypeArguments. I don't think this function should.
+        if (!ftv.argNames.empty())
+            s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
+        s += toString_(*argPackIter);
+
+        ++argPackIter;
+        if (!ftv.argNames.empty())
+        {
+            LUAU_ASSERT(argNameIter != ftv.argNames.end());
+            ++argNameIter;
+        }
+    }
+
+    if (argPackIter.tail())
+    {
+        if (auto vtp = get<VariadicTypePack>(*argPackIter.tail()))
+            s += ", ...: " + toString_(vtp->ty);
+        else
+            s += ", ...: " + toStringPack_(*argPackIter.tail());
+    }
+
+    s += "): ";
+
+    size_t retSize = size(ftv.retType);
+    bool hasTail = !finite(ftv.retType);
+    if (retSize == 0 && !hasTail)
+        s += "()";
+    else if ((retSize == 0 && hasTail) || (retSize == 1 && !hasTail))
+        s += toStringPack_(ftv.retType);
+    else
+        s += "(" + toStringPack_(ftv.retType) + ")";
+
+    return s;
 }
 
 void dump(TypeId ty)

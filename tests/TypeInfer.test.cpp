@@ -362,7 +362,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
     CHECK_EQ(2, result.errors.size());
 
     TypeId p = requireType("p");
-    CHECK_EQ(*p, *typeChecker.errorType);
+    CHECK_EQ("*unknown*", toString(p));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
@@ -480,7 +480,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
@@ -496,7 +496,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
@@ -512,7 +512,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error")
@@ -526,7 +526,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(typeChecker.errorType, requireType("a"));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
@@ -542,7 +542,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(typeChecker.errorType, requireType("a"));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
@@ -673,7 +673,7 @@ TEST_CASE_FIXTURE(Fixture, "string_index")
     REQUIRE(nat);
     CHECK_EQ("string", toString(nat->ty));
 
-    CHECK(get<ErrorTypeVar>(requireType("t")));
+    CHECK_EQ("*unknown*", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "length_of_error_type_does_not_produce_an_error")
@@ -1456,7 +1456,7 @@ TEST_CASE_FIXTURE(Fixture, "require_module_that_does_not_export")
 
     auto hootyType = requireType(bModule, "Hooty");
 
-    CHECK_MESSAGE(get<ErrorTypeVar>(follow(hootyType)) != nullptr, "Should be an error: " << toString(hootyType));
+    CHECK_EQ("*unknown*", toString(hootyType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
@@ -2032,7 +2032,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_4")
     CHECK_EQ(*arg0->indexer->indexResultType, *arg1Args[1]);
 }
 
-TEST_CASE_FIXTURE(Fixture, "error_types_propagate")
+TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
 {
     CheckResult result = check(R"(
         local err = (true).x
@@ -2049,10 +2049,10 @@ TEST_CASE_FIXTURE(Fixture, "error_types_propagate")
     CHECK_EQ("boolean", toString(err->table));
     CHECK_EQ("x", err->key);
 
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("c")));
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("d")));
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("e")));
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("f")));
+    CHECK_EQ("*unknown*", toString(requireType("c")));
+    CHECK_EQ("*unknown*", toString(requireType("d")));
+    CHECK_EQ("*unknown*", toString(requireType("e")));
+    CHECK_EQ("*unknown*", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
@@ -2068,7 +2068,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 
     CHECK_EQ("unknown", err->name);
 
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("a")));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
@@ -2077,9 +2077,7 @@ TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
         local a = Utility.Create "Foo" {}
     )");
 
-    TypeId aType = requireType("a");
-
-    REQUIRE_MESSAGE(nullptr != get<ErrorTypeVar>(aType), "Not an error: " << toString(aType));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable")
@@ -2146,6 +2144,8 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -2175,11 +2175,13 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersectio
     CHECK_EQ("Vec3", toString(requireType("b")));
     CHECK_EQ("Vec3", toString(requireType("c")));
     CHECK_EQ("Vec3", toString(requireType("d")));
-    CHECK(get<ErrorTypeVar>(requireType("e")));
+    CHECK_EQ("Vec3", toString(requireType("e")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection_on_rhs")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -2209,7 +2211,7 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersectio
     CHECK_EQ("Vec3", toString(requireType("b")));
     CHECK_EQ("Vec3", toString(requireType("c")));
     CHECK_EQ("Vec3", toString(requireType("d")));
-    CHECK(get<ErrorTypeVar>(requireType("e")));
+    CHECK_EQ("Vec3", toString(requireType("e")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "compare_numbers")
@@ -2901,6 +2903,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
 local x: number = 9999
 function x:y(z: number)
@@ -2908,7 +2912,7 @@ function x:y(z: number)
 end
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfError")
@@ -2920,7 +2924,7 @@ function x:y(z: number)
 end
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CallOrOfFunctions")
@@ -3799,7 +3803,7 @@ TEST_CASE_FIXTURE(Fixture, "UnknownGlobalCompoundAssign")
             print(a)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        LUAU_REQUIRE_ERRORS(result);
         CHECK_EQ(toString(result.errors[0]), "Unknown global 'a'");
     }
 
@@ -4215,7 +4219,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK(get<ErrorTypeVar>(t0->type));
+    CHECK_EQ("*unknown*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -4238,7 +4242,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK(get<ErrorTypeVar>(t0->type));
+    CHECK_EQ("*unknown*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -4392,6 +4396,25 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
     auto it = module->astOverloadResolvedTypes.find(parentExpr);
     REQUIRE(it);
     CHECK_EQ(toString(*it), "(number) -> number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
+{
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
+    CheckResult result = check(R"(
+        type Overload = ((string) -> string) & ((number, number) -> number)
+        local abc: Overload
+        local x = abc(true)
+        local y = abc(true,true)
+        local z = abc(true,true,true)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("x")));
+    CHECK_EQ("number", toString(requireType("y")));
+    // Should this be string|number?
+    CHECK_EQ("string", toString(requireType("z")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
@@ -4738,6 +4761,22 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions3")
         TypeId aType = requireType("a");
         CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_error_addition")
+{
+    CheckResult result = check(R"(
+--!strict
+local foo = makesandwich()
+local bar = foo.nutrition + 100
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    // We should definitely get this error
+    CHECK_EQ("Unknown global 'makesandwich'", toString(result.errors[0]));
+    // We get this error if makesandwich() returns a free type
+    // CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'foo'", toString(result.errors[1]));
 }
 
 TEST_SUITE_END();

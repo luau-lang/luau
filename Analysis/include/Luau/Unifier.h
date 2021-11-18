@@ -65,6 +65,7 @@ struct Unifier
 private:
     void tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall = false, bool isIntersection = false);
     void tryUnifyPrimitives(TypeId superTy, TypeId subTy);
+    void tryUnifySingletons(TypeId superTy, TypeId subTy);
     void tryUnifyFunctions(TypeId superTy, TypeId subTy, bool isFunctionCall = false);
     void tryUnifyTables(TypeId left, TypeId right, bool isIntersection = false);
     void DEPRECATED_tryUnifyTables(TypeId left, TypeId right, bool isIntersection = false);

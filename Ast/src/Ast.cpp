@@ -841,6 +841,28 @@ void AstTypeIntersection::visit(AstVisitor* visitor)
     }
 }
 
+AstTypeSingletonBool::AstTypeSingletonBool(const Location& location, bool value)
+    : AstType(ClassIndex(), location)
+    , value(value)
+{
+}
+
+void AstTypeSingletonBool::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
+AstTypeSingletonString::AstTypeSingletonString(const Location& location, const AstArray<char>& value)
+    : AstType(ClassIndex(), location)
+    , value(value)
+{
+}
+
+void AstTypeSingletonString::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
 AstTypeError::AstTypeError(const Location& location, const AstArray<AstType*>& types, bool isMissing, unsigned messageIndex)
     : AstType(ClassIndex(), location)
     , types(types)

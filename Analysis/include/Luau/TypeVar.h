@@ -108,6 +108,79 @@ struct PrimitiveTypeVar
     }
 };
 
+// Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
+// Types for true and false
+struct BoolSingleton
+{
+    bool value;
+
+    bool operator==(const BoolSingleton& rhs) const
+    {
+        return value == rhs.value;
+    }
+
+    bool operator!=(const BoolSingleton& rhs) const
+    {
+        return !(*this == rhs);
+    }
+};
+
+// Types for "foo", "bar" etc.
+struct StringSingleton
+{
+    std::string value;
+
+    bool operator==(const StringSingleton& rhs) const
+    {
+        return value == rhs.value;
+    }
+
+    bool operator!=(const StringSingleton& rhs) const
+    {
+        return !(*this == rhs);
+    }
+};
+
+// No type for float singletons, partly because === isn't any equalivalence on floats
+// (NaN != NaN).
+
+using SingletonVariant = Luau::Variant<BoolSingleton, StringSingleton>;
+
+struct SingletonTypeVar
+{
+    explicit SingletonTypeVar(const SingletonVariant& variant)
+        : variant(variant)
+    {
+    }
+
+    explicit SingletonTypeVar(SingletonVariant&& variant)
+        : variant(std::move(variant))
+    {
+    }
+
+    // Default operator== is C++20.
+    bool operator==(const SingletonTypeVar& rhs) const
+    {
+        return variant == rhs.variant;
+    }
+
+    bool operator!=(const SingletonTypeVar& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    SingletonVariant variant;
+};
+
+template<typename T>
+const T* get(const SingletonTypeVar* stv)
+{
+    if (stv)
+        return get_if<T>(&stv->variant);
+    else
+        return nullptr;
+}
+
 struct FunctionArgument
 {
     Name name;
@@ -332,8 +405,8 @@ struct LazyTypeVar
 
 using ErrorTypeVar = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, FunctionTypeVar, TableTypeVar, MetatableTypeVar, ClassTypeVar, AnyTypeVar,
-    UnionTypeVar, IntersectionTypeVar, LazyTypeVar>;
+using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar, MetatableTypeVar, ClassTypeVar,
+    AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar>;
 
 struct TypeVar final
 {
@@ -410,6 +483,9 @@ bool isGeneric(const TypeId ty);
 // Checks if a type may be instantiated to one containing generic type binders
 bool maybeGeneric(const TypeId ty);
 
+// Checks if a type is of the form T1|...|Tn where one of the Ti is a singleton
+bool maybeSingleton(TypeId ty);
+
 struct SingletonTypes
 {
     const TypeId nilType;
@@ -418,15 +494,18 @@ struct SingletonTypes
     const TypeId booleanType;
     const TypeId threadType;
     const TypeId anyType;
-    const TypeId errorType;
     const TypeId optionalNumberType;
 
     const TypePackId anyTypePack;
-    const TypePackId errorTypePack;
 
     SingletonTypes();
     SingletonTypes(const SingletonTypes&) = delete;
     void operator=(const SingletonTypes&) = delete;
+
+    TypeId errorRecoveryType(TypeId guess);
+    TypePackId errorRecoveryTypePack(TypePackId guess);
+    TypeId errorRecoveryType();
+    TypePackId errorRecoveryTypePack();
 
 private:
     std::unique_ptr<struct TypeArena> arena;
