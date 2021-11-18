@@ -153,7 +153,7 @@ match, which makes records similar to sealed tables from the type checking persp
 > Alternatively, is `export type Record = Record` too awkward?
 
 The methods defined on the record object are type checked as usual, with one exception - the implicit `self` has the type of the record. This is crucial because
-this is the one big issue we can't resolve with metatable-based OOP for tables, but it works for records because `:` is slightly more magical.
+this is the one big issue we haven't yet resolved with metatable-based OOP for tables, but it works for records because `:` is slightly more magical.
 
 When `self` is explicit, the type needs to be specified manually, e.g. these definitions are equivalent:
 
