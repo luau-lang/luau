@@ -114,7 +114,7 @@ static LuaNode* hashvec(const Table* t, const float* v)
     unsigned int h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791);
 
 #ifdef LUA_FLOAT4_VECTORS
-    h ^= i[3];  // TODO: proper hashing function for 4D vectors
+    h ^= i[3] * 39916801;
 #endif
 
     return hashpow2(t, h);
