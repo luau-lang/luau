@@ -42,8 +42,8 @@ static_assert(TKey{{NULL}, {0}, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1)
 
 // empty hash data points to dummynode so that we can always dereference it
 const LuaNode luaH_dummynode = {
-    {{NULL}, 0, LUA_TNIL},   /* value */
-    {{NULL}, 0, LUA_TNIL, 0} /* key */
+    {{NULL}, {0}, LUA_TNIL},   /* value */
+    {{NULL}, {0}, LUA_TNIL, 0} /* key */
 };
 
 #define dummynode (&luaH_dummynode)
