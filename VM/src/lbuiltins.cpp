@@ -1027,13 +1027,14 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
         double x = nvalue(arg0);
         double y = nvalue(args);
         double z = nvalue(args + 1);
-        double w = 0.0;
 
 #if LUA_VECTOR_SIZE == 4
-        w = nvalue(args + 2);
+        double w = nvalue(args + 2);
+        setvvalue(res, float(x), float(y), float(z), float(w));
+#else
+        setvvalue(res, float(x), float(y), float(z), 0.0f);
 #endif
 
-        setvvalue(res, float(x), float(y), float(z), float(w));
         return 1;
     }
 
