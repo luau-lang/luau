@@ -11,9 +11,6 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
-LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresFenv, false)
-LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresUpval, false)
-LUAU_FASTFLAGVARIABLE(LuauGenericSpecialGlobals, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
 LUAU_FASTFLAGVARIABLE(LuauBit32CountBuiltin, false)
 
@@ -23,9 +20,6 @@ namespace Luau
 static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
-
-// TODO: Remove with LuauGenericSpecialGlobals
-static const char* kSpecialGlobals[] = {"Game", "Workspace", "_G", "game", "plugin", "script", "shared", "workspace"};
 
 CompileError::CompileError(const Location& location, const std::string& message)
     : location(location)
@@ -466,7 +460,7 @@ struct Compiler
 
         bool shared = false;
 
-        if (FFlag::LuauPreloadClosuresUpval)
+        if (FFlag::LuauPreloadClosures)
         {
             // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
             // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
@@ -480,18 +474,6 @@ struct Compiler
                     bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
                     shared = true;
                 }
-            }
-        }
-        // Optimization: when closure has no upvalues, instead of allocating it every time we can share closure objects
-        // (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it is used)
-        else if (FFlag::LuauPreloadClosures && options.optimizationLevel >= 1 && f->upvals.empty() && !setfenvUsed)
-        {
-            int32_t cid = bytecode.addConstantClosure(f->id);
-
-            if (cid >= 0 && cid < 32768)
-            {
-                bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
-                return;
             }
         }
 
@@ -3298,8 +3280,7 @@ struct Compiler
         bool visit(AstStatLocalFunction* node) override
         {
             // record local->function association for some optimizations
-            if (FFlag::LuauPreloadClosuresUpval)
-                self->locals[node->name].func = node->func;
+            self->locals[node->name].func = node->func;
 
             return true;
         }
@@ -3711,24 +3692,13 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     Compiler compiler(bytecode, options);
 
     // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
-    if (FFlag::LuauGenericSpecialGlobals)
-    {
-        if (AstName name = names.get("_G"); name.value)
-            compiler.globals[name].writable = true;
+    if (AstName name = names.get("_G"); name.value)
+        compiler.globals[name].writable = true;
 
-        if (options.mutableGlobals)
-            for (const char** ptr = options.mutableGlobals; *ptr; ++ptr)
-                if (AstName name = names.get(*ptr); name.value)
-                    compiler.globals[name].writable = true;
-    }
-    else
-    {
-        for (const char* global : kSpecialGlobals)
-        {
-            if (AstName name = names.get(global); name.value)
+    if (options.mutableGlobals)
+        for (const char** ptr = options.mutableGlobals; *ptr; ++ptr)
+            if (AstName name = names.get(*ptr); name.value)
                 compiler.globals[name].writable = true;
-        }
-    }
 
     // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
     Compiler::AssignmentVisitor assignmentVisitor(&compiler);
@@ -3742,7 +3712,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     }
 
     // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
-    if (FFlag::LuauPreloadClosuresFenv && options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
+    if (options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
     {
         Compiler::FenvVisitor fenvVisitor(compiler.getfenvUsed, compiler.setfenvUsed);
         root->visit(&fenvVisitor);

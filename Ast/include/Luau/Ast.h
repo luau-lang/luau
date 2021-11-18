@@ -255,6 +255,14 @@ public:
     {
         return visit((class AstType*)node);
     }
+    virtual bool visit(class AstTypeSingletonBool* node)
+    {
+        return visit((class AstType*)node);
+    }
+    virtual bool visit(class AstTypeSingletonString* node)
+    {
+        return visit((class AstType*)node);
+    }
     virtual bool visit(class AstTypeError* node)
     {
         return visit((class AstType*)node);
@@ -1156,6 +1164,30 @@ public:
     AstArray<AstType*> types;
     bool isMissing;
     unsigned messageIndex;
+};
+
+class AstTypeSingletonBool : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeSingletonBool)
+
+    AstTypeSingletonBool(const Location& location, bool value);
+
+    void visit(AstVisitor* visitor) override;
+
+    bool value;
+};
+
+class AstTypeSingletonString : public AstType
+{
+public:
+    LUAU_RTTI(AstTypeSingletonString)
+
+    AstTypeSingletonString(const Location& location, const AstArray<char>& value);
+
+    void visit(AstVisitor* visitor) override;
+
+    const AstArray<char> value;
 };
 
 class AstTypePack : public AstNode

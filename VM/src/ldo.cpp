@@ -19,6 +19,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauExceptionMessageFix, false)
 LUAU_FASTFLAGVARIABLE(LuauCcallRestoreFix, false)
+LUAU_FASTFLAG(LuauCoroutineClose)
 
 /*
 ** {======================================================
@@ -300,7 +301,10 @@ static void resume(lua_State* L, void* ud)
     if (L->status == 0)
     {
         // start coroutine
-        LUAU_ASSERT(L->ci == L->base_ci && firstArg > L->base);
+        LUAU_ASSERT(L->ci == L->base_ci && firstArg >= L->base);
+        if (FFlag::LuauCoroutineClose && firstArg == L->base)
+            luaG_runerror(L, "cannot resume dead coroutine");
+
         if (luau_precall(L, firstArg - 1, LUA_MULTRET) != PCRLUA)
             return;
 

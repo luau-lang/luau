@@ -96,6 +96,22 @@ public:
             return nullptr;
         }
     }
+
+    AstType* operator()(const SingletonTypeVar& stv)
+    {
+        if (const BoolSingleton* bs = get<BoolSingleton>(&stv))
+            return allocator->alloc<AstTypeSingletonBool>(Location(), bs->value);
+        else if (const StringSingleton* ss = get<StringSingleton>(&stv))
+        {
+            AstArray<char> value;
+            value.data = const_cast<char*>(ss->value.c_str());
+            value.size = strlen(value.data);
+            return allocator->alloc<AstTypeSingletonString>(Location(), value);
+        }
+        else
+            return nullptr;
+    }
+
     AstType* operator()(const AnyTypeVar&)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("any"));

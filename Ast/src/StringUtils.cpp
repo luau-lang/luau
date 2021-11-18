@@ -225,4 +225,62 @@ size_t hashRange(const char* data, size_t size)
     return hash;
 }
 
+bool isIdentifier(std::string_view s)
+{
+    return (s.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890_") == std::string::npos);
+}
+
+std::string escape(std::string_view s)
+{
+    std::string r;
+    r.reserve(s.size() + 50); // arbitrary number to guess how many characters we'll be inserting
+
+    for (uint8_t c : s)
+    {
+        if (c >= ' ' && c != '\\' && c != '\'' && c != '\"')
+            r += c;
+        else
+        {
+            r += '\\';
+
+            switch (c)
+            {
+            case '\a':
+                r += 'a';
+                break;
+            case '\b':
+                r += 'b';
+                break;
+            case '\f':
+                r += 'f';
+                break;
+            case '\n':
+                r += 'n';
+                break;
+            case '\r':
+                r += 'r';
+                break;
+            case '\t':
+                r += 't';
+                break;
+            case '\v':
+                r += 'v';
+                break;
+            case '\'':
+                r += '\'';
+                break;
+            case '\"':
+                r += '\"';
+                break;
+            case '\\':
+                r += '\\';
+                break;
+            default:
+                Luau::formatAppend(r, "%03u", c);
+            }
+        }
+    }
+
+    return r;
+}
 } // namespace Luau

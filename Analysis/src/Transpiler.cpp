@@ -14,61 +14,6 @@ LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace
 {
-
-std::string escape(std::string_view s)
-{
-    std::string r;
-    r.reserve(s.size() + 50); // arbitrary number to guess how many characters we'll be inserting
-
-    for (uint8_t c : s)
-    {
-        if (c >= ' ' && c != '\\' && c != '\'' && c != '\"')
-            r += c;
-        else
-        {
-            r += '\\';
-
-            switch (c)
-            {
-            case '\a':
-                r += 'a';
-                break;
-            case '\b':
-                r += 'b';
-                break;
-            case '\f':
-                r += 'f';
-                break;
-            case '\n':
-                r += 'n';
-                break;
-            case '\r':
-                r += 'r';
-                break;
-            case '\t':
-                r += 't';
-                break;
-            case '\v':
-                r += 'v';
-                break;
-            case '\'':
-                r += '\'';
-                break;
-            case '\"':
-                r += '\"';
-                break;
-            case '\\':
-                r += '\\';
-                break;
-            default:
-                Luau::formatAppend(r, "%03u", c);
-            }
-        }
-    }
-
-    return r;
-}
-
 bool isIdentifierStartChar(char c)
 {
     return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_';

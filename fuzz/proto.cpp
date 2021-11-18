@@ -257,7 +257,7 @@ DEFINE_PROTO_FUZZER(const luau::StatBlock& message)
         lua_State* L = lua_newthread(globalState);
         luaL_sandboxthread(L);
 
-        if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size()) == 0)
+        if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
         {
             interruptDeadline = std::chrono::system_clock::now() + kInterruptTimeout;
 

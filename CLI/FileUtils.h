@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <functional>
+#include <vector>
 
 std::optional<std::string> readFile(const std::string& name);
 
@@ -12,3 +13,5 @@ bool traverseDirectory(const std::string& path, const std::function<void(const s
 
 std::string joinPaths(const std::string& lhs, const std::string& rhs);
 std::optional<std::string> getParentPath(const std::string& path);
+
+std::vector<std::string> getSourceFiles(int argc, char** argv);

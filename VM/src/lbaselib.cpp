@@ -436,8 +436,8 @@ static const luaL_Reg base_funcs[] = {
 
 static void auxopen(lua_State* L, const char* name, lua_CFunction f, lua_CFunction u)
 {
-    lua_pushcfunction(L, u);
-    lua_pushcfunction(L, f, name, 1);
+    lua_pushcfunction(L, u, NULL);
+    lua_pushcclosure(L, f, name, 1);
     lua_setfield(L, -2, name);
 }
 
@@ -456,10 +456,10 @@ LUALIB_API int luaopen_base(lua_State* L)
     auxopen(L, "ipairs", luaB_ipairs, luaB_inext);
     auxopen(L, "pairs", luaB_pairs, luaB_next);
 
-    lua_pushcfunction(L, luaB_pcally, "pcall", 0, luaB_pcallcont);
+    lua_pushcclosurek(L, luaB_pcally, "pcall", 0, luaB_pcallcont);
     lua_setfield(L, -2, "pcall");
 
-    lua_pushcfunction(L, luaB_xpcally, "xpcall", 0, luaB_xpcallcont);
+    lua_pushcclosurek(L, luaB_xpcally, "xpcall", 0, luaB_xpcallcont);
     lua_setfield(L, -2, "xpcall");
 
     return 1;

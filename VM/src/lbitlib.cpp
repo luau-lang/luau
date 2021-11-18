@@ -2,6 +2,7 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
+#include "lcommon.h"
 #include "lnumutils.h"
 
 LUAU_FASTFLAGVARIABLE(LuauBit32Count, false)

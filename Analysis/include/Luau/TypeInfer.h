@@ -175,10 +175,10 @@ struct TypeChecker
     std::vector<std::optional<TypeId>> getExpectedTypesForCall(const std::vector<TypeId>& overloads, size_t argumentCount, bool selfCall);
     std::optional<ExprResult<TypePackId>> checkCallOverload(const ScopePtr& scope, const AstExprCall& expr, TypeId fn, TypePackId retPack,
         TypePackId argPack, TypePack* args, const std::vector<Location>& argLocations, const ExprResult<TypePackId>& argListResult,
-        std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<OverloadErrorEntry>& errors);
+        std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<TypeId>& overloadsThatDont, std::vector<OverloadErrorEntry>& errors);
     bool handleSelfCallMismatch(const ScopePtr& scope, const AstExprCall& expr, TypePack* args, const std::vector<Location>& argLocations,
         const std::vector<OverloadErrorEntry>& errors);
-    ExprResult<TypePackId> reportOverloadResolutionError(const ScopePtr& scope, const AstExprCall& expr, TypePackId retPack, TypePackId argPack,
+    void reportOverloadResolutionError(const ScopePtr& scope, const AstExprCall& expr, TypePackId retPack, TypePackId argPack,
         const std::vector<Location>& argLocations, const std::vector<TypeId>& overloads, const std::vector<TypeId>& overloadsThatMatchArgCount,
         const std::vector<OverloadErrorEntry>& errors);
 
@@ -282,6 +282,14 @@ public:
     // Wrapper for merge(l, r, toUnion) but without the lambda junk.
     void merge(RefinementMap& l, const RefinementMap& r);
 
+    // Produce an "emergency backup type" for recovery from type errors.
+    // This comes in two flavours, depening on whether or not we can make a good guess
+    // for an error recovery type.
+    TypeId errorRecoveryType(TypeId guess);
+    TypePackId errorRecoveryTypePack(TypePackId guess);
+    TypeId errorRecoveryType(const ScopePtr& scope);
+    TypePackId errorRecoveryTypePack(const ScopePtr& scope);
+
 private:
     void prepareErrorsForDisplay(ErrorVec& errVec);
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data);
@@ -296,6 +304,10 @@ private:
     // Produce a new free type var.
     TypeId freshType(const ScopePtr& scope);
     TypeId freshType(TypeLevel level);
+
+    // Produce a new singleton type var.
+    TypeId singletonType(bool value);
+    TypeId singletonType(std::string value);
 
     // Returns nullopt if the predicate filters down the TypeId to 0 options.
     std::optional<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
@@ -330,8 +342,8 @@ private:
         const std::vector<TypePackId>& typePackParams, const Location& location);
 
     // Note: `scope` must be a fresh scope.
-    std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(
-        const ScopePtr& scope, std::optional<TypeLevel> levelOpt, const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt,
+        const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
 
 public:
     ErrorVec resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);
@@ -347,7 +359,6 @@ private:
     void resolve(const OrPredicate& orP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
     void resolve(const IsAPredicate& isaP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
     void resolve(const TypeGuardPredicate& typeguardP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
-    void DEPRECATED_resolve(const TypeGuardPredicate& typeguardP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
     void resolve(const EqPredicate& eqP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
 
     bool isNonstrictMode() const;
@@ -387,12 +398,9 @@ public:
     const TypeId booleanType;
     const TypeId threadType;
     const TypeId anyType;
-
-    const TypeId errorType;
     const TypeId optionalNumberType;
 
     const TypePackId anyTypePack;
-    const TypePackId errorTypePack;
 
 private:
     int checkRecursionCount = 0;
