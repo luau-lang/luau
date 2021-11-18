@@ -47,7 +47,7 @@ typedef union
 typedef struct lua_TValue
 {
     Value value;
-    int extra[LUA_EXTRA_VALUE_SIZE];
+    int extra[LUA_EXTRA_SIZE];
     int tt;
 } TValue;
 
@@ -377,7 +377,7 @@ typedef struct Closure
 typedef struct TKey
 {
     ::Value value;
-    int extra[LUA_EXTRA_VALUE_SIZE];
+    int extra[LUA_EXTRA_SIZE];
     unsigned tt : 4;
     int next : 28; /* for chaining */
 } TKey;

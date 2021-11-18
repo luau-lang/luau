@@ -131,4 +131,4 @@
 #define LUA_VECTOR_SIZE 3
 #endif
 
-#define LUA_EXTRA_VALUE_SIZE LUA_VECTOR_SIZE - 2	// note: this assumes vector size >= 2!
+#define LUA_EXTRA_SIZE LUA_VECTOR_SIZE - 2
