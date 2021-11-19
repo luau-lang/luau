@@ -34,9 +34,10 @@ Because we care about backward compatibility, we need some new syntax in order t
    * Restriction: the string interpolation literal must have at least one value to interpolate. We do not need 3 ways to express a single line string literal.
    * The pairs must be on the same line (unless a `\` escapes the newline) but expressions needn't be on the same line.
 2. An expression between the braces. This is the value that will be interpolated into the string.
-3. Formatting specification may follow the expression, delimited by an unambiguous character.
+3. Formatting specification may follow after the expression, delimited by an unambiguous character.
    * Restriction: the formatting specification must be constant at parse time.
-   * The syntax for formatting specification and a delimiter is undefined in this RFC. A future RFC will implement this.
+   * In the absence of an explicit formatting specification, the `%*` token will be used.
+   * For now, we explicitly reject any formatting specification syntax. A future extension may be introduced to extend the syntax with an optional specification.
 
 To put the above into formal EBNF grammar:
 
