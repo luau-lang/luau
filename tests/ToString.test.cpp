@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 
 #include "Fixture.h"
@@ -197,7 +198,8 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 
     TypeVar tv{ttv};
 
-    ToStringOptions o{/* exhaustive= */ false, /* useLineBreaks= */ false, /* functionTypeArguments= */ false, /* hideTableKind= */ false, 40};
+    ToStringOptions o;
+    o.maxTableLength = 40;
     CHECK_EQ(toString(&tv, o), "{| a: number, b: number, c: number, d: number, e: number, ... 5 more ... |}");
 }
 
@@ -258,9 +260,6 @@ TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names")
 
 TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names_generic")
 {
-    ScopedFastFlag luauGenericFunctions{"LuauGenericFunctions", true};
-    ScopedFastFlag luauParseGenericFunctions{"LuauParseGenericFunctions", true};
-
     CheckResult result = check("local function f<a...>(n: number, ...: a...): (a...) return ... end");
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -339,10 +338,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(Fixture, "toStringDetailed2")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauGenericFunctions", true},
-    };
-
     CheckResult result = check(R"(
         local base = {}
         function base:one() return 1 end
@@ -401,7 +396,7 @@ local function target(callback: nil) return callback(4, "hello") end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(requireType("target")), "(nil) -> (*unknown*)");
+    CHECK_EQ("(nil) -> (*unknown*)", toString(requireType("target")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
@@ -416,8 +411,6 @@ function foo(a, b) return a(b) end
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
 {
-    ScopedFastFlag sff{"LuauToStringFollowsBoundTo", true};
-
     TypeVar tv1{TableTypeVar{}};
     TableTypeVar* ttv = getMutable<TableTypeVar>(&tv1);
     ttv->state = TableState::Sealed;
@@ -469,14 +462,118 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_inters
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 {
-    ScopedFastFlag luauInstantiatedTypeParamRecursion{"LuauInstantiatedTypeParamRecursion", true};
-
     TypeVar tableTy{TableTypeVar{}};
     TableTypeVar* ttv = getMutable<TableTypeVar>(&tableTy);
     ttv->name = "Table";
     ttv->instantiatedTypeParams.push_back(&tableTy);
 
     CHECK_EQ(toString(tableTy), "Table<Table>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
+{
+    CheckResult result = check(R"(
+        local function id(x) return x end
+    )");
+
+    TypeId ty = requireType("id");
+    const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
+
+    CHECK_EQ("id<a>(x: a): a", toStringNamedFunction("id", *ftv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
+{
+    CheckResult result = check(R"(
+        local function map(arr, fn)
+            local t = {}
+            for i = 0, #arr do
+                t[i] = fn(arr[i])
+            end
+            return t
+        end
+    )");
+
+    TypeId ty = requireType("map");
+    const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
+
+    CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
+}
+
+TEST_CASE("toStringNamedFunction_unit_f")
+{
+    TypePackVar empty{TypePack{}};
+    FunctionTypeVar ftv{&empty, &empty, {}, false};
+    CHECK_EQ("f(): ()", toStringNamedFunction("f", ftv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics")
+{
+    CheckResult result = check(R"(
+        local function f<a, b...>(x: a, ...): (a, a, b...)
+            return x, x, ...
+        end
+    )");
+
+    TypeId ty = requireType("f");
+    auto ftv = get<FunctionTypeVar>(follow(ty));
+
+    CHECK_EQ("f<a, b...>(x: a, ...: any): (a, a, b...)", toStringNamedFunction("f", *ftv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics2")
+{
+    CheckResult result = check(R"(
+        local function f(): ...number
+            return 1, 2, 3
+        end
+    )");
+
+    TypeId ty = requireType("f");
+    auto ftv = get<FunctionTypeVar>(follow(ty));
+
+    CHECK_EQ("f(): ...number", toStringNamedFunction("f", *ftv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics3")
+{
+    CheckResult result = check(R"(
+        local function f(): (string, ...number)
+            return 'a', 1, 2, 3
+        end
+    )");
+
+    TypeId ty = requireType("f");
+    auto ftv = get<FunctionTypeVar>(follow(ty));
+
+    CHECK_EQ("f(): (string, ...number)", toStringNamedFunction("f", *ftv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_type_annotation_has_partial_argnames")
+{
+    CheckResult result = check(R"(
+        local f: (number, y: number) -> number
+    )");
+
+    TypeId ty = requireType("f");
+    auto ftv = get<FunctionTypeVar>(follow(ty));
+
+    CHECK_EQ("f(_: number, y: number): number", toStringNamedFunction("f", *ftv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_type_params")
+{
+    CheckResult result = check(R"(
+        local function f<T>(x: T, g: <U>(T) -> U)): ()
+        end
+    )");
+
+    TypeId ty = requireType("f");
+    auto ftv = get<FunctionTypeVar>(follow(ty));
+
+    ToStringOptions opts;
+    opts.hideNamedFunctionTypeParameters = true;
+    CHECK_EQ("f(x: T, g: <U>(T) -> U): ()", toStringNamedFunction("f", *ftv, opts));
 }
 
 TEST_SUITE_END();

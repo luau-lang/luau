@@ -1,7 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "TypeInfer.h"
+#include "Luau/Scope.h"
+#include "Luau/TypeInfer.h"
 
 namespace Luau
 {
@@ -33,7 +34,6 @@ TypeId makeFunction( // Polymorphic
     std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames, std::initializer_list<TypeId> retTypes);
 
 void attachMagicFunction(TypeId ty, MagicFunction fn);
-void attachFunctionTag(TypeId ty, std::string constraint);
 
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol = std::nullopt);
 void assignPropDocumentationSymbols(TableTypeVar::Props& props, const std::string& baseName);

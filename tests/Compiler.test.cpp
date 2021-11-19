@@ -11,8 +11,7 @@
 #include <string_view>
 
 LUAU_FASTFLAG(LuauPreloadClosures)
-LUAU_FASTFLAG(LuauPreloadClosuresFenv)
-LUAU_FASTFLAG(LuauPreloadClosuresUpval)
+LUAU_FASTFLAG(LuauGenericSpecialGlobals)
 
 using namespace Luau;
 
@@ -768,11 +767,11 @@ TEST_CASE("CaptureSelf")
 local MaterialsListClass = {}
 
 function MaterialsListClass:_MakeToolTip(guiElement, text)
-	local function updateTooltipPosition()
-		self._tweakingTooltipFrame = 5
-	end
+    local function updateTooltipPosition()
+        self._tweakingTooltipFrame = 5
+    end
 
-	updateTooltipPosition()
+    updateTooltipPosition()
 end
 
 return MaterialsListClass
@@ -1165,6 +1164,17 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0("return (2 + 2) * 2"), R"(
 LOADN R0 8
 RETURN R0 1
+)");
+}
+
+TEST_CASE("ConstantFoldStringLen")
+{
+    CHECK_EQ("\n" + compileFunction0("return #'string', #'', #'a', #('b')"), R"(
+LOADN R0 6
+LOADN R1 0
+LOADN R2 1
+LOADN R3 1
+RETURN R0 4
 )");
 }
 
@@ -2001,14 +2011,14 @@ TEST_CASE("UpvaluesLoopsBytecode")
 {
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	for i=1,10 do
+    for i=1,10 do
         i = i
-		foo(function() return i end)
-		if bar then
-			break
-		end
-	end
-	return 0
+        foo(function() return i end)
+        if bar then
+            break
+        end
+    end
+    return 0
 end
 )",
                         1),
@@ -2035,14 +2045,14 @@ RETURN R0 1
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	for i in ipairs(data) do
+    for i in ipairs(data) do
         i = i
-		foo(function() return i end)
-		if bar then
-			break
-		end
-	end
-	return 0
+        foo(function() return i end)
+        if bar then
+            break
+        end
+    end
+    return 0
 end
 )",
                         1),
@@ -2068,17 +2078,17 @@ RETURN R0 1
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	local i = 0
-	while i < 5 do
-		local j
+    local i = 0
+    while i < 5 do
+        local j
         j = i
-		foo(function() return j end)
-		i = i + 1
-		if bar then
-			break
-		end
-	end
-	return 0
+        foo(function() return j end)
+        i = i + 1
+        if bar then
+            break
+        end
+    end
+    return 0
 end
 )",
                         1),
@@ -2105,17 +2115,17 @@ RETURN R1 1
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
-	local i = 0
-	repeat
-		local j
+    local i = 0
+    repeat
+        local j
         j = i
-		foo(function() return j end)
-		i = i + 1
-		if bar then
-			break
-		end
-	until i < 5
-	return 0
+        foo(function() return j end)
+        i = i + 1
+        if bar then
+            break
+        end
+    until i < 5
+    return 0
 end
 )",
                         1),
@@ -2304,10 +2314,10 @@ local Value1, Value2, Value3 = ...
 local Table = {}
 
 Table.SubTable["Key"] = {
-	Key1 = Value1,
-	Key2 = Value2,
-	Key3 = Value3,
-	Key4 = true,
+    Key1 = Value1,
+    Key2 = Value2,
+    Key3 = Value3,
+    Key4 = true,
 }
 )");
 
@@ -2785,7 +2795,7 @@ CAPTURE UPVAL U1
 RETURN R0 1
 )");
 
-    if (FFlag::LuauPreloadClosuresUpval)
+    if (FFlag::LuauPreloadClosures)
     {
         // recursive capture
         CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
@@ -3467,15 +3477,13 @@ CAPTURE VAL R0
 RETURN R1 1
 )");
 
-    if (FFlag::LuauPreloadClosuresFenv)
-    {
-        // if they don't need upvalues but we sense that environment may be modified, we disable this to avoid fenv-related identity confusion
-        CHECK_EQ("\n" + compileFunction(R"(
+    // if they don't need upvalues but we sense that environment may be modified, we disable this to avoid fenv-related identity confusion
+    CHECK_EQ("\n" + compileFunction(R"(
 setfenv(1, {})
 return function() print("hi") end
 )",
-                            1),
-            R"(
+                        1),
+        R"(
 GETIMPORT R0 1
 LOADN R1 1
 NEWTABLE R2 0 0
@@ -3484,23 +3492,21 @@ NEWCLOSURE R0 P0
 RETURN R0 1
 )");
 
-        // note that fenv analysis isn't flow-sensitive right now, which is sort of a feature
-        CHECK_EQ("\n" + compileFunction(R"(
+    // note that fenv analysis isn't flow-sensitive right now, which is sort of a feature
+    CHECK_EQ("\n" + compileFunction(R"(
 if false then setfenv(1, {}) end
 return function() print("hi") end
 )",
-                            1),
-            R"(
+                        1),
+        R"(
 NEWCLOSURE R0 P0
 RETURN R0 1
 )");
-    }
 }
 
 TEST_CASE("SharedClosure")
 {
     ScopedFastFlag sff1("LuauPreloadClosures", true);
-    ScopedFastFlag sff2("LuauPreloadClosuresUpval", true);
 
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
@@ -3655,6 +3661,83 @@ NEWCLOSURE R5 P2
 CAPTURE VAL R3
 CALL R4 1 0
 FORNLOOP R0 -7
+RETURN R0 0
+)");
+}
+
+TEST_CASE("MutableGlobals")
+{
+    const char* source = R"(
+print()
+Game.print()
+Workspace.print()
+_G.print()
+game.print()
+plugin.print()
+script.print()
+shared.print()
+workspace.print()
+)";
+
+    // Check Roblox globals are no longer here
+    CHECK_EQ("\n" + compileFunction0(source), R"(
+GETIMPORT R0 1
+CALL R0 0 0
+GETIMPORT R0 3
+CALL R0 0 0
+GETIMPORT R0 5
+CALL R0 0 0
+GETIMPORT R1 7
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R0 9
+CALL R0 0 0
+GETIMPORT R0 11
+CALL R0 0 0
+GETIMPORT R0 13
+CALL R0 0 0
+GETIMPORT R0 15
+CALL R0 0 0
+GETIMPORT R0 17
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // Check we can add them back
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::CompileOptions options;
+    const char* mutableGlobals[] = {"Game", "Workspace", "game", "plugin", "script", "shared", "workspace", NULL};
+    options.mutableGlobals = &mutableGlobals[0];
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+GETIMPORT R0 1
+CALL R0 0 0
+GETIMPORT R1 3
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 5
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 7
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 9
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 11
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 13
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 15
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
+GETIMPORT R1 17
+GETTABLEKS R0 R1 K0
+CALL R0 0 0
 RETURN R0 0
 )");
 }

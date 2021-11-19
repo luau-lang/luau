@@ -16,8 +16,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLoopUseSafeenv, false)
-
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -291,10 +289,6 @@ inline bool luau_skipstep(uint8_t op)
 {
     return op == LOP_PREPVARARGS || op == LOP_BREAK;
 }
-
-// declared in lbaselib.cpp, needed to support cases when pairs/ipairs have been replaced via setfenv
-LUAI_FUNC int luaB_inext(lua_State* L);
-LUAI_FUNC int luaB_next(lua_State* L);
 
 template<bool SingleStep>
 static void luau_execute(lua_State* L)
@@ -2223,8 +2217,7 @@ static void luau_execute(lua_State* L)
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: ipairs/inext
-                bool safeenv = FFlag::LuauLoopUseSafeenv ? cl->env->safeenv : ttisfunction(ra) && clvalue(ra)->isC && clvalue(ra)->c.f == luaB_inext;
-                if (safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
+                if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
                 {
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
@@ -2304,8 +2297,7 @@ static void luau_execute(lua_State* L)
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: pairs/next
-                bool safeenv = FFlag::LuauLoopUseSafeenv ? cl->env->safeenv : ttisfunction(ra) && clvalue(ra)->isC && clvalue(ra)->c.f == luaB_next;
-                if (safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
+                if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
                 {
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }

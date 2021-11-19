@@ -479,10 +479,6 @@ return foo1
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
-    ScopedFastFlag sff{"LuauLinterUnknownTypeVectorAware", true};
-
-    SourceModule sm;
-
     unfreeze(typeChecker.globalTypes);
     TableTypeVar::Props instanceProps{
         {"ClassName", {typeChecker.anyType}},
@@ -791,13 +787,13 @@ TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsShouldNotProduceWarnings")
 {
     LintResult result = lint(R"(--!strict
 type InputData = {
-	id: number,
-	inputType: EnumItem,
-	inputState: EnumItem,
-	updated: number,
-	position: Vector3,
-	keyCode: EnumItem,
-	name: string
+    id: number,
+    inputType: EnumItem,
+    inputState: EnumItem,
+    updated: number,
+    position: Vector3,
+    keyCode: EnumItem,
+    name: string
 }
 )");
 
@@ -1417,9 +1413,12 @@ table.remove(t, 0)
 table.remove(t, #t-1)
 
 table.insert(t, string.find("hello", "h"))
+
+table.move(t, 0, #t, 1, tt)
+table.move(t, 1, #t, 0, tt)
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 6);
+    REQUIRE_EQ(result.warnings.size(), 8);
     CHECK_EQ(result.warnings[0].text, "table.insert will insert the value before the last element, which is likely a bug; consider removing the "
                                       "second argument or wrap it in parentheses to silence");
     CHECK_EQ(result.warnings[1].text, "table.insert will append the value to the table; consider removing the second argument for efficiency");
@@ -1429,6 +1428,8 @@ table.insert(t, string.find("hello", "h"))
                                       "second argument or wrap it in parentheses to silence");
     CHECK_EQ(result.warnings[5].text,
         "table.insert may change behavior if the call returns more than one result; consider adding parentheses around second argument");
+    CHECK_EQ(result.warnings[6].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+    CHECK_EQ(result.warnings[7].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")

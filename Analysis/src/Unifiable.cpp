@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Unifiable.h"
 
-LUAU_FASTFLAG(LuauRankNTypes)
-
 namespace Luau
 {
 namespace Unifiable
@@ -12,14 +10,6 @@ Free::Free(TypeLevel level)
     : index(++nextIndex)
     , level(level)
 {
-}
-
-Free::Free(TypeLevel level, bool DEPRECATED_canBeGeneric)
-    : index(++nextIndex)
-    , level(level)
-    , DEPRECATED_canBeGeneric(DEPRECATED_canBeGeneric)
-{
-    LUAU_ASSERT(!FFlag::LuauRankNTypes);
 }
 
 int Free::nextIndex = 0;

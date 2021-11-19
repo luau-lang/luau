@@ -13,8 +13,6 @@ TEST_SUITE_BEGIN("GenericsTests");
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         function id<a>(x:a): a
             return x
@@ -27,8 +25,6 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_local_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local function id<a>(x:a): a
             return x
@@ -41,10 +37,6 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_typepack_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauGenericVariadicsUnification", true};
-    ScopedFastFlag sffs5{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         function id<a...>(...: a...): (a...) return ... end
         local x: string, y: boolean = id("hi", true)
@@ -56,8 +48,6 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_typepack_function")
 
 TEST_CASE_FIXTURE(Fixture, "types_before_typepacks")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         function f<a,b...>() end
     )");
@@ -66,8 +56,6 @@ TEST_CASE_FIXTURE(Fixture, "types_before_typepacks")
 
 TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local function id<a>(x:a):a return x end
         local f: <a>(a)->a = id
@@ -79,7 +67,6 @@ TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "inferred_local_vars_can_be_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local function id(x) return x end
         print("This is bogus") -- TODO: CLI-39916
@@ -92,7 +79,6 @@ TEST_CASE_FIXTURE(Fixture, "inferred_local_vars_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_instantiated_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local function id(x) return x end
         print("This is bogus") -- TODO: CLI-39916
@@ -104,8 +90,6 @@ TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_instantiated_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "properties_can_be_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local t = {}
         t.m = function<a>(x: a):a return x end
@@ -117,8 +101,6 @@ TEST_CASE_FIXTURE(Fixture, "properties_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "properties_can_be_instantiated_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local t: { m: (number)->number } = { m = function(x:number) return x+1 end }
         local function id<a>(x:a):a return x end
@@ -129,8 +111,6 @@ TEST_CASE_FIXTURE(Fixture, "properties_can_be_instantiated_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "check_nested_generic_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local function f()
             local function id<a>(x:a): a
@@ -145,8 +125,6 @@ TEST_CASE_FIXTURE(Fixture, "check_nested_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_recursive_generic_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local function id<a>(x:a):a
             local y: string = id("hi")
@@ -159,8 +137,6 @@ TEST_CASE_FIXTURE(Fixture, "check_recursive_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         local id2
         local function id1<a>(x:a):a
@@ -179,8 +155,6 @@ TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions")
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         type T = { id: <a>(a) -> a }
         local x: T = { id = function<a>(x:a):a return x end }
@@ -192,8 +166,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
 
 TEST_CASE_FIXTURE(Fixture, "generic_factories")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         type T<a> = { id: (a) -> a }
         type Factory = { build: <a>() -> T<a> }
@@ -215,10 +187,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_factories")
 
 TEST_CASE_FIXTURE(Fixture, "factories_of_generics")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauRankNTypes", true};
-
     CheckResult result = check(R"(
         type T = { id: <a>(a) -> a }
         type Factory = { build: () -> T }
@@ -241,7 +209,6 @@ TEST_CASE_FIXTURE(Fixture, "factories_of_generics")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         function id(x)
             return x
@@ -265,7 +232,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local function id(x)
             return x
@@ -289,7 +255,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local function f()
             local function id(x)
@@ -304,7 +269,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local x = {}
         function x:id(x) return x end
@@ -316,7 +280,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
 
 TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local x = {}
         function x:id(x) return x end
@@ -326,13 +289,11 @@ TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
         end
     )");
     // TODO: Should typecheck but currently errors CLI-39916
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_property")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauRankNTypes", true};
     CheckResult result = check(R"(
         local t = {}
         t.m = function(x) return x end
@@ -344,9 +305,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_property")
 
 TEST_CASE_FIXTURE(Fixture, "function_arguments_can_be_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauRankNTypes", true};
     CheckResult result = check(R"(
         local function f(g: <a>(a)->a)
             local x: number = g(37)
@@ -358,9 +316,6 @@ TEST_CASE_FIXTURE(Fixture, "function_arguments_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "function_results_can_be_polytypes")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauRankNTypes", true};
     CheckResult result = check(R"(
         local function f() : <a>(a)->a
             local function id<a>(x:a):a return x end
@@ -372,9 +327,6 @@ TEST_CASE_FIXTURE(Fixture, "function_results_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "type_parameters_can_be_polytypes")
 {
-    ScopedFastFlag sffs1{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauRankNTypes", true};
     CheckResult result = check(R"(
         local function id<a>(x:a):a return x end
         local f: <a>(a)->a = id(id)
@@ -384,7 +336,6 @@ TEST_CASE_FIXTURE(Fixture, "type_parameters_can_be_polytypes")
 
 TEST_CASE_FIXTURE(Fixture, "dont_leak_generic_types")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local function f(y)
             -- this will only typecheck if we infer z: any
@@ -401,12 +352,11 @@ TEST_CASE_FIXTURE(Fixture, "dont_leak_generic_types")
         -- so this assignment should fail
         local b: boolean = f(true)
     )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_leak_inferred_generic_types")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         local function f(y)
             local z = y
@@ -418,17 +368,11 @@ TEST_CASE_FIXTURE(Fixture, "dont_leak_inferred_generic_types")
             local y: number = id(37)
         end
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_substitute_bound_types")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauGenericFunctions", true},
-        {"LuauParseGenericFunctions", true},
-        {"LuauRankNTypes", true},
-    };
-
     CheckResult result = check(R"(
         type T = { m: <a>(a) -> T }
         function f(t : T)
@@ -440,10 +384,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_substitute_bound_types")
 
 TEST_CASE_FIXTURE(Fixture, "dont_unify_bound_types")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauRankNTypes", true};
-
     CheckResult result = check(R"(
         type F = <a>() -> <b>(a, b) -> a
         type G = <b>(b, b) -> b
@@ -470,7 +410,6 @@ TEST_CASE_FIXTURE(Fixture, "mutable_state_polymorphism")
     // Replaying the classic problem with polymorphism and mutable state in Luau
     // See, e.g. Tofte (1990)
     // https://www.sciencedirect.com/science/article/pii/089054019090018D.
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         --!strict
         -- Our old friend the polymorphic identity function
@@ -508,7 +447,6 @@ TEST_CASE_FIXTURE(Fixture, "mutable_state_polymorphism")
 
 TEST_CASE_FIXTURE(Fixture, "rank_N_types_via_typeof")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", false};
     CheckResult result = check(R"(
         --!strict
         local function id(x) return x end
@@ -531,8 +469,6 @@ TEST_CASE_FIXTURE(Fixture, "rank_N_types_via_typeof")
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_generic_types")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs2{"LuauParseGenericFunctions", true};
     CheckResult result = check(R"(
         function f<a,a>(x:a):a return x end
     )");
@@ -541,7 +477,6 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_generic_types")
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_generic_type_packs")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         function f<a...,a...>() end
     )");
@@ -550,7 +485,6 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_generic_type_packs")
 
 TEST_CASE_FIXTURE(Fixture, "typepacks_before_types")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
     CheckResult result = check(R"(
         function f<a...,b>() end
     )");
@@ -559,9 +493,6 @@ TEST_CASE_FIXTURE(Fixture, "typepacks_before_types")
 
 TEST_CASE_FIXTURE(Fixture, "variadic_generics")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f<a>(...: a) end
 
@@ -573,9 +504,6 @@ TEST_CASE_FIXTURE(Fixture, "variadic_generics")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_syntax")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f<a...>(...: a...): (a...) return ... end
     )");
@@ -586,10 +514,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_syntax")
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauGenericVariadicsUnification", true};
-    ScopedFastFlag sffs5{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f<a...>(...: a...): any return (...) end
     )");
@@ -599,9 +523,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
 
 TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs5{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f<T>(...: T...)
             return ...
@@ -626,9 +547,6 @@ TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
 
 TEST_CASE_FIXTURE(Fixture, "reject_clashing_generic_and_pack_names")
 {
-    ScopedFastFlag sffs{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs3{"LuauParseGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f<a, a...>() end
     )");
@@ -641,8 +559,6 @@ TEST_CASE_FIXTURE(Fixture, "reject_clashing_generic_and_pack_names")
 
 TEST_CASE_FIXTURE(Fixture, "instantiation_sharing_types")
 {
-    ScopedFastFlag sffs1{"LuauGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f(z)
           local o = {}
@@ -665,8 +581,6 @@ TEST_CASE_FIXTURE(Fixture, "instantiation_sharing_types")
 
 TEST_CASE_FIXTURE(Fixture, "quantification_sharing_types")
 {
-    ScopedFastFlag sffs1{"LuauGenericFunctions", true};
-
     CheckResult result = check(R"(
         function f(x) return {5} end
         function g(x, y) return f(x) end
@@ -680,8 +594,6 @@ TEST_CASE_FIXTURE(Fixture, "quantification_sharing_types")
 
 TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
 {
-    ScopedFastFlag sffs1{"LuauGenericFunctions", true};
-
     CheckResult result = check(R"(
         type T<a> = { x: {a}, y: {number} }
         local o1: T<boolean> = { x = {true}, y = {5} }
@@ -693,6 +605,26 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK(requireType("x1") != requireType("x2"));
     CHECK(requireType("y1") == requireType("y2"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bound_tables_do_not_clone_original_fields")
+{
+    ScopedFastFlag luauCloneBoundTables{"LuauCloneBoundTables", true};
+
+    CheckResult result = check(R"(
+local exports = {}
+local nested = {}
+
+nested.name = function(t, k)
+    local a = t.x.y
+    return rawget(t, k)
+end
+
+exports.nested = nested
+return exports
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

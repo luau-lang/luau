@@ -11,6 +11,7 @@
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
 #include "Luau/ToString.h"
+#include "Luau/Transpiler.h"
 
 #include "lua.h"
 #include "lualib.h"
@@ -23,6 +24,7 @@ const bool kFuzzLinter = true;
 const bool kFuzzTypeck = true;
 const bool kFuzzVM = true;
 const bool kFuzzTypes = true;
+const bool kFuzzTranspile = true;
 
 static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
 
@@ -242,6 +244,11 @@ DEFINE_PROTO_FUZZER(const luau::StatBlock& message)
         }
     }
 
+    if (kFuzzTranspile && parseResult.root)
+    {
+        transpileWithTypes(*parseResult.root);
+    }
+
     // run resulting bytecode
     if (kFuzzVM && bytecode.size())
     {
@@ -250,7 +257,7 @@ DEFINE_PROTO_FUZZER(const luau::StatBlock& message)
         lua_State* L = lua_newthread(globalState);
         luaL_sandboxthread(L);
 
-        if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size()) == 0)
+        if (luau_load(L, "=fuzz", bytecode.data(), bytecode.size(), 0) == 0)
         {
             interruptDeadline = std::chrono::system_clock::now() + kInterruptTimeout;
 

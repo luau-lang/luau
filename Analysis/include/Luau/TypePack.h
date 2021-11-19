@@ -8,8 +8,6 @@
 #include <optional>
 #include <set>
 
-LUAU_FASTFLAG(LuauAddMissingFollow)
-
 namespace Luau
 {
 
@@ -117,7 +115,8 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 
 TypePackId follow(TypePackId tp);
 
-size_t size(const TypePackId tp);
+size_t size(TypePackId tp);
+bool finite(TypePackId tp);
 size_t size(const TypePack& tp);
 std::optional<TypeId> first(TypePackId tp);
 
@@ -127,13 +126,10 @@ TypePack* asMutable(const TypePack* tp);
 template<typename T>
 const T* get(TypePackId tp)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tp);
+    LUAU_ASSERT(tp);
 
-        if constexpr (!std::is_same_v<T, BoundTypePack>)
-            LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypePack>)
+        LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
 
     return get_if<T>(&(tp->ty));
 }
@@ -141,13 +137,10 @@ const T* get(TypePackId tp)
 template<typename T>
 T* getMutable(TypePackId tp)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tp);
+    LUAU_ASSERT(tp);
 
-        if constexpr (!std::is_same_v<T, BoundTypePack>)
-            LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypePack>)
+        LUAU_ASSERT(get_if<BoundTypePack>(&tp->ty) == nullptr);
 
     return get_if<T>(&(asMutable(tp)->ty));
 }

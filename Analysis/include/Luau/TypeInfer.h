@@ -11,6 +11,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
+#include "Luau/UnifierSharedState.h"
 
 #include <memory>
 #include <unordered_map>
@@ -86,7 +87,10 @@ struct ApplyTypeFunction : Substitution
 {
     TypeLevel level;
     bool encounteredForwardedType;
-    std::unordered_map<TypeId, TypeId> arguments;
+    std::unordered_map<TypeId, TypeId> typeArguments;
+    std::unordered_map<TypePackId, TypePackId> typePackArguments;
+    bool ignoreChildren(TypeId ty) override;
+    bool ignoreChildren(TypePackId tp) override;
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId tp) override;
     TypeId clean(TypeId ty) override;
@@ -118,7 +122,7 @@ struct TypeChecker
     void check(const ScopePtr& scope, const AstStatForIn& forin);
     void check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatFunction& function);
     void check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function);
-    void check(const ScopePtr& scope, const AstStatTypeAlias& typealias, bool forwardDeclare = false);
+    void check(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0, bool forwardDeclare = false);
     void check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass);
     void check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
 
@@ -171,10 +175,10 @@ struct TypeChecker
     std::vector<std::optional<TypeId>> getExpectedTypesForCall(const std::vector<TypeId>& overloads, size_t argumentCount, bool selfCall);
     std::optional<ExprResult<TypePackId>> checkCallOverload(const ScopePtr& scope, const AstExprCall& expr, TypeId fn, TypePackId retPack,
         TypePackId argPack, TypePack* args, const std::vector<Location>& argLocations, const ExprResult<TypePackId>& argListResult,
-        std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<OverloadErrorEntry>& errors);
+        std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<TypeId>& overloadsThatDont, std::vector<OverloadErrorEntry>& errors);
     bool handleSelfCallMismatch(const ScopePtr& scope, const AstExprCall& expr, TypePack* args, const std::vector<Location>& argLocations,
         const std::vector<OverloadErrorEntry>& errors);
-    ExprResult<TypePackId> reportOverloadResolutionError(const ScopePtr& scope, const AstExprCall& expr, TypePackId retPack, TypePackId argPack,
+    void reportOverloadResolutionError(const ScopePtr& scope, const AstExprCall& expr, TypePackId retPack, TypePackId argPack,
         const std::vector<Location>& argLocations, const std::vector<TypeId>& overloads, const std::vector<TypeId>& overloadsThatMatchArgCount,
         const std::vector<OverloadErrorEntry>& errors);
 
@@ -259,8 +263,6 @@ public:
      *
      */
     TypeId instantiate(const ScopePtr& scope, TypeId ty, Location location);
-    // Removed by FFlag::LuauRankNTypes
-    TypePackId DEPRECATED_instantiate(const ScopePtr& scope, TypePackId ty, Location location);
 
     // Replace any free types or type packs by `any`.
     // This is used when exporting types from modules, to make sure free types don't leak.
@@ -280,6 +282,14 @@ public:
     // Wrapper for merge(l, r, toUnion) but without the lambda junk.
     void merge(RefinementMap& l, const RefinementMap& r);
 
+    // Produce an "emergency backup type" for recovery from type errors.
+    // This comes in two flavours, depening on whether or not we can make a good guess
+    // for an error recovery type.
+    TypeId errorRecoveryType(TypeId guess);
+    TypePackId errorRecoveryTypePack(TypePackId guess);
+    TypeId errorRecoveryType(const ScopePtr& scope);
+    TypePackId errorRecoveryTypePack(const ScopePtr& scope);
+
 private:
     void prepareErrorsForDisplay(ErrorVec& errVec);
     void diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& data);
@@ -294,8 +304,10 @@ private:
     // Produce a new free type var.
     TypeId freshType(const ScopePtr& scope);
     TypeId freshType(TypeLevel level);
-    TypeId DEPRECATED_freshType(const ScopePtr& scope, bool canBeGeneric = false);
-    TypeId DEPRECATED_freshType(TypeLevel level, bool canBeGeneric = false);
+
+    // Produce a new singleton type var.
+    TypeId singletonType(bool value);
+    TypeId singletonType(std::string value);
 
     // Returns nullopt if the predicate filters down the TypeId to 0 options.
     std::optional<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
@@ -322,17 +334,16 @@ private:
     TypePackId addTypePack(std::initializer_list<TypeId>&& ty);
     TypePackId freshTypePack(const ScopePtr& scope);
     TypePackId freshTypePack(TypeLevel level);
-    TypePackId DEPRECATED_freshTypePack(const ScopePtr& scope, bool canBeGeneric = false);
-    TypePackId DEPRECATED_freshTypePack(TypeLevel level, bool canBeGeneric = false);
 
-    TypeId resolveType(const ScopePtr& scope, const AstType& annotation, bool canBeGeneric = false);
+    TypeId resolveType(const ScopePtr& scope, const AstType& annotation);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& types);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypePack& annotation);
-    TypeId instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams, const Location& location);
+    TypeId instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams,
+        const std::vector<TypePackId>& typePackParams, const Location& location);
 
     // Note: `scope` must be a fresh scope.
-    std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(
-        const ScopePtr& scope, const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt,
+        const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
 
 public:
     ErrorVec resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);
@@ -348,7 +359,6 @@ private:
     void resolve(const OrPredicate& orP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
     void resolve(const IsAPredicate& isaP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
     void resolve(const TypeGuardPredicate& typeguardP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
-    void DEPRECATED_resolve(const TypeGuardPredicate& typeguardP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
     void resolve(const EqPredicate& eqP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
 
     bool isNonstrictMode() const;
@@ -379,6 +389,8 @@ public:
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
     InternalErrorReporter* iceHandler;
 
+    UnifierSharedState unifierState;
+
 public:
     const TypeId nilType;
     const TypeId numberType;
@@ -386,64 +398,13 @@ public:
     const TypeId booleanType;
     const TypeId threadType;
     const TypeId anyType;
-
-    const TypeId errorType;
     const TypeId optionalNumberType;
 
     const TypePackId anyTypePack;
-    const TypePackId errorTypePack;
 
 private:
     int checkRecursionCount = 0;
     int recursionCount = 0;
-};
-
-struct Binding
-{
-    TypeId typeId;
-    Location location;
-    bool deprecated = false;
-    std::string deprecatedSuggestion;
-    std::optional<std::string> documentationSymbol;
-};
-
-struct Scope
-{
-    explicit Scope(TypePackId returnType);                    // root scope
-    explicit Scope(const ScopePtr& parent, int subLevel = 0); // child scope.  Parent must not be nullptr.
-
-    const ScopePtr parent; // null for the root
-    std::unordered_map<Symbol, Binding> bindings;
-    TypePackId returnType;
-    bool breakOk = false;
-    std::optional<TypePackId> varargPack;
-
-    TypeLevel level;
-
-    std::unordered_map<Name, TypeFun> exportedTypeBindings;
-    std::unordered_map<Name, TypeFun> privateTypeBindings;
-    std::unordered_map<Name, Location> typeAliasLocations;
-
-    std::unordered_map<Name, std::unordered_map<Name, TypeFun>> importedTypeBindings;
-
-    std::optional<TypeId> lookup(const Symbol& name);
-
-    std::optional<TypeFun> lookupType(const Name& name);
-    std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name);
-
-    std::unordered_map<Name, TypePackId> privateTypePackBindings;
-    std::optional<TypePackId> lookupPack(const Name& name);
-
-    // WARNING: This function linearly scans for a string key of equal value!  It is thus O(n**2)
-    std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true);
-
-    RefinementMap refinements;
-
-    // For mutually recursive type aliases, it's important that
-    // they use the same types for the same names.
-    // For instance, in `type Tree<T> { data: T, children: Forest<T> } type Forest<T> = {Tree<T>}`
-    // we need that the generic type `T` in both cases is the same, so we use a cache.
-    std::unordered_map<Name, TypeId> typeAliasParameters;
 };
 
 // Unit test hook

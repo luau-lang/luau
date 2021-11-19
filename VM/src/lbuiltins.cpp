@@ -20,8 +20,9 @@
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
 // If luauF_* succeeds, it needs to return *all* requested arguments, filling results with nil as appropriate.
 // On input, nparams refers to the actual number of arguments (0+), whereas nresults contains LUA_MULTRET for arbitrary returns or 0+ for a
-// fixed-length return Because of this, and the fact that "extra" returned values will be ignored, implementations below typically check that nresults
-// is <= expected number, which covers the LUA_MULTRET case.
+// fixed-length return
+// Because of this, and the fact that "extra" returned values will be ignored, implementations below typically check that nresults is <= expected
+// number, which covers the LUA_MULTRET case.
 
 static int luauF_assert(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
@@ -1030,6 +1031,52 @@ static int luauF_vector(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
     return -1;
 }
 
+static int luauF_countlz(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+
+        unsigned n;
+        luai_num2unsigned(n, a1);
+
+#ifdef _MSC_VER
+        unsigned long rl;
+        int r = _BitScanReverse(&rl, n) ? 31 - int(rl) : 32;
+#else
+        int r = n == 0 ? 32 : __builtin_clz(n);
+#endif
+
+        setnvalue(res, double(r));
+        return 1;
+    }
+
+    return -1;
+}
+
+static int luauF_countrz(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    {
+        double a1 = nvalue(arg0);
+
+        unsigned n;
+        luai_num2unsigned(n, a1);
+
+#ifdef _MSC_VER
+        unsigned long rl;
+        int r = _BitScanForward(&rl, n) ? int(rl) : 32;
+#else
+        int r = n == 0 ? 32 : __builtin_ctz(n);
+#endif
+
+        setnvalue(res, double(r));
+        return 1;
+    }
+
+    return -1;
+}
+
 luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -1096,4 +1143,7 @@ luau_FastFunction luauF_table[256] = {
     luauF_tunpack,
 
     luauF_vector,
+
+    luauF_countlz,
+    luauF_countrz,
 };

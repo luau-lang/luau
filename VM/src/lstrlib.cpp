@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauStrPackUBCastFix, false)
+
 /* macro to `unsign' a character */
 #define uchar(c) ((unsigned char)(c))
 
@@ -746,7 +748,7 @@ static int gmatch(lua_State* L)
     luaL_checkstring(L, 2);
     lua_settop(L, 2);
     lua_pushinteger(L, 0);
-    lua_pushcfunction(L, gmatch_aux, NULL, 3);
+    lua_pushcclosure(L, gmatch_aux, NULL, 3);
     return 1;
 }
 
@@ -1404,10 +1406,20 @@ static int str_pack(lua_State* L)
         }
         case Kuint:
         { /* unsigned integers */
-            unsigned long long n = (unsigned long long)luaL_checknumber(L, arg);
-            if (size < SZINT) /* need overflow check? */
-                luaL_argcheck(L, n < ((unsigned long long)1 << (size * NB)), arg, "unsigned overflow");
-            packint(&b, n, h.islittle, size, 0);
+            if (FFlag::LuauStrPackUBCastFix)
+            {
+                long long n = (long long)luaL_checknumber(L, arg);
+                if (size < SZINT) /* need overflow check? */
+                    luaL_argcheck(L, (unsigned long long)n < ((unsigned long long)1 << (size * NB)), arg, "unsigned overflow");
+                packint(&b, (unsigned long long)n, h.islittle, size, 0);
+            }
+            else
+            {
+                unsigned long long n = (unsigned long long)luaL_checknumber(L, arg);
+                if (size < SZINT) /* need overflow check? */
+                    luaL_argcheck(L, n < ((unsigned long long)1 << (size * NB)), arg, "unsigned overflow");
+                packint(&b, n, h.islittle, size, 0);
+            }
             break;
         }
         case Kfloat:

@@ -7,14 +7,60 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauFasterStringifier)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
-static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, bool isTypeArgs = false)
+static std::string wrongNumberOfArgsString_DEPRECATED(size_t expectedCount, size_t actualCount, bool isTypeArgs = false)
 {
     std::string s = "expects " + std::to_string(expectedCount) + " ";
 
     if (isTypeArgs)
         s += "type ";
+
+    s += "argument";
+    if (expectedCount != 1)
+        s += "s";
+
+    s += ", but ";
+
+    if (actualCount == 0)
+    {
+        s += "none";
+    }
+    else
+    {
+        if (actualCount < expectedCount)
+            s += "only ";
+
+        s += std::to_string(actualCount);
+    }
+
+    s += (actualCount == 1) ? " is" : " are";
+
+    s += " specified";
+
+    return s;
+}
+
+static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
+{
+    std::string s;
+
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        s = "expects ";
+
+        if (isVariadic)
+            s += "at least ";
+
+        s += std::to_string(expectedCount) + " ";
+    }
+    else
+    {
+        s = "expects " + std::to_string(expectedCount) + " ";
+    }
+
+    if (argPrefix)
+        s += std::string(argPrefix) + " ";
 
     s += "argument";
     if (expectedCount != 1)
@@ -48,8 +94,23 @@ struct ErrorConverter
 {
     std::string operator()(const Luau::TypeMismatch& tm) const
     {
-        ToStringOptions opts;
-        return "Type '" + Luau::toString(tm.givenType, opts) + "' could not be converted into '" + Luau::toString(tm.wantedType, opts) + "'";
+        std::string result = "Type '" + Luau::toString(tm.givenType) + "' could not be converted into '" + Luau::toString(tm.wantedType) + "'";
+
+        if (tm.error)
+        {
+            result += "\ncaused by:\n  ";
+
+            if (!tm.reason.empty())
+                result += tm.reason + ". ";
+
+            result += Luau::toString(*tm.error);
+        }
+        else if (!tm.reason.empty())
+        {
+            result += "; " + tm.reason;
+        }
+
+        return result;
     }
 
     std::string operator()(const Luau::UnknownSymbol& e) const
@@ -119,15 +180,18 @@ struct ErrorConverter
         switch (e.context)
         {
         case CountMismatch::Return:
-            return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " +
-                   std::to_string(e.actual) + " " + actualVerb + " returned here";
+            return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " + std::to_string(e.actual) + " " +
+                   actualVerb + " returned here";
         case CountMismatch::Result:
             // It is alright if right hand side produces more values than the
             // left hand side accepts. In this context consider only the opposite case.
-            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " +
-                   std::to_string(e.actual) + " are required here";
+            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " + std::to_string(e.actual) +
+                   " are required here";
         case CountMismatch::Arg:
-            return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
+            if (FFlag::LuauTypeAliasPacks)
+                return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
+            else
+                return "Argument count mismatch. Function " + wrongNumberOfArgsString_DEPRECATED(e.expected, e.actual);
         }
 
         LUAU_ASSERT(!"Unknown context");
@@ -159,13 +223,16 @@ struct ErrorConverter
 
     std::string operator()(const Luau::UnknownRequire& e) const
     {
-        return "Unknown require: " + e.modulePath;
+        if (e.modulePath.empty())
+            return "Unknown require: unsupported path";
+        else
+            return "Unknown require: " + e.modulePath;
     }
 
     std::string operator()(const Luau::IncorrectGenericParameterCount& e) const
     {
         std::string name = e.name;
-        if (!e.typeFun.typeParams.empty())
+        if (!e.typeFun.typeParams.empty() || (FFlag::LuauTypeAliasPacks && !e.typeFun.typePackParams.empty()))
         {
             name += "<";
             bool first = true;
@@ -178,10 +245,37 @@ struct ErrorConverter
 
                 name += toString(t);
             }
+
+            if (FFlag::LuauTypeAliasPacks)
+            {
+                for (TypePackId t : e.typeFun.typePackParams)
+                {
+                    if (first)
+                        first = false;
+                    else
+                        name += ", ";
+
+                    name += toString(t);
+                }
+            }
+
             name += ">";
         }
 
-        return "Generic type '" + name + "' " + wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, /*isTypeArgs*/ true);
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            if (e.typeFun.typeParams.size() != e.actualParameters)
+                return "Generic type '" + name + "' " +
+                       wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, "type", !e.typeFun.typePackParams.empty());
+
+            return "Generic type '" + name + "' " +
+                   wrongNumberOfArgsString(e.typeFun.typePackParams.size(), e.actualPackParameters, "type pack", /*isVariadic*/ false);
+        }
+        else
+        {
+            return "Generic type '" + name + "' " +
+                   wrongNumberOfArgsString_DEPRECATED(e.typeFun.typeParams.size(), e.actualParameters, /*isTypeArgs*/ true);
+        }
     }
 
     std::string operator()(const Luau::SyntaxError& e) const
@@ -399,9 +493,36 @@ struct InvalidNameChecker
     }
 };
 
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType)
+    : wantedType(wantedType)
+    , givenType(givenType)
+{
+}
+
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason)
+    : wantedType(wantedType)
+    , givenType(givenType)
+    , reason(reason)
+{
+}
+
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, TypeError error)
+    : wantedType(wantedType)
+    , givenType(givenType)
+    , reason(reason)
+    , error(std::make_shared<TypeError>(std::move(error)))
+{
+}
+
 bool TypeMismatch::operator==(const TypeMismatch& rhs) const
 {
-    return *wantedType == *rhs.wantedType && *givenType == *rhs.givenType;
+    if (!!error != !!rhs.error)
+        return false;
+
+    if (error && !(*error == *rhs.error))
+        return false;
+
+    return *wantedType == *rhs.wantedType && *givenType == *rhs.givenType && reason == rhs.reason;
 }
 
 bool UnknownSymbol::operator==(const UnknownSymbol& rhs) const
@@ -470,9 +591,26 @@ bool IncorrectGenericParameterCount::operator==(const IncorrectGenericParameterC
     if (typeFun.typeParams.size() != rhs.typeFun.typeParams.size())
         return false;
 
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        if (typeFun.typePackParams.size() != rhs.typeFun.typePackParams.size())
+            return false;
+    }
+
     for (size_t i = 0; i < typeFun.typeParams.size(); ++i)
+    {
         if (typeFun.typeParams[i] != rhs.typeFun.typeParams[i])
             return false;
+    }
+
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        for (size_t i = 0; i < typeFun.typePackParams.size(); ++i)
+        {
+            if (typeFun.typePackParams[i] != rhs.typeFun.typePackParams[i])
+                return false;
+        }
+    }
 
     return true;
 }
@@ -594,130 +732,141 @@ bool containsParseErrorName(const TypeError& error)
     return Luau::visit(InvalidNameChecker{}, error.data);
 }
 
-void copyErrors(ErrorVec& errors, struct TypeArena& destArena)
+template<typename T>
+void copyError(T& e, TypeArena& destArena, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks)
 {
-    SeenTypes seenTypes;
-    SeenTypePacks seenTypePacks;
-
     auto clone = [&](auto&& ty) {
         return ::Luau::clone(ty, destArena, seenTypes, seenTypePacks);
     };
 
     auto visitErrorData = [&](auto&& e) {
-        using T = std::decay_t<decltype(e)>;
+        copyError(e, destArena, seenTypes, seenTypePacks);
+    };
 
-        if constexpr (false)
-        {
-        }
-        else if constexpr (std::is_same_v<T, TypeMismatch>)
-        {
-            e.wantedType = clone(e.wantedType);
-            e.givenType = clone(e.givenType);
-        }
-        else if constexpr (std::is_same_v<T, UnknownSymbol>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, UnknownProperty>)
-        {
-            e.table = clone(e.table);
-        }
-        else if constexpr (std::is_same_v<T, NotATable>)
-        {
-            e.ty = clone(e.ty);
-        }
-        else if constexpr (std::is_same_v<T, CannotExtendTable>)
-        {
-            e.tableType = clone(e.tableType);
-        }
-        else if constexpr (std::is_same_v<T, OnlyTablesCanHaveMethods>)
-        {
-            e.tableType = clone(e.tableType);
-        }
-        else if constexpr (std::is_same_v<T, DuplicateTypeDefinition>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, CountMismatch>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, FunctionDoesNotTakeSelf>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, FunctionRequiresSelf>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, OccursCheckFailed>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, UnknownRequire>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, IncorrectGenericParameterCount>)
-        {
-            e.typeFun = clone(e.typeFun);
-        }
-        else if constexpr (std::is_same_v<T, SyntaxError>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, CodeTooComplex>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, UnificationTooComplex>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, UnknownPropButFoundLikeProp>)
-        {
-            e.table = clone(e.table);
-        }
-        else if constexpr (std::is_same_v<T, GenericError>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
-        {
-            e.ty = clone(e.ty);
-        }
-        else if constexpr (std::is_same_v<T, ExtraInformation>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, DeprecatedApiUsed>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, IllegalRequire>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, FunctionExitsWithoutReturning>)
-        {
-            e.expectedReturnType = clone(e.expectedReturnType);
-        }
-        else if constexpr (std::is_same_v<T, DuplicateGenericParameter>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, CannotInferBinaryOperation>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, MissingProperties>)
-        {
-            e.superType = clone(e.superType);
-            e.subType = clone(e.subType);
-        }
-        else if constexpr (std::is_same_v<T, SwappedGenericTypeParameter>)
-        {
-        }
-        else if constexpr (std::is_same_v<T, OptionalValueAccess>)
-        {
-            e.optional = clone(e.optional);
-        }
-        else if constexpr (std::is_same_v<T, MissingUnionProperty>)
-        {
-            e.type = clone(e.type);
+    if constexpr (false)
+    {
+    }
+    else if constexpr (std::is_same_v<T, TypeMismatch>)
+    {
+        e.wantedType = clone(e.wantedType);
+        e.givenType = clone(e.givenType);
 
-            for (auto& ty : e.missing)
-                ty = clone(ty);
-        }
-        else
-            static_assert(always_false_v<T>, "Non-exhaustive type switch");
+        if (e.error)
+            visit(visitErrorData, e.error->data);
+    }
+    else if constexpr (std::is_same_v<T, UnknownSymbol>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, UnknownProperty>)
+    {
+        e.table = clone(e.table);
+    }
+    else if constexpr (std::is_same_v<T, NotATable>)
+    {
+        e.ty = clone(e.ty);
+    }
+    else if constexpr (std::is_same_v<T, CannotExtendTable>)
+    {
+        e.tableType = clone(e.tableType);
+    }
+    else if constexpr (std::is_same_v<T, OnlyTablesCanHaveMethods>)
+    {
+        e.tableType = clone(e.tableType);
+    }
+    else if constexpr (std::is_same_v<T, DuplicateTypeDefinition>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CountMismatch>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, FunctionDoesNotTakeSelf>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, FunctionRequiresSelf>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, OccursCheckFailed>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, UnknownRequire>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, IncorrectGenericParameterCount>)
+    {
+        e.typeFun = clone(e.typeFun);
+    }
+    else if constexpr (std::is_same_v<T, SyntaxError>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CodeTooComplex>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, UnificationTooComplex>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, UnknownPropButFoundLikeProp>)
+    {
+        e.table = clone(e.table);
+    }
+    else if constexpr (std::is_same_v<T, GenericError>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
+    {
+        e.ty = clone(e.ty);
+    }
+    else if constexpr (std::is_same_v<T, ExtraInformation>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, DeprecatedApiUsed>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, IllegalRequire>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, FunctionExitsWithoutReturning>)
+    {
+        e.expectedReturnType = clone(e.expectedReturnType);
+    }
+    else if constexpr (std::is_same_v<T, DuplicateGenericParameter>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, CannotInferBinaryOperation>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, MissingProperties>)
+    {
+        e.superType = clone(e.superType);
+        e.subType = clone(e.subType);
+    }
+    else if constexpr (std::is_same_v<T, SwappedGenericTypeParameter>)
+    {
+    }
+    else if constexpr (std::is_same_v<T, OptionalValueAccess>)
+    {
+        e.optional = clone(e.optional);
+    }
+    else if constexpr (std::is_same_v<T, MissingUnionProperty>)
+    {
+        e.type = clone(e.type);
+
+        for (auto& ty : e.missing)
+            ty = clone(ty);
+    }
+    else
+        static_assert(always_false_v<T>, "Non-exhaustive type switch");
+}
+
+void copyErrors(ErrorVec& errors, TypeArena& destArena)
+{
+    SeenTypes seenTypes;
+    SeenTypePacks seenTypePacks;
+
+    auto visitErrorData = [&](auto&& e) {
+        copyError(e, destArena, seenTypes, seenTypePacks);
     };
 
     LUAU_ASSERT(!destArena.typeVars.isFrozen());

@@ -8,11 +8,20 @@
 
 namespace Luau
 {
+struct TypeError;
 
 struct TypeMismatch
 {
-    TypeId wantedType;
-    TypeId givenType;
+    TypeMismatch() = default;
+    TypeMismatch(TypeId wantedType, TypeId givenType);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, TypeError error);
+
+    TypeId wantedType = nullptr;
+    TypeId givenType = nullptr;
+
+    std::string reason;
+    std::shared_ptr<TypeError> error;
 
     bool operator==(const TypeMismatch& rhs) const;
 };
@@ -120,6 +129,7 @@ struct IncorrectGenericParameterCount
     Name name;
     TypeFun typeFun;
     size_t actualParameters;
+    size_t actualPackParameters;
 
     bool operator==(const IncorrectGenericParameterCount& rhs) const;
 };

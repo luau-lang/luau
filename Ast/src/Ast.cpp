@@ -641,10 +641,12 @@ void AstStatLocalFunction::visit(AstVisitor* visitor)
         func->visit(visitor);
 }
 
-AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstName>& generics, AstType* type, bool exported)
+AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstName>& generics,
+    const AstArray<AstName>& genericPacks, AstType* type, bool exported)
     : AstStat(ClassIndex(), location)
     , name(name)
     , generics(generics)
+    , genericPacks(genericPacks)
     , type(type)
     , exported(exported)
 {
@@ -729,12 +731,14 @@ void AstStatError::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeReference::AstTypeReference(const Location& location, std::optional<AstName> prefix, AstName name, const AstArray<AstType*>& generics)
+AstTypeReference::AstTypeReference(
+    const Location& location, std::optional<AstName> prefix, AstName name, bool hasParameterList, const AstArray<AstTypeOrPack>& parameters)
     : AstType(ClassIndex(), location)
     , hasPrefix(bool(prefix))
+    , hasParameterList(hasParameterList)
     , prefix(prefix ? *prefix : AstName())
     , name(name)
-    , generics(generics)
+    , parameters(parameters)
 {
 }
 
@@ -742,8 +746,13 @@ void AstTypeReference::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
     {
-        for (AstType* generic : generics)
-            generic->visit(visitor);
+        for (const AstTypeOrPack& param : parameters)
+        {
+            if (param.type)
+                param.type->visit(visitor);
+            else
+                param.typePack->visit(visitor);
+        }
     }
 }
 
@@ -832,6 +841,28 @@ void AstTypeIntersection::visit(AstVisitor* visitor)
     }
 }
 
+AstTypeSingletonBool::AstTypeSingletonBool(const Location& location, bool value)
+    : AstType(ClassIndex(), location)
+    , value(value)
+{
+}
+
+void AstTypeSingletonBool::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
+AstTypeSingletonString::AstTypeSingletonString(const Location& location, const AstArray<char>& value)
+    : AstType(ClassIndex(), location)
+    , value(value)
+{
+}
+
+void AstTypeSingletonString::visit(AstVisitor* visitor)
+{
+    visitor->visit(this);
+}
+
 AstTypeError::AstTypeError(const Location& location, const AstArray<AstType*>& types, bool isMissing, unsigned messageIndex)
     : AstType(ClassIndex(), location)
     , types(types)
@@ -846,6 +877,24 @@ void AstTypeError::visit(AstVisitor* visitor)
     {
         for (AstType* type : types)
             type->visit(visitor);
+    }
+}
+
+AstTypePackExplicit::AstTypePackExplicit(const Location& location, AstTypeList typeList)
+    : AstTypePack(ClassIndex(), location)
+    , typeList(typeList)
+{
+}
+
+void AstTypePackExplicit::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+    {
+        for (AstType* type : typeList.types)
+            type->visit(visitor);
+
+        if (typeList.tailType)
+            typeList.tailType->visit(visitor);
     }
 }
 

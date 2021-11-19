@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Module.h"
 
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
@@ -11,8 +12,9 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
-LUAU_FASTFLAG(LuauSecondTypecheckKnowsTheDataModel)
 LUAU_FASTFLAG(LuauCaptureBrokenCommentSpans)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
+LUAU_FASTFLAGVARIABLE(LuauCloneBoundTables, false)
 
 namespace Luau
 {
@@ -159,6 +161,7 @@ struct TypeCloner
     void operator()(const Unifiable::Bound<TypeId>& t);
     void operator()(const Unifiable::Error& t);
     void operator()(const PrimitiveTypeVar& t);
+    void operator()(const SingletonTypeVar& t);
     void operator()(const FunctionTypeVar& t);
     void operator()(const TableTypeVar& t);
     void operator()(const MetatableTypeVar& t);
@@ -188,7 +191,7 @@ struct TypePackCloner
     template<typename T>
     void defaultClone(const T& t)
     {
-        TypePackId cloned = dest.typePacks.allocate(t);
+        TypePackId cloned = dest.addTypePack(TypePackVar{t});
         seenTypePacks[typePackId] = cloned;
     }
 
@@ -197,7 +200,9 @@ struct TypePackCloner
         if (encounteredFreeType)
             *encounteredFreeType = true;
 
-        seenTypePacks[typePackId] = dest.typePacks.allocate(TypePackVar{Unifiable::Error{}});
+        TypePackId err = singletonTypes.errorRecoveryTypePack(singletonTypes.anyTypePack);
+        TypePackId cloned = dest.addTypePack(*err);
+        seenTypePacks[typePackId] = cloned;
     }
 
     void operator()(const Unifiable::Generic& t)
@@ -219,13 +224,13 @@ struct TypePackCloner
 
     void operator()(const VariadicTypePack& t)
     {
-        TypePackId cloned = dest.typePacks.allocate(VariadicTypePack{clone(t.ty, dest, seenTypes, seenTypePacks, encounteredFreeType)});
+        TypePackId cloned = dest.addTypePack(TypePackVar{VariadicTypePack{clone(t.ty, dest, seenTypes, seenTypePacks, encounteredFreeType)}});
         seenTypePacks[typePackId] = cloned;
     }
 
     void operator()(const TypePack& t)
     {
-        TypePackId cloned = dest.typePacks.allocate(TypePack{});
+        TypePackId cloned = dest.addTypePack(TypePack{});
         TypePack* destTp = getMutable<TypePack>(cloned);
         LUAU_ASSERT(destTp != nullptr);
         seenTypePacks[typePackId] = cloned;
@@ -241,7 +246,7 @@ struct TypePackCloner
 template<typename T>
 void TypeCloner::defaultClone(const T& t)
 {
-    TypeId cloned = dest.typeVars.allocate(t);
+    TypeId cloned = dest.addType(t);
     seenTypes[typeId] = cloned;
 }
 
@@ -249,8 +254,9 @@ void TypeCloner::operator()(const Unifiable::Free& t)
 {
     if (encounteredFreeType)
         *encounteredFreeType = true;
-
-    seenTypes[typeId] = dest.typeVars.allocate(ErrorTypeVar{});
+    TypeId err = singletonTypes.errorRecoveryType(singletonTypes.anyType);
+    TypeId cloned = dest.addType(*err);
+    seenTypes[typeId] = cloned;
 }
 
 void TypeCloner::operator()(const Unifiable::Generic& t)
@@ -268,14 +274,20 @@ void TypeCloner::operator()(const Unifiable::Error& t)
 {
     defaultClone(t);
 }
+
 void TypeCloner::operator()(const PrimitiveTypeVar& t)
+{
+    defaultClone(t);
+}
+
+void TypeCloner::operator()(const SingletonTypeVar& t)
 {
     defaultClone(t);
 }
 
 void TypeCloner::operator()(const FunctionTypeVar& t)
 {
-    TypeId result = dest.typeVars.allocate(FunctionTypeVar{TypeLevel{0, 0}, {}, {}, nullptr, nullptr, t.definition, t.hasSelf});
+    TypeId result = dest.addType(FunctionTypeVar{TypeLevel{0, 0}, {}, {}, nullptr, nullptr, t.definition, t.hasSelf});
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(result);
     LUAU_ASSERT(ftv != nullptr);
 
@@ -287,9 +299,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
     for (TypePackId genericPack : t.genericPacks)
         ftv->genericPacks.push_back(clone(genericPack, dest, seenTypes, seenTypePacks, encounteredFreeType));
 
-    if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-        ftv->tags = t.tags;
-
+    ftv->tags = t.tags;
     ftv->argTypes = clone(t.argTypes, dest, seenTypes, seenTypePacks, encounteredFreeType);
     ftv->argNames = t.argNames;
     ftv->retType = clone(t.retType, dest, seenTypes, seenTypePacks, encounteredFreeType);
@@ -297,7 +307,15 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
 
 void TypeCloner::operator()(const TableTypeVar& t)
 {
-    TypeId result = dest.typeVars.allocate(TableTypeVar{});
+    // If table is now bound to another one, we ignore the content of the original
+    if (FFlag::LuauCloneBoundTables && t.boundTo)
+    {
+        TypeId boundTo = clone(*t.boundTo, dest, seenTypes, seenTypePacks, encounteredFreeType);
+        seenTypes[typeId] = boundTo;
+        return;
+    }
+
+    TypeId result = dest.addType(TableTypeVar{});
     TableTypeVar* ttv = getMutable<TableTypeVar>(result);
     LUAU_ASSERT(ttv != nullptr);
 
@@ -308,26 +326,30 @@ void TypeCloner::operator()(const TableTypeVar& t)
     ttv->level = TypeLevel{0, 0};
 
     for (const auto& [name, prop] : t.props)
-    {
-        if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-            ttv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
-        else
-            ttv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location};
-    }
+        ttv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
 
     if (t.indexer)
         ttv->indexer = TableIndexer{clone(t.indexer->indexType, dest, seenTypes, seenTypePacks, encounteredFreeType),
             clone(t.indexer->indexResultType, dest, seenTypes, seenTypePacks, encounteredFreeType)};
 
-    if (t.boundTo)
-        ttv->boundTo = clone(*t.boundTo, dest, seenTypes, seenTypePacks, encounteredFreeType);
+    if (!FFlag::LuauCloneBoundTables)
+    {
+        if (t.boundTo)
+            ttv->boundTo = clone(*t.boundTo, dest, seenTypes, seenTypePacks, encounteredFreeType);
+    }
 
     for (TypeId& arg : ttv->instantiatedTypeParams)
-        arg = (clone(arg, dest, seenTypes, seenTypePacks, encounteredFreeType));
+        arg = clone(arg, dest, seenTypes, seenTypePacks, encounteredFreeType);
+
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        for (TypePackId& arg : ttv->instantiatedTypePackParams)
+            arg = clone(arg, dest, seenTypes, seenTypePacks, encounteredFreeType);
+    }
 
     if (ttv->state == TableState::Free)
     {
-        if (!t.boundTo)
+        if (FFlag::LuauCloneBoundTables || !t.boundTo)
         {
             if (encounteredFreeType)
                 *encounteredFreeType = true;
@@ -343,7 +365,7 @@ void TypeCloner::operator()(const TableTypeVar& t)
 
 void TypeCloner::operator()(const MetatableTypeVar& t)
 {
-    TypeId result = dest.typeVars.allocate(MetatableTypeVar{});
+    TypeId result = dest.addType(MetatableTypeVar{});
     MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(result);
     seenTypes[typeId] = result;
 
@@ -353,16 +375,13 @@ void TypeCloner::operator()(const MetatableTypeVar& t)
 
 void TypeCloner::operator()(const ClassTypeVar& t)
 {
-    TypeId result = dest.typeVars.allocate(ClassTypeVar{t.name, {}, std::nullopt, std::nullopt, t.tags, t.userData});
+    TypeId result = dest.addType(ClassTypeVar{t.name, {}, std::nullopt, std::nullopt, t.tags, t.userData});
     ClassTypeVar* ctv = getMutable<ClassTypeVar>(result);
 
     seenTypes[typeId] = result;
 
     for (const auto& [name, prop] : t.props)
-        if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-            ctv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
-        else
-            ctv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location};
+        ctv->props[name] = {clone(prop.type, dest, seenTypes, seenTypePacks, encounteredFreeType), prop.deprecated, {}, prop.location, prop.tags};
 
     if (t.parent)
         ctv->parent = clone(*t.parent, dest, seenTypes, seenTypePacks, encounteredFreeType);
@@ -378,7 +397,7 @@ void TypeCloner::operator()(const AnyTypeVar& t)
 
 void TypeCloner::operator()(const UnionTypeVar& t)
 {
-    TypeId result = dest.typeVars.allocate(UnionTypeVar{});
+    TypeId result = dest.addType(UnionTypeVar{});
     seenTypes[typeId] = result;
 
     UnionTypeVar* option = getMutable<UnionTypeVar>(result);
@@ -390,7 +409,7 @@ void TypeCloner::operator()(const UnionTypeVar& t)
 
 void TypeCloner::operator()(const IntersectionTypeVar& t)
 {
-    TypeId result = dest.typeVars.allocate(IntersectionTypeVar{});
+    TypeId result = dest.addType(IntersectionTypeVar{});
     seenTypes[typeId] = result;
 
     IntersectionTypeVar* option = getMutable<IntersectionTypeVar>(result);
@@ -451,8 +470,14 @@ TypeId clone(TypeId typeId, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, bool* encounteredFreeType)
 {
     TypeFun result;
-    for (TypeId param : typeFun.typeParams)
-        result.typeParams.push_back(clone(param, dest, seenTypes, seenTypePacks, encounteredFreeType));
+    for (TypeId ty : typeFun.typeParams)
+        result.typeParams.push_back(clone(ty, dest, seenTypes, seenTypePacks, encounteredFreeType));
+
+    if (FFlag::LuauTypeAliasPacks)
+    {
+        for (TypePackId tp : typeFun.typePackParams)
+            result.typePackParams.push_back(clone(tp, dest, seenTypes, seenTypePacks, encounteredFreeType));
+    }
 
     result.type = clone(typeFun.type, dest, seenTypes, seenTypePacks, encounteredFreeType);
 

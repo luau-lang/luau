@@ -97,7 +97,7 @@ TypePackIterator begin(TypePackId tp)
 
 TypePackIterator end(TypePackId tp)
 {
-    return FFlag::LuauAddMissingFollow ? TypePackIterator{} : TypePackIterator{nullptr};
+    return TypePackIterator{};
 }
 
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
@@ -203,10 +203,23 @@ TypePackId follow(TypePackId tp)
 
 size_t size(TypePackId tp)
 {
-    if (auto pack = get<TypePack>(FFlag::LuauAddMissingFollow ? follow(tp) : tp))
+    if (auto pack = get<TypePack>(follow(tp)))
         return size(*pack);
     else
         return 0;
+}
+
+bool finite(TypePackId tp)
+{
+    tp = follow(tp);
+
+    if (auto pack = get<TypePack>(tp))
+        return pack->tail ? finite(*pack->tail) : true;
+
+    if (get<VariadicTypePack>(tp))
+        return false;
+
+    return true;
 }
 
 size_t size(const TypePack& tp)
@@ -214,7 +227,7 @@ size_t size(const TypePack& tp)
     size_t result = tp.head.size();
     if (tp.tail)
     {
-        const TypePack* tail = get<TypePack>(FFlag::LuauAddMissingFollow ? follow(*tp.tail) : *tp.tail);
+        const TypePack* tail = get<TypePack>(follow(*tp.tail));
         if (tail)
             result += size(*tail);
     }
@@ -273,5 +286,4 @@ TypePack* asMutable(const TypePack* tp)
 {
     return const_cast<TypePack*>(tp);
 }
-
 } // namespace Luau

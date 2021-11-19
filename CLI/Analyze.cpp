@@ -34,8 +34,10 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
     }
 }
 
-static void reportError(ReportFormat format, const char* name, const Luau::TypeError& error)
+static void reportError(ReportFormat format, const Luau::TypeError& error)
 {
+    const char* name = error.moduleName.c_str();
+
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
         report(format, name, error.location, "SyntaxError", syntaxError->message.c_str());
     else
@@ -49,7 +51,10 @@ static void reportWarning(ReportFormat format, const char* name, const Luau::Lin
 
 static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat format, bool annotate)
 {
-    Luau::CheckResult cr = frontend.check(name);
+    Luau::CheckResult cr;
+
+    if (frontend.isDirty(name))
+        cr = frontend.check(name);
 
     if (!frontend.getSourceModule(name))
     {
@@ -58,7 +63,7 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
     }
 
     for (auto& error : cr.errors)
-        reportError(format, name, error);
+        reportError(format, error);
 
     Luau::LintResult lr = frontend.lint(name);
 
@@ -111,10 +116,28 @@ struct CliFileResolver : Luau::FileResolver
         return Luau::SourceCode{*source, Luau::SourceCode::Module};
     }
 
+    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node) override
+    {
+        if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
+        {
+            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".luau";
+            if (!moduleExists(name))
+            {
+                // fall back to .lua if a module with .luau doesn't exist
+                name = std::string(expr->value.data, expr->value.size) + ".lua";
+            }
+
+            return {{name}};
+        }
+
+        return std::nullopt;
+    }
+
     bool moduleExists(const Luau::ModuleName& name) const override
     {
         return !!readFile(name);
     }
+
 
     std::optional<Luau::ModuleName> fromAstFragment(Luau::AstExpr* expr) const override
     {
@@ -127,11 +150,6 @@ struct CliFileResolver : Luau::FileResolver
     }
 
     std::optional<Luau::ModuleName> getParentModuleName(const Luau::ModuleName& name) const override
-    {
-        return std::nullopt;
-    }
-
-    std::optional<std::string> getEnvironmentForModule(const Luau::ModuleName& name) const override
     {
         return std::nullopt;
     }
@@ -218,25 +236,12 @@ int main(int argc, char** argv)
     Luau::registerBuiltinTypes(frontend.typeChecker);
     Luau::freeze(frontend.typeChecker.globalTypes);
 
+    std::vector<std::string> files = getSourceFiles(argc, argv);
+
     int failed = 0;
 
-    for (int i = 1; i < argc; ++i)
-    {
-        if (argv[i][0] == '-')
-            continue;
-
-        if (isDirectory(argv[i]))
-        {
-            traverseDirectory(argv[i], [&](const std::string& name) {
-                if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
-            });
-        }
-        else
-        {
-            failed += !analyzeFile(frontend, argv[i], format, annotate);
-        }
-    }
+    for (const std::string& path : files)
+        failed += !analyzeFile(frontend, path.c_str(), format, annotate);
 
     if (!configResolver.configErrors.empty())
     {
@@ -248,5 +253,3 @@ int main(int argc, char** argv)
 
     return (format == ReportFormat::Luacheck) ? 0 : failed;
 }
-
-

@@ -136,7 +136,10 @@ public:
             const Key& key = ItemInterface::getKey(data[i]);
 
             if (!eq(key, empty_key))
-                *newtable.insert_unsafe(key) = data[i];
+            {
+                Item* item = newtable.insert_unsafe(key);
+                *item = std::move(data[i]);
+            }
         }
 
         LUAU_ASSERT(count == newtable.count);

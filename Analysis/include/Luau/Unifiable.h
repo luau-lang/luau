@@ -63,12 +63,9 @@ using Name = std::string;
 struct Free
 {
     explicit Free(TypeLevel level);
-    Free(TypeLevel level, bool DEPRECATED_canBeGeneric);
 
     int index;
     TypeLevel level;
-    // Removed by FFlag::LuauRankNTypes
-    bool DEPRECATED_canBeGeneric = false;
     // True if this free type variable is part of a mutually
     // recursive type alias whose definitions haven't been
     // resolved yet.
@@ -108,6 +105,8 @@ private:
 
 struct Error
 {
+    // This constructor has to be public, since it's used in TypeVar and TypePack,
+    // but shouldn't be called directly. Please use errorRecoveryType() instead.
     Error();
 
     int index;

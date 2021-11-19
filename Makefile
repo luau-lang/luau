@@ -1,4 +1,5 @@
 # This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+.SUFFIXES:
 MAKEFLAGS+=-r -j8
 COMMA=,
 
@@ -45,10 +46,19 @@ endif
 OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(VM_OBJECTS) $(TESTS_OBJECTS) $(CLI_OBJECTS) $(FUZZ_OBJECTS)
 
 # common flags
-CXXFLAGS=-g -Wall -Werror
+CXXFLAGS=-g -Wall
 LDFLAGS=
 
-CXXFLAGS+=-Wno-unused # temporary, for older gcc versions
+# some gcc versions treat var in `if (type var = val)` as unused
+# some gcc versions treat variables used in constexpr if blocks as unused
+ifeq ($(findstring g++,$(shell $(CXX) --version)),g++)
+	CXXFLAGS+=-Wno-unused
+endif
+
+# enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
+ifneq ($(werror),)
+	CXXFLAGS+=-Werror
+endif
 
 # configuration-specific flags
 ifeq ($(config),release)
@@ -133,11 +143,10 @@ $(TESTS_TARGET) $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET):
 
 # executable targets for fuzzing
 fuzz-%: $(BUILD)/fuzz/%.cpp.o $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET)
+	$(CXX) $^ $(LDFLAGS) -o $@
+
 fuzz-proto: $(BUILD)/fuzz/proto.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET) | build/libprotobuf-mutator
 fuzz-prototest: $(BUILD)/fuzz/prototest.cpp.o $(BUILD)/fuzz/protoprint.cpp.o $(BUILD)/fuzz/luau.pb.cpp.o $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET) | build/libprotobuf-mutator
-
-fuzz-%:
-	$(CXX) $^ $(LDFLAGS) -o $@
 
 # static library targets
 $(AST_TARGET): $(AST_OBJECTS)

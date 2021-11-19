@@ -4,15 +4,15 @@
 #include "Luau/Parser.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Common.h"
+#include "Luau/TimeTrace.h"
 
 #include <algorithm>
 #include <bitset>
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
-LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresFenv, false)
-LUAU_FASTFLAGVARIABLE(LuauPreloadClosuresUpval, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
+LUAU_FASTFLAGVARIABLE(LuauBit32CountBuiltin, false)
 
 namespace Luau
 {
@@ -20,8 +20,6 @@ namespace Luau
 static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
 static const uint32_t kMaxLocalCount = 200;
-
-static const char* kSpecialGlobals[] = {"Game", "Workspace", "_G", "game", "plugin", "script", "shared", "workspace"};
 
 CompileError::CompileError(const Location& location, const std::string& message)
     : location(location)
@@ -137,6 +135,11 @@ struct Compiler
 
     uint32_t compileFunction(AstExprFunction* func)
     {
+        LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
+
+        if (func->debugname.value)
+            LUAU_TIMETRACE_ARGUMENT("name", func->debugname.value);
+
         LUAU_ASSERT(!functions.contains(func));
         LUAU_ASSERT(regTop == 0 && stackSize == 0 && localStack.empty() && upvals.empty());
 
@@ -457,7 +460,7 @@ struct Compiler
 
         bool shared = false;
 
-        if (FFlag::LuauPreloadClosuresUpval)
+        if (FFlag::LuauPreloadClosures)
         {
             // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
             // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
@@ -471,18 +474,6 @@ struct Compiler
                     bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
                     shared = true;
                 }
-            }
-        }
-        // Optimization: when closure has no upvalues, instead of allocating it every time we can share closure objects
-        // (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it is used)
-        else if (FFlag::LuauPreloadClosures && options.optimizationLevel >= 1 && f->upvals.empty() && !setfenvUsed)
-        {
-            int32_t cid = bytecode.addConstantClosure(f->id);
-
-            if (cid >= 0 && cid < 32768)
-            {
-                bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
-                return;
             }
         }
 
@@ -1271,7 +1262,7 @@ struct Compiler
     {
         const Global* global = globals.find(expr->name);
 
-        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->special));
+        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->writable));
     }
 
     void compileExprIndexName(AstExprIndexName* expr, uint8_t target)
@@ -2459,9 +2450,10 @@ struct Compiler
         }
         else if (node->is<AstStatBreak>())
         {
+            LUAU_ASSERT(!loops.empty());
+
             // before exiting out of the loop, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            LUAU_ASSERT(!loops.empty());
             closeLocals(loops.back().localOffset);
 
             size_t label = bytecode.emitLabel();
@@ -2472,12 +2464,13 @@ struct Compiler
         }
         else if (AstStatContinue* stat = node->as<AstStatContinue>())
         {
+            LUAU_ASSERT(!loops.empty());
+
             if (loops.back().untilCondition)
                 validateContinueUntil(stat, loops.back().untilCondition);
 
             // before continuing, we need to close all local variables that were captured in closures since loop start
             // normally they are closed by the enclosing blocks, including the loop block, but we're skipping that here
-            LUAU_ASSERT(!loops.empty());
             closeLocals(loops.back().localOffset);
 
             size_t label = bytecode.emitLabel();
@@ -2894,6 +2887,11 @@ struct Compiler
                 break;
 
             case AstExprUnary::Len:
+                if (arg.type == Constant::Type_String)
+                {
+                    result.type = Constant::Type_Number;
+                    result.valueNumber = double(arg.valueString.size);
+                }
                 break;
 
             default:
@@ -3282,8 +3280,7 @@ struct Compiler
         bool visit(AstStatLocalFunction* node) override
         {
             // record local->function association for some optimizations
-            if (FFlag::LuauPreloadClosuresUpval)
-                self->locals[node->name].func = node->func;
+            self->locals[node->name].func = node->func;
 
             return true;
         }
@@ -3434,7 +3431,7 @@ struct Compiler
 
     struct Global
     {
-        bool special = false;
+        bool writable = false;
         bool written = false;
     };
 
@@ -3492,7 +3489,7 @@ struct Compiler
             {
                 Global* g = globals.find(object->name);
 
-                return !g || (!g->special && !g->written) ? Builtin{object->name, expr->index} : Builtin();
+                return !g || (!g->writable && !g->written) ? Builtin{object->name, expr->index} : Builtin();
             }
             else
             {
@@ -3623,6 +3620,10 @@ struct Compiler
                 return LBF_BIT32_RROTATE;
             if (builtin.method == "rshift")
                 return LBF_BIT32_RSHIFT;
+            if (builtin.method == "countlz" && FFlag::LuauBit32CountBuiltin)
+                return LBF_BIT32_COUNTLZ;
+            if (builtin.method == "countrz" && FFlag::LuauBit32CountBuiltin)
+                return LBF_BIT32_COUNTRZ;
         }
 
         if (builtin.object == "string")
@@ -3686,16 +3687,18 @@ struct Compiler
 
 void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstNameTable& names, const CompileOptions& options)
 {
+    LUAU_TIMETRACE_SCOPE("compileOrThrow", "Compiler");
+
     Compiler compiler(bytecode, options);
 
-    // since access to some global objects may result in values that change over time, we block table imports
-    for (const char* global : kSpecialGlobals)
-    {
-        AstName name = names.get(global);
+    // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
+    if (AstName name = names.get("_G"); name.value)
+        compiler.globals[name].writable = true;
 
-        if (name.value)
-            compiler.globals[name].special = true;
-    }
+    if (options.mutableGlobals)
+        for (const char** ptr = options.mutableGlobals; *ptr; ++ptr)
+            if (AstName name = names.get(*ptr); name.value)
+                compiler.globals[name].writable = true;
 
     // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
     Compiler::AssignmentVisitor assignmentVisitor(&compiler);
@@ -3709,7 +3712,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     }
 
     // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
-    if (FFlag::LuauPreloadClosuresFenv && options.optimizationLevel >= 1)
+    if (options.optimizationLevel >= 1 && (names.get("getfenv").value || names.get("setfenv").value))
     {
         Compiler::FenvVisitor fenvVisitor(compiler.getfenvUsed, compiler.setfenvUsed);
         root->visit(&fenvVisitor);
@@ -3748,6 +3751,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const std::string& source, const 
 
 std::string compile(const std::string& source, const CompileOptions& options, const ParseOptions& parseOptions, BytecodeEncoder* encoder)
 {
+    LUAU_TIMETRACE_SCOPE("compile", "Compiler");
+
     Allocator allocator;
     AstNameTable names(allocator);
     ParseResult result = Parser::parse(source.c_str(), source.size(), names, allocator, parseOptions);

@@ -9,6 +9,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/ParseOptions.h
     Ast/include/Luau/Parser.h
     Ast/include/Luau/StringUtils.h
+    Ast/include/Luau/TimeTrace.h
 
     Ast/src/Ast.cpp
     Ast/src/Confusables.cpp
@@ -16,6 +17,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/src/Location.cpp
     Ast/src/Parser.cpp
     Ast/src/StringUtils.cpp
+    Ast/src/TimeTrace.cpp
 )
 
 # Luau.Compiler Sources
@@ -23,9 +25,11 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/include/Luau/Bytecode.h
     Compiler/include/Luau/BytecodeBuilder.h
     Compiler/include/Luau/Compiler.h
+    Compiler/include/luacode.h
 
     Compiler/src/BytecodeBuilder.cpp
     Compiler/src/Compiler.cpp
+    Compiler/src/lcode.cpp
 )
 
 # Luau.Analysis Sources
@@ -44,8 +48,10 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Module.h
     Analysis/include/Luau/ModuleResolver.h
     Analysis/include/Luau/Predicate.h
+    Analysis/include/Luau/Quantify.h
     Analysis/include/Luau/RecursionCounter.h
     Analysis/include/Luau/RequireTracer.h
+    Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Symbol.h
     Analysis/include/Luau/TopoSortStatements.h
@@ -60,6 +66,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/TypeVar.h
     Analysis/include/Luau/Unifiable.h
     Analysis/include/Luau/Unifier.h
+    Analysis/include/Luau/UnifierSharedState.h
     Analysis/include/Luau/Variant.h
     Analysis/include/Luau/VisitTypeVar.h
 
@@ -74,7 +81,9 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Linter.cpp
     Analysis/src/Module.cpp
     Analysis/src/Predicate.cpp
+    Analysis/src/Quantify.cpp
     Analysis/src/RequireTracer.cpp
+    Analysis/src/Scope.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Symbol.cpp
     Analysis/src/TopoSortStatements.cpp
@@ -188,6 +197,7 @@ if(TARGET Luau.UnitTest)
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
         tests/Transpiler.test.cpp
+        tests/TypeInfer.aliases.test.cpp
         tests/TypeInfer.annotations.test.cpp
         tests/TypeInfer.builtins.test.cpp
         tests/TypeInfer.classes.test.cpp
@@ -196,6 +206,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.intersectionTypes.test.cpp
         tests/TypeInfer.provisional.test.cpp
         tests/TypeInfer.refinements.test.cpp
+        tests/TypeInfer.singletons.test.cpp
         tests/TypeInfer.tables.test.cpp
         tests/TypeInfer.test.cpp
         tests/TypeInfer.tryUnify.test.cpp

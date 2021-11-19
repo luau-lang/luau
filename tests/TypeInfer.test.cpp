@@ -3,6 +3,7 @@
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Parser.h"
+#include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
@@ -179,7 +180,12 @@ TEST_CASE_FIXTURE(Fixture, "expr_statement")
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
 {
-    CheckResult result = check("function id(x) return x end    local a = id(55)    local b = id(nil)");
+    CheckResult result = check(R"(
+        function id(x) return x end
+        local a = id(55)
+        local b = id(nil)
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
@@ -356,7 +362,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
     CHECK_EQ(2, result.errors.size());
 
     TypeId p = requireType("p");
-    CHECK_EQ(*p, *typeChecker.errorType);
+    CHECK_EQ("*unknown*", toString(p));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
@@ -474,7 +480,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_returns_any2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
@@ -490,7 +496,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
@@ -506,7 +512,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_any2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(typeChecker.anyType, requireType("a"));
+    CHECK_EQ("any", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error")
@@ -520,7 +526,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(typeChecker.errorType, requireType("a"));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
@@ -536,7 +542,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_iterator_is_error2")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(typeChecker.errorType, requireType("a"));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
@@ -667,7 +673,7 @@ TEST_CASE_FIXTURE(Fixture, "string_index")
     REQUIRE(nat);
     CHECK_EQ("string", toString(nat->ty));
 
-    CHECK(get<ErrorTypeVar>(requireType("t")));
+    CHECK_EQ("*unknown*", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "length_of_error_type_does_not_produce_an_error")
@@ -978,23 +984,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
     CHECK_EQ("t1 where t1 = (t1) -> ()", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
-{
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
-    CheckResult result = check(R"(
-        type F = () -> F?
-        local function f()
-            return f
-        end
-
-        local g: F = f
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("t1 where t1 = () -> t1?", toString(requireType("g")));
-}
-
 // TODO: File a Jira about this
 /*
 TEST_CASE_FIXTURE(Fixture, "unifying_vararg_pack_with_fixed_length_pack_produces_fixed_length_pack")
@@ -1257,23 +1246,6 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
     REQUIRE_EQ(follow(*methodArg), follow(arg));
 }
 
-TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_when_stringified")
-{
-    CheckResult result = check(R"(
-        --!strict
-        type Node = { Parent: Node?; }
-        local node: Node;
-        node.Parent = 1
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ("Node?", toString(tm->wantedType));
-    CHECK_EQ(typeChecker.numberType, tm->givenType);
-}
-
 TEST_CASE_FIXTURE(Fixture, "varlist_declared_by_for_in_loop_should_be_free")
 {
     CheckResult result = check(R"(
@@ -1484,7 +1456,7 @@ TEST_CASE_FIXTURE(Fixture, "require_module_that_does_not_export")
 
     auto hootyType = requireType(bModule, "Hooty");
 
-    CHECK_MESSAGE(get<ErrorTypeVar>(follow(hootyType)) != nullptr, "Should be an error: " << toString(hootyType));
+    CHECK_EQ("*unknown*", toString(hootyType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
@@ -1922,7 +1894,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
 
     REQUIRE_EQ(2, argVec.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(argVec[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
     REQUIRE(fType != nullptr);
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
@@ -1959,7 +1931,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
 
     REQUIRE_EQ(6, argVec.size());
 
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(argVec[0]);
+    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
     REQUIRE(fType != nullptr);
 }
 
@@ -2060,7 +2032,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_4")
     CHECK_EQ(*arg0->indexer->indexResultType, *arg1Args[1]);
 }
 
-TEST_CASE_FIXTURE(Fixture, "error_types_propagate")
+TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
 {
     CheckResult result = check(R"(
         local err = (true).x
@@ -2077,10 +2049,10 @@ TEST_CASE_FIXTURE(Fixture, "error_types_propagate")
     CHECK_EQ("boolean", toString(err->table));
     CHECK_EQ("x", err->key);
 
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("c")));
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("d")));
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("e")));
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("f")));
+    CHECK_EQ("*unknown*", toString(requireType("c")));
+    CHECK_EQ("*unknown*", toString(requireType("d")));
+    CHECK_EQ("*unknown*", toString(requireType("e")));
+    CHECK_EQ("*unknown*", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
@@ -2096,7 +2068,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_error_type_yields_error")
 
     CHECK_EQ("unknown", err->name);
 
-    CHECK(nullptr != get<ErrorTypeVar>(requireType("a")));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
@@ -2105,9 +2077,7 @@ TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
         local a = Utility.Create "Foo" {}
     )");
 
-    TypeId aType = requireType("a");
-
-    REQUIRE_MESSAGE(nullptr != get<ErrorTypeVar>(aType), "Not an error: " << toString(aType));
+    CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable")
@@ -2174,6 +2144,8 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -2203,11 +2175,13 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersectio
     CHECK_EQ("Vec3", toString(requireType("b")));
     CHECK_EQ("Vec3", toString(requireType("c")));
     CHECK_EQ("Vec3", toString(requireType("d")));
-    CHECK(get<ErrorTypeVar>(requireType("e")));
+    CHECK_EQ("Vec3", toString(requireType("e")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection_on_rhs")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -2237,7 +2211,7 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersectio
     CHECK_EQ("Vec3", toString(requireType("b")));
     CHECK_EQ("Vec3", toString(requireType("c")));
     CHECK_EQ("Vec3", toString(requireType("d")));
-    CHECK(get<ErrorTypeVar>(requireType("e")));
+    CHECK_EQ("Vec3", toString(requireType("e")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "compare_numbers")
@@ -2591,48 +2565,6 @@ TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
     dumpErrors(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types")
-{
-    CheckResult result = check(R"(
-        --!strict
-        type T<a> = { f: a, g: U<a> }
-        type U<a> = { h: a, i: T<a>? }
-        local x: T<number> = { f = 37, g = { h = 5, i = nil } }
-        x.g.i = x
-        local y: T<string> = { f = "hi", g = { h = "lo", i = nil } }
-        y.g.i = y
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_errors")
-{
-    CheckResult result = check(R"(
-        --!strict
-        type T<a> = { f: a, g: U<a> }
-        type U<b> = { h: b, i: T<b>? }
-        local x: T<number> = { f = 37, g = { h = 5, i = nil } }
-        x.g.i = x
-        local y: T<string> = { f = "hi", g = { h = 5, i = nil } }
-        y.g.i = y
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-
-    // We had a UAF in this example caused by not cloning type function arguments
-    ModulePtr module = frontend.moduleResolver.getModule("MainModule");
-    unfreeze(module->interfaceTypes);
-    copyErrors(module->errors, module->interfaceTypes);
-    freeze(module->interfaceTypes);
-    module->internalTypes.clear();
-    module->astTypes.clear();
-
-    // Make sure the error strings don't include "VALUELESS"
-    for (auto error : module->errors)
-        CHECK_MESSAGE(toString(error).find("VALUELESS") == std::string::npos, toString(error));
-}
-
 TEST_CASE_FIXTURE(Fixture, "object_constructor_can_refer_to_method_of_self")
 {
     // CLI-30902
@@ -2971,6 +2903,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
 local x: number = 9999
 function x:y(z: number)
@@ -2978,7 +2912,7 @@ function x:y(z: number)
 end
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfError")
@@ -2990,7 +2924,7 @@ function x:y(z: number)
 end
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CallOrOfFunctions")
@@ -3388,16 +3322,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_comparison")
         end
     )");
 
-    if (FFlag::LuauEqConstraint)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        REQUIRE(get<CannotInferBinaryOperation>(result.errors[0]));
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "relation_op_on_any_lhs_where_rhs_maybe_has_metatable")
@@ -3407,18 +3332,8 @@ TEST_CASE_FIXTURE(Fixture, "relation_op_on_any_lhs_where_rhs_maybe_has_metatable
         print((x == true and (x .. "y")) .. 1) 
     )");
 
-    if (FFlag::LuauEqConstraint)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        REQUIRE(get<CannotInferBinaryOperation>(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-
-        CHECK_EQ("Type 'boolean' could not be converted into 'number | string'", toString(result.errors[0]));
-        CHECK_EQ("Type 'boolean | string' could not be converted into 'number | string'", toString(result.errors[1]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE(get<CannotInferBinaryOperation>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "concat_op_on_string_lhs_and_free_rhs")
@@ -3530,25 +3445,6 @@ _(...)(...,setfenv,_):_G()
 )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "use_table_name_and_generic_params_in_errors")
-{
-    CheckResult result = check(R"(
-        type Pair<T, U> = {first: T, second: U}
-        local a: Pair<string, number>
-        local b: Pair<string, string>
-
-        a = b
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-
-    CHECK_EQ("Pair<string, number>", toString(tm->wantedType));
-    CHECK_EQ("Pair<string, string>", toString(tm->givenType));
-}
-
 TEST_CASE_FIXTURE(Fixture, "cyclic_type_packs")
 {
     // this has a risk of creating cyclic type packs, causing infinite loops / OOMs
@@ -3658,17 +3554,6 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_where_iteratee_is_free")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_stop_typechecking_after_reporting_duplicate_type_definition")
-{
-    CheckResult result = check(R"(
-        type A = number
-        type A = string -- Redefinition of type 'A', previously defined at line 1
-        local foo: string = 1 -- No "Type 'number' could not be converted into 'string'"
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-}
-
 TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery")
 {
     CheckResult result = check(R"(
@@ -3769,38 +3654,6 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
     CHECK_EQ("Type 'number | string' cannot be compared with relational operator <", ge->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type")
-{
-    CheckResult result = check(R"(
-        type Table<T> = { a: T }
-        type Wrapped = Table<Wrapped>
-        local l: Wrapped = 2
-        )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ("Wrapped", toString(tm->wantedType));
-    CHECK_EQ(typeChecker.numberType, tm->givenType);
-}
-
-TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type2")
-{
-    CheckResult result = check(R"(
-        type Table<T> = { a: T }
-        type Wrapped = (Table<Wrapped>) -> string
-        local l: Wrapped = 2
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ("t1 where t1 = ({| a: t1 |}) -> string", toString(tm->wantedType));
-    CHECK_EQ(typeChecker.numberType, tm->givenType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_expr_should_be_checked")
@@ -3928,19 +3781,6 @@ TEST_CASE_FIXTURE(Fixture, "stringify_nested_unions_with_optionals")
     CHECK_EQ("(boolean | number | string)?", toString(tm->givenType));
 }
 
-// Check that recursive intersection type doesn't generate an OOM
-TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
-{
-    CheckResult result = check(R"(
-        function _(l0:(t0)&((t0)&(((t0)&((t0)->()))->(typeof(_),typeof(# _)))),l39,...):any
-        end
-        type t0<t0> = ((typeof(_))&((t0)&(((typeof(_))&(t0))->typeof(_))),{n163:any,})->(any,typeof(_))
-        _(_)
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobalCompoundAssign")
 {
     // In non-strict mode, global definition is still allowed
@@ -3963,7 +3803,7 @@ TEST_CASE_FIXTURE(Fixture, "UnknownGlobalCompoundAssign")
             print(a)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        LUAU_REQUIRE_ERRORS(result);
         CHECK_EQ(toString(result.errors[0]), "Unknown global 'a'");
     }
 
@@ -3993,16 +3833,6 @@ TEST_CASE_FIXTURE(Fixture, "loop_typecheck_crash_on_empty_optional")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")
-{
-    CheckResult result = check(R"(
-        local foo: Id<number> = 1
-        type Id<T> = T
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
 TEST_CASE_FIXTURE(Fixture, "cli_39932_use_unifier_in_ensure_methods")
 {
     CheckResult result = check(R"(
@@ -4021,91 +3851,16 @@ local T: any
 T = {}
 T.__index = T
 function T.new(...)
-	local self = {}
-	setmetatable(self, T)
-	self:construct(...)
-	return self
+    local self = {}
+    setmetatable(self, T)
+    self:construct(...)
+    return self
 end
 function T:construct(index)
 end
 )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
-{
-    const std::string code = R"(
-        type A<T> = {v:T, b:B<T>}
-        type B<T> = {v:T, a:A<T>}
-        local aa:A<number>
-        local bb = aa
-    )";
-
-    const std::string expected = R"(
-        type A<T> = {v:T, b:B<T>}
-        type B<T> = {v:T, a:A<T>}
-        local aa:A<number>
-        local bb:A<number>=aa
-    )";
-
-    CHECK_EQ(expected, decorateWithTypes(code));
-    CheckResult result = check(code);
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
-{
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
-    CheckResult result = check(R"(
-        type A = () -> (number, B)
-        type B = () -> (string, A)
-        local a: A
-        local b: B
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("t1 where t1 = () -> (number, () -> (string, t1))", toString(requireType("a")));
-    CHECK_EQ("t1 where t1 = () -> (string, () -> (number, t1))", toString(requireType("b")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "generic_param_remap")
-{
-    const std::string code = R"(
-        -- An example of a forwarded use of a type that has different type arguments than parameters
-        type A<T,U> = {t:T, u:U, next:A<U,T>?}
-        local aa:A<number,string> = { t = 5, u = 'hi', next = { t = 'lo', u = 8 } }
-        local bb = aa
-    )";
-
-    const std::string expected = R"(
-
-        type A<T,U> = {t:T, u:U, next:A<U,T>?}
-        local aa:A<number,string> = { t = 5, u = 'hi', next = { t = 'lo', u = 8 } }
-        local bb:A<number,string>=aa
-    )";
-
-    CHECK_EQ(expected, decorateWithTypes(code));
-    CheckResult result = check(code);
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "export_type_and_type_alias_are_duplicates")
-{
-    CheckResult result = check(R"(
-        export type Foo = number
-        type Foo = number
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
-    REQUIRE(dtd);
-    CHECK_EQ(dtd->name, "Foo");
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_report_type_errors_within_an_AstStatError")
@@ -4175,8 +3930,6 @@ local b: number = 1 or a
 
 TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
 {
-    ScopedFastFlag sffs2{"LuauGenericFunctions", true};
-
     CheckResult result = check(R"(
         --!strict
         local tbl = {}
@@ -4210,30 +3963,6 @@ TEST_CASE_FIXTURE(Fixture, "luau_resolves_symbols_the_same_way_lua_does")
 
     auto e = result.errors.front();
     REQUIRE_MESSAGE(get<UnknownSymbol>(e) != nullptr, "Expected UnknownSymbol, but got " << e);
-}
-
-TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
-{
-    ScopedFastFlag sffs3{"LuauGenericFunctions", true};
-    ScopedFastFlag sffs4{"LuauParseGenericFunctions", true};
-
-    CheckResult result = check(R"(
-        type Node<T> = { value: T, child: Node<T>? }
-
-        local function visitor<T>(node: Node<T>?)
-            local a: Node<T>
-
-            if node then
-                a = node.child -- Observe the output of the error message.
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    auto e = get<TypeMismatch>(result.errors[0]);
-    CHECK_EQ("Node<T>?", toString(e->givenType));
-    CHECK_EQ("Node<T>", toString(e->wantedType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "operator_eq_verifies_types_do_intersect")
@@ -4291,181 +4020,6 @@ local tbl: string = require(game.A)
     CHECK_EQ("Type '{| def: number |}' could not be converted into 'string'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "general_require_multi_assign")
-{
-    fileResolver.source["workspace/A"] = R"(
-        export type myvec2 = {x: number, y: number}
-        return {}
-    )";
-
-    fileResolver.source["workspace/B"] = R"(
-        export type myvec3 = {x: number, y: number, z: number}
-        return {}
-    )";
-
-    fileResolver.source["workspace/C"] = R"(
-        local Foo, Bar = require(workspace.A), require(workspace.B)
-
-        local a: Foo.myvec2
-        local b: Bar.myvec3
-    )";
-
-    CheckResult result = frontend.check("workspace/C");
-    LUAU_REQUIRE_NO_ERRORS(result);
-    ModulePtr m = frontend.moduleResolver.modules["workspace/C"];
-
-    REQUIRE(m != nullptr);
-
-    std::optional<TypeId> aTypeId = lookupName(m->getModuleScope(), "a");
-    REQUIRE(aTypeId);
-    const Luau::TableTypeVar* aType = get<TableTypeVar>(follow(*aTypeId));
-    REQUIRE(aType);
-    REQUIRE(aType->props.size() == 2);
-
-    std::optional<TypeId> bTypeId = lookupName(m->getModuleScope(), "b");
-    REQUIRE(bTypeId);
-    const Luau::TableTypeVar* bType = get<TableTypeVar>(follow(*bTypeId));
-    REQUIRE(bType);
-    REQUIRE(bType->props.size() == 3);
-}
-
-TEST_CASE_FIXTURE(Fixture, "type_alias_import_mutation")
-{
-    CheckResult result = check("type t10<x> = typeof(table)");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    TypeId ty = getGlobalBinding(frontend.typeChecker, "table");
-    CHECK_EQ(toString(ty), "table");
-
-    const TableTypeVar* ttv = get<TableTypeVar>(ty);
-    REQUIRE(ttv);
-
-    CHECK(ttv->instantiatedTypeParams.empty());
-}
-
-TEST_CASE_FIXTURE(Fixture, "type_alias_local_mutation")
-{
-    CheckResult result = check(R"(
-type Cool = { a: number, b: string }
-local c: Cool = { a = 1, b = "s" }
-type NotCool<x> = Cool
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    std::optional<TypeId> ty = requireType("c");
-    REQUIRE(ty);
-    CHECK_EQ(toString(*ty), "Cool");
-
-    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
-    REQUIRE(ttv);
-
-    CHECK(ttv->instantiatedTypeParams.empty());
-}
-
-TEST_CASE_FIXTURE(Fixture, "type_alias_local_rename")
-{
-    CheckResult result = check(R"(
-type Cool = { a: number, b: string }
-type NotCool = Cool
-local c: Cool = { a = 1, b = "s" }
-local d: NotCool = { a = 1, b = "s" }
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    std::optional<TypeId> ty = requireType("c");
-    REQUIRE(ty);
-    CHECK_EQ(toString(*ty), "Cool");
-
-    ty = requireType("d");
-    REQUIRE(ty);
-    CHECK_EQ(toString(*ty), "NotCool");
-}
-
-TEST_CASE_FIXTURE(Fixture, "type_alias_local_synthetic_mutation")
-{
-    CheckResult result = check(R"(
-local c = { a = 1, b = "s" }
-type Cool = typeof(c)
-)");
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    std::optional<TypeId> ty = requireType("c");
-    REQUIRE(ty);
-
-    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
-    REQUIRE(ttv);
-    CHECK_EQ(ttv->name, "Cool");
-}
-
-TEST_CASE_FIXTURE(Fixture, "type_alias_of_an_imported_recursive_type")
-{
-    ScopedFastFlag luauFixTableTypeAliasClone{"LuauFixTableTypeAliasClone", true};
-
-    fileResolver.source["game/A"] = R"(
-export type X = { a: number, b: X? }
-return {}
-    )";
-
-    CheckResult aResult = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(aResult);
-
-    CheckResult bResult = check(R"(
-local Import = require(game.A)
-type X = Import.X
-    )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
-
-    std::optional<TypeId> ty1 = lookupImportedType("Import", "X");
-    REQUIRE(ty1);
-
-    std::optional<TypeId> ty2 = lookupType("X");
-    REQUIRE(ty2);
-
-    CHECK_EQ(follow(*ty1), follow(*ty2));
-}
-
-TEST_CASE_FIXTURE(Fixture, "type_alias_of_an_imported_recursive_generic_type")
-{
-    ScopedFastFlag luauFixTableTypeAliasClone{"LuauFixTableTypeAliasClone", true};
-
-    fileResolver.source["game/A"] = R"(
-export type X<T, U> = { a: T, b: U, C: X<T, U>? }
-return {}
-    )";
-
-    CheckResult aResult = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(aResult);
-
-    CheckResult bResult = check(R"(
-local Import = require(game.A)
-type X<T, U> = Import.X<T, U>
-    )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
-
-    std::optional<TypeId> ty1 = lookupImportedType("Import", "X");
-    REQUIRE(ty1);
-
-    std::optional<TypeId> ty2 = lookupType("X");
-    REQUIRE(ty2);
-
-    CHECK_EQ(toString(*ty1, {true}), toString(*ty2, {true}));
-
-    bResult = check(R"(
-local Import = require(game.A)
-type X<T, U> = Import.X<U, T>
-    )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
-
-    ty1 = lookupImportedType("Import", "X");
-    REQUIRE(ty1);
-
-    ty2 = lookupType("X");
-    REQUIRE(ty2);
-
-    CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = {| C: t1?, a: T, b: U |}");
-    CHECK_EQ(toString(*ty2, {true}), "{| C: t1, a: U, b: T |} where t1 = {| C: t1, a: U, b: T |}?");
-}
-
 TEST_CASE_FIXTURE(Fixture, "nonstrict_self_mismatch_tail")
 {
     CheckResult result = check(R"(
@@ -4521,11 +4075,11 @@ function n:Clone() end
 local m = {}
 
 function m.a(x)
-	x:Clone()
+    x:Clone()
 end
 
 function m.b()
-	m.a(n)
+    m.a(n)
 end
 
 return m
@@ -4577,32 +4131,6 @@ local c = a(2) -- too many arguments
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
-}
-
-TEST_CASE_FIXTURE(Fixture, "module_export_free_type_leak")
-{
-    CheckResult result = check(R"(
-function get()
-    return function(obj) return true end
-end
-
-export type f = typeof(get())
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "module_export_wrapped_free_type_leak")
-{
-    CheckResult result = check(R"(
-function get()
-    return {a = 1, b = function(obj) return true end}
-end
-
-export type f = typeof(get())
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "custom_require_global")
@@ -4691,7 +4219,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK(get<ErrorTypeVar>(t0->type));
+    CHECK_EQ("*unknown*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -4714,7 +4242,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK(get<ErrorTypeVar>(t0->type));
+    CHECK_EQ("*unknown*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -4787,8 +4315,6 @@ TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
 
 TEST_CASE_FIXTURE(Fixture, "dont_invalidate_the_properties_iterator_of_free_table_when_rolled_back")
 {
-    ScopedFastFlag sff{"LuauLogTableTypeVarBoundTo", true};
-
     fileResolver.source["Module/Backend/Types"] = R"(
         export type Fiber = {
             return_: Fiber?
@@ -4868,14 +4394,31 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 
     ModulePtr module = getMainModule();
     auto it = module->astOverloadResolvedTypes.find(parentExpr);
-    REQUIRE(it != module->astOverloadResolvedTypes.end());
-    CHECK_EQ(toString(it->second), "(number) -> number");
+    REQUIRE(it);
+    CHECK_EQ(toString(*it), "(number) -> number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
+{
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
+    CheckResult result = check(R"(
+        type Overload = ((string) -> string) & ((number, number) -> number)
+        local abc: Overload
+        local x = abc(true)
+        local y = abc(true,true)
+        local z = abc(true,true,true)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("x")));
+    CHECK_EQ("number", toString(requireType("y")));
+    // Should this be string|number?
+    CHECK_EQ("string", toString(requireType("z")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
 {
-    ScopedFastFlag luauInferFunctionArgsFix("LuauInferFunctionArgsFix", true);
-
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
 type Table = { x: number, y: number }
@@ -4971,10 +4514,6 @@ f(function(x) print(x) end)
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument")
 {
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauRankNTypes("LuauRankNTypes", true);
-
     CheckResult result = check(R"(
 local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 return sum(2, 3, function(a, b) return a + b end)
@@ -5003,10 +4542,6 @@ local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} e
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
 {
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauRankNTypes("LuauRankNTypes", true);
-
     CheckResult result = check(R"(
 local function g1<T>(a: T, f: (T) -> T) return f(a) end
 local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
@@ -5027,76 +4562,6 @@ local g12: typeof(g1) & typeof(g2)
 
 g12({x=1}, function(x) return {x=-x.x} end)
 g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
-{
-    CheckResult result = check(R"(
-        type Tree<T> = { data: T, children: Forest<T> }
-        type Forest<T> = {Tree<T>}
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
-{
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
-    CheckResult result = check(R"(
-        -- OK because forwarded types are used with their parameters.
-        type Tree<T> = { data: T, children: Forest<T> }
-        type Forest<T> = {Tree<{T}>}
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
-{
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
-    CheckResult result = check(R"(
-        -- Not OK because forwarded types are used with different types than their parameters.
-        type Forest<T> = {Tree<{T}>}
-        type Tree<T> = { data: T, children: Forest<T> }
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
-{
-    CheckResult result = check(R"(
-        type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
-        type Tree2<U,T> = { data: U, children: {Tree1<T,U>} }
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
-{
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
-    CheckResult result = check(R"(
-        type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
-        type Tree2<T,U> = { data: U, children: {Tree1<T,U>} }
-    )");
-
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
-{
-    CheckResult result = check(R"(
-        function f(x) return x[1] end
-        -- x has type X? for a free type variable X
-        local x = f ({})
-        type ContainsFree<a> = { this: a, that: typeof(x) }
-        type ContainsContainsFree = { that: ContainsFree<number> }
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -5127,10 +4592,6 @@ local a: TableWithFunc = { x = 3, y = 4, f = function(a, b) return a + b end }
 
 TEST_CASE_FIXTURE(Fixture, "do_not_infer_generic_functions")
 {
-    ScopedFastFlag luauGenericFunctions("LuauGenericFunctions", true);
-    ScopedFastFlag luauParseGenericFunctions("LuauParseGenericFunctions", true);
-    ScopedFastFlag luauRankNTypes("LuauRankNTypes", true);
-
     CheckResult result = check(R"(
 local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 
@@ -5148,8 +4609,6 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local function f(): {string|number}
     return {1, "b", 3}
@@ -5173,8 +4632,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local function f()
     return {4, "b", 3} :: {string|number}
@@ -5186,8 +4643,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local a: (number, number) -> number = function(a, b) return a - b end
 
@@ -5203,8 +4658,6 @@ b, c = {2, "s"}, {"b", 4}
 
 TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types_mutable_lval")
 {
-    ScopedFastFlag luauInferReturnAssertAssign("LuauInferReturnAssertAssign", true);
-
     CheckResult result = check(R"(
 local a = {}
 a.x = 2
@@ -5216,8 +4669,6 @@ a = setmetatable(a, { __call = function(x) end })
 
 TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 {
-    ScopedFastFlag sff{"LuauSlightlyMoreFlexibleBinaryPredicates", true};
-
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t and t.x or 5
@@ -5230,11 +4681,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 
 TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-        {"LuauExtraNilRecovery", true},
-    };
-
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t.x and t or 5
@@ -5247,11 +4693,6 @@ TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
 
 TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauSlightlyMoreFlexibleBinaryPredicates", true},
-        {"LuauExtraNilRecovery", true},
-    };
-
     CheckResult result = check(R"(
         local t: {x: number?}? = {x = nil}
         local u = t and t.x == 5 or t.x == 31337
@@ -5264,7 +4705,7 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
-    ScopedFastFlag luauFollowInTypeFunApply("LuauFollowInTypeFunApply", true);
+    ScopedFastFlag luauCloneCorrectlyBeforeMutatingTableType{"LuauCloneCorrectlyBeforeMutatingTableType", true};
 
     CheckResult result = check(R"(
 type A = { x: number }
@@ -5320,6 +4761,22 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions3")
         TypeId aType = requireType("a");
         CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
     }
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_error_addition")
+{
+    CheckResult result = check(R"(
+--!strict
+local foo = makesandwich()
+local bar = foo.nutrition + 100
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    // We should definitely get this error
+    CHECK_EQ("Unknown global 'makesandwich'", toString(result.errors[0]));
+    // We get this error if makesandwich() returns a free type
+    // CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'foo'", toString(result.errors[1]));
 }
 
 TEST_SUITE_END();

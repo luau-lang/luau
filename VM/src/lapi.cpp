@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauGcFullSkipInactiveThreads)
-
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -595,7 +593,7 @@ const char* lua_pushfstringL(lua_State* L, const char* fmt, ...)
     return ret;
 }
 
-void lua_pushcfunction(lua_State* L, lua_CFunction fn, const char* debugname, int nup, lua_Continuation cont)
+void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, int nup, lua_Continuation cont)
 {
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
@@ -700,12 +698,13 @@ void lua_createtable(lua_State* L, int narray, int nrec)
     return;
 }
 
-void lua_setreadonly(lua_State* L, int objindex, bool value)
+void lua_setreadonly(lua_State* L, int objindex, int enabled)
 {
     const TValue* o = index2adr(L, objindex);
     api_check(L, ttistable(o));
     Table* t = hvalue(o);
-    t->readonly = value;
+    api_check(L, t != hvalue(registry(L)));
+    t->readonly = bool(enabled);
     return;
 }
 
@@ -718,12 +717,12 @@ int lua_getreadonly(lua_State* L, int objindex)
     return res;
 }
 
-void lua_setsafeenv(lua_State* L, int objindex, bool value)
+void lua_setsafeenv(lua_State* L, int objindex, int enabled)
 {
     const TValue* o = index2adr(L, objindex);
     api_check(L, ttistable(o));
     Table* t = hvalue(o);
-    t->safeenv = value;
+    t->safeenv = bool(enabled);
     return;
 }
 
@@ -989,6 +988,16 @@ int lua_status(lua_State* L)
     return L->status;
 }
 
+void* lua_getthreaddata(lua_State* L)
+{
+    return L->userdata;
+}
+
+void lua_setthreaddata(lua_State* L, void* data)
+{
+    L->userdata = data;
+}
+
 /*
 ** Garbage-collection function
 */
@@ -1153,7 +1162,7 @@ void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
     Udata* u = luaS_newudata(L, sz + sizeof(dtor), UTAG_IDTOR);
-    memcpy(u->data + sz, &dtor, sizeof(dtor));
+    memcpy(&u->data + sz, &dtor, sizeof(dtor));
     setuvalue(L, L->top, u);
     api_incr_top(L);
     return u->data;

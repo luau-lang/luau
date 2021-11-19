@@ -18,7 +18,6 @@
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
-LUAU_FASTFLAG(LuauAddMissingFollow)
 
 namespace Luau
 {
@@ -108,6 +107,79 @@ struct PrimitiveTypeVar
     {
     }
 };
+
+// Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
+// Types for true and false
+struct BoolSingleton
+{
+    bool value;
+
+    bool operator==(const BoolSingleton& rhs) const
+    {
+        return value == rhs.value;
+    }
+
+    bool operator!=(const BoolSingleton& rhs) const
+    {
+        return !(*this == rhs);
+    }
+};
+
+// Types for "foo", "bar" etc.
+struct StringSingleton
+{
+    std::string value;
+
+    bool operator==(const StringSingleton& rhs) const
+    {
+        return value == rhs.value;
+    }
+
+    bool operator!=(const StringSingleton& rhs) const
+    {
+        return !(*this == rhs);
+    }
+};
+
+// No type for float singletons, partly because === isn't any equalivalence on floats
+// (NaN != NaN).
+
+using SingletonVariant = Luau::Variant<BoolSingleton, StringSingleton>;
+
+struct SingletonTypeVar
+{
+    explicit SingletonTypeVar(const SingletonVariant& variant)
+        : variant(variant)
+    {
+    }
+
+    explicit SingletonTypeVar(SingletonVariant&& variant)
+        : variant(std::move(variant))
+    {
+    }
+
+    // Default operator== is C++20.
+    bool operator==(const SingletonTypeVar& rhs) const
+    {
+        return variant == rhs.variant;
+    }
+
+    bool operator!=(const SingletonTypeVar& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    SingletonVariant variant;
+};
+
+template<typename T>
+const T* get(const SingletonTypeVar* stv)
+{
+    if (stv)
+        return get_if<T>(&stv->variant);
+    else
+        return nullptr;
+}
 
 struct FunctionArgument
 {
@@ -228,6 +300,7 @@ struct TableTypeVar
 
     std::map<Name, Location> methodDefinitionLocations;
     std::vector<TypeId> instantiatedTypeParams;
+    std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;
 
     std::optional<TypeId> boundTo;
@@ -284,8 +357,9 @@ struct ClassTypeVar
 
 struct TypeFun
 {
-    /// These should all be generic
+    // These should all be generic
     std::vector<TypeId> typeParams;
+    std::vector<TypePackId> typePackParams;
 
     /** The underlying type.
      *
@@ -293,6 +367,20 @@ struct TypeFun
      * You must first use TypeChecker::instantiateTypeFun to turn it into a real type.
      */
     TypeId type;
+
+    TypeFun() = default;
+    TypeFun(std::vector<TypeId> typeParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , type(type)
+    {
+    }
+
+    TypeFun(std::vector<TypeId> typeParams, std::vector<TypePackId> typePackParams, TypeId type)
+        : typeParams(std::move(typeParams))
+        , typePackParams(std::move(typePackParams))
+        , type(type)
+    {
+    }
 };
 
 // Anything!  All static checking is off.
@@ -317,8 +405,8 @@ struct LazyTypeVar
 
 using ErrorTypeVar = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, FunctionTypeVar, TableTypeVar, MetatableTypeVar, ClassTypeVar, AnyTypeVar,
-    UnionTypeVar, IntersectionTypeVar, LazyTypeVar>;
+using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar, MetatableTypeVar, ClassTypeVar,
+    AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar>;
 
 struct TypeVar final
 {
@@ -395,30 +483,32 @@ bool isGeneric(const TypeId ty);
 // Checks if a type may be instantiated to one containing generic type binders
 bool maybeGeneric(const TypeId ty);
 
+// Checks if a type is of the form T1|...|Tn where one of the Ti is a singleton
+bool maybeSingleton(TypeId ty);
+
 struct SingletonTypes
 {
-    const TypeId nilType = &nilType_;
-    const TypeId numberType = &numberType_;
-    const TypeId stringType = &stringType_;
-    const TypeId booleanType = &booleanType_;
-    const TypeId threadType = &threadType_;
-    const TypeId anyType = &anyType_;
-    const TypeId errorType = &errorType_;
+    const TypeId nilType;
+    const TypeId numberType;
+    const TypeId stringType;
+    const TypeId booleanType;
+    const TypeId threadType;
+    const TypeId anyType;
+    const TypeId optionalNumberType;
+
+    const TypePackId anyTypePack;
 
     SingletonTypes();
     SingletonTypes(const SingletonTypes&) = delete;
     void operator=(const SingletonTypes&) = delete;
 
+    TypeId errorRecoveryType(TypeId guess);
+    TypePackId errorRecoveryTypePack(TypePackId guess);
+    TypeId errorRecoveryType();
+    TypePackId errorRecoveryTypePack();
+
 private:
     std::unique_ptr<struct TypeArena> arena;
-    TypeVar nilType_;
-    TypeVar numberType_;
-    TypeVar stringType_;
-    TypeVar booleanType_;
-    TypeVar threadType_;
-    TypeVar anyType_;
-    TypeVar errorType_;
-
     TypeId makeStringMetatable();
 };
 
@@ -456,13 +546,10 @@ TypeVar* asMutable(TypeId ty);
 template<typename T>
 const T* get(TypeId tv)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tv);
+    LUAU_ASSERT(tv);
 
-        if constexpr (!std::is_same_v<T, BoundTypeVar>)
-            LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypeVar>)
+        LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
 
     return get_if<T>(&tv->ty);
 }
@@ -470,13 +557,10 @@ const T* get(TypeId tv)
 template<typename T>
 T* getMutable(TypeId tv)
 {
-    if (FFlag::LuauAddMissingFollow)
-    {
-        LUAU_ASSERT(tv);
+    LUAU_ASSERT(tv);
 
-        if constexpr (!std::is_same_v<T, BoundTypeVar>)
-            LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
-    }
+    if constexpr (!std::is_same_v<T, BoundTypeVar>)
+        LUAU_ASSERT(get_if<BoundTypeVar>(&tv->ty) == nullptr);
 
     return get_if<T>(&asMutable(tv)->ty);
 }
@@ -524,8 +608,11 @@ UnionTypeVarIterator end(const UnionTypeVar* utv);
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 
-// TEMP: Clip this prototype with FFlag::LuauStringMetatable
-std::optional<ExprResult<TypePackId>> magicFunctionFormat(
-    struct TypeChecker& typechecker, const std::shared_ptr<struct Scope>& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
+void attachTag(TypeId ty, const std::string& tagName);
+void attachTag(Property& prop, const std::string& tagName);
+
+bool hasTag(TypeId ty, const std::string& tagName);
+bool hasTag(const Property& prop, const std::string& tagName);
+bool hasTag(const Tags& tags, const std::string& tagName); // Do not use in new work.
 
 } // namespace Luau

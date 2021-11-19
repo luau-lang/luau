@@ -25,8 +25,8 @@ try:
     import scipy
     from scipy import stats
 except ModuleNotFoundError:
-    print("scipy package is required")
-    exit(1)
+    print("Warning: scipy package is not installed, confidence values will not be available")
+    stats = None
 
 scriptdir = os.path.dirname(os.path.realpath(__file__))
 defaultVm = 'luau.exe' if os.name == "nt" else './luau'
@@ -200,11 +200,14 @@ def finalizeResult(result):
         result.sampleStdDev = math.sqrt(sumOfSquares / (result.count - 1))
         result.unbiasedEst = result.sampleStdDev * result.sampleStdDev
 
-        # Two-tailed distribution with 95% conf.
-        tValue = stats.t.ppf(1 - 0.05 / 2, result.count - 1)
+        if stats:
+            # Two-tailed distribution with 95% conf.
+            tValue = stats.t.ppf(1 - 0.05 / 2, result.count - 1)
 
-        # Compute confidence interval
-        result.sampleConfidenceInterval = tValue * result.sampleStdDev / math.sqrt(result.count)
+            # Compute confidence interval
+            result.sampleConfidenceInterval = tValue * result.sampleStdDev / math.sqrt(result.count)
+        else:
+            result.sampleConfidenceInterval = result.sampleStdDev
     else:
         result.sampleStdDev = 0
         result.unbiasedEst = 0
@@ -377,14 +380,19 @@ def analyzeResult(subdir, main, comparisons):
         tStat = abs(main.avg - compare.avg) / (pooledStdDev * math.sqrt(2 / main.count))
         degreesOfFreedom = 2 * main.count - 2
 
-        # Two-tailed distribution with 95% conf.
-        tCritical = stats.t.ppf(1 - 0.05 / 2, degreesOfFreedom)
+        if stats:
+            # Two-tailed distribution with 95% conf.
+            tCritical = stats.t.ppf(1 - 0.05 / 2, degreesOfFreedom)
 
-        noSignificantDifference = tStat < tCritical
+            noSignificantDifference = tStat < tCritical
+            pValue = 2 * (1 - stats.t.cdf(tStat, df = degreesOfFreedom))
+        else:
+            noSignificantDifference = None
+            pValue = -1
 
-        pValue = 2 * (1 - stats.t.cdf(tStat, df = degreesOfFreedom))
-
-        if noSignificantDifference:
+        if noSignificantDifference is None:
+            verdict = ""
+        elif noSignificantDifference:
             verdict = "likely same"
         elif main.avg < compare.avg:
             verdict = "likely worse"

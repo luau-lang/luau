@@ -6,9 +6,9 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 0)
-LUAU_FASTFLAG(LuauSecondTypecheckKnowsTheDataModel)
-LUAU_FASTFLAG(LuauRankNTypes)
+LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 1000)
+LUAU_FASTFLAGVARIABLE(LuauSubstitutionDontReplaceIgnoredTypes, false)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
 {
@@ -17,7 +17,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
 {
     ty = follow(ty);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(ty))
+    if (ignoreChildren(ty))
         return;
 
     if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
@@ -35,8 +35,15 @@ void Tarjan::visitChildren(TypeId ty, int index)
             visitChild(ttv->indexer->indexType);
             visitChild(ttv->indexer->indexResultType);
         }
+
         for (TypeId itp : ttv->instantiatedTypeParams)
             visitChild(itp);
+
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            for (TypePackId itp : ttv->instantiatedTypePackParams)
+                visitChild(itp);
+        }
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
@@ -59,7 +66,7 @@ void Tarjan::visitChildren(TypePackId tp, int index)
 {
     tp = follow(tp);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(tp))
+    if (ignoreChildren(tp))
         return;
 
     if (const TypePack* tpp = get<TypePack>(tp))
@@ -332,9 +339,11 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
         return std::nullopt;
 
     for (auto [oldTy, newTy] : newTypes)
-        replaceChildren(newTy);
+        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTy))
+            replaceChildren(newTy);
     for (auto [oldTp, newTp] : newPacks)
-        replaceChildren(newTp);
+        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTp))
+            replaceChildren(newTp);
     TypeId newTy = replace(ty);
     return newTy;
 }
@@ -350,9 +359,11 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
         return std::nullopt;
 
     for (auto [oldTy, newTy] : newTypes)
-        replaceChildren(newTy);
+        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTy))
+            replaceChildren(newTy);
     for (auto [oldTp, newTp] : newPacks)
-        replaceChildren(newTp);
+        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTp))
+            replaceChildren(newTp);
     TypePackId newTp = replace(tp);
     return newTp;
 }
@@ -382,8 +393,11 @@ TypeId Substitution::clone(TypeId ty)
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;
         clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
-        if (FFlag::LuauSecondTypecheckKnowsTheDataModel)
-            clone.tags = ttv->tags;
+
+        if (FFlag::LuauTypeAliasPacks)
+            clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
+
+        clone.tags = ttv->tags;
         result = addType(std::move(clone));
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
@@ -469,7 +483,7 @@ void Substitution::replaceChildren(TypeId ty)
 {
     ty = follow(ty);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(ty))
+    if (ignoreChildren(ty))
         return;
 
     if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
@@ -487,8 +501,15 @@ void Substitution::replaceChildren(TypeId ty)
             ttv->indexer->indexType = replace(ttv->indexer->indexType);
             ttv->indexer->indexResultType = replace(ttv->indexer->indexResultType);
         }
+
         for (TypeId& itp : ttv->instantiatedTypeParams)
             itp = replace(itp);
+
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            for (TypePackId& itp : ttv->instantiatedTypePackParams)
+                itp = replace(itp);
+        }
     }
     else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(ty))
     {
@@ -511,7 +532,7 @@ void Substitution::replaceChildren(TypePackId tp)
 {
     tp = follow(tp);
 
-    if (FFlag::LuauRankNTypes && ignoreChildren(tp))
+    if (ignoreChildren(tp))
         return;
 
     if (TypePack* tpp = getMutable<TypePack>(tp))

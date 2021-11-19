@@ -1,9 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(LuauParseGenericFunctions)
-LUAU_FASTFLAG(LuauGenericFunctions)
-
 namespace Luau
 {
 
@@ -19,6 +16,8 @@ declare bit32: {
     bnot: (number) -> number,
     extract: (number, number, number?) -> number,
     replace: (number, number, number, number?) -> number,
+    countlz: (number) -> number,
+    countrz: (number) -> number,
 }
 
 declare math: {
@@ -103,15 +102,6 @@ declare _VERSION: string
 
 declare function gcinfo(): number
 
-)BUILTIN_SRC";
-
-std::string getBuiltinDefinitionSource()
-{
-    std::string src = kBuiltinDefinitionLuaSrc;
-
-    if (FFlag::LuauParseGenericFunctions && FFlag::LuauGenericFunctions)
-    {
-        src += R"(
             declare function print<T...>(...: T...)
 
             declare function type<T>(value: T): string
@@ -163,6 +153,7 @@ std::string getBuiltinDefinitionSource()
                 wrap: <A..., R...>((A...) -> R...) -> any,
                 yield: <A..., R...>(A...) -> R...,
                 isyieldable: () -> boolean,
+                close: (thread) -> (boolean, any?)
             }
 
             declare table: {
@@ -206,33 +197,14 @@ std::string getBuiltinDefinitionSource()
                 graphemes: (string, number?, number?) -> (() -> (number, number)),
             }
 
-            declare string: {
-                byte: (string, number?, number?) -> ...number,
-                char: (number, ...number) -> string,
-                find: (string, string, number?, boolean?) -> (number?, number?),
-                -- `string.format` has a magic function attached that will provide more type information for literal format strings.
-                format: <A...>(string, A...) -> string,
-                gmatch: (string, string) -> () -> (...string),
-                -- gsub is defined in C++ because we don't have syntax for describing a generic table.
-                len: (string) -> number,
-                lower: (string) -> string,
-                match: (string, string, number?) -> string?,
-                rep: (string, number) -> string,
-                reverse: (string) -> string,
-                sub: (string, number, number?) -> string,
-                upper: (string) -> string,
-                split: (string, string, string?) -> {string},
-                pack: <A...>(string, A...) -> string,
-                packsize: (string) -> number,
-                unpack: <R...>(string, string, number?) -> R...,
-            }
-
             -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
             declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
-        )";
-    }
 
-    return src;
+)BUILTIN_SRC";
+
+std::string getBuiltinDefinitionSource()
+{
+    return kBuiltinDefinitionLuaSrc;
 }
 
 } // namespace Luau

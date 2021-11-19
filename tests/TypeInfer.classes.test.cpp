@@ -232,8 +232,6 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class")
 
 TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class_using_string")
 {
-    ScopedFastFlag luauClassPropertyAccessAsString("LuauClassPropertyAccessAsString", true);
-
     CheckResult result = check(R"(
         local c = ChildClass.New()
         local x = 1 + c["BaseField"]
@@ -244,8 +242,6 @@ TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class_using_string")
 
 TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
 {
-    ScopedFastFlag luauClassPropertyAccessAsString("LuauClassPropertyAccessAsString", true);
-
     CheckResult result = check(R"(
         local c = ChildClass.New()
         c["BaseField"] = 444
@@ -437,8 +433,6 @@ TEST_CASE_FIXTURE(ClassFixture, "class_unification_type_mismatch_is_correct_orde
 
 TEST_CASE_FIXTURE(ClassFixture, "optional_class_field_access_error")
 {
-    ScopedFastFlag luauExtraNilRecovery("LuauExtraNilRecovery", true);
-
     CheckResult result = check(R"(
 local b: Vector2? = nil
 local a = b.X + b.Z
@@ -451,6 +445,27 @@ b.X = 2 -- real Vector2.X is also read-only
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
     CHECK_EQ("Key 'Z' not found in class 'Vector2'", toString(result.errors[2]));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[3]));
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
+{
+    ScopedFastFlag luauExtendedClassMismatchError{"LuauExtendedClassMismatchError", true};
+
+    CheckResult result = check(R"(
+local function foo(v)
+    return v.X :: number + string.len(v.Y)
+end
+
+local a: Vector2
+local b = foo
+b(a)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(R"(Type 'Vector2' could not be converted into '{- X: a, Y: string -}'
+caused by:
+  Property 'Y' is not compatible. Type 'number' could not be converted into 'string')",
+        toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

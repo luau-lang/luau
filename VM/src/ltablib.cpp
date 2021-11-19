@@ -9,14 +9,6 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableMoveTelemetry, false)
-
-LUAU_FASTFLAGVARIABLE(LuauTableFreeze, false)
-
-bool lua_telemetry_table_move_oob_src_from = false;
-bool lua_telemetry_table_move_oob_src_to = false;
-bool lua_telemetry_table_move_oob_dst = false;
-
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -201,22 +193,6 @@ static int tmove(lua_State* L)
     int t = luaL_checkinteger(L, 4);
     int tt = !lua_isnoneornil(L, 5) ? 5 : 1; /* destination table */
     luaL_checktype(L, tt, LUA_TTABLE);
-
-    if (DFFlag::LuauTableMoveTelemetry)
-    {
-        int nf = lua_objlen(L, 1);
-        int nt = lua_objlen(L, tt);
-
-        // source index range must be in bounds in source table unless the table is empty (permits 1..#t moves)
-        if (!(f == 1 || (f >= 1 && f <= nf)))
-            lua_telemetry_table_move_oob_src_from = true;
-        if (!(e == nf || (e >= 1 && e <= nf)))
-            lua_telemetry_table_move_oob_src_to = true;
-
-        // destination index must be in bounds in dest table or be exactly at the first empty element (permits concats)
-        if (!(t == nt + 1 || (t >= 1 && t <= nt + 1)))
-            lua_telemetry_table_move_oob_dst = true;
-    }
 
     if (e >= f)
     { /* otherwise, nothing to move */
@@ -513,9 +489,6 @@ static int tclear(lua_State* L)
 
 static int tfreeze(lua_State* L)
 {
-    if (!FFlag::LuauTableFreeze)
-        luaG_runerror(L, "table.freeze is disabled");
-
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_argcheck(L, !lua_getreadonly(L, 1), 1, "table is already frozen");
     luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
@@ -528,9 +501,6 @@ static int tfreeze(lua_State* L)
 
 static int tisfrozen(lua_State* L)
 {
-    if (!FFlag::LuauTableFreeze)
-        luaG_runerror(L, "table.isfrozen is disabled");
-
     luaL_checktype(L, 1, LUA_TTABLE);
 
     lua_pushboolean(L, lua_getreadonly(L, 1));

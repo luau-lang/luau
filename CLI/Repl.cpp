@@ -13,6 +13,17 @@
 
 #include <memory>
 
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
+
+enum class CompileFormat
+{
+    Text,
+    Binary
+};
+
 static int lua_loadstring(lua_State* L)
 {
     size_t l = 0;
@@ -22,7 +33,7 @@ static int lua_loadstring(lua_State* L)
     lua_setsafeenv(L, LUA_ENVIRONINDEX, false);
 
     std::string bytecode = Luau::compile(std::string(s, l));
-    if (luau_load(L, chunkname, bytecode.data(), bytecode.size()) == 0)
+    if (luau_load(L, chunkname, bytecode.data(), bytecode.size(), 0) == 0)
         return 1;
 
     lua_pushnil(L);
@@ -51,9 +62,13 @@ static int lua_require(lua_State* L)
         return finishrequire(L);
     lua_pop(L, 1);
 
-    std::optional<std::string> source = readFile(name + ".lua");
+    std::optional<std::string> source = readFile(name + ".luau");
     if (!source)
-        luaL_argerrorL(L, 1, ("error loading " + name).c_str());
+    {
+        source = readFile(name + ".lua"); // try .lua if .luau doesn't exist
+        if (!source)
+            luaL_argerrorL(L, 1, ("error loading " + name).c_str()); // if neither .luau nor .lua exist, we have an error
+    }
 
     // module needs to run in a new thread, isolated from the rest
     lua_State* GL = lua_mainthread(L);
@@ -65,7 +80,7 @@ static int lua_require(lua_State* L)
 
     // now we can compile & run module on the new thread
     std::string bytecode = Luau::compile(*source);
-    if (luau_load(ML, chunkname.c_str(), bytecode.data(), bytecode.size()) == 0)
+    if (luau_load(ML, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
         int status = lua_resume(ML, L, 0);
 
@@ -136,7 +151,7 @@ static std::string runCode(lua_State* L, const std::string& source)
 {
     std::string bytecode = Luau::compile(source);
 
-    if (luau_load(L, "=stdin", bytecode.data(), bytecode.size()) != 0)
+    if (luau_load(L, "=stdin", bytecode.data(), bytecode.size(), 0) != 0)
     {
         size_t len;
         const char* msg = lua_tolstring(L, -1, &len);
@@ -175,13 +190,18 @@ static std::string runCode(lua_State* L, const std::string& source)
         {
             error = "thread yielded unexpectedly";
         }
-        else if (const char* str = lua_tostring(L, -1))
+        else if (const char* str = lua_tostring(T, -1))
         {
             error = str;
         }
 
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
+
+#ifdef __EMSCRIPTEN__
+        // nicer formatting for errors in web repl
+        error = "Error:" + error;
+#endif
 
         fprintf(stdout, "%s", error.c_str());
     }
@@ -190,6 +210,39 @@ static std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
+#ifdef __EMSCRIPTEN__
+extern "C"
+{
+    const char* executeScript(const char* source)
+    {
+        // setup flags
+        for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+            if (strncmp(flag->name, "Luau", 4) == 0)
+                flag->value = true;
+
+        // create new state
+        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+        lua_State* L = globalState.get();
+
+        // setup state
+        setupState(L);
+
+        // sandbox thread
+        luaL_sandboxthread(L);
+
+        // static string for caching result (prevents dangling ptr on function exit)
+        static std::string result;
+
+        // run code + collect error
+        result = runCode(L, source);
+
+        return result.empty() ? NULL : result.c_str();
+    }
+}
+#endif
+
+// Excluded from emscripten compilation to avoid -Wunused-function errors.
+#ifndef __EMSCRIPTEN__
 static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, std::vector<std::string>& completions)
 {
     std::string_view lookup = editBuffer + start;
@@ -317,7 +370,7 @@ static bool runFile(const char* name, lua_State* GL)
     std::string bytecode = Luau::compile(*source);
     int status = 0;
 
-    if (luau_load(L, chunkname.c_str(), bytecode.data(), bytecode.size()) == 0)
+    if (luau_load(L, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
         status = lua_resume(L, NULL, 0);
     }
@@ -326,11 +379,7 @@ static bool runFile(const char* name, lua_State* GL)
         status = LUA_ERRSYNTAX;
     }
 
-    if (status == 0)
-    {
-        return true;
-    }
-    else
+    if (status != 0)
     {
         std::string error;
 
@@ -347,8 +396,10 @@ static bool runFile(const char* name, lua_State* GL)
         error += lua_debugtrace(L);
 
         fprintf(stderr, "%s", error.c_str());
-        return false;
     }
+
+    lua_pop(GL, 1);
+    return status == 0;
 }
 
 static void report(const char* name, const Luau::Location& location, const char* type, const char* message)
@@ -366,7 +417,7 @@ static void reportError(const char* name, const Luau::CompileError& error)
     report(name, error.getLocation(), "CompileError", error.what());
 }
 
-static bool compileFile(const char* name)
+static bool compileFile(const char* name, CompileFormat format)
 {
     std::optional<std::string> source = readFile(name);
     if (!source)
@@ -378,12 +429,24 @@ static bool compileFile(const char* name)
     try
     {
         Luau::BytecodeBuilder bcb;
-        bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source);
-        bcb.setDumpSource(*source);
+
+        if (format == CompileFormat::Text)
+        {
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source);
+            bcb.setDumpSource(*source);
+        }
 
         Luau::compileOrThrow(bcb, *source);
 
-        printf("%s", bcb.dumpEverything().c_str());
+        switch (format)
+        {
+        case CompileFormat::Text:
+            printf("%s", bcb.dumpEverything().c_str());
+            break;
+        case CompileFormat::Binary:
+            fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
+            break;
+        }
 
         return true;
     }
@@ -408,7 +471,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available modes:\n");
     printf("  omitted: compile and run input files one by one\n");
-    printf("  --compile: compile input files and output resulting bytecode\n");
+    printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary or text)\n");
     printf("\n");
     printf("Available options:\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
@@ -440,27 +503,25 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    if (argc >= 2 && strcmp(argv[1], "--compile") == 0)
+
+    if (argc >= 2 && strncmp(argv[1], "--compile", strlen("--compile")) == 0)
     {
+        CompileFormat format = CompileFormat::Text;
+
+        if (strcmp(argv[1], "--compile=binary") == 0)
+            format = CompileFormat::Binary;
+
+#ifdef _WIN32
+        if (format == CompileFormat::Binary)
+            _setmode(_fileno(stdout), _O_BINARY);
+#endif
+
+        std::vector<std::string> files = getSourceFiles(argc, argv);
+
         int failed = 0;
 
-        for (int i = 2; i < argc; ++i)
-        {
-            if (argv[i][0] == '-')
-                continue;
-
-            if (isDirectory(argv[i]))
-            {
-                traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !compileFile(name.c_str());
-                });
-            }
-            else
-            {
-                failed += !compileFile(argv[i]);
-            }
-        }
+        for (const std::string& path : files)
+            failed += !compileFile(path.c_str(), format);
 
         return failed;
     }
@@ -474,33 +535,25 @@ int main(int argc, char** argv)
         int profile = 0;
 
         for (int i = 1; i < argc; ++i)
+        {
+            if (argv[i][0] != '-')
+                continue;
+
             if (strcmp(argv[i], "--profile") == 0)
                 profile = 10000; // default to 10 KHz
             else if (strncmp(argv[i], "--profile=", 10) == 0)
                 profile = atoi(argv[i] + 10);
+        }
 
         if (profile)
             profilerStart(L, profile);
 
+        std::vector<std::string> files = getSourceFiles(argc, argv);
+
         int failed = 0;
 
-        for (int i = 1; i < argc; ++i)
-        {
-            if (argv[i][0] == '-')
-                continue;
-
-            if (isDirectory(argv[i]))
-            {
-                traverseDirectory(argv[i], [&](const std::string& name) {
-                    if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                        failed += !runFile(name.c_str(), L);
-                });
-            }
-            else
-            {
-                failed += !runFile(argv[i], L);
-            }
-        }
+        for (const std::string& path : files)
+            failed += !runFile(path.c_str(), L);
 
         if (profile)
         {
@@ -511,5 +564,5 @@ int main(int argc, char** argv)
         return failed;
     }
 }
-
+#endif
 

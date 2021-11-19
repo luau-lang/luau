@@ -19,11 +19,9 @@
 
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
-LUAU_FASTFLAG(LuauImprovedTypeGuardPredicate2)
-LUAU_FASTFLAGVARIABLE(LuauToStringFollowsBoundTo, false)
-LUAU_FASTFLAG(LuauRankNTypes)
-LUAU_FASTFLAGVARIABLE(LuauStringMetatable, false)
-LUAU_FASTFLAG(LuauTypeGuardPeelsAwaySubclasses)
+LUAU_FASTFLAG(LuauTypeAliasPacks)
+LUAU_FASTFLAGVARIABLE(LuauRefactorTagging, false)
+LUAU_FASTFLAG(LuauErrorRecoveryType)
 
 namespace Luau
 {
@@ -43,7 +41,7 @@ TypeId follow(TypeId t)
     };
 
     auto force = [](TypeId ty) {
-        if (auto ltv = FFlag::LuauAddMissingFollow ? get_if<LazyTypeVar>(&ty->ty) : get<LazyTypeVar>(ty))
+        if (auto ltv = get_if<LazyTypeVar>(&ty->ty))
         {
             TypeId res = ltv->thunk();
             if (get<LazyTypeVar>(res))
@@ -193,27 +191,11 @@ bool isOptional(TypeId ty)
 
 bool isTableIntersection(TypeId ty)
 {
-    if (FFlag::LuauImprovedTypeGuardPredicate2)
-    {
-        if (!get<IntersectionTypeVar>(follow(ty)))
-            return false;
-
-        std::vector<TypeId> parts = flattenIntersection(ty);
-        return std::all_of(parts.begin(), parts.end(), getTableType);
-    }
-    else
-    {
-        if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
-        {
-            for (TypeId part : itv->parts)
-            {
-                if (getTableType(follow(part)))
-                    return true;
-            }
-        }
-
+    if (!get<IntersectionTypeVar>(follow(ty)))
         return false;
-    }
+
+    std::vector<TypeId> parts = flattenIntersection(ty);
+    return std::all_of(parts.begin(), parts.end(), getTableType);
 }
 
 bool isOverloadedFunction(TypeId ty)
@@ -235,8 +217,7 @@ std::optional<TypeId> getMetatable(TypeId type)
         return mtType->metatable;
     else if (const ClassTypeVar* classType = get<ClassTypeVar>(type))
         return classType->metatable;
-    else if (const PrimitiveTypeVar* primitiveType = get<PrimitiveTypeVar>(type);
-             FFlag::LuauStringMetatable && primitiveType && primitiveType->metatable)
+    else if (const PrimitiveTypeVar* primitiveType = get<PrimitiveTypeVar>(type); primitiveType && primitiveType->metatable)
     {
         LUAU_ASSERT(primitiveType->type == PrimitiveTypeVar::String);
         return primitiveType->metatable;
@@ -313,8 +294,8 @@ bool isGeneric(TypeId ty)
 bool maybeGeneric(TypeId ty)
 {
     ty = follow(ty);
-    if (auto ftv = get<FreeTypeVar>(ty))
-        return FFlag::LuauRankNTypes || ftv->DEPRECATED_canBeGeneric;
+    if (get<FreeTypeVar>(ty))
+        return true;
     else if (auto ttv = get<TableTypeVar>(ty))
     {
         // TODO: recurse on table types CLI-39914
@@ -323,6 +304,18 @@ bool maybeGeneric(TypeId ty)
     }
     else
         return isGeneric(ty);
+}
+
+bool maybeSingleton(TypeId ty)
+{
+    ty = follow(ty);
+    if (get<SingletonTypeVar>(ty))
+        return true;
+    if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+        for (TypeId option : utv)
+            if (get<SingletonTypeVar>(follow(option)))
+                return true;
+    return false;
 }
 
 FunctionTypeVar::FunctionTypeVar(TypePackId argTypes, TypePackId retType, std::optional<FunctionDefinition> defn, bool hasSelf)
@@ -563,15 +556,28 @@ TypeId makeFunction(TypeArena& arena, std::optional<TypeId> selfType, std::initi
     std::initializer_list<TypePackId> genericPacks, std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames,
     std::initializer_list<TypeId> retTypes);
 
+static TypeVar nilType_{PrimitiveTypeVar{PrimitiveTypeVar::NilType}, /*persistent*/ true};
+static TypeVar numberType_{PrimitiveTypeVar{PrimitiveTypeVar::Number}, /*persistent*/ true};
+static TypeVar stringType_{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true};
+static TypeVar booleanType_{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true};
+static TypeVar threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true};
+static TypeVar anyType_{AnyTypeVar{}};
+static TypeVar errorType_{ErrorTypeVar{}};
+static TypeVar optionalNumberType_{UnionTypeVar{{&numberType_, &nilType_}}};
+
+static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, true};
+static TypePackVar errorTypePack_{Unifiable::Error{}};
+
 SingletonTypes::SingletonTypes()
-    : arena(new TypeArena)
-    , nilType_{PrimitiveTypeVar{PrimitiveTypeVar::NilType}, /*persistent*/ true}
-    , numberType_{PrimitiveTypeVar{PrimitiveTypeVar::Number}, /*persistent*/ true}
-    , stringType_{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true}
-    , booleanType_{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true}
-    , threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true}
-    , anyType_{AnyTypeVar{}}
-    , errorType_{ErrorTypeVar{}}
+    : nilType(&nilType_)
+    , numberType(&numberType_)
+    , stringType(&stringType_)
+    , booleanType(&booleanType_)
+    , threadType(&threadType_)
+    , anyType(&anyType_)
+    , optionalNumberType(&optionalNumberType_)
+    , anyTypePack(&anyTypePack_)
+    , arena(new TypeArena)
 {
     TypeId stringMetatable = makeStringMetatable();
     stringType_.ty = PrimitiveTypeVar{PrimitiveTypeVar::String, makeStringMetatable()};
@@ -637,6 +643,32 @@ TypeId SingletonTypes::makeStringMetatable()
     TypeId tableType = arena->addType(TableTypeVar{std::move(stringLib), std::nullopt, TypeLevel{}, TableState::Sealed});
 
     return arena->addType(TableTypeVar{{{{"__index", {tableType}}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
+}
+
+TypeId SingletonTypes::errorRecoveryType()
+{
+    return &errorType_;
+}
+
+TypePackId SingletonTypes::errorRecoveryTypePack()
+{
+    return &errorTypePack_;
+}
+
+TypeId SingletonTypes::errorRecoveryType(TypeId guess)
+{
+    if (FFlag::LuauErrorRecoveryType)
+        return guess;
+    else
+        return &errorType_;
+}
+
+TypePackId SingletonTypes::errorRecoveryTypePack(TypePackId guess)
+{
+    if (FFlag::LuauErrorRecoveryType)
+        return guess;
+    else
+        return &errorTypePack_;
 }
 
 SingletonTypes singletonTypes;
@@ -767,9 +799,9 @@ void StateDot::visitChild(TypeId ty, int parentIndex, const char* linkName)
 
     if (opts.duplicatePrimitives && canDuplicatePrimitive(ty))
     {
-        if (const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(ty))
+        if (get<PrimitiveTypeVar>(ty))
             formatAppend(result, "n%d [label=\"%s\"];\n", index, toStringDetailed(ty, {}).name.c_str());
-        else if (const AnyTypeVar* atv = get<AnyTypeVar>(ty))
+        else if (get<AnyTypeVar>(ty))
             formatAppend(result, "n%d [label=\"any\"];\n", index);
     }
     else
@@ -871,6 +903,12 @@ void StateDot::visitChildren(TypeId ty, int index)
         }
         for (TypeId itp : ttv->instantiatedTypeParams)
             visitChild(itp, index, "typeParam");
+
+        if (FFlag::LuauTypeAliasPacks)
+        {
+            for (TypePackId itp : ttv->instantiatedTypePackParams)
+                visitChild(itp, index, "typePackParam");
+        }
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
@@ -914,19 +952,19 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const AnyTypeVar* atv = get<AnyTypeVar>(ty))
+    else if (get<AnyTypeVar>(ty))
     {
         formatAppend(result, "AnyTypeVar %d", index);
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(ty))
+    else if (get<PrimitiveTypeVar>(ty))
     {
         formatAppend(result, "PrimitiveTypeVar %s", toStringDetailed(ty, {}).name.c_str());
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const ErrorTypeVar* etv = get<ErrorTypeVar>(ty))
+    else if (get<ErrorTypeVar>(ty))
     {
         formatAppend(result, "ErrorTypeVar %d", index);
         finishNodeLabel(ty);
@@ -1006,7 +1044,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
         finishNodeLabel(tp);
         finishNode();
     }
-    else if (const Unifiable::Error* etp = get<Unifiable::Error>(tp))
+    else if (get<Unifiable::Error>(tp))
     {
         formatAppend(result, "ErrorTypePack %d", index);
         finishNodeLabel(tp);
@@ -1136,6 +1174,11 @@ struct QVarFinder
         return false;
     }
     bool operator()(const PrimitiveTypeVar&) const
+    {
+        return false;
+    }
+
+    bool operator()(const SingletonTypeVar&) const
     {
         return false;
     }
@@ -1384,24 +1427,6 @@ UnionTypeVarIterator end(const UnionTypeVar* utv)
     return UnionTypeVarIterator{};
 }
 
-static std::vector<TypeId> DEPRECATED_filterMap(TypeId type, TypeIdPredicate predicate)
-{
-    std::vector<TypeId> result;
-
-    if (auto utv = get<UnionTypeVar>(follow(type)))
-    {
-        for (TypeId option : utv)
-        {
-            if (auto out = predicate(follow(option)))
-                result.push_back(*out);
-        }
-    }
-    else if (auto out = predicate(follow(type)))
-        return {*out};
-
-    return result;
-}
-
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {
     const char* options = "cdiouxXeEfgGqs";
@@ -1429,7 +1454,7 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
             else if (strchr(options, data[i]))
                 result.push_back(typechecker.numberType);
             else
-                result.push_back(typechecker.errorType);
+                result.push_back(typechecker.errorRecoveryType(typechecker.anyType));
         }
     }
 
@@ -1482,9 +1507,6 @@ std::optional<ExprResult<TypePackId>> magicFunctionFormat(
 
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)
 {
-    if (!FFlag::LuauTypeGuardPeelsAwaySubclasses)
-        return DEPRECATED_filterMap(type, predicate);
-
     type = follow(type);
 
     if (auto utv = get<UnionTypeVar>(type))
@@ -1500,6 +1522,88 @@ std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)
         return {*out};
 
     return {};
+}
+
+static Tags* getTags(TypeId ty)
+{
+    ty = follow(ty);
+
+    if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        return &ftv->tags;
+    else if (auto ttv = getMutable<TableTypeVar>(ty))
+        return &ttv->tags;
+    else if (auto ctv = getMutable<ClassTypeVar>(ty))
+        return &ctv->tags;
+
+    return nullptr;
+}
+
+void attachTag(TypeId ty, const std::string& tagName)
+{
+    if (!FFlag::LuauRefactorTagging)
+    {
+        if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        {
+            ftv->tags.emplace_back(tagName);
+        }
+        else
+        {
+            LUAU_ASSERT(!"Got a non functional type");
+        }
+    }
+    else
+    {
+        if (auto tags = getTags(ty))
+            tags->push_back(tagName);
+        else
+            LUAU_ASSERT(!"This TypeId does not support tags");
+    }
+}
+
+void attachTag(Property& prop, const std::string& tagName)
+{
+    LUAU_ASSERT(FFlag::LuauRefactorTagging);
+
+    prop.tags.push_back(tagName);
+}
+
+// We would ideally not expose this because it could cause a footgun.
+// If the Base class has a tag and you ask if Derived has that tag, it would return false.
+// Unfortunately, there's already use cases that's hard to disentangle. For now, we expose it.
+bool hasTag(const Tags& tags, const std::string& tagName)
+{
+    LUAU_ASSERT(FFlag::LuauRefactorTagging);
+    return std::find(tags.begin(), tags.end(), tagName) != tags.end();
+}
+
+bool hasTag(TypeId ty, const std::string& tagName)
+{
+    ty = follow(ty);
+
+    // We special case classes because getTags only returns a pointer to one vector of tags.
+    // But classes has multiple vector of tags, represented throughout the hierarchy.
+    if (auto ctv = get<ClassTypeVar>(ty))
+    {
+        while (ctv)
+        {
+            if (hasTag(ctv->tags, tagName))
+                return true;
+            else if (!ctv->parent)
+                return false;
+
+            ctv = get<ClassTypeVar>(*ctv->parent);
+            LUAU_ASSERT(ctv);
+        }
+    }
+    else if (auto tags = getTags(ty))
+        return hasTag(*tags, tagName);
+
+    return false;
+}
+
+bool hasTag(const Property& prop, const std::string& tagName)
+{
+    return hasTag(prop.tags, tagName);
 }
 
 } // namespace Luau

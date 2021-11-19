@@ -8,12 +8,18 @@
 #include "lmem.h"
 #include "lvm.h"
 
-#include <stdexcept>
-
+#if LUA_USE_LONGJMP
 #include <setjmp.h>
+#include <stdlib.h>
+#else
+#include <stdexcept>
+#endif
+
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauExceptionMessageFix, false)
+LUAU_FASTFLAGVARIABLE(LuauCcallRestoreFix, false)
+LUAU_FASTFLAG(LuauCoroutineClose)
 
 /*
 ** {======================================================
@@ -51,8 +57,8 @@ l_noret luaD_throw(lua_State* L, int errcode)
         longjmp(jb->buf, 1);
     }
 
-    if (L->global->panic)
-        L->global->panic(L, errcode);
+    if (L->global->cb.panic)
+        L->global->cb.panic(L, errcode);
 
     abort();
 }
@@ -295,7 +301,10 @@ static void resume(lua_State* L, void* ud)
     if (L->status == 0)
     {
         // start coroutine
-        LUAU_ASSERT(L->ci == L->base_ci && firstArg > L->base);
+        LUAU_ASSERT(L->ci == L->base_ci && firstArg >= L->base);
+        if (FFlag::LuauCoroutineClose && firstArg == L->base)
+            luaG_runerror(L, "cannot resume dead coroutine");
+
         if (luau_precall(L, firstArg - 1, LUA_MULTRET) != PCRLUA)
             return;
 
@@ -532,6 +541,12 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
                 status = LUA_ERRERR;
         }
 
+        if (FFlag::LuauCcallRestoreFix)
+        {
+            // Restore nCcalls before calling the debugprotectederror callback which may rely on the proper value to have been restored.
+            L->nCcalls = oldnCcalls;
+        }
+
         // an error occurred, check if we have a protected error callback
         if (L->global->cb.debugprotectederror)
         {
@@ -545,7 +560,10 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
         StkId oldtop = restorestack(L, old_top);
         luaF_close(L, oldtop); /* close eventual pending closures */
         seterrorobj(L, status, oldtop);
-        L->nCcalls = oldnCcalls;
+        if (!FFlag::LuauCcallRestoreFix)
+        {
+            L->nCcalls = oldnCcalls;
+        }
         L->ci = restoreci(L, old_ci);
         L->base = L->ci->base;
         restore_stack_limit(L);
