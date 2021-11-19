@@ -381,6 +381,8 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     CheckResult result = check(R"(
         type A = B
         type B = A
@@ -390,7 +392,7 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
     )");
 
     TypeId fType = requireType("aa");
-    const ErrorTypeVar* ftv = get<ErrorTypeVar>(follow(fType));
+    const AnyTypeVar* ftv = get<AnyTypeVar>(follow(fType));
     REQUIRE(ftv != nullptr);
     REQUIRE(!result.errors.empty());
 }

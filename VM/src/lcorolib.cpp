@@ -5,6 +5,8 @@
 #include "lstate.h"
 #include "lvm.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCoroutineClose, false)
+
 #define CO_RUN 0 /* running */
 #define CO_SUS 1 /* suspended */
 #define CO_NOR 2 /* 'normal' (it resumed another coroutine) */
@@ -208,8 +210,7 @@ static int cowrap(lua_State* L)
 {
     cocreate(L);
 
-    lua_pushcfunction(L, auxwrapy, NULL, 1, auxwrapcont);
-
+    lua_pushcclosurek(L, auxwrapy, NULL, 1, auxwrapcont);
     return 1;
 }
 
@@ -232,6 +233,34 @@ static int coyieldable(lua_State* L)
     return 1;
 }
 
+static int coclose(lua_State* L)
+{
+    if (!FFlag::LuauCoroutineClose)
+        luaL_error(L, "coroutine.close is not enabled");
+
+    lua_State* co = lua_tothread(L, 1);
+    luaL_argexpected(L, co, 1, "thread");
+
+    int status = auxstatus(L, co);
+    if (status != CO_DEAD && status != CO_SUS)
+        luaL_error(L, "cannot close %s coroutine", statnames[status]);
+
+    if (co->status == LUA_OK || co->status == LUA_YIELD)
+    {
+        lua_pushboolean(L, true);
+        lua_resetthread(co);
+        return 1;
+    }
+    else
+    {
+        lua_pushboolean(L, false);
+        if (lua_gettop(co))
+            lua_xmove(co, L, 1);  /* move error message */
+        lua_resetthread(co);
+        return 2;
+    }
+}
+
 static const luaL_Reg co_funcs[] = {
     {"create", cocreate},
     {"running", corunning},
@@ -239,6 +268,7 @@ static const luaL_Reg co_funcs[] = {
     {"wrap", cowrap},
     {"yield", coyield},
     {"isyieldable", coyieldable},
+    {"close", coclose},
     {NULL, NULL},
 };
 
@@ -246,7 +276,7 @@ LUALIB_API int luaopen_coroutine(lua_State* L)
 {
     luaL_register(L, LUA_COLIBNAME, co_funcs);
 
-    lua_pushcfunction(L, coresumey, "resume", 0, coresumecont);
+    lua_pushcclosurek(L, coresumey, "resume", 0, coresumecont);
     lua_setfield(L, -2, "resume");
 
     return 1;

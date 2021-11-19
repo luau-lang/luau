@@ -200,8 +200,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
     CHECK_EQ(mup->missing[0], *bTy);
     CHECK_EQ(mup->key, "x");
 
-    TypeId r = requireType("r");
-    CHECK_MESSAGE(get<ErrorTypeVar>(r), "Expected error, got " << toString(r));
+    CHECK_EQ("*unknown*", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any")
@@ -283,7 +282,7 @@ local c = b:foo(1, 2)
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "optional_union_follow")
+TEST_CASE_FIXTURE(UnfrozenFixture, "optional_union_follow")
 {
     CheckResult result = check(R"(
 local y: number? = 2

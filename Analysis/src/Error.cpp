@@ -180,13 +180,13 @@ struct ErrorConverter
         switch (e.context)
         {
         case CountMismatch::Return:
-            return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " +
-                   std::to_string(e.actual) + " " + actualVerb + " returned here";
+            return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " + std::to_string(e.actual) + " " +
+                   actualVerb + " returned here";
         case CountMismatch::Result:
             // It is alright if right hand side produces more values than the
             // left hand side accepts. In this context consider only the opposite case.
-            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " +
-                   std::to_string(e.actual) + " are required here";
+            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " + std::to_string(e.actual) +
+                   " are required here";
         case CountMismatch::Arg:
             if (FFlag::LuauTypeAliasPacks)
                 return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);

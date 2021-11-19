@@ -12,9 +12,16 @@ namespace Luau
 struct FunctionDocumentation;
 struct TableDocumentation;
 struct OverloadedFunctionDocumentation;
+struct BasicDocumentation;
 
-using Documentation = Luau::Variant<std::string, FunctionDocumentation, TableDocumentation, OverloadedFunctionDocumentation>;
+using Documentation = Luau::Variant<BasicDocumentation, FunctionDocumentation, TableDocumentation, OverloadedFunctionDocumentation>;
 using DocumentationSymbol = std::string;
+
+struct BasicDocumentation
+{
+    std::string documentation;
+    std::string learnMoreLink;
+};
 
 struct FunctionParameterDocumentation
 {
@@ -29,6 +36,7 @@ struct FunctionDocumentation
     std::string documentation;
     std::vector<FunctionParameterDocumentation> parameters;
     std::vector<DocumentationSymbol> returns;
+    std::string learnMoreLink;
 };
 
 struct OverloadedFunctionDocumentation
@@ -43,6 +51,7 @@ struct TableDocumentation
 {
     std::string documentation;
     Luau::DenseHashMap<std::string, DocumentationSymbol> keys;
+    std::string learnMoreLink;
 };
 
 using DocumentationDatabase = Luau::DenseHashMap<DocumentationSymbol, Documentation>;

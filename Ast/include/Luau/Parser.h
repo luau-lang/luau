@@ -286,6 +286,7 @@ private:
     // `<' typeAnnotation[, ...] `>'
     AstArray<AstTypeOrPack> parseTypeParams();
 
+    std::optional<AstArray<char>> parseCharArray();
     AstExpr* parseString();
 
     AstLocal* pushLocal(const Binding& binding);

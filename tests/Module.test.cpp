@@ -203,6 +203,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_sanitize_free_types")
 {
+    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+
     TypeVar freeTy(FreeTypeVar{TypeLevel{}});
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
 
@@ -212,12 +214,12 @@ TEST_CASE_FIXTURE(Fixture, "clone_sanitize_free_types")
 
     bool encounteredFreeType = false;
     TypeId clonedTy = clone(&freeTy, dest, seenTypes, seenTypePacks, &encounteredFreeType);
-    CHECK(Luau::get<ErrorTypeVar>(clonedTy));
+    CHECK_EQ("any", toString(clonedTy));
     CHECK(encounteredFreeType);
 
     encounteredFreeType = false;
     TypePackId clonedTp = clone(&freeTp, dest, seenTypes, seenTypePacks, &encounteredFreeType);
-    CHECK(Luau::get<Unifiable::Error>(clonedTp));
+    CHECK_EQ("...any", toString(clonedTp));
     CHECK(encounteredFreeType);
 }
 

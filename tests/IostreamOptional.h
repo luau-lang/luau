@@ -4,7 +4,8 @@
 #include <ostream>
 #include <optional>
 
-namespace std {
+namespace std
+{
 
 inline std::ostream& operator<<(std::ostream& lhs, const std::nullopt_t&)
 {
