@@ -98,4 +98,4 @@ assert(quuz(function(...) end) == "0 true")
 assert(quuz(function(a, b) end) == "2 false")
 assert(quuz(function(a, b, ...) end) == "2 true")
 
-return'OK'
+return 'OK'

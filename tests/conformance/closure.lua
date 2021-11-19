@@ -419,11 +419,5 @@ co = coroutine.create(function ()
        return loadstring("return a")()
      end)
 
-a = {a = 15}
--- debug.setfenv(co, a)
--- assert(debug.getfenv(co) == a)
--- assert(select(2, coroutine.resume(co)) == a)
--- assert(select(2, coroutine.resume(co)) == a.a)
 
-
-return'OK'
+return 'OK'

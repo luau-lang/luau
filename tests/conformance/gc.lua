@@ -77,7 +77,7 @@ end
 
 local function dosteps (siz)
   collectgarbage()
-  collectgarbage"stop"
+  collectgarbage("stop")
   local a = {}
   for i=1,100 do a[i] = {{}}; local b = {} end
   local x = gcinfo()
@@ -99,11 +99,11 @@ assert(dosteps(10000) == 1)
 do
   local x = gcinfo()
   collectgarbage()
-  collectgarbage"stop"
+  collectgarbage("stop")
   repeat
     local a = {}
   until gcinfo() > 1000
-  collectgarbage"restart"
+  collectgarbage("restart")
   repeat
     local a = {}
   until gcinfo() < 1000
@@ -123,7 +123,7 @@ for n in pairs(b) do
 end
 b = nil
 collectgarbage()
-for n in pairs(a) do error'cannot be here' end
+for n in pairs(a) do error("cannot be here") end
 for i=1,lim do a[i] = i end
 for i=1,lim do assert(a[i] == i) end
 
