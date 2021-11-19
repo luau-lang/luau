@@ -87,7 +87,7 @@ print(`Welcome to \
 --  Luau!
 ```
 
-This expression will not be allowed to come after a `prefixexp`. I believe this is fully additive, so a future RFC may allow allow this. So for now, we explicitly reject the following:
+This expression will not be allowed to come after a `prefixexp`. I believe this is fully additive, so a future RFC may allow this. So for now, we explicitly reject the following:
 
 ```
 local name = "world"
