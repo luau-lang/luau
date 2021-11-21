@@ -109,7 +109,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_stop_typechecking_after_reporting_duplicate_typ
     CheckResult result = check(R"(
         type A = number
         type A = string -- Redefinition of type 'A', previously defined at line 1
-        local foo: string = 1 -- No "Type 'number' could not be converted into 'string'"
+        local foo: string = 1 -- "Type 'number' could not be converted into 'string'"
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);

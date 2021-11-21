@@ -45,4 +45,13 @@ breakpoint(38) -- break inside corobad()
 local co = coroutine.create(corobad)
 assert(coroutine.resume(co) == false) -- this breaks, resumes and dies!
 
+function bar()
+	print("in bar")
+end
+
+breakpoint(49)
+breakpoint(49, false) -- validate that disabling breakpoints works
+
+bar()
+
 return 'OK'

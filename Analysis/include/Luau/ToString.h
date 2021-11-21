@@ -23,10 +23,11 @@ struct ToStringNameMap
 
 struct ToStringOptions
 {
-    bool exhaustive = false;            // If true, we produce complete output rather than comprehensible output
-    bool useLineBreaks = false;         // If true, we insert new lines to separate long results such as table entries/metatable.
-    bool functionTypeArguments = false; // If true, output function type argument names when they are available
-    bool hideTableKind = false;         // If true, all tables will be surrounded with plain '{}'
+    bool exhaustive = false;                      // If true, we produce complete output rather than comprehensible output
+    bool useLineBreaks = false;                   // If true, we insert new lines to separate long results such as table entries/metatable.
+    bool functionTypeArguments = false;           // If true, output function type argument names when they are available
+    bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
+    bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     std::optional<ToStringNameMap> nameMap;
@@ -63,6 +64,8 @@ inline std::string toString(TypePackId ty)
 
 std::string toString(const TypeVar& tv, const ToStringOptions& opts = {});
 std::string toString(const TypePackVar& tp, const ToStringOptions& opts = {});
+
+std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts = {});
 
 // It could be useful to see the text representation of a type during a debugging session instead of exploring the content of the class
 // These functions will dump the type to stdout and can be evaluated in Watch/Immediate windows or as gdb/lldb expression

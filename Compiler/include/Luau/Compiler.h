@@ -13,11 +13,9 @@ class AstNameTable;
 class BytecodeBuilder;
 class BytecodeEncoder;
 
+// Note: this structure is duplicated in luacode.h, don't forget to change these in sync!
 struct CompileOptions
 {
-    // default bytecode version target; can be used to compile code for older clients
-    int bytecodeVersion = 1;
-
     // 0 - no optimization
     // 1 - baseline optimization level that doesn't prevent debuggability
     // 2 - includes optimizations that harm debuggability such as inlining

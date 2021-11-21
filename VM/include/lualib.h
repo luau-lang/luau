@@ -8,11 +8,12 @@
 #define luaL_typeerror(L, narg, tname) luaL_typeerrorL(L, narg, tname)
 #define luaL_argerror(L, narg, extramsg) luaL_argerrorL(L, narg, extramsg)
 
-typedef struct luaL_Reg
+struct luaL_Reg
 {
     const char* name;
     lua_CFunction func;
-} luaL_Reg;
+};
+typedef struct luaL_Reg luaL_Reg;
 
 LUALIB_API void luaL_register(lua_State* L, const char* libname, const luaL_Reg* l);
 LUALIB_API int luaL_getmetafield(lua_State* L, int obj, const char* e);
@@ -75,6 +76,7 @@ struct luaL_Buffer
     struct TString* storage;
     char buffer[LUA_BUFFERSIZE];
 };
+typedef struct luaL_Buffer luaL_Buffer;
 
 // when internal buffer storage is exhausted, a mutable string value 'storage' will be placed on the stack
 // in general, functions expect the mutable string buffer to be placed on top of the stack (top-1)

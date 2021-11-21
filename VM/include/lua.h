@@ -102,6 +102,8 @@ LUA_API lua_State* lua_newstate(lua_Alloc f, void* ud);
 LUA_API void lua_close(lua_State* L);
 LUA_API lua_State* lua_newthread(lua_State* L);
 LUA_API lua_State* lua_mainthread(lua_State* L);
+LUA_API void lua_resetthread(lua_State* L);
+LUA_API int lua_isthreadreset(lua_State* L);
 
 /*
 ** basic stack manipulation
@@ -162,8 +164,7 @@ LUA_API void lua_pushlstring(lua_State* L, const char* s, size_t l);
 LUA_API void lua_pushstring(lua_State* L, const char* s);
 LUA_API const char* lua_pushvfstring(lua_State* L, const char* fmt, va_list argp);
 LUA_API LUA_PRINTF_ATTR(2, 3) const char* lua_pushfstringL(lua_State* L, const char* fmt, ...);
-LUA_API void lua_pushcfunction(
-    lua_State* L, lua_CFunction fn, const char* debugname = NULL, int nup = 0, lua_Continuation cont = NULL);
+LUA_API void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, int nup, lua_Continuation cont);
 LUA_API void lua_pushboolean(lua_State* L, int b);
 LUA_API void lua_pushlightuserdata(lua_State* L, void* p);
 LUA_API int lua_pushthread(lua_State* L);
@@ -178,9 +179,9 @@ LUA_API void lua_rawget(lua_State* L, int idx);
 LUA_API void lua_rawgeti(lua_State* L, int idx, int n);
 LUA_API void lua_createtable(lua_State* L, int narr, int nrec);
 
-LUA_API void lua_setreadonly(lua_State* L, int idx, bool value);
+LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
 LUA_API int lua_getreadonly(lua_State* L, int idx);
-LUA_API void lua_setsafeenv(lua_State* L, int idx, bool value);
+LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
 LUA_API void* lua_newuserdata(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
@@ -200,7 +201,7 @@ LUA_API int lua_setfenv(lua_State* L, int idx);
 /*
 ** `load' and `call' functions (load and run Luau bytecode)
 */
-LUA_API int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env = 0);
+LUA_API int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env);
 LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 
@@ -293,6 +294,8 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)
 
 #define lua_pushliteral(L, s) lua_pushlstring(L, "" s, (sizeof(s) / sizeof(char)) - 1)
+#define lua_pushcfunction(L, fn, debugname) lua_pushcclosurek(L, fn, debugname, 0, NULL)
+#define lua_pushcclosure(L, fn, debugname, nup) lua_pushcclosurek(L, fn, debugname, nup, NULL)
 
 #define lua_setglobal(L, s) lua_setfield(L, LUA_GLOBALSINDEX, (s))
 #define lua_getglobal(L, s) lua_getfield(L, LUA_GLOBALSINDEX, (s))
@@ -319,8 +322,8 @@ LUA_API const char* lua_setlocal(lua_State* L, int level, int n);
 LUA_API const char* lua_getupvalue(lua_State* L, int funcindex, int n);
 LUA_API const char* lua_setupvalue(lua_State* L, int funcindex, int n);
 
-LUA_API void lua_singlestep(lua_State* L, bool singlestep);
-LUA_API void lua_breakpoint(lua_State* L, int funcindex, int line, bool enable);
+LUA_API void lua_singlestep(lua_State* L, int enabled);
+LUA_API void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
 
 /* Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging. */
 LUA_API const char* lua_debugtrace(lua_State* L);
@@ -361,6 +364,7 @@ struct lua_Callbacks
     void (*debuginterrupt)(lua_State* L, lua_Debug* ar); /* gets called when thread execution is interrupted by break in another thread */
     void (*debugprotectederror)(lua_State* L);           /* gets called when protected call results in an error */
 };
+typedef struct lua_Callbacks lua_Callbacks;
 
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
 

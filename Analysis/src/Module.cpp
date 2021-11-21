@@ -161,6 +161,7 @@ struct TypeCloner
     void operator()(const Unifiable::Bound<TypeId>& t);
     void operator()(const Unifiable::Error& t);
     void operator()(const PrimitiveTypeVar& t);
+    void operator()(const SingletonTypeVar& t);
     void operator()(const FunctionTypeVar& t);
     void operator()(const TableTypeVar& t);
     void operator()(const MetatableTypeVar& t);
@@ -199,7 +200,9 @@ struct TypePackCloner
         if (encounteredFreeType)
             *encounteredFreeType = true;
 
-        seenTypePacks[typePackId] = dest.addTypePack(TypePackVar{Unifiable::Error{}});
+        TypePackId err = singletonTypes.errorRecoveryTypePack(singletonTypes.anyTypePack);
+        TypePackId cloned = dest.addTypePack(*err);
+        seenTypePacks[typePackId] = cloned;
     }
 
     void operator()(const Unifiable::Generic& t)
@@ -251,8 +254,9 @@ void TypeCloner::operator()(const Unifiable::Free& t)
 {
     if (encounteredFreeType)
         *encounteredFreeType = true;
-
-    seenTypes[typeId] = dest.addType(ErrorTypeVar{});
+    TypeId err = singletonTypes.errorRecoveryType(singletonTypes.anyType);
+    TypeId cloned = dest.addType(*err);
+    seenTypes[typeId] = cloned;
 }
 
 void TypeCloner::operator()(const Unifiable::Generic& t)
@@ -270,7 +274,13 @@ void TypeCloner::operator()(const Unifiable::Error& t)
 {
     defaultClone(t);
 }
+
 void TypeCloner::operator()(const PrimitiveTypeVar& t)
+{
+    defaultClone(t);
+}
+
+void TypeCloner::operator()(const SingletonTypeVar& t)
 {
     defaultClone(t);
 }

@@ -319,4 +319,58 @@ for i=0,30 do
   assert(#T2 == 1 or T2[#T2] == 42)
 end
 
-return'OK'
+-- test coroutine.close
+do
+  -- ok to close a dead coroutine
+  local co = coroutine.create(type)
+  assert(coroutine.resume(co, "testing 'coroutine.close'"))
+  assert(coroutine.status(co) == "dead")
+  local st, msg = coroutine.close(co)
+  assert(st and msg == nil)
+  -- also ok to close it again
+  st, msg = coroutine.close(co)
+  assert(st and msg == nil)
+
+
+  -- cannot close the running coroutine
+  coroutine.wrap(function()
+    local st, msg = pcall(coroutine.close, coroutine.running())
+    assert(not st and string.find(msg, "running"))
+  end)()
+
+  -- cannot close a "normal" coroutine
+  coroutine.wrap(function()
+    local co = coroutine.running()
+    coroutine.wrap(function ()
+      local st, msg = pcall(coroutine.close, co)
+      assert(not st and string.find(msg, "normal"))
+    end)()
+  end)()
+
+  -- closing a coroutine after an error
+  local co = coroutine.create(error)
+  local obj = {42}
+  local st, msg = coroutine.resume(co, obj)
+  assert(not st and msg == obj)
+  st, msg = coroutine.close(co)
+  assert(not st and msg == obj)
+  -- after closing, no more errors
+  st, msg = coroutine.close(co)
+  assert(st and msg == nil)
+
+  -- closing a coroutine that has outstanding upvalues
+  local f
+  local co = coroutine.create(function()
+    local a = 42
+    f = function() return a end
+    coroutine.yield()
+    a = 20
+  end)
+  coroutine.resume(co)
+  assert(f() == 42)
+  st, msg = coroutine.close(co)
+  assert(st and msg == nil)
+  assert(f() == 42)
+end
+
+return 'OK'

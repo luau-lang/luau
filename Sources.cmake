@@ -25,9 +25,11 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/include/Luau/Bytecode.h
     Compiler/include/Luau/BytecodeBuilder.h
     Compiler/include/Luau/Compiler.h
+    Compiler/include/luacode.h
 
     Compiler/src/BytecodeBuilder.cpp
     Compiler/src/Compiler.cpp
+    Compiler/src/lcode.cpp
 )
 
 # Luau.Analysis Sources
@@ -204,6 +206,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.intersectionTypes.test.cpp
         tests/TypeInfer.provisional.test.cpp
         tests/TypeInfer.refinements.test.cpp
+        tests/TypeInfer.singletons.test.cpp
         tests/TypeInfer.tables.test.cpp
         tests/TypeInfer.test.cpp
         tests/TypeInfer.tryUnify.test.cpp

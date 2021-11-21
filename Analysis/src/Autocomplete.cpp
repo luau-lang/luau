@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAGVARIABLE(ElseElseIfCompletionImprovements, false);
 LUAU_FASTFLAG(LuauIfElseExpressionAnalysisSupport)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -198,11 +199,24 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         UnifierSharedState unifierState(&iceReporter);
         Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, unifierState);
 
-        unifier.tryUnify(expectedType, actualType);
+        if (FFlag::LuauAutocompleteAvoidMutation)
+        {
+            SeenTypes seenTypes;
+            SeenTypePacks seenTypePacks;
+            expectedType = clone(expectedType, *typeArena, seenTypes, seenTypePacks, nullptr);
+            actualType = clone(actualType, *typeArena, seenTypes, seenTypePacks, nullptr);
 
-        bool ok = unifier.errors.empty();
-        unifier.log.rollback();
-        return ok;
+            auto errors = unifier.canUnify(expectedType, actualType);
+            return errors.empty();
+        }
+        else
+        {
+            unifier.tryUnify(expectedType, actualType);
+
+            bool ok = unifier.errors.empty();
+            unifier.log.rollback();
+            return ok;
+        }
     };
 
     auto expr = node->asExpr();
@@ -1496,11 +1510,9 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
     if (!sourceModule)
         return {};
 
-    TypeChecker& typeChecker =
-        (frontend.options.typecheckTwice ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
-    ModulePtr module =
-        (frontend.options.typecheckTwice ? frontend.moduleResolverForAutocomplete.getModule(moduleName)
-                                         : frontend.moduleResolver.getModule(moduleName));
+    TypeChecker& typeChecker = (frontend.options.typecheckTwice ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
+    ModulePtr module = (frontend.options.typecheckTwice ? frontend.moduleResolverForAutocomplete.getModule(moduleName)
+                                                        : frontend.moduleResolver.getModule(moduleName));
 
     if (!module)
         return {};
@@ -1527,8 +1539,7 @@ OwningAutocompleteResult autocompleteSource(Frontend& frontend, std::string_view
     sourceModule->mode = Mode::Strict;
     sourceModule->commentLocations = std::move(result.commentLocations);
 
-    TypeChecker& typeChecker =
-        (frontend.options.typecheckTwice ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
+    TypeChecker& typeChecker = (frontend.options.typecheckTwice ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
 
     ModulePtr module = typeChecker.check(*sourceModule, Mode::Strict);
 

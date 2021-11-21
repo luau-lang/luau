@@ -21,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTFLAG(LuauTypeAliasPacks)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTagging, false)
+LUAU_FASTFLAG(LuauErrorRecoveryType)
 
 namespace Luau
 {
@@ -305,6 +306,18 @@ bool maybeGeneric(TypeId ty)
         return isGeneric(ty);
 }
 
+bool maybeSingleton(TypeId ty)
+{
+    ty = follow(ty);
+    if (get<SingletonTypeVar>(ty))
+        return true;
+    if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+        for (TypeId option : utv)
+            if (get<SingletonTypeVar>(follow(option)))
+                return true;
+    return false;
+}
+
 FunctionTypeVar::FunctionTypeVar(TypePackId argTypes, TypePackId retType, std::optional<FunctionDefinition> defn, bool hasSelf)
     : argTypes(argTypes)
     , retType(retType)
@@ -562,10 +575,8 @@ SingletonTypes::SingletonTypes()
     , booleanType(&booleanType_)
     , threadType(&threadType_)
     , anyType(&anyType_)
-    , errorType(&errorType_)
     , optionalNumberType(&optionalNumberType_)
     , anyTypePack(&anyTypePack_)
-    , errorTypePack(&errorTypePack_)
     , arena(new TypeArena)
 {
     TypeId stringMetatable = makeStringMetatable();
@@ -632,6 +643,32 @@ TypeId SingletonTypes::makeStringMetatable()
     TypeId tableType = arena->addType(TableTypeVar{std::move(stringLib), std::nullopt, TypeLevel{}, TableState::Sealed});
 
     return arena->addType(TableTypeVar{{{{"__index", {tableType}}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
+}
+
+TypeId SingletonTypes::errorRecoveryType()
+{
+    return &errorType_;
+}
+
+TypePackId SingletonTypes::errorRecoveryTypePack()
+{
+    return &errorTypePack_;
+}
+
+TypeId SingletonTypes::errorRecoveryType(TypeId guess)
+{
+    if (FFlag::LuauErrorRecoveryType)
+        return guess;
+    else
+        return &errorType_;
+}
+
+TypePackId SingletonTypes::errorRecoveryTypePack(TypePackId guess)
+{
+    if (FFlag::LuauErrorRecoveryType)
+        return guess;
+    else
+        return &errorTypePack_;
 }
 
 SingletonTypes singletonTypes;
@@ -1141,6 +1178,11 @@ struct QVarFinder
         return false;
     }
 
+    bool operator()(const SingletonTypeVar&) const
+    {
+        return false;
+    }
+
     bool operator()(const FunctionTypeVar& ftv) const
     {
         if (hasGeneric(ftv.argTypes))
@@ -1412,7 +1454,7 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
             else if (strchr(options, data[i]))
                 result.push_back(typechecker.numberType);
             else
-                result.push_back(typechecker.errorType);
+                result.push_back(typechecker.errorRecoveryType(typechecker.anyType));
         }
     }
 

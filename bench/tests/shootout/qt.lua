@@ -275,7 +275,7 @@ local function memory(s)
 	local t=os.clock()
 	--local dt=string.format("%f",t-t0)
 	local dt=t-t0
-	--io.stdout:write(s,"\t",dt," sec\t",t," sec\t",math.floor(collectgarbage"count"/1024),"M\n")
+	--io.stdout:write(s,"\t",dt," sec\t",t," sec\t",math.floor(collectgarbage("count")/1024),"M\n")
 	t0=t
 end
 
@@ -286,7 +286,7 @@ local function do_(f,s)
 end
 
 local function julia(l,a,b)
-memory"begin"
+memory("begin")
 	cx=a	cy=b
 	root=newcell()
 	exterior=newcell()	exterior.color=white
@@ -297,14 +297,14 @@ memory"begin"
 		do_(update,"update")
 		repeat
 			N=0 color(root,Rxmin,Rxmax,Rymin,Rymax) --print("color",N)
-		until N==0 memory"color"
+		until N==0 memory("color")
 		repeat
 			N=0 prewhite(root,Rxmin,Rxmax,Rymin,Rymax) --print("prewhite",N)
-		until N==0 memory"prewhite"
+		until N==0 memory("prewhite")
 		do_(recolor,"recolor")
 		do_(colorup,"colorup")		--print("colorup",N)
 		local g,b=do_(area,"area")	--print("area",g,b,g+b)
-		show(i) memory"output"
+		show(i) memory("output")
 	--print("edges",nE)
 	end
 end
