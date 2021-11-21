@@ -265,7 +265,7 @@ static int iter_aux(lua_State* L)
 static int iter_codes(lua_State* L)
 {
     luaL_checkstring(L, 1);
-    lua_pushcfunction(L, iter_aux);
+    lua_pushcfunction(L, iter_aux, NULL);
     lua_pushvalue(L, 1);
     lua_pushinteger(L, 0);
     return 3;

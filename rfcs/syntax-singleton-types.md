@@ -48,6 +48,18 @@ type Animals = "Dog" | "Cat" | "Bird"
 type TrueOrNil = true?
 ```
 
+Adding constant strings as type means that it is now legal to write
+`{["foo"]:T}` as a table type. This should be parsed as a property,
+not an indexer. For example:
+```lua
+  type T = {
+    ["foo"]: number,
+    ["$$bar"]: string,
+    baz: boolean,
+  }
+```
+The table type `T` is a table with three properties and no indexer.
+
 ### Semantics
 
 You are allowed to provide a constant value to the generic primitive type.

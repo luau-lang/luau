@@ -11,8 +11,6 @@
 #include <string_view>
 
 LUAU_FASTFLAG(LuauPreloadClosures)
-LUAU_FASTFLAG(LuauPreloadClosuresFenv)
-LUAU_FASTFLAG(LuauPreloadClosuresUpval)
 LUAU_FASTFLAG(LuauGenericSpecialGlobals)
 
 using namespace Luau;
@@ -2797,7 +2795,7 @@ CAPTURE UPVAL U1
 RETURN R0 1
 )");
 
-    if (FFlag::LuauPreloadClosuresUpval)
+    if (FFlag::LuauPreloadClosures)
     {
         // recursive capture
         CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
@@ -3479,15 +3477,13 @@ CAPTURE VAL R0
 RETURN R1 1
 )");
 
-    if (FFlag::LuauPreloadClosuresFenv)
-    {
-        // if they don't need upvalues but we sense that environment may be modified, we disable this to avoid fenv-related identity confusion
-        CHECK_EQ("\n" + compileFunction(R"(
+    // if they don't need upvalues but we sense that environment may be modified, we disable this to avoid fenv-related identity confusion
+    CHECK_EQ("\n" + compileFunction(R"(
 setfenv(1, {})
 return function() print("hi") end
 )",
-                            1),
-            R"(
+                        1),
+        R"(
 GETIMPORT R0 1
 LOADN R1 1
 NEWTABLE R2 0 0
@@ -3496,23 +3492,21 @@ NEWCLOSURE R0 P0
 RETURN R0 1
 )");
 
-        // note that fenv analysis isn't flow-sensitive right now, which is sort of a feature
-        CHECK_EQ("\n" + compileFunction(R"(
+    // note that fenv analysis isn't flow-sensitive right now, which is sort of a feature
+    CHECK_EQ("\n" + compileFunction(R"(
 if false then setfenv(1, {}) end
 return function() print("hi") end
 )",
-                            1),
-            R"(
+                        1),
+        R"(
 NEWCLOSURE R0 P0
 RETURN R0 1
 )");
-    }
 }
 
 TEST_CASE("SharedClosure")
 {
     ScopedFastFlag sff1("LuauPreloadClosures", true);
-    ScopedFastFlag sff2("LuauPreloadClosuresUpval", true);
 
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
@@ -3671,7 +3665,7 @@ RETURN R0 0
 )");
 }
 
-TEST_CASE("LuauGenericSpecialGlobals")
+TEST_CASE("MutableGlobals")
 {
     const char* source = R"(
 print()
@@ -3684,43 +3678,6 @@ script.print()
 shared.print()
 workspace.print()
 )";
-
-    {
-        ScopedFastFlag genericSpecialGlobals{"LuauGenericSpecialGlobals", false};
-
-        // Check Roblox globals are here
-        CHECK_EQ("\n" + compileFunction0(source), R"(
-GETIMPORT R0 1
-CALL R0 0 0
-GETIMPORT R1 3
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 5
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 7
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 9
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 11
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 13
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 15
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-GETIMPORT R1 17
-GETTABLEKS R0 R1 K0
-CALL R0 0 0
-RETURN R0 0
-)");
-    }
-
-    ScopedFastFlag genericSpecialGlobals{"LuauGenericSpecialGlobals", true};
 
     // Check Roblox globals are no longer here
     CHECK_EQ("\n" + compileFunction0(source), R"(

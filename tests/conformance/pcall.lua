@@ -144,4 +144,4 @@ coroutine.resume(co)
 resumeerror(co, "fail")
 checkresults({ true, false, "fail" }, coroutine.resume(co))
 
-return'OK'
+return 'OK'

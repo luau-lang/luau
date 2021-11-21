@@ -22,7 +22,6 @@ LUAU_FASTFLAGVARIABLE(LuauResolveModuleNameWithoutACurrentModule, false)
 LUAU_FASTFLAG(LuauTraceRequireLookupChild)
 LUAU_FASTFLAGVARIABLE(LuauPersistDefinitionFileTypes, false)
 LUAU_FASTFLAG(LuauNewRequireTrace2)
-LUAU_FASTFLAGVARIABLE(LuauClearScopes, false)
 
 namespace Luau
 {
@@ -458,8 +457,7 @@ CheckResult Frontend::check(const ModuleName& name)
             module->astTypes.clear();
             module->astExpectedTypes.clear();
             module->astOriginalCallTypes.clear();
-            if (FFlag::LuauClearScopes)
-                module->scopes.resize(1);
+            module->scopes.resize(1);
         }
 
         if (mode != Mode::NoCheck)

@@ -91,10 +91,6 @@ struct ACFixture : ACFixtureImpl<Fixture>
 {
 };
 
-struct UnfrozenACFixture : ACFixtureImpl<UnfrozenFixture>
-{
-};
-
 TEST_SUITE_BEGIN("AutocompleteTest");
 
 TEST_CASE_FIXTURE(ACFixture, "empty_program")
@@ -1919,9 +1915,10 @@ local bar: @1= foo
     CHECK(!ac.entryMap.count("foo"));
 }
 
-// CLI-45692: Remove UnfrozenACFixture here
-TEST_CASE_FIXTURE(UnfrozenACFixture, "type_correct_function_no_parenthesis")
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_no_parenthesis")
 {
+    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+
     check(R"(
 local function target(a: (number) -> number) return a(4) end
 local function bar1(a: number) return -a end
@@ -1950,9 +1947,10 @@ local fp: @1= f
     CHECK(ac.entryMap.count("({ x: number, y: number }) -> number"));
 }
 
-// CLI-45692: Remove UnfrozenACFixture here
-TEST_CASE_FIXTURE(UnfrozenACFixture, "type_correct_keywords")
+TEST_CASE_FIXTURE(ACFixture, "type_correct_keywords")
 {
+    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+
     check(R"(
 local function a(x: boolean) end
 local function b(x: number?) end
@@ -2484,7 +2482,7 @@ local t = {
     CHECK(ac.entryMap.count("second"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "autocomplete_documentation_symbols")
+TEST_CASE_FIXTURE(UnfrozenFixture, "autocomplete_documentation_symbols")
 {
     loadDefinition(R"(
         declare y: {

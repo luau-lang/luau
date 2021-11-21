@@ -16,6 +16,7 @@ LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
 LUAU_FASTFLAGVARIABLE(LuauTypeAliasPacks, false)
 LUAU_FASTFLAGVARIABLE(LuauParseTypePackTypeParameters, false)
 LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
+LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseGenericFunctionTypeBegin, false)
 
 namespace Luau
@@ -1278,7 +1279,27 @@ AstType* Parser::parseTableTypeAnnotation()
 
     while (lexer.current().type != '}')
     {
-        if (lexer.current().type == '[')
+        if (FFlag::LuauParseSingletonTypes && lexer.current().type == '[' &&
+            (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
+        {
+            const Lexeme begin = lexer.current();
+            nextLexeme(); // [
+            std::optional<AstArray<char>> chars = parseCharArray();
+
+            expectMatchAndConsume(']', begin);
+            expectAndConsume(':', "table field");
+
+            AstType* type = parseTypeAnnotation();
+
+            // TODO: since AstName conains a char*, it can't contain null
+            bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
+
+            if (chars && !containsNull)
+                props.push_back({AstName(chars->data), begin.location, type});
+            else
+                report(begin.location, "String literal contains malformed escape sequence");
+        }
+        else if (lexer.current().type == '[')
         {
             if (indexer)
             {
@@ -1527,6 +1548,32 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     {
         nextLexeme();
         return {allocator.alloc<AstTypeReference>(begin, std::nullopt, nameNil), {}};
+    }
+    else if (FFlag::LuauParseSingletonTypes && lexer.current().type == Lexeme::ReservedTrue)
+    {
+        nextLexeme();
+        return {allocator.alloc<AstTypeSingletonBool>(begin, true)};
+    }
+    else if (FFlag::LuauParseSingletonTypes && lexer.current().type == Lexeme::ReservedFalse)
+    {
+        nextLexeme();
+        return {allocator.alloc<AstTypeSingletonBool>(begin, false)};
+    }
+    else if (FFlag::LuauParseSingletonTypes && (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString))
+    {
+        if (std::optional<AstArray<char>> value = parseCharArray())
+        {
+            AstArray<char> svalue = *value;
+            return {allocator.alloc<AstTypeSingletonString>(begin, svalue)};
+        }
+        else
+            return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
+    }
+    else if (FFlag::LuauParseSingletonTypes && lexer.current().type == Lexeme::BrokenString)
+    {
+        Location location = lexer.current().location;
+        nextLexeme();
+        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false, "Malformed string")};
     }
     else if (lexer.current().type == Lexeme::Name)
     {
@@ -2416,7 +2463,7 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
     return copy(parameters);
 }
 
-AstExpr* Parser::parseString()
+std::optional<AstArray<char>> Parser::parseCharArray()
 {
     LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString);
 
@@ -2426,11 +2473,8 @@ AstExpr* Parser::parseString()
     {
         if (!Lexer::fixupQuotedString(scratchData))
         {
-            Location location = lexer.current().location;
-
             nextLexeme();
-
-            return reportExprError(location, {}, "String literal contains malformed escape sequence");
+            return std::nullopt;
         }
     }
     else
@@ -2438,12 +2482,18 @@ AstExpr* Parser::parseString()
         Lexer::fixupMultilineString(scratchData);
     }
 
-    Location start = lexer.current().location;
     AstArray<char> value = copy(scratchData);
-
     nextLexeme();
+    return value;
+}
 
-    return allocator.alloc<AstExprConstantString>(start, value);
+AstExpr* Parser::parseString()
+{
+    Location location = lexer.current().location;
+    if (std::optional<AstArray<char>> value = parseCharArray())
+        return allocator.alloc<AstExprConstantString>(location, *value);
+    else
+        return reportExprError(location, {}, "String literal contains malformed escape sequence");
 }
 
 AstLocal* Parser::pushLocal(const Binding& binding)

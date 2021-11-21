@@ -236,32 +236,12 @@ int main(int argc, char** argv)
     Luau::registerBuiltinTypes(frontend.typeChecker);
     Luau::freeze(frontend.typeChecker.globalTypes);
 
+    std::vector<std::string> files = getSourceFiles(argc, argv);
+
     int failed = 0;
 
-    for (int i = 1; i < argc; ++i)
-    {
-        if (argv[i][0] == '-')
-            continue;
-
-        if (isDirectory(argv[i]))
-        {
-            traverseDirectory(argv[i], [&](const std::string& name) {
-                // Look for .luau first and if absent, fall back to .lua
-                if (name.length() > 5 && name.rfind(".luau") == name.length() - 5)
-                {
-                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
-                }
-                else if (name.length() > 4 && name.rfind(".lua") == name.length() - 4)
-                {
-                    failed += !analyzeFile(frontend, name.c_str(), format, annotate);
-                }
-            });
-        }
-        else
-        {
-            failed += !analyzeFile(frontend, argv[i], format, annotate);
-        }
-    }
+    for (const std::string& path : files)
+        failed += !analyzeFile(frontend, path.c_str(), format, annotate);
 
     if (!configResolver.configErrors.empty())
     {

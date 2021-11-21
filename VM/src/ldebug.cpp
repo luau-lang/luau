@@ -316,7 +316,7 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
                     p->debuginsn[j] = LUAU_INSN_OP(p->code[j]);
             }
 
-            uint8_t op = enable ? LOP_BREAK : LUAU_INSN_OP(p->code[i]);
+            uint8_t op = enable ? LOP_BREAK : LUAU_INSN_OP(p->debuginsn[i]);
 
             // patch just the opcode byte, leave arguments alone
             p->code[i] &= ~0xff;
@@ -357,17 +357,17 @@ int luaG_getline(Proto* p, int pc)
     return p->abslineinfo[pc >> p->linegaplog2] + p->lineinfo[pc];
 }
 
-void lua_singlestep(lua_State* L, bool singlestep)
+void lua_singlestep(lua_State* L, int enabled)
 {
-    L->singlestep = singlestep;
+    L->singlestep = bool(enabled);
 }
 
-void lua_breakpoint(lua_State* L, int funcindex, int line, bool enable)
+void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
 {
     const TValue* func = luaA_toobject(L, funcindex);
     api_check(L, ttisfunction(func) && !clvalue(func)->isC);
 
-    luaG_breakpoint(L, clvalue(func)->l.p, line, enable);
+    luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
 }
 
 static size_t append(char* buf, size_t bufsize, size_t offset, const char* data)
