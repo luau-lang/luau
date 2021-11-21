@@ -83,28 +83,3 @@ jobs:
       with:
         name: coverage
         path: coverage
-
-  web:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v1
-    - name: setup emsdk
-      uses: mymindstorm/setup-emsdk@v9
-      with:
-        version: 1.38.40
-        actions-cache-folder: 'emsdk-cache'
-    - name: verify emsdk
-      run: |
-        emcc -v # verify emscripten installed successfully
-    - name: cmake configure
-      run: |
-        emcmake cmake .
-    - name: build
-      run: |
-        cmake --build . --target Luau.Repl.CLI --config Debug # as seen above but only Repl.CLI.
-    - name: upload-artifacts
-    - uses: actions/upload-artifact@v2
-      with:
-        name: luau-web-artifacts
-        path: docs/assets/luau/
-        if-no-files-found: error

@@ -185,7 +185,7 @@ static std::string runCode(lua_State* L, const std::string& source)
     else
     {
         std::string error;
-        
+
         if (status == LUA_YIELD)
         {
             error = "thread yielded unexpectedly";
@@ -565,4 +565,3 @@ int main(int argc, char** argv)
     }
 }
 #endif
-
