@@ -189,8 +189,8 @@ LUALIB_API bool luaL_checkboolean(lua_State* L, int narg)
     // all other truthy/falsy values. If the desired result
     // is true if value is present then lua_toboolean should
     // directly be used instead.
-    const auto val = lua_isboolean(L, narg);
-    if (!val)
+    const auto isbool = lua_isboolean(L, narg);
+    if (!isbool)
         tag_error(L, narg, LUA_TBOOLEAN);
     return lua_toboolean(L, narg);
 }
