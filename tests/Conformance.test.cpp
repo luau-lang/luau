@@ -524,7 +524,7 @@ TEST_CASE("Debugger")
                 L,
                 [](lua_State* L) -> int {
                     int line = luaL_checkinteger(L, 1);
-                    bool enabled = lua_isboolean(L, 2) ? lua_toboolean(L, 2) : true;
+                    bool enabled = luaL_optboolean(L, 2, true);
 
                     lua_Debug ar = {};
                     lua_getinfo(L, 1, "f", &ar);

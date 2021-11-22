@@ -183,6 +183,22 @@ LUALIB_API double luaL_optnumber(lua_State* L, int narg, double def)
     return luaL_opt(L, luaL_checknumber, narg, def);
 }
 
+LUALIB_API int luaL_checkboolean(lua_State* L, int narg)
+{
+    // This checks specifically for boolean values, ignoring
+    // all other truthy/falsy values. If the desired result
+    // is true if value is present then lua_toboolean should
+    // directly be used instead.
+    if (!lua_isboolean(L, narg))
+        tag_error(L, narg, LUA_TBOOLEAN);
+    return lua_toboolean(L, narg);
+}
+
+LUALIB_API int luaL_optboolean(lua_State* L, int narg, int def)
+{
+    return luaL_opt(L, luaL_checkboolean, narg, def);
+}
+
 LUALIB_API int luaL_checkinteger(lua_State* L, int narg)
 {
     int isnum;
