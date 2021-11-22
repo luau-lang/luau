@@ -79,31 +79,28 @@ static std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
-extern "C"
+extern "C" const char* executeScript(const char* source)
 {
-    const char* executeScript(const char* source)
-    {
-        // setup flags
-        for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-            if (strncmp(flag->name, "Luau", 4) == 0)
-                flag->value = true;
+    // setup flags
+    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+        if (strncmp(flag->name, "Luau", 4) == 0)
+            flag->value = true;
 
-        // create new state
-        std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
-        lua_State* L = globalState.get();
+    // create new state
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
 
-        // setup state
-        setupState(L);
+    // setup state
+    setupState(L);
 
-        // sandbox thread
-        luaL_sandboxthread(L);
+    // sandbox thread
+    luaL_sandboxthread(L);
 
-        // static string for caching result (prevents dangling ptr on function exit)
-        static std::string result;
+    // static string for caching result (prevents dangling ptr on function exit)
+    static std::string result;
 
-        // run code + collect error
-        result = runCode(L, source);
+    // run code + collect error
+    result = runCode(L, source);
 
-        return result.empty() ? NULL : result.c_str();
-    }
+    return result.empty() ? NULL : result.c_str();
 }
