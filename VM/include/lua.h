@@ -159,7 +159,11 @@ LUA_API void lua_pushnil(lua_State* L);
 LUA_API void lua_pushnumber(lua_State* L, double n);
 LUA_API void lua_pushinteger(lua_State* L, int n);
 LUA_API void lua_pushunsigned(lua_State* L, unsigned n);
+#if LUA_VECTOR_SIZE == 4
+LUA_API void lua_pushvector(lua_State* L, float x, float y, float z, float w);
+#else
 LUA_API void lua_pushvector(lua_State* L, float x, float y, float z);
+#endif
 LUA_API void lua_pushlstring(lua_State* L, const char* s, size_t l);
 LUA_API void lua_pushstring(lua_State* L, const char* s);
 LUA_API const char* lua_pushvfstring(lua_State* L, const char* fmt, va_list argp);
