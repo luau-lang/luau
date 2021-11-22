@@ -149,6 +149,21 @@ LUALIB_API void luaL_checkany(lua_State* L, int narg)
         luaL_error(L, "missing argument #%d", narg);
 }
 
+LUALIB_API bool luaL_checkboolean(lua_State* L, int narg)
+{
+    if(!lua_isboolean(L, narg))
+        tag_error(L, narg, LUA_TBOOLEAN);
+    return  lua_toboolean(L, narg);
+}
+
+LUALIB_API bool luaL_optboolean(lua_State* L, int narg, bool def)
+{
+    if (lua_isnoneornil(L, narg))
+        return def;
+    else
+        return luaL_checkboolean(L, narg);
+}
+
 LUALIB_API const char* luaL_checklstring(lua_State* L, int narg, size_t* len)
 {
     const char* s = lua_tolstring(L, narg, len);
