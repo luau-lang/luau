@@ -64,7 +64,12 @@ static int lua_vector(lua_State* L)
     double y = luaL_checknumber(L, 2);
     double z = luaL_checknumber(L, 3);
 
+#if LUA_VECTOR_SIZE == 4
+    double w = luaL_optnumber(L, 4, 0.0);
+    lua_pushvector(L, float(x), float(y), float(z), float(w));
+#else
     lua_pushvector(L, float(x), float(y), float(z));
+#endif
     return 1;
 }
 
@@ -366,11 +371,17 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
+    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
+
     runConformance("vector.lua", [](lua_State* L) {
         lua_pushcfunction(L, lua_vector);
         lua_setglobal(L, "vector");
 
+#if LUA_VECTOR_SIZE == 4
+        lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
         lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
         luaL_newmetatable(L, "vector");
 
         lua_pushstring(L, "__index");
