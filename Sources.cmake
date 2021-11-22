@@ -224,3 +224,13 @@ if(TARGET Luau.Conformance)
         tests/Conformance.test.cpp
         tests/main.cpp)
 endif()
+
+if(TARGET Luau.Web)
+    # Luau.Web Sources
+    target_sources(Luau.Web PRIVATE
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+        CLI/Profiler.h
+        CLI/Profiler.cpp
+        CLI/Repl.cpp)
+endif()

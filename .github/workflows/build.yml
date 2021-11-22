@@ -101,4 +101,4 @@ jobs:
       run: |
         source emsdk/emsdk_env.sh
         emcmake cmake . -DCMAKE_BUILD_TYPE=Release
-        make -j2 Luau.Repl.CLI
+        make -j2 Luau.Web
