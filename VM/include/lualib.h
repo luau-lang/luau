@@ -26,7 +26,7 @@ LUALIB_API double luaL_checknumber(lua_State* L, int numArg);
 LUALIB_API double luaL_optnumber(lua_State* L, int nArg, double def);
 
 LUALIB_API int luaL_checkboolean(lua_State* L, int narg);
-LUALIB_API int luaL_optboolean(lua_State* L, int narg, bool def);
+LUALIB_API int luaL_optboolean(lua_State* L, int narg, int def);
 
 LUALIB_API int luaL_checkinteger(lua_State* L, int numArg);
 LUALIB_API int luaL_optinteger(lua_State* L, int nArg, int def);
