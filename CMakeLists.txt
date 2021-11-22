@@ -107,13 +107,14 @@ endif()
 
 if(LUAU_BUILD_WEB)
     target_compile_options(Luau.Web PRIVATE ${LUAU_OPTIONS})
-    target_include_directories(Luau.Web PRIVATE extern)
     target_link_libraries(Luau.Web PRIVATE Luau.Compiler Luau.VM)
 
     # declare exported functions to emscripten
     target_link_options(Luau.Web PRIVATE -sEXPORTED_FUNCTIONS=['_executeScript'] -sEXPORTED_RUNTIME_METHODS=['ccall','cwrap'] -fexceptions)
-    target_link_options(Luau.Web PRIVATE -sSINGLE_FILE=1)
 
-    # custom output directory for wasm + js file
-    # set_target_properties(Luau.Repl.CLI PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/docs/assets/luau)
+    # add -fexceptions for emscripten to allow exceptions to be caught in C++
+    target_link_options(Luau.Web PRIVATE -fexceptions)
+
+    # the output is a single .js file with an embedded wasm blob
+    target_link_options(Luau.Web PRIVATE -sSINGLE_FILE=1)
 endif()
