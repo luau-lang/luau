@@ -228,9 +228,5 @@ endif()
 if(TARGET Luau.Web)
     # Luau.Web Sources
     target_sources(Luau.Web PRIVATE
-        CLI/FileUtils.h
-        CLI/FileUtils.cpp
-        CLI/Profiler.h
-        CLI/Profiler.cpp
-        CLI/Repl.cpp)
+        CLI/Web.cpp)
 endif()
