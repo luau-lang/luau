@@ -194,7 +194,7 @@ LUALIB_API int luaL_checkboolean(lua_State* L, int narg)
     return lua_toboolean(L, narg);
 }
 
-LUALIB_API int luaL_optboolean(lua_State* L, int narg, bool def)
+LUALIB_API int luaL_optboolean(lua_State* L, int narg, int def)
 {
     return luaL_opt(L, luaL_checkboolean, narg, def);
 }
