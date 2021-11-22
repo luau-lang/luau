@@ -2,7 +2,7 @@
     <div>
         <label>Script:</label>
         <br>
-        <textarea rows="10" cols="70" id="script">print("Hello World!")</textarea>
+        <textarea rows="10" cols="70" id="script"></textarea>
         <br><br>
         <button onclick="clearInput(); return false;">
             Clear Input
@@ -23,7 +23,26 @@
     </div>
 </form>
 
+<!-- Luau WASM (async fetch) -->
+<script async src="https://github.com/Roblox/luau/releases/download/0.505/Luau.Web.js"></script>
+<!-- CodeMirror -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.32.0/codemirror.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.32.0/codemirror.min.css" />
+<!-- Luau Parser for CodeMirror -->
+<script src="assets/js/luau_mode.js"></script>
+
+<!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
 <script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("script"), {
+        theme: "default",
+        mode: "luau",
+        matchBrackets: true,
+        lineNumbers: true,
+        smartIndent: true,
+    });
+    editor.setValue("print(\"Hello World!\")\n");
+
+    // Misc Functions
     function output(text) {
         document.getElementById("output").value += "[" + new Date().toLocaleTimeString() + "] " + text.replace('stdin:', '') + "\n";
     }
@@ -41,10 +60,10 @@
     }
 
     function executeScript() {
-        var err = Module.ccall('executeScript', 'string', ['string'], [document.getElementById("script").value]);
+        var err = Module.ccall('executeScript', 'string', ['string'], [editor.getValue()]);
         if (err) {
             output('Error:' + err.replace('stdin:', ''));
         }
     }
 </script>
-<script async src="https://github.com/Roblox/luau/releases/download/0.505/Luau.Web.js"></script>
+    
