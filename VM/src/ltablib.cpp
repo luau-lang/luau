@@ -527,7 +527,7 @@ static const luaL_Reg tab_funcs[] = {
     {NULL, NULL},
 };
 
-LUALIB_API int luaopen_table(lua_State* L)
+int luaopen_table(lua_State* L)
 {
     luaL_register(L, LUA_TABLIBNAME, tab_funcs);
 
