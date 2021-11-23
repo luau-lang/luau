@@ -33,3 +33,26 @@ jobs:
       with:
         name: luau-${{matrix.os}}
         path: Release\luau*.exe
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
+      with:
+        repository: emscripten-core/emsdk
+        path: emsdk
+    - name: emsdk install
+      run: |
+        cd emsdk
+        ./emsdk install latest
+        ./emsdk activate latest
+    - name: make
+      run: |
+        source emsdk/emsdk_env.sh
+        emcmake cmake . -DLUAU_BUILD_WEB=ON -DCMAKE_BUILD_TYPE=Release
+        make -j2 Luau.Web
+    - uses: actions/upload-artifact@v2
+      with:
+        name: Luau.Web.js
+        path: Luau.Web.js
