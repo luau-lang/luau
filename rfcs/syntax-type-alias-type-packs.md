@@ -1,5 +1,7 @@
 # Type alias type packs
 
+**Status**: Implemented
+
 ## Summary
 
 Provide semantics for referencing type packs inside the body of a type alias declaration
