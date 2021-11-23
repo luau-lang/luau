@@ -217,7 +217,7 @@ explicitly and as such is correct - as well as the full definition of methods.
 Given two record types, or a record and a table, how do we know whether one is a subtype of another? This brings up the question of whether records are nominal or structural.
 Note that this doesn't affect the behavior of record types at runtime, but does affect typechecking semantics.
 
-Today Luau type system supports nominal types, including table types with fixed structure (sealed tables), as well as nominal types (classes) used to model host API (userdata).
+Today Luau type system supports structural types, including table types with fixed structure (sealed tables), as well as nominal types (classes) used to model host API (userdata).
 
 Records could either be modeled as a structural construct like a sealed table, or as a nominal construct like a class.
 
