@@ -237,6 +237,9 @@ struct lua_State
     TString* namecall; /* when invoked from Luau using NAMECALL, what method do we need to invoke? */
 
     void* userdata;
+#if LUA_STATE_EXTRA > 0
+    char extra[LUA_STATE_EXTRA];
+#endif
 };
 // clang-format on
 

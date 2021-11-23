@@ -126,3 +126,6 @@
 #define LUA_VECTOR_SIZE 3	/* must be 3 or 4 */
 
 #define LUA_EXTRA_SIZE LUA_VECTOR_SIZE - 2
+
+/* size of optional extra data in bytes added at the end of lua_State. */
+#define LUA_STATE_EXTRA 0

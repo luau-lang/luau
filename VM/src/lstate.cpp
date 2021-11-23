@@ -10,6 +10,8 @@
 #include "ldo.h"
 #include "ldebug.h"
 
+#include <string.h>
+
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -78,6 +80,9 @@ static void preinit_state(lua_State* L, global_State* g)
     L->stackstate = 0;
     L->activememcat = 0;
     L->userdata = NULL;
+#if LUA_STATE_EXTRA > 0
+    memset(L->extra, 0, LUA_STATE_EXTRA);
+#endif
     setnilvalue(gt(L));
 }
 
