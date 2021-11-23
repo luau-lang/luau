@@ -2,6 +2,10 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 // When debugging complex issues, consider enabling one of these:
 // This will reallocate the stack very aggressively at every opportunity; use this with asan to catch stale stack pointers
 // #define HARDSTACKTESTS 1
@@ -34,7 +38,11 @@
 #endif
 
 /* Can be used to reconfigure visibility/exports for public APIs */
+#ifdef __EMSCRIPTEN__
+#define LUA_API extern "C" EMSCRIPTEN_KEEPALIVE
+#else
 #define LUA_API extern
+#endif
 #define LUALIB_API LUA_API
 
 /* Can be used to reconfigure visibility for internal APIs */

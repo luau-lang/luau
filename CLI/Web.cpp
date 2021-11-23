@@ -79,7 +79,7 @@ static std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
-extern "C" const char* executeScript(const char* source)
+LUA_API const char* executeScript(const char* source)
 {
     // setup flags
     for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
