@@ -2,7 +2,8 @@
     <div>
         <label>Script:</label>
         <br>
-        <textarea rows="10" cols="70" id="script">print("Hello World!")</textarea>
+        <div id="demoscript">
+        </div> 
         <br><br>
         <button onclick="clearInput(); return false;">
             Clear Input
@@ -22,29 +23,18 @@
         </button>
     </div>
 </form>
-
-<script>
-    function output(text) {
-        document.getElementById("output").value += "[" + new Date().toLocaleTimeString() + "] " + text.replace('stdin:', '') + "\n";
+<style>
+    #demoscript {
+      position: relative;
+	    left: 0;
+	    top: 0;
+	    width: 100%;
+	    height: 300px;
+	    margin: 0;
+	    padding: 0;
+	    overflow: hidden;
     }
-
-    var Module = {
-        'print': function (msg) { output(msg) }
-    };
-
-    function clearInput() {
-        document.getElementById("script").value = "";
-    }
-
-    function clearOutput() {
-        document.getElementById("output").value = "";
-    }
-
-    function executeScript() {
-        var err = Module.ccall('executeScript', 'string', ['string'], [document.getElementById("script").value]);
-        if (err) {
-            output('Error:' + err.replace('stdin:', ''));
-        }
-    }
-</script>
+</style>
+<script src="assets/js/vs/loader.js"></script>
 <script async src="https://github.com/Roblox/luau/releases/download/0.505/Luau.Web.js"></script>
+<script type="text/javascript" src="/assets/js/repl.js"></script>
