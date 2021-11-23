@@ -66,6 +66,8 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    env:
+      NODE_COVERALLS_DEBUG: 1
     steps:
     - uses: actions/checkout@v1
     - name: install
