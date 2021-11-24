@@ -49,7 +49,7 @@ type A<T, U = V, V = T> = ... -- not allowed
 Default type parameter values are also allowed for type packs:
 ```lua
 type A<T, U... = ...string> -- ok, variadic type pack
-type C<T, U... = string>    -- ok, type pack with one element
+type C<T, U... = (string)>  -- ok, type pack with one element
 type D<T..., U... = T...>   -- ok
 ```
 
