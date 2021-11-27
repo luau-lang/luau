@@ -217,7 +217,7 @@ function clearOutput() {
     document.getElementById("output").value = "";
 }
 
-executeScript = function() {
+function executeScript() {
     if (editor) {
         var err = Module.ccall('executeScript', 'string', ['string'], [editor.getValue()]);
         if (err) {
