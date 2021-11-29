@@ -428,7 +428,7 @@ static const luaL_Reg mathlib[] = {
 /*
 ** Open math library
 */
-LUALIB_API int luaopen_math(lua_State* L)
+int luaopen_math(lua_State* L)
 {
     uint64_t seed = uintptr_t(L);
     seed ^= time(NULL);
