@@ -385,8 +385,7 @@ static int math_sign(lua_State* L)
 
 static int math_round(lua_State* L)
 {
-    double v = luaL_checknumber(L, 1);
-    lua_pushnumber(L, round(v));
+    lua_pushnumber(L, round(luaL_checknumber(L, 1)));
     return 1;
 }
 
