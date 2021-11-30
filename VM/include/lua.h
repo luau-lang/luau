@@ -231,6 +231,7 @@ enum lua_GCOp
     LUA_GCRESTART,
     LUA_GCCOLLECT,
     LUA_GCCOUNT,
+    LUA_GCCOUNTB,
     LUA_GCISRUNNING,
 
     // garbage collection is handled by 'assists' that perform some amount of GC work matching pace of allocation
