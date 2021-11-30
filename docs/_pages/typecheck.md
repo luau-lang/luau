@@ -289,7 +289,7 @@ type F = (...number) -> ...string
 
 ## Type packs
 
-Multiple function return values as well as the function variadic parameter uses a type pack to represent a list of types.
+Multiple function return values as well as the function variadic parameter use a type pack to represent a list of types.
 
 When a type alias is defined, generic type pack parameters can be used after the type parameters:
 
@@ -297,7 +297,9 @@ When a type alias is defined, generic type pack parameters can be used after the
 type Signal<T, U...> = { f: (T, U...) -> (), data: T }
 ```
 
-Similarly, generic function can reference a generic type pack from the generics list:
+> Keep in mind that `...T` is a variadic type pack (many elements of the same type `T`), while `U...` is a generic type pack that can contain zero or more types and they don't have to be the same.
+
+It is also possible for a generic function to reference a generic type pack from the generics list:
 
 ```lua
 local function call<T, U...>(s: Signal<T, U...>, ...: U...)
