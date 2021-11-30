@@ -68,7 +68,7 @@ If all type parameters have a default type value, it is now possible to referenc
 type All<T = string, U = number> = ...
 
 local a: All -- ok
-local b: All<> -- not allowed
+local b: All<> -- ok as well
 ```
 
 If type is exported from a module, default type parameter values will still be available when module is imported.
