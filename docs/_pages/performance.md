@@ -134,6 +134,12 @@ Lua implements upvalues as garbage collected objects that can point directly at 
 
 Note that "immutable" in this case only refers to the variable itself - if the variable isn't assigned to it can be captured by value, even if it's a table that has its contents change.
 
+## Closure caching
+
+With optimized upvalue storage, creating new closures (function objects) is more efficient but still requires allocating a new object every time. This can be problematic for cases when functions are passed to algorithms like `table.sort` or functions like `pcall`, as it results in excessive allocation traffic which then leads to more work for garbage collector.
+
+To make closure creation cheaper, Luau compiler implements closure caching - when multiple executions of the same function expression are guaranteed to result in the function object that is semantically identical, the compiler may cache the closure and always return the same object. This changes the function identity which may affect code that uses function objects as table keys, but preserves the calling semantics - compiler will only do this if calling the original (cached) function behaves the same way as a newly created function would. The heuristics used for this optimization are subject to change; currently, the compiler will cache closures that have no upvalues, or all upvalues are immutable (see previous section) and are declared at the module scope, as the module scope is (almost always) evaluated only once.
+
 ## Fast memory allocator
 
 Similarly to LuaJIT, but unlike vanilla Lua, Luau implements a custom allocator that is highly specialized and tuned to the common allocation workloads we see. The allocator design is inspired by classic pool allocators as well as the excellent `mimalloc`, but through careful domain-specific tuning it beats all general purpose allocators we've tested, including `rpmalloc`, `mimalloc`, `jemalloc`, `ptmalloc` and `tcmalloc`.
