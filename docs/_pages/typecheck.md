@@ -325,7 +325,7 @@ type C<S...> = A<number, S...> -- with a generic type pack
 type D = A<number, ()> -- with an empty type pack
 ```
 
-Trailing type packs arguments can also be provided without parentheses as variadic type arguments:
+Trailing type pack argument can also be provided without parentheses by specifying variadic type arguments:
 
 ```lua
 type List<Head, Rest...> = (Head, Rest...) -> ()
