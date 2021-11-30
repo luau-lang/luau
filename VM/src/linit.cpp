@@ -44,7 +44,7 @@ void luaL_sandbox(lua_State* L)
     lua_pushliteral(L, "");
     lua_getmetatable(L, -1);
     lua_setreadonly(L, -1, true);
-    lua_pop(L, 1);
+    lua_pop(L, 2);
 
     // set globals to readonly and activate safeenv since the env is immutable
     lua_setreadonly(L, LUA_GLOBALSINDEX, true);
