@@ -34,7 +34,10 @@
 #endif
 
 /* Can be used to reconfigure visibility/exports for public APIs */
+#ifndef LUA_API
 #define LUA_API extern
+#endif
+
 #define LUALIB_API LUA_API
 
 /* Can be used to reconfigure visibility for internal APIs */
