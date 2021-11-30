@@ -1039,6 +1039,11 @@ int lua_gc(lua_State* L, int what, int data)
         res = cast_int(g->totalbytes >> 10);
         break;
     }
+    case LUA_GCCOUNTB:
+    {
+        res = cast_int(g->totalbytes & 1023);
+        break;
+    }
     case LUA_GCISRUNNING:
     {
         res = (g->GCthreshold != SIZE_MAX);
