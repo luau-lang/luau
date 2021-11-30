@@ -89,6 +89,18 @@ When using safe navigation to call a function, the short circuiting will prevent
 object?.doSomething(getValue())
 ```
 
+This will return one `nil` if the object was nil.
+
+```lua
+function Class:returnTwoValues()
+    return 1, 2
+end
+
+-- Assuming `object` is `Class`, and `nilObject` is nil
+print(object?:returnTwoValues()) -- 1, 2
+print(nilObject?:returnTwoValues()) -- nil
+```
+
 The short-circuiting is limited within the expression.
 
 ```lua
