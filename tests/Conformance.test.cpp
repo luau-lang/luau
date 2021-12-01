@@ -78,38 +78,31 @@ static int lua_vector(lua_State* L)
 
 static int lua_vector_dot(lua_State* L)
 {
-    const float* a = lua_tovector(L, 1);
-    const float* b = lua_tovector(L, 2);
+    const float* a = luaL_checkvector(L, 1);
+    const float* b = luaL_checkvector(L, 2);
 
-    if (a && b)
-    {
-        lua_pushnumber(L, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
-        return 1;
-    }
-
-    throw std::runtime_error("invalid arguments to vector:Dot");
+    lua_pushnumber(L, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+    return 1;
 }
 
 static int lua_vector_index(lua_State* L)
 {
+    const float* v = luaL_checkvector(L, 1);
     const char* name = luaL_checkstring(L, 2);
 
-    if (const float* v = lua_tovector(L, 1))
+    if (strcmp(name, "Magnitude") == 0)
     {
-        if (strcmp(name, "Magnitude") == 0)
-        {
-            lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
-            return 1;
-        }
-
-        if (strcmp(name, "Dot") == 0)
-        {
-            lua_pushcfunction(L, lua_vector_dot, "Dot");
-            return 1;
-        }
+        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+        return 1;
     }
 
-    throw std::runtime_error(Luau::format("%s is not a valid member of vector", name));
+    if (strcmp(name, "Dot") == 0)
+    {
+        lua_pushcfunction(L, lua_vector_dot, "Dot");
+        return 1;
+    }
+
+    luaL_error(L, "%s is not a valid member of vector", name);
 }
 
 static int lua_vector_namecall(lua_State* L)
@@ -120,7 +113,7 @@ static int lua_vector_namecall(lua_State* L)
             return lua_vector_dot(L);
     }
 
-    throw std::runtime_error(Luau::format("%s is not a valid method of vector", luaL_checkstring(L, 1)));
+    luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
 }
 
 int lua_silence(lua_State* L)
