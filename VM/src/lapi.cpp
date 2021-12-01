@@ -170,6 +170,12 @@ lua_State* lua_mainthread(lua_State* L)
 ** basic stack manipulation
 */
 
+int lua_absindex(lua_State* L, int idx)
+{
+    api_check(L, (idx > 0 && idx <= L->top - L->base) || (idx < 0 && -idx <= L->top - L->base) || lua_ispseudo(idx));
+    return idx > 0 || lua_ispseudo(idx) ? idx : cast_int(L->top - L->base) + idx + 1;
+}
+
 int lua_gettop(lua_State* L)
 {
     return cast_int(L->top - L->base);

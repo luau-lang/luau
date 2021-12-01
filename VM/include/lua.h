@@ -21,6 +21,7 @@
 #define LUA_ENVIRONINDEX (-10001)
 #define LUA_GLOBALSINDEX (-10002)
 #define lua_upvalueindex(i) (LUA_GLOBALSINDEX - (i))
+#define lua_ispseudo(i) ((i) <= LUA_REGISTRYINDEX)
 
 /* thread status; 0 is OK */
 enum lua_Status
@@ -108,6 +109,7 @@ LUA_API int lua_isthreadreset(lua_State* L);
 /*
 ** basic stack manipulation
 */
+LUA_API int lua_absindex(lua_State* L, int idx);
 LUA_API int lua_gettop(lua_State* L);
 LUA_API void lua_settop(lua_State* L, int idx);
 LUA_API void lua_pushvalue(lua_State* L, int idx);
