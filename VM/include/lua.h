@@ -129,7 +129,6 @@ LUA_API int lua_isstring(lua_State* L, int idx);
 LUA_API int lua_iscfunction(lua_State* L, int idx);
 LUA_API int lua_isLfunction(lua_State* L, int idx);
 LUA_API int lua_isuserdata(lua_State* L, int idx);
-LUA_API int lua_isvector(lua_State* L, int idx);
 LUA_API int lua_type(lua_State* L, int idx);
 LUA_API const char* lua_typename(lua_State* L, int tp);
 
@@ -295,6 +294,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_islightuserdata(L, n) (lua_type(L, (n)) == LUA_TLIGHTUSERDATA)
 #define lua_isnil(L, n) (lua_type(L, (n)) == LUA_TNIL)
 #define lua_isboolean(L, n) (lua_type(L, (n)) == LUA_TBOOLEAN)
+#define lua_isvector(L, n) (lua_type(L, (n)) == LUA_TVECTOR)
 #define lua_isthread(L, n) (lua_type(L, (n)) == LUA_TTHREAD)
 #define lua_isnone(L, n) (lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)

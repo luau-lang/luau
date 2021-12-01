@@ -294,12 +294,6 @@ int lua_isuserdata(lua_State* L, int idx)
     return (ttisuserdata(o) || ttislightuserdata(o));
 }
 
-int lua_isvector(lua_State* L, int idx)
-{
-    const TValue* o = index2adr(L, idx);
-    return ttisvector(o);
-}
-
 int lua_rawequal(lua_State* L, int index1, int index2)
 {
     StkId o1 = index2adr(L, index1);
