@@ -227,6 +227,19 @@ unsigned luaL_optunsigned(lua_State* L, int narg, unsigned def)
     return luaL_opt(L, luaL_checkunsigned, narg, def);
 }
 
+const float* luaL_checkvector(lua_State* L, int narg)
+{
+    const float* v = lua_tovector(L, narg);
+    if (!v)
+        tag_error(L, narg, LUA_TVECTOR);
+    return v;
+}
+
+const float* luaL_optvector(lua_State* L, int narg, const float* def)
+{
+    return luaL_opt(L, luaL_checkvector, narg, def);
+}
+
 int luaL_getmetafield(lua_State* L, int obj, const char* event)
 {
     if (!lua_getmetatable(L, obj)) /* no metatable? */
