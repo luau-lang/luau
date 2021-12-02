@@ -37,7 +37,7 @@ prefixexp ::= NAME | '(' expr ')'
 primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 asexp ::= simpleexp [`::' typeannotation]
 simpleexp ::= NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
-args ::=  `(' [explist] `)' | tableconstructor | String
+funcargs ::=  `(' [explist] `)' | tableconstructor | String
 
 compoundop :: `+=' | `-=' | `*=' | `/=' | `%=' | `^=' | `..='
 binop ::= `+' | `-' | `*' | `/' | `^' | `%' | `..' | `<' | `<=' | `>' | `>=' | `==' | `~=' | and | or
