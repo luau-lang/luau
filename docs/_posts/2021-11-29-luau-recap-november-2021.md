@@ -21,7 +21,18 @@ type Fn<P..., R...> = (P...) -> R...
 type X = Fn<(number, string), (string, number)>
 ```
 
-For more information, check out [the RFC for this feature](https://github.com/Roblox/luau/blob/f86d4c6995418e489a55be0100159009492778ff/rfcs/syntax-type-alias-type-packs.md).
+For more information, check out [the documentation](https://luau-lang.org/typecheck#type-packs) or [the RFC](https://github.com/Roblox/luau/blob/f86d4c6995418e489a55be0100159009492778ff/rfcs/syntax-type-alias-type-packs.md) for this feature.
+
+## Luau is open-source!
+
+We announced this in early November but it deserves repeating: Luau is now an open-source project! You can use Luau outside of Roblox, subject to MIT License, and - importantly - we accept contributions.
+
+Many changes contributed by community, both Roblox and external, have been merged since we've made Luau open source. Of note are two visible changes that shipped on Roblox platform:
+
+- The type error "Expected to return X values, but Y values are returned here" actually had X and Y swapped! This is now fixed.
+- Luau compiler dutifully computed the length of the string when using `#` operator on a string literal; this is now fixed and `#"foo"` compiles to 3.
+
+You might think that C++ is a scary language and you can't contribute to Luau. If so, you'd be happy to know that the contents of https://luau-lang.org, where we host our documentation, is also hosted on GitHub in the same repository (https://github.com/Roblox/luau/tree/master/docs) and that we'd love the community to contribute improvements to documentation among other changes! For example see [issues in this list](https://github.com/Roblox/luau/issues?q=is%3Aissue+is%3Aopen+label%3A%22pr+welcome%22) that start with "Documentation", but all other changes and additions to documentation are also welcome.
 
 ## Library improvements
 
