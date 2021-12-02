@@ -4,6 +4,9 @@ title: Grammar
 toc: true
 ---
 
+This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes Name, String and Number
+is available in the [syntax section](syntax).
+
 ```
 chunk ::= {stat [`;']} [laststat [`;']]
 block ::= chunk
