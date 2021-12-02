@@ -272,7 +272,7 @@ static const luaL_Reg co_funcs[] = {
     {NULL, NULL},
 };
 
-LUALIB_API int luaopen_coroutine(lua_State* L)
+int luaopen_coroutine(lua_State* L)
 {
     luaL_register(L, LUA_COLIBNAME, co_funcs);
 

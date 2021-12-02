@@ -170,6 +170,12 @@ lua_State* lua_mainthread(lua_State* L)
 ** basic stack manipulation
 */
 
+int lua_absindex(lua_State* L, int idx)
+{
+    api_check(L, (idx > 0 && idx <= L->top - L->base) || (idx < 0 && -idx <= L->top - L->base) || lua_ispseudo(idx));
+    return idx > 0 || lua_ispseudo(idx) ? idx : cast_int(L->top - L->base) + idx + 1;
+}
+
 int lua_gettop(lua_State* L)
 {
     return cast_int(L->top - L->base);
@@ -550,12 +556,21 @@ void lua_pushunsigned(lua_State* L, unsigned u)
     return;
 }
 
-void lua_pushvector(lua_State* L, float x, float y, float z)
+#if LUA_VECTOR_SIZE == 4
+void lua_pushvector(lua_State* L, float x, float y, float z, float w)
 {
-    setvvalue(L->top, x, y, z);
+    setvvalue(L->top, x, y, z, w);
     api_incr_top(L);
     return;
 }
+#else
+void lua_pushvector(lua_State* L, float x, float y, float z)
+{
+    setvvalue(L->top, x, y, z, 0.0f);
+    api_incr_top(L);
+    return;
+}
+#endif
 
 void lua_pushlstring(lua_State* L, const char* s, size_t len)
 {
@@ -1028,6 +1043,11 @@ int lua_gc(lua_State* L, int what, int data)
     {
         /* GC values are expressed in Kbytes: #bytes/2^10 */
         res = cast_int(g->totalbytes >> 10);
+        break;
+    }
+    case LUA_GCCOUNTB:
+    {
+        res = cast_int(g->totalbytes & 1023);
         break;
     }
     case LUA_GCISRUNNING:

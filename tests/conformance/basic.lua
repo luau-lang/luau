@@ -876,4 +876,4 @@ assert(concat(typeof(5), typeof(nil), typeof({}), typeof(newproxy())) == "number
 
 testgetfenv() -- DONT MOVE THIS LINE
 
-return'OK'
+return 'OK'

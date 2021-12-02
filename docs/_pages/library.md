@@ -624,6 +624,12 @@ function coroutine.resume(co: thread, args: ...any): (boolean, ...any)
 
 Resumes the coroutine and passes the arguments along to the suspension point. When the coroutine yields or finishes, returns `true` and all values returned at the suspension point. If an error is raised during coroutine resumption, this function returns `false` and the error object, similarly to `pcall`.
 
+```
+function coroutine.close(co: thread): (boolean, any?)
+```
+
+Closes the coroutine which puts coroutine in the dead state. The coroutine must be dead or suspended - in particular it can't be currently running. If the coroutine that's being closed was in an error state, returns `false` along with an error object; otherwise returns `true`. After closing, the coroutine can't be resumed and the coroutine stack becomes empty.
+
 ## bit32 library
 
 All functions in the `bit32` library treat input numbers as 32-bit unsigned integers in `[0..4294967295]` range. The bit positions start at 0 where 0 corresponds to the least significant bit.
@@ -699,6 +705,18 @@ function bit32.rshift(n: number, i: number): number
 ```
 
 Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead).
+
+```
+function bit32.countlz(n: number): number
+```
+
+Returns the number of consecutive zero bits in the 32-bit representation of `n` starting from the left-most (most significant) bit. Returns 32 if `n` is zero.
+
+```
+function bit32.countrz(n: number): number
+```
+
+Returns the number of consecutive zero bits in the 32-bit representation of `n` starting from the right-most (least significant) bit. Returns 32 if `n` is zero.
 
 ## utf8 library
 

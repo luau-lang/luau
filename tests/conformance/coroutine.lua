@@ -373,4 +373,4 @@ do
   assert(f() == 42)
 end
 
-return'OK'
+return 'OK'

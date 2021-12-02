@@ -47,7 +47,7 @@ typedef union
 typedef struct lua_TValue
 {
     Value value;
-    int extra;
+    int extra[LUA_EXTRA_SIZE];
     int tt;
 } TValue;
 
@@ -105,7 +105,19 @@ typedef struct lua_TValue
         i_o->tt = LUA_TNUMBER; \
     }
 
-#define setvvalue(obj, x, y, z) \
+#if LUA_VECTOR_SIZE == 4
+#define setvvalue(obj, x, y, z, w) \
+    { \
+        TValue* i_o = (obj); \
+        float* i_v = i_o->value.v; \
+        i_v[0] = (x); \
+        i_v[1] = (y); \
+        i_v[2] = (z); \
+        i_v[3] = (w); \
+        i_o->tt = LUA_TVECTOR; \
+    }
+#else
+#define setvvalue(obj, x, y, z, w) \
     { \
         TValue* i_o = (obj); \
         float* i_v = i_o->value.v; \
@@ -114,6 +126,7 @@ typedef struct lua_TValue
         i_v[2] = (z); \
         i_o->tt = LUA_TVECTOR; \
     }
+#endif
 
 #define setpvalue(obj, x) \
     { \
@@ -364,7 +377,7 @@ typedef struct Closure
 typedef struct TKey
 {
     ::Value value;
-    int extra;
+    int extra[LUA_EXTRA_SIZE];
     unsigned tt : 4;
     int next : 28; /* for chaining */
 } TKey;
@@ -381,7 +394,7 @@ typedef struct LuaNode
         LuaNode* n_ = (node); \
         const TValue* i_o = (obj); \
         n_->key.value = i_o->value; \
-        n_->key.extra = i_o->extra; \
+        memcpy(n_->key.extra, i_o->extra, sizeof(n_->key.extra)); \
         n_->key.tt = i_o->tt; \
         checkliveness(L->global, i_o); \
     }
@@ -392,7 +405,7 @@ typedef struct LuaNode
         TValue* i_o = (obj); \
         const LuaNode* n_ = (node); \
         i_o->value = n_->key.value; \
-        i_o->extra = n_->key.extra; \
+        memcpy(i_o->extra, n_->key.extra, sizeof(i_o->extra)); \
         i_o->tt = n_->key.tt; \
         checkliveness(L->global, i_o); \
     }

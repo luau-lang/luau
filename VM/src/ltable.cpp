@@ -31,18 +31,19 @@ LUAU_FASTFLAGVARIABLE(LuauArrayBoundary, false)
 #define MAXSIZE (1 << MAXBITS)
 
 static_assert(offsetof(LuaNode, val) == 0, "Unexpected Node memory layout, pointer cast in gval2slot is incorrect");
+
 // TKey is bitpacked for memory efficiency so we need to validate bit counts for worst case
-static_assert(TKey{{NULL}, 0, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough bits for tt");
-static_assert(TKey{{NULL}, 0, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
-static_assert(TKey{{NULL}, 0, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
+static_assert(TKey{{NULL}, {0}, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough bits for tt");
+static_assert(TKey{{NULL}, {0}, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
+static_assert(TKey{{NULL}, {0}, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
 
 // reset cache of absent metamethods, cache is updated in luaT_gettm
 #define invalidateTMcache(t) t->flags = 0
 
 // empty hash data points to dummynode so that we can always dereference it
 const LuaNode luaH_dummynode = {
-    {{NULL}, 0, LUA_TNIL},   /* value */
-    {{NULL}, 0, LUA_TNIL, 0} /* key */
+    {{NULL}, {0}, LUA_TNIL},   /* value */
+    {{NULL}, {0}, LUA_TNIL, 0} /* key */
 };
 
 #define dummynode (&luaH_dummynode)
@@ -96,7 +97,7 @@ static LuaNode* hashnum(const Table* t, double n)
 
 static LuaNode* hashvec(const Table* t, const float* v)
 {
-    unsigned int i[3];
+    unsigned int i[LUA_VECTOR_SIZE];
     memcpy(i, v, sizeof(i));
 
     // convert -0 to 0 to make sure they hash to the same value
@@ -111,6 +112,12 @@ static LuaNode* hashvec(const Table* t, const float* v)
 
     // Optimized Spatial Hashing for Collision Detection of Deformable Objects
     unsigned int h = (i[0] * 73856093) ^ (i[1] * 19349663) ^ (i[2] * 83492791);
+
+#if LUA_VECTOR_SIZE == 4
+    i[3] = (i[3] == 0x8000000) ? 0 : i[3];
+    i[3] ^= i[3] >> 17;
+    h ^= i[3] * 39916801;
+#endif
 
     return hashpow2(t, h);
 }

@@ -66,6 +66,8 @@ jobs:
 
   coverage:
     runs-on: ubuntu-latest
+    env:
+      NODE_COVERALLS_DEBUG: 1
     steps:
     - uses: actions/checkout@v1
     - name: install
@@ -79,7 +81,27 @@ jobs:
       with:
         path-to-lcov: ./coverage.info
         github-token: ${{ secrets.GITHUB_TOKEN }}
+      continue-on-error: true
     - uses: actions/upload-artifact@v2
       with:
         name: coverage
         path: coverage
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
+      with:
+        repository: emscripten-core/emsdk
+        path: emsdk
+    - name: emsdk install
+      run: |
+        cd emsdk
+        ./emsdk install latest
+        ./emsdk activate latest
+    - name: make
+      run: |
+        source emsdk/emsdk_env.sh
+        emcmake cmake . -DLUAU_BUILD_WEB=ON -DCMAKE_BUILD_TYPE=Release
+        make -j2 Luau.Web
