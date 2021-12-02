@@ -7,41 +7,6 @@ Luau is our new language that you can read more about at [https://luau-lang.org]
 
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-november-2021/).]
 
-## Singleton types
-
-Singleton types, also known as literal types, allow you to represent a specific value of a string or boolean in the type system. This is useful for representing enums and similar constructs.
-
-```lua
-type Status = "ok" | "error"
-
-local x: Status = "ok"
-```
-
-At the moment, support for these is limited to just the type construct. In the near future, Luau will make use of this information to better infer `if` statements and expressions:
-
-```lua
-type Result = {
-    success: true,
-    value: number,
-}
-
-type Error = {
-    success: false,
-    error: string,
-}
-
-type ResultOrError = Result | Error
-local x: ResultOrError
-
-if x.success then
-    -- x is inferred to be of type Result
-    print(x.value * 2)
-else
-    -- x is inferred to be of type Error
-    print("error:", x.error)
-end
-```
-
 ## Type packs in type aliases
 
 Type packs are the construct Luau uses to represent a sequence of types. We've had syntax for generic type packs for a while now, and it sees use in generic functions, but it hasn't been available in type aliases. That has changed, and it is now syntactically legal to write the following type alias:
