@@ -28,6 +28,8 @@ funcbody ::= `(' [parlist] `)' [`:' ReturnType] block end
 parlist ::= bindinglist [`,' `...'] | `...'
 explist ::= {exp `,'} exp
 namelist ::= Name {`,' Name}
+
+binding ::= Name [`:' typeannotation]
 bindinglist ::= (binding | `...') [`,' bindinglist]
 
 subexpr ::= (asexp | unop subexpr) { binop subexpr }
