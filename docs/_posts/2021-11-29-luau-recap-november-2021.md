@@ -67,3 +67,35 @@ function bit32.countrz(n: number): number
 Given a number, returns the number of preceding left or trailing right-hand bits that are `0`.
 
 See [the RFC for these functions](https://github.com/Roblox/luau/blob/f86d4c6995418e489a55be0100159009492778ff/rfcs/function-bit32-countlz-countrz.md) for more information.
+
+## Type checking improvements
+
+We have enabled a rewrite of how Luau handles require tracing. This has two main effects: firstly, in strict mode, requires that Luau can't resolve will trigger type errors; secondly, Luau now understands the `FindFirstAncestor` method in require expressions.
+
+Luau now warns when the index to `table.move` is 0, as this is non-idiomatic and performs poorly. If this behavior is intentional, wrap the index in parentheses to suppress the warning.
+
+Luau now provides additional context in table and class type mismatch errors.
+
+## Performance improvements
+
+We have enabled several changes that aim to avoid allocating a new closure object in cases where it's not necessary to. This is helpful in cases where many closures are being allocated; in our benchmark suite, the two benchmarks that allocate a large number of closures improved by 15% and 5%, respectively.
+
+When checking union types, we now try possibilities whose synthetic names match. This will speed up type checking unions in cases where synthetic names are populated.
+
+We have also enabled an optimization that shares state in a hot path on the type checker. This will improve type checking performance, and also prevent some 
+
+The Luau VM now attempts to cache the length of tables' array portion. This change showed a small performance improvement in benchmarks, and should speed up `#` expressions.
+
+The Luau type checker now caches a specific category of table unification results. This can improve type checking performance significantly when the same set of types is used frequently.
+
+When Luau is not retaining type graphs, the type checker now discards more of a module's type surface after type checking it. This improves memory usage significantly.
+
+## Bug fixes
+
+We've fixed a bug causing Luau unit tests on ARM systems to fail, rooted in an issue in `string.pack`.
+
+We've fixed an issue with type aliases that reuse generic type names that caused them to be instantiated incorrectly.
+
+We've corrected a subtle bug that could cause free types to leak into a table type when a free table is bound to that table.
+
+We've fixed an issue that could cause Luau to report an infinitely recursive type error when the type was not infinitely recursive.
