@@ -19,12 +19,6 @@ enum Variance
     Invariant
 };
 
-struct UnifierCounters
-{
-    int recursionCount = 0;
-    int iterationCount = 0;
-};
-
 struct Unifier
 {
     TypeArena* const types;
@@ -37,20 +31,11 @@ struct Unifier
     Variance variance = Covariant;
     CountMismatch::Context ctx = CountMismatch::Arg;
 
-    UnifierCounters* counters;
-    UnifierCounters countersData;
-
-    std::shared_ptr<UnifierCounters> counters_DEPRECATED;
-
     UnifierSharedState& sharedState;
 
     Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, UnifierSharedState& sharedState);
-    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const std::vector<std::pair<TypeId, TypeId>>& ownedSeen, const Location& location,
-        Variance variance, UnifierSharedState& sharedState, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED = nullptr,
-        UnifierCounters* counters = nullptr);
     Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
-        Variance variance, UnifierSharedState& sharedState, const std::shared_ptr<UnifierCounters>& counters_DEPRECATED = nullptr,
-        UnifierCounters* counters = nullptr);
+        Variance variance, UnifierSharedState& sharedState);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId superTy, TypeId subTy);
@@ -92,9 +77,9 @@ private:
 public:
     // Report an "infinite type error" if the type "needle" already occurs within "haystack"
     void occursCheck(TypeId needle, TypeId haystack);
-    void occursCheck(std::unordered_set<TypeId>& seen_DEPRECATED, DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
+    void occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
     void occursCheck(TypePackId needle, TypePackId haystack);
-    void occursCheck(std::unordered_set<TypePackId>& seen_DEPRECATED, DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
+    void occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     Unifier makeChildUnifier();
 
@@ -106,10 +91,6 @@ private:
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);
-
-    // Remove with FFlagLuauCacheUnifyTableResults
-    DenseHashSet<TypeId> tempSeenTy_DEPRECATED{nullptr};
-    DenseHashSet<TypePackId> tempSeenTp_DEPRECATED{nullptr};
 };
 
 } // namespace Luau

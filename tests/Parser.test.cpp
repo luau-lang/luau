@@ -2518,8 +2518,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_pack_type_parameters")
 {
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     AstStat* stat = parse(R"(
 type Packed<T...> = () -> T...
 

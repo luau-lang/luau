@@ -609,8 +609,6 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
 
 TEST_CASE_FIXTURE(Fixture, "bound_tables_do_not_clone_original_fields")
 {
-    ScopedFastFlag luauCloneBoundTables{"LuauCloneBoundTables", true};
-
     CheckResult result = check(R"(
 local exports = {}
 local nested = {}
@@ -625,6 +623,25 @@ return exports
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names")
+{
+    ScopedFastFlag luauFunctionArgumentNameSize{"LuauFunctionArgumentNameSize", true};
+
+    CheckResult result = check(R"(
+local function f<T, U...>(a: T, ...: U...) end
+
+f(1, 2, 3)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto ty = findTypeAtPosition(Position(3, 0));
+    REQUIRE(ty);
+    ToStringOptions opts;
+    opts.functionTypeArguments = true;
+    CHECK_EQ(toString(*ty, opts), "(a: number, number, number) -> ()");
 }
 
 TEST_SUITE_END();

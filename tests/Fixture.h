@@ -64,11 +64,7 @@ struct TestFileResolver
         return SourceCode{it->second, sourceType};
     }
 
-    std::optional<ModuleName> fromAstFragment(AstExpr* expr) const override;
     std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override;
-
-    ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override;
-    std::optional<ModuleName> getParentModuleName(const ModuleName& name) const override;
 
     std::string getHumanReadableModuleName(const ModuleName& name) const override;
 
@@ -126,6 +122,7 @@ struct Fixture
 
     std::optional<TypeId> findTypeAtPosition(Position position);
     TypeId requireTypeAtPosition(Position position);
+    std::optional<TypeId> findExpectedTypeAtPosition(Position position);
 
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);

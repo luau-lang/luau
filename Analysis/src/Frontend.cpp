@@ -18,10 +18,7 @@
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckTwice, false)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTFLAGVARIABLE(LuauResolveModuleNameWithoutACurrentModule, false)
-LUAU_FASTFLAG(LuauTraceRequireLookupChild)
 LUAU_FASTFLAGVARIABLE(LuauPersistDefinitionFileTypes, false)
-LUAU_FASTFLAG(LuauNewRequireTrace2)
 
 namespace Luau
 {
@@ -96,10 +93,11 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
-        TypeId globalTy = clone(ty, typeChecker.globalTypes, seenTypes, seenTypePacks);
+        TypeId globalTy = clone(ty, typeChecker.globalTypes, seenTypes, seenTypePacks, cloneState);
         std::string documentationSymbol = packageName + "/global/" + name;
         generateDocumentationSymbols(globalTy, documentationSymbol);
         targetScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
@@ -110,7 +108,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
 
     for (const auto& [name, ty] : checkedModule->getModuleScope()->exportedTypeBindings)
     {
-        TypeFun globalTy = clone(ty, typeChecker.globalTypes, seenTypes, seenTypePacks);
+        TypeFun globalTy = clone(ty, typeChecker.globalTypes, seenTypes, seenTypePacks, cloneState);
         std::string documentationSymbol = packageName + "/globaltype/" + name;
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
         targetScope->exportedTypeBindings[name] = globalTy;
@@ -427,15 +425,16 @@ CheckResult Frontend::check(const ModuleName& name)
 
             SeenTypes seenTypes;
             SeenTypePacks seenTypePacks;
+            CloneState cloneState;
 
             for (const auto& [expr, strictTy] : strictModule->astTypes)
-                module->astTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks);
+                module->astTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks, cloneState);
 
             for (const auto& [expr, strictTy] : strictModule->astOriginalCallTypes)
-                module->astOriginalCallTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks);
+                module->astOriginalCallTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks, cloneState);
 
             for (const auto& [expr, strictTy] : strictModule->astExpectedTypes)
-                module->astExpectedTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks);
+                module->astExpectedTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks, cloneState);
         }
 
         stats.timeCheck += getTimestamp() - timestamp;
@@ -885,16 +884,13 @@ std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const Module
         // If we can't find the current module name, that's because we bypassed the frontend's initializer
         // and called typeChecker.check directly. (This is done by autocompleteSource, for example).
         // In that case, requires will always fail.
-        if (FFlag::LuauResolveModuleNameWithoutACurrentModule)
-            return std::nullopt;
-        else
-            throw std::runtime_error("Frontend::resolveModuleName: Unknown currentModuleName '" + currentModuleName + "'");
+        return std::nullopt;
     }
 
     const auto& exprs = it->second.exprs;
 
     const ModuleInfo* info = exprs.find(&pathExpr);
-    if (!info || (!FFlag::LuauNewRequireTrace2 && info->name.empty()))
+    if (!info)
         return std::nullopt;
 
     return *info;
@@ -911,10 +907,7 @@ const ModulePtr FrontendModuleResolver::getModule(const ModuleName& moduleName) 
 
 bool FrontendModuleResolver::moduleExists(const ModuleName& moduleName) const
 {
-    if (FFlag::LuauNewRequireTrace2)
-        return frontend->sourceNodes.count(moduleName) != 0;
-    else
-        return frontend->fileResolver->moduleExists(moduleName);
+    return frontend->sourceNodes.count(moduleName) != 0;
 }
 
 std::string FrontendModuleResolver::getHumanReadableModuleName(const ModuleName& moduleName) const

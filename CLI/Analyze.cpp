@@ -121,7 +121,7 @@ struct CliFileResolver : Luau::FileResolver
         if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
         {
             Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".luau";
-            if (!moduleExists(name))
+            if (!readFile(name))
             {
                 // fall back to .lua if a module with .luau doesn't exist
                 name = std::string(expr->value.data, expr->value.size) + ".lua";
@@ -130,27 +130,6 @@ struct CliFileResolver : Luau::FileResolver
             return {{name}};
         }
 
-        return std::nullopt;
-    }
-
-    bool moduleExists(const Luau::ModuleName& name) const override
-    {
-        return !!readFile(name);
-    }
-
-
-    std::optional<Luau::ModuleName> fromAstFragment(Luau::AstExpr* expr) const override
-    {
-        return std::nullopt;
-    }
-
-    Luau::ModuleName concat(const Luau::ModuleName& lhs, std::string_view rhs) const override
-    {
-        return lhs + "/" + std::string(rhs);
-    }
-
-    std::optional<Luau::ModuleName> getParentModuleName(const Luau::ModuleName& name) const override
-    {
         return std::nullopt;
     }
 };

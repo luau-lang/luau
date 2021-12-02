@@ -24,6 +24,12 @@ struct TypeIdPairHash
     }
 };
 
+struct UnifierCounters
+{
+    int recursionCount = 0;
+    int iterationCount = 0;
+};
+
 struct UnifierSharedState
 {
     UnifierSharedState(InternalErrorReporter* iceHandler)
@@ -39,6 +45,8 @@ struct UnifierSharedState
 
     DenseHashSet<TypeId> tempSeenTy{nullptr};
     DenseHashSet<TypePackId> tempSeenTp{nullptr};
+
+    UnifierCounters counters;
 };
 
 } // namespace Luau

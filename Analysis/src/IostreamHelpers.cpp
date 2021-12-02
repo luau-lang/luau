@@ -2,8 +2,6 @@
 #include "Luau/IostreamHelpers.h"
 #include "Luau/ToString.h"
 
-LUAU_FASTFLAG(LuauTypeAliasPacks)
-
 namespace Luau
 {
 
@@ -94,7 +92,7 @@ std::ostream& operator<<(std::ostream& stream, const IncorrectGenericParameterCo
 {
     stream << "IncorrectGenericParameterCount { name = " << error.name;
 
-    if (!error.typeFun.typeParams.empty() || (FFlag::LuauTypeAliasPacks && !error.typeFun.typePackParams.empty()))
+    if (!error.typeFun.typeParams.empty() || !error.typeFun.typePackParams.empty())
     {
         stream << "<";
         bool first = true;
@@ -108,17 +106,14 @@ std::ostream& operator<<(std::ostream& stream, const IncorrectGenericParameterCo
             stream << toString(t);
         }
 
-        if (FFlag::LuauTypeAliasPacks)
+        for (TypePackId t : error.typeFun.typePackParams)
         {
-            for (TypePackId t : error.typeFun.typePackParams)
-            {
-                if (first)
-                    first = false;
-                else
-                    stream << ", ";
+            if (first)
+                first = false;
+            else
+                stream << ", ";
 
-                stream << toString(t);
-            }
+            stream << toString(t);
         }
 
         stream << ">";

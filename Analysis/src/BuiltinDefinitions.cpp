@@ -8,8 +8,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauNewRequireTrace2)
-
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -473,9 +471,7 @@ static std::optional<ExprResult<TypePackId>> magicFunctionRequire(
     if (!checkRequirePath(typechecker, expr.args.data[0]))
         return std::nullopt;
 
-    const AstExpr* require = FFlag::LuauNewRequireTrace2 ? &expr : expr.args.data[0];
-
-    if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, *require))
+    if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, expr))
         return ExprResult<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};
 
     return std::nullopt;

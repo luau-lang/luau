@@ -11,7 +11,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
-LUAU_FASTFLAG(LuauTypeAliasPacks)
+LUAU_FASTFLAGVARIABLE(LuauFunctionArgumentNameSize, false)
 
 namespace Luau
 {
@@ -59,11 +59,8 @@ struct FindCyclicTypes
             for (TypeId itp : ttv.instantiatedTypeParams)
                 visitTypeVar(itp, *this, seen);
 
-            if (FFlag::LuauTypeAliasPacks)
-            {
-                for (TypePackId itp : ttv.instantiatedTypePackParams)
-                    visitTypeVar(itp, *this, seen);
-            }
+            for (TypePackId itp : ttv.instantiatedTypePackParams)
+                visitTypeVar(itp, *this, seen);
 
             return exhaustive;
         }
@@ -248,58 +245,45 @@ struct TypeVarStringifier
 
     void stringify(const std::vector<TypeId>& types, const std::vector<TypePackId>& typePacks)
     {
-        if (types.size() == 0 && (!FFlag::LuauTypeAliasPacks || typePacks.size() == 0))
+        if (types.size() == 0 && typePacks.size() == 0)
             return;
 
-        if (types.size() || (FFlag::LuauTypeAliasPacks && typePacks.size()))
+        if (types.size() || typePacks.size())
             state.emit("<");
 
-        if (FFlag::LuauTypeAliasPacks)
-        {
-            bool first = true;
+        bool first = true;
 
-            for (TypeId ty : types)
-            {
-                if (!first)
-                    state.emit(", ");
+        for (TypeId ty : types)
+        {
+            if (!first)
+                state.emit(", ");
+            first = false;
+
+            stringify(ty);
+        }
+
+        bool singleTp = typePacks.size() == 1;
+
+        for (TypePackId tp : typePacks)
+        {
+            if (isEmpty(tp) && singleTp)
+                continue;
+
+            if (!first)
+                state.emit(", ");
+            else
                 first = false;
 
-                stringify(ty);
-            }
+            if (!singleTp)
+                state.emit("(");
 
-            bool singleTp = typePacks.size() == 1;
+            stringify(tp);
 
-            for (TypePackId tp : typePacks)
-            {
-                if (isEmpty(tp) && singleTp)
-                    continue;
-
-                if (!first)
-                    state.emit(", ");
-                else
-                    first = false;
-
-                if (!singleTp)
-                    state.emit("(");
-
-                stringify(tp);
-
-                if (!singleTp)
-                    state.emit(")");
-            }
-        }
-        else
-        {
-            for (size_t i = 0; i < types.size(); ++i)
-            {
-                if (i > 0)
-                    state.emit(", ");
-
-                stringify(types[i]);
-            }
+            if (!singleTp)
+                state.emit(")");
         }
 
-        if (types.size() || (FFlag::LuauTypeAliasPacks && typePacks.size()))
+        if (types.size() || typePacks.size())
             state.emit(">");
     }
 
@@ -767,12 +751,23 @@ struct TypePackStringifier
             else
                 state.emit(", ");
 
-            LUAU_ASSERT(elemNames.empty() || elemIndex < elemNames.size());
-
-            if (!elemNames.empty() && elemNames[elemIndex])
+            if (FFlag::LuauFunctionArgumentNameSize)
             {
-                state.emit(elemNames[elemIndex]->name);
-                state.emit(": ");
+                if (elemIndex < elemNames.size() && elemNames[elemIndex])
+                {
+                    state.emit(elemNames[elemIndex]->name);
+                    state.emit(": ");
+                }
+            }
+            else
+            {
+                LUAU_ASSERT(elemNames.empty() || elemIndex < elemNames.size());
+
+                if (!elemNames.empty() && elemNames[elemIndex])
+                {
+                    state.emit(elemNames[elemIndex]->name);
+                    state.emit(": ");
+                }
             }
             elemIndex++;
 
@@ -929,38 +924,7 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
             result.name += ttv->name ? *ttv->name : *ttv->syntheticName;
 
-            if (FFlag::LuauTypeAliasPacks)
-            {
-                tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
-            }
-            else
-            {
-                if (ttv->instantiatedTypeParams.empty() && (!FFlag::LuauTypeAliasPacks || ttv->instantiatedTypePackParams.empty()))
-                    return result;
-
-                result.name += "<";
-
-                bool first = true;
-                for (TypeId ty : ttv->instantiatedTypeParams)
-                {
-                    if (!first)
-                        result.name += ", ";
-                    else
-                        first = false;
-
-                    tvs.stringify(ty);
-                }
-
-                if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
-                {
-                    result.truncated = true;
-                    result.name += "... <TRUNCATED>";
-                }
-                else
-                {
-                    result.name += ">";
-                }
-            }
+            tvs.stringify(ttv->instantiatedTypeParams, ttv->instantiatedTypePackParams);
 
             return result;
         }
@@ -1161,17 +1125,37 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
             s += ", ";
         first = false;
 
-        // argNames is guaranteed to be equal to argTypes iff argNames is not empty.
-        // We don't currently respect opts.functionTypeArguments. I don't think this function should.
-        if (!ftv.argNames.empty())
-            s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
-        s += toString_(*argPackIter);
-
-        ++argPackIter;
-        if (!ftv.argNames.empty())
+        if (FFlag::LuauFunctionArgumentNameSize)
         {
-            LUAU_ASSERT(argNameIter != ftv.argNames.end());
-            ++argNameIter;
+            // We don't currently respect opts.functionTypeArguments. I don't think this function should.
+            if (argNameIter != ftv.argNames.end())
+            {
+                s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
+                ++argNameIter;
+            }
+            else
+            {
+                s += "_: ";
+            }
+        }
+        else
+        {
+            // argNames is guaranteed to be equal to argTypes iff argNames is not empty.
+            // We don't currently respect opts.functionTypeArguments. I don't think this function should.
+            if (!ftv.argNames.empty())
+                s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
+        }
+
+        s += toString_(*argPackIter);
+        ++argPackIter;
+
+        if (!FFlag::LuauFunctionArgumentNameSize)
+        {
+            if (!ftv.argNames.empty())
+            {
+                LUAU_ASSERT(argNameIter != ftv.argNames.end());
+                ++argNameIter;
+            }
         }
     }
 

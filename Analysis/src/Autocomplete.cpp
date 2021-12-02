@@ -12,9 +12,9 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(ElseElseIfCompletionImprovements, false);
 LUAU_FASTFLAG(LuauIfElseExpressionAnalysisSupport)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
+LUAU_FASTFLAGVARIABLE(LuauAutocompletePreferToCallFunctions, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -203,8 +203,9 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         {
             SeenTypes seenTypes;
             SeenTypePacks seenTypePacks;
-            expectedType = clone(expectedType, *typeArena, seenTypes, seenTypePacks, nullptr);
-            actualType = clone(actualType, *typeArena, seenTypes, seenTypePacks, nullptr);
+            CloneState cloneState;
+            expectedType = clone(expectedType, *typeArena, seenTypes, seenTypePacks, cloneState);
+            actualType = clone(actualType, *typeArena, seenTypes, seenTypePacks, cloneState);
 
             auto errors = unifier.canUnify(expectedType, actualType);
             return errors.empty();
@@ -229,28 +230,51 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 
     TypeId expectedType = follow(*it);
 
-    if (canUnify(expectedType, ty))
-        return TypeCorrectKind::Correct;
-
-    // We also want to suggest functions that return compatible result
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
-
-    if (!ftv)
-        return TypeCorrectKind::None;
-
-    auto [retHead, retTail] = flatten(ftv->retType);
-
-    if (!retHead.empty())
-        return canUnify(expectedType, retHead.front()) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
-
-    // We might only have a variadic tail pack, check if the element is compatible
-    if (retTail)
+    if (FFlag::LuauAutocompletePreferToCallFunctions)
     {
-        if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)))
-            return canUnify(expectedType, vtp->ty) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
-    }
+        // We also want to suggest functions that return compatible result
+        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+        {
+            auto [retHead, retTail] = flatten(ftv->retType);
 
-    return TypeCorrectKind::None;
+            if (!retHead.empty() && canUnify(expectedType, retHead.front()))
+                return TypeCorrectKind::CorrectFunctionResult;
+
+            // We might only have a variadic tail pack, check if the element is compatible
+            if (retTail)
+            {
+                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(expectedType, vtp->ty))
+                    return TypeCorrectKind::CorrectFunctionResult;
+            }
+        }
+
+        return canUnify(expectedType, ty) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+    }
+    else
+    {
+        if (canUnify(expectedType, ty))
+            return TypeCorrectKind::Correct;
+
+        // We also want to suggest functions that return compatible result
+        const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
+
+        if (!ftv)
+            return TypeCorrectKind::None;
+
+        auto [retHead, retTail] = flatten(ftv->retType);
+
+        if (!retHead.empty())
+            return canUnify(expectedType, retHead.front()) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
+
+        // We might only have a variadic tail pack, check if the element is compatible
+        if (retTail)
+        {
+            if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)))
+                return canUnify(expectedType, vtp->ty) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
+        }
+
+        return TypeCorrectKind::None;
+    }
 }
 
 enum class PropIndexType
@@ -1413,7 +1437,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(finder.ancestry); statWhile && !statWhile->hasDo)
         return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
 
-    else if (AstStatIf* statIf = node->as<AstStatIf>(); FFlag::ElseElseIfCompletionImprovements && statIf && !statIf->hasElse)
+    else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->hasElse)
     {
         return {{{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}},
             finder.ancestry};

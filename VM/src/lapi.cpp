@@ -13,6 +13,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauActivateBeforeExec)
+
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -937,14 +939,21 @@ void lua_call(lua_State* L, int nargs, int nresults)
     checkresults(L, nargs, nresults);
     func = L->top - (nargs + 1);
 
-    int wasActive = luaC_threadactive(L);
-    l_setbit(L->stackstate, THREAD_ACTIVEBIT);
-    luaC_checkthreadsleep(L);
+    if (FFlag::LuauActivateBeforeExec)
+    {
+        luaD_call(L, func, nresults);
+    }
+    else
+    {
+        int oldactive = luaC_threadactive(L);
+        l_setbit(L->stackstate, THREAD_ACTIVEBIT);
+        luaC_checkthreadsleep(L);
 
-    luaD_call(L, func, nresults);
+        luaD_call(L, func, nresults);
 
-    if (!wasActive)
-        resetbit(L->stackstate, THREAD_ACTIVEBIT);
+        if (!oldactive)
+            resetbit(L->stackstate, THREAD_ACTIVEBIT);
+    }
 
     adjustresults(L, nresults);
     return;
@@ -985,14 +994,21 @@ int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
     c.func = L->top - (nargs + 1); /* function to be called */
     c.nresults = nresults;
 
-    int wasActive = luaC_threadactive(L);
-    l_setbit(L->stackstate, THREAD_ACTIVEBIT);
-    luaC_checkthreadsleep(L);
+    if (FFlag::LuauActivateBeforeExec)
+    {
+        status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
+    }
+    else
+    {
+        int oldactive = luaC_threadactive(L);
+        l_setbit(L->stackstate, THREAD_ACTIVEBIT);
+        luaC_checkthreadsleep(L);
 
-    status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
+        status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
 
-    if (!wasActive)
-        resetbit(L->stackstate, THREAD_ACTIVEBIT);
+        if (!oldactive)
+            resetbit(L->stackstate, THREAD_ACTIVEBIT);
+    }
 
     adjustresults(L, nresults);
     return status;
@@ -1166,7 +1182,7 @@ void lua_concat(lua_State* L, int n)
     return;
 }
 
-void* lua_newuserdata(lua_State* L, size_t sz, int tag)
+void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag)
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     luaC_checkGC(L);
@@ -1251,6 +1267,7 @@ uintptr_t lua_encodepointer(lua_State* L, uintptr_t p)
 
 int lua_ref(lua_State* L, int idx)
 {
+    api_check(L, idx != LUA_REGISTRYINDEX); /* idx is a stack index for value */
     int ref = LUA_REFNIL;
     global_State* g = L->global;
     StkId p = index2adr(L, idx);

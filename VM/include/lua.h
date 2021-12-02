@@ -189,7 +189,7 @@ LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
 LUA_API int lua_getreadonly(lua_State* L, int idx);
 LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
-LUA_API void* lua_newuserdata(lua_State* L, size_t sz, int tag);
+LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
 LUA_API void lua_getfenv(lua_State* L, int idx);
@@ -288,6 +288,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_pop(L, n) lua_settop(L, -(n)-1)
 
 #define lua_newtable(L) lua_createtable(L, 0, 0)
+#define lua_newuserdata(L, s) lua_newuserdatatagged(L, s, 0)
 
 #define lua_strlen(L, i) lua_objlen(L, (i))
 
