@@ -8,6 +8,7 @@ toc: true
 chunk ::= {stat [`;']} [laststat [`;']]
 block ::= chunk
 stat ::= varlist `=' explist |
+    var compoundop exp |
     functioncall |
     do block end |
     while exp do block end |
@@ -17,9 +18,10 @@ stat ::= varlist `=' explist |
     for namelist in explist do block end |
     function funcname funcbody |
     local function Name funcbody |
-    local namelist [`=' explist]
+    local namelist [`=' explist] |
+    [export] type Name [`<' varlist `>'] `=' typeannotation
 
-laststat ::= return [explist] | break
+laststat ::= return [explist] | break | continue
 
 funcname ::= Name {`.' Name} [`:' Name]
 funcbody ::= `(' [parlist] `)' [`:' ReturnType] block end
@@ -34,6 +36,7 @@ asexp ::= simpleexp [`::' typeannotation]
 simpleexp ::= NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
 args ::=  `(' [explist] `)' | tableconstructor | String
 
+compoundop :: `+=' | `-=' | `*=' | `/=' | `%=' | `^=' | `..='
 binop ::= `+' | `-' | `*' | `/' | `^' | `%' | `..' | `<' | `<=' | `>' | `>=' | `==' | `~=' | and | or
 unop ::= `-' | not | `#´
 
