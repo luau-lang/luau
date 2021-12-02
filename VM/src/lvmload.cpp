@@ -9,6 +9,7 @@
 #include "lgc.h"
 #include "lmem.h"
 #include "lbytecode.h"
+#include "lapi.h"
 
 #include <string.h>
 
@@ -162,9 +163,8 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     size_t GCthreshold = L->global->GCthreshold;
     L->global->GCthreshold = SIZE_MAX;
 
-    // env is 0 for current environment and a stack relative index otherwise
-    LUAU_ASSERT(env <= 0 && L->top - L->base >= -env);
-    Table* envt = (env == 0) ? hvalue(gt(L)) : hvalue(L->top + env);
+    // env is 0 for current environment and a stack index otherwise
+    Table* envt = (env == 0) ? hvalue(gt(L)) : hvalue(luaA_toobject(L, env));
 
     TString* source = luaS_new(L, chunkname);
 

@@ -19,19 +19,6 @@ static const char* mainModuleName = "MainModule";
 namespace Luau
 {
 
-std::optional<ModuleName> TestFileResolver::fromAstFragment(AstExpr* expr) const
-{
-    auto g = expr->as<AstExprGlobal>();
-    if (!g)
-        return std::nullopt;
-
-    std::string_view value = g->name.value;
-    if (value == "game" || value == "Game" || value == "workspace" || value == "Workspace" || value == "script" || value == "Script")
-        return ModuleName(value);
-
-    return std::nullopt;
-}
-
 std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr)
 {
     if (AstExprGlobal* g = expr->as<AstExprGlobal>())
@@ -76,24 +63,6 @@ std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* cont
             if (func == "GetService" && context->name == "game")
                 return ModuleInfo{"game/" + std::string(index->value.data, index->value.size)};
         }
-    }
-
-    return std::nullopt;
-}
-
-ModuleName TestFileResolver::concat(const ModuleName& lhs, std::string_view rhs) const
-{
-    return lhs + "/" + ModuleName(rhs);
-}
-
-std::optional<ModuleName> TestFileResolver::getParentModuleName(const ModuleName& name) const
-{
-    std::string_view view = name;
-    const size_t lastSeparatorIndex = view.find_last_of('/');
-
-    if (lastSeparatorIndex != std::string_view::npos)
-    {
-        return ModuleName(view.substr(0, lastSeparatorIndex));
     }
 
     return std::nullopt;
@@ -322,6 +291,13 @@ std::optional<TypeId> Fixture::findTypeAtPosition(Position position)
     ModulePtr module = getMainModule();
     SourceModule* sourceModule = getMainSourceModule();
     return Luau::findTypeAtPosition(*module, *sourceModule, position);
+}
+
+std::optional<TypeId> Fixture::findExpectedTypeAtPosition(Position position)
+{
+    ModulePtr module = getMainModule();
+    SourceModule* sourceModule = getMainSourceModule();
+    return Luau::findExpectedTypeAtPosition(*module, *sourceModule, position);
 }
 
 TypeId Fixture::requireTypeAtPosition(Position position)

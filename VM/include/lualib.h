@@ -25,10 +25,16 @@ LUALIB_API const char* luaL_optlstring(lua_State* L, int numArg, const char* def
 LUALIB_API double luaL_checknumber(lua_State* L, int numArg);
 LUALIB_API double luaL_optnumber(lua_State* L, int nArg, double def);
 
+LUALIB_API int luaL_checkboolean(lua_State* L, int narg);
+LUALIB_API int luaL_optboolean(lua_State* L, int narg, int def);
+
 LUALIB_API int luaL_checkinteger(lua_State* L, int numArg);
 LUALIB_API int luaL_optinteger(lua_State* L, int nArg, int def);
 LUALIB_API unsigned luaL_checkunsigned(lua_State* L, int numArg);
 LUALIB_API unsigned luaL_optunsigned(lua_State* L, int numArg, unsigned def);
+
+LUALIB_API const float* luaL_checkvector(lua_State* L, int narg);
+LUALIB_API const float* luaL_optvector(lua_State* L, int narg, const float* def);
 
 LUALIB_API void luaL_checkstack(lua_State* L, int sz, const char* msg);
 LUALIB_API void luaL_checktype(lua_State* L, int narg, int t);

@@ -385,8 +385,7 @@ static int math_sign(lua_State* L)
 
 static int math_round(lua_State* L)
 {
-    double v = luaL_checknumber(L, 1);
-    lua_pushnumber(L, round(v));
+    lua_pushnumber(L, round(luaL_checknumber(L, 1)));
     return 1;
 }
 
@@ -429,7 +428,7 @@ static const luaL_Reg mathlib[] = {
 /*
 ** Open math library
 */
-LUALIB_API int luaopen_math(lua_State* L)
+int luaopen_math(lua_State* L)
 {
     uint64_t seed = uintptr_t(L);
     seed ^= time(NULL);

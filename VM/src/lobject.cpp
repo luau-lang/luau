@@ -15,7 +15,7 @@
 
 
 
-const TValue luaO_nilobject_ = {{NULL}, LUA_TNIL};
+const TValue luaO_nilobject_ = {{NULL}, {0}, LUA_TNIL};
 
 int luaO_log2(unsigned int x)
 {

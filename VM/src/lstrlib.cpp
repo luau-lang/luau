@@ -1657,7 +1657,7 @@ static void createmetatable(lua_State* L)
 /*
 ** Open string library
 */
-LUALIB_API int luaopen_string(lua_State* L)
+int luaopen_string(lua_State* L)
 {
     luaL_register(L, LUA_STRLIBNAME, strlib);
     createmetatable(L);

@@ -21,6 +21,7 @@
 #define LUA_ENVIRONINDEX (-10001)
 #define LUA_GLOBALSINDEX (-10002)
 #define lua_upvalueindex(i) (LUA_GLOBALSINDEX - (i))
+#define lua_ispseudo(i) ((i) <= LUA_REGISTRYINDEX)
 
 /* thread status; 0 is OK */
 enum lua_Status
@@ -108,6 +109,7 @@ LUA_API int lua_isthreadreset(lua_State* L);
 /*
 ** basic stack manipulation
 */
+LUA_API int lua_absindex(lua_State* L, int idx);
 LUA_API int lua_gettop(lua_State* L);
 LUA_API void lua_settop(lua_State* L, int idx);
 LUA_API void lua_pushvalue(lua_State* L, int idx);
@@ -159,7 +161,11 @@ LUA_API void lua_pushnil(lua_State* L);
 LUA_API void lua_pushnumber(lua_State* L, double n);
 LUA_API void lua_pushinteger(lua_State* L, int n);
 LUA_API void lua_pushunsigned(lua_State* L, unsigned n);
+#if LUA_VECTOR_SIZE == 4
+LUA_API void lua_pushvector(lua_State* L, float x, float y, float z, float w);
+#else
 LUA_API void lua_pushvector(lua_State* L, float x, float y, float z);
+#endif
 LUA_API void lua_pushlstring(lua_State* L, const char* s, size_t l);
 LUA_API void lua_pushstring(lua_State* L, const char* s);
 LUA_API const char* lua_pushvfstring(lua_State* L, const char* fmt, va_list argp);
@@ -183,7 +189,7 @@ LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
 LUA_API int lua_getreadonly(lua_State* L, int idx);
 LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
-LUA_API void* lua_newuserdata(lua_State* L, size_t sz, int tag);
+LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
 LUA_API void lua_getfenv(lua_State* L, int idx);
@@ -227,6 +233,7 @@ enum lua_GCOp
     LUA_GCRESTART,
     LUA_GCCOLLECT,
     LUA_GCCOUNT,
+    LUA_GCCOUNTB,
     LUA_GCISRUNNING,
 
     // garbage collection is handled by 'assists' that perform some amount of GC work matching pace of allocation
@@ -281,6 +288,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_pop(L, n) lua_settop(L, -(n)-1)
 
 #define lua_newtable(L) lua_createtable(L, 0, 0)
+#define lua_newuserdata(L, s) lua_newuserdatatagged(L, s, 0)
 
 #define lua_strlen(L, i) lua_objlen(L, (i))
 
@@ -289,6 +297,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_islightuserdata(L, n) (lua_type(L, (n)) == LUA_TLIGHTUSERDATA)
 #define lua_isnil(L, n) (lua_type(L, (n)) == LUA_TNIL)
 #define lua_isboolean(L, n) (lua_type(L, (n)) == LUA_TBOOLEAN)
+#define lua_isvector(L, n) (lua_type(L, (n)) == LUA_TVECTOR)
 #define lua_isthread(L, n) (lua_type(L, (n)) == LUA_TTHREAD)
 #define lua_isnone(L, n) (lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)

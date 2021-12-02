@@ -54,6 +54,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Symbol.h
+    Analysis/include/Luau/ToDot.h
     Analysis/include/Luau/TopoSortStatements.h
     Analysis/include/Luau/ToString.h
     Analysis/include/Luau/Transpiler.h
@@ -86,6 +87,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Scope.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Symbol.cpp
+    Analysis/src/ToDot.cpp
     Analysis/src/TopoSortStatements.cpp
     Analysis/src/ToString.cpp
     Analysis/src/Transpiler.cpp
@@ -118,6 +120,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ldo.cpp
     VM/src/lfunc.cpp
     VM/src/lgc.cpp
+    VM/src/lgcdebug.cpp
     VM/src/linit.cpp
     VM/src/lmathlib.cpp
     VM/src/lmem.cpp
@@ -194,6 +197,7 @@ if(TARGET Luau.UnitTest)
         tests/RequireTracer.test.cpp
         tests/StringUtils.test.cpp
         tests/Symbol.test.cpp
+        tests/ToDot.test.cpp
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
         tests/Transpiler.test.cpp
@@ -223,4 +227,10 @@ if(TARGET Luau.Conformance)
     target_sources(Luau.Conformance PRIVATE
         tests/Conformance.test.cpp
         tests/main.cpp)
+endif()
+
+if(TARGET Luau.Web)
+    # Luau.Web Sources
+    target_sources(Luau.Web PRIVATE
+        CLI/Web.cpp)
 endif()

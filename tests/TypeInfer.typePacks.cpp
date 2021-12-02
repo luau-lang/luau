@@ -296,9 +296,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type Packed<T...> = (T...) -> T...
 local a: Packed<>
@@ -360,9 +357,6 @@ local c: Packed<string, number, boolean>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_import")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     fileResolver.source["game/A"] = R"(
 export type Packed<T, U...> = { a: T, b: (U...) -> () }
 return {}
@@ -393,9 +387,6 @@ local d: { a: typeof(c) }
 
 TEST_CASE_FIXTURE(Fixture, "type_pack_type_parameters")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     fileResolver.source["game/A"] = R"(
 export type Packed<T, U...> = { a: T, b: (U...) -> () }
 return {}
@@ -431,9 +422,6 @@ type C<X...> = Import.Packed<string, (number, X...)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_nested")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type Packed1<T...> = (T...) -> (T...)
 type Packed2<T...> = (Packed1<T...>, T...) -> (Packed1<T...>, T...)
@@ -452,9 +440,6 @@ type Packed4<T...> = (Packed3<T...>, T...) -> (Packed3<T...>, T...)
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_variadic")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type X<T...> = (T...) -> (string, T...)
 
@@ -470,9 +455,6 @@ type E = X<(number, ...string)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_multi")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type Y<T..., U...> = (T...) -> (U...)
 type A<S...> = Y<S..., S...>
@@ -501,9 +483,6 @@ type I<S..., R...> = W<number, (string, S...), R...>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type X<T...> = (T...) -> (T...)
 
@@ -527,9 +506,6 @@ type F = X<(string, ...number)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type Y<T..., U...> = (T...) -> (U...)
 
@@ -549,9 +525,6 @@ type D<X...> = Y<X..., (number, string, X...)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi_tostring")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type Y<T..., U...> = { f: (T...) -> (U...) }
 
@@ -567,9 +540,6 @@ local b: Y<(), ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_backwards_compatible")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type X<T> = () -> T
 type Y<T, U> = (T) -> U
@@ -588,9 +558,6 @@ type C = Y<(number), boolean>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_errors")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     CheckResult result = check(R"(
 type Packed<T, U, V...> = (T, U) -> (V...)
 local b: Packed<number>

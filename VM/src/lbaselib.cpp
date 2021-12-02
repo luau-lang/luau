@@ -401,7 +401,7 @@ static int luaB_newproxy(lua_State* L)
 
     bool needsmt = lua_toboolean(L, 1);
 
-    lua_newuserdata(L, 0, 0);
+    lua_newuserdata(L, 0);
 
     if (needsmt)
     {
@@ -441,7 +441,7 @@ static void auxopen(lua_State* L, const char* name, lua_CFunction f, lua_CFuncti
     lua_setfield(L, -2, name);
 }
 
-LUALIB_API int luaopen_base(lua_State* L)
+int luaopen_base(lua_State* L)
 {
     /* set global _G */
     lua_pushvalue(L, LUA_GLOBALSINDEX);

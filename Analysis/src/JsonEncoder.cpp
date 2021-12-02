@@ -5,8 +5,6 @@
 #include "Luau/StringUtils.h"
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauTypeAliasPacks)
-
 namespace Luau
 {
 
@@ -615,12 +613,7 @@ struct AstJsonEncoder : public AstVisitor
         writeNode(node, "AstStatTypeAlias", [&]() {
             PROP(name);
             PROP(generics);
-
-            if (FFlag::LuauTypeAliasPacks)
-            {
-                PROP(genericPacks);
-            }
-
+            PROP(genericPacks);
             PROP(type);
             PROP(exported);
         });

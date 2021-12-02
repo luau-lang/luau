@@ -441,7 +441,8 @@ assert((function() a = {} b = {} mt = { __eq = function(l, r) return #l == #r en
 assert((function() a = {} b = {} function eq(l, r) return #l == #r end setmetatable(a, {__eq = eq}) setmetatable(b, {__eq = eq}) return concat(a == b, a ~= b) end)() == "true,false")
 assert((function() a = {} b = {} setmetatable(a, {__eq = function(l, r) return #l == #r end}) setmetatable(b, {__eq = function(l, r) return #l == #r end}) return concat(a == b, a ~= b) end)() == "false,true")
 
--- userdata, reference equality (no mt)
+-- userdata, reference equality (no mt or mt.__eq)
+assert((function() a = newproxy() return concat(a == newproxy(),a ~= newproxy()) end)() == "false,true")
 assert((function() a = newproxy(true) return concat(a == newproxy(true),a ~= newproxy(true)) end)() == "false,true")
 
 -- rawequal
@@ -876,4 +877,4 @@ assert(concat(typeof(5), typeof(nil), typeof({}), typeof(newproxy())) == "number
 
 testgetfenv() -- DONT MOVE THIS LINE
 
-return'OK'
+return 'OK'

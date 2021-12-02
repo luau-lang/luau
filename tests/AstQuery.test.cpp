@@ -78,3 +78,26 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
 }
 
 TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("AstQuery");
+
+TEST_CASE_FIXTURE(Fixture, "last_argument_function_call_type")
+{
+    ScopedFastFlag luauTailArgumentTypeInfo{"LuauTailArgumentTypeInfo", true};
+
+    check(R"(
+local function foo() return 2 end
+local function bar(a: number) return -a end
+bar(foo())
+    )");
+
+    auto oty = findTypeAtPosition(Position(3, 7));
+    REQUIRE(oty);
+    CHECK_EQ("number", toString(*oty));
+
+    auto expectedOty = findExpectedTypeAtPosition(Position(3, 7));
+    REQUIRE(expectedOty);
+    CHECK_EQ("number", toString(*expectedOty));
+}
+
+TEST_SUITE_END();

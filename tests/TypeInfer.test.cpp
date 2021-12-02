@@ -4779,4 +4779,24 @@ local bar = foo.nutrition + 100
     // CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'foo'", toString(result.errors[1]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "require_failed_module")
+{
+    ScopedFastFlag luauModuleRequireErrorPack{"LuauModuleRequireErrorPack", true};
+
+    fileResolver.source["game/A"] = R"(
+return unfortunately()
+    )";
+
+    CheckResult aResult = frontend.check("game/A");
+    LUAU_REQUIRE_ERRORS(aResult);
+
+    CheckResult result = check(R"(
+local ModuleA = require(game.A)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> oty = requireType("ModuleA");
+    CHECK_EQ("*unknown*", toString(*oty));
+}
+
 TEST_SUITE_END();

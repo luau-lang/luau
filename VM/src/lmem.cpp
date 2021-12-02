@@ -33,11 +33,17 @@
 #define ABISWITCH(x64, ms32, gcc32) (sizeof(void*) == 8 ? x64 : ms32)
 #endif
 
+#if LUA_VECTOR_SIZE == 4
+static_assert(sizeof(TValue) == ABISWITCH(24, 24, 24), "size mismatch for value");
+static_assert(sizeof(LuaNode) == ABISWITCH(48, 48, 48), "size mismatch for table entry");
+#else
 static_assert(sizeof(TValue) == ABISWITCH(16, 16, 16), "size mismatch for value");
+static_assert(sizeof(LuaNode) == ABISWITCH(32, 32, 32), "size mismatch for table entry");
+#endif
+
 static_assert(offsetof(TString, data) == ABISWITCH(24, 20, 20), "size mismatch for string header");
 static_assert(offsetof(Udata, data) == ABISWITCH(24, 16, 16), "size mismatch for userdata header");
 static_assert(sizeof(Table) == ABISWITCH(56, 36, 36), "size mismatch for table header");
-static_assert(sizeof(LuaNode) == ABISWITCH(32, 32, 32), "size mismatch for table entry");
 
 const size_t kSizeClasses = LUA_SIZECLASSES;
 const size_t kMaxSmallSize = 512;

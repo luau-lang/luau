@@ -67,44 +67,42 @@ static int lua_vector(lua_State* L)
     double y = luaL_checknumber(L, 2);
     double z = luaL_checknumber(L, 3);
 
+#if LUA_VECTOR_SIZE == 4
+    double w = luaL_optnumber(L, 4, 0.0);
+    lua_pushvector(L, float(x), float(y), float(z), float(w));
+#else
     lua_pushvector(L, float(x), float(y), float(z));
+#endif
     return 1;
 }
 
 static int lua_vector_dot(lua_State* L)
 {
-    const float* a = lua_tovector(L, 1);
-    const float* b = lua_tovector(L, 2);
+    const float* a = luaL_checkvector(L, 1);
+    const float* b = luaL_checkvector(L, 2);
 
-    if (a && b)
-    {
-        lua_pushnumber(L, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
-        return 1;
-    }
-
-    throw std::runtime_error("invalid arguments to vector:Dot");
+    lua_pushnumber(L, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+    return 1;
 }
 
 static int lua_vector_index(lua_State* L)
 {
+    const float* v = luaL_checkvector(L, 1);
     const char* name = luaL_checkstring(L, 2);
 
-    if (const float* v = lua_tovector(L, 1))
+    if (strcmp(name, "Magnitude") == 0)
     {
-        if (strcmp(name, "Magnitude") == 0)
-        {
-            lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
-            return 1;
-        }
-
-        if (strcmp(name, "Dot") == 0)
-        {
-            lua_pushcfunction(L, lua_vector_dot, "Dot");
-            return 1;
-        }
+        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+        return 1;
     }
 
-    throw std::runtime_error(Luau::format("%s is not a valid member of vector", name));
+    if (strcmp(name, "Dot") == 0)
+    {
+        lua_pushcfunction(L, lua_vector_dot, "Dot");
+        return 1;
+    }
+
+    luaL_error(L, "%s is not a valid member of vector", name);
 }
 
 static int lua_vector_namecall(lua_State* L)
@@ -115,7 +113,7 @@ static int lua_vector_namecall(lua_State* L)
             return lua_vector_dot(L);
     }
 
-    throw std::runtime_error(Luau::format("%s is not a valid method of vector", luaL_checkstring(L, 1)));
+    luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
 }
 
 int lua_silence(lua_State* L)
@@ -373,11 +371,17 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
+    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
+
     runConformance("vector.lua", [](lua_State* L) {
         lua_pushcfunction(L, lua_vector, "vector");
         lua_setglobal(L, "vector");
 
+#if LUA_VECTOR_SIZE == 4
+        lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+#else
         lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+#endif
         luaL_newmetatable(L, "vector");
 
         lua_pushstring(L, "__index");
@@ -504,6 +508,9 @@ TEST_CASE("Debugger")
             cb->debugbreak = [](lua_State* L, lua_Debug* ar) {
                 breakhits++;
 
+                // make sure we can trace the stack for every breakpoint we hit
+                lua_debugtrace(L);
+
                 // for every breakpoint, we break on the first invocation and continue on second
                 // this allows us to easily step off breakpoints
                 // (real implementaiton may require singlestepping)
@@ -524,7 +531,7 @@ TEST_CASE("Debugger")
                 L,
                 [](lua_State* L) -> int {
                     int line = luaL_checkinteger(L, 1);
-                    bool enabled = lua_isboolean(L, 2) ? lua_toboolean(L, 2) : true;
+                    bool enabled = luaL_optboolean(L, 2, true);
 
                     lua_Debug ar = {};
                     lua_getinfo(L, 1, "f", &ar);
@@ -699,21 +706,52 @@ TEST_CASE("ApiFunctionCalls")
     StateRef globalState = runConformance("apicalls.lua");
     lua_State* L = globalState.get();
 
-    lua_getfield(L, LUA_GLOBALSINDEX, "add");
-    lua_pushnumber(L, 40);
-    lua_pushnumber(L, 2);
-    lua_call(L, 2, 1);
-    CHECK(lua_isnumber(L, -1));
-    CHECK(lua_tonumber(L, -1) == 42);
-    lua_pop(L, 1);
+    // lua_call
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_pushnumber(L, 40);
+        lua_pushnumber(L, 2);
+        lua_call(L, 2, 1);
+        CHECK(lua_isnumber(L, -1));
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
 
-    lua_getfield(L, LUA_GLOBALSINDEX, "add");
-    lua_pushnumber(L, 40);
-    lua_pushnumber(L, 2);
-    lua_pcall(L, 2, 1, 0);
-    CHECK(lua_isnumber(L, -1));
-    CHECK(lua_tonumber(L, -1) == 42);
-    lua_pop(L, 1);
+    // lua_pcall
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_pushnumber(L, 40);
+        lua_pushnumber(L, 2);
+        lua_pcall(L, 2, 1, 0);
+        CHECK(lua_isnumber(L, -1));
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
+
+    // lua_equal with a sleeping thread wake up
+    {
+        ScopedFastFlag luauActivateBeforeExec("LuauActivateBeforeExec", true);
+
+        lua_State* L2 = lua_newthread(L);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_pushnumber(L2, 42);
+        lua_pcall(L2, 1, 1, 0);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_pushnumber(L2, 42);
+        lua_pcall(L2, 1, 1, 0);
+
+        // Reset GC
+        lua_gc(L2, LUA_GCCOLLECT, 0);
+
+        // Try to mark 'L2' as sleeping
+        // Can't control GC precisely, even in tests
+        lua_gc(L2, LUA_GCSTEP, 8);
+
+        CHECK(lua_equal(L2, -1, -2) == 1);
+        lua_pop(L2, 2);
+    }
 }
 
 static bool endsWith(const std::string& str, const std::string& suffix)
@@ -727,8 +765,6 @@ static bool endsWith(const std::string& str, const std::string& suffix)
 #if !LUA_USE_LONGJMP
 TEST_CASE("ExceptionObject")
 {
-    ScopedFastFlag sff("LuauExceptionMessageFix", true);
-
     struct ExceptionResult
     {
         bool exceptionGenerated;

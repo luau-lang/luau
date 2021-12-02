@@ -283,7 +283,7 @@ static const luaL_Reg funcs[] = {
     {NULL, NULL},
 };
 
-LUALIB_API int luaopen_utf8(lua_State* L)
+int luaopen_utf8(lua_State* L)
 {
     luaL_register(L, LUA_UTF8LIBNAME, funcs);
 

@@ -13,8 +13,6 @@
 
 #include <string>
 
-LUAU_FASTFLAG(LuauTypeAliasPacks)
-
 static char* allocateString(Luau::Allocator& allocator, std::string_view contents)
 {
     char* result = (char*)allocator.allocate(contents.size() + 1);
@@ -131,12 +129,9 @@ public:
                 parameters.data[i] = {Luau::visit(*this, ttv.instantiatedTypeParams[i]->ty), {}};
             }
 
-            if (FFlag::LuauTypeAliasPacks)
+            for (size_t i = 0; i < ttv.instantiatedTypePackParams.size(); ++i)
             {
-                for (size_t i = 0; i < ttv.instantiatedTypePackParams.size(); ++i)
-                {
-                    parameters.data[i] = {{}, rehydrate(ttv.instantiatedTypePackParams[i])};
-                }
+                parameters.data[i] = {{}, rehydrate(ttv.instantiatedTypePackParams[i])};
             }
 
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName(ttv.name->c_str()), parameters.size != 0, parameters);
@@ -250,20 +245,7 @@ public:
 
         AstTypePack* argTailAnnotation = nullptr;
         if (argTail)
-        {
-            if (FFlag::LuauTypeAliasPacks)
-            {
-                argTailAnnotation = rehydrate(*argTail);
-            }
-            else
-            {
-                TypePackId tail = *argTail;
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(tail))
-                {
-                    argTailAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*this, vtp->ty->ty));
-                }
-            }
-        }
+            argTailAnnotation = rehydrate(*argTail);
 
         AstArray<std::optional<AstArgumentName>> argNames;
         argNames.size = ftv.argNames.size();
@@ -292,20 +274,7 @@ public:
 
         AstTypePack* retTailAnnotation = nullptr;
         if (retTail)
-        {
-            if (FFlag::LuauTypeAliasPacks)
-            {
-                retTailAnnotation = rehydrate(*retTail);
-            }
-            else
-            {
-                TypePackId tail = *retTail;
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(tail))
-                {
-                    retTailAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*this, vtp->ty->ty));
-                }
-            }
-        }
+            retTailAnnotation = rehydrate(*retTail);
 
         return allocator->alloc<AstTypeFunction>(
             Location(), generics, genericPacks, AstTypeList{argTypes, argTailAnnotation}, argNames, AstTypeList{returnTypes, retTailAnnotation});
@@ -518,18 +487,7 @@ public:
                 const auto& [v, tail] = flatten(ret);
 
                 if (tail)
-                {
-                    if (FFlag::LuauTypeAliasPacks)
-                    {
-                        variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
-                    }
-                    else
-                    {
-                        TypePackId tailPack = *tail;
-                        if (const VariadicTypePack* vtp = get<VariadicTypePack>(tailPack))
-                            variadicAnnotation = allocator->alloc<AstTypePackVariadic>(Location(), typeAst(vtp->ty));
-                    }
-                }
+                    variadicAnnotation = TypeRehydrationVisitor(allocator, &syntheticNames).rehydrate(*tail);
 
                 fn->returnAnnotation = AstTypeList{typeAstPack(ret), variadicAnnotation};
             }

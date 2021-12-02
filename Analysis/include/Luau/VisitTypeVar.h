@@ -5,8 +5,6 @@
 #include "Luau/TypeVar.h"
 #include "Luau/TypePack.h"
 
-LUAU_FASTFLAG(LuauCacheUnifyTableResults)
-
 namespace Luau
 {
 
@@ -101,7 +99,7 @@ void visit(TypeId ty, F& f, Set& seen)
         // Some visitors want to see bound tables, that's why we visit the original type
         if (apply(ty, *ttv, seen, f))
         {
-            if (FFlag::LuauCacheUnifyTableResults && ttv->boundTo)
+            if (ttv->boundTo)
             {
                 visit(*ttv->boundTo, f, seen);
             }

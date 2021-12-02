@@ -23,8 +23,10 @@ const bool kFuzzCompiler = true;
 const bool kFuzzLinter = true;
 const bool kFuzzTypeck = true;
 const bool kFuzzVM = true;
-const bool kFuzzTypes = true;
 const bool kFuzzTranspile = true;
+
+// Should we generate type annotations?
+const bool kFuzzTypes = true;
 
 static_assert(!(kFuzzVM && !kFuzzCompiler), "VM requires the compiler!");
 
