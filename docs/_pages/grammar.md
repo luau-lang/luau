@@ -4,7 +4,7 @@ title: Grammar
 toc: true
 ---
 
-This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes Name, String and Number
+This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes String and Number
 is available in the [syntax section](syntax).
 
 ```
@@ -36,9 +36,9 @@ namelist ::= NAME {`,' NAME}
 binding ::= NAME [`:' TypeAnnotation]
 bindinglist ::= (binding | `...') [`,' bindinglist]
 
-subexpr ::= (asexp | unop subexpr) { binop subexpr }
+exp ::= (asexp | unop exp) { binop exp }
 ifelseexp ::= if exp then exp {elseif exp then exp} else exp
-prefixexp ::= NAME | '(' expr ')'
+prefixexp ::= NAME | '(' exp ')'
 primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 asexp ::= simpleexp [`::' TypeAnnotation]
 simpleexp ::= NUMBER | STRING | nil | true | false | ... | tableconstructor | function body | primaryexp | ifelseexp
@@ -51,12 +51,12 @@ fieldsep ::= `,' | `;'
 
 compoundop :: `+=' | `-=' | `*=' | `/=' | `%=' | `^=' | `..='
 binop ::= `+' | `-' | `*' | `/' | `^' | `%' | `..' | `<' | `<=' | `>' | `>=' | `==' | `~=' | and | or
-unop ::= `-' | not | `#´
+unop ::= `-' | not | `#'
 
 SimpleTypeAnnotation ::=
     nil |
     NAME[`.' NAME] [ `<' TypeAnnotation [`,' ...] `>' ] |
-    `typeof' `(' expr `)' |
+    `typeof' `(' exp `)' |
     `{' [PropList] `}' |
     FunctionTypeAnnotation
 
