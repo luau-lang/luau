@@ -19,7 +19,7 @@ stat ::= varlist `=' explist |
     function funcname funcbody |
     local function Name funcbody |
     local namelist [`=' explist] |
-    [export] type Name [`<' varlist `>'] `=' typeannotation
+    [export] type Name [`<' GenericTypeList `>'] `=' typeannotation
 
 laststat ::= return [explist] | break | continue
 
@@ -52,8 +52,9 @@ typeannotation ::=
       `(' [TypeList] `)' `->` ReturnType
       `typeof` typeannotation
 
-typeannotation ::= nil | Name[`.' Name] [ `<' typeannotation [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}' | [`<' varlist `>'] `(' [TypeList] `)' `->` ReturnType
+typeannotation ::= nil | Name[`.' Name] [ `<' typeannotation [`,' ...] `>' ] | `typeof' `(' expr `)' | `{' [PropList] `}' | [`<' GenericTypeList `>'] `(' [TypeList] `)' `->` ReturnType
 
+GenericTypeList ::= NAME [`...'] {`,' NAME}
 TypeList ::= TypeAnnotation [`,' TypeList] | ...TypeAnnotation
 ReturnType ::= TypeAnnotation | `(' TypeList `)'
 TableIndexer ::= `[' TypeAnnotation `]' `:' TypeAnnotation
@@ -61,6 +62,6 @@ TableProp ::= Name `:' TypeAnnotation
 TablePropOrIndexer ::= TableProp | TableIndexer
 PropList ::= TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
 TableTypeAnnotation ::= `{' PropList `}'
-FunctionTypeAnnotation ::= [`<' varlist `>'] `(' [TypeList] `)' `->` ReturnType
+FunctionTypeAnnotation ::= [`<' GenericTypeList `>'] `(' [TypeList] `)' `->` ReturnType
 
 ```
