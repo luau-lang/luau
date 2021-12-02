@@ -33,10 +33,11 @@ binding ::= Name [`:' typeannotation]
 bindinglist ::= (binding | `...') [`,' bindinglist]
 
 subexpr ::= (asexp | unop subexpr) { binop subexpr }
+ifelseexp ::= if exp then exp {elseif exp then exp} else exp
 prefixexp ::= NAME | '(' expr ')'
 primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 asexp ::= simpleexp [`::' typeannotation]
-simpleexp ::= NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
+simpleexp ::= NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp | ifelseexp
 funcargs ::=  `(' [explist] `)' | tableconstructor | String
 
 compoundop :: `+=' | `-=' | `*=' | `/=' | `%=' | `^=' | `..='
