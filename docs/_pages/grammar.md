@@ -15,10 +15,10 @@ stat ::= varlist `=' explist |
     repeat block until exp |
     if exp then block {elseif exp then block} [else block] end |
     for binding `=' exp `,' exp [`,' exp] do block end |
-    for namelist in explist do block end |
+    for bindinglist in explist do block end |
     function funcname funcbody |
     local function Name funcbody |
-    local namelist [`=' explist] |
+    local bindinglist [`=' explist] |
     [export] type Name [`<' GenericTypeList `>'] `=' typeannotation
 
 laststat ::= return [explist] | break | continue
