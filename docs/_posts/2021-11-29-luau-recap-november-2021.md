@@ -58,18 +58,7 @@ type X = Fn<(number, string), (string, number)>
 
 For more information, check out [the RFC for this feature](https://github.com/Roblox/luau/blob/f86d4c6995418e489a55be0100159009492778ff/rfcs/syntax-type-alias-type-packs.md).
 
-## Infallible type checking
-
-
 ## Library improvements
-
-```lua
-function coroutine.close(co: thread)
-```
-
-Given a suspended coroutine, _closes_ the coroutine, changing its state to `dead`. A closed coroutine cannot be resumed.
-
-See [the RFC for this function](https://github.com/Roblox/luau/blob/f86d4c6995418e489a55be0100159009492778ff/rfcs/function-coroutine-close.md) for more information.
 
 ```lua
 function bit32.countlz(n: number): number
