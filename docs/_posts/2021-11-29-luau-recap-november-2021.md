@@ -57,7 +57,7 @@ When Luau is not retaining type graphs, the type checker now discards more of a 
 
 ## Bug fixes
 
-We've fixed a bug causing Luau unit tests on ARM systems to fail, rooted in an issue in `string.pack`.
+We've fixed a bug where on ARM systems (mobile), packing negative numbers using unsigned formats in `string.pack` would produce the wrong result.
 
 We've fixed an issue with type aliases that reuse generic type names that caused them to be instantiated incorrectly.
 
