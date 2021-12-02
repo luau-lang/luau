@@ -34,6 +34,9 @@ asexp ::= simpleexp [`::' typeannotation]
 simpleexp ::= NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
 args ::=  `(' [explist] `)' | tableconstructor | String
 
+binop ::= `+' | `-' | `*' | `/' | `^' | `%' | `..' | `<' | `<=' | `>' | `>=' | `==' | `~=' | and | or
+unop ::= `-' | not | `#´
+
 tableconstructor ::= `{' [fieldlist] `}'
 fieldlist ::= field {fieldsep field} [fieldsep]
 field ::= `[' exp `]' `=' exp | Name `=' exp | exp
