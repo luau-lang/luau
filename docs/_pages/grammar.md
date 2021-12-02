@@ -27,6 +27,7 @@ funcname ::= Name {`.' Name} [`:' Name]
 funcbody ::= `(' [parlist] `)' [`:' ReturnType] block end
 parlist ::= bindinglist [`,' `...'] | `...'
 explist ::= {exp `,'} exp
+namelist ::= Name {`,' Name}
 bindinglist ::= (binding | `...') [`,' bindinglist]
 
 subexpr ::= (asexp | unop subexpr) { binop subexpr }
