@@ -17,19 +17,20 @@ stat ::= varlist `=' explist |
     for binding `=' exp `,' exp [`,' exp] do block end |
     for bindinglist in explist do block end |
     function funcname funcbody |
-    local function Name funcbody |
+    local function NAME funcbody |
     local bindinglist [`=' explist] |
-    [export] type Name [`<' GenericTypeList `>'] `=' TypeAnnotation
+    [export] type NAME [`<' GenericTypeList `>'] `=' TypeAnnotation
 
 laststat ::= return [explist] | break | continue
 
-funcname ::= Name {`.' Name} [`:' Name]
+funcname ::= NAME {`.' NAME} [`:' NAME]
 funcbody ::= `(' [parlist] `)' [`:' ReturnType] block end
 parlist ::= bindinglist [`,' `...'] | `...'
-explist ::= {exp `,'} exp
-namelist ::= Name {`,' Name}
 
-binding ::= Name [`:' TypeAnnotation]
+explist ::= {exp `,'} exp
+namelist ::= NAME {`,' NAME}
+
+binding ::= NAME [`:' TypeAnnotation]
 bindinglist ::= (binding | `...') [`,' bindinglist]
 
 subexpr ::= (asexp | unop subexpr) { binop subexpr }
@@ -37,21 +38,21 @@ ifelseexp ::= if exp then exp {elseif exp then exp} else exp
 prefixexp ::= NAME | '(' expr ')'
 primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 asexp ::= simpleexp [`::' TypeAnnotation]
-simpleexp ::= NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp | ifelseexp
-funcargs ::=  `(' [explist] `)' | tableconstructor | String
+simpleexp ::= NUMBER | STRING | nil | true | false | ... | tableconstructor | function body | primaryexp | ifelseexp
+funcargs ::=  `(' [explist] `)' | tableconstructor | STRING
+
+tableconstructor ::= `{' [fieldlist] `}'
+fieldlist ::= field {fieldsep field} [fieldsep]
+field ::= `[' exp `]' `=' exp | NAME `=' exp | exp
+fieldsep ::= `,' | `;'
 
 compoundop :: `+=' | `-=' | `*=' | `/=' | `%=' | `^=' | `..='
 binop ::= `+' | `-' | `*' | `/' | `^' | `%' | `..' | `<' | `<=' | `>' | `>=' | `==' | `~=' | and | or
 unop ::= `-' | not | `#´
 
-tableconstructor ::= `{' [fieldlist] `}'
-fieldlist ::= field {fieldsep field} [fieldsep]
-field ::= `[' exp `]' `=' exp | Name `=' exp | exp
-fieldsep ::= `,' | `;'
-
 SimpleTypeAnnotation ::=
     nil |
-    Name[`.' Name] [ `<' TypeAnnotation [`,' ...] `>' ] |
+    NAME[`.' NAME] [ `<' TypeAnnotation [`,' ...] `>' ] |
     `typeof' `(' expr `)' |
     `{' [PropList] `}' |
     FunctionTypeAnnotation
@@ -65,7 +66,7 @@ GenericTypeList ::= NAME [`...'] {`,' NAME}
 TypeList ::= TypeAnnotation [`,' TypeList] | ...TypeAnnotation
 ReturnType ::= TypeAnnotation | `(' TypeList `)'
 TableIndexer ::= `[' TypeAnnotation `]' `:' TypeAnnotation
-TableProp ::= Name `:' TypeAnnotation
+TableProp ::= NAME `:' TypeAnnotation
 TablePropOrIndexer ::= TableProp | TableIndexer
 PropList ::= TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
 TableTypeAnnotation ::= `{' PropList `}'
