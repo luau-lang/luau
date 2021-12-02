@@ -70,7 +70,7 @@ See [the RFC for these functions](https://github.com/Roblox/luau/blob/f86d4c6995
 
 ## Type checking improvements
 
-We have enabled a rewrite of how Luau handles require tracing. This has two main effects: firstly, in strict mode, requires that Luau can't resolve will trigger type errors; secondly, Luau now understands the `FindFirstAncestor` method in require expressions.
+We have enabled a rewrite of how Luau handles `require` tracing. This has two main effects: firstly, in strict mode, `require` statements that Luau can't resolve will trigger type errors; secondly, Luau now understands the `FindFirstAncestor` method in `require` expressions.
 
 Luau now warns when the index to `table.move` is 0, as this is non-idiomatic and performs poorly. If this behavior is intentional, wrap the index in parentheses to suppress the warning.
 
@@ -82,7 +82,7 @@ We have enabled several changes that aim to avoid allocating a new closure objec
 
 When checking union types, we now try possibilities whose synthetic names match. This will speed up type checking unions in cases where synthetic names are populated.
 
-We have also enabled an optimization that shares state in a hot path on the type checker. This will improve type checking performance, and also prevent some 
+We have also enabled an optimization that shares state in a hot path on the type checker. This will improve type checking performance.
 
 The Luau VM now attempts to cache the length of tables' array portion. This change showed a small performance improvement in benchmarks, and should speed up `#` expressions.
 
