@@ -10,8 +10,6 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauTypeAliasPacks)
-
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -787,7 +785,7 @@ struct Printer
 
                 writer.keyword("type");
                 writer.identifier(a->name.value);
-                if (a->generics.size > 0 || (FFlag::LuauTypeAliasPacks && a->genericPacks.size > 0))
+                if (a->generics.size > 0 || a->genericPacks.size > 0)
                 {
                     writer.symbol("<");
                     CommaSeparatorInserter comma(writer);
@@ -798,14 +796,11 @@ struct Printer
                         writer.identifier(o.value);
                     }
 
-                    if (FFlag::LuauTypeAliasPacks)
+                    for (auto o : a->genericPacks)
                     {
-                        for (auto o : a->genericPacks)
-                        {
-                            comma();
-                            writer.identifier(o.value);
-                            writer.symbol("...");
-                        }
+                        comma();
+                        writer.identifier(o.value);
+                        writer.symbol("...");
                     }
 
                     writer.symbol(">");

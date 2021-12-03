@@ -25,15 +25,6 @@ struct TxnLog
     {
     }
 
-    explicit TxnLog(const std::vector<std::pair<TypeId, TypeId>>& ownedSeen)
-        : originalSeenSize(ownedSeen.size())
-        , ownedSeen(ownedSeen)
-        , sharedSeen(nullptr)
-    {
-        // This is deprecated!
-        LUAU_ASSERT(!FFlag::LuauShareTxnSeen);
-    }
-
     TxnLog(const TxnLog&) = delete;
     TxnLog& operator=(const TxnLog&) = delete;
 

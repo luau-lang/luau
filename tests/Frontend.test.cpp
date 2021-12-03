@@ -46,18 +46,6 @@ NaiveModuleResolver naiveModuleResolver;
 
 struct NaiveFileResolver : NullFileResolver
 {
-    std::optional<ModuleName> fromAstFragment(AstExpr* expr) const override
-    {
-        AstExprGlobal* g = expr->as<AstExprGlobal>();
-        if (g && g->name == "Modules")
-            return "Modules";
-
-        if (g && g->name == "game")
-            return "game";
-
-        return std::nullopt;
-    }
-
     std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override
     {
         if (AstExprGlobal* g = expr->as<AstExprGlobal>())
@@ -85,11 +73,6 @@ struct NaiveFileResolver : NullFileResolver
         }
 
         return std::nullopt;
-    }
-
-    ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override
-    {
-        return lhs + "/" + ModuleName(rhs);
     }
 };
 

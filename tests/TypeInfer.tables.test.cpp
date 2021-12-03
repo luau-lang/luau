@@ -2022,4 +2022,74 @@ caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()')");
 }
 
+TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauTableSubtypingVariance", true},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+type Super = { x : number }
+type Sub = { x : number, y: number }
+type HasSuper = { p : Super }
+type HasSub = { p : Sub }
+local a: HasSuper = { p = { x = 5, y = 7 }}
+a.p = { x = 9 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauTableSubtypingVariance", true},
+        {"LuauExtendedTypeMismatchError", true},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+type Super = { x : number }
+type Sub = { x : number, y: number }
+type HasSuper = { p : Super }
+type HasSub = { p : Sub }
+local tmp = { p = { x = 5, y = 7 }}
+local a: HasSuper = tmp
+a.p = { x = 9 }
+-- needs to be an error because
+local y: number = tmp.p.y
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'tmp' could not be converted into 'HasSuper'
+caused by:
+  Property 'p' is not compatible. Table type '{| x: number, y: number |}' not compatible with type 'Super' because the former has extra field 'y')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauTableSubtypingVariance", true},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+type Super = { x : number }
+type Sub = { x : number, y: number }
+type HasSuper = { [string] : Super }
+type HasSub = { [string] : Sub }
+local a: HasSuper = { p = { x = 5, y = 7 }}
+a.p = { x = 9 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

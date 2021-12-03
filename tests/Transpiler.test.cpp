@@ -445,9 +445,6 @@ local a: Import.Type
 
 TEST_CASE_FIXTURE(Fixture, "transpile_type_packs")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     std::string code = R"(
 type Packed<T...> = (T...)->(T...)
 local a: Packed<>

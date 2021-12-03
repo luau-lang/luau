@@ -31,8 +31,6 @@ TEST_SUITE_BEGIN("ProvisionalTests");
  */
 TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-
     const std::string code = R"(
         function f(a)
             if type(a) == "boolean" then

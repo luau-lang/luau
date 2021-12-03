@@ -401,7 +401,7 @@ static int luaB_newproxy(lua_State* L)
 
     bool needsmt = lua_toboolean(L, 1);
 
-    lua_newuserdata(L, 0, 0);
+    lua_newuserdata(L, 0);
 
     if (needsmt)
     {

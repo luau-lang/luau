@@ -297,7 +297,6 @@ private:
 
 private:
     Unifier mkUnifier(const Location& location);
-    Unifier mkUnifier(const std::vector<std::pair<TypeId, TypeId>>& seen, const Location& location);
 
     // These functions are only safe to call when we are in the process of typechecking a module.
 

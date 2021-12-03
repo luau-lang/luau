@@ -508,6 +508,9 @@ TEST_CASE("Debugger")
             cb->debugbreak = [](lua_State* L, lua_Debug* ar) {
                 breakhits++;
 
+                // make sure we can trace the stack for every breakpoint we hit
+                lua_debugtrace(L);
+
                 // for every breakpoint, we break on the first invocation and continue on second
                 // this allows us to easily step off breakpoints
                 // (real implementaiton may require singlestepping)
@@ -703,21 +706,52 @@ TEST_CASE("ApiFunctionCalls")
     StateRef globalState = runConformance("apicalls.lua");
     lua_State* L = globalState.get();
 
-    lua_getfield(L, LUA_GLOBALSINDEX, "add");
-    lua_pushnumber(L, 40);
-    lua_pushnumber(L, 2);
-    lua_call(L, 2, 1);
-    CHECK(lua_isnumber(L, -1));
-    CHECK(lua_tonumber(L, -1) == 42);
-    lua_pop(L, 1);
+    // lua_call
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_pushnumber(L, 40);
+        lua_pushnumber(L, 2);
+        lua_call(L, 2, 1);
+        CHECK(lua_isnumber(L, -1));
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
 
-    lua_getfield(L, LUA_GLOBALSINDEX, "add");
-    lua_pushnumber(L, 40);
-    lua_pushnumber(L, 2);
-    lua_pcall(L, 2, 1, 0);
-    CHECK(lua_isnumber(L, -1));
-    CHECK(lua_tonumber(L, -1) == 42);
-    lua_pop(L, 1);
+    // lua_pcall
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_pushnumber(L, 40);
+        lua_pushnumber(L, 2);
+        lua_pcall(L, 2, 1, 0);
+        CHECK(lua_isnumber(L, -1));
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
+
+    // lua_equal with a sleeping thread wake up
+    {
+        ScopedFastFlag luauActivateBeforeExec("LuauActivateBeforeExec", true);
+
+        lua_State* L2 = lua_newthread(L);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_pushnumber(L2, 42);
+        lua_pcall(L2, 1, 1, 0);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_pushnumber(L2, 42);
+        lua_pcall(L2, 1, 1, 0);
+
+        // Reset GC
+        lua_gc(L2, LUA_GCCOLLECT, 0);
+
+        // Try to mark 'L2' as sleeping
+        // Can't control GC precisely, even in tests
+        lua_gc(L2, LUA_GCSTEP, 8);
+
+        CHECK(lua_equal(L2, -1, -2) == 1);
+        lua_pop(L2, 2);
+    }
 }
 
 static bool endsWith(const std::string& str, const std::string& suffix)
@@ -731,8 +765,6 @@ static bool endsWith(const std::string& str, const std::string& suffix)
 #if !LUA_USE_LONGJMP
 TEST_CASE("ExceptionObject")
 {
-    ScopedFastFlag sff("LuauExceptionMessageFix", true);
-
     struct ExceptionResult
     {
         bool exceptionGenerated;

@@ -13,8 +13,6 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauCaptureBrokenCommentSpans, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
-LUAU_FASTFLAGVARIABLE(LuauTypeAliasPacks, false)
-LUAU_FASTFLAGVARIABLE(LuauParseTypePackTypeParameters, false)
 LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseGenericFunctionTypeBegin, false)
@@ -782,8 +780,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
 
     AstType* type = parseTypeAnnotation();
 
-    return allocator.alloc<AstStatTypeAlias>(
-        Location(start, type->location), name->name, generics, FFlag::LuauTypeAliasPacks ? genericPacks : AstArray<AstName>{}, type, exported);
+    return allocator.alloc<AstStatTypeAlias>(Location(start, type->location), name->name, generics, genericPacks, type, exported);
 }
 
 AstDeclaredClassProp Parser::parseDeclaredClassMethod()
@@ -1602,30 +1599,18 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
             return {allocator.alloc<AstTypeTypeof>(Location(begin, end), expr), {}};
         }
 
-        if (FFlag::LuauParseTypePackTypeParameters)
+        bool hasParameters = false;
+        AstArray<AstTypeOrPack> parameters{};
+
+        if (lexer.current().type == '<')
         {
-            bool hasParameters = false;
-            AstArray<AstTypeOrPack> parameters{};
-
-            if (lexer.current().type == '<')
-            {
-                hasParameters = true;
-                parameters = parseTypeParams();
-            }
-
-            Location end = lexer.previousLocation();
-
-            return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, hasParameters, parameters), {}};
+            hasParameters = true;
+            parameters = parseTypeParams();
         }
-        else
-        {
-            AstArray<AstTypeOrPack> generics = parseTypeParams();
 
-            Location end = lexer.previousLocation();
+        Location end = lexer.previousLocation();
 
-            // false in 'hasParameterList' as it is not used without FFlagLuauTypeAliasPacks
-            return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, false, generics), {}};
-        }
+        return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, hasParameters, parameters), {}};
     }
     else if (lexer.current().type == '{')
     {
@@ -2414,37 +2399,24 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
         while (true)
         {
-            if (FFlag::LuauParseTypePackTypeParameters)
+            if (shouldParseTypePackAnnotation(lexer))
             {
-                if (shouldParseTypePackAnnotation(lexer))
-                {
-                    auto typePack = parseTypePackAnnotation();
+                auto typePack = parseTypePackAnnotation();
 
-                    if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
-                        parameters.push_back({{}, typePack});
-                }
-                else if (lexer.current().type == '(')
-                {
-                    auto [type, typePack] = parseTypeOrPackAnnotation();
+                parameters.push_back({{}, typePack});
+            }
+            else if (lexer.current().type == '(')
+            {
+                auto [type, typePack] = parseTypeOrPackAnnotation();
 
-                    if (typePack)
-                    {
-                        if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
-                            parameters.push_back({{}, typePack});
-                    }
-                    else
-                    {
-                        parameters.push_back({type, {}});
-                    }
-                }
-                else if (lexer.current().type == '>' && parameters.empty())
-                {
-                    break;
-                }
+                if (typePack)
+                    parameters.push_back({{}, typePack});
                 else
-                {
-                    parameters.push_back({parseTypeAnnotation(), {}});
-                }
+                    parameters.push_back({type, {}});
+            }
+            else if (lexer.current().type == '>' && parameters.empty())
+            {
+                break;
             }
             else
             {

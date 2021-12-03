@@ -2,7 +2,13 @@
 print('testing function calls through API')
 
 function add(a, b)
-	return a + b
+  return a + b
+end
+
+local m = { __eq = function(a, b) return a.a == b.a end }
+
+function create_with_tm(x)
+  return setmetatable({ a = x }, m)
 end
 
 return('OK')

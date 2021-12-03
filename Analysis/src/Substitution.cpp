@@ -7,8 +7,6 @@
 #include <stdexcept>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 1000)
-LUAU_FASTFLAGVARIABLE(LuauSubstitutionDontReplaceIgnoredTypes, false)
-LUAU_FASTFLAG(LuauTypeAliasPacks)
 
 namespace Luau
 {
@@ -39,11 +37,8 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypeId itp : ttv->instantiatedTypeParams)
             visitChild(itp);
 
-        if (FFlag::LuauTypeAliasPacks)
-        {
-            for (TypePackId itp : ttv->instantiatedTypePackParams)
-                visitChild(itp);
-        }
+        for (TypePackId itp : ttv->instantiatedTypePackParams)
+            visitChild(itp);
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
@@ -339,10 +334,10 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
         return std::nullopt;
 
     for (auto [oldTy, newTy] : newTypes)
-        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTy))
+        if (!ignoreChildren(oldTy))
             replaceChildren(newTy);
     for (auto [oldTp, newTp] : newPacks)
-        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTp))
+        if (!ignoreChildren(oldTp))
             replaceChildren(newTp);
     TypeId newTy = replace(ty);
     return newTy;
@@ -359,10 +354,10 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
         return std::nullopt;
 
     for (auto [oldTy, newTy] : newTypes)
-        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTy))
+        if (!ignoreChildren(oldTy))
             replaceChildren(newTy);
     for (auto [oldTp, newTp] : newPacks)
-        if (!FFlag::LuauSubstitutionDontReplaceIgnoredTypes || !ignoreChildren(oldTp))
+        if (!ignoreChildren(oldTp))
             replaceChildren(newTp);
     TypePackId newTp = replace(tp);
     return newTp;
@@ -393,10 +388,7 @@ TypeId Substitution::clone(TypeId ty)
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;
         clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
-
-        if (FFlag::LuauTypeAliasPacks)
-            clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
-
+        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
         clone.tags = ttv->tags;
         result = addType(std::move(clone));
     }
@@ -505,11 +497,8 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypeId& itp : ttv->instantiatedTypeParams)
             itp = replace(itp);
 
-        if (FFlag::LuauTypeAliasPacks)
-        {
-            for (TypePackId& itp : ttv->instantiatedTypePackParams)
-                itp = replace(itp);
-        }
+        for (TypePackId& itp : ttv->instantiatedTypePackParams)
+            itp = replace(itp);
     }
     else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(ty))
     {
