@@ -19,7 +19,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCcallRestoreFix, false)
 LUAU_FASTFLAG(LuauCoroutineClose)
-LUAU_FASTFLAGVARIABLE(LuauActivateBeforeExec, false)
+LUAU_FASTFLAGVARIABLE(LuauActivateBeforeExec, true)
 
 /*
 ** {======================================================
