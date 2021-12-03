@@ -26,10 +26,9 @@ If you're thinking of adding a new feature to the language, library, analysis to
 Luau team has internal priorities and a roadmap that may or may not align with specific features, so before starting to work on a feature please submit an issue describing the missing feature that you'd like to add.
 
 For features that result in observable change of language syntax or semantics, you'd need to [create an RFC](https://github.com/Roblox/luau/blob/master/rfcs/README.md) to make sure that the feature is needed and well designed.
-Similarly to the above, please create an issue first so that we can see if we should go through with an RFC process.
 
 Finally, please note that Luau tries to carry a minimal feature set. All features must be evaluated not just for the benefits that they provide, but also for the downsides/costs in terms of language simplicity, maintainability, cross-feature interaction etc.
-As such, feature requests may not be accepted, or may get to an RFC stage and get rejected there - don't expect Luau to gain a feature just because another programming language has it.
+As such, feature requests may not be accepted even if a comprehensive RFC is written - don't expect Luau to gain a feature just because another programming language has it.
 
 ## Code style
 
