@@ -4,6 +4,8 @@
 
 Add bit32.countlz (count left zeroes) and bit32.countrz (count right zeroes) to accelerate bit scanning
 
+**Status**: Implemented
+
 ## Motivation
 
 All CPUs have instructions to determine the position of first/last set bit in an integer. These instructions have a variety of uses, the popular ones being:
