@@ -48,11 +48,12 @@ type A<T, U = V, V = T> = ... -- not allowed
 
 Default type parameter values are also allowed for type packs:
 ```lua
-type A<T, U... = ...string> -- ok, variadic type pack
-type C<T, U... = (string)>  -- ok, type pack with one element
-type C<T, U... = (string,number)>  -- ok, type pack with two elements
-type C<T, U... = ()>  -- ok, type pack with no elements
-type D<T..., U... = T...>   -- ok
+type A<T, U... = ...string>           -- ok, variadic type pack
+type B<T, U... = ()>                  -- ok, type pack with no elements
+type C<T, U... = (string)>            -- ok, type pack with one element
+type D<T, U... = (string, number)>    -- ok, type pack with two elements
+type E<T, U... = (string, ...number)> -- ok, variadic type pack with a different first element
+type F<T..., U... = T...>             -- ok, same type pack as T...
 ```
 
 ---
