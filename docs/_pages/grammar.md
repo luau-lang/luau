@@ -22,7 +22,7 @@ stat ::= varlist `=' explist |
     function funcname funcbody |
     local function NAME funcbody |
     local bindinglist [`=' explist] |
-    [export] type NAME [`<' GenericTypeList `>'] `=' TypeAnnotation
+    [export] type NAME [`<' GenericTypeList `>'] `=' Type
 
 laststat ::= return [explist] | break | continue
 
@@ -40,7 +40,7 @@ exp ::= (asexp | unop exp) { binop exp }
 ifelseexp ::= if exp then exp {elseif exp then exp} else exp
 prefixexp ::= NAME | '(' exp ')'
 primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
-asexp ::= simpleexp [`::' TypeAnnotation]
+asexp ::= simpleexp [`::' Type]
 simpleexp ::= NUMBER | STRING | nil | true | false | `...' | tableconstructor | function body | primaryexp | ifelseexp
 funcargs ::=  `(' [explist] `)' | tableconstructor | STRING
 
@@ -53,25 +53,25 @@ compoundop :: `+=' | `-=' | `*=' | `/=' | `%=' | `^=' | `..='
 binop ::= `+' | `-' | `*' | `/' | `^' | `%' | `..' | `<' | `<=' | `>' | `>=' | `==' | `~=' | and | or
 unop ::= `-' | not | `#'
 
-SimpleTypeAnnotation ::=
+SimpleType ::=
     nil |
-    NAME[`.' NAME] [ `<' TypeAnnotation [`,' ...] `>' ] |
+    NAME[`.' NAME] [ `<' Type {`,' Type} `>' ] |
     `typeof' `(' exp `)' |
-    `{' [PropList] `}' |
-    FunctionTypeAnnotation
+    TableType |
+    FunctionType
 
-TypeAnnotation ::=
-    SimpleTypeAnnotation [`?`] |
-    SimpleTypeAnnotation [`|` TypeAnnotation] |
-    SimpleTypeAnnotation [`&` TypeAnnotation]
+Type ::=
+    SimpleType [`?`] |
+    SimpleType [`|` Type] |
+    SimpleType [`&` Type]
 
 GenericTypeList ::= NAME [`...'] {`,' NAME}
-TypeList ::= TypeAnnotation [`,' TypeList] | ...TypeAnnotation
-ReturnType ::= TypeAnnotation | `(' TypeList `)'
-TableIndexer ::= `[' TypeAnnotation `]' `:' TypeAnnotation
-TableProp ::= NAME `:' TypeAnnotation
+TypeList ::= Type [`,' TypeList] | ...Type
+ReturnType ::= Type | `(' TypeList `)'
+TableIndexer ::= `[' Type `]' `:' Type
+TableProp ::= NAME `:' Type
 TablePropOrIndexer ::= TableProp | TableIndexer
 PropList ::= TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
-TableTypeAnnotation ::= `{' PropList `}'
-FunctionTypeAnnotation ::= [`<' GenericTypeList `>'] `(' [TypeList] `)' `->` ReturnType
+TableType ::= `{' PropList `}'
+FunctionType ::= [`<' GenericTypeList `>'] `(' [TypeList] `)' `->` ReturnType
 ```
