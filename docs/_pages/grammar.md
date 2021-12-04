@@ -34,14 +34,14 @@ explist ::= {exp `,'} exp
 namelist ::= NAME {`,' NAME}
 
 binding ::= NAME [`:' TypeAnnotation]
-bindinglist ::= (binding | `...') [`,' bindinglist]
+bindinglist ::= binding [`,' bindinglist]
 
 exp ::= (asexp | unop exp) { binop exp }
 ifelseexp ::= if exp then exp {elseif exp then exp} else exp
 prefixexp ::= NAME | '(' exp ')'
 primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 asexp ::= simpleexp [`::' TypeAnnotation]
-simpleexp ::= NUMBER | STRING | nil | true | false | ... | tableconstructor | function body | primaryexp | ifelseexp
+simpleexp ::= NUMBER | STRING | nil | true | false | `...' | tableconstructor | function body | primaryexp | ifelseexp
 funcargs ::=  `(' [explist] `)' | tableconstructor | STRING
 
 tableconstructor ::= `{' [fieldlist] `}'
