@@ -36,12 +36,15 @@ namelist ::= NAME {`,' NAME}
 binding ::= NAME [`:' TypeAnnotation]
 bindinglist ::= binding [`,' bindinglist]
 
+var ::= NAME | prefixexp `[' exp `]' | prefixexp `.' Name
+varlist ::= var {`,' var}
+prefixexp ::= var | functioncall | `(' exp `)'
+functioncall ::= prefixexp funcargs | prefixexp `:' NAME funcargs
+
 exp ::= (asexp | unop exp) { binop exp }
 ifelseexp ::= if exp then exp {elseif exp then exp} else exp
-prefixexp ::= NAME | '(' exp ')'
-primaryexp ::= prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 asexp ::= simpleexp [`::' Type]
-simpleexp ::= NUMBER | STRING | nil | true | false | `...' | tableconstructor | function body | primaryexp | ifelseexp
+simpleexp ::= NUMBER | STRING | nil | true | false | `...' | tableconstructor | function body | prefixexp | ifelseexp
 funcargs ::=  `(' [explist] `)' | tableconstructor | STRING
 
 tableconstructor ::= `{' [fieldlist] `}'
