@@ -7,7 +7,7 @@ toc: true
 This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes String and Number
 is available in the [syntax section](syntax).
 
-```
+```ebnf
 chunk ::= {stat [`;']} [laststat [`;']]
 block ::= chunk
 stat ::= varlist `=' explist |
@@ -34,7 +34,7 @@ explist ::= {exp `,'} exp
 namelist ::= NAME {`,' NAME}
 
 binding ::= NAME [`:' TypeAnnotation]
-bindinglist ::= binding [`,' bindinglist]
+bindinglist ::= binding [`,' bindinglist] (* equivalent of Lua 5.1 `namelist`, except with optional type annotations *)
 
 var ::= NAME | prefixexp `[' exp `]' | prefixexp `.' Name
 varlist ::= var {`,' var}
@@ -58,7 +58,7 @@ unop ::= `-' | not | `#'
 
 SimpleType ::=
     nil |
-    NAME[`.' NAME] [ `<' Type {`,' Type} `>' ] |
+    NAME[`.' NAME] [ `<' TypeList `>' ] |
     `typeof' `(' exp `)' |
     TableType |
     FunctionType
