@@ -35,7 +35,7 @@ typechecks, but
 ```
 does not.
 
-This causes problems in examples, for example
+This causes problems in examples, for instance
 ```lua
   local t : { p: number, q: string? } = { p = 5, q = "hi" }
   t = { p = 7 }
