@@ -146,4 +146,5 @@ Doing nothing is an option, as current standard if-checks already work, as well 
 
 Supporting optional calls/indexes, such as `x?[1]` and `x?()`, while not out of scope, are likely too fringe to support, while adding on a significant amount of parsing difficulty, especially in the case of shorthand function calls, such as `x?{}` and `x?""`.
 
-It is possible to make `x?.y = z` resolve to only setting `x.y` is `x` is nil, but assignments silently failing can be seen as surprising.
+It is possible to make `x?.y = z` resolve to only setting `x.y` if `x` is nil, but assignments silently failing can be seen as surprising.
+
