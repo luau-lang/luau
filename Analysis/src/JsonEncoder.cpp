@@ -262,7 +262,7 @@ struct AstJsonEncoder : public AstVisitor
             if (comma)
                 writeRaw(",");
             else
-                comma = false;
+                comma = true;
 
             write(a);
         }
