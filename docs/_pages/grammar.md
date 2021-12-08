@@ -7,6 +7,8 @@ toc: true
 This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes String and Number
 is available in the [syntax section](syntax).
 
+> Note: this grammar is currently missing type pack syntax for generic arguments
+
 ```ebnf
 chunk ::= {stat [`;']} [laststat [`;']]
 block ::= chunk
