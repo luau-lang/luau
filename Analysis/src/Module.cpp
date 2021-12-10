@@ -13,7 +13,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
-LUAU_FASTFLAG(LuauCaptureBrokenCommentSpans)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 0)
 
 namespace Luau
@@ -23,7 +22,7 @@ static bool contains(Position pos, Comment comment)
 {
     if (comment.location.contains(pos))
         return true;
-    else if (FFlag::LuauCaptureBrokenCommentSpans && comment.type == Lexeme::BrokenComment &&
+    else if (comment.type == Lexeme::BrokenComment &&
              comment.location.begin <= pos) // Broken comments are broken specifically because they don't have an end
         return true;
     else if (comment.type == Lexeme::Comment && comment.location.end == pos)
@@ -194,7 +193,7 @@ struct TypePackCloner
     {
         cloneState.encounteredFreeType = true;
 
-        TypePackId err = singletonTypes.errorRecoveryTypePack(singletonTypes.anyTypePack);
+        TypePackId err = getSingletonTypes().errorRecoveryTypePack(getSingletonTypes().anyTypePack);
         TypePackId cloned = dest.addTypePack(*err);
         seenTypePacks[typePackId] = cloned;
     }
@@ -247,7 +246,7 @@ void TypeCloner::defaultClone(const T& t)
 void TypeCloner::operator()(const Unifiable::Free& t)
 {
     cloneState.encounteredFreeType = true;
-    TypeId err = singletonTypes.errorRecoveryType(singletonTypes.anyType);
+    TypeId err = getSingletonTypes().errorRecoveryType(getSingletonTypes().anyType);
     TypeId cloned = dest.addType(*err);
     seenTypes[typeId] = cloned;
 }
@@ -421,9 +420,6 @@ TypePackId clone(TypePackId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypeP
         Luau::visit(cloner, tp->ty); // Mutates the storage that 'res' points into.
     }
 
-    if (FFlag::DebugLuauTrackOwningArena)
-        asMutable(res)->owningArena = &dest;
-
     return res;
 }
 
@@ -440,11 +436,10 @@ TypeId clone(TypeId typeId, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks
     {
         TypeCloner cloner{dest, typeId, seenTypes, seenTypePacks, cloneState};
         Luau::visit(cloner, typeId->ty); // Mutates the storage that 'res' points into.
+
+        // TODO: Make this work when the arena of 'res' might be frozen
         asMutable(res)->documentationSymbol = typeId->documentationSymbol;
     }
-
-    if (FFlag::DebugLuauTrackOwningArena)
-        asMutable(res)->owningArena = &dest;
 
     return res;
 }
@@ -508,8 +503,8 @@ bool Module::clonePublicInterface()
     if (moduleScope->varargPack)
         moduleScope->varargPack = clone(*moduleScope->varargPack, interfaceTypes, seenTypes, seenTypePacks, cloneState);
 
-    for (auto& pair : moduleScope->exportedTypeBindings)
-        pair.second = clone(pair.second, interfaceTypes, seenTypes, seenTypePacks, cloneState);
+    for (auto& [name, tf] : moduleScope->exportedTypeBindings)
+        tf = clone(tf, interfaceTypes, seenTypes, seenTypePacks, cloneState);
 
     for (TypeId ty : moduleScope->returnType)
         if (get<GenericTypeVar>(follow(ty)))

@@ -21,6 +21,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTagging, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
+LUAU_FASTFLAG(DebugLuauFreezeArena)
 
 namespace Luau
 {
@@ -579,9 +580,23 @@ SingletonTypes::SingletonTypes()
     , arena(new TypeArena)
 {
     TypeId stringMetatable = makeStringMetatable();
-    stringType_.ty = PrimitiveTypeVar{PrimitiveTypeVar::String, makeStringMetatable()};
+    stringType_.ty = PrimitiveTypeVar{PrimitiveTypeVar::String, stringMetatable};
     persist(stringMetatable);
+
+    debugFreezeArena = FFlag::DebugLuauFreezeArena;
     freeze(*arena);
+}
+
+SingletonTypes::~SingletonTypes()
+{
+    // Destroy the arena with the same memory management flags it was created with
+    bool prevFlag = FFlag::DebugLuauFreezeArena;
+    FFlag::DebugLuauFreezeArena.value = debugFreezeArena;
+
+    unfreeze(*arena);
+    arena.reset(nullptr);
+
+    FFlag::DebugLuauFreezeArena.value = prevFlag;
 }
 
 TypeId SingletonTypes::makeStringMetatable()
@@ -641,6 +656,9 @@ TypeId SingletonTypes::makeStringMetatable()
 
     TypeId tableType = arena->addType(TableTypeVar{std::move(stringLib), std::nullopt, TypeLevel{}, TableState::Sealed});
 
+    if (TableTypeVar* ttv = getMutable<TableTypeVar>(tableType))
+        ttv->name = "string";
+
     return arena->addType(TableTypeVar{{{{"__index", {tableType}}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 }
 
@@ -670,7 +688,11 @@ TypePackId SingletonTypes::errorRecoveryTypePack(TypePackId guess)
         return &errorTypePack_;
 }
 
-SingletonTypes singletonTypes;
+SingletonTypes& getSingletonTypes()
+{
+    static SingletonTypes singletonTypes;
+    return singletonTypes;
+}
 
 void persist(TypeId ty)
 {
@@ -719,6 +741,18 @@ void persist(TypeId ty)
             for (TypeId opt : itv->parts)
                 queue.push_back(opt);
         }
+        else if (auto mtv = get<MetatableTypeVar>(t))
+        {
+            queue.push_back(mtv->table);
+            queue.push_back(mtv->metatable);
+        }
+        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t))
+        {
+        }
+        else
+        {
+            LUAU_ASSERT(!"TypeId is not supported in a persist call");
+        }
     }
 }
 
@@ -735,6 +769,17 @@ void persist(TypePackId tp)
             persist(ty);
         if (p->tail)
             persist(*p->tail);
+    }
+    else if (auto vtp = get<VariadicTypePack>(tp))
+    {
+        persist(vtp->ty);
+    }
+    else if (get<GenericTypePack>(tp))
+    {
+    }
+    else
+    {
+        LUAU_ASSERT(!"TypePackId is not supported in a persist call");
     }
 }
 
@@ -756,167 +801,6 @@ TypeLevel* getMutableLevel(TypeId ty)
 {
     return const_cast<TypeLevel*>(getLevel(ty));
 }
-
-struct QVarFinder
-{
-    mutable DenseHashSet<const void*> seen;
-
-    QVarFinder()
-        : seen(nullptr)
-    {
-    }
-
-    bool hasSeen(const void* tv) const
-    {
-        if (seen.contains(tv))
-            return true;
-
-        seen.insert(tv);
-        return false;
-    }
-
-    bool hasGeneric(TypeId tid) const
-    {
-        if (hasSeen(&tid->ty))
-            return false;
-
-        return Luau::visit(*this, tid->ty);
-    }
-
-    bool hasGeneric(TypePackId tp) const
-    {
-        if (hasSeen(&tp->ty))
-            return false;
-
-        return Luau::visit(*this, tp->ty);
-    }
-
-    bool operator()(const Unifiable::Free&) const
-    {
-        return false;
-    }
-
-    bool operator()(const Unifiable::Bound<TypeId>& bound) const
-    {
-        return hasGeneric(bound.boundTo);
-    }
-
-    bool operator()(const Unifiable::Generic&) const
-    {
-        return true;
-    }
-    bool operator()(const Unifiable::Error&) const
-    {
-        return false;
-    }
-    bool operator()(const PrimitiveTypeVar&) const
-    {
-        return false;
-    }
-
-    bool operator()(const SingletonTypeVar&) const
-    {
-        return false;
-    }
-
-    bool operator()(const FunctionTypeVar& ftv) const
-    {
-        if (hasGeneric(ftv.argTypes))
-            return true;
-        return hasGeneric(ftv.retType);
-    }
-
-    bool operator()(const TableTypeVar& ttv) const
-    {
-        if (ttv.state == TableState::Generic)
-            return true;
-
-        if (ttv.indexer)
-        {
-            if (hasGeneric(ttv.indexer->indexType))
-                return true;
-            if (hasGeneric(ttv.indexer->indexResultType))
-                return true;
-        }
-
-        for (const auto& [_name, prop] : ttv.props)
-        {
-            if (hasGeneric(prop.type))
-                return true;
-        }
-
-        return false;
-    }
-
-    bool operator()(const MetatableTypeVar& mtv) const
-    {
-        return hasGeneric(mtv.table) || hasGeneric(mtv.metatable);
-    }
-
-    bool operator()(const ClassTypeVar& ctv) const
-    {
-        for (const auto& [name, prop] : ctv.props)
-        {
-            if (hasGeneric(prop.type))
-                return true;
-        }
-
-        if (ctv.parent)
-            return hasGeneric(*ctv.parent);
-
-        return false;
-    }
-
-    bool operator()(const AnyTypeVar&) const
-    {
-        return false;
-    }
-
-    bool operator()(const UnionTypeVar& utv) const
-    {
-        for (TypeId tid : utv.options)
-            if (hasGeneric(tid))
-                return true;
-
-        return false;
-    }
-
-    bool operator()(const IntersectionTypeVar& utv) const
-    {
-        for (TypeId tid : utv.parts)
-            if (hasGeneric(tid))
-                return true;
-
-        return false;
-    }
-
-    bool operator()(const LazyTypeVar&) const
-    {
-        return false;
-    }
-
-    bool operator()(const Unifiable::Bound<TypePackId>& bound) const
-    {
-        return hasGeneric(bound.boundTo);
-    }
-
-    bool operator()(const TypePack& pack) const
-    {
-        for (TypeId ty : pack.head)
-            if (hasGeneric(ty))
-                return true;
-
-        if (pack.tail)
-            return hasGeneric(*pack.tail);
-
-        return false;
-    }
-
-    bool operator()(const VariadicTypePack& pack) const
-    {
-        return hasGeneric(pack.ty);
-    }
-};
 
 const Property* lookupClassProp(const ClassTypeVar* cls, const Name& name)
 {
@@ -951,16 +835,6 @@ bool isSubclass(const ClassTypeVar* cls, const ClassTypeVar* parent)
     }
 
     return false;
-}
-
-bool hasGeneric(TypeId ty)
-{
-    return Luau::visit(QVarFinder{}, ty->ty);
-}
-
-bool hasGeneric(TypePackId tp)
-{
-    return Luau::visit(QVarFinder{}, tp->ty);
 }
 
 UnionTypeVarIterator::UnionTypeVarIterator(const UnionTypeVar* utv)

@@ -133,6 +133,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ltable.cpp
     VM/src/ltablib.cpp
     VM/src/ltm.cpp
+    VM/src/ludata.cpp
     VM/src/lutf8lib.cpp
     VM/src/lvmexecute.cpp
     VM/src/lvmload.cpp
@@ -152,12 +153,15 @@ target_sources(Luau.VM PRIVATE
     VM/src/lstring.h
     VM/src/ltable.h
     VM/src/ltm.h
+    VM/src/ludata.h
     VM/src/lvm.h
 )
 
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
+        CLI/Coverage.h
+        CLI/Coverage.cpp
         CLI/FileUtils.h
         CLI/FileUtils.cpp
         CLI/Profiler.h

@@ -24,7 +24,7 @@ struct TypeLevel
     int level = 0;
     int subLevel = 0;
 
-    // Returns true if the typelevel "this" is "bigger" than rhs
+    // Returns true if the level of "this" belongs to an equal or larger scope than that of rhs
     bool subsumes(const TypeLevel& rhs) const
     {
         if (level < rhs.level)
@@ -36,6 +36,15 @@ struct TypeLevel
 
         // Sibling TypeLevels (that is, TypeLevels that share a level but have a different subLevel) are not considered to subsume one another
         return false;
+    }
+
+    // Returns true if the level of "this" belongs to a larger (not equal) scope than that of rhs
+    bool subsumesStrict(const TypeLevel& rhs) const
+    {
+        if (level == rhs.level && subLevel == rhs.subLevel)
+            return false;
+        else
+            return subsumes(rhs);
     }
 
     TypeLevel incr() const

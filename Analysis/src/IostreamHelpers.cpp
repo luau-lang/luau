@@ -262,6 +262,12 @@ std::ostream& operator<<(std::ostream& stream, const MissingUnionProperty& error
     return stream << " }, key = '" + error.key + "' }";
 }
 
+std::ostream& operator<<(std::ostream& stream, const TypesAreUnrelated& error)
+{
+    stream << "TypesAreUnrelated { left = '" + toString(error.left) + "', right = '" + toString(error.right) + "' }";
+    return stream;
+}
+
 std::ostream& operator<<(std::ostream& stream, const TableState& tv)
 {
     return stream << static_cast<std::underlying_type<TableState>::type>(tv);

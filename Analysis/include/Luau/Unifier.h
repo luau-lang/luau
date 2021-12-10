@@ -91,6 +91,9 @@ private:
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);
+
+    // Available after regular type pack unification errors
+    std::optional<int> firstPackErrorPos;
 };
 
 } // namespace Luau

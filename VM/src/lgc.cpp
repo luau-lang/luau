@@ -8,10 +8,9 @@
 #include "lfunc.h"
 #include "lstring.h"
 #include "ldo.h"
+#include "ludata.h"
 
 #include <string.h>
-
-LUAU_FASTFLAGVARIABLE(LuauSeparateAtomic, false)
 
 LUAU_FASTFLAG(LuauArrayBoundary)
 
@@ -59,10 +58,6 @@ static void recordGcStateTime(global_State* g, int startgcstate, double seconds,
     case GCSpropagate:
     case GCSpropagateagain:
         g->gcstats.currcycle.marktime += seconds;
-
-        // atomic step had to be performed during the switch and it's tracked separately
-        if (!FFlag::LuauSeparateAtomic && g->gcstate == GCSsweepstring)
-            g->gcstats.currcycle.marktime -= g->gcstats.currcycle.atomictime;
         break;
     case GCSatomic:
         g->gcstats.currcycle.atomictime += seconds;
@@ -488,7 +483,7 @@ static void freeobj(lua_State* L, GCObject* o)
         luaS_free(L, gco2ts(o));
         break;
     case LUA_TUSERDATA:
-        luaS_freeudata(L, gco2u(o));
+        luaU_freeudata(L, gco2u(o));
         break;
     default:
         LUAU_ASSERT(0);
@@ -632,17 +627,9 @@ static size_t remarkupvals(global_State* g)
 static size_t atomic(lua_State* L)
 {
     global_State* g = L->global;
+    LUAU_ASSERT(g->gcstate == GCSatomic);
+
     size_t work = 0;
-
-    if (FFlag::LuauSeparateAtomic)
-    {
-        LUAU_ASSERT(g->gcstate == GCSatomic);
-    }
-    else
-    {
-        g->gcstate = GCSatomic;
-    }
-
     /* remark occasional upvalues of (maybe) dead threads */
     work += remarkupvals(g);
     /* traverse objects caught by write barrier and by 'remarkupvals' */
@@ -665,11 +652,6 @@ static size_t atomic(lua_State* L)
     g->sweepstrgc = 0;
     g->sweepgc = &g->rootgc;
     g->gcstate = GCSsweepstring;
-
-    if (!FFlag::LuauSeparateAtomic)
-    {
-        GC_INTERRUPT(GCSatomic);
-    }
 
     return work;
 }
@@ -716,22 +698,7 @@ static size_t gcstep(lua_State* L, size_t limit)
 
         if (!g->gray) /* no more `gray' objects */
         {
-            if (FFlag::LuauSeparateAtomic)
-            {
-                g->gcstate = GCSatomic;
-            }
-            else
-            {
-                double starttimestamp = lua_clock();
-
-                g->gcstats.currcycle.atomicstarttimestamp = starttimestamp;
-                g->gcstats.currcycle.atomicstarttotalsizebytes = g->totalbytes;
-
-                atomic(L); /* finish mark phase */
-                LUAU_ASSERT(g->gcstate == GCSsweepstring);
-
-                g->gcstats.currcycle.atomictime += lua_clock() - starttimestamp;
-            }
+            g->gcstate = GCSatomic;
         }
         break;
     }
@@ -853,7 +820,7 @@ static size_t getheaptrigger(global_State* g, size_t heapgoal)
 void luaC_step(lua_State* L, bool assist)
 {
     global_State* g = L->global;
-    ptrdiff_t lim = (g->gcstepsize / 100) * g->gcstepmul; /* how much to work */
+    int lim = (g->gcstepsize / 100) * g->gcstepmul; /* how much to work */
     LUAU_ASSERT(g->totalbytes >= g->GCthreshold);
     size_t debt = g->totalbytes - g->GCthreshold;
 
@@ -908,7 +875,7 @@ void luaC_fullgc(lua_State* L)
     if (g->gcstate == GCSpause)
         startGcCycleStats(g);
 
-    if (g->gcstate <= (FFlag::LuauSeparateAtomic ? GCSatomic : GCSpropagateagain))
+    if (g->gcstate <= GCSatomic)
     {
         /* reset sweep marks to sweep all elements (returning them to white) */
         g->sweepstrgc = 0;
@@ -1049,7 +1016,7 @@ int64_t luaC_allocationrate(lua_State* L)
     global_State* g = L->global;
     const double durationthreshold = 1e-3; // avoid measuring intervals smaller than 1ms
 
-    if (g->gcstate <= (FFlag::LuauSeparateAtomic ? GCSatomic : GCSpropagateagain))
+    if (g->gcstate <= GCSatomic)
     {
         double duration = lua_clock() - g->gcstats.lastcycle.endtimestamp;
 

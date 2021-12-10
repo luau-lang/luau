@@ -19,7 +19,7 @@ std::optional<TypeId> findMetatableEntry(ErrorVec& errors, const ScopePtr& globa
     TypeId unwrapped = follow(*metatable);
 
     if (get<AnyTypeVar>(unwrapped))
-        return singletonTypes.anyType;
+        return getSingletonTypes().anyType;
 
     const TableTypeVar* mtt = getTableType(unwrapped);
     if (!mtt)
@@ -61,12 +61,12 @@ std::optional<TypeId> findTablePropertyRespectingMeta(ErrorVec& errors, const Sc
         {
             std::optional<TypeId> r = first(follow(itf->retType));
             if (!r)
-                return singletonTypes.nilType;
+                return getSingletonTypes().nilType;
             else
                 return *r;
         }
         else if (get<AnyTypeVar>(index))
-            return singletonTypes.anyType;
+            return getSingletonTypes().anyType;
         else
             errors.push_back(TypeError{location, GenericError{"__index should either be a function or table. Got " + toString(index)}});
 

@@ -278,7 +278,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 #if defined(_DEBUG) || defined(_NOOPT)
     int limit = 250;
 #else
-    int limit = 500;
+    int limit = 400;
 #endif
     ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
 
@@ -287,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     TypeId table = src.addType(TableTypeVar{});
     TypeId nested = table;
 
-    for (unsigned i = 0; i < limit + 100; i++)
+    for (int i = 0; i < limit + 100; i++)
     {
         TableTypeVar* ttv = getMutable<TableTypeVar>(nested);
 

@@ -13,6 +13,13 @@
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
 LUAU_FASTFLAGVARIABLE(LuauFunctionArgumentNameSize, false)
 
+/*
+ * Prefix generic typenames with gen-
+ * Additionally, free types will be prefixed with free- and suffixed with their level.  eg free-a-4
+ * Fair warning: Setting this will break a lot of Luau unit tests.
+ */
+LUAU_FASTFLAGVARIABLE(DebugLuauVerboseTypeNames, false)
+
 namespace Luau
 {
 
@@ -290,7 +297,15 @@ struct TypeVarStringifier
     void operator()(TypeId ty, const Unifiable::Free& ftv)
     {
         state.result.invalid = true;
+        if (FFlag::DebugLuauVerboseTypeNames)
+            state.emit("free-");
         state.emit(state.getName(ty));
+
+        if (FFlag::DebugLuauVerboseTypeNames)
+        {
+            state.emit("-");
+            state.emit(std::to_string(ftv.level.level));
+        }
     }
 
     void operator()(TypeId, const BoundTypeVar& btv)
@@ -802,6 +817,8 @@ struct TypePackStringifier
 
     void operator()(TypePackId tp, const GenericTypePack& pack)
     {
+        if (FFlag::DebugLuauVerboseTypeNames)
+            state.emit("gen-");
         if (pack.explicitName)
         {
             state.result.nameMap.typePacks[tp] = pack.name;
@@ -817,7 +834,16 @@ struct TypePackStringifier
     void operator()(TypePackId tp, const FreeTypePack& pack)
     {
         state.result.invalid = true;
+        if (FFlag::DebugLuauVerboseTypeNames)
+            state.emit("free-");
         state.emit(state.getName(tp));
+
+        if (FFlag::DebugLuauVerboseTypeNames)
+        {
+            state.emit("-");
+            state.emit(std::to_string(pack.level.level));
+        }
+
         state.emit("...");
     }
 
@@ -1181,20 +1207,24 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
     return s;
 }
 
-void dump(TypeId ty)
+std::string dump(TypeId ty)
 {
     ToStringOptions opts;
     opts.exhaustive = true;
     opts.functionTypeArguments = true;
-    printf("%s\n", toString(ty, opts).c_str());
+    std::string s = toString(ty, opts);
+    printf("%s\n", s.c_str());
+    return s;
 }
 
-void dump(TypePackId ty)
+std::string dump(TypePackId ty)
 {
     ToStringOptions opts;
     opts.exhaustive = true;
     opts.functionTypeArguments = true;
-    printf("%s\n", toString(ty, opts).c_str());
+    std::string s = toString(ty, opts);
+    printf("%s\n", s.c_str());
+    return s;
 }
 
 std::string generateName(size_t i)
