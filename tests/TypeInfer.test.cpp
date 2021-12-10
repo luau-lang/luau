@@ -16,6 +16,7 @@
 
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
 LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauExtendedFunctionMismatchError)
 
 using namespace Luau;
 
@@ -2084,7 +2085,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable")
 {
     CheckResult result = check(R"(
         function add(a: number, b: string)
-            return a + tonumber(b), a .. b
+            return a + (tonumber(b) :: number), a .. b
         end
         local n, s = add(2,"3")
     )");
@@ -2485,7 +2486,7 @@ TEST_CASE_FIXTURE(Fixture, "inferring_crazy_table_should_also_be_quick")
     CheckResult result = check(R"(
         --!strict
         function f(U)
-            U(w:s(an):c()():c():U(s):c():c():U(s):c():U(s):cU()):c():U(s):c():U(s):c():c():U(s):c():U(s):cU() 
+            U(w:s(an):c()():c():U(s):c():c():U(s):c():U(s):cU()):c():U(s):c():U(s):c():c():U(s):c():U(s):cU()
         end
     )");
 
@@ -3329,7 +3330,7 @@ TEST_CASE_FIXTURE(Fixture, "relation_op_on_any_lhs_where_rhs_maybe_has_metatable
 {
     CheckResult result = check(R"(
         local x
-        print((x == true and (x .. "y")) .. 1) 
+        print((x == true and (x .. "y")) .. 1)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -4473,7 +4474,18 @@ f(function(a, b, c, ...) return a + b end)
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'", toString(result.errors[0]));
+
+    if (FFlag::LuauExtendedFunctionMismatchError)
+    {
+        CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
+caused by:
+  Argument count mismatch. Function expects 3 arguments, but only 2 are specified)",
+            toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number')", toString(result.errors[0]));
+    }
 
     // Infer from variadic packs into elements
     result = check(R"(
@@ -4604,7 +4616,17 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'", toString(result.errors[0]));
+    if (FFlag::LuauExtendedFunctionMismatchError)
+    {
+        CHECK_EQ(
+            "Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
+            "parameters",
+            toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ("Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
@@ -4797,6 +4819,213 @@ local ModuleA = require(game.A)
 
     std::optional<TypeId> oty = requireType("ModuleA");
     CHECK_EQ("*unknown*", toString(*oty));
+}
+
+/*
+ * If it wasn't instantly obvious, we have the fuzzer to thank for this gem of a test.
+ *
+ * We had an issue here where the scope for the `if` block here would
+ * have an elevated TypeLevel even though there is no function nesting going on.
+ * This would result in a free typevar for the type of _ that was much higher than
+ * it should be.  This type would be erroneously quantified in the definition of `aaa`.
+ * This in turn caused an ice when evaluating `_()` in the while loop.
+ */
+TEST_CASE_FIXTURE(Fixture, "free_typevars_introduced_within_control_flow_constructs_do_not_get_an_elevated_TypeLevel")
+{
+    check(R"(
+        --!strict
+        if _ then
+            _[_], _ = nil
+            _()
+        end
+
+        local aaa = function():typeof(_) return 1 end
+
+        if aaa then
+            while _() do
+            end
+        end
+    )");
+
+    // No ice()?  No problem.
+}
+
+/*
+ * This is a bit elaborate.  Bear with me.
+ *
+ * The type of _ becomes free with the first statement.  With the second, we unify it with a function.
+ *
+ * At this point, it is important that the newly created fresh types of this new function type are promoted
+ * to the same level as the original free type.  If we do not, they are incorrectly ascribed the level of the
+ * containing function.
+ *
+ * If this is allowed to happen, the final lambda erroneously quantifies the type of _ to something ridiculous
+ * just before we typecheck the invocation to _.
+ */
+TEST_CASE_FIXTURE(Fixture, "fuzzer_found_this")
+{
+    check(R"(
+        l0, _ = nil
+
+        local function p()
+            _()
+        end
+
+        a = _(
+            function():(typeof(p),typeof(_))
+            end
+        )[nil]
+    )");
+}
+
+/*
+ * We had an issue where part of the type of pairs() was an unsealed table.
+ * This test depends on FFlagDebugLuauFreezeArena to trigger it.
+ */
+TEST_CASE_FIXTURE(Fixture, "pairs_parameters_are_not_unsealed_tables")
+{
+    check(R"(
+        function _(l0:{n0:any})
+            _ = pairs
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_as_the_enclosing_table")
+{
+    check(R"(
+        function Base64FileReader(data)
+            local reader = {}
+            local index: number
+
+            function reader:PeekByte()
+                return data:byte(index)
+            end
+
+            function reader:Byte()
+                return data:byte(index - 1)
+            end
+
+            return reader
+        end
+
+        Base64FileReader()
+
+        function ReadMidiEvents(data)
+
+            local reader = Base64FileReader(data)
+
+            while reader:HasMore() do
+                (reader:Byte() % 128)
+            end
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_arg_count")
+{
+    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
+
+    CheckResult result = check(R"(
+type A = (number, number) -> string
+type B = (number) -> string
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> string' could not be converted into '(number) -> string'
+caused by:
+  Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_arg")
+{
+    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
+
+    CheckResult result = check(R"(
+type A = (number, number) -> string
+type B = (number, string) -> string
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> string' could not be converted into '(number, string) -> string'
+caused by:
+  Argument #2 type is not compatible. Type 'string' could not be converted into 'number')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret_count")
+{
+    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
+
+    CheckResult result = check(R"(
+type A = (number, number) -> (number)
+type B = (number, number) -> (number, boolean)
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> number' could not be converted into '(number, number) -> (number, boolean)'
+caused by:
+  Function only returns 1 value. 2 are required here)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret")
+{
+    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
+
+    CheckResult result = check(R"(
+type A = (number, number) -> string
+type B = (number, number) -> number
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> string' could not be converted into '(number, number) -> number'
+caused by:
+  Return type is not compatible. Type 'string' could not be converted into 'number')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret_mult")
+{
+    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
+
+    CheckResult result = check(R"(
+type A = (number, number) -> (number, string)
+type B = (number, number) -> (number, boolean)
+
+local a: A
+local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(
+        toString(result.errors[0]), R"(Type '(number, number) -> (number, string)' could not be converted into '(number, number) -> (number, boolean)'
+caused by:
+  Return #2 type is not compatible. Type 'string' could not be converted into 'boolean')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_function_check_use_after_free")
+{
+    ScopedFastFlag luauUnifyFunctionCheckResult{"LuauUpdateFunctionNameBinding", true};
+
+    CheckResult result = check(R"(
+local t = {}
+
+function t.x(value)
+    for k,v in pairs(t) do end
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

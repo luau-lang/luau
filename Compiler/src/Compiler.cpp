@@ -10,7 +10,6 @@
 #include <bitset>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
 LUAU_FASTFLAGVARIABLE(LuauBit32CountBuiltin, false)
 
@@ -462,20 +461,17 @@ struct Compiler
 
         bool shared = false;
 
-        if (FFlag::LuauPreloadClosures)
+        // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
+        // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
+        // is used)
+        if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
         {
-            // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
-            // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
-            // is used)
-            if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
-            {
-                int32_t cid = bytecode.addConstantClosure(f->id);
+            int32_t cid = bytecode.addConstantClosure(f->id);
 
-                if (cid >= 0 && cid < 32768)
-                {
-                    bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
-                    shared = true;
-                }
+            if (cid >= 0 && cid < 32768)
+            {
+                bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
+                shared = true;
             }
         }
 

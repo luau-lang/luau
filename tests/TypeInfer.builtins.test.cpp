@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauFixTonumberReturnType)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -812,6 +814,30 @@ TEST_CASE_FIXTURE(Fixture, "string_format_report_all_type_errors_at_correct_posi
 
     CHECK_EQ(Location(Position{1, 38}, Position{1, 42}), result.errors[2].location);
     CHECK_EQ(TypeErrorData(TypeMismatch{stringType, booleanType}), result.errors[2].data);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local b: number = tonumber('asdf')
+    )");
+
+    if (FFlag::LuauFixTonumberReturnType)
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type2")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local b: number = tonumber('asdf') or 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_add_definitions_to_persistent_types")

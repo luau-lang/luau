@@ -24,7 +24,7 @@ std::optional<LValue> tryGetLValue(const AstExpr& node)
     else if (auto indexexpr = expr->as<AstExprIndexExpr>())
     {
         if (auto lvalue = tryGetLValue(*indexexpr->expr))
-            if (auto string = indexexpr->expr->as<AstExprConstantString>())
+            if (auto string = indexexpr->index->as<AstExprConstantString>())
                 return Field{std::make_shared<LValue>(*lvalue), std::string(string->value.data, string->value.size)};
     }
 

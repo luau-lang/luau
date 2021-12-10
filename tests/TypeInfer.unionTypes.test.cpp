@@ -462,4 +462,20 @@ local a: XYZ = { w = 4 }
     CHECK_EQ(toString(result.errors[0]), R"(Type 'a' could not be converted into 'X | Y | Z'; none of the union options are compatible)");
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
+{
+    ScopedFastFlag luauExtendedUnionMismatchError{"LuauExtendedUnionMismatchError", true};
+
+    CheckResult result = check(R"(
+type X = { x: number }
+
+local a: X? = { w = 4 }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'a' could not be converted into 'X?'
+caused by:
+  None of the union options are compatible. For example: Table type 'a' not compatible with type 'X' because the former is missing field 'x')");
+}
+
 TEST_SUITE_END();

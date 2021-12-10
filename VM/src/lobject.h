@@ -78,15 +78,7 @@ typedef struct lua_TValue
 #define thvalue(o) check_exp(ttisthread(o), &(o)->value.gc->th)
 #define upvalue(o) check_exp(ttisupval(o), &(o)->value.gc->uv)
 
-// beware bit magic: a value is false if it's nil or boolean false
-// baseline implementation: (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
-// we'd like a branchless version of this which helps with performance, and a very fast version
-// so our strategy is to always read the boolean value (not using bvalue(o) because that asserts when type isn't boolean)
-// we then combine it with type to produce 0/1 as follows:
-// - when type is nil (0), & makes the result 0
-// - when type is boolean (1), we effectively only look at the bottom bit, so result is 0 iff boolean value is 0
-// - when type is different, it must have some of the top bits set - we keep all top bits of boolean value so the result is non-0
-#define l_isfalse(o) (!(((o)->value.b | ~1) & ttype(o)))
+#define l_isfalse(o) (ttisnil(o) || (ttisboolean(o) && bvalue(o) == 0))
 
 /*
 ** for internal debug only

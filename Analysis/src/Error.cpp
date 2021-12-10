@@ -58,7 +58,7 @@ struct ErrorConverter
             result += "\ncaused by:\n  ";
 
             if (!tm.reason.empty())
-                result += tm.reason + ". ";
+                result += tm.reason + " ";
 
             result += Luau::toString(*tm.error);
         }
@@ -410,6 +410,11 @@ struct ErrorConverter
 
         return ss + " in the type '" + toString(e.type) + "'";
     }
+
+    std::string operator()(const TypesAreUnrelated& e) const
+    {
+        return "Cannot cast '" + toString(e.left) + "' into '" + toString(e.right) + "' because the types are unrelated";
+    }
 };
 
 struct InvalidNameChecker
@@ -658,6 +663,11 @@ bool MissingUnionProperty::operator==(const MissingUnionProperty& rhs) const
     return *type == *rhs.type && key == rhs.key;
 }
 
+bool TypesAreUnrelated::operator==(const TypesAreUnrelated& rhs) const
+{
+    return left == rhs.left && right == rhs.right;
+}
+
 std::string toString(const TypeError& error)
 {
     ErrorConverter converter;
@@ -792,6 +802,11 @@ void copyError(T& e, TypeArena& destArena, SeenTypes& seenTypes, SeenTypePacks& 
 
         for (auto& ty : e.missing)
             ty = clone(ty);
+    }
+    else if constexpr (std::is_same_v<T, TypesAreUnrelated>)
+    {
+        e.left = clone(e.left);
+        e.right = clone(e.right);
     }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");

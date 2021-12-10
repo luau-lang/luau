@@ -451,15 +451,16 @@ function raytraceScene()
 end
 
 function arrayToCanvasCommands(pixels)
-    local s = '<!DOCTYPE html><html><head><title>Test</title></head><body><canvas id="renderCanvas" width="' .. size .. 'px" height="' .. size .. 'px"></canvas><scr' .. 'ipt>\nvar pixels = [';
+    local s = {};
+    table.insert(s, '<!DOCTYPE html><html><head><title>Test</title></head><body><canvas id="renderCanvas" width="' .. size .. 'px" height="' .. size .. 'px"></canvas><scr' .. 'ipt>\nvar pixels = [');
     for y = 0,size-1 do
-        s = s .. "[";
+        table.insert(s, "[");
         for x = 0,size-1 do
-            s = s .. "[" .. math.floor(pixels[y + 1][x + 1][1] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][2] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][3] * 255) .. "],";
+            table.insert(s, "[" .. math.floor(pixels[y + 1][x + 1][1] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][2] * 255) .. "," .. math.floor(pixels[y + 1][x + 1][3] * 255) .. "],");
         end
-        s = s .. "],";
+        table.insert(s, "],");
     end
-    s = s .. '];\n    var canvas = document.getElementById("renderCanvas").getContext("2d");\n\
+    table.insert(s, '];\n    var canvas = document.getElementById("renderCanvas").getContext("2d");\n\
 \n\
 \n\
     var size = ' .. size .. ';\n\
@@ -479,9 +480,9 @@ for (var y = 0; y < size; y++) {\n\
     canvas.setFillColor(l[0], l[1], l[2], 1);\n\
     canvas.fillRect(x, y, 1, 1);\n\
   }\n\
-}</scr' .. 'ipt></body></html>';
+}</script></body></html>');
 
-    return s;
+    return table.concat(s);
 end
 
 testOutput = arrayToCanvasCommands(raytraceScene());

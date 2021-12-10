@@ -63,7 +63,8 @@
 #define VM_KV(i) (LUAU_ASSERT(unsigned(i) < unsigned(cl->l.p->sizek)), &k[i])
 #define VM_UV(i) (LUAU_ASSERT(unsigned(i) < unsigned(cl->nupvalues)), &cl->l.uprefs[i])
 
-#define VM_PATCH_C(pc, slot) ((uint8_t*)(pc))[3] = uint8_t(slot)
+#define VM_PATCH_C(pc, slot) *const_cast<Instruction*>(pc) = ((uint8_t(slot) << 24) | (0x00ffffffu & *(pc)))
+#define VM_PATCH_E(pc, slot) *const_cast<Instruction*>(pc) = ((uint32_t(slot) << 8) | (0x000000ffu & *(pc)))
 
 // NOTE: If debugging the Luau code, disable this macro to prevent timeouts from
 // occurring when tracing code in Visual Studio / XCode
@@ -120,7 +121,7 @@
  */
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
-#define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[*(uint8_t*)pc])
+#define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else
 #define VM_CASE(op) case op:
@@ -325,7 +326,7 @@ static void luau_execute(lua_State* L)
         // ... and singlestep logic :)
         if (SingleStep)
         {
-            if (L->global->cb.debugstep && !luau_skipstep(*(uint8_t*)pc))
+            if (L->global->cb.debugstep && !luau_skipstep(LUAU_INSN_OP(*pc)))
             {
                 VM_PROTECT(luau_callhook(L, L->global->cb.debugstep, NULL));
 
@@ -335,13 +336,12 @@ static void luau_execute(lua_State* L)
             }
 
 #if VM_USE_CGOTO
-            VM_CONTINUE(*(uint8_t*)pc);
+            VM_CONTINUE(LUAU_INSN_OP(*pc));
 #endif
         }
 
 #if !VM_USE_CGOTO
-        // Note: this assumes that LUAU_INSN_OP() decodes the first byte (aka least significant byte in the little endian encoding)
-        size_t dispatchOp = *(uint8_t*)pc;
+        size_t dispatchOp = LUAU_INSN_OP(*pc);
 
     dispatchContinue:
         switch (dispatchOp)
@@ -2577,7 +2577,7 @@ static void luau_execute(lua_State* L)
 
                 // update hits with saturated add and patch the instruction in place
                 hits = (hits < (1 << 23) - 1) ? hits + 1 : hits;
-                ((uint32_t*)pc)[-1] = LOP_COVERAGE | (uint32_t(hits) << 8);
+                VM_PATCH_E(pc - 1, hits);
 
                 VM_NEXT();
             }

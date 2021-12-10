@@ -374,4 +374,54 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
         toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauSingletonTypes", true},
+        {"LuauParseSingletonTypes", true},
+        {"LuauUnionHeuristic", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauExtendedUnionMismatchError", true},
+    };
+
+    CheckResult result = check(R"(
+type Cat = { tag: 'cat', catfood: string }
+type Dog = { tag: 'dog', dogfood: string }
+type Animal = Cat | Dog
+
+local a: Animal = { tag = 'cat', cafood = 'something' }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(R"(Type 'a' could not be converted into 'Cat | Dog'
+caused by:
+  None of the union options are compatible. For example: Table type 'a' not compatible with type 'Cat' because the former is missing field 'catfood')",
+        toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauSingletonTypes", true},
+        {"LuauParseSingletonTypes", true},
+        {"LuauUnionHeuristic", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauExtendedUnionMismatchError", true},
+    };
+
+    CheckResult result = check(R"(
+type Good = { success: true, result: string }
+type Bad = { success: false, error: string }
+type Result = Good | Bad
+
+local a: Result = { success = false, result = 'something' }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(R"(Type 'a' could not be converted into 'Bad | Good'
+caused by:
+  None of the union options are compatible. For example: Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')",
+        toString(result.errors[0]));
+}
+
 TEST_SUITE_END();

@@ -207,6 +207,36 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_does_not_propagate_type_info")
     CHECK_EQ("number", toString(requireType("b")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "as_expr_is_bidirectional")
+{
+    ScopedFastFlag sff{"LuauBidirectionalAsExpr", true};
+
+    CheckResult result = check(R"(
+        local a = 55 :: number?
+        local b = a :: number
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number?", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
+{
+    ScopedFastFlag sff{"LuauBidirectionalAsExpr", true};
+    ScopedFastFlag sff2{"LuauErrorRecoveryType", true};
+
+    CheckResult result = check(R"(
+        local a = 55 :: string
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("Cannot cast 'number' into 'string' because the types are unrelated", toString(result.errors[0]));
+    CHECK_EQ("string", toString(requireType("a")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "type_annotations_inside_function_bodies")
 {
     CheckResult result = check(R"(

@@ -499,6 +499,7 @@ struct SingletonTypes
     const TypePackId anyTypePack;
 
     SingletonTypes();
+    ~SingletonTypes();
     SingletonTypes(const SingletonTypes&) = delete;
     void operator=(const SingletonTypes&) = delete;
 
@@ -509,10 +510,12 @@ struct SingletonTypes
 
 private:
     std::unique_ptr<struct TypeArena> arena;
+    bool debugFreezeArena = false;
+
     TypeId makeStringMetatable();
 };
 
-extern SingletonTypes singletonTypes;
+SingletonTypes& getSingletonTypes();
 
 void persist(TypeId ty);
 void persist(TypePackId tp);
@@ -522,9 +525,6 @@ TypeLevel* getMutableLevel(TypeId ty);
 
 const Property* lookupClassProp(const ClassTypeVar* cls, const Name& name);
 bool isSubclass(const ClassTypeVar* cls, const ClassTypeVar* parent);
-
-bool hasGeneric(TypeId ty);
-bool hasGeneric(TypePackId tp);
 
 TypeVar* asMutable(TypeId ty);
 
