@@ -81,7 +81,7 @@ jobs:
       with:
         path-to-lcov: ./coverage.info
         github-token: ${{ secrets.GITHUB_TOKEN }}
-      continue-on-error: true
+      continue-on-error: false
     - uses: actions/upload-artifact@v2
       with:
         name: coverage
