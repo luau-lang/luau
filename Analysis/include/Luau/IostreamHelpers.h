@@ -36,6 +36,10 @@ std::ostream& operator<<(std::ostream& lhs, const IllegalRequire& error);
 std::ostream& operator<<(std::ostream& lhs, const ModuleHasCyclicDependency& error);
 std::ostream& operator<<(std::ostream& lhs, const DuplicateGenericParameter& error);
 std::ostream& operator<<(std::ostream& lhs, const CannotInferBinaryOperation& error);
+std::ostream& operator<<(std::ostream& lhs, const SwappedGenericTypeParameter& error);
+std::ostream& operator<<(std::ostream& lhs, const OptionalValueAccess& error);
+std::ostream& operator<<(std::ostream& lhs, const MissingUnionProperty& error);
+std::ostream& operator<<(std::ostream& lhs, const TypesAreUnrelated& error);
 
 std::ostream& operator<<(std::ostream& lhs, const TableState& tv);
 std::ostream& operator<<(std::ostream& lhs, const TypeVar& tv);

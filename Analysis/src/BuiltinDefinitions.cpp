@@ -217,9 +217,9 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
 
     TypeId genericK = arena.addType(GenericTypeVar{"K"});
     TypeId genericV = arena.addType(GenericTypeVar{"V"});
-    TypeId mapOfKtoV = arena.addType(TableTypeVar{{}, TableIndexer(genericK, genericV), typeChecker.globalScope->level});
+    TypeId mapOfKtoV = arena.addType(TableTypeVar{{}, TableIndexer(genericK, genericV), typeChecker.globalScope->level, TableState::Generic});
 
-    std::optional<TypeId> stringMetatableTy = getMetatable(singletonTypes.stringType);
+    std::optional<TypeId> stringMetatableTy = getMetatable(getSingletonTypes().stringType);
     LUAU_ASSERT(stringMetatableTy);
     const TableTypeVar* stringMetatableTable = get<TableTypeVar>(follow(*stringMetatableTy));
     LUAU_ASSERT(stringMetatableTable);
@@ -271,7 +271,10 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
         persist(pair.second.typeId);
 
         if (TableTypeVar* ttv = getMutable<TableTypeVar>(pair.second.typeId))
-            ttv->name = toString(pair.first);
+        {
+            if (!ttv->name)
+                ttv->name = toString(pair.first);
+        }
     }
 
     attachMagicFunction(getGlobalBinding(typeChecker, "assert"), magicFunctionAssert);

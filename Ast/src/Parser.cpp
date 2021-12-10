@@ -10,7 +10,6 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauCaptureBrokenCommentSpans, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
 LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
@@ -159,7 +158,7 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
     {
         std::vector<std::string> hotcomments;
 
-        while (isComment(p.lexer.current()) || (FFlag::LuauCaptureBrokenCommentSpans && p.lexer.current().type == Lexeme::BrokenComment))
+        while (isComment(p.lexer.current()) || p.lexer.current().type == Lexeme::BrokenComment)
         {
             const char* text = p.lexer.current().data;
             unsigned int length = p.lexer.current().length;
@@ -2780,7 +2779,7 @@ const Lexeme& Parser::nextLexeme()
             const Lexeme& lexeme = lexer.next(/*skipComments*/ false);
             // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
             // The parser will turn this into a proper syntax error.
-            if (FFlag::LuauCaptureBrokenCommentSpans && lexeme.type == Lexeme::BrokenComment)
+            if (lexeme.type == Lexeme::BrokenComment)
                 commentLocations.push_back(Comment{lexeme.type, lexeme.location});
             if (isComment(lexeme))
                 commentLocations.push_back(Comment{lexeme.type, lexeme.location});

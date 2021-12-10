@@ -7,6 +7,7 @@
 #include "ltable.h"
 #include "lfunc.h"
 #include "lstring.h"
+#include "ludata.h"
 
 #include <string.h>
 #include <stdio.h>

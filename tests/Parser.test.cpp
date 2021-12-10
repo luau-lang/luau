@@ -2303,8 +2303,6 @@ TEST_CASE_FIXTURE(Fixture, "capture_comments")
 
 TEST_CASE_FIXTURE(Fixture, "capture_broken_comment_at_the_start_of_the_file")
 {
-    ScopedFastFlag sff{"LuauCaptureBrokenCommentSpans", true};
-
     ParseOptions options;
     options.captureComments = true;
 
@@ -2319,8 +2317,6 @@ TEST_CASE_FIXTURE(Fixture, "capture_broken_comment_at_the_start_of_the_file")
 
 TEST_CASE_FIXTURE(Fixture, "capture_broken_comment")
 {
-    ScopedFastFlag sff{"LuauCaptureBrokenCommentSpans", true};
-
     ParseOptions options;
     options.captureComments = true;
 

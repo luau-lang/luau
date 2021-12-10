@@ -214,4 +214,32 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unifica
     CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
 }
 
+TEST_CASE_FIXTURE(TryUnifyFixture, "undo_new_prop_on_unsealed_table")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauTableSubtypingVariance2", true},
+    };
+    // I am not sure how to make this happen in Luau code.
+
+    TypeId unsealedTable = arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
+    TypeId sealedTable = arena.addType(TableTypeVar{
+        {{"prop", Property{getSingletonTypes().numberType}}},
+        std::nullopt,
+        TypeLevel{},
+        TableState::Sealed
+    });
+
+    const TableTypeVar* ttv = get<TableTypeVar>(unsealedTable);
+    REQUIRE(ttv);
+
+    state.tryUnify(unsealedTable, sealedTable);
+
+    // To be honest, it's really quite spooky here that we're amending an unsealed table in this case.
+    CHECK(!ttv->props.empty());
+
+    state.log.rollback();
+
+    CHECK(ttv->props.empty());
+}
+
 TEST_SUITE_END();

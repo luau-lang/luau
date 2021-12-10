@@ -10,9 +10,6 @@
 #include <sstream>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauPreloadClosures)
-LUAU_FASTFLAG(LuauGenericSpecialGlobals)
-
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id)
@@ -74,20 +71,10 @@ TEST_CASE("BasicFunction")
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::compileOrThrow(bcb, "local function foo(a, b) return b end");
 
-    if (FFlag::LuauPreloadClosures)
-    {
-        CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 DUPCLOSURE R0 K0
 RETURN R0 0
 )");
-    }
-    else
-    {
-        CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-NEWCLOSURE R0 P0
-RETURN R0 0
-)");
-    }
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 RETURN R1 1
@@ -2859,47 +2846,35 @@ CAPTURE UPVAL U1
 RETURN R0 1
 )");
 
-    if (FFlag::LuauPreloadClosures)
-    {
-        // recursive capture
-        CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
+    // recursive capture
+    CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
 DUPCLOSURE R0 K0
 CAPTURE VAL R0
 RETURN R0 0
 )");
 
-        // multi-level recursive capture
-        CHECK_EQ("\n" + compileFunction("local function foo() return function() return foo() end end", 1), R"(
+    // multi-level recursive capture
+    CHECK_EQ("\n" + compileFunction("local function foo() return function() return foo() end end", 1), R"(
 DUPCLOSURE R0 K0
 CAPTURE UPVAL U0
 RETURN R0 1
 )");
 
-        // multi-level recursive capture where function isn't top-level
-        // note: this should probably be optimized to DUPCLOSURE but doing that requires a different upval tracking flow in the compiler
-        CHECK_EQ("\n" + compileFunction(R"(
+    // multi-level recursive capture where function isn't top-level
+    // note: this should probably be optimized to DUPCLOSURE but doing that requires a different upval tracking flow in the compiler
+    CHECK_EQ("\n" + compileFunction(R"(
 local function foo()
     local function bar()
         return function() return bar() end
     end
 end
 )",
-                            1),
-            R"(
+                        1),
+        R"(
 NEWCLOSURE R0 P0
 CAPTURE UPVAL U0
 RETURN R0 1
 )");
-    }
-    else
-    {
-        // recursive capture
-        CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
-NEWCLOSURE R0 P0
-CAPTURE VAL R0
-RETURN R0 0
-)");
-    }
 }
 
 TEST_CASE("OutOfLocals")
@@ -3504,8 +3479,6 @@ local t = {
 
 TEST_CASE("ConstantClosure")
 {
-    ScopedFastFlag sff("LuauPreloadClosures", true);
-
     // closures without upvalues are created when bytecode is loaded
     CHECK_EQ("\n" + compileFunction(R"(
 return function() end
@@ -3570,8 +3543,6 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
-    ScopedFastFlag sff1("LuauPreloadClosures", true);
-
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...

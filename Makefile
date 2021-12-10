@@ -27,7 +27,7 @@ TESTS_SOURCES=$(wildcard tests/*.cpp)
 TESTS_OBJECTS=$(TESTS_SOURCES:%=$(BUILD)/%.o)
 TESTS_TARGET=$(BUILD)/luau-tests
 
-REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Repl.cpp
+REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
 REPL_CLI_OBJECTS=$(REPL_CLI_SOURCES:%=$(BUILD)/%.o)
 REPL_CLI_TARGET=$(BUILD)/luau
 
@@ -128,10 +128,10 @@ luau-size: luau
 
 # executable target aliases
 luau: $(REPL_CLI_TARGET)
-	cp $^ $@
+	ln -fs $^ $@
 
 luau-analyze: $(ANALYZE_CLI_TARGET)
-	cp $^ $@
+	ln -fs $^ $@
 
 # executable targets
 $(TESTS_TARGET): $(TESTS_OBJECTS) $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET)

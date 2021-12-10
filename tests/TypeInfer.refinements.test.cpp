@@ -279,7 +279,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_non_binary_expressions_actually_resolve_const
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
-    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true};
     ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
@@ -1083,6 +1083,21 @@ TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
 
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 49})));
     CHECK_EQ("any", toString(requireTypeAtPosition({6, 66})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscript_expr_is_constant_string")
+{
+    ScopedFastFlag sff{"LuauRefiLookupFromIndexExpr", true};
+
+    CheckResult result = check(R"(
+        type T = { [string]: { prop: number }? }
+        local t: T = {}
+        if t["hello"] then
+            local foo = t["hello"].prop
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

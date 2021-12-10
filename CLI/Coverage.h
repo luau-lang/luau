@@ -3,6 +3,8 @@
 
 struct lua_State;
 
-void profilerStart(lua_State* L, int frequency);
-void profilerStop();
-void profilerDump(const char* path);
+void coverageInit(lua_State* L);
+bool coverageActive();
+
+void coverageTrack(lua_State* L, int funcindex);
+void coverageDump(const char* path);

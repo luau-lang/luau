@@ -334,6 +334,10 @@ LUA_API const char* lua_setupvalue(lua_State* L, int funcindex, int n);
 LUA_API void lua_singlestep(lua_State* L, int enabled);
 LUA_API void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
 
+typedef void (*lua_Coverage)(void* context, const char* function, int linedefined, int depth, const int* hits, size_t size);
+
+LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
+
 /* Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging. */
 LUA_API const char* lua_debugtrace(lua_State* L);
 
