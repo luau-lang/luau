@@ -91,7 +91,7 @@
     // Misc Functions
     function output(text) {
         output_box = document.getElementById("output");
-        output_box.value += "[" + new Date().toLocaleTimeString() + "] " + text.replace('stdin:', '') + "\n";
+        output_box.value += text.replace('stdin:', '') + "\n";
         // scroll to bottom
         output_box.scrollTop = output_box.scrollHeight;
     }
