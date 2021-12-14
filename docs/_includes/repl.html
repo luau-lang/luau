@@ -39,8 +39,16 @@
         matchBrackets: true,
         lineNumbers: true,
         smartIndent: true,
+        indentWithTabs: true,
+        indentUnit: 4,
     });
     editor.setValue("print(\"Hello World!\")\n");
+        editor.addKeyMap({
+        "Shift-Tab": function (cm) {
+            // dedent functionality
+            cm.execCommand("indentLess");
+        }
+    });
 
     // Misc Functions
     function output(text) {
