@@ -156,13 +156,14 @@ struct TypeChecker
 
     // Returns both the type of the lvalue and its binding (if the caller wants to mutate the binding).
     // Note: the binding may be null.
+    // TODO: remove second return value with FFlagLuauUpdateFunctionNameBinding
     std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExpr& expr);
     std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprLocal& expr);
     std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprGlobal& expr);
     std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr);
     std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr);
 
-    TypeId checkFunctionName(const ScopePtr& scope, AstExpr& funName);
+    TypeId checkFunctionName(const ScopePtr& scope, AstExpr& funName, TypeLevel level);
     std::pair<TypeId, ScopePtr> checkFunctionSignature(const ScopePtr& scope, int subLevel, const AstExprFunction& expr,
         std::optional<Location> originalNameLoc, std::optional<TypeId> expectedType);
     void checkFunctionBody(const ScopePtr& scope, TypeId type, const AstExprFunction& function);
@@ -174,7 +175,7 @@ struct TypeChecker
     ExprResult<TypePackId> checkExprPack(const ScopePtr& scope, const AstExprCall& expr);
     std::vector<std::optional<TypeId>> getExpectedTypesForCall(const std::vector<TypeId>& overloads, size_t argumentCount, bool selfCall);
     std::optional<ExprResult<TypePackId>> checkCallOverload(const ScopePtr& scope, const AstExprCall& expr, TypeId fn, TypePackId retPack,
-        TypePackId argPack, TypePack* args, const std::vector<Location>& argLocations, const ExprResult<TypePackId>& argListResult,
+        TypePackId argPack, TypePack* args, const std::vector<Location>* argLocations, const ExprResult<TypePackId>& argListResult,
         std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<TypeId>& overloadsThatDont, std::vector<OverloadErrorEntry>& errors);
     bool handleSelfCallMismatch(const ScopePtr& scope, const AstExprCall& expr, TypePack* args, const std::vector<Location>& argLocations,
         const std::vector<OverloadErrorEntry>& errors);
@@ -277,7 +278,7 @@ public:
     [[noreturn]] void ice(const std::string& message);
 
     ScopePtr childFunctionScope(const ScopePtr& parent, const Location& location, int subLevel = 0);
-    ScopePtr childScope(const ScopePtr& parent, const Location& location, int subLevel = 0);
+    ScopePtr childScope(const ScopePtr& parent, const Location& location);
 
     // Wrapper for merge(l, r, toUnion) but without the lambda junk.
     void merge(RefinementMap& l, const RefinementMap& r);
@@ -297,7 +298,6 @@ private:
 
 private:
     Unifier mkUnifier(const Location& location);
-    Unifier mkUnifier(const std::vector<std::pair<TypeId, TypeId>>& seen, const Location& location);
 
     // These functions are only safe to call when we are in the process of typechecking a module.
 

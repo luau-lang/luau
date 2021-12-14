@@ -537,8 +537,6 @@ TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
 
 TEST_CASE_FIXTURE(Fixture, "non_recursive_aliases_that_reuse_a_generic_name")
 {
-    ScopedFastFlag sff1{"LuauSubstitutionDontReplaceIgnoredTypes", true};
-
     CheckResult result = check(R"(
         type Array<T> = { [number]: T }
         type Tuple<T, V> = Array<T | V>

@@ -51,34 +51,11 @@ struct FileResolver
     {
         return std::nullopt;
     }
-
-    // DEPRECATED APIS
-    // These are going to be removed with LuauNewRequireTrace2
-    virtual bool moduleExists(const ModuleName& name) const = 0;
-    virtual std::optional<ModuleName> fromAstFragment(AstExpr* expr) const = 0;
-    virtual ModuleName concat(const ModuleName& lhs, std::string_view rhs) const = 0;
-    virtual std::optional<ModuleName> getParentModuleName(const ModuleName& name) const = 0;
 };
 
 struct NullFileResolver : FileResolver
 {
     std::optional<SourceCode> readSource(const ModuleName& name) override
-    {
-        return std::nullopt;
-    }
-    bool moduleExists(const ModuleName& name) const override
-    {
-        return false;
-    }
-    std::optional<ModuleName> fromAstFragment(AstExpr* expr) const override
-    {
-        return std::nullopt;
-    }
-    ModuleName concat(const ModuleName& lhs, std::string_view rhs) const override
-    {
-        return lhs;
-    }
-    std::optional<ModuleName> getParentModuleName(const ModuleName& name) const override
     {
         return std::nullopt;
     }

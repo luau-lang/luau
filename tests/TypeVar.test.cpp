@@ -3,6 +3,7 @@
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
+#include "Luau/VisitTypeVar.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -321,6 +322,50 @@ TEST_CASE("tagging_props")
     CHECK(!Luau::hasTag(prop, "foo"));
     Luau::attachTag(prop, "foo");
     CHECK(Luau::hasTag(prop, "foo"));
+}
+
+struct VisitCountTracker
+{
+    std::unordered_map<TypeId, unsigned> tyVisits;
+    std::unordered_map<TypePackId, unsigned> tpVisits;
+
+    void cycle(TypeId) {}
+    void cycle(TypePackId) {}
+
+    template<typename T>
+    bool operator()(TypeId ty, const T& t)
+    {
+        tyVisits[ty]++;
+        return true;
+    }
+
+    template<typename T>
+    bool operator()(TypePackId tp, const T&)
+    {
+        tpVisits[tp]++;
+        return true;
+    }
+};
+
+TEST_CASE_FIXTURE(Fixture, "visit_once")
+{
+    CheckResult result = check(R"(
+type T = { a: number, b: () -> () }
+local b: (T, T, T) -> T
+)");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TypeId bType = requireType("b");
+
+    VisitCountTracker tester;
+    DenseHashSet<void*> seen{nullptr};
+    visitTypeVarOnce(bType, tester, seen);
+
+    for (auto [_, count] : tester.tyVisits)
+        CHECK_EQ(count, 1);
+
+    for (auto [_, count] : tester.tpVisits)
+        CHECK_EQ(count, 1);
 }
 
 TEST_SUITE_END();

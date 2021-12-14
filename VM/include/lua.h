@@ -21,6 +21,7 @@
 #define LUA_ENVIRONINDEX (-10001)
 #define LUA_GLOBALSINDEX (-10002)
 #define lua_upvalueindex(i) (LUA_GLOBALSINDEX - (i))
+#define lua_ispseudo(i) ((i) <= LUA_REGISTRYINDEX)
 
 /* thread status; 0 is OK */
 enum lua_Status
@@ -108,6 +109,7 @@ LUA_API int lua_isthreadreset(lua_State* L);
 /*
 ** basic stack manipulation
 */
+LUA_API int lua_absindex(lua_State* L, int idx);
 LUA_API int lua_gettop(lua_State* L);
 LUA_API void lua_settop(lua_State* L, int idx);
 LUA_API void lua_pushvalue(lua_State* L, int idx);
@@ -187,7 +189,7 @@ LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
 LUA_API int lua_getreadonly(lua_State* L, int idx);
 LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
-LUA_API void* lua_newuserdata(lua_State* L, size_t sz, int tag);
+LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
 LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
 LUA_API void lua_getfenv(lua_State* L, int idx);
@@ -231,6 +233,7 @@ enum lua_GCOp
     LUA_GCRESTART,
     LUA_GCCOLLECT,
     LUA_GCCOUNT,
+    LUA_GCCOUNTB,
     LUA_GCISRUNNING,
 
     // garbage collection is handled by 'assists' that perform some amount of GC work matching pace of allocation
@@ -285,6 +288,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_pop(L, n) lua_settop(L, -(n)-1)
 
 #define lua_newtable(L) lua_createtable(L, 0, 0)
+#define lua_newuserdata(L, s) lua_newuserdatatagged(L, s, 0)
 
 #define lua_strlen(L, i) lua_objlen(L, (i))
 
@@ -293,6 +297,7 @@ LUA_API void lua_unref(lua_State* L, int ref);
 #define lua_islightuserdata(L, n) (lua_type(L, (n)) == LUA_TLIGHTUSERDATA)
 #define lua_isnil(L, n) (lua_type(L, (n)) == LUA_TNIL)
 #define lua_isboolean(L, n) (lua_type(L, (n)) == LUA_TBOOLEAN)
+#define lua_isvector(L, n) (lua_type(L, (n)) == LUA_TVECTOR)
 #define lua_isthread(L, n) (lua_type(L, (n)) == LUA_TTHREAD)
 #define lua_isnone(L, n) (lua_type(L, (n)) == LUA_TNONE)
 #define lua_isnoneornil(L, n) (lua_type(L, (n)) <= LUA_TNIL)
@@ -328,6 +333,10 @@ LUA_API const char* lua_setupvalue(lua_State* L, int funcindex, int n);
 
 LUA_API void lua_singlestep(lua_State* L, int enabled);
 LUA_API void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
+
+typedef void (*lua_Coverage)(void* context, const char* function, int linedefined, int depth, const int* hits, size_t size);
+
+LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
 
 /* Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging. */
 LUA_API const char* lua_debugtrace(lua_State* L);

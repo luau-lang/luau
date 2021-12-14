@@ -10,11 +10,8 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauCaptureBrokenCommentSpans, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
-LUAU_FASTFLAGVARIABLE(LuauTypeAliasPacks, false)
-LUAU_FASTFLAGVARIABLE(LuauParseTypePackTypeParameters, false)
 LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseGenericFunctionTypeBegin, false)
@@ -161,7 +158,7 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
     {
         std::vector<std::string> hotcomments;
 
-        while (isComment(p.lexer.current()) || (FFlag::LuauCaptureBrokenCommentSpans && p.lexer.current().type == Lexeme::BrokenComment))
+        while (isComment(p.lexer.current()) || p.lexer.current().type == Lexeme::BrokenComment)
         {
             const char* text = p.lexer.current().data;
             unsigned int length = p.lexer.current().length;
@@ -782,8 +779,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
 
     AstType* type = parseTypeAnnotation();
 
-    return allocator.alloc<AstStatTypeAlias>(
-        Location(start, type->location), name->name, generics, FFlag::LuauTypeAliasPacks ? genericPacks : AstArray<AstName>{}, type, exported);
+    return allocator.alloc<AstStatTypeAlias>(Location(start, type->location), name->name, generics, genericPacks, type, exported);
 }
 
 AstDeclaredClassProp Parser::parseDeclaredClassMethod()
@@ -1602,30 +1598,18 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
             return {allocator.alloc<AstTypeTypeof>(Location(begin, end), expr), {}};
         }
 
-        if (FFlag::LuauParseTypePackTypeParameters)
+        bool hasParameters = false;
+        AstArray<AstTypeOrPack> parameters{};
+
+        if (lexer.current().type == '<')
         {
-            bool hasParameters = false;
-            AstArray<AstTypeOrPack> parameters{};
-
-            if (lexer.current().type == '<')
-            {
-                hasParameters = true;
-                parameters = parseTypeParams();
-            }
-
-            Location end = lexer.previousLocation();
-
-            return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, hasParameters, parameters), {}};
+            hasParameters = true;
+            parameters = parseTypeParams();
         }
-        else
-        {
-            AstArray<AstTypeOrPack> generics = parseTypeParams();
 
-            Location end = lexer.previousLocation();
+        Location end = lexer.previousLocation();
 
-            // false in 'hasParameterList' as it is not used without FFlagLuauTypeAliasPacks
-            return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, false, generics), {}};
-        }
+        return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, hasParameters, parameters), {}};
     }
     else if (lexer.current().type == '{')
     {
@@ -2414,37 +2398,24 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
         while (true)
         {
-            if (FFlag::LuauParseTypePackTypeParameters)
+            if (shouldParseTypePackAnnotation(lexer))
             {
-                if (shouldParseTypePackAnnotation(lexer))
-                {
-                    auto typePack = parseTypePackAnnotation();
+                auto typePack = parseTypePackAnnotation();
 
-                    if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
-                        parameters.push_back({{}, typePack});
-                }
-                else if (lexer.current().type == '(')
-                {
-                    auto [type, typePack] = parseTypeOrPackAnnotation();
+                parameters.push_back({{}, typePack});
+            }
+            else if (lexer.current().type == '(')
+            {
+                auto [type, typePack] = parseTypeOrPackAnnotation();
 
-                    if (typePack)
-                    {
-                        if (FFlag::LuauTypeAliasPacks) // Type packs are recorded only is we can handle them
-                            parameters.push_back({{}, typePack});
-                    }
-                    else
-                    {
-                        parameters.push_back({type, {}});
-                    }
-                }
-                else if (lexer.current().type == '>' && parameters.empty())
-                {
-                    break;
-                }
+                if (typePack)
+                    parameters.push_back({{}, typePack});
                 else
-                {
-                    parameters.push_back({parseTypeAnnotation(), {}});
-                }
+                    parameters.push_back({type, {}});
+            }
+            else if (lexer.current().type == '>' && parameters.empty())
+            {
+                break;
             }
             else
             {
@@ -2808,7 +2779,7 @@ const Lexeme& Parser::nextLexeme()
             const Lexeme& lexeme = lexer.next(/*skipComments*/ false);
             // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
             // The parser will turn this into a proper syntax error.
-            if (FFlag::LuauCaptureBrokenCommentSpans && lexeme.type == Lexeme::BrokenComment)
+            if (lexeme.type == Lexeme::BrokenComment)
                 commentLocations.push_back(Comment{lexeme.type, lexeme.location});
             if (isComment(lexeme))
                 commentLocations.push_back(Comment{lexeme.type, lexeme.location});

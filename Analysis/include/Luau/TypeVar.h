@@ -499,6 +499,7 @@ struct SingletonTypes
     const TypePackId anyTypePack;
 
     SingletonTypes();
+    ~SingletonTypes();
     SingletonTypes(const SingletonTypes&) = delete;
     void operator=(const SingletonTypes&) = delete;
 
@@ -509,37 +510,21 @@ struct SingletonTypes
 
 private:
     std::unique_ptr<struct TypeArena> arena;
+    bool debugFreezeArena = false;
+
     TypeId makeStringMetatable();
 };
 
-extern SingletonTypes singletonTypes;
+SingletonTypes& getSingletonTypes();
 
 void persist(TypeId ty);
 void persist(TypePackId tp);
-
-struct ToDotOptions
-{
-    bool showPointers = true;        // Show pointer value in the node label
-    bool duplicatePrimitives = true; // Display primitive types and 'any' as separate nodes
-};
-
-std::string toDot(TypeId ty, const ToDotOptions& opts);
-std::string toDot(TypePackId tp, const ToDotOptions& opts);
-
-std::string toDot(TypeId ty);
-std::string toDot(TypePackId tp);
-
-void dumpDot(TypeId ty);
-void dumpDot(TypePackId tp);
 
 const TypeLevel* getLevel(TypeId ty);
 TypeLevel* getMutableLevel(TypeId ty);
 
 const Property* lookupClassProp(const ClassTypeVar* cls, const Name& name);
 bool isSubclass(const ClassTypeVar* cls, const ClassTypeVar* parent);
-
-bool hasGeneric(TypeId ty);
-bool hasGeneric(TypePackId tp);
 
 TypeVar* asMutable(TypeId ty);
 

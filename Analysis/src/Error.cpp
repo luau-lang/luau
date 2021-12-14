@@ -7,57 +7,14 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauTypeAliasPacks)
-
-static std::string wrongNumberOfArgsString_DEPRECATED(size_t expectedCount, size_t actualCount, bool isTypeArgs = false)
-{
-    std::string s = "expects " + std::to_string(expectedCount) + " ";
-
-    if (isTypeArgs)
-        s += "type ";
-
-    s += "argument";
-    if (expectedCount != 1)
-        s += "s";
-
-    s += ", but ";
-
-    if (actualCount == 0)
-    {
-        s += "none";
-    }
-    else
-    {
-        if (actualCount < expectedCount)
-            s += "only ";
-
-        s += std::to_string(actualCount);
-    }
-
-    s += (actualCount == 1) ? " is" : " are";
-
-    s += " specified";
-
-    return s;
-}
-
 static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
-    std::string s;
+    std::string s = "expects ";
 
-    if (FFlag::LuauTypeAliasPacks)
-    {
-        s = "expects ";
+    if (isVariadic)
+        s += "at least ";
 
-        if (isVariadic)
-            s += "at least ";
-
-        s += std::to_string(expectedCount) + " ";
-    }
-    else
-    {
-        s = "expects " + std::to_string(expectedCount) + " ";
-    }
+    s += std::to_string(expectedCount) + " ";
 
     if (argPrefix)
         s += std::string(argPrefix) + " ";
@@ -101,7 +58,7 @@ struct ErrorConverter
             result += "\ncaused by:\n  ";
 
             if (!tm.reason.empty())
-                result += tm.reason + ". ";
+                result += tm.reason + " ";
 
             result += Luau::toString(*tm.error);
         }
@@ -188,10 +145,7 @@ struct ErrorConverter
             return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " + std::to_string(e.actual) +
                    " are required here";
         case CountMismatch::Arg:
-            if (FFlag::LuauTypeAliasPacks)
-                return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
-            else
-                return "Argument count mismatch. Function " + wrongNumberOfArgsString_DEPRECATED(e.expected, e.actual);
+            return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
         }
 
         LUAU_ASSERT(!"Unknown context");
@@ -232,7 +186,7 @@ struct ErrorConverter
     std::string operator()(const Luau::IncorrectGenericParameterCount& e) const
     {
         std::string name = e.name;
-        if (!e.typeFun.typeParams.empty() || (FFlag::LuauTypeAliasPacks && !e.typeFun.typePackParams.empty()))
+        if (!e.typeFun.typeParams.empty() || !e.typeFun.typePackParams.empty())
         {
             name += "<";
             bool first = true;
@@ -246,36 +200,25 @@ struct ErrorConverter
                 name += toString(t);
             }
 
-            if (FFlag::LuauTypeAliasPacks)
+            for (TypePackId t : e.typeFun.typePackParams)
             {
-                for (TypePackId t : e.typeFun.typePackParams)
-                {
-                    if (first)
-                        first = false;
-                    else
-                        name += ", ";
+                if (first)
+                    first = false;
+                else
+                    name += ", ";
 
-                    name += toString(t);
-                }
+                name += toString(t);
             }
 
             name += ">";
         }
 
-        if (FFlag::LuauTypeAliasPacks)
-        {
-            if (e.typeFun.typeParams.size() != e.actualParameters)
-                return "Generic type '" + name + "' " +
-                       wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, "type", !e.typeFun.typePackParams.empty());
+        if (e.typeFun.typeParams.size() != e.actualParameters)
+            return "Generic type '" + name + "' " +
+                   wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, "type", !e.typeFun.typePackParams.empty());
 
-            return "Generic type '" + name + "' " +
-                   wrongNumberOfArgsString(e.typeFun.typePackParams.size(), e.actualPackParameters, "type pack", /*isVariadic*/ false);
-        }
-        else
-        {
-            return "Generic type '" + name + "' " +
-                   wrongNumberOfArgsString_DEPRECATED(e.typeFun.typeParams.size(), e.actualParameters, /*isTypeArgs*/ true);
-        }
+        return "Generic type '" + name + "' " +
+               wrongNumberOfArgsString(e.typeFun.typePackParams.size(), e.actualPackParameters, "type pack", /*isVariadic*/ false);
     }
 
     std::string operator()(const Luau::SyntaxError& e) const
@@ -467,6 +410,11 @@ struct ErrorConverter
 
         return ss + " in the type '" + toString(e.type) + "'";
     }
+
+    std::string operator()(const TypesAreUnrelated& e) const
+    {
+        return "Cannot cast '" + toString(e.left) + "' into '" + toString(e.right) + "' because the types are unrelated";
+    }
 };
 
 struct InvalidNameChecker
@@ -591,11 +539,8 @@ bool IncorrectGenericParameterCount::operator==(const IncorrectGenericParameterC
     if (typeFun.typeParams.size() != rhs.typeFun.typeParams.size())
         return false;
 
-    if (FFlag::LuauTypeAliasPacks)
-    {
-        if (typeFun.typePackParams.size() != rhs.typeFun.typePackParams.size())
-            return false;
-    }
+    if (typeFun.typePackParams.size() != rhs.typeFun.typePackParams.size())
+        return false;
 
     for (size_t i = 0; i < typeFun.typeParams.size(); ++i)
     {
@@ -603,13 +548,10 @@ bool IncorrectGenericParameterCount::operator==(const IncorrectGenericParameterC
             return false;
     }
 
-    if (FFlag::LuauTypeAliasPacks)
+    for (size_t i = 0; i < typeFun.typePackParams.size(); ++i)
     {
-        for (size_t i = 0; i < typeFun.typePackParams.size(); ++i)
-        {
-            if (typeFun.typePackParams[i] != rhs.typeFun.typePackParams[i])
-                return false;
-        }
+        if (typeFun.typePackParams[i] != rhs.typeFun.typePackParams[i])
+            return false;
     }
 
     return true;
@@ -721,6 +663,11 @@ bool MissingUnionProperty::operator==(const MissingUnionProperty& rhs) const
     return *type == *rhs.type && key == rhs.key;
 }
 
+bool TypesAreUnrelated::operator==(const TypesAreUnrelated& rhs) const
+{
+    return left == rhs.left && right == rhs.right;
+}
+
 std::string toString(const TypeError& error)
 {
     ErrorConverter converter;
@@ -733,14 +680,14 @@ bool containsParseErrorName(const TypeError& error)
 }
 
 template<typename T>
-void copyError(T& e, TypeArena& destArena, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks)
+void copyError(T& e, TypeArena& destArena, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState cloneState)
 {
     auto clone = [&](auto&& ty) {
-        return ::Luau::clone(ty, destArena, seenTypes, seenTypePacks);
+        return ::Luau::clone(ty, destArena, seenTypes, seenTypePacks, cloneState);
     };
 
     auto visitErrorData = [&](auto&& e) {
-        copyError(e, destArena, seenTypes, seenTypePacks);
+        copyError(e, destArena, seenTypes, seenTypePacks, cloneState);
     };
 
     if constexpr (false)
@@ -856,6 +803,11 @@ void copyError(T& e, TypeArena& destArena, SeenTypes& seenTypes, SeenTypePacks& 
         for (auto& ty : e.missing)
             ty = clone(ty);
     }
+    else if constexpr (std::is_same_v<T, TypesAreUnrelated>)
+    {
+        e.left = clone(e.left);
+        e.right = clone(e.right);
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
@@ -864,9 +816,10 @@ void copyErrors(ErrorVec& errors, TypeArena& destArena)
 {
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     auto visitErrorData = [&](auto&& e) {
-        copyError(e, destArena, seenTypes, seenTypePacks);
+        copyError(e, destArena, seenTypes, seenTypePacks, cloneState);
     };
 
     LUAU_ASSERT(!destArena.typeVars.isFrozen());

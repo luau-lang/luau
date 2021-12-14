@@ -10,9 +10,6 @@
 #include <sstream>
 #include <string_view>
 
-LUAU_FASTFLAG(LuauPreloadClosures)
-LUAU_FASTFLAG(LuauGenericSpecialGlobals)
-
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id)
@@ -74,20 +71,10 @@ TEST_CASE("BasicFunction")
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
     Luau::compileOrThrow(bcb, "local function foo(a, b) return b end");
 
-    if (FFlag::LuauPreloadClosures)
-    {
-        CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
+    CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 DUPCLOSURE R0 K0
 RETURN R0 0
 )");
-    }
-    else
-    {
-        CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
-NEWCLOSURE R0 P0
-RETURN R0 0
-)");
-    }
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 RETURN R1 1
@@ -1056,6 +1043,18 @@ RETURN R0 1
     // codegen for a false constant condition
     CHECK_EQ("\n" + compileFunction0("return if false then 10 else 20"), R"(
 LOADN R0 20
+RETURN R0 1
+)");
+
+    // codegen for a true constant condition with non-constant expressions
+    CHECK_EQ("\n" + compileFunction0("return if true then {} else error()"), R"(
+NEWTABLE R0 0 0
+RETURN R0 1
+)");
+
+    // codegen for a false constant condition with non-constant expressions
+    CHECK_EQ("\n" + compileFunction0("return if false then error() else {}"), R"(
+NEWTABLE R0 0 0
 RETURN R0 1
 )");
 
@@ -2360,6 +2359,58 @@ Foo:Bar(
 )");
 }
 
+TEST_CASE("DebugLineInfoCallChain")
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
+    Luau::compileOrThrow(bcb, R"(
+local Foo = ...
+
+Foo
+:Bar(1)
+:Baz(2)
+.Qux(3)
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+2: GETVARARGS R0 1
+5: LOADN R4 1
+5: NAMECALL R2 R0 K0
+5: CALL R2 2 1
+6: LOADN R4 2
+6: NAMECALL R2 R2 K1
+6: CALL R2 2 1
+7: GETTABLEKS R1 R2 K2
+7: LOADN R2 3
+7: CALL R1 1 0
+8: RETURN R0 0
+)");
+}
+
+TEST_CASE("DebugLineInfoFastCall")
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
+    Luau::compileOrThrow(bcb, R"(
+local Foo, Bar = ...
+
+return
+    math.max(
+        Foo,
+        Bar)
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+2: GETVARARGS R0 2
+5: FASTCALL2 18 R0 R1 +5
+5: MOVE R3 R0
+5: MOVE R4 R1
+5: GETIMPORT R2 2
+5: CALL R2 2 -1
+5: RETURN R2 -1
+)");
+}
+
 TEST_CASE("DebugSource")
 {
     const char* source = R"(
@@ -2795,47 +2846,35 @@ CAPTURE UPVAL U1
 RETURN R0 1
 )");
 
-    if (FFlag::LuauPreloadClosures)
-    {
-        // recursive capture
-        CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
+    // recursive capture
+    CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
 DUPCLOSURE R0 K0
 CAPTURE VAL R0
 RETURN R0 0
 )");
 
-        // multi-level recursive capture
-        CHECK_EQ("\n" + compileFunction("local function foo() return function() return foo() end end", 1), R"(
+    // multi-level recursive capture
+    CHECK_EQ("\n" + compileFunction("local function foo() return function() return foo() end end", 1), R"(
 DUPCLOSURE R0 K0
 CAPTURE UPVAL U0
 RETURN R0 1
 )");
 
-        // multi-level recursive capture where function isn't top-level
-        // note: this should probably be optimized to DUPCLOSURE but doing that requires a different upval tracking flow in the compiler
-        CHECK_EQ("\n" + compileFunction(R"(
+    // multi-level recursive capture where function isn't top-level
+    // note: this should probably be optimized to DUPCLOSURE but doing that requires a different upval tracking flow in the compiler
+    CHECK_EQ("\n" + compileFunction(R"(
 local function foo()
     local function bar()
         return function() return bar() end
     end
 end
 )",
-                            1),
-            R"(
+                        1),
+        R"(
 NEWCLOSURE R0 P0
 CAPTURE UPVAL U0
 RETURN R0 1
 )");
-    }
-    else
-    {
-        // recursive capture
-        CHECK_EQ("\n" + compileFunction("local function foo() return foo() end", 1), R"(
-NEWCLOSURE R0 P0
-CAPTURE VAL R0
-RETURN R0 0
-)");
-    }
 }
 
 TEST_CASE("OutOfLocals")
@@ -3440,8 +3479,6 @@ local t = {
 
 TEST_CASE("ConstantClosure")
 {
-    ScopedFastFlag sff("LuauPreloadClosures", true);
-
     // closures without upvalues are created when bytecode is loaded
     CHECK_EQ("\n" + compileFunction(R"(
 return function() end
@@ -3506,8 +3543,6 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
-    ScopedFastFlag sff1("LuauPreloadClosures", true);
-
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -3739,6 +3774,110 @@ GETIMPORT R1 17
 GETTABLEKS R0 R1 K0
 CALL R0 0 0
 RETURN R0 0
+)");
+}
+
+TEST_CASE("ConstantsNoFolding")
+{
+    const char* source = "return nil, true, 42, 'hello'";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::CompileOptions options;
+    options.optimizationLevel = 0;
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+LOADNIL R0
+LOADB R1 1
+LOADK R2 K0
+LOADK R3 K1
+RETURN R0 4
+)");
+}
+
+TEST_CASE("VectorFastCall")
+{
+    const char* source = "return Vector3.new(1, 2, 3)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
+    Luau::CompileOptions options;
+    options.vectorLib = "Vector3";
+    options.vectorCtor = "new";
+    Luau::compileOrThrow(bcb, source, options);
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+LOADN R1 1
+LOADN R2 2
+LOADN R3 3
+FASTCALL 54 +2
+GETIMPORT R0 2
+CALL R0 3 -1
+RETURN R0 -1
+)");
+}
+
+TEST_CASE("TypeAssertion")
+{
+    // validate that type assertions work with the compiler and that the code inside type assertion isn't evaluated
+    CHECK_EQ("\n" + compileFunction0(R"(
+print(foo() :: typeof(error("compile time")))
+)"),
+        R"(
+GETIMPORT R0 1
+GETIMPORT R1 3
+CALL R1 0 1
+CALL R0 1 0
+RETURN R0 0
+)");
+
+    // note that above, foo() is treated as single-arg function; removing type assertion changes the bytecode
+    CHECK_EQ("\n" + compileFunction0(R"(
+print(foo())
+)"),
+        R"(
+GETIMPORT R0 1
+GETIMPORT R1 3
+CALL R1 0 -1
+CALL R0 -1 0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("Arithmetics")
+{
+    // basic arithmetics codegen with non-constants
+    CHECK_EQ("\n" + compileFunction0(R"(
+local a, b = ...
+return a + b, a - b, a / b, a * b, a % b, a ^ b
+)"),
+        R"(
+GETVARARGS R0 2
+ADD R2 R0 R1
+SUB R3 R0 R1
+DIV R4 R0 R1
+MUL R5 R0 R1
+MOD R6 R0 R1
+POW R7 R0 R1
+RETURN R2 6
+)");
+
+    // basic arithmetics codegen with constants on the right side
+    // note that we don't simplify these expressions as we don't know the type of a
+    CHECK_EQ("\n" + compileFunction0(R"(
+local a = ...
+return a + 1, a - 1, a / 1, a * 1, a % 1, a ^ 1
+)"),
+        R"(
+GETVARARGS R0 1
+ADDK R1 R0 K0
+SUBK R2 R0 K0
+DIVK R3 R0 K0
+MULK R4 R0 K0
+MODK R5 R0 K0
+POWK R6 R0 K0
+RETURN R1 6
 )");
 }
 

@@ -12,6 +12,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauExtendedFunctionMismatchError)
+
 TEST_SUITE_BEGIN("TableTests");
 
 TEST_CASE_FIXTURE(Fixture, "basic")
@@ -275,7 +277,7 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification")
 
 TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         local a = {}
@@ -346,7 +348,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_1")
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         --!strict
@@ -369,7 +371,7 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_3")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         local T = {}
@@ -476,7 +478,7 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_add_property_to_free_table")
 
 TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_assignment")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         --!strict
@@ -511,7 +513,7 @@ TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_function_
 
 TEST_CASE_FIXTURE(Fixture, "width_subtyping")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         --!strict
@@ -771,7 +773,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_for_left_unsealed_table_from_right_han
 
 TEST_CASE_FIXTURE(Fixture, "sealed_table_value_can_infer_an_indexer")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         local t: { a: string, [number]: string } = { a = "foo" }
@@ -782,7 +784,7 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_value_can_infer_an_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "array_factory_function")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         function empty() return {} end
@@ -1465,7 +1467,7 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         local function foo(a: {[string]: number, a: string}) end
@@ -1550,7 +1552,7 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_dont_report_multipl
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_is_ok")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         local vec3 = {x = 1, y = 2, z = 3}
@@ -1937,7 +1939,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in
 
 TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance", true};
+    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1952,7 +1954,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
 {
-    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true}; // Only for new path
+    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
     ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
@@ -1971,7 +1973,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
 {
-    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true}; // Only for new path
+    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
     ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
@@ -1995,7 +1997,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_metatable_prop")
 {
-    ScopedFastFlag luauTableSubtypingVariance{"LuauTableSubtypingVariance", true}; // Only for new path
+    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
     ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
@@ -2015,11 +2017,106 @@ caused by:
 caused by:
   Property 'y' is not compatible. Type 'string' could not be converted into 'number')");
 
-    CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+    if (FFlag::LuauExtendedFunctionMismatchError)
+    {
+        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+caused by:
+  Type '{| __call: (a, b) -> () |}' could not be converted into '{| __call: <a>(a) -> () |}'
+caused by:
+  Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
+    }
+    else
+    {
+        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
 caused by:
   Type '{| __call: (a, b) -> () |}' could not be converted into '{| __call: <a>(a) -> () |}'
 caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()')");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauTableSubtypingVariance2", true},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+type Super = { x : number }
+type Sub = { x : number, y: number }
+type HasSuper = { p : Super }
+type HasSub = { p : Sub }
+local a: HasSuper = { p = { x = 5, y = 7 }}
+a.p = { x = 9 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauExtendedTypeMismatchError", true},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+type Super = { x : number }
+type Sub = { x : number, y: number }
+type HasSuper = { p : Super }
+type HasSub = { p : Sub }
+local tmp = { p = { x = 5, y = 7 }}
+local a: HasSuper = tmp
+a.p = { x = 9 }
+-- needs to be an error because
+local y: number = tmp.p.y
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'tmp' could not be converted into 'HasSuper'
+caused by:
+  Property 'p' is not compatible. Table type '{| x: number, y: number |}' not compatible with type 'Super' because the former has extra field 'y')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauTableSubtypingVariance2", true},
+    };
+
+    CheckResult result = check(R"(
+--!strict
+type Super = { x : number }
+type Sub = { x : number, y: number }
+type HasSuper = { [string] : Super }
+type HasSub = { [string] : Sub }
+local a: HasSuper = { p = { x = 5, y = 7 }}
+a.p = { x = 9 }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_metatable_type_call")
+{
+    ScopedFastFlag luauFixRecursiveMetatableCall{"LuauFixRecursiveMetatableCall", true};
+
+    CheckResult result = check(R"(
+local b
+b = setmetatable({}, {__call = b})
+b()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable {| __call: t1 |}, {  } })");
 }
 
 TEST_SUITE_END();

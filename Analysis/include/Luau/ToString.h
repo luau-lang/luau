@@ -69,8 +69,8 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
 
 // It could be useful to see the text representation of a type during a debugging session instead of exploring the content of the class
 // These functions will dump the type to stdout and can be evaluated in Watch/Immediate windows or as gdb/lldb expression
-void dump(TypeId ty);
-void dump(TypePackId ty);
+std::string dump(TypeId ty);
+std::string dump(TypePackId ty);
 
 std::string generateName(size_t n);
 

@@ -4,6 +4,8 @@
 
 #include "Luau/VisitTypeVar.h"
 
+LUAU_FASTFLAGVARIABLE(LuauQuantifyVisitOnce, false)
+
 namespace Luau
 {
 
@@ -79,7 +81,16 @@ struct Quantifier
 void quantify(ModulePtr module, TypeId ty, TypeLevel level)
 {
     Quantifier q{std::move(module), level};
-    visitTypeVar(ty, q);
+
+    if (FFlag::LuauQuantifyVisitOnce)
+    {
+        DenseHashSet<void*> seen{nullptr};
+        visitTypeVarOnce(ty, q, seen);
+    }
+    else
+    {
+        visitTypeVar(ty, q);
+    }
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
     LUAU_ASSERT(ftv);

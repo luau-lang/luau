@@ -10,7 +10,6 @@
 #include <bitset>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauPreloadClosures, false)
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
 LUAU_FASTFLAGVARIABLE(LuauBit32CountBuiltin, false)
 
@@ -321,12 +320,14 @@ struct Compiler
                     compileExprTempTop(expr->args.data[i], uint8_t(regs + 1 + expr->self + i));
         }
 
-        setDebugLine(expr->func);
+        setDebugLineEnd(expr->func);
 
         if (expr->self)
         {
             AstExprIndexName* fi = expr->func->as<AstExprIndexName>();
             LUAU_ASSERT(fi);
+
+            setDebugLine(fi->indexLocation);
 
             BytecodeBuilder::StringRef iname = sref(fi->index);
             int32_t cid = bytecode.addConstantString(iname);
@@ -460,20 +461,17 @@ struct Compiler
 
         bool shared = false;
 
-        if (FFlag::LuauPreloadClosures)
+        // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
+        // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
+        // is used)
+        if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
         {
-            // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
-            // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
-            // is used)
-            if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
-            {
-                int32_t cid = bytecode.addConstantClosure(f->id);
+            int32_t cid = bytecode.addConstantClosure(f->id);
 
-                if (cid >= 0 && cid < 32768)
-                {
-                    bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
-                    shared = true;
-                }
+            if (cid >= 0 && cid < 32768)
+            {
+                bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
+                shared = true;
             }
         }
 
@@ -1312,6 +1310,8 @@ struct Compiler
 
         RegScope rs(this);
         uint8_t reg = compileExprAuto(expr->expr, rs);
+
+        setDebugLine(expr->indexLocation);
 
         BytecodeBuilder::StringRef iname = sref(expr->index);
         int32_t cid = bytecode.addConstantString(iname);
@@ -2710,6 +2710,12 @@ struct Compiler
             bytecode.setDebugLine(node->location.begin.line + 1);
     }
 
+    void setDebugLine(const Location& location)
+    {
+        if (options.debugLevel >= 1)
+            bytecode.setDebugLine(location.begin.line + 1);
+    }
+
     void setDebugLineEnd(AstNode* node)
     {
         if (options.debugLevel >= 1)
@@ -3650,7 +3656,7 @@ struct Compiler
         {
             if (options.vectorLib)
             {
-                if (builtin.object == options.vectorLib && builtin.method == options.vectorCtor)
+                if (builtin.isMethod(options.vectorLib, options.vectorCtor))
                     return LBF_VECTOR;
             }
             else

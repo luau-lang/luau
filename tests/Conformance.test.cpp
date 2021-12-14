@@ -78,38 +78,31 @@ static int lua_vector(lua_State* L)
 
 static int lua_vector_dot(lua_State* L)
 {
-    const float* a = lua_tovector(L, 1);
-    const float* b = lua_tovector(L, 2);
+    const float* a = luaL_checkvector(L, 1);
+    const float* b = luaL_checkvector(L, 2);
 
-    if (a && b)
-    {
-        lua_pushnumber(L, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
-        return 1;
-    }
-
-    throw std::runtime_error("invalid arguments to vector:Dot");
+    lua_pushnumber(L, a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
+    return 1;
 }
 
 static int lua_vector_index(lua_State* L)
 {
+    const float* v = luaL_checkvector(L, 1);
     const char* name = luaL_checkstring(L, 2);
 
-    if (const float* v = lua_tovector(L, 1))
+    if (strcmp(name, "Magnitude") == 0)
     {
-        if (strcmp(name, "Magnitude") == 0)
-        {
-            lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
-            return 1;
-        }
-
-        if (strcmp(name, "Dot") == 0)
-        {
-            lua_pushcfunction(L, lua_vector_dot, "Dot");
-            return 1;
-        }
+        lua_pushnumber(L, sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]));
+        return 1;
     }
 
-    throw std::runtime_error(Luau::format("%s is not a valid member of vector", name));
+    if (strcmp(name, "Dot") == 0)
+    {
+        lua_pushcfunction(L, lua_vector_dot, "Dot");
+        return 1;
+    }
+
+    luaL_error(L, "%s is not a valid member of vector", name);
 }
 
 static int lua_vector_namecall(lua_State* L)
@@ -120,7 +113,7 @@ static int lua_vector_namecall(lua_State* L)
             return lua_vector_dot(L);
     }
 
-    throw std::runtime_error(Luau::format("%s is not a valid method of vector", luaL_checkstring(L, 1)));
+    luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
 }
 
 int lua_silence(lua_State* L)
@@ -130,8 +123,8 @@ int lua_silence(lua_State* L)
 
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
-static StateRef runConformance(
-    const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr, lua_State* initialLuaState = nullptr)
+static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr,
+    lua_State* initialLuaState = nullptr, lua_CompileOptions* copts = nullptr)
 {
     std::string path = __FILE__;
     path.erase(path.find_last_of("\\/"));
@@ -187,13 +180,8 @@ static StateRef runConformance(
 
     std::string chunkname = "=" + std::string(name);
 
-    lua_CompileOptions copts = {};
-    copts.optimizationLevel = 1; // default
-    copts.debugLevel = 2;        // for debugger tests
-    copts.vectorCtor = "vector"; // for vector tests
-
     size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(source.data(), source.size(), &copts, &bytecodeSize);
+    char* bytecode = luau_compile(source.data(), source.size(), copts, &bytecodeSize);
     int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
 
@@ -380,29 +368,37 @@ TEST_CASE("Vector")
 {
     ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
 
-    runConformance("vector.lua", [](lua_State* L) {
-        lua_pushcfunction(L, lua_vector, "vector");
-        lua_setglobal(L, "vector");
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1;
+    copts.debugLevel = 1;
+    copts.vectorCtor = "vector";
+
+    runConformance(
+        "vector.lua",
+        [](lua_State* L) {
+            lua_pushcfunction(L, lua_vector, "vector");
+            lua_setglobal(L, "vector");
 
 #if LUA_VECTOR_SIZE == 4
-        lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
+            lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
 #else
-        lua_pushvector(L, 0.0f, 0.0f, 0.0f);
+            lua_pushvector(L, 0.0f, 0.0f, 0.0f);
 #endif
-        luaL_newmetatable(L, "vector");
+            luaL_newmetatable(L, "vector");
 
-        lua_pushstring(L, "__index");
-        lua_pushcfunction(L, lua_vector_index, nullptr);
-        lua_settable(L, -3);
+            lua_pushstring(L, "__index");
+            lua_pushcfunction(L, lua_vector_index, nullptr);
+            lua_settable(L, -3);
 
-        lua_pushstring(L, "__namecall");
-        lua_pushcfunction(L, lua_vector_namecall, nullptr);
-        lua_settable(L, -3);
+            lua_pushstring(L, "__namecall");
+            lua_pushcfunction(L, lua_vector_namecall, nullptr);
+            lua_settable(L, -3);
 
-        lua_setreadonly(L, -1, true);
-        lua_setmetatable(L, -2);
-        lua_pop(L, 1);
-    });
+            lua_setreadonly(L, -1, true);
+            lua_setmetatable(L, -2);
+            lua_pop(L, 1);
+        },
+        nullptr, nullptr, &copts);
 }
 
 static void populateRTTI(lua_State* L, Luau::TypeId type)
@@ -506,6 +502,10 @@ TEST_CASE("Debugger")
     breakhits = 0;
     interruptedthread = nullptr;
 
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1;
+    copts.debugLevel = 2;
+
     runConformance(
         "debugger.lua",
         [](lua_State* L) {
@@ -514,6 +514,9 @@ TEST_CASE("Debugger")
             // for breakpoints to work we should make sure debugbreak is installed
             cb->debugbreak = [](lua_State* L, lua_Debug* ar) {
                 breakhits++;
+
+                // make sure we can trace the stack for every breakpoint we hit
+                lua_debugtrace(L);
 
                 // for every breakpoint, we break on the first invocation and continue on second
                 // this allows us to easily step off breakpoints
@@ -618,7 +621,8 @@ TEST_CASE("Debugger")
                 lua_resume(interruptedthread, nullptr, 0);
                 interruptedthread = nullptr;
             }
-        });
+        },
+        nullptr, &copts);
 
     CHECK(breakhits == 10); // 2 hits per breakpoint
 }
@@ -710,21 +714,52 @@ TEST_CASE("ApiFunctionCalls")
     StateRef globalState = runConformance("apicalls.lua");
     lua_State* L = globalState.get();
 
-    lua_getfield(L, LUA_GLOBALSINDEX, "add");
-    lua_pushnumber(L, 40);
-    lua_pushnumber(L, 2);
-    lua_call(L, 2, 1);
-    CHECK(lua_isnumber(L, -1));
-    CHECK(lua_tonumber(L, -1) == 42);
-    lua_pop(L, 1);
+    // lua_call
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_pushnumber(L, 40);
+        lua_pushnumber(L, 2);
+        lua_call(L, 2, 1);
+        CHECK(lua_isnumber(L, -1));
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
 
-    lua_getfield(L, LUA_GLOBALSINDEX, "add");
-    lua_pushnumber(L, 40);
-    lua_pushnumber(L, 2);
-    lua_pcall(L, 2, 1, 0);
-    CHECK(lua_isnumber(L, -1));
-    CHECK(lua_tonumber(L, -1) == 42);
-    lua_pop(L, 1);
+    // lua_pcall
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_pushnumber(L, 40);
+        lua_pushnumber(L, 2);
+        lua_pcall(L, 2, 1, 0);
+        CHECK(lua_isnumber(L, -1));
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+    }
+
+    // lua_equal with a sleeping thread wake up
+    {
+        ScopedFastFlag luauActivateBeforeExec("LuauActivateBeforeExec", true);
+
+        lua_State* L2 = lua_newthread(L);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_pushnumber(L2, 42);
+        lua_pcall(L2, 1, 1, 0);
+
+        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_pushnumber(L2, 42);
+        lua_pcall(L2, 1, 1, 0);
+
+        // Reset GC
+        lua_gc(L2, LUA_GCCOLLECT, 0);
+
+        // Try to mark 'L2' as sleeping
+        // Can't control GC precisely, even in tests
+        lua_gc(L2, LUA_GCSTEP, 8);
+
+        CHECK(lua_equal(L2, -1, -2) == 1);
+        lua_pop(L2, 2);
+    }
 }
 
 static bool endsWith(const std::string& str, const std::string& suffix)
@@ -738,8 +773,6 @@ static bool endsWith(const std::string& str, const std::string& suffix)
 #if !LUA_USE_LONGJMP
 TEST_CASE("ExceptionObject")
 {
-    ScopedFastFlag sff("LuauExceptionMessageFix", true);
-
     struct ExceptionResult
     {
         bool exceptionGenerated;
@@ -836,6 +869,48 @@ TEST_CASE("TagMethodError")
             CHECK(lua_isyieldable(L));
         };
     });
+}
+
+TEST_CASE("Coverage")
+{
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1;
+    copts.debugLevel = 1;
+    copts.coverageLevel = 2;
+
+    runConformance(
+        "coverage.lua",
+        [](lua_State* L) {
+            lua_pushcfunction(
+                L,
+                [](lua_State* L) -> int {
+                    luaL_argexpected(L, lua_isLfunction(L, 1), 1, "function");
+
+                    lua_newtable(L);
+                    lua_getcoverage(L, 1, L, [](void* context, const char* function, int linedefined, int depth, const int* hits, size_t size) {
+                        lua_State* L = static_cast<lua_State*>(context);
+
+                        lua_newtable(L);
+
+                        lua_pushstring(L, function);
+                        lua_setfield(L, -2, "name");
+
+                        for (size_t i = 0; i < size; ++i)
+                            if (hits[i] != -1)
+                            {
+                                lua_pushinteger(L, hits[i]);
+                                lua_rawseti(L, -2, int(i));
+                            }
+
+                        lua_rawseti(L, -2, lua_objlen(L, -2) + 1);
+                    });
+
+                    return 1;
+                },
+                "getcoverage");
+            lua_setglobal(L, "getcoverage");
+        },
+        nullptr, nullptr, &copts);
 }
 
 TEST_SUITE_END();

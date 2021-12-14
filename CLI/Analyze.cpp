@@ -11,26 +11,33 @@
 enum class ReportFormat
 {
     Default,
-    Luacheck
+    Luacheck,
+    Gnu,
 };
 
-static void report(ReportFormat format, const char* name, const Luau::Location& location, const char* type, const char* message)
+static void report(ReportFormat format, const char* name, const Luau::Location& loc, const char* type, const char* message)
 {
     switch (format)
     {
     case ReportFormat::Default:
-        fprintf(stderr, "%s(%d,%d): %s: %s\n", name, location.begin.line + 1, location.begin.column + 1, type, message);
+        fprintf(stderr, "%s(%d,%d): %s: %s\n", name, loc.begin.line + 1, loc.begin.column + 1, type, message);
         break;
 
     case ReportFormat::Luacheck:
     {
         // Note: luacheck's end column is inclusive but our end column is exclusive
         // In addition, luacheck doesn't support multi-line messages, so if the error is multiline we'll fake end column as 100 and hope for the best
-        int columnEnd = (location.begin.line == location.end.line) ? location.end.column : 100;
+        int columnEnd = (loc.begin.line == loc.end.line) ? loc.end.column : 100;
 
-        fprintf(stdout, "%s:%d:%d-%d: (W0) %s: %s\n", name, location.begin.line + 1, location.begin.column + 1, columnEnd, type, message);
+        // Use stdout to match luacheck behavior
+        fprintf(stdout, "%s:%d:%d-%d: (W0) %s: %s\n", name, loc.begin.line + 1, loc.begin.column + 1, columnEnd, type, message);
         break;
     }
+
+    case ReportFormat::Gnu:
+        // Note: GNU end column is inclusive but our end column is exclusive
+        fprintf(stderr, "%s:%d.%d-%d.%d: %s: %s\n", name, loc.begin.line + 1, loc.begin.column + 1, loc.end.line + 1, loc.end.column, type, message);
+        break;
     }
 }
 
@@ -97,6 +104,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available options:\n");
     printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
+    printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line)
@@ -121,7 +129,7 @@ struct CliFileResolver : Luau::FileResolver
         if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
         {
             Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".luau";
-            if (!moduleExists(name))
+            if (!readFile(name))
             {
                 // fall back to .lua if a module with .luau doesn't exist
                 name = std::string(expr->value.data, expr->value.size) + ".lua";
@@ -130,27 +138,6 @@ struct CliFileResolver : Luau::FileResolver
             return {{name}};
         }
 
-        return std::nullopt;
-    }
-
-    bool moduleExists(const Luau::ModuleName& name) const override
-    {
-        return !!readFile(name);
-    }
-
-
-    std::optional<Luau::ModuleName> fromAstFragment(Luau::AstExpr* expr) const override
-    {
-        return std::nullopt;
-    }
-
-    Luau::ModuleName concat(const Luau::ModuleName& lhs, std::string_view rhs) const override
-    {
-        return lhs + "/" + std::string(rhs);
-    }
-
-    std::optional<Luau::ModuleName> getParentModuleName(const Luau::ModuleName& name) const override
-    {
         return std::nullopt;
     }
 };
@@ -222,6 +209,8 @@ int main(int argc, char** argv)
 
         if (strcmp(argv[i], "--formatter=plain") == 0)
             format = ReportFormat::Luacheck;
+        else if (strcmp(argv[i], "--formatter=gnu") == 0)
+            format = ReportFormat::Gnu;
         else if (strcmp(argv[i], "--annotate") == 0)
             annotate = true;
     }

@@ -8,6 +8,7 @@
 
 #include "FileUtils.h"
 #include "Profiler.h"
+#include "Coverage.h"
 
 #include "linenoise.hpp"
 
@@ -24,6 +25,16 @@ enum class CompileFormat
     Binary
 };
 
+static Luau::CompileOptions copts()
+{
+    Luau::CompileOptions result = {};
+    result.optimizationLevel = 1;
+    result.debugLevel = 1;
+    result.coverageLevel = coverageActive() ? 2 : 0;
+
+    return result;
+}
+
 static int lua_loadstring(lua_State* L)
 {
     size_t l = 0;
@@ -32,7 +43,7 @@ static int lua_loadstring(lua_State* L)
 
     lua_setsafeenv(L, LUA_ENVIRONINDEX, false);
 
-    std::string bytecode = Luau::compile(std::string(s, l));
+    std::string bytecode = Luau::compile(std::string(s, l), copts());
     if (luau_load(L, chunkname, bytecode.data(), bytecode.size(), 0) == 0)
         return 1;
 
@@ -79,9 +90,12 @@ static int lua_require(lua_State* L)
     luaL_sandboxthread(ML);
 
     // now we can compile & run module on the new thread
-    std::string bytecode = Luau::compile(*source);
+    std::string bytecode = Luau::compile(*source, copts());
     if (luau_load(ML, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
+        if (coverageActive())
+            coverageTrack(ML, -1);
+
         int status = lua_resume(ML, L, 0);
 
         if (status == 0)
@@ -149,7 +163,7 @@ static void setupState(lua_State* L)
 
 static std::string runCode(lua_State* L, const std::string& source)
 {
-    std::string bytecode = Luau::compile(source);
+    std::string bytecode = Luau::compile(source, copts());
 
     if (luau_load(L, "=stdin", bytecode.data(), bytecode.size(), 0) != 0)
     {
@@ -329,11 +343,14 @@ static bool runFile(const char* name, lua_State* GL)
 
     std::string chunkname = "=" + std::string(name);
 
-    std::string bytecode = Luau::compile(*source);
+    std::string bytecode = Luau::compile(*source, copts());
     int status = 0;
 
     if (luau_load(L, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
+        if (coverageActive())
+            coverageTrack(L, -1);
+
         status = lua_resume(L, NULL, 0);
     }
     else
@@ -437,6 +454,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available options:\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
+    printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line)
@@ -495,6 +513,7 @@ int main(int argc, char** argv)
         setupState(L);
 
         int profile = 0;
+        bool coverage = false;
 
         for (int i = 1; i < argc; ++i)
         {
@@ -505,10 +524,15 @@ int main(int argc, char** argv)
                 profile = 10000; // default to 10 KHz
             else if (strncmp(argv[i], "--profile=", 10) == 0)
                 profile = atoi(argv[i] + 10);
+            else if (strcmp(argv[i], "--coverage") == 0)
+                coverage = true;
         }
 
         if (profile)
             profilerStart(L, profile);
+
+        if (coverage)
+            coverageInit(L);
 
         std::vector<std::string> files = getSourceFiles(argc, argv);
 
@@ -523,7 +547,9 @@ int main(int argc, char** argv)
             profilerDump("profile.out");
         }
 
+        if (coverage)
+            coverageDump("coverage.out");
+
         return failed;
     }
 }
-

@@ -44,9 +44,10 @@ TEST_CASE_FIXTURE(Fixture, "dont_clone_persistent_primitive")
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     // numberType is persistent.  We leave it as-is.
-    TypeId newNumber = clone(typeChecker.numberType, dest, seenTypes, seenTypePacks);
+    TypeId newNumber = clone(typeChecker.numberType, dest, seenTypes, seenTypePacks, cloneState);
     CHECK_EQ(newNumber, typeChecker.numberType);
 }
 
@@ -56,12 +57,13 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_non_persistent_primitive")
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     // Create a new number type that isn't persistent
     unfreeze(typeChecker.globalTypes);
     TypeId oldNumber = typeChecker.globalTypes.addType(PrimitiveTypeVar{PrimitiveTypeVar::Number});
     freeze(typeChecker.globalTypes);
-    TypeId newNumber = clone(oldNumber, dest, seenTypes, seenTypePacks);
+    TypeId newNumber = clone(oldNumber, dest, seenTypes, seenTypePacks, cloneState);
 
     CHECK_NE(newNumber, oldNumber);
     CHECK_EQ(*oldNumber, *newNumber);
@@ -89,9 +91,10 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     TypeArena dest;
-    TypeId counterCopy = clone(counterType, dest, seenTypes, seenTypePacks);
+    TypeId counterCopy = clone(counterType, dest, seenTypes, seenTypePacks, cloneState);
 
     TableTypeVar* ttv = getMutable<TableTypeVar>(counterCopy);
     REQUIRE(ttv != nullptr);
@@ -142,11 +145,12 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_union")
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     unfreeze(typeChecker.globalTypes);
     TypeId oldUnion = typeChecker.globalTypes.addType(UnionTypeVar{{typeChecker.numberType, typeChecker.stringType}});
     freeze(typeChecker.globalTypes);
-    TypeId newUnion = clone(oldUnion, dest, seenTypes, seenTypePacks);
+    TypeId newUnion = clone(oldUnion, dest, seenTypes, seenTypePacks, cloneState);
 
     CHECK_NE(newUnion, oldUnion);
     CHECK_EQ("number | string", toString(newUnion));
@@ -159,11 +163,12 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_intersection")
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
     unfreeze(typeChecker.globalTypes);
     TypeId oldIntersection = typeChecker.globalTypes.addType(IntersectionTypeVar{{typeChecker.numberType, typeChecker.stringType}});
     freeze(typeChecker.globalTypes);
-    TypeId newIntersection = clone(oldIntersection, dest, seenTypes, seenTypePacks);
+    TypeId newIntersection = clone(oldIntersection, dest, seenTypes, seenTypePacks, cloneState);
 
     CHECK_NE(newIntersection, oldIntersection);
     CHECK_EQ("number & string", toString(newIntersection));
@@ -188,8 +193,9 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
-    TypeId cloned = clone(&exampleClass, dest, seenTypes, seenTypePacks);
+    TypeId cloned = clone(&exampleClass, dest, seenTypes, seenTypePacks, cloneState);
     const ClassTypeVar* ctv = get<ClassTypeVar>(cloned);
     REQUIRE(ctv != nullptr);
 
@@ -211,16 +217,16 @@ TEST_CASE_FIXTURE(Fixture, "clone_sanitize_free_types")
     TypeArena dest;
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
-    bool encounteredFreeType = false;
-    TypeId clonedTy = clone(&freeTy, dest, seenTypes, seenTypePacks, &encounteredFreeType);
+    TypeId clonedTy = clone(&freeTy, dest, seenTypes, seenTypePacks, cloneState);
     CHECK_EQ("any", toString(clonedTy));
-    CHECK(encounteredFreeType);
+    CHECK(cloneState.encounteredFreeType);
 
-    encounteredFreeType = false;
-    TypePackId clonedTp = clone(&freeTp, dest, seenTypes, seenTypePacks, &encounteredFreeType);
+    cloneState = {};
+    TypePackId clonedTp = clone(&freeTp, dest, seenTypes, seenTypePacks, cloneState);
     CHECK_EQ("...any", toString(clonedTp));
-    CHECK(encounteredFreeType);
+    CHECK(cloneState.encounteredFreeType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "clone_seal_free_tables")
@@ -232,12 +238,12 @@ TEST_CASE_FIXTURE(Fixture, "clone_seal_free_tables")
     TypeArena dest;
     SeenTypes seenTypes;
     SeenTypePacks seenTypePacks;
+    CloneState cloneState;
 
-    bool encounteredFreeType = false;
-    TypeId cloned = clone(&tableTy, dest, seenTypes, seenTypePacks, &encounteredFreeType);
+    TypeId cloned = clone(&tableTy, dest, seenTypes, seenTypePacks, cloneState);
     const TableTypeVar* clonedTtv = get<TableTypeVar>(cloned);
     CHECK_EQ(clonedTtv->state, TableState::Sealed);
-    CHECK(encounteredFreeType);
+    CHECK(cloneState.encounteredFreeType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "clone_self_property")
@@ -265,6 +271,36 @@ TEST_CASE_FIXTURE(Fixture, "clone_self_property")
 
     CHECK_EQ(toString(result.errors[0]), "This function was declared to accept self, but you did not pass enough arguments. Use a colon instead of a "
                                          "dot or pass 1 extra nil to suppress this warning");
+}
+
+TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
+{
+#if defined(_DEBUG) || defined(_NOOPT)
+    int limit = 250;
+#else
+    int limit = 400;
+#endif
+    ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
+
+    TypeArena src;
+
+    TypeId table = src.addType(TableTypeVar{});
+    TypeId nested = table;
+
+    for (int i = 0; i < limit + 100; i++)
+    {
+        TableTypeVar* ttv = getMutable<TableTypeVar>(nested);
+
+        ttv->props["a"].type = src.addType(TableTypeVar{});
+        nested = ttv->props["a"].type;
+    }
+
+    TypeArena dest;
+    SeenTypes seenTypes;
+    SeenTypePacks seenTypePacks;
+    CloneState cloneState;
+
+    CHECK_THROWS_AS(clone(table, dest, seenTypes, seenTypePacks, cloneState), std::runtime_error);
 }
 
 TEST_SUITE_END();

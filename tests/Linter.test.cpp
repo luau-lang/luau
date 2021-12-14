@@ -1469,6 +1469,22 @@ _ = true and true or false -- no warning since this is is a common pattern used 
     CHECK_EQ(result.warnings[6].location.begin.line + 1, 19);
 }
 
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
+{
+    LintResult result = lint(R"(
+local correct, opaque = ...
+
+if correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
+elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls")}) then
+elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", false)}) then
+end
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 1);
+    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 4");
+    CHECK_EQ(result.warnings[0].location.begin.line + 1, 5);
+}
+
 TEST_CASE_FIXTURE(Fixture, "DuplicateLocal")
 {
     LintResult result = lint(R"(

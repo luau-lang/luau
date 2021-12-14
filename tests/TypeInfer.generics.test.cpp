@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauExtendedFunctionMismatchError)
+
 TEST_SUITE_BEGIN("GenericsTests");
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
@@ -609,8 +611,6 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
 
 TEST_CASE_FIXTURE(Fixture, "bound_tables_do_not_clone_original_fields")
 {
-    ScopedFastFlag luauCloneBoundTables{"LuauCloneBoundTables", true};
-
     CheckResult result = check(R"(
 local exports = {}
 local nested = {}
@@ -625,6 +625,63 @@ return exports
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names")
+{
+    ScopedFastFlag luauFunctionArgumentNameSize{"LuauFunctionArgumentNameSize", true};
+
+    CheckResult result = check(R"(
+local function f<T, U...>(a: T, ...: U...) end
+
+f(1, 2, 3)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    auto ty = findTypeAtPosition(Position(3, 0));
+    REQUIRE(ty);
+    ToStringOptions opts;
+    opts.functionTypeArguments = true;
+    CHECK_EQ(toString(*ty, opts), "(a: number, number, number) -> ()");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_types")
+{
+    CheckResult result = check(R"(
+type C = () -> ()
+type D = <T>() -> ()
+
+local c: C
+local d: D = c
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::LuauExtendedFunctionMismatchError)
+        CHECK_EQ(
+            toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T>() -> ()'; different number of generic type parameters)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T>() -> ()')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
+{
+    CheckResult result = check(R"(
+type C = () -> ()
+type D = <T...>() -> ()
+
+local c: C
+local d: D = c
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::LuauExtendedFunctionMismatchError)
+        CHECK_EQ(toString(result.errors[0]),
+            R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T...>() -> ()')");
 }
 
 TEST_SUITE_END();

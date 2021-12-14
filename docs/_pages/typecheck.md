@@ -287,6 +287,66 @@ In type annotations, this is written as `...T`:
 type F = (...number) -> ...string
 ```
 
+## Type packs
+
+Multiple function return values as well as the function variadic parameter use a type pack to represent a list of types.
+
+When a type alias is defined, generic type pack parameters can be used after the type parameters:
+
+```lua
+type Signal<T, U...> = { f: (T, U...) -> (), data: T }
+```
+
+> Keep in mind that `...T` is a variadic type pack (many elements of the same type `T`), while `U...` is a generic type pack that can contain zero or more types and they don't have to be the same.
+
+It is also possible for a generic function to reference a generic type pack from the generics list:
+
+```lua
+local function call<T, U...>(s: Signal<T, U...>, ...: U...)
+    s.f(s.data, ...)
+end
+```
+
+Generic types with type packs can be instantiated by providing a type pack:
+
+```lua
+local signal: Signal<string, (number, number, boolean)> = --
+
+call(signal, 1, 2, false)
+```
+
+There are also other ways to instantiate types with generic type pack parameters:
+
+```lua
+type A<T, U...> = (T) -> U...
+
+type B = A<number, ...string> -- with a variadic type pack
+type C<S...> = A<number, S...> -- with a generic type pack
+type D = A<number, ()> -- with an empty type pack
+```
+
+Trailing type pack argument can also be provided without parentheses by specifying variadic type arguments:
+
+```lua
+type List<Head, Rest...> = (Head, Rest...) -> ()
+
+type B = List<number> -- Rest... is ()
+type C = List<number, string, boolean> -- Rest is (string, boolean)
+
+type Returns<T...> = () -> T...
+
+-- When there are no type parameters, the list can be left empty
+type D = Returns<> -- T... is ()
+```
+
+Type pack parameters are not limited to a single one, as many as required can be specified:
+
+```lua
+type Callback<Args..., Rets...> = { f: (Args...) -> Rets... }
+
+type A = Callback<(number, string), ...number>
+```
+
 ## Typing idiomatic OOP
 
 One common pattern we see throughout Roblox is this OOP idiom. A downside with this pattern is that it does not automatically create a type binding for an instance of that class, so one has to write `type Account = typeof(Account.new("", 0))`.

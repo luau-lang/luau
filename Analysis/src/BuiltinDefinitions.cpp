@@ -8,8 +8,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauNewRequireTrace2)
-
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
  * Some of them require richer generics than we have.  For instance, we do not yet have a way to talk
@@ -219,9 +217,9 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
 
     TypeId genericK = arena.addType(GenericTypeVar{"K"});
     TypeId genericV = arena.addType(GenericTypeVar{"V"});
-    TypeId mapOfKtoV = arena.addType(TableTypeVar{{}, TableIndexer(genericK, genericV), typeChecker.globalScope->level});
+    TypeId mapOfKtoV = arena.addType(TableTypeVar{{}, TableIndexer(genericK, genericV), typeChecker.globalScope->level, TableState::Generic});
 
-    std::optional<TypeId> stringMetatableTy = getMetatable(singletonTypes.stringType);
+    std::optional<TypeId> stringMetatableTy = getMetatable(getSingletonTypes().stringType);
     LUAU_ASSERT(stringMetatableTy);
     const TableTypeVar* stringMetatableTable = get<TableTypeVar>(follow(*stringMetatableTy));
     LUAU_ASSERT(stringMetatableTable);
@@ -273,7 +271,10 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
         persist(pair.second.typeId);
 
         if (TableTypeVar* ttv = getMutable<TableTypeVar>(pair.second.typeId))
-            ttv->name = toString(pair.first);
+        {
+            if (!ttv->name)
+                ttv->name = toString(pair.first);
+        }
     }
 
     attachMagicFunction(getGlobalBinding(typeChecker, "assert"), magicFunctionAssert);
@@ -473,9 +474,7 @@ static std::optional<ExprResult<TypePackId>> magicFunctionRequire(
     if (!checkRequirePath(typechecker, expr.args.data[0]))
         return std::nullopt;
 
-    const AstExpr* require = FFlag::LuauNewRequireTrace2 ? &expr : expr.args.data[0];
-
-    if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, *require))
+    if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, expr))
         return ExprResult<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};
 
     return std::nullopt;

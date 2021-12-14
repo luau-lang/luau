@@ -206,32 +206,3 @@ void luaS_free(lua_State* L, TString* ts)
     L->global->strt.nuse--;
     luaM_free(L, ts, sizestring(ts->len), ts->memcat);
 }
-
-Udata* luaS_newudata(lua_State* L, size_t s, int tag)
-{
-    if (s > INT_MAX - sizeof(Udata))
-        luaM_toobig(L);
-    Udata* u = luaM_new(L, Udata, sizeudata(s), L->activememcat);
-    luaC_link(L, u, LUA_TUSERDATA);
-    u->len = int(s);
-    u->metatable = NULL;
-    LUAU_ASSERT(tag >= 0 && tag <= 255);
-    u->tag = uint8_t(tag);
-    return u;
-}
-
-void luaS_freeudata(lua_State* L, Udata* u)
-{
-    LUAU_ASSERT(u->tag < LUA_UTAG_LIMIT || u->tag == UTAG_IDTOR);
-
-    void (*dtor)(void*) = nullptr;
-    if (u->tag == UTAG_IDTOR)
-        memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
-    else if (u->tag)
-        dtor = L->global->udatagc[u->tag];
-
-    if (dtor)
-        dtor(u->data);
-
-    luaM_free(L, u, sizeudata(u->len), u->memcat);
-}

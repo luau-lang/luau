@@ -27,7 +27,7 @@ TESTS_SOURCES=$(wildcard tests/*.cpp)
 TESTS_OBJECTS=$(TESTS_SOURCES:%=$(BUILD)/%.o)
 TESTS_TARGET=$(BUILD)/luau-tests
 
-REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Repl.cpp
+REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
 REPL_CLI_OBJECTS=$(REPL_CLI_SOURCES:%=$(BUILD)/%.o)
 REPL_CLI_TARGET=$(BUILD)/luau
 
@@ -35,7 +35,7 @@ ANALYZE_CLI_SOURCES=CLI/FileUtils.cpp CLI/Analyze.cpp
 ANALYZE_CLI_OBJECTS=$(ANALYZE_CLI_SOURCES:%=$(BUILD)/%.o)
 ANALYZE_CLI_TARGET=$(BUILD)/luau-analyze
 
-FUZZ_SOURCES=$(wildcard fuzz/*.cpp)
+FUZZ_SOURCES=$(wildcard fuzz/*.cpp) fuzz/luau.pb.cpp
 FUZZ_OBJECTS=$(FUZZ_SOURCES:%=$(BUILD)/%.o)
 
 TESTS_ARGS=
@@ -128,10 +128,10 @@ luau-size: luau
 
 # executable target aliases
 luau: $(REPL_CLI_TARGET)
-	cp $^ $@
+	ln -fs $^ $@
 
 luau-analyze: $(ANALYZE_CLI_TARGET)
-	cp $^ $@
+	ln -fs $^ $@
 
 # executable targets
 $(TESTS_TARGET): $(TESTS_OBJECTS) $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET)
@@ -167,8 +167,8 @@ fuzz/luau.pb.cpp: fuzz/luau.proto build/libprotobuf-mutator
 	cd fuzz && ../build/libprotobuf-mutator/external.protobuf/bin/protoc luau.proto --cpp_out=.
 	mv fuzz/luau.pb.cc fuzz/luau.pb.cpp
 
-$(BUILD)/fuzz/proto.cpp.o: build/libprotobuf-mutator
-$(BUILD)/fuzz/protoprint.cpp.o: build/libprotobuf-mutator
+$(BUILD)/fuzz/proto.cpp.o: fuzz/luau.pb.cpp
+$(BUILD)/fuzz/protoprint.cpp.o: fuzz/luau.pb.cpp
 
 build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator

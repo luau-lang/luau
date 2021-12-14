@@ -513,8 +513,6 @@ TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_the_end_of_a_comme
 
 TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_within_a_broken_comment")
 {
-    ScopedFastFlag sff{"LuauCaptureBrokenCommentSpans", true};
-
     check(R"(
         --[[ @1
     )");
@@ -526,8 +524,6 @@ TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_within_a_broken_co
 
 TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_within_a_broken_comment_at_the_very_end_of_the_file")
 {
-    ScopedFastFlag sff{"LuauCaptureBrokenCommentSpans", true};
-
     check("--[[@1");
 
     auto ac = autocomplete('1');
@@ -1935,6 +1931,39 @@ return target(b@1
     CHECK(ac.entryMap["bar2"].typeCorrect == TypeCorrectKind::None);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "function_in_assignment_has_parentheses")
+{
+    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+    ScopedFastFlag luauAutocompletePreferToCallFunctions("LuauAutocompletePreferToCallFunctions", true);
+
+    check(R"(
+local function bar(a: number) return -a end
+local abc = b@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("bar"));
+    CHECK(ac.entryMap["bar"].parens == ParenthesesRecommendation::CursorInside);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_result_passed_to_function_has_parentheses")
+{
+    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+    ScopedFastFlag luauAutocompletePreferToCallFunctions("LuauAutocompletePreferToCallFunctions", true);
+
+    check(R"(
+local function foo() return 1 end
+local function bar(a: number) return -a end
+local abc = bar(@1) 
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("foo"));
+    CHECK(ac.entryMap["foo"].parens == ParenthesesRecommendation::CursorAfter);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "type_correct_sealed_table")
 {
     check(R"(
@@ -2210,8 +2239,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocompleteSource")
 
 TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_require")
 {
-    ScopedFastFlag luauResolveModuleNameWithoutACurrentModule("LuauResolveModuleNameWithoutACurrentModule", true);
-
     std::string_view source = R"(
         local a = require(w -- Line 1
         --                 | Column 27
@@ -2287,8 +2314,6 @@ until
 
 TEST_CASE_FIXTURE(ACFixture, "if_then_else_elseif_completions")
 {
-    ScopedFastFlag sff{"ElseElseIfCompletionImprovements", true};
-
     check(R"(
 local elsewhere = false
 
@@ -2585,9 +2610,6 @@ a = if temp then even elseif true then temp else e@9
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_explicit_type_pack")
 {
-    ScopedFastFlag luauTypeAliasPacks("LuauTypeAliasPacks", true);
-    ScopedFastFlag luauParseTypePackTypeParameters("LuauParseTypePackTypeParameters", true);
-
     check(R"(
 type A<T...> = () -> T...
 local a: A<(number, s@1>
@@ -2597,6 +2619,57 @@ local a: A<(number, s@1>
 
     CHECK(ac.entryMap.count("number"));
     CHECK(ac.entryMap.count("string"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_first_function_arg_expected_type")
+{
+    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+    ScopedFastFlag luauAutocompleteFirstArg("LuauAutocompleteFirstArg", true);
+
+    check(R"(
+local function foo1() return 1 end
+local function foo2() return "1" end
+
+local function bar0() return "got" .. a end
+local function bar1(a: number) return "got " .. a end
+local function bar2(a: number, b: string) return "got " .. a .. b end
+
+local t = {}
+function t:bar1(a: number) return "got " .. a end
+
+local r1 = bar0(@1)
+local r2 = bar1(@2)
+local r3 = bar2(@3)
+local r4 = t:bar1(@4)
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("foo1"));
+    CHECK(ac.entryMap["foo1"].typeCorrect == TypeCorrectKind::None);
+    REQUIRE(ac.entryMap.count("foo2"));
+    CHECK(ac.entryMap["foo2"].typeCorrect == TypeCorrectKind::None);
+
+    ac = autocomplete('2');
+
+    REQUIRE(ac.entryMap.count("foo1"));
+    CHECK(ac.entryMap["foo1"].typeCorrect == TypeCorrectKind::CorrectFunctionResult);
+    REQUIRE(ac.entryMap.count("foo2"));
+    CHECK(ac.entryMap["foo2"].typeCorrect == TypeCorrectKind::None);
+
+    ac = autocomplete('3');
+
+    REQUIRE(ac.entryMap.count("foo1"));
+    CHECK(ac.entryMap["foo1"].typeCorrect == TypeCorrectKind::CorrectFunctionResult);
+    REQUIRE(ac.entryMap.count("foo2"));
+    CHECK(ac.entryMap["foo2"].typeCorrect == TypeCorrectKind::None);
+
+    ac = autocomplete('4');
+
+    REQUIRE(ac.entryMap.count("foo1"));
+    CHECK(ac.entryMap["foo1"].typeCorrect == TypeCorrectKind::CorrectFunctionResult);
+    REQUIRE(ac.entryMap.count("foo2"));
+    CHECK(ac.entryMap["foo2"].typeCorrect == TypeCorrectKind::None);
 }
 
 TEST_SUITE_END();

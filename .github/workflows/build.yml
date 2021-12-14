@@ -67,13 +67,18 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2
     - name: install
       run: |
         sudo apt install llvm
     - name: make coverage
       run: |
         CXX=clang++-10 make -j2 config=coverage coverage
+    - name: debug coverage
+      run: |
+        git status
+        git log -5
+        echo SHA: $GITHUB_SHA
     - name: upload coverage
       uses: coverallsapp/github-action@master
       with:

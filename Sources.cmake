@@ -54,6 +54,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Scope.h
     Analysis/include/Luau/Substitution.h
     Analysis/include/Luau/Symbol.h
+    Analysis/include/Luau/ToDot.h
     Analysis/include/Luau/TopoSortStatements.h
     Analysis/include/Luau/ToString.h
     Analysis/include/Luau/Transpiler.h
@@ -86,6 +87,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Scope.cpp
     Analysis/src/Substitution.cpp
     Analysis/src/Symbol.cpp
+    Analysis/src/ToDot.cpp
     Analysis/src/TopoSortStatements.cpp
     Analysis/src/ToString.cpp
     Analysis/src/Transpiler.cpp
@@ -118,6 +120,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ldo.cpp
     VM/src/lfunc.cpp
     VM/src/lgc.cpp
+    VM/src/lgcdebug.cpp
     VM/src/linit.cpp
     VM/src/lmathlib.cpp
     VM/src/lmem.cpp
@@ -130,6 +133,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/ltable.cpp
     VM/src/ltablib.cpp
     VM/src/ltm.cpp
+    VM/src/ludata.cpp
     VM/src/lutf8lib.cpp
     VM/src/lvmexecute.cpp
     VM/src/lvmload.cpp
@@ -149,12 +153,15 @@ target_sources(Luau.VM PRIVATE
     VM/src/lstring.h
     VM/src/ltable.h
     VM/src/ltm.h
+    VM/src/ludata.h
     VM/src/lvm.h
 )
 
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
+        CLI/Coverage.h
+        CLI/Coverage.cpp
         CLI/FileUtils.h
         CLI/FileUtils.cpp
         CLI/Profiler.h
@@ -194,6 +201,7 @@ if(TARGET Luau.UnitTest)
         tests/RequireTracer.test.cpp
         tests/StringUtils.test.cpp
         tests/Symbol.test.cpp
+        tests/ToDot.test.cpp
         tests/TopoSort.test.cpp
         tests/ToString.test.cpp
         tests/Transpiler.test.cpp
