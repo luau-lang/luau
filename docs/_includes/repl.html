@@ -1,31 +1,99 @@
 <form>
     <div>
-        <label>Script:</label>
+        <label class="header-center"><b>Input</b></label>
         <br>
-        <textarea rows="10" cols="70" id="script">print("Hello World!")</textarea>
-        <br><br>
-        <button onclick="clearInput(); return false;">
-            Clear Input
-        </button>
-        <button onclick="executeScript(); return false;">
-            Run
-        </button>
+        <textarea rows="10" cols="70" id="script"></textarea>
+        <div class="button-group">
+            <button class="demo-button negative" style="margin: 8px 8px" onclick="clearInput(); return false;">
+                Clear Input
+            </button>
+            <button class="demo-button positive" onclick="executeScript(); return false;">
+                Run
+            </button>
+        </div>
     </div>
-    <br><br>
     <div>
-        <label>Output:</label>
+        <!-- centered header saying Output -->
+        <label class="header-center"><b>Output</b></label>
         <br>
         <textarea readonly rows="10" cols="70" id="output"></textarea>
-        <br><br>
-        <button onclick="clearOutput(); return false;">
-            Clear Output
-        </button>
+        <div class="button-group">
+            <button class="demo-button negative" onclick="clearOutput(); return false;">
+                Clear Output
+            </button>
+        </div>
     </div>
 </form>
 
+<!-- Styles for editor -->
+<style>
+    .button-group {
+        display: flex;
+        justify-content: right;
+    }
+
+    .header-center {
+        text-align: center;
+    }
+
+    .demo-button {
+        color: white;
+        padding: 14px 20px;
+        margin: 8px 0;
+        border: none;
+        cursor: pointer;
+        width: 30%;
+        display: inline;
+    }
+
+    .demo-button-rightmost {
+        margin: inherit 2px;
+    }
+
+    .positive {
+        background-color: #4CAF50;
+    }
+
+    .negative {
+        background-color: #f44336;
+    }
+</style>
+
+<!-- Luau WASM (async fetch) -->
+<script async src="https://github.com/Roblox/luau/releases/latest/download/Luau.Web.js"></script>
+<!-- CodeMirror -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.32.0/codemirror.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.32.0/codemirror.min.css" />
+<!-- Luau Parser for CodeMirror -->
+<script src="assets/js/luau_mode.js"></script>
+<!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
 <script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("script"), {
+        theme: "default",
+        mode: "luau",
+        matchBrackets: true,
+        lineNumbers: true,
+        smartIndent: true,
+        indentWithTabs: true,
+        indentUnit: 4,
+    });
+    editor.setValue("print(\"Hello World!\")\n");
+        editor.addKeyMap({
+        "Ctrl-Enter": function(cm) {
+            executeScript();
+        },
+        "Shift-Tab": function (cm) {
+            // dedent functionality
+            cm.execCommand("indentLess");
+        }
+    });
+
+    // Misc Functions
     function output(text) {
-        document.getElementById("output").value += "[" + new Date().toLocaleTimeString() + "] " + text.replace('stdin:', '') + "\n";
+        output_box = document.getElementById("output");
+        output_box.value += text.replace('stdin:', '') + "\n";
+        // scroll to bottom
+        output_box.scrollTop = output_box.scrollHeight;
     }
 
     var Module = {
@@ -33,7 +101,7 @@
     };
 
     function clearInput() {
-        document.getElementById("script").value = "";
+        editor.setValue("");
     }
 
     function clearOutput() {
@@ -41,10 +109,9 @@
     }
 
     function executeScript() {
-        var err = Module.ccall('executeScript', 'string', ['string'], [document.getElementById("script").value]);
+        var err = Module.ccall('executeScript', 'string', ['string'], [editor.getValue()]);
         if (err) {
             output('Error:' + err.replace('stdin:', ''));
         }
     }
 </script>
-<script async src="https://github.com/Roblox/luau/releases/latest/download/Luau.Web.js"></script>
