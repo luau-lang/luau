@@ -75,7 +75,7 @@ For a module's exports, we can make use of Luau's notion of *subtyping*. The bas
 
 For example, if a module exports:
 
-```
+```lua
   function pet() : Animal -- old version
   function pet() : Cat    -- new version
 ```
@@ -83,7 +83,7 @@ For example, if a module exports:
 then this is a minor change, since `() -> Cat` is a subtype of `() -> Animal`, but
 if it also exports:
 
-```
+```lua
   function adopt(a : Animal) -- old version
   function adopt(c : Cat)    -- new version
 ```
@@ -142,14 +142,14 @@ As well as exported values, modules can export type aliases. For example:
 These types are type aliases, and are treated *structurally* not
 *nominally*, for example a user can write:
 
-```
+```lua
   local p : Point = { x=5, y=8 }
   local a : number = p.x + p.y
 ```
 
 and since table types support [width subtyping](sealed-table-subtyping.md), users can add properties:
 
-```
+```lua
   local q : Point = { x=5, y=8, z="hi" }
 ```
 
