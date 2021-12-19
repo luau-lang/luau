@@ -26,79 +26,24 @@ local dogName = dog and dog.name
 
 ...which will return `false` if `dog` is `false`, instead of throwing an error because of the index of `false.name`.
 
-This trick gets worse in the case of calling methods. For example, let's suppose we wanted to call `dog.fetch()`, while `dog` is still potentially nil.
-
-The one-line `and` trick will no longer work (or will get less readable as you try to shoe-horn this in), so we must:
+Luau provides the if...else expression making this turn into:
 
 ```lua
-if dog ~= nil then
-    dog.fetch()
-end
+local dogName = if dog == nil then nil else dog.name
 ```
 
-But this gets even worse when it comes to chained indexing. Let's suppose we wanted to run `dog.owner.handshake()`, while `dog` can be nil and `owner` can be nil.
-
-```lua
-if dog ~= nil and dog.owner ~= nil then
-    dog.owner.handshake()
-end
-```
-
-...which gets even worse in the context of calling this function in, say, another function:
-
-```lua
--- Oops! dog and dog.owner can be nil
-logDogName(getLogger(), dog.name, dog.owner:getDisplayName())
-
--- In order to preserve this order (assuming argument execution order mattered)...
-local logger = getLogger()
-local name = dog and dog.name
-local displayName
-
-if dog.owner ~= nil then
-    displayName = dog.owner:getDisplayName()
-end
-
-logDogName(logger, name, displayName)
-```
+...but this is fairly clunky for such a common expression.
 
 ## Design
 
-The safe navigation operator will make all of these smooth, by supporting `x?.y` and similar indexing operators. `dog?.name` would resolve to `nil` if `dog` was nil, or the name otherwise. `owner?.handshake()` would only call `handshake` if `owner` is not nil.
+The safe navigation operator will make all of these smooth, by supporting `x?.y` to safely index nil values. `dog?.name` would resolve to `nil` if `dog` was nil, or the name otherwise.
 
-The long example would turn into:
-
-```lua
-logDogName(getLogger(), dog?.name, dog?.owner?:getDisplayName())
-```
+The previous example turns into `local dogName = dog?.name` (or just using `dog?.name` elsewhere).
 
 Failing the nil-safety check early would make the entire expression nil, for instance `dog?.body.legs` would resolve to `nil` if `dog` is nil, rather than resolve `dog?.body` into nil, then turning into `nil.legs`.
 
-The list of valid operators to follow the safe navigation operator would be:
-
 ```lua
 dog?.name --[[ is the same as ]] if dog == nil then nil else dog.name
-dog?.getName() --[[ is the same as ]] if dog == nil then nil else dog.getName()
-dog?:getName(args) --[[ is the same as ]] if dog == nil then nil else dog:getName(args)
-```
-
-When using safe navigation to call a function, the short circuiting will prevent the arguments from being evaluated in the case of nil.
-
-```lua
--- Will NOT call getValue() if `object` is nil
-object?.doSomething(getValue())
-```
-
-This will return one `nil` if the object was nil.
-
-```lua
-function Class:returnTwoValues()
-    return 1, 2
-end
-
--- Assuming `object` is `Class`, and `nilObject` is nil
-print(object?:returnTwoValues()) -- 1, 2
-print(nilObject?:returnTwoValues()) -- nil
 ```
 
 The short-circuiting is limited within the expression.
@@ -131,6 +76,14 @@ local nonOptionalObject: { name: string }
 local nonOptionalObjectName = nonOptionalObject?.name -- resolves to `string`
 ```
 
+### Calling
+
+This RFC only specifies `x?.y` as an index method. `x?:y()` is currently unspecified, and `x?.y(args)` as a syntax will be reserved (will error if you try to use it).
+
+While being able to support `dog?.getName()` is useful, it provides [some logistical issues for the language](https://github.com/Roblox/luau/pull/142#issuecomment-990563536).
+
+`x?.y(args)` will be reserved both so that this can potentially be resolved later down the line if something comes up, but also because it would be a guaranteed runtime error under this RFC: `dog?.getName()` will first index `dog?.getName`, which will return nil, then will attempt to call it.
+
 ### Assignment
 `x?.y = z` is not supported, and will be reported as a syntax error.
 
@@ -147,4 +100,3 @@ Doing nothing is an option, as current standard if-checks already work, as well 
 Supporting optional calls/indexes, such as `x?[1]` and `x?()`, while not out of scope, are likely too fringe to support, while adding on a significant amount of parsing difficulty, especially in the case of shorthand function calls, such as `x?{}` and `x?""`.
 
 It is possible to make `x?.y = z` resolve to only setting `x.y` if `x` is nil, but assignments silently failing can be seen as surprising.
-
