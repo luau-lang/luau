@@ -4,66 +4,38 @@
         <br>
         <textarea rows="10" cols="70" id="script"></textarea>
         <div class="button-group">
-            <button class="demo-button negative" style="margin: 8px 8px" onclick="clearInput(); return false;">
-                Clear Input
-            </button>
-            <button class="demo-button positive" onclick="executeScript(); return false;">
-                Run
-            </button>
+            <button onclick="executeScript(); return false;" class="demo-button">Run</button>
+            <input type="checkbox" checked="true" class="demo-button" id="output-clear">Clear Output</input>
         </div>
     </div>
     <div>
-        <!-- centered header saying Output -->
         <label class="header-center"><b>Output</b></label>
         <br>
         <textarea readonly rows="10" cols="70" id="output"></textarea>
-        <div class="button-group">
-            <button class="demo-button negative" onclick="clearOutput(); return false;">
-                Clear Output
-            </button>
-        </div>
     </div>
 </form>
 
 <!-- Styles for editor -->
 <style>
-    .button-group {
-        display: flex;
-        justify-content: right;
-    }
-
     .header-center {
         text-align: center;
     }
 
     .demo-button {
-        color: white;
-        padding: 14px 20px;
-        margin: 8px 0;
-        border: none;
-        cursor: pointer;
-        width: 30%;
-        display: inline;
+        padding: 7px 7px;
+        vertical-align: middle;
     }
-
-    .demo-button-rightmost {
-        margin: inherit 2px;
-    }
-
-    .positive {
-        background-color: #4CAF50;
-    }
-
-    .negative {
-        background-color: #f44336;
+    .line-error {
+        background: #e65f55;
     }
 </style>
 
 <!-- Luau WASM (async fetch) -->
 <script async src="https://github.com/Roblox/luau/releases/latest/download/Luau.Web.js"></script>
 <!-- CodeMirror -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.32.0/codemirror.min.js"></script>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.32.0/codemirror.min.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/addon/edit/matchbrackets.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.0/codemirror.min.css" />
 <!-- Luau Parser for CodeMirror -->
 <script src="assets/js/luau_mode.js"></script>
 <!-- CodeMirror Luau Editor (MUST BE LOADED AFTER CODEMIRROR!) -->
@@ -88,9 +60,14 @@
         }
     });
 
-    // Misc Functions
+    var lastError = undefined;
+
     function output(text) {
-        output_box = document.getElementById("output");
+        var output_clear = document.getElementById("output-clear");
+        var output_box = document.getElementById("output");
+        if (output_clear.checked) {
+            output_box.value = '';
+        }
         output_box.value += text.replace('stdin:', '') + "\n";
         // scroll to bottom
         output_box.scrollTop = output_box.scrollHeight;
@@ -100,18 +77,21 @@
         'print': function (msg) { output(msg) }
     };
 
-    function clearInput() {
-        editor.setValue("");
-    }
-
-    function clearOutput() {
-        document.getElementById("output").value = "";
-    }
-
     function executeScript() {
+        if (lastError) {
+            editor.removeLineClass(lastError, "background", "line-error");
+            lastError = undefined;
+        }
+
         var err = Module.ccall('executeScript', 'string', ['string'], [editor.getValue()]);
         if (err) {
-            output('Error:' + err.replace('stdin:', ''));
+            var err_text = err.replace('stdin:', '');
+            output('Error:' + err_text);
+
+            var err_line = parseInt(err_text);
+            if (err_line) {
+                lastError = editor.addLineClass(err_line-1, "background", "line-error");
+            }
         }
     }
 </script>
