@@ -1,7 +1,7 @@
 ---
 permalink: /grammar
 title: Grammar
-toc: true
+classes: wide
 ---
 
 This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes String and Number
