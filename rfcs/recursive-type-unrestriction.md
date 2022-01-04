@@ -20,7 +20,7 @@ but *not* recursive type functions, such as:
   type TreeWithMap<a> = { ..., map: <b>(a -> b) -> Tree<b> }
 
 ```
-These examples cope up naturally in OO code bases with generic types.
+These examples come up naturally in OO code bases with generic types.
 
 ## Design
 
