@@ -23,7 +23,6 @@ In order to avoid breaking changes, we need to know what they are!
 In this RFC, we follow the [Rust API Evolution](https://rust-lang.github.io/rfcs/1105-api-evolution.html)
 guidelines, which build on the [Semantic Versioning](https://semver.org/) specification.
 This RFC is just about *API changes* not *behavioral changes* (which are important but out of scope).
-Changes are tracked in versions, and are either:
 
 From the Rust API evolution guidelines, changes are classified as:
 
@@ -188,7 +187,7 @@ module, we know there are no additional properties, but not externally:
   function exports.new() : Point return { x=0, y=0 }  end
 ```
 
-User code cannot construct `Points` directly, and rely on exported
+User code cannot construct `Point`s directly, and relies on exported
 factory methods. They do have access to the properties though:
 
 ```lua
@@ -203,7 +202,7 @@ The subtyping rules for an opaque type:
   export type t<as> = { ps : Ts, ... }
 ```
 
-are(using `{| ps : Ts |}` for unsealed tables and `{ ps : Ts }` for sealed tables):
+are (using `{| ps : Ts |}` for unsealed tables and `{ ps : Ts }` for sealed tables):
 
 * within the defining module, `{| ps : Ts[Us/as] |}` is a subtype of `t<Us>`, and
 * anywhere, `t<Us>` is a subtype of `{ ps : Ts[Us/as] }`.
@@ -336,7 +335,7 @@ There are the usual bike-shedding options for syntax, in particular
 we could use attributes rather than new syntax for `...` and `...?`.
 
 We could allow other privacy modifiers, for example declaring some
-properties private, or allowing pasckage-level privacy scope as well
+properties private, or allowing package-level privacy scope as well
 as module-level.
 
 We could add extra subtyping rules for opaque types, for example
