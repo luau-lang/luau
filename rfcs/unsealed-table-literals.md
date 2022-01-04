@@ -35,30 +35,16 @@ typechecks, but
 ```
 does not.
 
-This causes problems in examples, for instance
+This causes problems in examples, in particular developers
+may initialize properties but not methods:
 ```lua
-  local t : { p: number, q: string? } = { p = 5, q = "hi" }
-  t = { p = 7 }
-```
-typechecks because we allow subtyping to strip away optional
-properties, so `{ p : number }` is a subtype of
-`{ p : number, q : string? }`. Unfortunately this is not sound,
-since sealed tables support width subtyping:
-```lua
-  local t : { p: number, q: string? } = { p = 5, q = "hi" }
-  local u : { p: number } = { p = 5, q = false }
-  t = u
+  local t = { p = 5 }
+  function t.f() return t.p end
 ```
 
 ## Design
 
-The fix for this source of unsoundness is twofold:
-
-1. make all table literals unsealed, and
-2. only allow stripping optional properties from when the
-   supertype is sealed and the subtype is unsealed.
-
-This RFC is for (1). There is a [separate RFC](unsealed-table-subtyping-strips-optional-properties.md) for (2).
+The proposed change is straightforward: make all table literals unsealed.
 
 ## Drawbacks
 
@@ -66,6 +52,14 @@ Making all table literals unsealed is a conservative change, it only removes typ
 
 It does encourage developers to add new properties to tables during initialization, which
 may be considered poor style.
+
+It does mean that some spelling mistakes will not be caught, for example
+```lua
+local t = {x = 1, y = 2}
+if foo then
+  t.z = 3 -- is z a typo or intentional 2-vs-3 choice?
+end
+```
 
 ## Alternatives
 
