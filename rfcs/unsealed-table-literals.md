@@ -61,8 +61,16 @@ if foo then
 end
 ```
 
+In particular, we no longer warn about adding properties to array-like tables.
+```lua
+local a = {1,2,3}
+a.p = 5
+```
+
 ## Alternatives
 
 We could introduce a new table state for unsealed-but-precise
 tables. The trade-off is that that would be more precise, at the cost
 of adding user-visible complexity to the type system.
+
+We could contine to treat array-like tables as sealed.
