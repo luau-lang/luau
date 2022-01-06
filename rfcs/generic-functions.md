@@ -107,9 +107,11 @@ but you can *not* write `id<number>(y)`.
 
 This syntax is difficult to parse as it's ambiguous wrt grammar for comparison, and disambiguating it requires being able to parse types in expression context which makes parsing slow and complicated. It's also worth noting that today there are programs with this syntax that are grammatically correct (eg `id<string>('4')` parses as "compare variable `id` to variable `string`, and compare the result to string '4'"). The specific example with a single argument will always fail at runtime because booleans can't be compared with relational operators, but multi-argument cases such as `print(foo<number, string>(4))` can execute without errors in certain cases.
 
-Note that in many cases the types can be inferred, whether through function arguments (`id(4)`) or through expected return type (`id(y) :: number`). It's also often possible to cast the function object to a given type, even though that can be unwieldy (`(id :: (number)->number)(y)`). Some languages don't have a way to specify the types at call site either, Swift being a prominent example.
+Note that in many cases the types can be inferred, whether through function arguments (`id(4)`) or through expected return type (`id(y) :: number`). It's also often possible to cast the function object to a given type, even though that can be unwieldy (`(id :: (number)->number)(y)`). Some languages don't have a way to specify the types at call site either, Swift being a prominent example. Thus it's not a given we need this feature in Luau.
 
-If we ever want to implement this, we can use a solution inspired by Rust's turbofish and require an extra token before `<`. Rust uses `::<` but that doesn't work in Luau because as part of this RFC, `id::<a>(a)->a` is a valid, if redundant, type ascription. That said, these two variants are grammatically unambiguous in expression context in Luau, and are a better parallel for Rust's turbofish because in Rust, `::` is more similar to Luau's `:` or `.` than `::` (which in Rust is called `as`):
+If we ever want to implement this though, we can use a solution inspired by Rust's turbofish and require an extra token before `<`. Rust uses `::<` but that doesn't work in Luau because as part of this RFC, `id::<a>(a)->a` is a valid, if redundant, type ascription, so we need to choose a different prefix.
+
+The following two variants are grammatically unambiguous in expression context in Luau, and are a better parallel for Rust's turbofish (in Rust, `::` is more similar to Luau's `:` or `.` than `::`, which in Rust is called `as`):
 
 ```lua
 foo:<number, string>() -- require : before <; this is only valid in Luau in variable declaration context, so it's safe to use in expression context
