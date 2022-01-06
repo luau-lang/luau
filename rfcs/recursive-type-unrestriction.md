@@ -41,6 +41,8 @@ export type PromiseFor<T> = {
 ```
 as discussed at the [Roblox DevForum](https://devforum.roblox.com/t/regression-with-genericrecursively-defined-types/1616647).
 
+Examples like this are quite common in TypeScript code, for example in [ReduxJS](https://github.com/reduxjs/redux-thunk/blob/master/src/types.ts).
+
 ## Design
 
 *This section to be filled in once we decide which alternative to use*
