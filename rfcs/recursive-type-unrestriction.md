@@ -20,7 +20,26 @@ but *not* recursive type functions, such as:
   type TreeWithMap<a> = { ..., map: <b>(a -> b) -> Tree<b> }
 
 ```
-These examples come up naturally in OO code bases with generic types.
+These examples come up naturally in OO code bases with generic types, for example
+```lua
+--!strict
+export type PromiseFor<T> = {
+  andThen: <U>(
+    self: PromiseFor<T>,
+    onFulfilled: ((result: T) -> U)?,
+    onRejected: ((err: string) -> U)?
+  ) -> PromiseFor<U>,
+  catch: <U>(
+    self: PromiseFor<T>,
+    onRejected: ((err: string) -> U)?
+  ) -> PromiseFor<U>,
+  finally: <U>(
+    self: PromiseFor<T>,
+    onResolvedOrRejected: ((wasFulfilled: boolean, resultOrErr: T | string) -> U)
+  ) -> PromiseFor<U>,
+}
+```
+as discussed at the [Roblox DevForum](https://devforum.roblox.com/t/regression-with-genericrecursively-defined-types/1616647).
 
 ## Design
 
