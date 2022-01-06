@@ -10,7 +10,7 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("SymbolTests");
 
-TEST_CASE("hashing")
+TEST_CASE("hashing_globals")
 {
     std::string s1 = "name";
     std::string s2 = "name";
@@ -31,10 +31,37 @@ TEST_CASE("hashing")
     CHECK_EQ(std::hash<Symbol>()(two), std::hash<Symbol>()(two));
 
     std::unordered_map<Symbol, int> theMap;
-    theMap[AstName{s1.data()}] = 5;
-    theMap[AstName{s2.data()}] = 1;
+    theMap[n1] = 5;
+    theMap[n2] = 1;
 
     REQUIRE_EQ(1, theMap.size());
+}
+
+TEST_CASE("hashing_locals")
+{
+    std::string s1 = "name";
+    std::string s2 = "name";
+
+    // These two names point to distinct memory areas.
+    AstLocal one{AstName{s1.data()}, Location(), nullptr, 0, 0, nullptr};
+    AstLocal two{AstName{s2.data()}, Location(), &one, 0, 0, nullptr};
+
+    Symbol n1{&one};
+    Symbol n2{&two};
+
+    CHECK(n1 == n1);
+    CHECK(n1 != n2);
+    CHECK(n2 == n2);
+
+    CHECK_EQ(std::hash<Symbol>()(&one), std::hash<Symbol>()(&one));
+    CHECK_NE(std::hash<Symbol>()(&one), std::hash<Symbol>()(&two));
+    CHECK_EQ(std::hash<Symbol>()(&two), std::hash<Symbol>()(&two));
+
+    std::unordered_map<Symbol, int> theMap;
+    theMap[n1] = 5;
+    theMap[n2] = 1;
+
+    REQUIRE_EQ(2, theMap.size());
 }
 
 TEST_SUITE_END();

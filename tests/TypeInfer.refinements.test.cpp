@@ -280,7 +280,6 @@ TEST_CASE_FIXTURE(Fixture, "assert_non_binary_expressions_actually_resolve_const
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
 {
     ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true};
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
         local t: {x: number?} = {x = nil}
@@ -1085,6 +1084,41 @@ TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
     CHECK_EQ("any", toString(requireTypeAtPosition({6, 66})));
 }
 
+TEST_CASE_FIXTURE(Fixture, "correctly_lookup_a_shadowed_local_that_which_was_previously_refined")
+{
+    ScopedFastFlag sff{"LuauLValueAsKey", true};
+
+    CheckResult result = check(R"(
+        local foo: string? = "hi"
+        assert(foo)
+        local foo: number = 5
+        print(foo:sub(1, 1))
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("Type 'number' does not have key 'sub'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_refined")
+{
+    ScopedFastFlag sff{"LuauLValueAsKey", true};
+
+    CheckResult result = check(R"(
+        type T = {x: string | number}
+        local t: T? = {x = "hi"}
+        if t then
+            if type(t.x) == "string" then
+                local foo = t.x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 30})));
+}
+
 TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscript_expr_is_constant_string")
 {
     ScopedFastFlag sff{"LuauRefiLookupFromIndexExpr", true};
@@ -1092,6 +1126,7 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
     CheckResult result = check(R"(
         type T = { [string]: { prop: number }? }
         local t: T = {}
+
         if t["hello"] then
             local foo = t["hello"].prop
         end

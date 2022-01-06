@@ -1394,7 +1394,7 @@ TEST_CASE_FIXTURE(ACFixture, "type_correct_function_return_types")
     check(R"(
 local function target(a: number, b: string) return a + #b end
 local function bar1(a: number) return -a end
-local function bar2(a: string) reutrn a .. 'x' end
+local function bar2(a: string) return a .. 'x' end
 
 return target(b@1
     )");
@@ -1422,7 +1422,7 @@ return target(bar1, b@1
     check(R"(
 local function target(a: number, b: string) return a + #b end
 local function bar1(a: number): (...number) return -a, a end
-local function bar2(a: string) reutrn a .. 'x' end
+local function bar2(a: string) return a .. 'x' end
 
 return target(b@1
     )");
@@ -1918,7 +1918,7 @@ TEST_CASE_FIXTURE(ACFixture, "type_correct_function_no_parenthesis")
     check(R"(
 local function target(a: (number) -> number) return a(4) end
 local function bar1(a: number) return -a end
-local function bar2(a: string) reutrn a .. 'x' end
+local function bar2(a: string) return a .. 'x' end
 
 return target(b@1
     )");

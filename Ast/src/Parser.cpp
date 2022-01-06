@@ -14,7 +14,6 @@ LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
 LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauParseGenericFunctionTypeBegin, false)
 
 namespace Luau
 {
@@ -1367,9 +1366,6 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
     auto [generics, genericPacks] = parseGenericTypeList();
 
     Lexeme parameterStart = lexer.current();
-
-    if (!FFlag::LuauParseGenericFunctionTypeBegin)
-        begin = parameterStart;
 
     expectAndConsume('(', "function parameters");
 

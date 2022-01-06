@@ -555,8 +555,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_assign_multiple")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_generic_function")
 {
-    ScopedFastFlag luauParseGenericFunctionTypeBegin("LuauParseGenericFunctionTypeBegin", true);
-
     std::string code = R"(
 local function foo<T,S...>(a: T, ...: S...) return 1 end
 local f: <T,S...>(T, S...)->(number) = foo

@@ -996,18 +996,19 @@ std::optional<ExprResult<TypePackId>> magicFunctionFormat(
     std::vector<TypeId> expected = parseFormatString(typechecker, fmt->value.data, fmt->value.size);
     const auto& [params, tail] = flatten(paramPack);
 
-    const size_t dataOffset = 1;
+    size_t paramOffset = 1;
+    size_t dataOffset = expr.self ? 0 : 1;
 
     // unify the prefix one argument at a time
-    for (size_t i = 0; i < expected.size() && i + dataOffset < params.size(); ++i)
+    for (size_t i = 0; i < expected.size() && i + paramOffset < params.size(); ++i)
     {
-        Location location = expr.args.data[std::min(i, expr.args.size - 1)]->location;
+        Location location = expr.args.data[std::min(i + dataOffset, expr.args.size - 1)]->location;
 
-        typechecker.unify(expected[i], params[i + dataOffset], location);
+        typechecker.unify(expected[i], params[i + paramOffset], location);
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error
-    const size_t actualParamSize = params.size() - dataOffset;
+    size_t actualParamSize = params.size() - paramOffset;
 
     if (expected.size() != actualParamSize && (!tail || expected.size() < actualParamSize))
         typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), actualParamSize}});
