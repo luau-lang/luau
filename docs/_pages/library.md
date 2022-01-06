@@ -19,10 +19,10 @@ function assert<T>(value: T, message: string?): T
 ```
 
 `assert` checks if the value is truthy; if it's not (which means it's `false` or `nil`), it raises an error. The error message can be customized with an optional parameter.
-Upon success the function returns the `condition` argument.
+Upon success the function returns the `value` argument.
 
 ```
-function error(object: any, level: number?)
+function error(obj: any, level: number?)
 ```
 
 `error` raises an error with the specified object. Note that errors don't have to be strings, although they often are by convention; various error handling mechanisms like `pcall`
@@ -110,7 +110,7 @@ Changes metatable for the given table. Note that unlike `getmetatable`, this fun
 function tonumber(s: string, base: number?): number?
 ```
 
-Converts the input string to the number in base `base` (default 10) and returns the resulting number. If the conversion fails, returns `nil` instead.
+Converts the input string to the number in base `base` (default 10) and returns the resulting number. If the conversion fails (that is, if the input string doesn't represent a valid number in the specified base), returns `nil` instead.
 
 ```
 function tostring(obj: any): string
@@ -161,7 +161,7 @@ Note that `f` can yield, which results in the entire coroutine yielding as well.
 function unpack<V>(a: {V}, f: number?, t: number?): ...V
 ```
 
-Returns all values of `a` with indices in `[f..t]` range. `f` defaults to 1 and `t` defaults to `#a`.
+Returns all values of `a` with indices in `[f..t]` range. `f` defaults to 1 and `t` defaults to `#a`. Note that this is equivalent to `table.unpack`.
 
 ## math library
 
@@ -346,13 +346,14 @@ Returns 3D Perlin noise value for the point `(x, y, z)` (`y` and `z` default to 
 function math.clamp(n: number, min: number, max: number): number
 ```
 
-Returns `n` if the number is in `[min, max]` range; otherwise, returns `min` when `n < min`, and `max` otherwise. The function errors if `min > max`.
+Returns `n` if the number is in `[min, max]` range; otherwise, returns `min` when `n < min`, and `max` otherwise. If `n` is NaN, may or may not return NaN.
+The function errors if `min > max`.
 
 ```
 function math.sign(n: number): number
 ```
 
-Returns `-1` if `n` is negative, `1` if `n` is positive, and `0` if `n` is zero.
+Returns `-1` if `n` is negative, `1` if `n` is positive, and `0` if `n` is zero or NaN.
 
 ```
 function math.round(n: number): number
@@ -384,7 +385,7 @@ Iterates over numeric keys of the table in `[1..#t]` range in order; for each ke
 function table.getn<V>(t: {V}): number
 ```
 
-Returns the length of table `t` (aka `#t`).
+Returns the length of table `t` (equivalent to `#t`).
 
 ```
 function table.maxn<V>(t: {V}): number
@@ -518,7 +519,7 @@ When `f` is a string, the substitution uses the string as a replacement. When `f
 function string.len(s: string): number
 ```
 
-Returns the number of bytes in the string.
+Returns the number of bytes in the string (equivalent to `#s`).
 
 ```
 function string.lower(s: string): string
