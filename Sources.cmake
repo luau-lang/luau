@@ -45,6 +45,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/IostreamHelpers.h
     Analysis/include/Luau/JsonEncoder.h
     Analysis/include/Luau/Linter.h
+    Analysis/include/Luau/LValue.h
     Analysis/include/Luau/Module.h
     Analysis/include/Luau/ModuleResolver.h
     Analysis/include/Luau/Predicate.h
@@ -80,8 +81,8 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/JsonEncoder.cpp
     Analysis/src/Linter.cpp
+    Analysis/src/LValue.cpp
     Analysis/src/Module.cpp
-    Analysis/src/Predicate.cpp
     Analysis/src/Quantify.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
@@ -194,10 +195,10 @@ if(TARGET Luau.UnitTest)
         tests/Frontend.test.cpp
         tests/JsonEncoder.test.cpp
         tests/Linter.test.cpp
+        tests/LValue.test.cpp
         tests/Module.test.cpp
         tests/NonstrictMode.test.cpp
         tests/Parser.test.cpp
-        tests/Predicate.test.cpp
         tests/RequireTracer.test.cpp
         tests/StringUtils.test.cpp
         tests/Symbol.test.cpp

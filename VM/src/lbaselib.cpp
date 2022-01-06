@@ -36,12 +36,14 @@ static int luaB_tonumber(lua_State* L)
     int base = luaL_optinteger(L, 2, 10);
     if (base == 10)
     { /* standard conversion */
-        luaL_checkany(L, 1);
-        if (lua_isnumber(L, 1))
+        int isnum = 0;
+        double n = lua_tonumberx(L, 1, &isnum);
+        if (isnum)
         {
-            lua_pushnumber(L, lua_tonumber(L, 1));
+            lua_pushnumber(L, n);
             return 1;
         }
+        luaL_checkany(L, 1); /* error if we don't have any argument */
     }
     else
     {

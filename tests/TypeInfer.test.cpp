@@ -5013,6 +5013,19 @@ caused by:
   Return #2 type is not compatible. Type 'string' could not be converted into 'boolean')");
 }
 
+TEST_CASE_FIXTURE(Fixture, "prop_access_on_any_with_other_options")
+{
+    ScopedFastFlag sff{"LuauLValueAsKey", true};
+
+    CheckResult result = check(R"(
+        local function f(thing: any | string)
+            local foo = thing.SomeRandomKey
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "table_function_check_use_after_free")
 {
     ScopedFastFlag luauUnifyFunctionCheckResult{"LuauUpdateFunctionNameBinding", true};

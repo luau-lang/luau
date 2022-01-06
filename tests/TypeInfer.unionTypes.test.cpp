@@ -425,8 +425,6 @@ y = x
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
 {
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -446,8 +444,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_all")
 {
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }

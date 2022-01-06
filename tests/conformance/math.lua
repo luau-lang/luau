@@ -26,6 +26,7 @@ function f(...)
   end
 end
 
+assert(pcall(tonumber) == false)
 assert(tonumber{} == nil)
 assert(tonumber'+0.01' == 1/100 and tonumber'+.01' == 0.01 and
        tonumber'.01' == 0.01    and tonumber'-1.' == -1 and

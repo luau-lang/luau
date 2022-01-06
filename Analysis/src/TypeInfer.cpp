@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
 LUAU_FASTFLAGVARIABLE(LuauTailArgumentTypeInfo, false)
 LUAU_FASTFLAGVARIABLE(LuauModuleRequireErrorPack, false)
+LUAU_FASTFLAGVARIABLE(LuauLValueAsKey, false)
 LUAU_FASTFLAGVARIABLE(LuauRefiLookupFromIndexExpr, false)
 LUAU_FASTFLAGVARIABLE(LuauProperTypeLevels, false)
 LUAU_FASTFLAGVARIABLE(LuauAscribeCorrectLevelToInferredProperitesOfFreeTables, false)
@@ -1625,6 +1626,10 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
         for (TypeId t : utv)
         {
             RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
+
+            // Not needed when we normalize types.
+            if (FFlag::LuauLValueAsKey && get<AnyTypeVar>(follow(t)))
+                return t;
 
             if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, false))
                 goodOptions.push_back(*ty);
@@ -4967,13 +4972,83 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGener
 
 std::optional<TypeId> TypeChecker::resolveLValue(const ScopePtr& scope, const LValue& lvalue)
 {
-    std::string path = toString(lvalue);
+    if (!FFlag::LuauLValueAsKey)
+        return DEPRECATED_resolveLValue(scope, lvalue);
+
+    // We want to be walking the Scope parents.
+    // We'll also want to walk up the LValue path. As we do this, we need to save each LValue because we must walk back.
+    // For example:
+    //  There exists an entry t.x.
+    //  We are asked to look for t.x.y.
+    //  We need to search in the provided Scope. Find t.x.y first.
+    //  We fail to find t.x.y. Try t.x. We found it. Now we must return the type of the property y from the mapped-to type of t.x.
+    //  If we completely fail to find the Symbol t but the Scope has that entry, then we should walk that all the way through and terminate.
+    const auto& [symbol, keys] = getFullName(lvalue);
+
+    ScopePtr currentScope = scope;
+    while (currentScope)
+    {
+        std::optional<TypeId> found;
+
+        std::vector<LValue> childKeys;
+        const LValue* currentLValue = &lvalue;
+        while (currentLValue)
+        {
+            if (auto it = currentScope->refinements.NEW_refinements.find(*currentLValue); it != currentScope->refinements.NEW_refinements.end())
+            {
+                found = it->second;
+                break;
+            }
+
+            childKeys.push_back(*currentLValue);
+            currentLValue = baseof(*currentLValue);
+        }
+
+        if (!found)
+        {
+            // Should not be using scope->lookup. This is already recursive.
+            if (auto it = currentScope->bindings.find(symbol); it != currentScope->bindings.end())
+                found = it->second.typeId;
+            else
+            {
+                // Nothing exists in this Scope. Just skip and try the parent one.
+                currentScope = currentScope->parent;
+                continue;
+            }
+        }
+
+        for (auto it = childKeys.rbegin(); it != childKeys.rend(); ++it)
+        {
+            const LValue& key = *it;
+
+            // Symbol can happen. Skip.
+            if (get<Symbol>(key))
+                continue;
+            else if (auto field = get<Field>(key))
+            {
+                found = getIndexTypeFromType(scope, *found, field->key, Location(), false);
+                if (!found)
+                    return std::nullopt; // Turns out this type doesn't have the property at all. We're done.
+            }
+            else
+                LUAU_ASSERT(!"New LValue alternative not handled here.");
+        }
+
+        return found;
+    }
+
+    // No entry for it at all. Can happen when LValue root is a global.
+    return std::nullopt;
+}
+
+std::optional<TypeId> TypeChecker::DEPRECATED_resolveLValue(const ScopePtr& scope, const LValue& lvalue)
+{
     auto [symbol, keys] = getFullName(lvalue);
 
     ScopePtr currentScope = scope;
     while (currentScope)
     {
-        if (auto it = currentScope->refinements.find(path); it != currentScope->refinements.end())
+        if (auto it = currentScope->refinements.DEPRECATED_refinements.find(toString(lvalue)); it != currentScope->refinements.DEPRECATED_refinements.end())
             return it->second;
 
         // Should not be using scope->lookup. This is already recursive.
@@ -5000,7 +5075,9 @@ std::optional<TypeId> TypeChecker::resolveLValue(const ScopePtr& scope, const LV
 
 std::optional<TypeId> TypeChecker::resolveLValue(const RefinementMap& refis, const ScopePtr& scope, const LValue& lvalue)
 {
-    if (auto it = refis.find(toString(lvalue)); it != refis.end())
+    if (auto it = refis.DEPRECATED_refinements.find(toString(lvalue)); it != refis.DEPRECATED_refinements.end())
+        return it->second;
+    else if (auto it = refis.NEW_refinements.find(lvalue); it != refis.NEW_refinements.end())
         return it->second;
     else
         return resolveLValue(scope, lvalue);
