@@ -18,9 +18,7 @@ LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
 LUAU_FASTFLAGVARIABLE(LuauUnionHeuristic, false)
 LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
 LUAU_FASTFLAGVARIABLE(LuauOccursCheckOkWithRecursiveFunctions, false)
-LUAU_FASTFLAGVARIABLE(LuauExtendedTypeMismatchError, false)
 LUAU_FASTFLAG(LuauSingletonTypes)
-LUAU_FASTFLAGVARIABLE(LuauExtendedClassMismatchError, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauProperTypeLevels);
 LUAU_FASTFLAGVARIABLE(LuauExtendedUnionMismatchError, false)
@@ -416,7 +414,7 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
             else if (!innerState.errors.empty())
             {
                 // 'nil' option is skipped from extended report because we present the type in a special way - 'T?'
-                if (FFlag::LuauExtendedTypeMismatchError && !firstFailedOption && !isNil(type))
+                if (!firstFailedOption && !isNil(type))
                     firstFailedOption = {innerState.errors.front()};
 
                 failed = true;
@@ -434,7 +432,7 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
             errors.push_back(*unificationTooComplex);
         else if (failed)
         {
-            if (FFlag::LuauExtendedTypeMismatchError && firstFailedOption)
+            if (firstFailedOption)
                 errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "Not all union options are compatible.", *firstFailedOption}});
             else
                 errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
@@ -536,49 +534,36 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
             if (FFlag::LuauExtendedUnionMismatchError && (failedOptionCount == 1 || foundHeuristic) && failedOption)
                 errors.push_back(
                     TypeError{location, TypeMismatch{superTy, subTy, "None of the union options are compatible. For example:", *failedOption}});
-            else if (FFlag::LuauExtendedTypeMismatchError)
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "none of the union options are compatible"}});
             else
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "none of the union options are compatible"}});
         }
     }
     else if (const IntersectionTypeVar* uv = get<IntersectionTypeVar>(superTy))
     {
-        if (FFlag::LuauExtendedTypeMismatchError)
+        std::optional<TypeError> unificationTooComplex;
+        std::optional<TypeError> firstFailedOption;
+
+        // T <: A & B if A <: T and B <: T
+        for (TypeId type : uv->parts)
         {
-            std::optional<TypeError> unificationTooComplex;
-            std::optional<TypeError> firstFailedOption;
+            Unifier innerState = makeChildUnifier();
+            innerState.tryUnify_(type, subTy, /*isFunctionCall*/ false, /*isIntersection*/ true);
 
-            // T <: A & B if A <: T and B <: T
-            for (TypeId type : uv->parts)
+            if (auto e = hasUnificationTooComplex(innerState.errors))
+                unificationTooComplex = e;
+            else if (!innerState.errors.empty())
             {
-                Unifier innerState = makeChildUnifier();
-                innerState.tryUnify_(type, subTy, /*isFunctionCall*/ false, /*isIntersection*/ true);
-
-                if (auto e = hasUnificationTooComplex(innerState.errors))
-                    unificationTooComplex = e;
-                else if (!innerState.errors.empty())
-                {
-                    if (!firstFailedOption)
-                        firstFailedOption = {innerState.errors.front()};
-                }
-
-                log.concat(std::move(innerState.log));
+                if (!firstFailedOption)
+                    firstFailedOption = {innerState.errors.front()};
             }
 
-            if (unificationTooComplex)
-                errors.push_back(*unificationTooComplex);
-            else if (firstFailedOption)
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption}});
+            log.concat(std::move(innerState.log));
         }
-        else
-        {
-            // T <: A & B if A <: T and B <: T
-            for (TypeId type : uv->parts)
-            {
-                tryUnify_(type, subTy, /*isFunctionCall*/ false, /*isIntersection*/ true);
-            }
-        }
+
+        if (unificationTooComplex)
+            errors.push_back(*unificationTooComplex);
+        else if (firstFailedOption)
+            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption}});
     }
     else if (const IntersectionTypeVar* uv = get<IntersectionTypeVar>(subTy))
     {
@@ -626,10 +611,7 @@ void Unifier::tryUnify_(TypeId superTy, TypeId subTy, bool isFunctionCall, bool 
             errors.push_back(*unificationTooComplex);
         else if (!found)
         {
-            if (FFlag::LuauExtendedTypeMismatchError)
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "none of the intersection parts are compatible"}});
-            else
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "none of the intersection parts are compatible"}});
         }
     }
     else if (get<PrimitiveTypeVar>(superTy) && get<PrimitiveTypeVar>(subTy))
@@ -1241,10 +1223,7 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
             Unifier innerState = makeChildUnifier();
             innerState.tryUnify_(prop.type, r->second.type);
 
-            if (FFlag::LuauExtendedTypeMismatchError)
-                checkChildUnifierTypeMismatch(innerState.errors, name, left, right);
-            else
-                checkChildUnifierTypeMismatch(innerState.errors, left, right);
+            checkChildUnifierTypeMismatch(innerState.errors, name, left, right);
 
             if (innerState.errors.empty())
                 log.concat(std::move(innerState.log));
@@ -1261,10 +1240,7 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
             Unifier innerState = makeChildUnifier();
             innerState.tryUnify_(prop.type, rt->indexer->indexResultType);
 
-            if (FFlag::LuauExtendedTypeMismatchError)
-                checkChildUnifierTypeMismatch(innerState.errors, name, left, right);
-            else
-                checkChildUnifierTypeMismatch(innerState.errors, left, right);
+            checkChildUnifierTypeMismatch(innerState.errors, name, left, right);
 
             if (innerState.errors.empty())
                 log.concat(std::move(innerState.log));
@@ -1302,10 +1278,7 @@ void Unifier::tryUnifyTables(TypeId left, TypeId right, bool isIntersection)
             Unifier innerState = makeChildUnifier();
             innerState.tryUnify_(prop.type, lt->indexer->indexResultType);
 
-            if (FFlag::LuauExtendedTypeMismatchError)
-                checkChildUnifierTypeMismatch(innerState.errors, name, left, right);
-            else
-                checkChildUnifierTypeMismatch(innerState.errors, left, right);
+            checkChildUnifierTypeMismatch(innerState.errors, name, left, right);
 
             if (innerState.errors.empty())
                 log.concat(std::move(innerState.log));
@@ -1723,18 +1696,11 @@ void Unifier::tryUnifyWithMetatable(TypeId metatable, TypeId other, bool reverse
         innerState.tryUnify_(lhs->table, rhs->table);
         innerState.tryUnify_(lhs->metatable, rhs->metatable);
 
-        if (FFlag::LuauExtendedTypeMismatchError)
-        {
-            if (auto e = hasUnificationTooComplex(innerState.errors))
-                errors.push_back(*e);
-            else if (!innerState.errors.empty())
-                errors.push_back(
-                    TypeError{location, TypeMismatch{reversed ? other : metatable, reversed ? metatable : other, "", innerState.errors.front()}});
-        }
-        else
-        {
-            checkChildUnifierTypeMismatch(innerState.errors, reversed ? other : metatable, reversed ? metatable : other);
-        }
+        if (auto e = hasUnificationTooComplex(innerState.errors))
+            errors.push_back(*e);
+        else if (!innerState.errors.empty())
+            errors.push_back(
+                TypeError{location, TypeMismatch{reversed ? other : metatable, reversed ? metatable : other, "", innerState.errors.front()}});
 
         log.concat(std::move(innerState.log));
     }
@@ -1821,31 +1787,22 @@ void Unifier::tryUnifyWithClass(TypeId superTy, TypeId subTy, bool reversed)
             {
                 ok = false;
                 errors.push_back(TypeError{location, UnknownProperty{superTy, propName}});
-                if (!FFlag::LuauExtendedClassMismatchError)
-                    tryUnify_(prop.type, getSingletonTypes().errorRecoveryType());
             }
             else
             {
-                if (FFlag::LuauExtendedClassMismatchError)
+                Unifier innerState = makeChildUnifier();
+                innerState.tryUnify_(prop.type, classProp->type);
+
+                checkChildUnifierTypeMismatch(innerState.errors, propName, reversed ? subTy : superTy, reversed ? superTy : subTy);
+
+                if (innerState.errors.empty())
                 {
-                    Unifier innerState = makeChildUnifier();
-                    innerState.tryUnify_(prop.type, classProp->type);
-
-                    checkChildUnifierTypeMismatch(innerState.errors, propName, reversed ? subTy : superTy, reversed ? superTy : subTy);
-
-                    if (innerState.errors.empty())
-                    {
-                        log.concat(std::move(innerState.log));
-                    }
-                    else
-                    {
-                        ok = false;
-                        innerState.log.rollback();
-                    }
+                    log.concat(std::move(innerState.log));
                 }
                 else
                 {
-                    tryUnify_(prop.type, classProp->type);
+                    ok = false;
+                    innerState.log.rollback();
                 }
             }
         }
@@ -2185,8 +2142,6 @@ void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId 
 
 void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, const std::string& prop, TypeId wantedType, TypeId givenType)
 {
-    LUAU_ASSERT(FFlag::LuauExtendedTypeMismatchError || FFlag::LuauExtendedClassMismatchError);
-
     if (auto e = hasUnificationTooComplex(innerErrors))
         errors.push_back(*e);
     else if (!innerErrors.empty())

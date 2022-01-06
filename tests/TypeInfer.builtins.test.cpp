@@ -798,13 +798,14 @@ TEST_CASE_FIXTURE(Fixture, "string_format_report_all_type_errors_at_correct_posi
 {
     CheckResult result = check(R"(
         ("%s%d%s"):format(1, "hello", true)
+        string.format("%s%d%s", 1, "hello", true)
     )");
 
     TypeId stringType = typeChecker.stringType;
     TypeId numberType = typeChecker.numberType;
     TypeId booleanType = typeChecker.booleanType;
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    LUAU_REQUIRE_ERROR_COUNT(6, result);
 
     CHECK_EQ(Location(Position{1, 26}, Position{1, 27}), result.errors[0].location);
     CHECK_EQ(TypeErrorData(TypeMismatch{stringType, numberType}), result.errors[0].data);
@@ -814,6 +815,15 @@ TEST_CASE_FIXTURE(Fixture, "string_format_report_all_type_errors_at_correct_posi
 
     CHECK_EQ(Location(Position{1, 38}, Position{1, 42}), result.errors[2].location);
     CHECK_EQ(TypeErrorData(TypeMismatch{stringType, booleanType}), result.errors[2].data);
+
+    CHECK_EQ(Location(Position{2, 32}, Position{2, 33}), result.errors[3].location);
+    CHECK_EQ(TypeErrorData(TypeMismatch{stringType, numberType}), result.errors[3].data);
+
+    CHECK_EQ(Location(Position{2, 35}, Position{2, 42}), result.errors[4].location);
+    CHECK_EQ(TypeErrorData(TypeMismatch{numberType, stringType}), result.errors[4].data);
+
+    CHECK_EQ(Location(Position{2, 44}, Position{2, 48}), result.errors[5].location);
+    CHECK_EQ(TypeErrorData(TypeMismatch{stringType, booleanType}), result.errors[5].data);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type")

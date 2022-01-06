@@ -1955,7 +1955,6 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
 {
     ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
 type A = { x: number, y: number }
@@ -1974,7 +1973,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
 {
     ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
 type AS = { x: number, y: number }
@@ -1998,7 +1996,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "error_detailed_metatable_prop")
 {
     ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
 
     CheckResult result = check(R"(
 local a1 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
@@ -2062,7 +2059,6 @@ TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
         {"LuauPropertiesGetExpectedType", true},
         {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
-        {"LuauExtendedTypeMismatchError", true},
     };
 
     CheckResult result = check(R"(

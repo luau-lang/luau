@@ -202,7 +202,6 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
     ScopedFastFlag sffs[] = {
         {"LuauSingletonTypes", true},
         {"LuauParseSingletonTypes", true},
-        {"LuauExtendedTypeMismatchError", true},
     };
 
     CheckResult result = check(R"(

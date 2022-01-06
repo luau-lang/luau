@@ -449,8 +449,6 @@ b.X = 2 -- real Vector2.X is also read-only
 
 TEST_CASE_FIXTURE(ClassFixture, "detailed_class_unification_error")
 {
-    ScopedFastFlag luauExtendedClassMismatchError{"LuauExtendedClassMismatchError", true};
-
     CheckResult result = check(R"(
 local function foo(v)
     return v.X :: number + string.len(v.Y)

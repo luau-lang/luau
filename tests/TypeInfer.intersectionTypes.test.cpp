@@ -343,8 +343,6 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_setmetatable")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_part")
 {
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -363,8 +361,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
-    ScopedFastFlag luauExtendedTypeMismatchError{"LuauExtendedTypeMismatchError", true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
