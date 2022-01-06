@@ -34,10 +34,11 @@ int luaV_tostring(lua_State* L, StkId obj)
         return 0;
     else
     {
-        char s[LUAI_MAXNUMBER2STR];
+        char s[LUAI_MAXNUM2STR];
         double n = nvalue(obj);
-        luai_num2str(s, n);
-        setsvalue2s(L, obj, luaS_new(L, s));
+        char* e = luai_num2str(s, n);
+        LUAU_ASSERT(e < s + sizeof(s));
+        setsvalue2s(L, obj, luaS_newlstr(L, s, e - s));
         return 1;
     }
 }

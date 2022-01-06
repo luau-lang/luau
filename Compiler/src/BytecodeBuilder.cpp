@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Write, false)
+
 namespace Luau
 {
 
@@ -78,6 +80,52 @@ static int getOpLength(LuauOpcode op)
 
     default:
         return 1;
+    }
+}
+
+inline bool isJumpD(LuauOpcode op)
+{
+    switch (op)
+    {
+    case LOP_JUMP:
+    case LOP_JUMPIF:
+    case LOP_JUMPIFNOT:
+    case LOP_JUMPIFEQ:
+    case LOP_JUMPIFLE:
+    case LOP_JUMPIFLT:
+    case LOP_JUMPIFNOTEQ:
+    case LOP_JUMPIFNOTLE:
+    case LOP_JUMPIFNOTLT:
+    case LOP_FORNPREP:
+    case LOP_FORNLOOP:
+    case LOP_FORGLOOP:
+    case LOP_FORGPREP_INEXT:
+    case LOP_FORGLOOP_INEXT:
+    case LOP_FORGPREP_NEXT:
+    case LOP_FORGLOOP_NEXT:
+    case LOP_JUMPBACK:
+    case LOP_JUMPIFEQK:
+    case LOP_JUMPIFNOTEQK:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+inline bool isSkipC(LuauOpcode op)
+{
+    switch (op)
+    {
+    case LOP_LOADB:
+    case LOP_FASTCALL:
+    case LOP_FASTCALL1:
+    case LOP_FASTCALL2:
+    case LOP_FASTCALL2K:
+        return true;
+
+    default:
+        return false;
     }
 }
 
@@ -365,13 +413,7 @@ bool BytecodeBuilder::patchJumpD(size_t jumpLabel, size_t targetLabel)
     unsigned int jumpInsn = insns[jumpLabel];
     (void)jumpInsn;
 
-    LUAU_ASSERT(LUAU_INSN_OP(jumpInsn) == LOP_JUMP || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIF || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFNOT ||
-                LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFEQ || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFLE || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFLT ||
-                LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFNOTEQ || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFNOTLE || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFNOTLT ||
-                LUAU_INSN_OP(jumpInsn) == LOP_FORNPREP || LUAU_INSN_OP(jumpInsn) == LOP_FORNLOOP || LUAU_INSN_OP(jumpInsn) == LOP_FORGLOOP ||
-                LUAU_INSN_OP(jumpInsn) == LOP_FORGPREP_INEXT || LUAU_INSN_OP(jumpInsn) == LOP_FORGLOOP_INEXT ||
-                LUAU_INSN_OP(jumpInsn) == LOP_FORGPREP_NEXT || LUAU_INSN_OP(jumpInsn) == LOP_FORGLOOP_NEXT ||
-                LUAU_INSN_OP(jumpInsn) == LOP_JUMPBACK || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFEQK || LUAU_INSN_OP(jumpInsn) == LOP_JUMPIFNOTEQK);
+    LUAU_ASSERT(isJumpD(LuauOpcode(LUAU_INSN_OP(jumpInsn))));
     LUAU_ASSERT(LUAU_INSN_D(jumpInsn) == 0);
 
     LUAU_ASSERT(targetLabel <= insns.size());
@@ -403,8 +445,7 @@ bool BytecodeBuilder::patchSkipC(size_t jumpLabel, size_t targetLabel)
     unsigned int jumpInsn = insns[jumpLabel];
     (void)jumpInsn;
 
-    LUAU_ASSERT(LUAU_INSN_OP(jumpInsn) == LOP_FASTCALL || LUAU_INSN_OP(jumpInsn) == LOP_FASTCALL1 || LUAU_INSN_OP(jumpInsn) == LOP_FASTCALL2 ||
-                LUAU_INSN_OP(jumpInsn) == LOP_FASTCALL2K);
+    LUAU_ASSERT(isSkipC(LuauOpcode(LUAU_INSN_OP(jumpInsn))));
     LUAU_ASSERT(LUAU_INSN_C(jumpInsn) == 0);
 
     int offset = int(targetLabel) - int(jumpLabel) - 1;
@@ -426,6 +467,11 @@ void BytecodeBuilder::setDebugFunctionName(StringRef name)
 
     if (dumpFunctionPtr)
         functions[currentFunction].dumpname = std::string(name.data, name.length);
+}
+
+void BytecodeBuilder::setDebugFunctionLineDefined(int line)
+{
+    functions[currentFunction].debuglinedefined = line;
 }
 
 void BytecodeBuilder::setDebugLine(int line)
@@ -464,7 +510,7 @@ uint32_t BytecodeBuilder::getDebugPC() const
 void BytecodeBuilder::finalize()
 {
     LUAU_ASSERT(bytecode.empty());
-    bytecode = char(LBC_VERSION);
+    bytecode = char(FFlag::LuauBytecodeV2Write ? LBC_VERSION_FUTURE : LBC_VERSION);
 
     writeStringTable(bytecode);
 
@@ -565,6 +611,9 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
         writeVarInt(ss, child);
 
     // debug info
+    if (FFlag::LuauBytecodeV2Write)
+        writeVarInt(ss, func.debuglinedefined);
+
     writeVarInt(ss, func.debugname);
 
     bool hasLines = true;

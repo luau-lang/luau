@@ -185,6 +185,8 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_empty_union")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
+    ScopedFastFlag sff{"LuauSealExports", true};
+
     TypeVar ftv11{FreeTypeVar{TypeLevel{}}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
@@ -261,7 +263,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 
     TypeId result = typeChecker.anyify(typeChecker.globalScope, root, Location{});
 
-    CHECK_EQ("{ f: t1 } where t1 = () -> { f: () -> { f: ({ f: t1 }) -> (), signal: { f: (any) -> () } } }", toString(result));
+    CHECK_EQ("{| f: t1 |} where t1 = () -> {| f: () -> {| f: ({| f: t1 |}) -> (), signal: {| f: (any) -> () |} |} |}", toString(result));
 }
 
 TEST_CASE("tagging_tables")

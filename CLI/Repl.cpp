@@ -235,11 +235,14 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
 
             while (lua_next(L, -2) != 0)
             {
-                // table, key, value
-                std::string_view key = lua_tostring(L, -2);
+                if (lua_type(L, -2) == LUA_TSTRING)
+                {
+                    // table, key, value
+                    std::string_view key = lua_tostring(L, -2);
 
-                if (!key.empty() && Luau::startsWith(key, prefix))
-                    completions.push_back(editBuffer + std::string(key.substr(prefix.size())));
+                    if (!key.empty() && Luau::startsWith(key, prefix))
+                        completions.push_back(editBuffer + std::string(key.substr(prefix.size())));
+                }
 
                 lua_pop(L, 1);
             }
@@ -253,7 +256,7 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
             lua_rawget(L, -2);
             lua_remove(L, -2);
 
-            if (lua_isnil(L, -1))
+            if (!lua_istable(L, -1))
                 break;
 
             lookup.remove_prefix(dot + 1);
@@ -266,7 +269,7 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
 static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::string>& completions)
 {
     size_t start = strlen(editBuffer);
-    while (start > 0 && (isalnum(editBuffer[start - 1]) || editBuffer[start - 1] == '.'))
+    while (start > 0 && (isalnum(editBuffer[start - 1]) || editBuffer[start - 1] == '.' || editBuffer[start - 1] == '_'))
         start--;
 
     // look the value up in current global table first
@@ -277,6 +280,34 @@ static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::
     lua_getglobal(L, "_G");
     completeIndexer(L, editBuffer, start, completions);
 }
+
+struct LinenoiseScopedHistory
+{
+    LinenoiseScopedHistory()
+    {
+        const std::string name(".luau_history");
+
+        if (const char* home = getenv("HOME"))
+        {
+            historyFilepath = joinPaths(home, name);
+        }
+        else if (const char* userProfile = getenv("USERPROFILE"))
+        {
+            historyFilepath = joinPaths(userProfile, name);
+        }
+
+        if (!historyFilepath.empty())
+            linenoise::LoadHistory(historyFilepath.c_str());
+    }
+
+    ~LinenoiseScopedHistory()
+    {
+        if (!historyFilepath.empty())
+            linenoise::SaveHistory(historyFilepath.c_str());
+    }
+
+    std::string historyFilepath;
+};
 
 static void runRepl()
 {
@@ -292,6 +323,7 @@ static void runRepl()
     });
 
     std::string buffer;
+    LinenoiseScopedHistory scopedHistory;
 
     for (;;)
     {
@@ -457,7 +489,7 @@ static void displayHelp(const char* argv0)
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
 }
 
-static int assertionHandler(const char* expr, const char* file, int line)
+static int assertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     printf("%s(%d): ASSERTION FAILED: %s\n", file, line, expr);
     return 1;

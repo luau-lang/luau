@@ -14,8 +14,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauActivateBeforeExec)
-
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -939,21 +937,7 @@ void lua_call(lua_State* L, int nargs, int nresults)
     checkresults(L, nargs, nresults);
     func = L->top - (nargs + 1);
 
-    if (FFlag::LuauActivateBeforeExec)
-    {
-        luaD_call(L, func, nresults);
-    }
-    else
-    {
-        int oldactive = luaC_threadactive(L);
-        l_setbit(L->stackstate, THREAD_ACTIVEBIT);
-        luaC_checkthreadsleep(L);
-
-        luaD_call(L, func, nresults);
-
-        if (!oldactive)
-            resetbit(L->stackstate, THREAD_ACTIVEBIT);
-    }
+    luaD_call(L, func, nresults);
 
     adjustresults(L, nresults);
     return;
@@ -994,21 +978,7 @@ int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
     c.func = L->top - (nargs + 1); /* function to be called */
     c.nresults = nresults;
 
-    if (FFlag::LuauActivateBeforeExec)
-    {
-        status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
-    }
-    else
-    {
-        int oldactive = luaC_threadactive(L);
-        l_setbit(L->stackstate, THREAD_ACTIVEBIT);
-        luaC_checkthreadsleep(L);
-
-        status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
-
-        if (!oldactive)
-            resetbit(L->stackstate, THREAD_ACTIVEBIT);
-    }
+    status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
 
     adjustresults(L, nresults);
     return status;

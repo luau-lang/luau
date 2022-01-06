@@ -3,7 +3,6 @@
 #pragma once
 
 #include <math.h>
-#include <stdio.h>
 
 #define luai_numadd(a, b) ((a) + (b))
 #define luai_numsub(a, b) ((a) - (b))
@@ -56,5 +55,9 @@ LUAU_FASTMATH_END
 #define luai_num2unsigned(i, n) ((i) = (unsigned)(long long)(n))
 #endif
 
-#define luai_num2str(s, n) snprintf((s), sizeof(s), LUA_NUMBER_FMT, (n))
+#define LUA_NUMBER_FMT "%.14g" /* TODO: Remove with LuauSchubfach */
+#define LUAI_MAXNUM2STR 48
+
+LUAI_FUNC char* luai_num2str(char* buf, double n);
+
 #define luai_str2num(s, p) strtod((s), (p))

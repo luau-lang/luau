@@ -53,30 +53,38 @@ static std::string runCode(lua_State* L, const std::string& source)
             lua_insert(T, 1);
             lua_pcall(T, n, 0, 0);
         }
+
+        lua_pop(L, 1); // pop T
+        return std::string();
     }
     else
     {
         std::string error;
 
+        lua_Debug ar;
+        if (lua_getinfo(L, 0, "sln", &ar))
+        {
+            error += ar.short_src;
+            error += ':';
+            error += std::to_string(ar.currentline);
+            error += ": ";
+        }
+
         if (status == LUA_YIELD)
         {
-            error = "thread yielded unexpectedly";
+            error += "thread yielded unexpectedly";
         }
         else if (const char* str = lua_tostring(T, -1))
         {
-            error = str;
+            error += str;
         }
 
         error += "\nstack backtrace:\n";
         error += lua_debugtrace(T);
 
-        error = "Error:" + error;
-
-        fprintf(stdout, "%s", error.c_str());
+        lua_pop(L, 1); // pop T
+        return error;
     }
-
-    lua_pop(L, 1);
-    return std::string();
 }
 
 extern "C" const char* executeScript(const char* source)

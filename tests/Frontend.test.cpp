@@ -914,6 +914,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
 
 TEST_CASE_FIXTURE(FrontendFixture, "imported_table_modification_2")
 {
+    ScopedFastFlag sffs("LuauSealExports", true);
+
     frontend.options.retainFullTypeGraphs = false;
 
     fileResolver.source["Module/A"] = R"(
@@ -927,7 +929,7 @@ return a;
 --!nonstrict
 local a = require(script.Parent.A)
 local b = {}
-function a:b() end -- this should error, but doesn't
+function a:b() end -- this should error, since A doesn't define a:b()
 return b
     )";
 
@@ -942,8 +944,7 @@ a:b() -- this should error, since A doesn't define a:b()
     LUAU_REQUIRE_NO_ERRORS(resultA);
 
     CheckResult resultB = frontend.check("Module/B");
-    // TODO (CLI-45592): this should error, since we shouldn't be adding properties to objects from other modules
-    LUAU_REQUIRE_NO_ERRORS(resultB);
+    LUAU_REQUIRE_ERRORS(resultB);
 
     CheckResult resultC = frontend.check("Module/C");
     LUAU_REQUIRE_ERRORS(resultC);

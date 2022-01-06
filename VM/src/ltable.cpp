@@ -24,8 +24,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauArrayBoundary, false)
-
 // max size of both array and hash part is 2^MAXBITS
 #define MAXBITS 26
 #define MAXSIZE (1 << MAXBITS)
@@ -222,7 +220,7 @@ int luaH_next(lua_State* L, Table* t, StkId key)
 
 #define maybesetaboundary(t, boundary) \
     { \
-        if (FFlag::LuauArrayBoundary && t->aboundary <= 0) \
+        if (t->aboundary <= 0) \
             t->aboundary = -int(boundary); \
     }
 
@@ -705,7 +703,7 @@ int luaH_getn(Table* t)
 {
     int boundary = getaboundary(t);
 
-    if (FFlag::LuauArrayBoundary && boundary > 0)
+    if (boundary > 0)
     {
         if (!ttisnil(&t->array[t->sizearray - 1]) && t->node == dummynode)
             return t->sizearray; /* fast-path: the end of the array in `t' already refers to a boundary */

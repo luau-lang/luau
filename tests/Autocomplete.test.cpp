@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 
 using namespace Luau;
 
@@ -1911,11 +1912,14 @@ local bar: @1= foo
     CHECK(!ac.entryMap.count("foo"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "type_correct_function_no_parenthesis")
+// Switch back to TEST_CASE_FIXTURE with regular ACFixture when removing the
+// LuauUseCommittingTxnLog flag.
+TEST_CASE("type_correct_function_no_parenthesis")
 {
-    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+    ScopedFastFlag sff_LuauUseCommittingTxnLog = ScopedFastFlag("LuauUseCommittingTxnLog", true);
+    ACFixture fix;
 
-    check(R"(
+    fix.check(R"(
 local function target(a: (number) -> number) return a(4) end
 local function bar1(a: number) return -a end
 local function bar2(a: string) return a .. 'x' end
@@ -1923,7 +1927,7 @@ local function bar2(a: string) return a .. 'x' end
 return target(b@1
     )");
 
-    auto ac = autocomplete('1');
+    auto ac = fix.autocomplete('1');
 
     CHECK(ac.entryMap.count("bar1"));
     CHECK(ac.entryMap["bar1"].typeCorrect == TypeCorrectKind::Correct);
@@ -1976,11 +1980,14 @@ local fp: @1= f
     CHECK(ac.entryMap.count("({ x: number, y: number }) -> number"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "type_correct_keywords")
+// Switch back to TEST_CASE_FIXTURE with regular ACFixture when removing the
+// LuauUseCommittingTxnLog flag.
+TEST_CASE("type_correct_keywords")
 {
-    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+    ScopedFastFlag sff_LuauUseCommittingTxnLog = ScopedFastFlag("LuauUseCommittingTxnLog", true);
+    ACFixture fix;
 
-    check(R"(
+    fix.check(R"(
 local function a(x: boolean) end
 local function b(x: number?) end
 local function c(x: (number) -> string) end
@@ -1997,26 +2004,26 @@ local dc = d(f@4)
 local ec = e(f@5)
     )");
 
-    auto ac = autocomplete('1');
+    auto ac = fix.autocomplete('1');
     CHECK(ac.entryMap.count("tru"));
     CHECK(ac.entryMap["tru"].typeCorrect == TypeCorrectKind::None);
     CHECK(ac.entryMap["true"].typeCorrect == TypeCorrectKind::Correct);
     CHECK(ac.entryMap["false"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = autocomplete('2');
+    ac = fix.autocomplete('2');
     CHECK(ac.entryMap.count("ni"));
     CHECK(ac.entryMap["ni"].typeCorrect == TypeCorrectKind::None);
     CHECK(ac.entryMap["nil"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = autocomplete('3');
+    ac = fix.autocomplete('3');
     CHECK(ac.entryMap.count("false"));
     CHECK(ac.entryMap["false"].typeCorrect == TypeCorrectKind::None);
     CHECK(ac.entryMap["function"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = autocomplete('4');
+    ac = fix.autocomplete('4');
     CHECK(ac.entryMap["function"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = autocomplete('5');
+    ac = fix.autocomplete('5');
     CHECK(ac.entryMap["function"].typeCorrect == TypeCorrectKind::Correct);
 }
 
@@ -2507,21 +2514,23 @@ local t = {
     CHECK(ac.entryMap.count("second"));
 }
 
-TEST_CASE_FIXTURE(UnfrozenFixture, "autocomplete_documentation_symbols")
+TEST_CASE("autocomplete_documentation_symbols")
 {
-    loadDefinition(R"(
+    Fixture fix(FFlag::LuauUseCommittingTxnLog);
+
+    fix.loadDefinition(R"(
         declare y: {
             x: number,
         }
     )");
 
-    fileResolver.source["Module/A"] = R"(
+    fix.fileResolver.source["Module/A"] = R"(
         local a = y.
     )";
 
-    frontend.check("Module/A");
+    fix.frontend.check("Module/A");
 
-    auto ac = autocomplete(frontend, "Module/A", Position{1, 21}, nullCallback);
+    auto ac = autocomplete(fix.frontend, "Module/A", Position{1, 21}, nullCallback);
 
     REQUIRE(ac.entryMap.count("x"));
     CHECK_EQ(ac.entryMap["x"].documentationSymbol, "@test/global/y.x");

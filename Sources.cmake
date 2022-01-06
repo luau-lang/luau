@@ -125,6 +125,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/linit.cpp
     VM/src/lmathlib.cpp
     VM/src/lmem.cpp
+    VM/src/lnumprint.cpp
     VM/src/lobject.cpp
     VM/src/loslib.cpp
     VM/src/lperf.cpp

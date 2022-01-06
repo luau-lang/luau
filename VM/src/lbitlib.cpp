@@ -5,8 +5,6 @@
 #include "lcommon.h"
 #include "lnumutils.h"
 
-LUAU_FASTFLAGVARIABLE(LuauBit32Count, false)
-
 #define ALLONES ~0u
 #define NBITS int(8 * sizeof(unsigned))
 
@@ -182,9 +180,6 @@ static int b_replace(lua_State* L)
 
 static int b_countlz(lua_State* L)
 {
-    if (!FFlag::LuauBit32Count)
-        luaL_error(L, "bit32.countlz isn't enabled");
-
     b_uint v = luaL_checkunsigned(L, 1);
 
     b_uint r = NBITS;
@@ -201,9 +196,6 @@ static int b_countlz(lua_State* L)
 
 static int b_countrz(lua_State* L)
 {
-    if (!FFlag::LuauBit32Count)
-        luaL_error(L, "bit32.countrz isn't enabled");
-
     b_uint v = luaL_checkunsigned(L, 1);
 
     b_uint r = NBITS;

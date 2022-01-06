@@ -351,7 +351,7 @@ FrontendModuleResolver::FrontendModuleResolver(Frontend* frontend)
 {
 }
 
-CheckResult Frontend::check(const ModuleName& name)
+CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOptions> optionOverride)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
@@ -371,6 +371,8 @@ CheckResult Frontend::check(const ModuleName& name)
 
     std::vector<ModuleName> buildQueue;
     bool cycleDetected = parseGraph(buildQueue, checkResult, name);
+
+    FrontendOptions frontendOptions = optionOverride.value_or(options);
 
     // Keep track of which AST nodes we've reported cycles in
     std::unordered_set<AstNode*> reportedCycles;
@@ -411,30 +413,10 @@ CheckResult Frontend::check(const ModuleName& name)
         // If we're typechecking twice, we do so.
         // The second typecheck is always in strict mode with DM awareness
         // to provide better typen information for IDE features.
-        if (options.typecheckTwice)
+        if (frontendOptions.typecheckTwice)
         {
             ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict);
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
-        }
-        else if (options.retainFullTypeGraphs && options.typecheckTwice && mode != Mode::Strict)
-        {
-            ModulePtr strictModule = typeChecker.check(sourceModule, Mode::Strict, environmentScope);
-            module->astTypes.clear();
-            module->astOriginalCallTypes.clear();
-            module->astExpectedTypes.clear();
-
-            SeenTypes seenTypes;
-            SeenTypePacks seenTypePacks;
-            CloneState cloneState;
-
-            for (const auto& [expr, strictTy] : strictModule->astTypes)
-                module->astTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks, cloneState);
-
-            for (const auto& [expr, strictTy] : strictModule->astOriginalCallTypes)
-                module->astOriginalCallTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks, cloneState);
-
-            for (const auto& [expr, strictTy] : strictModule->astExpectedTypes)
-                module->astExpectedTypes[expr] = clone(strictTy, module->interfaceTypes, seenTypes, seenTypePacks, cloneState);
         }
 
         stats.timeCheck += getTimestamp() - timestamp;
@@ -444,7 +426,7 @@ CheckResult Frontend::check(const ModuleName& name)
         if (module == nullptr)
             throw std::runtime_error("Frontend::check produced a nullptr module for " + moduleName);
 
-        if (!options.retainFullTypeGraphs)
+        if (!frontendOptions.retainFullTypeGraphs)
         {
             // copyErrors needs to allocate into interfaceTypes as it copies
             // types out of internalTypes, so we unfreeze it here.

@@ -19,7 +19,6 @@
 
 LUAU_FASTFLAGVARIABLE(LuauCcallRestoreFix, false)
 LUAU_FASTFLAG(LuauCoroutineClose)
-LUAU_FASTFLAGVARIABLE(LuauActivateBeforeExec, false)
 
 /*
 ** {======================================================
@@ -228,21 +227,14 @@ void luaD_call(lua_State* L, StkId func, int nResults)
     {                                        /* is a Lua function? */
         L->ci->flags |= LUA_CALLINFO_RETURN; /* luau_execute will stop after returning from the stack frame */
 
-        if (FFlag::LuauActivateBeforeExec)
-        {
-            int oldactive = luaC_threadactive(L);
-            l_setbit(L->stackstate, THREAD_ACTIVEBIT);
-            luaC_checkthreadsleep(L);
+        int oldactive = luaC_threadactive(L);
+        l_setbit(L->stackstate, THREAD_ACTIVEBIT);
+        luaC_checkthreadsleep(L);
 
-            luau_execute(L); /* call it */
+        luau_execute(L); /* call it */
 
-            if (!oldactive)
-                resetbit(L->stackstate, THREAD_ACTIVEBIT);
-        }
-        else
-        {
-            luau_execute(L); /* call it */
-        }
+        if (!oldactive)
+            resetbit(L->stackstate, THREAD_ACTIVEBIT);
     }
     L->nCcalls--;
     luaC_checkGC(L);
@@ -549,12 +541,9 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
                 status = LUA_ERRERR;
         }
 
-        if (FFlag::LuauActivateBeforeExec)
-        {
-            // since the call failed with an error, we might have to reset the 'active' thread state
-            if (!oldactive)
-                resetbit(L->stackstate, THREAD_ACTIVEBIT);
-        }
+        // since the call failed with an error, we might have to reset the 'active' thread state
+        if (!oldactive)
+            resetbit(L->stackstate, THREAD_ACTIVEBIT);
 
         if (FFlag::LuauCcallRestoreFix)
         {

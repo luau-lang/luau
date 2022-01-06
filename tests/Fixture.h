@@ -152,15 +152,6 @@ struct Fixture
     LoadDefinitionFileResult loadDefinition(const std::string& source);
 };
 
-// Disables arena freezing for a given test case.
-// Do not use this in new tests. If you are running into access violations, you
-// are violating Luau's memory model - the fix is not to use UnfrozenFixture.
-// Related: CLI-45692
-struct UnfrozenFixture : Fixture
-{
-    UnfrozenFixture();
-};
-
 ModuleName fromString(std::string_view name);
 
 template<typename T>

@@ -103,11 +103,6 @@ Fixture::~Fixture()
     Luau::resetPrintLine();
 }
 
-UnfrozenFixture::UnfrozenFixture()
-    : Fixture(false)
-{
-}
-
 AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& parseOptions)
 {
     sourceModule.reset(new SourceModule);

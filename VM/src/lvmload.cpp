@@ -13,6 +13,9 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Read, false)
+LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Force, false)
+
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
@@ -146,15 +149,19 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     uint8_t version = read<uint8_t>(data, size, offset);
 
     // 0 means the rest of the bytecode is the error message
-    if (version == 0 || version != LBC_VERSION)
+    if (version == 0)
     {
         char chunkid[LUA_IDSIZE];
         luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
+        lua_pushfstring(L, "%s%.*s", chunkid, int(size - offset), data + offset);
+        return 1;
+    }
 
-        if (version == 0)
-            lua_pushfstring(L, "%s%.*s", chunkid, int(size - offset), data + offset);
-        else
-            lua_pushfstring(L, "%s: bytecode version mismatch", chunkid);
+    if (FFlag::LuauBytecodeV2Force ? (version != LBC_VERSION_FUTURE) : FFlag::LuauBytecodeV2Read ? (version != LBC_VERSION && version != LBC_VERSION_FUTURE) : (version != LBC_VERSION))
+    {
+        char chunkid[LUA_IDSIZE];
+        luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
+        lua_pushfstring(L, "%s: bytecode version mismatch (expected %d, got %d)", chunkid, FFlag::LuauBytecodeV2Force ? LBC_VERSION_FUTURE : LBC_VERSION, version);
         return 1;
     }
 
@@ -285,6 +292,11 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             p->p[j] = protos[fid];
         }
 
+        if (FFlag::LuauBytecodeV2Force || (FFlag::LuauBytecodeV2Read && version == LBC_VERSION_FUTURE))
+            p->linedefined = readVarInt(data, size, offset);
+        else
+            p->linedefined = -1;
+
         p->debugname = readString(strings, data, size, offset);
 
         uint8_t lineinfo = read<uint8_t>(data, size, offset);
@@ -307,11 +319,11 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
                 p->lineinfo[j] = lastoffset;
             }
 
-            int lastLine = 0;
+            int lastline = 0;
             for (int j = 0; j < intervals; ++j)
             {
-                lastLine += read<int32_t>(data, size, offset);
-                p->abslineinfo[j] = lastLine;
+                lastline += read<int32_t>(data, size, offset);
+                p->abslineinfo[j] = lastline;
             }
         }
 

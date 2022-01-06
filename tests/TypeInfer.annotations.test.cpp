@@ -620,7 +620,7 @@ struct AssertionCatcher
     {
         tripped = 0;
         oldhook = Luau::assertHandler();
-        Luau::assertHandler() = [](const char* expr, const char* file, int line) -> int {
+        Luau::assertHandler() = [](const char* expr, const char* file, int line, const char* function) -> int {
             ++tripped;
             return 0;
         };

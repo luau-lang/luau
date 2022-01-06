@@ -11,6 +11,8 @@ LUAU_FASTFLAG(LuauFixTonumberReturnType)
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
+
 TEST_SUITE_BEGIN("BuiltinTests");
 
 TEST_CASE_FIXTURE(Fixture, "math_things_are_defined")
@@ -444,19 +446,28 @@ TEST_CASE_FIXTURE(Fixture, "os_time_takes_optional_date_table")
     CHECK_EQ(*typeChecker.numberType, *requireType("n3"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "thread_is_a_type")
+// Switch back to TEST_CASE_FIXTURE with regular Fixture when removing the
+// LuauUseCommittingTxnLog flag.
+TEST_CASE("thread_is_a_type")
 {
-    CheckResult result = check(R"(
+    Fixture fix(FFlag::LuauUseCommittingTxnLog);
+
+    CheckResult result = fix.check(R"(
         local co = coroutine.create(function() end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.threadType, *requireType("co"));
+    // Replace with LUAU_REQUIRE_NO_ERRORS(result) when using TEST_CASE_FIXTURE.
+    CHECK(result.errors.size() == 0);
+    CHECK_EQ(*fix.typeChecker.threadType, *fix.requireType("co"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "coroutine_resume_anything_goes")
+// Switch back to TEST_CASE_FIXTURE with regular Fixture when removing the
+// LuauUseCommittingTxnLog flag.
+TEST_CASE("coroutine_resume_anything_goes")
 {
-    CheckResult result = check(R"(
+    Fixture fix(FFlag::LuauUseCommittingTxnLog);
+
+    CheckResult result = fix.check(R"(
         local function nifty(x, y)
             print(x, y)
             local z = coroutine.yield(1, 2)
@@ -469,12 +480,17 @@ TEST_CASE_FIXTURE(Fixture, "coroutine_resume_anything_goes")
         local answer = coroutine.resume(co, 3)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    // Replace with LUAU_REQUIRE_NO_ERRORS(result) when using TEST_CASE_FIXTURE.
+    CHECK(result.errors.size() == 0);
 }
 
-TEST_CASE_FIXTURE(Fixture, "coroutine_wrap_anything_goes")
+// Switch back to TEST_CASE_FIXTURE with regular Fixture when removing the
+// LuauUseCommittingTxnLog flag.
+TEST_CASE("coroutine_wrap_anything_goes")
 {
-    CheckResult result = check(R"(
+    Fixture fix(FFlag::LuauUseCommittingTxnLog);
+
+    CheckResult result = fix.check(R"(
         --!nonstrict
         local function nifty(x, y)
             print(x, y)
@@ -488,7 +504,8 @@ TEST_CASE_FIXTURE(Fixture, "coroutine_wrap_anything_goes")
         local answer = f(3)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    // Replace with LUAU_REQUIRE_NO_ERRORS(result) when using TEST_CASE_FIXTURE.
+    CHECK(result.errors.size() == 0);
 }
 
 TEST_CASE_FIXTURE(Fixture, "setmetatable_should_not_mutate_persisted_types")

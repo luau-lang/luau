@@ -12,8 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauArrayBoundary)
-
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
     LUAU_ASSERT(!isdead(g, t));
@@ -38,10 +36,7 @@ static void validatetable(global_State* g, Table* h)
 {
     int sizenode = 1 << h->lsizenode;
 
-    if (FFlag::LuauArrayBoundary)
-        LUAU_ASSERT(h->lastfree <= sizenode);
-    else
-        LUAU_ASSERT(h->lastfree >= 0 && h->lastfree <= sizenode);
+    LUAU_ASSERT(h->lastfree <= sizenode);
 
     if (h->metatable)
         validateobjref(g, obj2gco(h), obj2gco(h->metatable));
