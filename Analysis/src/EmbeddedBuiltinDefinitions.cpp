@@ -138,12 +138,7 @@ declare function gcinfo(): number
             -- (nil, string).
             declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> any)?, string?)
 
-            -- a userdata object is "roughly" the same as a sealed empty table
-            -- except `type(newproxy(false))` evaluates to "userdata" so we may need another special type here too.
-            -- another important thing to note: the value passed in conditionally creates an empty metatable, and you have to use getmetatable, NOT
-            -- setmetatable.
-            -- FIXME: change this to something Luau can understand how to reject `setmetatable(newproxy(false or true), {})`.
-            declare function newproxy(mt: boolean?): {}
+            declare function newproxy(mt: boolean?): any
 
             declare coroutine: {
                 create: <A..., R...>((A...) -> R...) -> thread,

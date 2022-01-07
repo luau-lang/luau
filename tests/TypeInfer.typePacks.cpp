@@ -10,6 +10,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
+
 TEST_SUITE_BEGIN("TypePackTests");
 
 TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
@@ -263,10 +265,13 @@ TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")
     CHECK_EQ(toString(requireType("foo")), "(...number) -> ()");
 }
 
-// CLI-45791
-TEST_CASE_FIXTURE(UnfrozenFixture, "type_pack_hidden_free_tail_infinite_growth")
+// Switch back to TEST_CASE_FIXTURE with regular Fixture when removing the
+// LuauUseCommittingTxnLog flag.
+TEST_CASE("type_pack_hidden_free_tail_infinite_growth")
 {
-    CheckResult result = check(R"(
+    Fixture fix(FFlag::LuauUseCommittingTxnLog);
+
+    CheckResult result = fix.check(R"(
 --!nonstrict
 if _ then
     _[function(l0)end],l0 = _
@@ -278,7 +283,8 @@ elseif _ then
 end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    // Switch back to LUAU_REQUIRE_ERRORS(result) when using TEST_CASE_FIXTURE.
+    CHECK(result.errors.size() > 0);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_argument_tail")

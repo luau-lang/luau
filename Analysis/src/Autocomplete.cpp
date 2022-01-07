@@ -12,10 +12,12 @@
 #include <unordered_set>
 #include <utility>
 
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAG(LuauIfElseExpressionAnalysisSupport)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompletePreferToCallFunctions, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFirstArg, false);
+LUAU_FASTFLAGVARIABLE(LuauCompleteBrokenStringParams, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -236,28 +238,31 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 {
     ty = follow(ty);
 
-    auto canUnify = [&typeArena, &module](TypeId expectedType, TypeId actualType) {
+    auto canUnify = [&typeArena, &module](TypeId subTy, TypeId superTy) {
         InternalErrorReporter iceReporter;
         UnifierSharedState unifierState(&iceReporter);
         Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, unifierState);
 
-        if (FFlag::LuauAutocompleteAvoidMutation)
+        if (FFlag::LuauAutocompleteAvoidMutation && !FFlag::LuauUseCommittingTxnLog)
         {
             SeenTypes seenTypes;
             SeenTypePacks seenTypePacks;
             CloneState cloneState;
-            expectedType = clone(expectedType, *typeArena, seenTypes, seenTypePacks, cloneState);
-            actualType = clone(actualType, *typeArena, seenTypes, seenTypePacks, cloneState);
+            superTy = clone(superTy, *typeArena, seenTypes, seenTypePacks, cloneState);
+            subTy = clone(subTy, *typeArena, seenTypes, seenTypePacks, cloneState);
 
-            auto errors = unifier.canUnify(expectedType, actualType);
+            auto errors = unifier.canUnify(subTy, superTy);
             return errors.empty();
         }
         else
         {
-            unifier.tryUnify(expectedType, actualType);
+            unifier.tryUnify(subTy, superTy);
 
             bool ok = unifier.errors.empty();
-            unifier.log.rollback();
+
+            if (!FFlag::LuauUseCommittingTxnLog)
+                unifier.DEPRECATED_log.rollback();
+
             return ok;
         }
     };
@@ -293,22 +298,22 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         {
             auto [retHead, retTail] = flatten(ftv->retType);
 
-            if (!retHead.empty() && canUnify(expectedType, retHead.front()))
+            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
                 return TypeCorrectKind::CorrectFunctionResult;
 
             // We might only have a variadic tail pack, check if the element is compatible
             if (retTail)
             {
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(expectedType, vtp->ty))
+                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
                     return TypeCorrectKind::CorrectFunctionResult;
             }
         }
 
-        return canUnify(expectedType, ty) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+        return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
     }
     else
     {
-        if (canUnify(expectedType, ty))
+        if (canUnify(ty, expectedType))
             return TypeCorrectKind::Correct;
 
         // We also want to suggest functions that return compatible result
@@ -320,13 +325,13 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         auto [retHead, retTail] = flatten(ftv->retType);
 
         if (!retHead.empty())
-            return canUnify(expectedType, retHead.front()) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
+            return canUnify(retHead.front(), expectedType) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
 
         // We might only have a variadic tail pack, check if the element is compatible
         if (retTail)
         {
             if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)))
-                return canUnify(expectedType, vtp->ty) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
+                return canUnify(vtp->ty, expectedType) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
         }
 
         return TypeCorrectKind::None;
@@ -1319,7 +1324,7 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    if (!nodes.back()->is<AstExprConstantString>())
+    if (!nodes.back()->is<AstExprConstantString>() && (!FFlag::LuauCompleteBrokenStringParams || !nodes.back()->is<AstExprError>()))
     {
         return std::nullopt;
     }

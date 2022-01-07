@@ -74,6 +74,7 @@ public:
     void expandJumps();
 
     void setDebugFunctionName(StringRef name);
+    void setDebugFunctionLineDefined(int line);
     void setDebugLine(int line);
     void pushDebugLocal(StringRef name, uint8_t reg, uint32_t startpc, uint32_t endpc);
     void pushDebugUpval(StringRef name);
@@ -162,6 +163,7 @@ private:
         bool isvararg = false;
 
         unsigned int debugname = 0;
+        int debuglinedefined = 0;
 
         std::string dump;
         std::string dumpname;

@@ -12,6 +12,8 @@ LUAU_FASTFLAG(LuauQuantifyInPlace2);
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
+
 struct TryUnifyFixture : Fixture
 {
     TypeArena arena;
@@ -28,7 +30,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
     TypeVar numberOne{TypeVariant{PrimitiveTypeVar{PrimitiveTypeVar::Number}}};
     TypeVar numberTwo = numberOne;
 
-    state.tryUnify(&numberOne, &numberTwo);
+    state.tryUnify(&numberTwo, &numberOne);
 
     CHECK(state.errors.empty());
 }
@@ -41,8 +43,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
     TypeVar functionTwo{TypeVariant{
         FunctionTypeVar(arena.addTypePack({arena.freshType(globalScope->level)}), arena.addTypePack({arena.freshType(globalScope->level)}))}};
 
-    state.tryUnify(&functionOne, &functionTwo);
+    state.tryUnify(&functionTwo, &functionOne);
     CHECK(state.errors.empty());
+
+    if (FFlag::LuauUseCommittingTxnLog)
+        state.log.commit();
 
     CHECK_EQ(functionOne, functionTwo);
 }
@@ -61,7 +66,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_functions_are_preserved")
 
     TypeVar functionTwoSaved = functionTwo;
 
-    state.tryUnify(&functionOne, &functionTwo);
+    state.tryUnify(&functionTwo, &functionOne);
     CHECK(!state.errors.empty());
 
     CHECK_EQ(functionOne, functionOneSaved);
@@ -80,9 +85,12 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 
-    state.tryUnify(&tableOne, &tableTwo);
+    state.tryUnify(&tableTwo, &tableOne);
 
     CHECK(state.errors.empty());
+
+    if (FFlag::LuauUseCommittingTxnLog)
+        state.log.commit();
 
     CHECK_EQ(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 }
@@ -101,11 +109,12 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
 
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 
-    state.tryUnify(&tableOne, &tableTwo);
+    state.tryUnify(&tableTwo, &tableOne);
 
     CHECK_EQ(1, state.errors.size());
 
-    state.log.rollback();
+    if (!FFlag::LuauUseCommittingTxnLog)
+        state.DEPRECATED_log.rollback();
 
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 }
@@ -170,7 +179,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")
     TypePackVar testPack{TypePack{{typeChecker.numberType, typeChecker.stringType}, std::nullopt}};
     TypePackVar variadicPack{VariadicTypePack{typeChecker.numberType}};
 
-    state.tryUnify(&variadicPack, &testPack);
+    state.tryUnify(&testPack, &variadicPack);
     CHECK(!state.errors.empty());
 }
 
@@ -180,7 +189,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_tails_respect_progress")
     TypePackVar a{TypePack{{typeChecker.numberType, typeChecker.stringType, typeChecker.booleanType, typeChecker.booleanType}}};
     TypePackVar b{TypePack{{typeChecker.numberType, typeChecker.stringType}, &variadicPack}};
 
-    state.tryUnify(&a, &b);
+    state.tryUnify(&b, &a);
     CHECK(state.errors.empty());
 }
 
@@ -214,32 +223,41 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unifica
     CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
 }
 
-TEST_CASE_FIXTURE(TryUnifyFixture, "undo_new_prop_on_unsealed_table")
+TEST_CASE("undo_new_prop_on_unsealed_table")
 {
     ScopedFastFlag flags[] = {
         {"LuauTableSubtypingVariance2", true},
+        // This test makes no sense with a committing TxnLog.
+        {"LuauUseCommittingTxnLog", false},
     };
     // I am not sure how to make this happen in Luau code.
 
-    TypeId unsealedTable = arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
-    TypeId sealedTable = arena.addType(TableTypeVar{
-        {{"prop", Property{getSingletonTypes().numberType}}},
-        std::nullopt,
-        TypeLevel{},
-        TableState::Sealed
-    });
+    TryUnifyFixture fix;
+
+    TypeId unsealedTable = fix.arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
+    TypeId sealedTable =
+        fix.arena.addType(TableTypeVar{{{"prop", Property{getSingletonTypes().numberType}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
 
     const TableTypeVar* ttv = get<TableTypeVar>(unsealedTable);
     REQUIRE(ttv);
 
-    state.tryUnify(unsealedTable, sealedTable);
+    fix.state.tryUnify(sealedTable, unsealedTable);
 
     // To be honest, it's really quite spooky here that we're amending an unsealed table in this case.
     CHECK(!ttv->props.empty());
 
-    state.log.rollback();
+    fix.state.DEPRECATED_log.rollback();
 
     CHECK(ttv->props.empty());
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
+{
+    TypePackId threeNumbers = arena.addTypePack(TypePack{{typeChecker.numberType, typeChecker.numberType, typeChecker.numberType}, std::nullopt});
+    TypePackId numberAndFreeTail = arena.addTypePack(TypePack{{typeChecker.numberType}, arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}})});
+
+    ErrorVec unifyErrors = state.canUnify(numberAndFreeTail, threeNumbers);
+    CHECK(unifyErrors.size() == 0);
 }
 
 TEST_SUITE_END();

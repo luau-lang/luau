@@ -1,7 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypePack.h"
 
+#include "Luau/TxnLog.h"
+
 #include <stdexcept>
+
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 
 namespace Luau
 {
@@ -35,14 +39,28 @@ TypePackVar& TypePackVar::operator=(TypePackVariant&& tp)
 }
 
 TypePackIterator::TypePackIterator(TypePackId typePack)
+    : TypePackIterator(typePack, TxnLog::empty())
+{
+}
+
+TypePackIterator::TypePackIterator(TypePackId typePack, const TxnLog* log)
     : currentTypePack(follow(typePack))
     , tp(get<TypePack>(currentTypePack))
     , currentIndex(0)
+    , log(log)
 {
     while (tp && tp->head.empty())
     {
-        currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
-        tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
+        if (FFlag::LuauUseCommittingTxnLog)
+        {
+            currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
+            tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
+        }
+        else
+        {
+            currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
+            tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
+        }
     }
 }
 
@@ -53,8 +71,17 @@ TypePackIterator& TypePackIterator::operator++()
     ++currentIndex;
     while (tp && currentIndex >= tp->head.size())
     {
-        currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
-        tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
+        if (FFlag::LuauUseCommittingTxnLog)
+        {
+            currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
+            tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
+        }
+        else
+        {
+            currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
+            tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
+        }
+
         currentIndex = 0;
     }
 
@@ -93,6 +120,11 @@ std::optional<TypePackId> TypePackIterator::tail()
 TypePackIterator begin(TypePackId tp)
 {
     return TypePackIterator{tp};
+}
+
+TypePackIterator begin(TypePackId tp, TxnLog* log)
+{
+    return TypePackIterator{tp, log};
 }
 
 TypePackIterator end(TypePackId tp)
@@ -160,8 +192,15 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs)
 
 TypePackId follow(TypePackId tp)
 {
-    auto advance = [](TypePackId ty) -> std::optional<TypePackId> {
-        if (const Unifiable::Bound<TypePackId>* btv = get<Unifiable::Bound<TypePackId>>(ty))
+    return follow(tp, [](TypePackId t) {
+        return t;
+    });
+}
+
+TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
+{
+    auto advance = [&mapper](TypePackId ty) -> std::optional<TypePackId> {
+        if (const Unifiable::Bound<TypePackId>* btv = get<Unifiable::Bound<TypePackId>>(mapper(ty)))
             return btv->boundTo;
         else
             return std::nullopt;

@@ -629,8 +629,6 @@ return exports
 
 TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names")
 {
-    ScopedFastFlag luauFunctionArgumentNameSize{"LuauFunctionArgumentNameSize", true};
-
     CheckResult result = check(R"(
 local function f<T, U...>(a: T, ...: U...) end
 

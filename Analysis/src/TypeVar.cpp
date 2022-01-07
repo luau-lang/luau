@@ -31,17 +31,24 @@ std::optional<ExprResult<TypePackId>> magicFunctionFormat(
 
 TypeId follow(TypeId t)
 {
-    auto advance = [](TypeId ty) -> std::optional<TypeId> {
-        if (auto btv = get<Unifiable::Bound<TypeId>>(ty))
+    return follow(t, [](TypeId t) {
+        return t;
+    });
+}
+
+TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
+{
+    auto advance = [&mapper](TypeId ty) -> std::optional<TypeId> {
+        if (auto btv = get<Unifiable::Bound<TypeId>>(mapper(ty)))
             return btv->boundTo;
-        else if (auto ttv = get<TableTypeVar>(ty))
+        else if (auto ttv = get<TableTypeVar>(mapper(ty)))
             return ttv->boundTo;
         else
             return std::nullopt;
     };
 
-    auto force = [](TypeId ty) {
-        if (auto ltv = get_if<LazyTypeVar>(&ty->ty))
+    auto force = [&mapper](TypeId ty) {
+        if (auto ltv = get_if<LazyTypeVar>(&mapper(ty)->ty))
         {
             TypeId res = ltv->thunk();
             if (get<LazyTypeVar>(res))
@@ -1004,7 +1011,7 @@ std::optional<ExprResult<TypePackId>> magicFunctionFormat(
     {
         Location location = expr.args.data[std::min(i + dataOffset, expr.args.size - 1)]->location;
 
-        typechecker.unify(expected[i], params[i + paramOffset], location);
+        typechecker.unify(params[i + paramOffset], expected[i], location);
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error

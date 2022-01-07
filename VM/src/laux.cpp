@@ -7,8 +7,11 @@
 #include "lstring.h"
 #include "lapi.h"
 #include "lgc.h"
+#include "lnumutils.h"
 
 #include <string.h>
+
+LUAU_FASTFLAG(LuauSchubfach)
 
 /* convert a stack index to positive */
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
@@ -477,7 +480,17 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     switch (lua_type(L, idx))
     {
     case LUA_TNUMBER:
-        lua_pushstring(L, lua_tostring(L, idx));
+        if (FFlag::LuauSchubfach)
+        {
+            double n = lua_tonumber(L, idx);
+            char s[LUAI_MAXNUM2STR];
+            char* e = luai_num2str(s, n);
+            lua_pushlstring(L, s, e - s);
+        }
+        else
+        {
+            lua_pushstring(L, lua_tostring(L, idx));
+        }
         break;
     case LUA_TSTRING:
         lua_pushvalue(L, idx);
@@ -491,11 +504,30 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     case LUA_TVECTOR:
     {
         const float* v = lua_tovector(L, idx);
+
+        if (FFlag::LuauSchubfach)
+        {
+            char s[LUAI_MAXNUM2STR * LUA_VECTOR_SIZE];
+            char* e = s;
+            for (int i = 0; i < LUA_VECTOR_SIZE; ++i)
+            {
+                if (i != 0)
+                {
+                    *e++ = ',';
+                    *e++ = ' ';
+                }
+                e = luai_num2str(e, v[i]);
+            }
+            lua_pushlstring(L, s, e - s);
+        }
+        else
+        {
 #if LUA_VECTOR_SIZE == 4
-        lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2], v[3]);
+            lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2], v[3]);
 #else
-        lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2]);
+            lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2]);
 #endif
+        }
         break;
     }
     default:

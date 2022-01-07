@@ -377,6 +377,7 @@ enum LuauBytecodeTag
 {
     // Bytecode version
     LBC_VERSION = 1,
+    LBC_VERSION_FUTURE = 2, // TODO: This will be removed in favor of LBC_VERSION with LuauBytecodeV2Force
     // Types of constant table entries
     LBC_CONSTANT_NIL = 0,
     LBC_CONSTANT_BOOLEAN,

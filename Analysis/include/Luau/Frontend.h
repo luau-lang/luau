@@ -68,7 +68,7 @@ struct FrontendOptions
     // is complete.
     bool retainFullTypeGraphs = false;
 
-    // When true, we run typechecking twice, one in the regular mode, ond once in strict mode
+    // When true, we run typechecking twice, once in the regular mode, and once in strict mode
     // in order to get more precise type information (e.g. for autocomplete).
     bool typecheckTwice = false;
 };
@@ -109,18 +109,18 @@ struct Frontend
 
     Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options = {});
 
-    CheckResult check(const ModuleName& name); // new shininess
-    LintResult lint(const ModuleName& name, std::optional<Luau::LintOptions> enabledLintWarnings = {});
+    CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
+    LintResult lint(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
 
     /** Lint some code that has no associated DataModel object
      *
      * Since this source fragment has no name, we cannot cache its AST.  Instead,
      * we return it to the caller to use as they wish.
      */
-    std::pair<SourceModule, LintResult> lintFragment(std::string_view source, std::optional<Luau::LintOptions> enabledLintWarnings = {});
+    std::pair<SourceModule, LintResult> lintFragment(std::string_view source, std::optional<LintOptions> enabledLintWarnings = {});
 
     CheckResult check(const SourceModule& module); // OLD.  TODO KILL
-    LintResult lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings = {});
+    LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name) const;
     void markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty = nullptr);

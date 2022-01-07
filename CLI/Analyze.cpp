@@ -107,7 +107,7 @@ static void displayHelp(const char* argv0)
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
 }
 
-static int assertionHandler(const char* expr, const char* file, int line)
+static int assertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     printf("%s(%d): ASSERTION FAILED: %s\n", file, line, expr);
     return 1;
