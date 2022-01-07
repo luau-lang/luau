@@ -124,7 +124,7 @@ producing unbounded type graphs during unification.
 
 ### Strict recursive type instantiations with a cache and an occurrence check
 
-We can use occurrence checks to ensure there's no blowup. We can restrict
+We can use occurrence checks to ensure there's less blowup. We can restrict
 a recursive use `T<U1,...,UN>` in the definition of `T<a1...aN>` so that either `UI` is `aI`
 or contains none of `a1...aN`. For example this bans
 ```
@@ -137,6 +137,16 @@ type T<a,b> = { foo: T<b,number>? }
 since `a` is not `b`, but allows:
 ```
 type T<a,b> = { foo: T<a,number>? } 
+```
+
+This still has exponential blowup, for example
+```lua
+type T<a1,a2,a3,...,aN> = {
+  p1: T<number, a2, a3, ..., aN>,
+  p2: T<a1, number, a3, ..., aN>,
+  ...
+  pN: T<a1, a2, a3, ..., number>,
+}
 ```
 
 *Advantages*: types are computed strictly, and may produce better error messages if the occurs check fails.
