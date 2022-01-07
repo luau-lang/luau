@@ -27,15 +27,16 @@ LUAU_FASTFLAGVARIABLE(LuauEqConstraint, false)
 LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(LuauCloneCorrectlyBeforeMutatingTableType, false)
 LUAU_FASTFLAGVARIABLE(LuauStoreMatchingOverloadFnType, false)
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
+LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionAnalysisSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauQuantifyInPlace2, false)
+LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
 LUAU_FASTFLAGVARIABLE(LuauSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
-LUAU_FASTFLAGVARIABLE(LuauTailArgumentTypeInfo, false)
-LUAU_FASTFLAGVARIABLE(LuauModuleRequireErrorPack, false)
 LUAU_FASTFLAGVARIABLE(LuauLValueAsKey, false)
 LUAU_FASTFLAGVARIABLE(LuauRefiLookupFromIndexExpr, false)
 LUAU_FASTFLAGVARIABLE(LuauProperTypeLevels, false)
@@ -450,7 +451,7 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
             ++subLevel;
 
             TypeId leftType = checkFunctionName(scope, *fun->name, funScope->level);
-            unify(leftType, funTy, fun->location);
+            unify(funTy, leftType, fun->location);
         }
         else if (auto fun = (*protoIter)->as<AstStatLocalFunction>())
         {
@@ -556,21 +557,21 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatIf& statement)
     }
 }
 
-ErrorVec TypeChecker::canUnify(TypeId left, TypeId right, const Location& location)
-{
-    return canUnify_(left, right, location);
-}
-
-ErrorVec TypeChecker::canUnify(TypePackId left, TypePackId right, const Location& location)
-{
-    return canUnify_(left, right, location);
-}
-
 template<typename Id>
-ErrorVec TypeChecker::canUnify_(Id superTy, Id subTy, const Location& location)
+ErrorVec TypeChecker::canUnify_(Id subTy, Id superTy, const Location& location)
 {
     Unifier state = mkUnifier(location);
-    return state.canUnify(superTy, subTy);
+    return state.canUnify(subTy, superTy);
+}
+
+ErrorVec TypeChecker::canUnify(TypeId subTy, TypeId superTy, const Location& location)
+{
+    return canUnify_(subTy, superTy, location);
+}
+
+ErrorVec TypeChecker::canUnify(TypePackId subTy, TypePackId superTy, const Location& location)
+{
+    return canUnify_(subTy, superTy, location);
 }
 
 void TypeChecker::check(const ScopePtr& scope, const AstStatWhile& statement)
@@ -619,7 +620,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
     // start typechecking everything across module boundaries.
     if (isNonstrictMode() && follow(scope->returnType) == follow(currentModule->getModuleScope()->returnType))
     {
-        ErrorVec errors = tryUnify(scope->returnType, retPack, return_.location);
+        ErrorVec errors = tryUnify(retPack, scope->returnType, return_.location);
 
         if (!errors.empty())
             currentModule->getModuleScope()->returnType = addTypePack({anyType});
@@ -627,29 +628,39 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
         return;
     }
 
-    unify(scope->returnType, retPack, return_.location, CountMismatch::Context::Return);
-}
-
-ErrorVec TypeChecker::tryUnify(TypeId left, TypeId right, const Location& location)
-{
-    return tryUnify_(left, right, location);
-}
-
-ErrorVec TypeChecker::tryUnify(TypePackId left, TypePackId right, const Location& location)
-{
-    return tryUnify_(left, right, location);
+    unify(retPack, scope->returnType, return_.location, CountMismatch::Context::Return);
 }
 
 template<typename Id>
-ErrorVec TypeChecker::tryUnify_(Id left, Id right, const Location& location)
+ErrorVec TypeChecker::tryUnify_(Id subTy, Id superTy, const Location& location)
 {
     Unifier state = mkUnifier(location);
-    state.tryUnify(left, right);
 
-    if (!state.errors.empty())
-        state.log.rollback();
+    if (FFlag::LuauUseCommittingTxnLog && FFlag::DebugLuauFreezeDuringUnification)
+        freeze(currentModule->internalTypes);
+
+    state.tryUnify(subTy, superTy);
+
+    if (FFlag::LuauUseCommittingTxnLog && FFlag::DebugLuauFreezeDuringUnification)
+        unfreeze(currentModule->internalTypes);
+
+    if (!state.errors.empty() && !FFlag::LuauUseCommittingTxnLog)
+        state.DEPRECATED_log.rollback();
+
+    if (state.errors.empty() && FFlag::LuauUseCommittingTxnLog)
+        state.log.commit();
 
     return state.errors;
+}
+
+ErrorVec TypeChecker::tryUnify(TypeId subTy, TypeId superTy, const Location& location)
+{
+    return tryUnify_(subTy, superTy, location);
+}
+
+ErrorVec TypeChecker::tryUnify(TypePackId subTy, TypePackId superTy, const Location& location)
+{
+    return tryUnify_(subTy, superTy, location);
 }
 
 void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
@@ -743,9 +754,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
             {
                 // In nonstrict mode, any assignments where the lhs is free and rhs isn't a function, we give it any typevar.
                 if (isNonstrictMode() && get<FreeTypeVar>(follow(left)) && !get<FunctionTypeVar>(follow(right)))
-                    unify(left, anyType, loc);
+                    unify(anyType, left, loc);
                 else
-                    unify(left, right, loc);
+                    unify(right, left, loc);
             }
         }
     }
@@ -760,7 +771,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatCompoundAssign& assi
 
     TypeId result = checkBinaryOperation(scope, expr, left, right);
 
-    unify(left, result, assign.location);
+    unify(result, left, assign.location);
 }
 
 void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
@@ -817,8 +828,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
 
         Unifier state = mkUnifier(local.location);
         state.ctx = CountMismatch::Result;
-        state.tryUnify(variablePack, valuePack);
+        state.tryUnify(valuePack, variablePack);
         reportErrors(state.errors);
+
+        if (FFlag::LuauUseCommittingTxnLog)
+            state.log.commit();
 
         // In the code 'local T = {}', we wish to ascribe the name 'T' to the type of the table for error-reporting purposes.
         // We also want to do this for 'local T = setmetatable(...)'.
@@ -889,7 +903,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatFor& expr)
 
     TypeId loopVarType = numberType;
     if (expr.var->annotation)
-        unify(resolveType(scope, *expr.var->annotation), loopVarType, expr.location);
+        unify(loopVarType, resolveType(scope, *expr.var->annotation), expr.location);
 
     loopScope->bindings[expr.var] = {loopVarType, expr.var->location};
 
@@ -899,11 +913,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatFor& expr)
     if (!expr.to)
         ice("Bad AstStatFor has no to expr");
 
-    unify(loopVarType, checkExpr(loopScope, *expr.from).type, expr.from->location);
-    unify(loopVarType, checkExpr(loopScope, *expr.to).type, expr.to->location);
+    unify(checkExpr(loopScope, *expr.from).type, loopVarType, expr.from->location);
+    unify(checkExpr(loopScope, *expr.to).type, loopVarType, expr.to->location);
 
     if (expr.step)
-        unify(loopVarType, checkExpr(loopScope, *expr.step).type, expr.step->location);
+        unify(checkExpr(loopScope, *expr.step).type, loopVarType, expr.step->location);
 
     check(loopScope, *expr.body);
 }
@@ -956,12 +970,12 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         if (get<Unifiable::Free>(callRetPack))
         {
             iterTy = freshType(scope);
-            unify(addTypePack({{iterTy}, freshTypePack(scope)}), callRetPack, forin.location);
+            unify(callRetPack, addTypePack({{iterTy}, freshTypePack(scope)}), forin.location);
         }
         else if (get<Unifiable::Error>(callRetPack) || !first(callRetPack))
         {
             for (TypeId var : varTypes)
-                unify(var, errorRecoveryType(scope), forin.location);
+                unify(errorRecoveryType(scope), var, forin.location);
 
             return check(loopScope, *forin.body);
         }
@@ -982,7 +996,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         TypeId varTy = get<AnyTypeVar>(iterTy) ? anyType : errorRecoveryType(loopScope);
 
         for (TypeId var : varTypes)
-            unify(var, varTy, forin.location);
+            unify(varTy, var, forin.location);
 
         if (!get<ErrorTypeVar>(iterTy) && !get<AnyTypeVar>(iterTy) && !get<FreeTypeVar>(iterTy))
             reportError(TypeError{firstValue->location, TypeMismatch{globalScope->bindings[AstName{"next"}].typeId, iterTy}});
@@ -1010,6 +1024,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         Unifier state = mkUnifier(firstValue->location);
         checkArgumentList(loopScope, state, argPack, iterFunc->argTypes, /*argLocations*/ {});
 
+        if (FFlag::LuauUseCommittingTxnLog)
+            state.log.commit();
+
         reportErrors(state.errors);
     }
 
@@ -1024,10 +1041,10 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
 
         TypePackId retPack = checkExprPack(scope, exprCall).type;
-        unify(varPack, retPack, forin.location);
+        unify(retPack, varPack, forin.location);
     }
     else
-        unify(varPack, iterFunc->retType, forin.location);
+        unify(iterFunc->retType, varPack, forin.location);
 
     check(loopScope, *forin.body);
 }
@@ -1112,7 +1129,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
 
         checkFunctionBody(funScope, ty, *function.func);
 
-        unify(leftType, ty, function.location);
+        unify(ty, leftType, function.location);
 
         if (FFlag::LuauUpdateFunctionNameBinding)
         {
@@ -1242,7 +1259,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         else if (auto mtv = getMutable<MetatableTypeVar>(follow(ty)))
             mtv->syntheticName = name;
 
-        unify(bindingsMap[name].type, ty, typealias.location);
+        unify(ty, bindingsMap[name].type, typealias.location);
     }
 }
 
@@ -1526,7 +1543,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprCa
     {
         TypeId head = freshType(scope);
         TypePackId pack = addTypePack(TypePackVar{TypePack{{head}, freshTypePack(scope)}});
-        unify(retPack, pack, expr.location);
+        unify(pack, retPack, expr.location);
         return {head, std::move(result.predicates)};
     }
     if (get<Unifiable::Error>(retPack))
@@ -1598,7 +1615,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
             return it->second.type;
         else if (auto indexer = tableType->indexer)
         {
-            tryUnify(indexer->indexType, stringType, location);
+            tryUnify(stringType, indexer->indexType, location);
             return indexer->indexResultType;
         }
         else if (tableType->state == TableState::Free)
@@ -1824,7 +1841,7 @@ TypeId TypeChecker::checkExprTable(
                 indexer = expectedTable->indexer;
 
             if (indexer)
-                unify(indexer->indexResultType, valueType, value->location);
+                unify(valueType, indexer->indexResultType, value->location);
             else
                 indexer = TableIndexer{numberType, anyIfNonstrict(valueType)};
         }
@@ -1842,13 +1859,13 @@ TypeId TypeChecker::checkExprTable(
                     if (it != expectedTable->props.end())
                     {
                         Property expectedProp = it->second;
-                        ErrorVec errors = tryUnify(expectedProp.type, exprType, k->location);
+                        ErrorVec errors = tryUnify(exprType, expectedProp.type, k->location);
                         if (errors.empty())
                             exprType = expectedProp.type;
                     }
                     else if (expectedTable->indexer && isString(expectedTable->indexer->indexType))
                     {
-                        ErrorVec errors = tryUnify(expectedTable->indexer->indexResultType, exprType, k->location);
+                        ErrorVec errors = tryUnify(exprType, expectedTable->indexer->indexResultType, k->location);
                         if (errors.empty())
                             exprType = expectedTable->indexer->indexResultType;
                     }
@@ -1863,8 +1880,8 @@ TypeId TypeChecker::checkExprTable(
 
                 if (indexer)
                 {
-                    unify(indexer->indexType, keyType, k->location);
-                    unify(indexer->indexResultType, valueType, value->location);
+                    unify(keyType, indexer->indexType, k->location);
+                    unify(valueType, indexer->indexResultType, value->location);
                 }
                 else if (isNonstrictMode())
                 {
@@ -1992,7 +2009,10 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprUn
                 TypeId expectedFunctionType = addType(FunctionTypeVar(scope->level, arguments, retTypePack));
 
                 Unifier state = mkUnifier(expr.location);
-                state.tryUnify(expectedFunctionType, actualFunctionType, /*isFunctionCall*/ true);
+                state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
+
+                if (FFlag::LuauUseCommittingTxnLog)
+                    state.log.commit();
 
                 TypeId retType = first(retTypePack).value_or(nilType);
                 if (!state.errors.empty())
@@ -2006,7 +2026,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprUn
             return {errorRecoveryType(scope)};
         }
 
-        reportErrors(tryUnify(numberType, operandType, expr.location));
+        reportErrors(tryUnify(operandType, numberType, expr.location));
         return {numberType};
     }
     case AstExprUnary::Len:
@@ -2072,7 +2092,7 @@ TypeId TypeChecker::unionOfTypes(TypeId a, TypeId b, const Location& location, b
 {
     if (unifyFreeTypes && (get<FreeTypeVar>(a) || get<FreeTypeVar>(b)))
     {
-        if (unify(a, b, location))
+        if (unify(b, a, location))
             return a;
 
         return errorRecoveryType(anyType);
@@ -2175,7 +2195,13 @@ TypeId TypeChecker::checkRelationalOperation(
          */
         Unifier state = mkUnifier(expr.location);
         if (!isEquality)
-            state.tryUnify(lhsType, rhsType);
+        {
+            state.tryUnify(rhsType, lhsType);
+
+            if (FFlag::LuauUseCommittingTxnLog)
+                state.log.commit();
+        }
+
 
         bool needsMetamethod = !isEquality;
 
@@ -2216,13 +2242,16 @@ TypeId TypeChecker::checkRelationalOperation(
                     if (isEquality)
                     {
                         Unifier state = mkUnifier(expr.location);
-                        state.tryUnify(ftv->retType, addTypePack({booleanType}));
+                        state.tryUnify(addTypePack({booleanType}), ftv->retType);
 
                         if (!state.errors.empty())
                         {
                             reportError(expr.location, GenericError{format("Metamethod '%s' must return type 'boolean'", metamethodName.c_str())});
                             return errorRecoveryType(booleanType);
                         }
+
+                        if (FFlag::LuauUseCommittingTxnLog)
+                            state.log.commit();
                     }
                 }
 
@@ -2230,7 +2259,10 @@ TypeId TypeChecker::checkRelationalOperation(
 
                 TypeId actualFunctionType = addType(FunctionTypeVar(scope->level, addTypePack({lhsType, rhsType}), addTypePack({booleanType})));
                 state.tryUnify(
-                    instantiate(scope, *metamethod, expr.location), instantiate(scope, actualFunctionType, expr.location), /*isFunctionCall*/ true);
+                    instantiate(scope, actualFunctionType, expr.location), instantiate(scope, *metamethod, expr.location), /*isFunctionCall*/ true);
+
+                if (FFlag::LuauUseCommittingTxnLog)
+                    state.log.commit();
 
                 reportErrors(state.errors);
                 return booleanType;
@@ -2323,7 +2355,7 @@ TypeId TypeChecker::checkBinaryOperation(
     }
 
     if (get<FreeTypeVar>(rhsType))
-        unify(lhsType, rhsType, expr.location);
+        unify(rhsType, lhsType, expr.location);
 
     if (typeCouldHaveMetatable(lhsType) || typeCouldHaveMetatable(rhsType))
     {
@@ -2334,7 +2366,7 @@ TypeId TypeChecker::checkBinaryOperation(
             TypeId expectedFunctionType = addType(FunctionTypeVar(scope->level, arguments, retTypePack));
 
             Unifier state = mkUnifier(expr.location);
-            state.tryUnify(expectedFunctionType, actualFunctionType, /*isFunctionCall*/ true);
+            state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
 
             reportErrors(state.errors);
             bool hasErrors = !state.errors.empty();
@@ -2345,11 +2377,28 @@ TypeId TypeChecker::checkBinaryOperation(
                 // so we loosen the argument types to see if that helps.
                 TypePackId fallbackArguments = freshTypePack(scope);
                 TypeId fallbackFunctionType = addType(FunctionTypeVar(scope->level, fallbackArguments, retTypePack));
-                state.log.rollback();
                 state.errors.clear();
-                state.tryUnify(fallbackFunctionType, actualFunctionType, /*isFunctionCall*/ true);
-                if (!state.errors.empty())
-                    state.log.rollback();
+
+                if (FFlag::LuauUseCommittingTxnLog)
+                {
+                    state.log.clear();
+                }
+                else
+                {
+                    state.DEPRECATED_log.rollback();
+                }
+
+                state.tryUnify(actualFunctionType, fallbackFunctionType, /*isFunctionCall*/ true);
+
+                if (FFlag::LuauUseCommittingTxnLog && state.errors.empty())
+                    state.log.commit();
+                else if (!state.errors.empty() && !FFlag::LuauUseCommittingTxnLog)
+                    state.DEPRECATED_log.rollback();
+            }
+
+            if (FFlag::LuauUseCommittingTxnLog && !hasErrors)
+            {
+                state.log.commit();
             }
 
             TypeId retType = first(retTypePack).value_or(nilType);
@@ -2377,8 +2426,8 @@ TypeId TypeChecker::checkBinaryOperation(
     switch (expr.op)
     {
     case AstExprBinary::Concat:
-        reportErrors(tryUnify(addType(UnionTypeVar{{stringType, numberType}}), lhsType, expr.left->location));
-        reportErrors(tryUnify(addType(UnionTypeVar{{stringType, numberType}}), rhsType, expr.right->location));
+        reportErrors(tryUnify(lhsType, addType(UnionTypeVar{{stringType, numberType}}), expr.left->location));
+        reportErrors(tryUnify(rhsType, addType(UnionTypeVar{{stringType, numberType}}), expr.right->location));
         return stringType;
     case AstExprBinary::Add:
     case AstExprBinary::Sub:
@@ -2386,8 +2435,8 @@ TypeId TypeChecker::checkBinaryOperation(
     case AstExprBinary::Div:
     case AstExprBinary::Mod:
     case AstExprBinary::Pow:
-        reportErrors(tryUnify(numberType, lhsType, expr.left->location));
-        reportErrors(tryUnify(numberType, rhsType, expr.right->location));
+        reportErrors(tryUnify(lhsType, numberType, expr.left->location));
+        reportErrors(tryUnify(rhsType, numberType, expr.right->location));
         return numberType;
     default:
         // These should have been handled with checkRelationalOperation
@@ -2466,10 +2515,10 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprTy
     if (FFlag::LuauBidirectionalAsExpr)
     {
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (canUnify(result.type, annotationType, expr.location).empty())
+        if (canUnify(annotationType, result.type, expr.location).empty())
             return {annotationType, std::move(result.predicates)};
 
-        if (canUnify(annotationType, result.type, expr.location).empty())
+        if (canUnify(result.type, annotationType, expr.location).empty())
             return {annotationType, std::move(result.predicates)};
 
         reportError(expr.location, TypesAreUnrelated{result.type, annotationType});
@@ -2477,7 +2526,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprTy
     }
     else
     {
-        ErrorVec errorVec = canUnify(result.type, annotationType, expr.location);
+        ErrorVec errorVec = canUnify(annotationType, result.type, expr.location);
         reportErrors(errorVec);
         if (!errorVec.empty())
             annotationType = errorRecoveryType(annotationType);
@@ -2512,7 +2561,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIf
     resolve(result.predicates, falseScope, false);
     ExprResult<TypeId> falseType = checkExpr(falseScope, *expr.falseExpr);
 
-    unify(trueType.type, falseType.type, expr.location);
+    unify(falseType.type, trueType.type, expr.location);
 
     // TODO: normalize(UnionTypeVar{{trueType, falseType}})
     // For now both trueType and falseType must be the same type.
@@ -2607,14 +2656,18 @@ std::pair<TypeId, TypeId*> TypeChecker::checkLValueBinding(const ScopePtr& scope
         else if (auto indexer = lhsTable->indexer)
         {
             Unifier state = mkUnifier(expr.location);
-            state.tryUnify(indexer->indexType, stringType);
+            state.tryUnify(stringType, indexer->indexType);
             TypeId retType = indexer->indexResultType;
             if (!state.errors.empty())
             {
-                state.log.rollback();
+                if (!FFlag::LuauUseCommittingTxnLog)
+                    state.DEPRECATED_log.rollback();
+
                 reportError(expr.location, UnknownProperty{lhs, name});
                 retType = errorRecoveryType(retType);
             }
+            else if (FFlag::LuauUseCommittingTxnLog)
+                state.log.commit();
 
             return std::pair(retType, nullptr);
         }
@@ -2713,7 +2766,7 @@ std::pair<TypeId, TypeId*> TypeChecker::checkLValueBinding(const ScopePtr& scope
     if (exprTable->indexer)
     {
         const TableIndexer& indexer = *exprTable->indexer;
-        unify(indexer.indexType, indexType, expr.index->location);
+        unify(indexType, indexer.indexType, expr.index->location);
         return std::pair(indexer.indexResultType, nullptr);
     }
     else if (exprTable->state == TableState::Unsealed || exprTable->state == TableState::Free)
@@ -3106,204 +3159,402 @@ void TypeChecker::checkArgumentList(
      * A function requires parameters.
      * To call a function, you supply arguments.
      */
-    TypePackIterator argIter = begin(argPack);
-    TypePackIterator paramIter = begin(paramPack);
+    TypePackIterator argIter = begin(argPack, &state.log);
+    TypePackIterator paramIter = begin(paramPack, &state.log);
     TypePackIterator endIter = end(argPack); // Important subtlety: All end TypePackIterators are equivalent
 
     size_t paramIndex = 0;
 
     size_t minParams = getMinParameterCount(paramPack);
 
-    while (true)
+    if (FFlag::LuauUseCommittingTxnLog)
     {
-        state.location = paramIndex < argLocations.size() ? argLocations[paramIndex] : state.location;
-
-        if (argIter == endIter && paramIter == endIter)
+        while (true)
         {
-            std::optional<TypePackId> argTail = argIter.tail();
-            std::optional<TypePackId> paramTail = paramIter.tail();
+            state.location = paramIndex < argLocations.size() ? argLocations[paramIndex] : state.location;
 
-            // If we hit the end of both type packs simultaneously, then there are definitely no further type
-            // errors to report.  All we need to do is tie up any free tails.
-            //
-            // If one side has a free tail and the other has none at all, we create an empty pack and bind the
-            // free tail to that.
-
-            if (argTail)
+            if (argIter == endIter && paramIter == endIter)
             {
-                if (get<Unifiable::Free>(*argTail))
+                std::optional<TypePackId> argTail = argIter.tail();
+                std::optional<TypePackId> paramTail = paramIter.tail();
+
+                // If we hit the end of both type packs simultaneously, then there are definitely no further type
+                // errors to report.  All we need to do is tie up any free tails.
+                //
+                // If one side has a free tail and the other has none at all, we create an empty pack and bind the
+                // free tail to that.
+
+                if (argTail)
                 {
-                    if (paramTail)
-                        state.tryUnify(*argTail, *paramTail);
+                    if (state.log.getMutable<Unifiable::Free>(state.log.follow(*argTail)))
+                    {
+                        if (paramTail)
+                            state.tryUnify(*paramTail, *argTail);
+                        else
+                            state.log.replace(*argTail, TypePackVar(TypePack{{}}));
+                    }
+                }
+                else if (paramTail)
+                {
+                    // argTail is definitely empty
+                    if (state.log.getMutable<Unifiable::Free>(state.log.follow(*paramTail)))
+                        state.log.replace(*paramTail, TypePackVar(TypePack{{}}));
+                }
+
+                return;
+            }
+            else if (argIter == endIter)
+            {
+                // Not enough arguments.
+
+                // Might be ok if we are forwarding a vararg along.  This is a common thing to occur in nonstrict mode.
+                if (argIter.tail())
+                {
+                    TypePackId tail = *argIter.tail();
+                    if (state.log.getMutable<Unifiable::Error>(tail))
+                    {
+                        // Unify remaining parameters so we don't leave any free-types hanging around.
+                        while (paramIter != endIter)
+                        {
+                            state.tryUnify(errorRecoveryType(anyType), *paramIter);
+                            ++paramIter;
+                        }
+                        return;
+                    }
+                    else if (auto vtp = state.log.getMutable<VariadicTypePack>(tail))
+                    {
+                        while (paramIter != endIter)
+                        {
+                            state.tryUnify(vtp->ty, *paramIter);
+                            ++paramIter;
+                        }
+
+                        return;
+                    }
+                    else if (state.log.getMutable<FreeTypePack>(tail))
+                    {
+                        std::vector<TypeId> rest;
+                        rest.reserve(std::distance(paramIter, endIter));
+                        while (paramIter != endIter)
+                        {
+                            rest.push_back(*paramIter);
+                            ++paramIter;
+                        }
+
+                        TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, paramIter.tail()}});
+                        state.tryUnify(varPack, tail);
+                        return;
+                    }
+                }
+
+                // If any remaining unfulfilled parameters are nonoptional, this is a problem.
+                while (paramIter != endIter)
+                {
+                    TypeId t = state.log.follow(*paramIter);
+                    if (isOptional(t))
+                    {
+                    } // ok
+                    else if (state.log.getMutable<ErrorTypeVar>(t))
+                    {
+                    } // ok
+                    else if (isNonstrictMode() && state.log.getMutable<AnyTypeVar>(t))
+                    {
+                    } // ok
                     else
                     {
-                        state.log(*argTail);
-                        *asMutable(*argTail) = TypePack{{}};
+                        state.errors.push_back(TypeError{state.location, CountMismatch{minParams, paramIndex}});
+                        return;
+                    }
+                    ++paramIter;
+                }
+            }
+            else if (paramIter == endIter)
+            {
+                // too many parameters passed
+                if (!paramIter.tail())
+                {
+                    while (argIter != endIter)
+                    {
+                        // The use of unify here is deliberate. We don't want this unification
+                        // to be undoable.
+                        unify(errorRecoveryType(scope), *argIter, state.location);
+                        ++argIter;
+                    }
+                    // For this case, we want the error span to cover every errant extra parameter
+                    Location location = state.location;
+                    if (!argLocations.empty())
+                        location = {state.location.begin, argLocations.back().end};
+                    state.errors.push_back(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
+                    return;
+                }
+                TypePackId tail = state.log.follow(*paramIter.tail());
+
+                if (state.log.getMutable<Unifiable::Error>(tail))
+                {
+                    // Function is variadic.  Ok.
+                    return;
+                }
+                else if (auto vtp = state.log.getMutable<VariadicTypePack>(tail))
+                {
+                    // Function is variadic and requires that all subsequent parameters
+                    // be compatible with a type.
+                    size_t argIndex = paramIndex;
+                    while (argIter != endIter)
+                    {
+                        Location location = state.location;
+
+                        if (argIndex < argLocations.size())
+                            location = argLocations[argIndex];
+
+                        unify(*argIter, vtp->ty, location);
+                        ++argIter;
+                        ++argIndex;
+                    }
+
+                    return;
+                }
+                else if (state.log.getMutable<FreeTypePack>(tail))
+                {
+                    // Create a type pack out of the remaining argument types
+                    // and unify it with the tail.
+                    std::vector<TypeId> rest;
+                    rest.reserve(std::distance(argIter, endIter));
+                    while (argIter != endIter)
+                    {
+                        rest.push_back(*argIter);
+                        ++argIter;
+                    }
+
+                    TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, argIter.tail()}});
+                    state.tryUnify(varPack, tail);
+                    return;
+                }
+                else if (state.log.getMutable<FreeTypePack>(tail))
+                {
+                    state.log.replace(tail, TypePackVar(TypePack{{}}));
+                    return;
+                }
+                else if (state.log.getMutable<GenericTypePack>(tail))
+                {
+                    // For this case, we want the error span to cover every errant extra parameter
+                    Location location = state.location;
+                    if (!argLocations.empty())
+                        location = {state.location.begin, argLocations.back().end};
+                    // TODO: Better error message?
+                    state.errors.push_back(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
+                    return;
+                }
+            }
+            else
+            {
+                unifyWithInstantiationIfNeeded(scope, *argIter, *paramIter, state);
+                ++argIter;
+                ++paramIter;
+            }
+
+            ++paramIndex;
+        }
+    }
+    else
+    {
+        while (true)
+        {
+            state.location = paramIndex < argLocations.size() ? argLocations[paramIndex] : state.location;
+
+            if (argIter == endIter && paramIter == endIter)
+            {
+                std::optional<TypePackId> argTail = argIter.tail();
+                std::optional<TypePackId> paramTail = paramIter.tail();
+
+                // If we hit the end of both type packs simultaneously, then there are definitely no further type
+                // errors to report.  All we need to do is tie up any free tails.
+                //
+                // If one side has a free tail and the other has none at all, we create an empty pack and bind the
+                // free tail to that.
+
+                if (argTail)
+                {
+                    if (get<Unifiable::Free>(*argTail))
+                    {
+                        if (paramTail)
+                            state.tryUnify(*paramTail, *argTail);
+                        else
+                        {
+                            state.DEPRECATED_log(*argTail);
+                            *asMutable(*argTail) = TypePack{{}};
+                        }
                     }
                 }
-            }
-            else if (paramTail)
-            {
-                // argTail is definitely empty
-                if (get<Unifiable::Free>(*paramTail))
+                else if (paramTail)
                 {
-                    state.log(*paramTail);
-                    *asMutable(*paramTail) = TypePack{{}};
+                    // argTail is definitely empty
+                    if (get<Unifiable::Free>(*paramTail))
+                    {
+                        state.DEPRECATED_log(*paramTail);
+                        *asMutable(*paramTail) = TypePack{{}};
+                    }
+                }
+
+                return;
+            }
+            else if (argIter == endIter)
+            {
+                // Not enough arguments.
+
+                // Might be ok if we are forwarding a vararg along.  This is a common thing to occur in nonstrict mode.
+                if (argIter.tail())
+                {
+                    TypePackId tail = *argIter.tail();
+                    if (get<Unifiable::Error>(tail))
+                    {
+                        // Unify remaining parameters so we don't leave any free-types hanging around.
+                        while (paramIter != endIter)
+                        {
+                            state.tryUnify(*paramIter, errorRecoveryType(anyType));
+                            ++paramIter;
+                        }
+                        return;
+                    }
+                    else if (auto vtp = get<VariadicTypePack>(tail))
+                    {
+                        while (paramIter != endIter)
+                        {
+                            state.tryUnify(*paramIter, vtp->ty);
+                            ++paramIter;
+                        }
+
+                        return;
+                    }
+                    else if (get<FreeTypePack>(tail))
+                    {
+                        std::vector<TypeId> rest;
+                        rest.reserve(std::distance(paramIter, endIter));
+                        while (paramIter != endIter)
+                        {
+                            rest.push_back(*paramIter);
+                            ++paramIter;
+                        }
+
+                        TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, paramIter.tail()}});
+                        state.tryUnify(varPack, tail);
+                        return;
+                    }
+                }
+
+                // If any remaining unfulfilled parameters are nonoptional, this is a problem.
+                while (paramIter != endIter)
+                {
+                    TypeId t = follow(*paramIter);
+                    if (isOptional(t))
+                    {
+                    } // ok
+                    else if (get<ErrorTypeVar>(t))
+                    {
+                    } // ok
+                    else if (isNonstrictMode() && get<AnyTypeVar>(t))
+                    {
+                    } // ok
+                    else
+                    {
+                        state.errors.push_back(TypeError{state.location, CountMismatch{minParams, paramIndex}});
+                        return;
+                    }
+                    ++paramIter;
                 }
             }
-
-            return;
-        }
-        else if (argIter == endIter)
-        {
-            // Not enough arguments.
-
-            // Might be ok if we are forwarding a vararg along.  This is a common thing to occur in nonstrict mode.
-            if (argIter.tail())
+            else if (paramIter == endIter)
             {
-                TypePackId tail = *argIter.tail();
+                // too many parameters passed
+                if (!paramIter.tail())
+                {
+                    while (argIter != endIter)
+                    {
+                        unify(*argIter, errorRecoveryType(scope), state.location);
+                        ++argIter;
+                    }
+                    // For this case, we want the error span to cover every errant extra parameter
+                    Location location = state.location;
+                    if (!argLocations.empty())
+                        location = {state.location.begin, argLocations.back().end};
+                    state.errors.push_back(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
+                    return;
+                }
+                TypePackId tail = *paramIter.tail();
+
                 if (get<Unifiable::Error>(tail))
                 {
-                    // Unify remaining parameters so we don't leave any free-types hanging around.
-                    while (paramIter != endIter)
-                    {
-                        state.tryUnify(*paramIter, errorRecoveryType(anyType));
-                        ++paramIter;
-                    }
+                    // Function is variadic.  Ok.
                     return;
                 }
                 else if (auto vtp = get<VariadicTypePack>(tail))
                 {
-                    while (paramIter != endIter)
+                    // Function is variadic and requires that all subsequent parameters
+                    // be compatible with a type.
+                    size_t argIndex = paramIndex;
+                    while (argIter != endIter)
                     {
-                        state.tryUnify(*paramIter, vtp->ty);
-                        ++paramIter;
+                        Location location = state.location;
+
+                        if (argIndex < argLocations.size())
+                            location = argLocations[argIndex];
+
+                        unify(*argIter, vtp->ty, location);
+                        ++argIter;
+                        ++argIndex;
                     }
 
                     return;
                 }
                 else if (get<FreeTypePack>(tail))
                 {
+                    // Create a type pack out of the remaining argument types
+                    // and unify it with the tail.
                     std::vector<TypeId> rest;
-                    rest.reserve(std::distance(paramIter, endIter));
-                    while (paramIter != endIter)
+                    rest.reserve(std::distance(argIter, endIter));
+                    while (argIter != endIter)
                     {
-                        rest.push_back(*paramIter);
-                        ++paramIter;
+                        rest.push_back(*argIter);
+                        ++argIter;
                     }
 
-                    TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, paramIter.tail()}});
+                    TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, argIter.tail()}});
                     state.tryUnify(tail, varPack);
                     return;
                 }
-            }
+                else if (get<FreeTypePack>(tail))
+                {
+                    if (FFlag::LuauUseCommittingTxnLog)
+                    {
+                        state.log.replace(tail, TypePackVar(TypePack{{}}));
+                    }
+                    else
+                    {
+                        state.DEPRECATED_log(tail);
+                        *asMutable(tail) = TypePack{};
+                    }
 
-            // If any remaining unfulfilled parameters are nonoptional, this is a problem.
-            while (paramIter != endIter)
-            {
-                TypeId t = follow(*paramIter);
-                if (isOptional(t))
-                {
-                } // ok
-                else if (get<ErrorTypeVar>(t))
-                {
-                } // ok
-                else if (isNonstrictMode() && get<AnyTypeVar>(t))
-                {
-                } // ok
-                else
-                {
-                    state.errors.push_back(TypeError{state.location, CountMismatch{minParams, paramIndex}});
                     return;
                 }
+                else if (get<GenericTypePack>(tail))
+                {
+                    // For this case, we want the error span to cover every errant extra parameter
+                    Location location = state.location;
+                    if (!argLocations.empty())
+                        location = {state.location.begin, argLocations.back().end};
+                    // TODO: Better error message?
+                    state.errors.push_back(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
+                    return;
+                }
+            }
+            else
+            {
+                unifyWithInstantiationIfNeeded(scope, *argIter, *paramIter, state);
+                ++argIter;
                 ++paramIter;
             }
+
+            ++paramIndex;
         }
-        else if (paramIter == endIter)
-        {
-            // too many parameters passed
-            if (!paramIter.tail())
-            {
-                while (argIter != endIter)
-                {
-                    unify(*argIter, errorRecoveryType(scope), state.location);
-                    ++argIter;
-                }
-                // For this case, we want the error span to cover every errant extra parameter
-                Location location = state.location;
-                if (!argLocations.empty())
-                    location = {state.location.begin, argLocations.back().end};
-                state.errors.push_back(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
-                return;
-            }
-            TypePackId tail = *paramIter.tail();
-
-            if (get<Unifiable::Error>(tail))
-            {
-                // Function is variadic.  Ok.
-                return;
-            }
-            else if (auto vtp = get<VariadicTypePack>(tail))
-            {
-                // Function is variadic and requires that all subsequent parameters
-                // be compatible with a type.
-                size_t argIndex = paramIndex;
-                while (argIter != endIter)
-                {
-                    Location location = state.location;
-
-                    if (argIndex < argLocations.size())
-                        location = argLocations[argIndex];
-
-                    unify(vtp->ty, *argIter, location);
-                    ++argIter;
-                    ++argIndex;
-                }
-
-                return;
-            }
-            else if (get<FreeTypePack>(tail))
-            {
-                // Create a type pack out of the remaining argument types
-                // and unify it with the tail.
-                std::vector<TypeId> rest;
-                rest.reserve(std::distance(argIter, endIter));
-                while (argIter != endIter)
-                {
-                    rest.push_back(*argIter);
-                    ++argIter;
-                }
-
-                TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, argIter.tail()}});
-                state.tryUnify(tail, varPack);
-                return;
-            }
-            else if (get<FreeTypePack>(tail))
-            {
-                state.log(tail);
-                *asMutable(tail) = TypePack{};
-
-                return;
-            }
-            else if (get<GenericTypePack>(tail))
-            {
-                // For this case, we want the error span to cover every errant extra parameter
-                Location location = state.location;
-                if (!argLocations.empty())
-                    location = {state.location.begin, argLocations.back().end};
-                // TODO: Better error message?
-                state.errors.push_back(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
-                return;
-            }
-        }
-        else
-        {
-            unifyWithInstantiationIfNeeded(scope, *paramIter, *argIter, state);
-            ++argIter;
-            ++paramIter;
-        }
-
-        ++paramIndex;
     }
 }
 
@@ -3475,7 +3726,7 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
 
     if (get<AnyTypeVar>(fn))
     {
-        unify(argPack, anyTypePack, expr.location);
+        unify(anyTypePack, argPack, expr.location);
         return {{anyTypePack}};
     }
 
@@ -3490,7 +3741,7 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
         // has been instantiated, so is a monotype. We can therefore
         // unify it with a monomorphic function.
         TypeId r = addType(FunctionTypeVar(scope->level, argPack, retPack));
-        unify(r, fn, expr.location);
+        unify(fn, r, expr.location);
         return {{retPack}};
     }
 
@@ -3533,7 +3784,7 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
     if (!ftv)
     {
         reportError(TypeError{expr.func->location, CannotCallNonFunction{fn}});
-        unify(retPack, errorRecoveryTypePack(scope), expr.func->location);
+        unify(errorRecoveryTypePack(scope), retPack, expr.func->location);
         return {{errorRecoveryTypePack(retPack)}};
     }
 
@@ -3552,7 +3803,9 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
     checkArgumentList(scope, state, retPack, ftv->retType, /*argLocations*/ {});
     if (!state.errors.empty())
     {
-        state.log.rollback();
+        if (!FFlag::LuauUseCommittingTxnLog)
+            state.DEPRECATED_log.rollback();
+
         return {};
     }
 
@@ -3580,10 +3833,15 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
             overloadsThatDont.push_back(fn);
 
         errors.emplace_back(std::move(state.errors), args->head, ftv);
-        state.log.rollback();
+
+        if (!FFlag::LuauUseCommittingTxnLog)
+            state.DEPRECATED_log.rollback();
     }
     else
     {
+        if (FFlag::LuauUseCommittingTxnLog)
+            state.log.commit();
+
         if (isNonstrictMode() && !expr.self && expr.func->is<AstExprIndexName>() && ftv->hasSelf)
         {
             // If we are running in nonstrict mode, passing fewer arguments than the function is declared to take AND
@@ -3640,6 +3898,9 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
 
             if (editedState.errors.empty())
             {
+                if (FFlag::LuauUseCommittingTxnLog)
+                    editedState.log.commit();
+
                 reportError(TypeError{expr.location, FunctionDoesNotTakeSelf{}});
                 // This is a little bit suspect: If this overload would work with a . replaced by a :
                 // we eagerly assume that that's what you actually meant and we commit to it.
@@ -3648,8 +3909,8 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
                 // checkArgumentList(scope, editedState, retPack, ftv->retType, retLocations, CountMismatch::Return);
                 return true;
             }
-            else
-                editedState.log.rollback();
+            else if (!FFlag::LuauUseCommittingTxnLog)
+                editedState.DEPRECATED_log.rollback();
         }
         else if (ftv->hasSelf)
         {
@@ -3671,6 +3932,9 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
 
                 if (editedState.errors.empty())
                 {
+                    if (FFlag::LuauUseCommittingTxnLog)
+                        editedState.log.commit();
+
                     reportError(TypeError{expr.location, FunctionRequiresSelf{}});
                     // This is a little bit suspect: If this overload would work with a : replaced by a .
                     // we eagerly assume that that's what you actually meant and we commit to it.
@@ -3679,8 +3943,8 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
                     // checkArgumentList(scope, editedState, retPack, ftv->retType, retLocations, CountMismatch::Return);
                     return true;
                 }
-                else
-                    editedState.log.rollback();
+                else if (!FFlag::LuauUseCommittingTxnLog)
+                    editedState.DEPRECATED_log.rollback();
             }
         }
     }
@@ -3740,6 +4004,9 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
             checkArgumentList(scope, state, argPack, ftv->argTypes, argLocations);
         }
 
+        if (FFlag::LuauUseCommittingTxnLog && state.errors.empty())
+            state.log.commit();
+
         if (i > 0)
             s += "; ";
 
@@ -3748,7 +4015,8 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
 
         s += toString(overload);
 
-        state.log.rollback();
+        if (!FFlag::LuauUseCommittingTxnLog)
+            state.DEPRECATED_log.rollback();
     }
 
     if (overloadsThatMatchArgCount.size() == 0)
@@ -3781,6 +4049,8 @@ ExprResult<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, const L
 
     Unifier state = mkUnifier(location);
 
+    std::vector<TxnLog> inverseLogs;
+
     for (size_t i = 0; i < exprs.size; ++i)
     {
         AstExpr* expr = exprs.data[i];
@@ -3791,17 +4061,14 @@ ExprResult<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, const L
             auto [typePack, exprPredicates] = checkExprPack(scope, *expr);
             insert(exprPredicates);
 
-            if (FFlag::LuauTailArgumentTypeInfo)
+            if (std::optional<TypeId> firstTy = first(typePack))
             {
-                if (std::optional<TypeId> firstTy = first(typePack))
-                {
-                    if (!currentModule->astTypes.find(expr))
-                        currentModule->astTypes[expr] = follow(*firstTy);
-                }
-
-                if (expectedType)
-                    currentModule->astExpectedTypes[expr] = *expectedType;
+                if (!currentModule->astTypes.find(expr))
+                    currentModule->astTypes[expr] = follow(*firstTy);
             }
+
+            if (expectedType)
+                currentModule->astExpectedTypes[expr] = *expectedType;
 
             tp->tail = typePack;
         }
@@ -3816,13 +4083,31 @@ ExprResult<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, const L
                 actualType = instantiate(scope, actualType, expr->location);
 
             if (expectedType)
-                state.tryUnify(*expectedType, actualType);
+            {
+                state.tryUnify(actualType, *expectedType);
+
+                // Ugly: In future iterations of the loop, we might need the state of the unification we
+                // just performed. There's not a great way to pass that into checkExpr. Instead, we store
+                // the inverse of the current log, and commit it. When we're done, we'll commit all the
+                // inverses. This isn't optimal, and a better solution is welcome here.
+                if (FFlag::LuauUseCommittingTxnLog)
+                {
+                    inverseLogs.push_back(state.log.inverse());
+                    state.log.commit();
+                }
+            }
 
             tp->head.push_back(actualType);
         }
     }
 
-    state.log.rollback();
+    if (FFlag::LuauUseCommittingTxnLog)
+    {
+        for (TxnLog& log : inverseLogs)
+            log.commit();
+    }
+    else
+        state.DEPRECATED_log.rollback();
 
     return {pack, predicates};
 }
@@ -3884,7 +4169,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
 
     TypePackId modulePack = module->getModuleScope()->returnType;
 
-    if (FFlag::LuauModuleRequireErrorPack && get<Unifiable::Error>(modulePack))
+    if (get<Unifiable::Error>(modulePack))
         return errorRecoveryType(scope);
 
     std::optional<TypeId> moduleType = first(modulePack);
@@ -3917,72 +4202,94 @@ TypeId TypeChecker::anyIfNonstrict(TypeId ty) const
         return ty;
 }
 
-bool TypeChecker::unify(TypeId left, TypeId right, const Location& location)
+bool TypeChecker::unify(TypeId subTy, TypeId superTy, const Location& location)
 {
     Unifier state = mkUnifier(location);
-    state.tryUnify(left, right);
+    state.tryUnify(subTy, superTy);
+
+    if (FFlag::LuauUseCommittingTxnLog)
+        state.log.commit();
 
     reportErrors(state.errors);
 
     return state.errors.empty();
 }
 
-bool TypeChecker::unify(TypePackId left, TypePackId right, const Location& location, CountMismatch::Context ctx)
+bool TypeChecker::unify(TypePackId subTy, TypePackId superTy, const Location& location, CountMismatch::Context ctx)
 {
     Unifier state = mkUnifier(location);
     state.ctx = ctx;
-    state.tryUnify(left, right);
+    state.tryUnify(subTy, superTy);
+
+    if (FFlag::LuauUseCommittingTxnLog)
+        state.log.commit();
 
     reportErrors(state.errors);
 
     return state.errors.empty();
 }
 
-bool TypeChecker::unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId left, TypeId right, const Location& location)
+bool TypeChecker::unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId subTy, TypeId superTy, const Location& location)
 {
     Unifier state = mkUnifier(location);
-    unifyWithInstantiationIfNeeded(scope, left, right, state);
+    unifyWithInstantiationIfNeeded(scope, subTy, superTy, state);
+
+    if (FFlag::LuauUseCommittingTxnLog)
+        state.log.commit();
 
     reportErrors(state.errors);
 
     return state.errors.empty();
 }
 
-void TypeChecker::unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId left, TypeId right, Unifier& state)
+void TypeChecker::unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId subTy, TypeId superTy, Unifier& state)
 {
-    if (!maybeGeneric(right))
+    if (!maybeGeneric(subTy))
         // Quick check to see if we definitely can't instantiate
-        state.tryUnify(left, right, /*isFunctionCall*/ false);
-    else if (!maybeGeneric(left) && isGeneric(right))
+        state.tryUnify(subTy, superTy, /*isFunctionCall*/ false);
+    else if (!maybeGeneric(superTy) && isGeneric(subTy))
     {
         // Quick check to see if we definitely have to instantiate
-        TypeId instantiated = instantiate(scope, right, state.location);
-        state.tryUnify(left, instantiated, /*isFunctionCall*/ false);
+        TypeId instantiated = instantiate(scope, subTy, state.location);
+        state.tryUnify(instantiated, superTy, /*isFunctionCall*/ false);
     }
     else
     {
         // First try unifying with the original uninstantiated type
         // but if that fails, try the instantiated one.
         Unifier child = state.makeChildUnifier();
-        child.tryUnify(left, right, /*isFunctionCall*/ false);
+        child.tryUnify(subTy, superTy, /*isFunctionCall*/ false);
         if (!child.errors.empty())
         {
-            TypeId instantiated = instantiate(scope, right, state.location);
-            if (right == instantiated)
+            TypeId instantiated = instantiate(scope, subTy, state.location);
+            if (subTy == instantiated)
             {
                 // Instantiating the argument made no difference, so just report any child errors
-                state.log.concat(std::move(child.log));
+                if (FFlag::LuauUseCommittingTxnLog)
+                    state.log.concat(std::move(child.log));
+                else
+                    state.DEPRECATED_log.concat(std::move(child.DEPRECATED_log));
+
                 state.errors.insert(state.errors.end(), child.errors.begin(), child.errors.end());
             }
             else
             {
-                child.log.rollback();
-                state.tryUnify(left, instantiated, /*isFunctionCall*/ false);
+                if (!FFlag::LuauUseCommittingTxnLog)
+                    child.DEPRECATED_log.rollback();
+
+                state.tryUnify(instantiated, superTy, /*isFunctionCall*/ false);
             }
         }
         else
         {
-            state.log.concat(std::move(child.log));
+            if (FFlag::LuauUseCommittingTxnLog)
+            {
+                state.log.concat(std::move(child.log));
+            }
+            else
+            {
+                state.DEPRECATED_log.concat(std::move(child.DEPRECATED_log));
+            }
         }
     }
 }
@@ -4139,7 +4446,7 @@ TypePackId Quantification::clean(TypePackId tp)
 bool Anyification::isDirty(TypeId ty)
 {
     if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
-        return (ttv->state == TableState::Free);
+        return (ttv->state == TableState::Free || (FFlag::LuauSealExports && ttv->state == TableState::Unsealed));
     else if (get<FreeTypeVar>(ty))
         return true;
     else
@@ -4162,6 +4469,12 @@ TypeId Anyification::clean(TypeId ty)
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, TableState::Sealed};
         clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
         clone.definitionModuleName = ttv->definitionModuleName;
+        if (FFlag::LuauSealExports)
+        {
+            clone.name = ttv->name;
+            clone.syntheticName = ttv->syntheticName;
+            clone.tags = ttv->tags;
+        }
         return addType(std::move(clone));
     }
     else
@@ -5194,8 +5507,8 @@ void TypeChecker::resolve(const IsAPredicate& isaP, ErrorVec& errVec, Refinement
         // This by itself is not truly enough to determine that A is stronger than B or vice versa.
         // The best unambiguous way about this would be to have a function that returns the relationship ordering of a pair.
         // i.e. TypeRelationship relationshipOf(TypeId superTy, TypeId subTy)
-        bool optionIsSubtype = canUnify(isaP.ty, option, isaP.location).empty();
-        bool targetIsSubtype = canUnify(option, isaP.ty, isaP.location).empty();
+        bool optionIsSubtype = canUnify(option, isaP.ty, isaP.location).empty();
+        bool targetIsSubtype = canUnify(isaP.ty, option, isaP.location).empty();
 
         // If A is a superset of B, then if sense is true, we promote A to B, otherwise we keep A.
         if (!optionIsSubtype && targetIsSubtype)
@@ -5379,7 +5692,7 @@ void TypeChecker::resolve(const EqPredicate& eqP, ErrorVec& errVec, RefinementMa
             for (TypeId right : rhs)
             {
                 // When singleton types arrive, `isNil` here probably should be replaced with `isLiteral`.
-                if (canUnify(left, right, eqP.location).empty() == sense || (!sense && !isNil(left)))
+                if (canUnify(right, left, eqP.location).empty() == sense || (!sense && !isNil(left)))
                     set.insert(left);
             }
         }
@@ -5406,7 +5719,7 @@ std::vector<TypeId> TypeChecker::unTypePack(const ScopePtr& scope, TypePackId tp
     for (size_t i = 0; i < expectedLength; ++i)
         expectedPack->head.push_back(freshType(scope));
 
-    unify(expectedTypePack, tp, location);
+    unify(tp, expectedTypePack, location);
 
     for (TypeId& tp : expectedPack->head)
         tp = follow(tp);

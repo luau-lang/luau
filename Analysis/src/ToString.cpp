@@ -11,7 +11,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
-LUAU_FASTFLAGVARIABLE(LuauFunctionArgumentNameSize, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -766,24 +765,12 @@ struct TypePackStringifier
             else
                 state.emit(", ");
 
-            if (FFlag::LuauFunctionArgumentNameSize)
+            if (elemIndex < elemNames.size() && elemNames[elemIndex])
             {
-                if (elemIndex < elemNames.size() && elemNames[elemIndex])
-                {
-                    state.emit(elemNames[elemIndex]->name);
-                    state.emit(": ");
-                }
+                state.emit(elemNames[elemIndex]->name);
+                state.emit(": ");
             }
-            else
-            {
-                LUAU_ASSERT(elemNames.empty() || elemIndex < elemNames.size());
 
-                if (!elemNames.empty() && elemNames[elemIndex])
-                {
-                    state.emit(elemNames[elemIndex]->name);
-                    state.emit(": ");
-                }
-            }
             elemIndex++;
 
             stringify(typeId);
@@ -1151,38 +1138,19 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
             s += ", ";
         first = false;
 
-        if (FFlag::LuauFunctionArgumentNameSize)
+        // We don't currently respect opts.functionTypeArguments. I don't think this function should.
+        if (argNameIter != ftv.argNames.end())
         {
-            // We don't currently respect opts.functionTypeArguments. I don't think this function should.
-            if (argNameIter != ftv.argNames.end())
-            {
-                s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
-                ++argNameIter;
-            }
-            else
-            {
-                s += "_: ";
-            }
+            s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
+            ++argNameIter;
         }
         else
         {
-            // argNames is guaranteed to be equal to argTypes iff argNames is not empty.
-            // We don't currently respect opts.functionTypeArguments. I don't think this function should.
-            if (!ftv.argNames.empty())
-                s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
+            s += "_: ";
         }
 
         s += toString_(*argPackIter);
         ++argPackIter;
-
-        if (!FFlag::LuauFunctionArgumentNameSize)
-        {
-            if (!ftv.argNames.empty())
-            {
-                LUAU_ASSERT(argNameIter != ftv.argNames.end());
-                ++argNameIter;
-            }
-        }
     }
 
     if (argPackIter.tail())

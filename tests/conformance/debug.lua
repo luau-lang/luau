@@ -98,4 +98,13 @@ assert(quuz(function(...) end) == "0 true")
 assert(quuz(function(a, b) end) == "2 false")
 assert(quuz(function(a, b, ...) end) == "2 true")
 
+-- info linedefined & line
+function testlinedefined()
+	local line = debug.info(1, "l")
+	local linedefined = debug.info(testlinedefined, "l")
+	assert(linedefined + 1 == line)
+end
+
+testlinedefined()
+
 return 'OK'

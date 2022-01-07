@@ -12,6 +12,9 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauBytecodeV2Read)
+LUAU_FASTFLAG(LuauBytecodeV2Force)
+
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -89,6 +92,16 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     return name;
 }
 
+static int getlinedefined(Proto* p)
+{
+    if (FFlag::LuauBytecodeV2Force)
+        return p->linedefined;
+    else if (FFlag::LuauBytecodeV2Read && p->linedefined >= 0)
+        return p->linedefined;
+    else
+        return luaG_getline(p, 0);
+}
+
 static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
 {
     int status = 1;
@@ -108,7 +121,7 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
             {
                 ar->source = getstr(f->l.p->source);
                 ar->what = "Lua";
-                ar->linedefined = luaG_getline(f->l.p, 0);
+                ar->linedefined = getlinedefined(f->l.p);
             }
             luaO_chunkid(ar->short_src, ar->source, LUA_IDSIZE);
             break;
@@ -121,7 +134,7 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
             }
             else
             {
-                ar->currentline = f->isC ? -1 : luaG_getline(f->l.p, 0);
+                ar->currentline = f->isC ? -1 : getlinedefined(f->l.p);
             }
 
             break;

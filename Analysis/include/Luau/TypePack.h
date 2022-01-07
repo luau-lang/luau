@@ -18,6 +18,8 @@ struct VariadicTypePack;
 
 struct TypePackVar;
 
+struct TxnLog;
+
 using TypePackId = const TypePackVar*;
 using FreeTypePack = Unifiable::Free;
 using BoundTypePack = Unifiable::Bound<TypePackId>;
@@ -84,6 +86,7 @@ struct TypePackIterator
 
     TypePackIterator() = default;
     explicit TypePackIterator(TypePackId tp);
+    TypePackIterator(TypePackId tp, const TxnLog* log);
 
     TypePackIterator& operator++();
     TypePackIterator operator++(int);
@@ -104,9 +107,13 @@ private:
     TypePackId currentTypePack = nullptr;
     const TypePack* tp = nullptr;
     size_t currentIndex = 0;
+
+    // Only used if LuauUseCommittingTxnLog is true.
+    const TxnLog* log;
 };
 
 TypePackIterator begin(TypePackId tp);
+TypePackIterator begin(TypePackId tp, TxnLog* log);
 TypePackIterator end(TypePackId tp);
 
 using SeenSet = std::set<std::pair<void*, void*>>;
@@ -114,6 +121,7 @@ using SeenSet = std::set<std::pair<void*, void*>>;
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 
 TypePackId follow(TypePackId tp);
+TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper);
 
 size_t size(TypePackId tp);
 bool finite(TypePackId tp);

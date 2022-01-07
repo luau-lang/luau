@@ -13,7 +13,10 @@
 #include "ScopedFlags.h"
 
 #include <fstream>
+#include <vector>
 #include <math.h>
+
+extern bool verbose;
 
 static int lua_collectgarbage(lua_State* L)
 {
@@ -146,15 +149,21 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     luaL_openlibs(L);
 
     // Register a few global functions for conformance tests
-    static const luaL_Reg funcs[] = {
+    std::vector<luaL_Reg> funcs = {
         {"collectgarbage", lua_collectgarbage},
         {"loadstring", lua_loadstring},
-        {"print", lua_silence}, // Disable print() by default; comment this out to enable debug prints in tests
-        {nullptr, nullptr},
     };
 
+    if (!verbose)
+    {
+        funcs.push_back({"print", lua_silence});
+    }
+
+    // "null" terminate the list of functions to register
+    funcs.push_back({nullptr, nullptr});
+
     lua_pushvalue(L, LUA_GLOBALSINDEX);
-    luaL_register(L, nullptr, funcs);
+    luaL_register(L, nullptr, funcs.data());
     lua_pop(L, 1);
 
     // In some configurations we have a larger C stack consumption which trips some conformance tests
@@ -312,8 +321,6 @@ TEST_CASE("GC")
 
 TEST_CASE("Bitwise")
 {
-    ScopedFastFlag sff("LuauBit32Count", true);
-
     runConformance("bitwise.lua");
 }
 
@@ -491,6 +498,9 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
+    ScopedFastFlag sffr("LuauBytecodeV2Read", true);
+    ScopedFastFlag sffw("LuauBytecodeV2Write", true);
+
     runConformance("debug.lua");
 }
 
@@ -738,8 +748,6 @@ TEST_CASE("ApiFunctionCalls")
 
     // lua_equal with a sleeping thread wake up
     {
-        ScopedFastFlag luauActivateBeforeExec("LuauActivateBeforeExec", true);
-
         lua_State* L2 = lua_newthread(L);
 
         lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
@@ -911,6 +919,13 @@ TEST_CASE("Coverage")
             lua_setglobal(L, "getcoverage");
         },
         nullptr, nullptr, &copts);
+}
+
+TEST_CASE("StringConversion")
+{
+    ScopedFastFlag sff{"LuauSchubfach", true};
+
+    runConformance("strconv.lua");
 }
 
 TEST_SUITE_END();

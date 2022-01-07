@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 
 using namespace Luau;
 
@@ -282,16 +283,19 @@ local c = b:foo(1, 2)
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(UnfrozenFixture, "optional_union_follow")
+TEST_CASE("optional_union_follow")
 {
-    CheckResult result = check(R"(
+    Fixture fix(FFlag::LuauUseCommittingTxnLog);
+
+    CheckResult result = fix.check(R"(
 local y: number? = 2
 local x = y
 local function f(a: number, b: typeof(x), c: typeof(x)) return -a end
 return f()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    REQUIRE_EQ(result.errors.size(), 1);
+    // LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     auto acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);

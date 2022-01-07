@@ -198,32 +198,32 @@ struct TypeChecker
      */
     TypeId anyIfNonstrict(TypeId ty) const;
 
-    /** Attempt to unify the types left and right.  Treat any failures as type errors
-     * in the final typecheck report.
+    /** Attempt to unify the types.
+     * Treat any failures as type errors in the final typecheck report.
      */
-    bool unify(TypeId left, TypeId right, const Location& location);
-    bool unify(TypePackId left, TypePackId right, const Location& location, CountMismatch::Context ctx = CountMismatch::Context::Arg);
+    bool unify(TypeId subTy, TypeId superTy, const Location& location);
+    bool unify(TypePackId subTy, TypePackId superTy, const Location& location, CountMismatch::Context ctx = CountMismatch::Context::Arg);
 
-    /** Attempt to unify the types left and right.
-     * If this fails, and the right type can be instantiated, do so and try unification again.
+    /** Attempt to unify the types.
+     * If this fails, and the subTy type can be instantiated, do so and try unification again.
      */
-    bool unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId left, TypeId right, const Location& location);
-    void unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId left, TypeId right, Unifier& state);
+    bool unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId subTy, TypeId superTy, const Location& location);
+    void unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId subTy, TypeId superTy, Unifier& state);
 
-    /** Attempt to unify left with right.
+    /** Attempt to unify.
      * If there are errors, undo everything and return the errors.
      * If there are no errors, commit and return an empty error vector.
      */
-    ErrorVec tryUnify(TypeId left, TypeId right, const Location& location);
-    ErrorVec tryUnify(TypePackId left, TypePackId right, const Location& location);
+    template<typename Id>
+    ErrorVec tryUnify_(Id subTy, Id superTy, const Location& location);
+    ErrorVec tryUnify(TypeId subTy, TypeId superTy, const Location& location);
+    ErrorVec tryUnify(TypePackId subTy, TypePackId superTy, const Location& location);
 
     // Test whether the two type vars unify.  Never commits the result.
-    ErrorVec canUnify(TypeId superTy, TypeId subTy, const Location& location);
-    ErrorVec canUnify(TypePackId superTy, TypePackId subTy, const Location& location);
-
-    // Variant that takes a preexisting 'seen' set.  We need this in certain cases to avoid infinitely recursing
-    // into cyclic types.
-    ErrorVec canUnify(const std::vector<std::pair<TypeId, TypeId>>& seen, TypeId left, TypeId right, const Location& location);
+    template<typename Id>
+    ErrorVec canUnify_(Id subTy, Id superTy, const Location& location);
+    ErrorVec canUnify(TypeId subTy, TypeId superTy, const Location& location);
+    ErrorVec canUnify(TypePackId subTy, TypePackId superTy, const Location& location);
 
     std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location);
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location);
@@ -236,12 +236,6 @@ struct TypeChecker
 
     std::optional<TypeId> tryStripUnionFromNil(TypeId ty);
     TypeId stripFromNilAndReport(TypeId ty, const Location& location);
-
-    template<typename Id>
-    ErrorVec tryUnify_(Id left, Id right, const Location& location);
-
-    template<typename Id>
-    ErrorVec canUnify_(Id left, Id right, const Location& location);
 
 public:
     /*

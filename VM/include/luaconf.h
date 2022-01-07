@@ -138,10 +138,6 @@
 
 /* }================================================================== */
 
-/* Default number printing format and the string length limit */
-#define LUA_NUMBER_FMT "%.14g"
-#define LUAI_MAXNUMBER2STR 32 /* 16 digits, sign, point, and \0 */
-
 /*
 @@ LUAI_USER_ALIGNMENT_T is a type that requires maximum alignment.
 ** CHANGE it if your system requires alignments larger than double. (For

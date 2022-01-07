@@ -13,7 +13,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
-LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 0)
+LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 
 namespace Luau
 {

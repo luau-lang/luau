@@ -4803,8 +4803,6 @@ local bar = foo.nutrition + 100
 
 TEST_CASE_FIXTURE(Fixture, "require_failed_module")
 {
-    ScopedFastFlag luauModuleRequireErrorPack{"LuauModuleRequireErrorPack", true};
-
     fileResolver.source["game/A"] = R"(
 return unfortunately()
     )";

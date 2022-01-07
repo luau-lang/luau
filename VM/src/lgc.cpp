@@ -12,8 +12,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauArrayBoundary)
-
 #define GC_SWEEPMAX 40
 #define GC_SWEEPCOST 10
 

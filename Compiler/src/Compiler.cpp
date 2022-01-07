@@ -11,7 +11,6 @@
 #include <math.h>
 
 LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
-LUAU_FASTFLAGVARIABLE(LuauBit32CountBuiltin, false)
 
 namespace Luau
 {
@@ -178,6 +177,8 @@ struct Compiler
         // constant folding may remove some upvalue refs from bytecode, so this puts them back
         if (options.optimizationLevel >= 1 && options.debugLevel >= 2)
             gatherConstUpvals(func);
+
+        bytecode.setDebugFunctionLineDefined(func->location.begin.line + 1);
 
         if (options.debugLevel >= 1 && func->debugname.value)
             bytecode.setDebugFunctionName(sref(func->debugname));
@@ -3626,9 +3627,9 @@ struct Compiler
                 return LBF_BIT32_RROTATE;
             if (builtin.method == "rshift")
                 return LBF_BIT32_RSHIFT;
-            if (builtin.method == "countlz" && FFlag::LuauBit32CountBuiltin)
+            if (builtin.method == "countlz")
                 return LBF_BIT32_COUNTLZ;
-            if (builtin.method == "countrz" && FFlag::LuauBit32CountBuiltin)
+            if (builtin.method == "countrz")
                 return LBF_BIT32_COUNTRZ;
         }
 
