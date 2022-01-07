@@ -13,7 +13,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Read, false)
+LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Read, true)
 LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Force, false)
 
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
