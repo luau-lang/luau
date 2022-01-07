@@ -4,6 +4,8 @@
 
 Add `coroutine.close` function from Lua 5.4 that takes a suspended coroutine and makes it "dead" (non-runnable).
 
+**Status**: Implemented
+
 ## Motivation
 
 When implementing various higher level objects on top of coroutines, such as promises, it can be useful to cancel the coroutine execution externally - when the caller is not
