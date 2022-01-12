@@ -364,12 +364,12 @@ struct Compiler
                     else
                     {
                         args[i] = uint8_t(regs + 1 + i);
-                        compileExprTempTop(expr->args.data[i], args[i]);
+                        compileExprTempTop(expr->args.data[i], uint8_t(args[i]));
                     }
                 }
 
                 fastcallLabel = bytecode.emitLabel();
-                bytecode.emitABC(opc, uint8_t(bfid), args[0], 0);
+                bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), uint8_t(0));
                 if (opc != LOP_FASTCALL1)
                     bytecode.emitAux(args[1]);
 
@@ -385,7 +385,7 @@ struct Compiler
                     }
 
                     if (args[i] != regs + 1 + i)
-                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), args[i], 0);
+                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), uint8_t(0));
                 }
             }
             else
@@ -471,7 +471,7 @@ struct Compiler
 
             if (cid >= 0 && cid < 32768)
             {
-                bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
+                bytecode.emitAD(LOP_DUPCLOSURE, target, uint16_t(cid));
                 shared = true;
             }
         }
@@ -493,7 +493,7 @@ struct Compiler
                 // get local variable
                 uint8_t reg = getLocal(uv);
 
-                bytecode.emitABC(LOP_CAPTURE, immutable ? LCT_VAL : LCT_REF, reg, 0);
+                bytecode.emitABC(LOP_CAPTURE, uint8_t(immutable ? LCT_VAL : LCT_REF), reg, 0);
             }
             else
             {
@@ -635,7 +635,7 @@ struct Compiler
 
         if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
         {
-            bytecode.emitAD(opc, rr, 0);
+            bytecode.emitAD(opc, uint8_t(rr), 0);
             bytecode.emitAux(rl);
         }
         else
@@ -1144,7 +1144,7 @@ struct Compiler
             }
             else
             {
-                bytecode.emitABC(LOP_NEWTABLE, reg, encodedHashSize, 0);
+                bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
                 bytecode.emitAux(0);
             }
         }
@@ -1157,7 +1157,7 @@ struct Compiler
             bool trailingVarargs = last && last->kind == AstExprTable::Item::List && last->value->is<AstExprVarargs>();
             LUAU_ASSERT(!trailingVarargs || arraySize > 0);
 
-            bytecode.emitABC(LOP_NEWTABLE, reg, encodedHashSize, 0);
+            bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
             bytecode.emitAux(arraySize - trailingVarargs + indexSize);
         }
 
