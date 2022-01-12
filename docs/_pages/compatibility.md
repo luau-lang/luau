@@ -107,7 +107,7 @@ Floor division is less harmful, but it's used rarely enough that `math.floor(a/b
 | const variables | ❌ | while there's some demand for const variables, we'd never adopt this syntax |
 | new implementation for math.random | ✔️ | our RNG is based on PCG, unlike Lua 5.4 which uses Xoroshiro |
 | optional `init` argument to `string.gmatch` | 🤷‍♀️ | no strong use cases |
-| new functions `lua_resetthread` and `coroutine.close` | 🤷‍ | not useful without to-be-closed variables |
+| new functions `lua_resetthread` and `coroutine.close` | ✔️ ||
 | coercions string-to-number moved to the string library | 😞 | we love this, but it breaks compatibility |
 | new format `%p` in `string.format` | 🤷‍♀️ | no strong use cases |
 | `utf8` library accepts codepoints up to 2^31 | 🤷‍♀️ | no strong use cases |
