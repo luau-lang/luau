@@ -369,7 +369,7 @@ struct Compiler
                 }
 
                 fastcallLabel = bytecode.emitLabel();
-                bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), uint8_t(0));
+                bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
                 if (opc != LOP_FASTCALL1)
                     bytecode.emitAux(args[1]);
 
@@ -385,7 +385,7 @@ struct Compiler
                     }
 
                     if (args[i] != regs + 1 + i)
-                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), uint8_t(0));
+                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
                 }
             }
             else
