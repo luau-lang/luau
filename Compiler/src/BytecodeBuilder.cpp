@@ -714,7 +714,7 @@ void BytecodeBuilder::writeLineInfo(std::string& ss) const
     // third pass: write resulting data
     int logspan = log2(span);
 
-    writeByte(ss, static_cast<unsigned char>(logspan));
+    writeByte(ss, uint8_t(logspan));
 
     uint8_t lastOffset = 0;
 
@@ -723,9 +723,9 @@ void BytecodeBuilder::writeLineInfo(std::string& ss) const
         int delta = lines[i] - baseline[i >> logspan];
         // Check delta if is a valid byte value
         LUAU_ASSERT(delta >= 0 && delta <= 255);
-        
-        writeByte(ss, static_cast<uint8_t>(delta) - lastOffset);
-        lastOffset = static_cast<uint8_t>(delta);
+
+        writeByte(ss, uint8_t(delta) - lastOffset);
+        lastOffset = uint8_t(delta);
     }
 
     int lastLine = 0;
