@@ -721,7 +721,6 @@ void BytecodeBuilder::writeLineInfo(std::string& ss) const
     for (size_t i = 0; i < lines.size(); ++i)
     {
         int delta = lines[i] - baseline[i >> logspan];
-        // Check delta if is a valid byte value
         LUAU_ASSERT(delta >= 0 && delta <= 255);
 
         writeByte(ss, uint8_t(delta) - lastOffset);
