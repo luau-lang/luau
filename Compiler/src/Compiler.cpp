@@ -471,7 +471,7 @@ struct Compiler
 
             if (cid >= 0 && cid < 32768)
             {
-                bytecode.emitAD(LOP_DUPCLOSURE, target, uint16_t(cid));
+                bytecode.emitAD(LOP_DUPCLOSURE, target, int16_t(cid));
                 shared = true;
             }
         }
