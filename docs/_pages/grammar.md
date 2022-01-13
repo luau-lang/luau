@@ -24,7 +24,7 @@ stat = varlist '=' explist |
     'function' funcname funcbody |
     'local' 'function' NAME funcbody |
     'local' bindinglist ['=' explist] |
-    ['export'] type NAME ['<' GenericTypeList '>'] '=' Type
+    ['export'] 'type' NAME ['<' GenericTypeList '>'] '=' Type
 
 laststat = 'return' [explist] | 'break' | 'continue'
 
