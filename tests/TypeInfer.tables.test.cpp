@@ -65,7 +65,7 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
 
 TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
 {
-    CheckResult result = check("local t = {prop=999}    t.foo = 'bar'");
+    CheckResult result = check("function mkt() return {prop=999} end    local t = mkt()    t.foo = 'bar'");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     TypeError& err = result.errors[0];
@@ -77,7 +77,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
     CHECK_EQ(s, "{| prop: number |}");
     CHECK_EQ(error->prop, "foo");
     CHECK_EQ(error->context, CannotExtendTable::Property);
-    CHECK_EQ(err.location, (Location{Position{0, 24}, Position{0, 29}}));
+    CHECK_EQ(err.location, (Location{Position{0, 59}, Position{0, 64}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_seal_an_unsealed_table_by_passing_it_to_a_function_that_takes_a_sealed_table")
@@ -1155,7 +1155,8 @@ TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_builtin_sealed_table_mu
 TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_local_sealed_table_must_fail")
 {
     CheckResult result = check(R"(
-        local t = {x = 1}
+        function mkt() return {x = 1} end
+        local t = mkt()
         function t.m() end
     )");
 
@@ -1165,11 +1166,36 @@ TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_local_sealed_table_must_fail
 TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_local_sealed_table_must_fail")
 {
     CheckResult result = check(R"(
-        local t = {x = 1}
+        function mkt() return {x = 1} end
+        local t = mkt()
         function t:m() end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_local_unsealed_table_is_ok")
+{
+    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
+
+    CheckResult result = check(R"(
+        local t = {x = 1}
+        function t.m() end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_local_unsealed_table_is_ok")
+{
+    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
+
+    CheckResult result = check(R"(
+        local t = {x = 1}
+        function t:m() end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 // This unit test could be flaky if the fix has regressed.
@@ -1439,11 +1465,35 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
     CHECK_EQ("{|  |}", toString(mp->subType));
 }
 
-TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer")
+TEST_CASE_FIXTURE(Fixture, "casting_unsealed_tables_with_props_into_table_with_indexer")
 {
+    ScopedFastFlag sff[]{
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauUnsealedTableLiteral", true},
+    };
+
     CheckResult result = check(R"(
         type StringToStringMap = { [string]: string }
         local rt: StringToStringMap = { ["foo"] = 1 }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    ToStringOptions o{/* exhaustive= */ true};
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("{| [string]: string |}", toString(tm->wantedType, o));
+    // Should t now have an indexer?
+    // It would if the assignment to rt was correctly typed. 
+    CHECK_EQ("{ [string]: string, foo: number }", toString(tm->givenType, o));
+}
+
+TEST_CASE_FIXTURE(Fixture, "casting_sealed_tables_with_props_into_table_with_indexer")
+{
+    CheckResult result = check(R"(
+        type StringToStringMap = { [string]: string }
+        function mkrt() return { ["foo"] = 1 } end
+        local rt: StringToStringMap = mkrt()
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -1467,7 +1517,10 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
+    ScopedFastFlag sff[]{
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauUnsealedTableLiteral", true},
+    };
 
     CheckResult result = check(R"(
         local function foo(a: {[string]: number, a: string}) end
@@ -1480,7 +1533,7 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("{| [string]: number, a: string |}", toString(tm->wantedType, o));
-    CHECK_EQ("{| a: number |}", toString(tm->givenType, o));
+    CHECK_EQ("{ a: number }", toString(tm->givenType, o));
 }
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer4")
@@ -1536,8 +1589,11 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_missing_props_dont_report_multi
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_dont_report_multiple_errors")
 {
     CheckResult result = check(R"(
-        local vec3 = {{x = 1, y = 2, z = 3}}
-        local vec1 = {{x = 1}}
+        function mkvec3() return {x = 1, y = 2, z = 3} end
+        function mkvec1() return {x = 1} end
+
+        local vec3 = {mkvec3()}
+        local vec1 = {mkvec1()}
 
         vec1 = vec3
     )");
@@ -1620,7 +1676,8 @@ TEST_CASE_FIXTURE(Fixture, "reasonable_error_when_adding_a_nonexistent_property_
 {
     CheckResult result = check(R"(
         --!strict
-        local A = {"value"}
+        function mkA() return {"value"} end
+        local A = mkA()
         A.B = "Hello"
     )");
 
@@ -1668,7 +1725,8 @@ TEST_CASE_FIXTURE(Fixture, "hide_table_error_properties")
         --!strict
 
         local function f()
-        local t = { x = 1 }
+        local function mkt() return { x = 1 } end
+        local t = mkt()
 
         function t.a() end
         function t.b() end
@@ -1995,7 +2053,10 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_metatable_prop")
 {
-    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
+    ScopedFastFlag sff[]{
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauUnsealedTableLiteral", true},
+    };
 
     CheckResult result = check(R"(
 local a1 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
@@ -2010,7 +2071,7 @@ local c2: typeof(a2) = b2
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
 caused by:
-  Type '{| x: number, y: string |}' could not be converted into '{| x: number, y: number |}'
+  Type '{ x: number, y: string }' could not be converted into '{ x: number, y: number }'
 caused by:
   Property 'y' is not compatible. Type 'string' could not be converted into 'number')");
 
@@ -2018,7 +2079,7 @@ caused by:
     {
         CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
 caused by:
-  Type '{| __call: (a, b) -> () |}' could not be converted into '{| __call: <a>(a) -> () |}'
+  Type '{ __call: (a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
 caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
     }
@@ -2026,7 +2087,7 @@ caused by:
     {
         CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
 caused by:
-  Type '{| __call: (a, b) -> () |}' could not be converted into '{| __call: <a>(a) -> () |}'
+  Type '{ __call: (a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
 caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()')");
     }
@@ -2059,6 +2120,7 @@ TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
         {"LuauPropertiesGetExpectedType", true},
         {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
+        {"LuauUnsealedTableLiteral", true},
     };
 
     CheckResult result = check(R"(
@@ -2077,7 +2139,7 @@ local y: number = tmp.p.y
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'tmp' could not be converted into 'HasSuper'
 caused by:
-  Property 'p' is not compatible. Table type '{| x: number, y: number |}' not compatible with type 'Super' because the former has extra field 'y')");
+  Property 'p' is not compatible. Table type '{ x: number, y: number }' not compatible with type 'Super' because the former has extra field 'y')");
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
@@ -2103,7 +2165,10 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "recursive_metatable_type_call")
 {
-    ScopedFastFlag luauFixRecursiveMetatableCall{"LuauFixRecursiveMetatableCall", true};
+    ScopedFastFlag sff[]{
+        {"LuauFixRecursiveMetatableCall", true},
+        {"LuauUnsealedTableLiteral", true},
+    };
 
     CheckResult result = check(R"(
 local b
@@ -2112,7 +2177,7 @@ b()
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable {| __call: t1 |}, {  } })");
+    CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable { __call: t1 }, {  } })");
 }
 
 TEST_SUITE_END();

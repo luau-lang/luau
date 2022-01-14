@@ -1031,9 +1031,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_n
 
 TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint_ifelse_expression")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
-
     CheckResult result = check(R"(
         function f(v:string?)
             return if v then v else tostring(v)
@@ -1048,9 +1045,6 @@ TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint_ifelse_expression")
 
 TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint_ifelse_expression")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
-
     CheckResult result = check(R"(
         function f(v:string?)
             return if not v then tostring(v) else v
@@ -1065,9 +1059,6 @@ TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint_ifelse_expression")
 
 TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
-
     CheckResult result = check(R"(
         function returnOne(x)
             return 1
@@ -1117,6 +1108,25 @@ TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 30})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_refined2")
+{
+    ScopedFastFlag sff{"LuauLValueAsKey", true};
+
+    CheckResult result = check(R"(
+        type T = { x: { y: number }? }
+
+        local function f(t: T?)
+            if t and t.x then
+                local foo = t.x.y
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number", toString(requireTypeAtPosition({5, 32})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscript_expr_is_constant_string")

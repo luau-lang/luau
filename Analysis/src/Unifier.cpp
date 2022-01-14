@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauOccursCheckOkWithRecursiveFunctions, false)
 LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauProperTypeLevels);
+LUAU_FASTFLAGVARIABLE(LuauUnifyPackTails, false)
 LUAU_FASTFLAGVARIABLE(LuauExtendedUnionMismatchError, false)
 LUAU_FASTFLAGVARIABLE(LuauExtendedFunctionMismatchError, false)
 
@@ -1170,9 +1171,15 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 // If both are at the end, we're done
                 if (!superIter.good() && !subIter.good())
                 {
+                    if (FFlag::LuauUnifyPackTails && subTpv->tail && superTpv->tail)
+                    {
+                        tryUnify_(*subTpv->tail, *superTpv->tail);
+                        break;
+                    }
+
                     const bool lFreeTail = superTpv->tail && log.getMutable<FreeTypePack>(log.follow(*superTpv->tail)) != nullptr;
                     const bool rFreeTail = subTpv->tail && log.getMutable<FreeTypePack>(log.follow(*subTpv->tail)) != nullptr;
-                    if (lFreeTail && rFreeTail)
+                    if (!FFlag::LuauUnifyPackTails && lFreeTail && rFreeTail)
                         tryUnify_(*subTpv->tail, *superTpv->tail);
                     else if (lFreeTail)
                         tryUnify_(emptyTp, *superTpv->tail);
@@ -1370,9 +1377,15 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 // If both are at the end, we're done
                 if (!superIter.good() && !subIter.good())
                 {
+                    if (FFlag::LuauUnifyPackTails && subTpv->tail && superTpv->tail)
+                    {
+                        tryUnify_(*subTpv->tail, *superTpv->tail);
+                        break;
+                    }
+
                     const bool lFreeTail = superTpv->tail && get<FreeTypePack>(follow(*superTpv->tail)) != nullptr;
                     const bool rFreeTail = subTpv->tail && get<FreeTypePack>(follow(*subTpv->tail)) != nullptr;
-                    if (lFreeTail && rFreeTail)
+                    if (!FFlag::LuauUnifyPackTails && lFreeTail && rFreeTail)
                         tryUnify_(*subTpv->tail, *superTpv->tail);
                     else if (lFreeTail)
                         tryUnify_(emptyTp, *superTpv->tail);

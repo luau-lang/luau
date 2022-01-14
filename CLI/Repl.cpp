@@ -19,6 +19,16 @@
 #include <fcntl.h>
 #endif
 
+LUAU_FASTFLAG(DebugLuauTimeTracing)
+
+enum class CliMode
+{
+    Unknown,
+    Repl,
+    Compile,
+    RunSourceFiles
+};
+
 enum class CompileFormat
 {
     Text,
@@ -485,8 +495,10 @@ static void displayHelp(const char* argv0)
     printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary or text)\n");
     printf("\n");
     printf("Available options:\n");
+    printf("  -h, --help: Display this usage message.\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
+    printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -503,70 +515,111 @@ int main(int argc, char** argv)
         if (strncmp(flag->name, "Luau", 4) == 0)
             flag->value = true;
 
-    if (argc == 1)
-    {
-        runRepl();
-        return 0;
-    }
+    CliMode mode = CliMode::Unknown;
+    CompileFormat compileFormat{};
+    int profile = 0;
+    bool coverage = false;
 
-    if (argc >= 2 && strcmp(argv[1], "--help") == 0)
-    {
-        displayHelp(argv[0]);
-        return 0;
-    }
-
-
+    // Set the mode if the user has explicitly specified one.
+    int argStart = 1;
     if (argc >= 2 && strncmp(argv[1], "--compile", strlen("--compile")) == 0)
     {
-        CompileFormat format = CompileFormat::Text;
+        argStart++;
+        mode = CliMode::Compile;
+        if (strcmp(argv[1], "--compile") == 0)
+        {
+            compileFormat = CompileFormat::Text;
+        }
+        else if (strcmp(argv[1], "--compile=binary") == 0)
+        {
+            compileFormat = CompileFormat::Binary;
+        }
+        else if (strcmp(argv[1], "--compile=text") == 0)
+        {
+            compileFormat = CompileFormat::Text;
+        }
+        else
+        {
+            fprintf(stdout, "Error: Unrecognized value for '--compile' specified.\n");
+            return -1;
+        }
+    }
 
-        if (strcmp(argv[1], "--compile=binary") == 0)
-            format = CompileFormat::Binary;
+    for (int i = argStart; i < argc; i++)
+    {
+        if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "--help") == 0)
+        {
+            displayHelp(argv[0]);
+            return 0;
+        }
+        else if (strcmp(argv[i], "--profile") == 0)
+        {
+            profile = 10000; // default to 10 KHz
+        }
+        else if (strncmp(argv[i], "--profile=", 10) == 0)
+        {
+            profile = atoi(argv[i] + 10);
+        }
+        else if (strcmp(argv[i], "--coverage") == 0)
+        {
+            coverage = true;
+        }
+        else if (strcmp(argv[i], "--timetrace") == 0)
+        {
+            FFlag::DebugLuauTimeTracing.value = true;
 
+#if !defined(LUAU_ENABLE_TIME_TRACE)
+            printf("To run with --timetrace, Luau has to be built with LUAU_ENABLE_TIME_TRACE enabled\n");
+            return 1;
+#endif
+        }
+        else if (argv[i][0] == '-')
+        {
+            fprintf(stdout, "Error: Unrecognized option '%s'.\n\n", argv[i]);
+            displayHelp(argv[0]);
+            return 1;
+        }
+    }
+
+    const std::vector<std::string> files = getSourceFiles(argc, argv);
+    if (mode == CliMode::Unknown)
+    {
+        mode = files.empty() ? CliMode::Repl : CliMode::RunSourceFiles;
+    }
+
+    switch (mode)
+    {
+    case CliMode::Compile:
+    {
 #ifdef _WIN32
-        if (format == CompileFormat::Binary)
+        if (compileFormat == CompileFormat::Binary)
             _setmode(_fileno(stdout), _O_BINARY);
 #endif
-
-        std::vector<std::string> files = getSourceFiles(argc, argv);
 
         int failed = 0;
 
         for (const std::string& path : files)
-            failed += !compileFile(path.c_str(), format);
+            failed += !compileFile(path.c_str(), compileFormat);
 
-        return failed;
+        return failed ? 1 : 0;
     }
-
+    case CliMode::Repl:
+    {
+        runRepl();
+        return 0;
+    }
+    case CliMode::RunSourceFiles:
     {
         std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
         lua_State* L = globalState.get();
 
         setupState(L);
 
-        int profile = 0;
-        bool coverage = false;
-
-        for (int i = 1; i < argc; ++i)
-        {
-            if (argv[i][0] != '-')
-                continue;
-
-            if (strcmp(argv[i], "--profile") == 0)
-                profile = 10000; // default to 10 KHz
-            else if (strncmp(argv[i], "--profile=", 10) == 0)
-                profile = atoi(argv[i] + 10);
-            else if (strcmp(argv[i], "--coverage") == 0)
-                coverage = true;
-        }
-
         if (profile)
             profilerStart(L, profile);
 
         if (coverage)
             coverageInit(L);
-
-        std::vector<std::string> files = getSourceFiles(argc, argv);
 
         int failed = 0;
 
@@ -582,7 +635,11 @@ int main(int argc, char** argv)
         if (coverage)
             coverageDump("coverage.out");
 
-        return failed;
+        return failed ? 1 : 0;
+    }
+    case CliMode::Unknown:
+    default:
+        LUAU_ASSERT(!"Unhandled cli mode.");
     }
 }
 

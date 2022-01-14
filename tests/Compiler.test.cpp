@@ -603,9 +603,9 @@ RETURN R0 1
 )");
 }
 
-TEST_CASE("EmptyTableHashSizePredictionOptimization")
+TEST_CASE("TableSizePredictionBasic")
 {
-    const char* hashSizeSource = R"(
+    CHECK_EQ("\n" + compileFunction0(R"(
 local t = {}
 t.a = 1
 t.b = 1
@@ -616,36 +616,8 @@ t.f = 1
 t.g = 1
 t.h = 1
 t.i = 1
-)";
-
-    const char* hashSizeSource2 = R"(
-local t = {}
-t.x = 1
-t.x = 2
-t.x = 3
-t.x = 4
-t.x = 5
-t.x = 6
-t.x = 7
-t.x = 8
-t.x = 9
-)";
-
-    const char* arraySizeSource = R"(
-local t = {}
-t[1] = 1
-t[2] = 1
-t[3] = 1
-t[4] = 1
-t[5] = 1
-t[6] = 1
-t[7] = 1
-t[8] = 1
-t[9] = 1
-t[10] = 1
-)";
-
-    CHECK_EQ("\n" + compileFunction0(hashSizeSource), R"(
+)"),
+        R"(
 NEWTABLE R0 16 0
 LOADN R1 1
 SETTABLEKS R1 R0 K0
@@ -668,7 +640,19 @@ SETTABLEKS R1 R0 K8
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction0(hashSizeSource2), R"(
+    CHECK_EQ("\n" + compileFunction0(R"(
+local t = {}
+t.x = 1
+t.x = 2
+t.x = 3
+t.x = 4
+t.x = 5
+t.x = 6
+t.x = 7
+t.x = 8
+t.x = 9
+)"),
+        R"(
 NEWTABLE R0 1 0
 LOADN R1 1
 SETTABLEKS R1 R0 K0
@@ -691,7 +675,20 @@ SETTABLEKS R1 R0 K0
 RETURN R0 0
 )");
 
-    CHECK_EQ("\n" + compileFunction0(arraySizeSource), R"(
+    CHECK_EQ("\n" + compileFunction0(R"(
+local t = {}
+t[1] = 1
+t[2] = 1
+t[3] = 1
+t[4] = 1
+t[5] = 1
+t[6] = 1
+t[7] = 1
+t[8] = 1
+t[9] = 1
+t[10] = 1
+)"),
+        R"(
 NEWTABLE R0 0 10
 LOADN R1 1
 SETTABLEN R1 R0 1
@@ -714,6 +711,27 @@ SETTABLEN R1 R0 9
 LOADN R1 1
 SETTABLEN R1 R0 10
 RETURN R0 0
+)");
+}
+
+TEST_CASE("TableSizePredictionObject")
+{
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+t.field = 1
+function t:getfield()
+    return self.field
+end
+return t
+)",
+                        1),
+        R"(
+NEWTABLE R0 2 0
+LOADN R1 1
+SETTABLEKS R1 R0 K0
+DUPCLOSURE R1 K1
+SETTABLEKS R1 R0 K2
+RETURN R0 1
 )");
 }
 
@@ -1031,9 +1049,6 @@ RETURN R0 1
 
 TEST_CASE("IfElseExpression")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
-
     // codegen for a true constant condition
     CHECK_EQ("\n" + compileFunction0("return if true then 10 else 20"), R"(
 LOADN R0 10
@@ -3058,7 +3073,7 @@ RETURN R0 0
 
     // table variants (indexed by string, number, variable)
     CHECK_EQ("\n" + compileFunction0("local a = {} a.foo += 5"), R"(
-NEWTABLE R0 1 0
+NEWTABLE R0 0 0
 GETTABLEKS R1 R0 K0
 ADDK R1 R1 K1
 SETTABLEKS R1 R0 K0
@@ -3066,7 +3081,7 @@ RETURN R0 0
 )");
 
     CHECK_EQ("\n" + compileFunction0("local a = {} a[1] += 5"), R"(
-NEWTABLE R0 0 1
+NEWTABLE R0 0 0
 GETTABLEN R1 R0 1
 ADDK R1 R1 K0
 SETTABLEN R1 R0 1

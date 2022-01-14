@@ -212,24 +212,24 @@ public:
         if (hasSeen(&ftv))
             return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("<Cycle>"));
 
-        AstArray<AstName> generics;
+        AstArray<AstGenericType> generics;
         generics.size = ftv.generics.size();
-        generics.data = static_cast<AstName*>(allocator->allocate(sizeof(AstName) * generics.size));
+        generics.data = static_cast<AstGenericType*>(allocator->allocate(sizeof(AstGenericType) * generics.size));
         size_t numGenerics = 0;
         for (auto it = ftv.generics.begin(); it != ftv.generics.end(); ++it)
         {
             if (auto gtv = get<GenericTypeVar>(*it))
-                generics.data[numGenerics++] = AstName(gtv->name.c_str());
+                generics.data[numGenerics++] = {AstName(gtv->name.c_str()), Location(), nullptr};
         }
 
-        AstArray<AstName> genericPacks;
+        AstArray<AstGenericTypePack> genericPacks;
         genericPacks.size = ftv.genericPacks.size();
-        genericPacks.data = static_cast<AstName*>(allocator->allocate(sizeof(AstName) * genericPacks.size));
+        genericPacks.data = static_cast<AstGenericTypePack*>(allocator->allocate(sizeof(AstGenericTypePack) * genericPacks.size));
         size_t numGenericPacks = 0;
         for (auto it = ftv.genericPacks.begin(); it != ftv.genericPacks.end(); ++it)
         {
             if (auto gtv = get<GenericTypeVar>(*it))
-                genericPacks.data[numGenericPacks++] = AstName(gtv->name.c_str());
+                genericPacks.data[numGenericPacks++] = {AstName(gtv->name.c_str()), Location(), nullptr};
         }
 
         AstArray<AstType*> argTypes;

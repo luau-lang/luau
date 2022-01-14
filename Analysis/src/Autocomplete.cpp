@@ -13,11 +13,10 @@
 #include <utility>
 
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
-LUAU_FASTFLAG(LuauIfElseExpressionAnalysisSupport)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompletePreferToCallFunctions, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteFirstArg, false);
 LUAU_FASTFLAGVARIABLE(LuauCompleteBrokenStringParams, false);
+LUAU_FASTFLAGVARIABLE(LuauMissingFollowACMetatables, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -291,51 +290,23 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         expectedType = follow(*it);
     }
 
-    if (FFlag::LuauAutocompletePreferToCallFunctions)
+    // We also want to suggest functions that return compatible result
+    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
     {
-        // We also want to suggest functions that return compatible result
-        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
-        {
-            auto [retHead, retTail] = flatten(ftv->retType);
-
-            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
-                return TypeCorrectKind::CorrectFunctionResult;
-
-            // We might only have a variadic tail pack, check if the element is compatible
-            if (retTail)
-            {
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
-                    return TypeCorrectKind::CorrectFunctionResult;
-            }
-        }
-
-        return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
-    }
-    else
-    {
-        if (canUnify(ty, expectedType))
-            return TypeCorrectKind::Correct;
-
-        // We also want to suggest functions that return compatible result
-        const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
-
-        if (!ftv)
-            return TypeCorrectKind::None;
-
         auto [retHead, retTail] = flatten(ftv->retType);
 
-        if (!retHead.empty())
-            return canUnify(retHead.front(), expectedType) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
+        if (!retHead.empty() && canUnify(retHead.front(), expectedType))
+            return TypeCorrectKind::CorrectFunctionResult;
 
         // We might only have a variadic tail pack, check if the element is compatible
         if (retTail)
         {
-            if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)))
-                return canUnify(vtp->ty, expectedType) ? TypeCorrectKind::CorrectFunctionResult : TypeCorrectKind::None;
+            if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
+                return TypeCorrectKind::CorrectFunctionResult;
         }
-
-        return TypeCorrectKind::None;
     }
+
+    return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
 
 enum class PropIndexType
@@ -435,13 +406,28 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
-            if (get<TableTypeVar>(indexIt->second.type) || get<MetatableTypeVar>(indexIt->second.type))
-                autocompleteProps(module, typeArena, indexIt->second.type, indexType, nodes, result, seen);
-            else if (auto indexFunction = get<FunctionTypeVar>(indexIt->second.type))
+            if (FFlag::LuauMissingFollowACMetatables)
             {
-                std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
-                if (indexFunctionResult)
-                    autocompleteProps(module, typeArena, *indexFunctionResult, indexType, nodes, result, seen);
+                TypeId followed = follow(indexIt->second.type);
+                if (get<TableTypeVar>(followed) || get<MetatableTypeVar>(followed))
+                    autocompleteProps(module, typeArena, followed, indexType, nodes, result, seen);
+                else if (auto indexFunction = get<FunctionTypeVar>(followed))
+                {
+                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
+                    if (indexFunctionResult)
+                        autocompleteProps(module, typeArena, *indexFunctionResult, indexType, nodes, result, seen);
+                }
+            }
+            else
+            {
+                if (get<TableTypeVar>(indexIt->second.type) || get<MetatableTypeVar>(indexIt->second.type))
+                    autocompleteProps(module, typeArena, indexIt->second.type, indexType, nodes, result, seen);
+                else if (auto indexFunction = get<FunctionTypeVar>(indexIt->second.type))
+                {
+                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
+                    if (indexFunctionResult)
+                        autocompleteProps(module, typeArena, *indexFunctionResult, indexType, nodes, result, seen);
+                }
             }
         }
     }
@@ -1224,7 +1210,7 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
         if (auto it = module.astTypes.find(node->asExpr()))
             autocompleteProps(module, typeArena, *it, PropIndexType::Point, ancestry, result);
     }
-    else if (FFlag::LuauIfElseExpressionAnalysisSupport && autocompleteIfElseExpression(node, ancestry, position, result))
+    else if (autocompleteIfElseExpression(node, ancestry, position, result))
         return;
     else if (node->is<AstExprFunction>())
         return;
@@ -1261,8 +1247,7 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
         TypeCorrectKind correctForFunction =
             functionIsExpectedAt(module, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 
-        if (FFlag::LuauIfElseExpressionAnalysisSupport)
-            result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
+        result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
         result["true"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForBoolean};
         result["false"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForBoolean};
         result["nil"] = {AutocompleteEntryKind::Keyword, typeChecker.nilType, false, false, correctForNil};

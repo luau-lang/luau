@@ -497,7 +497,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
     CHECK(arrayTable->indexer);
 
     CHECK(isInArena(array.type, mod.interfaceTypes));
-    CHECK_EQ(array.typeParams[0], arrayTable->indexer->indexResultType);
+    CHECK_EQ(array.typeParams[0].ty, arrayTable->indexer->indexResultType);
 }
 
 TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definitions")

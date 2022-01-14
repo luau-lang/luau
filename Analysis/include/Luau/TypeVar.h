@@ -181,6 +181,18 @@ const T* get(const SingletonTypeVar* stv)
         return nullptr;
 }
 
+struct GenericTypeDefinition
+{
+    TypeId ty;
+    std::optional<TypeId> defaultValue;
+};
+
+struct GenericTypePackDefinition
+{
+    TypePackId tp;
+    std::optional<TypePackId> defaultValue;
+};
+
 struct FunctionArgument
 {
     Name name;
@@ -358,8 +370,8 @@ struct ClassTypeVar
 struct TypeFun
 {
     // These should all be generic
-    std::vector<TypeId> typeParams;
-    std::vector<TypePackId> typePackParams;
+    std::vector<GenericTypeDefinition> typeParams;
+    std::vector<GenericTypePackDefinition> typePackParams;
 
     /** The underlying type.
      *
@@ -369,13 +381,13 @@ struct TypeFun
     TypeId type;
 
     TypeFun() = default;
-    TypeFun(std::vector<TypeId> typeParams, TypeId type)
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
         : typeParams(std::move(typeParams))
         , type(type)
     {
     }
 
-    TypeFun(std::vector<TypeId> typeParams, std::vector<TypePackId> typePackParams, TypeId type)
+    TypeFun(std::vector<GenericTypeDefinition> typeParams, std::vector<GenericTypePackDefinition> typePackParams, TypeId type)
         : typeParams(std::move(typeParams))
         , typePackParams(std::move(typePackParams))
         , type(type)

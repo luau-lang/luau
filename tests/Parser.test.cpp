@@ -1255,7 +1255,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_type_group")
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_if_statements")
 {
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
-    ScopedFastFlag sff{"LuauIfStatementRecursionGuard", true};
 
     matchParseErrorPrefix(
         "function f() if true then if true then if true then if true then if true then if true then if true then if true then if true "
@@ -1266,7 +1265,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_if_statements")
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_changed_elseif_statements")
 {
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
-    ScopedFastFlag sff{"LuauIfStatementRecursionGuard", true};
 
     matchParseErrorPrefix(
         "function f() if false then elseif false then elseif false then elseif false then elseif false then elseif false then elseif "
@@ -1276,7 +1274,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_changed_elseif_statements"
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions1")
 {
-    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
 
     matchParseError("function f() return if true then 1 elseif true then 2 elseif true then 3 elseif true then 4 elseif true then 5 elseif true then "
@@ -1286,7 +1283,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions1
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions2")
 {
-    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
     ScopedFastInt sfis{"LuauRecursionLimit", 10};
 
     matchParseError(
@@ -1962,6 +1958,37 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
     matchParseError("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'");
 }
 
+TEST_CASE_FIXTURE(Fixture, "function_type_matching_parenthesis")
+{
+    matchParseError("local a: <T>(number -> string", "Expected ')' (to close '(' at column 13), got '->'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+
+    AstStat* stat = parse(R"(
+type A<T = string> = {}
+type B<T... = ...number> = {}
+type C<T..., U... = T...> = {}
+type D<T..., U... = ()> = {}
+type E<T... = (), U... = ()> = {}
+type F<T... = (string), U... = ()> = (T...) -> U...
+type G<T... = ...number, U... = (string, number, boolean)> = (U...) -> T...
+    )");
+
+    REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+
+    matchParseError("type Y<T = number, U> = {}", "Expected default type after type name", Location{{0, 20}, {0, 21}});
+    matchParseError("type Y<T... = ...number, U...> = {}", "Expected default type pack after type pack name", Location{{0, 29}, {0, 30}});
+    matchParseError("type Y<T... = (string) -> number> = {}", "Expected type pack after '=', got type", Location{{0, 14}, {0, 32}});
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ParseErrorRecovery");
@@ -2455,10 +2482,19 @@ do end
     CHECK_EQ(1, result.errors.size());
 }
 
+TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauParseRecoverTypePackEllipsis{"LuauParseRecoverTypePackEllipsis", true};
+
+    ParseResult result = tryParse(R"(
+type Y<T..., U = T...> = (T...) -> U...
+    )");
+    CHECK_EQ(1, result.errors.size());
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 {
-    ScopedFastFlag sff{"LuauIfElseExpressionBaseSupport", true};
-
     {
         AstStat* stat = parse("return if true then 1 else 2");
 
@@ -2522,11 +2558,6 @@ type B<X...> = Packed<...number>
 type C<X...> = Packed<(number, X...)>
     )");
     REQUIRE(stat != nullptr);
-}
-
-TEST_CASE_FIXTURE(Fixture, "function_type_matching_parenthesis")
-{
-    matchParseError("local a: <T>(number -> string", "Expected ')' (to close '(' at column 13), got '->'");
 }
 
 TEST_SUITE_END();

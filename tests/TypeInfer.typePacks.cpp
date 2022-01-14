@@ -621,4 +621,328 @@ type Other = Packed<number, string>
     CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but only 1 is specified");
 }
 
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_explicit")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T, U = string> = { a: T, b: U }
+
+local a: Y<number, number> = { a = 2, b = 3 }
+local b: Y<number> = { a = 2, b = "s" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number, number>");
+    CHECK_EQ(toString(requireType("b")), "Y<number, string>");
+
+    result = check(R"(
+type Y<T = string> = { a: T }
+
+local a: Y<number> = { a = 2 }
+local b: Y<> = { a = "s" }
+local c: Y = { a = "s" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number>");
+    CHECK_EQ(toString(requireType("b")), "Y<string>");
+    CHECK_EQ(toString(requireType("c")), "Y<string>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_self")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T, U = T> = { a: T, b: U }
+
+local a: Y<number> = { a = 2, b = 3 }
+local b: Y<string> = { a = "h", b = "s" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number, number>");
+    CHECK_EQ(toString(requireType("b")), "Y<string, string>");
+
+    result = check(R"(
+type Y<T, U = (T, T) -> string> = { a: T, b: U }
+
+local a: Y<number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number, (number, number) -> string>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_chained")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T, U = T, V = U> = { a: T, b: U, c: V }
+
+local a: Y<number>
+local b: Y<number, string>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number, number, number>");
+    CHECK_EQ(toString(requireType("b")), "Y<number, string, string>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_explicit")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T... = (string, number)> = { a: (T...) -> () }
+local a: Y<>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<string, number>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_ty")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T, U... = ...T> = { a: T, b: (U...) -> T }
+
+local a: Y<number>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number, ...number>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_tp")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T..., U... = T...> = { a: (T...) -> U... }
+local a: Y<number, string>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<(number, string), (number, string)>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_chained_tp")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T..., U... = T..., V... = U...> = { a: (T...) -> U..., b: (T...) -> V... }
+local a: Y<number, string>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<(number, string), (number, string), (number, string)>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_mixed_self")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T, U = T, V... = ...number, W... = (T, U, V...)> = { a: (T, U, V...) -> W... }
+local a: Y<number>
+local b: Y<number, string>
+local c: Y<number, string, ...boolean>
+local d: Y<number, string, ...boolean, ...() -> ()>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "Y<number, number, ...number, (number, number, ...number)>");
+    CHECK_EQ(toString(requireType("b")), "Y<number, string, ...number, (number, string, ...number)>");
+    CHECK_EQ(toString(requireType("c")), "Y<number, string, ...boolean, (number, string, ...boolean)>");
+    CHECK_EQ(toString(requireType("d")), "Y<number, string, ...boolean, ...() -> ()>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T = T> = { a: T }
+local a: Y = { a = 2 }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+
+    result = check(R"(
+type Y<T... = T...> = { a: (T...) -> () }
+local a: Y<>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+
+    result = check(R"(
+type Y<T = string, U... = ...string> = { a: (T) -> U... }
+local a: Y<...number>
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Generic type 'Y<T, U...>' expects at least 1 type argument, but none are specified");
+
+    result = check(R"(
+type Packed<T> = (T) -> T
+local a: Packed
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
+
+    result = check(R"(
+type Y<T, U = T, V> = { a: T }
+local a: Y<number>
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+
+    result = check(R"(
+type Y<T..., U... = T..., V...> = { a: T }
+local a: Y<...number>
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_export")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    fileResolver.source["Module/Types"] = R"(
+export type A<T, U = string> = { a: T, b: U }
+export type B<T, U = T> = { a: T, b: U }
+export type C<T, U = (T, T) -> string> = { a: T, b: U }
+export type D<T, U = T, V = U> = { a: T, b: U, c: V }
+export type E<T... = (string, number)> = { a: (T...) -> () }
+export type F<T, U... = ...T> = { a: T, b: (U...) -> T }
+export type G<T..., U... = ()> = { b: (U...) -> T... }
+export type H<T... = ()> = { b: (T...) -> T... }
+return {}
+    )";
+
+    CheckResult resultTypes = frontend.check("Module/Types");
+    LUAU_REQUIRE_NO_ERRORS(resultTypes);
+
+    fileResolver.source["Module/Users"] = R"(
+local Types = require(script.Parent.Types)
+
+local a: Types.A<number>
+local b: Types.B<number>
+local c: Types.C<number>
+local d: Types.D<number>
+local e: Types.E<>
+local eVoid: Types.E<()>
+local f: Types.F<number>
+local g: Types.G<...number>
+local h: Types.H<>
+    )";
+
+    CheckResult resultUsers = frontend.check("Module/Users");
+    LUAU_REQUIRE_NO_ERRORS(resultUsers);
+
+    CHECK_EQ(toString(requireType("Module/Users", "a")), "A<number, string>");
+    CHECK_EQ(toString(requireType("Module/Users", "b")), "B<number, number>");
+    CHECK_EQ(toString(requireType("Module/Users", "c")), "C<number, (number, number) -> string>");
+    CHECK_EQ(toString(requireType("Module/Users", "d")), "D<number, number, number>");
+    CHECK_EQ(toString(requireType("Module/Users", "e")), "E<string, number>");
+    CHECK_EQ(toString(requireType("Module/Users", "eVoid")), "E<>");
+    CHECK_EQ(toString(requireType("Module/Users", "f")), "F<number, ...number>");
+    CHECK_EQ(toString(requireType("Module/Users", "g")), "G<...number, ()>");
+    CHECK_EQ(toString(requireType("Module/Users", "h")), "H<>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_skip_brackets")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type Y<T... = ...string> = (T...) -> number
+local a: Y
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "(...string) -> number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_confusing_types")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type A<T, U = T, V... = ...any, W... = V...> = (T, V...) -> (U, W...)
+type B = A<string, (number)>
+type C = A<string, (number), (boolean)>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("B"), {true}), "(string, ...any) -> (number, ...any)");
+    CHECK_EQ(toString(*lookupType("C"), {true}), "(string, boolean) -> (number, boolean)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_recursive_type")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    CheckResult result = check(R"(
+type F<K = string, V = (K) -> ()> = (K) -> V
+type R = { m: F<R> }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(*lookupType("R"), {true}), "t1 where t1 = {| m: (t1) -> (t1) -> () |}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")
+{
+    ScopedFastFlag luauUnifyPackTails{"LuauUnifyPackTails", true};
+    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
+
+    CheckResult result = check(R"(
+local a: () -> (number, ...string)
+local b: () -> (number, ...boolean)
+a = b
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '() -> (number, ...boolean)' could not be converted into '() -> (number, ...string)'
+caused by:
+  Type 'boolean' could not be converted into 'string')");
+}
+
 TEST_SUITE_END();

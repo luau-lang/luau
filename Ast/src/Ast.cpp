@@ -158,9 +158,10 @@ void AstExprIndexExpr::visit(AstVisitor* visitor)
     }
 }
 
-AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks, AstLocal* self,
-    const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth, const AstName& debugname,
-    std::optional<AstTypeList> returnAnnotation, AstTypePack* varargAnnotation, bool hasEnd, std::optional<Location> argLocation)
+AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+    AstLocal* self, const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth,
+    const AstName& debugname, std::optional<AstTypeList> returnAnnotation, AstTypePack* varargAnnotation, bool hasEnd,
+    std::optional<Location> argLocation)
     : AstExpr(ClassIndex(), location)
     , generics(generics)
     , genericPacks(genericPacks)
@@ -641,8 +642,8 @@ void AstStatLocalFunction::visit(AstVisitor* visitor)
         func->visit(visitor);
 }
 
-AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstName>& generics,
-    const AstArray<AstName>& genericPacks, AstType* type, bool exported)
+AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+    const AstArray<AstGenericTypePack>& genericPacks, AstType* type, bool exported)
     : AstStat(ClassIndex(), location)
     , name(name)
     , generics(generics)
@@ -655,7 +656,21 @@ AstStatTypeAlias::AstStatTypeAlias(const Location& location, const AstName& name
 void AstStatTypeAlias::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))
+    {
+        for (const AstGenericType& el : generics)
+        {
+            if (el.defaultValue)
+                el.defaultValue->visit(visitor);
+        }
+
+        for (const AstGenericTypePack& el : genericPacks)
+        {
+            if (el.defaultValue)
+                el.defaultValue->visit(visitor);
+        }
+
         type->visit(visitor);
+    }
 }
 
 AstStatDeclareGlobal::AstStatDeclareGlobal(const Location& location, const AstName& name, AstType* type)
@@ -671,8 +686,9 @@ void AstStatDeclareGlobal::visit(AstVisitor* visitor)
         type->visit(visitor);
 }
 
-AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstName>& generics,
-    const AstArray<AstName>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames, const AstTypeList& retTypes)
+AstStatDeclareFunction::AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+    const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
+    const AstTypeList& retTypes)
     : AstStat(ClassIndex(), location)
     , name(name)
     , generics(generics)
@@ -778,7 +794,7 @@ void AstTypeTable::visit(AstVisitor* visitor)
     }
 }
 
-AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks,
+AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
     const AstTypeList& argTypes, const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes)
     : AstType(ClassIndex(), location)
     , generics(generics)

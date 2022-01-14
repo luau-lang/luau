@@ -6,14 +6,19 @@
 #include "Luau/Common.h"
 #include "Luau/TimeTrace.h"
 
+#include "Builtins.h"
+#include "ConstantFolding.h"
+#include "TableShape.h"
+#include "ValueTracking.h"
+
 #include <algorithm>
 #include <bitset>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauIfElseExpressionBaseSupport)
-
 namespace Luau
 {
+
+using namespace Luau::Compile;
 
 static const uint32_t kMaxRegisterCount = 255;
 static const uint32_t kMaxUpvalueCount = 200;
@@ -62,7 +67,6 @@ static BytecodeBuilder::StringRef sref(AstArray<char> data)
 
 struct Compiler
 {
-    struct Constant;
     struct RegScope;
 
     Compiler(BytecodeBuilder& bytecode, const CompileOptions& options)
@@ -71,8 +75,9 @@ struct Compiler
         , functions(nullptr)
         , locals(nullptr)
         , globals(AstName())
+        , variables(nullptr)
         , constants(nullptr)
-        , predictedTableSize(nullptr)
+        , tableShapes(nullptr)
     {
     }
 
@@ -96,8 +101,10 @@ struct Compiler
                 local->location, "Out of upvalue registers when trying to allocate %s: exceeded limit %d", local->name.value, kMaxUpvalueCount);
 
         // mark local as captured so that closeLocals emits LOP_CLOSEUPVALS accordingly
-        Local& l = locals[local];
-        l.captured = true;
+        Variable* v = variables.find(local);
+
+        if (v && v->written)
+            locals[local].captured = true;
 
         upvals.push_back(local);
 
@@ -273,8 +280,8 @@ struct Compiler
 
         if (options.optimizationLevel >= 1)
         {
-            Builtin builtin = getBuiltin(expr->func);
-            bfid = getBuiltinFunctionId(builtin);
+            Builtin builtin = getBuiltin(expr->func, globals, variables);
+            bfid = getBuiltinFunctionId(builtin, options);
         }
 
         if (expr->self)
@@ -364,12 +371,12 @@ struct Compiler
                     else
                     {
                         args[i] = uint8_t(regs + 1 + i);
-                        compileExprTempTop(expr->args.data[i], args[i]);
+                        compileExprTempTop(expr->args.data[i], uint8_t(args[i]));
                     }
                 }
 
                 fastcallLabel = bytecode.emitLabel();
-                bytecode.emitABC(opc, uint8_t(bfid), args[0], 0);
+                bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
                 if (opc != LOP_FASTCALL1)
                     bytecode.emitAux(args[1]);
 
@@ -385,7 +392,7 @@ struct Compiler
                     }
 
                     if (args[i] != regs + 1 + i)
-                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), args[i], 0);
+                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
                 }
             }
             else
@@ -424,8 +431,10 @@ struct Compiler
 
         for (AstLocal* uv : f->upvals)
         {
-            Local* ul = locals.find(uv);
-            LUAU_ASSERT(ul);
+            Variable* ul = variables.find(uv);
+
+            if (!ul)
+                return false;
 
             if (ul->written)
                 return false;
@@ -437,10 +446,11 @@ struct Compiler
             // this will only deoptimize (outside of fenv changes) if top level code is executed twice with different results.
             if (uv->functionDepth != 0 || uv->loopDepth != 0)
             {
-                if (!ul->func)
+                AstExprFunction* uf = ul->init ? ul->init->as<AstExprFunction>() : nullptr;
+                if (!uf)
                     return false;
 
-                if (ul->func != func && !shouldShareClosure(ul->func))
+                if (uf != func && !shouldShareClosure(uf))
                     return false;
             }
         }
@@ -471,7 +481,7 @@ struct Compiler
 
             if (cid >= 0 && cid < 32768)
             {
-                bytecode.emitAD(LOP_DUPCLOSURE, target, cid);
+                bytecode.emitAD(LOP_DUPCLOSURE, target, int16_t(cid));
                 shared = true;
             }
         }
@@ -483,17 +493,15 @@ struct Compiler
         {
             LUAU_ASSERT(uv->functionDepth < expr->functionDepth);
 
-            Local* ul = locals.find(uv);
-            LUAU_ASSERT(ul);
-
-            bool immutable = !ul->written;
+            Variable* ul = variables.find(uv);
+            bool immutable = !ul || !ul->written;
 
             if (uv->functionDepth == expr->functionDepth - 1)
             {
                 // get local variable
                 uint8_t reg = getLocal(uv);
 
-                bytecode.emitABC(LOP_CAPTURE, immutable ? LCT_VAL : LCT_REF, reg, 0);
+                bytecode.emitABC(LOP_CAPTURE, uint8_t(immutable ? LCT_VAL : LCT_REF), reg, 0);
             }
             else
             {
@@ -635,7 +643,7 @@ struct Compiler
 
         if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
         {
-            bytecode.emitAD(opc, rr, 0);
+            bytecode.emitAD(opc, uint8_t(rr), 0);
             bytecode.emitAux(rl);
         }
         else
@@ -687,7 +695,7 @@ struct Compiler
             break;
 
         case Constant::Type_String:
-            cid = bytecode.addConstantString(sref(c->valueString));
+            cid = bytecode.addConstantString(sref(c->getString()));
             break;
 
         default:
@@ -1066,10 +1074,10 @@ struct Compiler
         // Optimization: if the table is empty, we can compute it directly into the target
         if (expr->items.size == 0)
         {
-            auto [hashSize, arraySize] = predictedTableSize[expr];
+            TableShape shape = tableShapes[expr];
 
-            bytecode.emitABC(LOP_NEWTABLE, target, encodeHashSize(hashSize), 0);
-            bytecode.emitAux(arraySize);
+            bytecode.emitABC(LOP_NEWTABLE, target, encodeHashSize(shape.hashSize), 0);
+            bytecode.emitAux(shape.arraySize);
             return;
         }
 
@@ -1144,7 +1152,7 @@ struct Compiler
             }
             else
             {
-                bytecode.emitABC(LOP_NEWTABLE, reg, encodedHashSize, 0);
+                bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
                 bytecode.emitAux(0);
             }
         }
@@ -1157,7 +1165,7 @@ struct Compiler
             bool trailingVarargs = last && last->kind == AstExprTable::Item::List && last->value->is<AstExprVarargs>();
             LUAU_ASSERT(!trailingVarargs || arraySize > 0);
 
-            bytecode.emitABC(LOP_NEWTABLE, reg, encodedHashSize, 0);
+            bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
             bytecode.emitAux(arraySize - trailingVarargs + indexSize);
         }
 
@@ -1252,16 +1260,12 @@ struct Compiler
 
     bool canImport(AstExprGlobal* expr)
     {
-        const Global* global = globals.find(expr->name);
-
-        return options.optimizationLevel >= 1 && (!global || !global->written);
+        return options.optimizationLevel >= 1 && getGlobalState(globals, expr->name) != Global::Written;
     }
 
     bool canImportChain(AstExprGlobal* expr)
     {
-        const Global* global = globals.find(expr->name);
-
-        return options.optimizationLevel >= 1 && (!global || (!global->written && !global->writable));
+        return options.optimizationLevel >= 1 && getGlobalState(globals, expr->name) == Global::Default;
     }
 
     void compileExprIndexName(AstExprIndexName* expr, uint8_t target)
@@ -1341,7 +1345,7 @@ struct Compiler
         {
             uint8_t rt = compileExprAuto(expr->expr, rs);
 
-            BytecodeBuilder::StringRef iname = sref(cv->valueString);
+            BytecodeBuilder::StringRef iname = sref(cv->getString());
             int32_t cid = bytecode.addConstantString(iname);
             if (cid < 0)
                 CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
@@ -1427,7 +1431,7 @@ struct Compiler
 
         case Constant::Type_String:
         {
-            int32_t cid = bytecode.addConstantString(sref(cv->valueString));
+            int32_t cid = bytecode.addConstantString(sref(cv->getString()));
             if (cid < 0)
                 CompileError::raise(node->location, "Exceeded constant limit; simplify the code to compile");
 
@@ -1546,7 +1550,7 @@ struct Compiler
         {
             compileExpr(expr->expr, target, targetTemp);
         }
-        else if (AstExprIfElse* expr = node->as<AstExprIfElse>(); FFlag::LuauIfElseExpressionBaseSupport && expr)
+        else if (AstExprIfElse* expr = node->as<AstExprIfElse>())
         {
             compileExprIfElse(expr, target, targetTemp);
         }
@@ -1711,7 +1715,7 @@ struct Compiler
             {
                 LValue result = {LValue::Kind_IndexName};
                 result.reg = compileExprAuto(expr->expr, rs);
-                result.name = sref(cv->valueString);
+                result.name = sref(cv->getString());
                 result.location = node->location;
 
                 return result;
@@ -1796,9 +1800,8 @@ struct Compiler
             return false;
 
         Local* l = locals.find(le->local);
-        LUAU_ASSERT(l);
 
-        return l->allocated;
+        return l && l->allocated;
     }
 
     bool isStatBreak(AstStat* node)
@@ -2040,9 +2043,9 @@ struct Compiler
 
         for (AstLocal* local : stat->vars)
         {
-            Local* l = locals.find(local);
+            Variable* v = variables.find(local);
 
-            if (!l || l->constant.type == Constant::Type_Unknown)
+            if (!v || !v->constant)
                 return false;
         }
 
@@ -2082,9 +2085,7 @@ struct Compiler
         // through)
         uint8_t varreg = regs + 2;
 
-        Local* il = locals.find(stat->var);
-
-        if (il && il->written)
+        if (Variable* il = variables.find(stat->var); il && il->written)
             varreg = allocReg(stat, 1);
 
         compileExprTemp(stat->from, uint8_t(regs + 2));
@@ -2164,7 +2165,7 @@ struct Compiler
         {
             if (stat->values.size == 1 && stat->values.data[0]->is<AstExprCall>())
             {
-                Builtin builtin = getBuiltin(stat->values.data[0]->as<AstExprCall>()->func);
+                Builtin builtin = getBuiltin(stat->values.data[0]->as<AstExprCall>()->func, globals, variables);
 
                 if (builtin.isGlobal("ipairs")) // for .. in ipairs(t)
                 {
@@ -2179,7 +2180,7 @@ struct Compiler
             }
             else if (stat->values.size == 2)
             {
-                Builtin builtin = getBuiltin(stat->values.data[0]);
+                Builtin builtin = getBuiltin(stat->values.data[0], globals, variables);
 
                 if (builtin.isGlobal("next")) // for .. in next,t
                 {
@@ -2594,7 +2595,7 @@ struct Compiler
             Local* l = locals.find(localStack[i]);
             LUAU_ASSERT(l);
 
-            if (l->captured && l->written)
+            if (l->captured)
                 return true;
         }
 
@@ -2613,7 +2614,7 @@ struct Compiler
             Local* l = locals.find(localStack[i]);
             LUAU_ASSERT(l);
 
-            if (l->captured && l->written)
+            if (l->captured)
             {
                 captured = true;
                 captureReg = std::min(captureReg, l->reg);
@@ -2728,519 +2729,6 @@ struct Compiler
         return !node->is<AstStatBlock>() && !node->is<AstStatTypeAlias>();
     }
 
-    struct AssignmentVisitor : AstVisitor
-    {
-        struct Hasher
-        {
-            size_t operator()(const std::pair<AstExprTable*, AstName>& p) const
-            {
-                return std::hash<AstExprTable*>()(p.first) ^ std::hash<AstName>()(p.second);
-            }
-        };
-
-        DenseHashMap<AstLocal*, AstExprTable*> localToTable;
-        DenseHashSet<std::pair<AstExprTable*, AstName>, Hasher> fields;
-
-        AssignmentVisitor(Compiler* self)
-            : localToTable(nullptr)
-            , fields(std::pair<AstExprTable*, AstName>())
-            , self(self)
-        {
-        }
-
-        void assignField(AstExpr* expr, AstName index)
-        {
-            if (AstExprLocal* lv = expr->as<AstExprLocal>())
-            {
-                if (AstExprTable** table = localToTable.find(lv->local))
-                {
-                    std::pair<AstExprTable*, AstName> field = {*table, index};
-
-                    if (!fields.contains(field))
-                    {
-                        fields.insert(field);
-                        self->predictedTableSize[*table].first += 1;
-                    }
-                }
-            }
-        }
-
-        void assignField(AstExpr* expr, AstExpr* index)
-        {
-            AstExprLocal* lv = expr->as<AstExprLocal>();
-            AstExprConstantNumber* number = index->as<AstExprConstantNumber>();
-
-            if (lv && number)
-            {
-                if (AstExprTable** table = localToTable.find(lv->local))
-                {
-                    unsigned int& arraySize = self->predictedTableSize[*table].second;
-
-                    if (number->value == double(arraySize + 1))
-                        arraySize += 1;
-                }
-            }
-        }
-
-        void assign(AstExpr* var)
-        {
-            if (AstExprLocal* lv = var->as<AstExprLocal>())
-            {
-                self->locals[lv->local].written = true;
-            }
-            else if (AstExprGlobal* gv = var->as<AstExprGlobal>())
-            {
-                self->globals[gv->name].written = true;
-            }
-            else if (AstExprIndexName* index = var->as<AstExprIndexName>())
-            {
-                assignField(index->expr, index->index);
-
-                var->visit(this);
-            }
-            else if (AstExprIndexExpr* index = var->as<AstExprIndexExpr>())
-            {
-                assignField(index->expr, index->index);
-
-                var->visit(this);
-            }
-            else
-            {
-                // we need to be able to track assignments in all expressions, including crazy ones like t[function() t = nil end] = 5
-                var->visit(this);
-            }
-        }
-
-        AstExprTable* getTableHint(AstExpr* expr)
-        {
-            // unadorned table literal
-            if (AstExprTable* table = expr->as<AstExprTable>())
-                return table;
-
-            // setmetatable(table literal, ...)
-            if (AstExprCall* call = expr->as<AstExprCall>(); call && !call->self && call->args.size == 2)
-                if (AstExprGlobal* func = call->func->as<AstExprGlobal>(); func && func->name == "setmetatable")
-                    if (AstExprTable* table = call->args.data[0]->as<AstExprTable>())
-                        return table;
-
-            return nullptr;
-        }
-
-        bool visit(AstStatLocal* node) override
-        {
-            // track local -> table association so that we can update table size prediction in assignField
-            if (node->vars.size == 1 && node->values.size == 1)
-                if (AstExprTable* table = getTableHint(node->values.data[0]); table && table->items.size == 0)
-                    localToTable[node->vars.data[0]] = table;
-
-            return true;
-        }
-
-        bool visit(AstStatAssign* node) override
-        {
-            for (size_t i = 0; i < node->vars.size; ++i)
-                assign(node->vars.data[i]);
-
-            for (size_t i = 0; i < node->values.size; ++i)
-                node->values.data[i]->visit(this);
-
-            return false;
-        }
-
-        bool visit(AstStatCompoundAssign* node) override
-        {
-            assign(node->var);
-            node->value->visit(this);
-
-            return false;
-        }
-
-        bool visit(AstStatFunction* node) override
-        {
-            assign(node->name);
-            node->func->visit(this);
-
-            return false;
-        }
-
-        Compiler* self;
-    };
-
-    struct ConstantVisitor : AstVisitor
-    {
-        ConstantVisitor(Compiler* self)
-            : self(self)
-        {
-        }
-
-        void analyzeUnary(Constant& result, AstExprUnary::Op op, const Constant& arg)
-        {
-            switch (op)
-            {
-            case AstExprUnary::Not:
-                if (arg.type != Constant::Type_Unknown)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = !arg.isTruthful();
-                }
-                break;
-
-            case AstExprUnary::Minus:
-                if (arg.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = -arg.valueNumber;
-                }
-                break;
-
-            case AstExprUnary::Len:
-                if (arg.type == Constant::Type_String)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = double(arg.valueString.size);
-                }
-                break;
-
-            default:
-                LUAU_ASSERT(!"Unexpected unary operation");
-            }
-        }
-
-        bool constantsEqual(const Constant& la, const Constant& ra)
-        {
-            LUAU_ASSERT(la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown);
-
-            switch (la.type)
-            {
-            case Constant::Type_Nil:
-                return ra.type == Constant::Type_Nil;
-
-            case Constant::Type_Boolean:
-                return ra.type == Constant::Type_Boolean && la.valueBoolean == ra.valueBoolean;
-
-            case Constant::Type_Number:
-                return ra.type == Constant::Type_Number && la.valueNumber == ra.valueNumber;
-
-            case Constant::Type_String:
-                return ra.type == Constant::Type_String && la.valueString.size == ra.valueString.size &&
-                       memcmp(la.valueString.data, ra.valueString.data, la.valueString.size) == 0;
-
-            default:
-                LUAU_ASSERT(!"Unexpected constant type in comparison");
-                return false;
-            }
-        }
-
-        void analyzeBinary(Constant& result, AstExprBinary::Op op, const Constant& la, const Constant& ra)
-        {
-            switch (op)
-            {
-            case AstExprBinary::Add:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = la.valueNumber + ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::Sub:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = la.valueNumber - ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::Mul:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = la.valueNumber * ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::Div:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = la.valueNumber / ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::Mod:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = la.valueNumber - floor(la.valueNumber / ra.valueNumber) * ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::Pow:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Number;
-                    result.valueNumber = pow(la.valueNumber, ra.valueNumber);
-                }
-                break;
-
-            case AstExprBinary::Concat:
-                break;
-
-            case AstExprBinary::CompareNe:
-                if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = !constantsEqual(la, ra);
-                }
-                break;
-
-            case AstExprBinary::CompareEq:
-                if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = constantsEqual(la, ra);
-                }
-                break;
-
-            case AstExprBinary::CompareLt:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = la.valueNumber < ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::CompareLe:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = la.valueNumber <= ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::CompareGt:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = la.valueNumber > ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::CompareGe:
-                if (la.type == Constant::Type_Number && ra.type == Constant::Type_Number)
-                {
-                    result.type = Constant::Type_Boolean;
-                    result.valueBoolean = la.valueNumber >= ra.valueNumber;
-                }
-                break;
-
-            case AstExprBinary::And:
-                if (la.type != Constant::Type_Unknown)
-                {
-                    result = la.isTruthful() ? ra : la;
-                }
-                break;
-
-            case AstExprBinary::Or:
-                if (la.type != Constant::Type_Unknown)
-                {
-                    result = la.isTruthful() ? la : ra;
-                }
-                break;
-
-            default:
-                LUAU_ASSERT(!"Unexpected binary operation");
-            }
-        }
-
-        Constant analyze(AstExpr* node)
-        {
-            Constant result;
-            result.type = Constant::Type_Unknown;
-
-            if (AstExprGroup* expr = node->as<AstExprGroup>())
-            {
-                result = analyze(expr->expr);
-            }
-            else if (node->is<AstExprConstantNil>())
-            {
-                result.type = Constant::Type_Nil;
-            }
-            else if (AstExprConstantBool* expr = node->as<AstExprConstantBool>())
-            {
-                result.type = Constant::Type_Boolean;
-                result.valueBoolean = expr->value;
-            }
-            else if (AstExprConstantNumber* expr = node->as<AstExprConstantNumber>())
-            {
-                result.type = Constant::Type_Number;
-                result.valueNumber = expr->value;
-            }
-            else if (AstExprConstantString* expr = node->as<AstExprConstantString>())
-            {
-                result.type = Constant::Type_String;
-                result.valueString = expr->value;
-            }
-            else if (AstExprLocal* expr = node->as<AstExprLocal>())
-            {
-                const Local* l = self->locals.find(expr->local);
-
-                if (l && l->constant.type != Constant::Type_Unknown)
-                {
-                    LUAU_ASSERT(!l->written);
-                    result = l->constant;
-                }
-            }
-            else if (node->is<AstExprGlobal>())
-            {
-                // nope
-            }
-            else if (node->is<AstExprVarargs>())
-            {
-                // nope
-            }
-            else if (AstExprCall* expr = node->as<AstExprCall>())
-            {
-                analyze(expr->func);
-
-                for (size_t i = 0; i < expr->args.size; ++i)
-                    analyze(expr->args.data[i]);
-            }
-            else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
-            {
-                analyze(expr->expr);
-            }
-            else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
-            {
-                analyze(expr->expr);
-                analyze(expr->index);
-            }
-            else if (AstExprFunction* expr = node->as<AstExprFunction>())
-            {
-                // this is necessary to propagate constant information in all child functions
-                expr->body->visit(this);
-            }
-            else if (AstExprTable* expr = node->as<AstExprTable>())
-            {
-                for (size_t i = 0; i < expr->items.size; ++i)
-                {
-                    const AstExprTable::Item& item = expr->items.data[i];
-
-                    if (item.key)
-                        analyze(item.key);
-
-                    analyze(item.value);
-                }
-            }
-            else if (AstExprUnary* expr = node->as<AstExprUnary>())
-            {
-                Constant arg = analyze(expr->expr);
-
-                analyzeUnary(result, expr->op, arg);
-            }
-            else if (AstExprBinary* expr = node->as<AstExprBinary>())
-            {
-                Constant la = analyze(expr->left);
-                Constant ra = analyze(expr->right);
-
-                analyzeBinary(result, expr->op, la, ra);
-            }
-            else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-            {
-                Constant arg = analyze(expr->expr);
-
-                result = arg;
-            }
-            else if (AstExprIfElse* expr = node->as<AstExprIfElse>(); FFlag::LuauIfElseExpressionBaseSupport && expr)
-            {
-                Constant cond = analyze(expr->condition);
-                Constant trueExpr = analyze(expr->trueExpr);
-                Constant falseExpr = analyze(expr->falseExpr);
-                if (cond.type != Constant::Type_Unknown)
-                {
-                    result = cond.isTruthful() ? trueExpr : falseExpr;
-                }
-            }
-            else
-            {
-                LUAU_ASSERT(!"Unknown expression type");
-            }
-
-            if (result.type != Constant::Type_Unknown)
-                self->constants[node] = result;
-
-            return result;
-        }
-
-        bool visit(AstExpr* node) override
-        {
-            // note: we short-circuit the visitor traversal through any expression trees by returning false
-            // recursive traversal is happening inside analyze() which makes it easier to get the resulting value of the subexpression
-            analyze(node);
-
-            return false;
-        }
-
-        bool visit(AstStatLocal* node) override
-        {
-            // for values that match 1-1 we record the initializing expression for future analysis
-            for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
-            {
-                Local& l = self->locals[node->vars.data[i]];
-
-                l.init = node->values.data[i];
-            }
-
-            // all values that align wrt indexing are simple - we just match them 1-1
-            for (size_t i = 0; i < node->vars.size && i < node->values.size; ++i)
-            {
-                Constant arg = analyze(node->values.data[i]);
-
-                if (arg.type != Constant::Type_Unknown)
-                {
-                    Local& l = self->locals[node->vars.data[i]];
-
-                    // note: we rely on AssignmentVisitor to have been run before us
-                    if (!l.written)
-                        l.constant = arg;
-                }
-            }
-
-            if (node->vars.size > node->values.size)
-            {
-                // if we have trailing variables, then depending on whether the last value is capable of returning multiple values
-                // (aka call or varargs), we either don't know anything about these vars, or we know they're nil
-                AstExpr* last = node->values.size ? node->values.data[node->values.size - 1] : nullptr;
-                bool multRet = last && (last->is<AstExprCall>() || last->is<AstExprVarargs>());
-
-                for (size_t i = node->values.size; i < node->vars.size; ++i)
-                {
-                    if (!multRet)
-                    {
-                        Local& l = self->locals[node->vars.data[i]];
-
-                        // note: we rely on AssignmentVisitor to have been run before us
-                        if (!l.written)
-                        {
-                            l.constant.type = Constant::Type_Nil;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                // we can have more values than variables; in this case we still need to analyze them to make sure we do constant propagation inside
-                // them
-                for (size_t i = node->vars.size; i < node->values.size; ++i)
-                    analyze(node->values.data[i]);
-            }
-
-            return false;
-        }
-
-        Compiler* self;
-    };
-
     struct FenvVisitor : AstVisitor
     {
         bool& getfenvUsed;
@@ -3282,14 +2770,6 @@ struct Compiler
             functions.push_back(node);
 
             return false;
-        }
-
-        bool visit(AstStatLocalFunction* node) override
-        {
-            // record local->function association for some optimizations
-            self->locals[node->name].func = node->func;
-
-            return true;
         }
     };
 
@@ -3397,70 +2877,12 @@ struct Compiler
         std::vector<AstLocal*> upvals;
     };
 
-    struct Constant
-    {
-        enum Type
-        {
-            Type_Unknown,
-            Type_Nil,
-            Type_Boolean,
-            Type_Number,
-            Type_String,
-        };
-
-        Type type = Type_Unknown;
-
-        union
-        {
-            bool valueBoolean;
-            double valueNumber;
-            AstArray<char> valueString = {};
-        };
-
-        bool isTruthful() const
-        {
-            LUAU_ASSERT(type != Type_Unknown);
-            return type != Type_Nil && !(type == Type_Boolean && valueBoolean == false);
-        }
-    };
-
     struct Local
     {
         uint8_t reg = 0;
         bool allocated = false;
         bool captured = false;
-        bool written = false;
-        AstExpr* init = nullptr;
         uint32_t debugpc = 0;
-        Constant constant;
-        AstExprFunction* func = nullptr;
-    };
-
-    struct Global
-    {
-        bool writable = false;
-        bool written = false;
-    };
-
-    struct Builtin
-    {
-        AstName object;
-        AstName method;
-
-        bool empty() const
-        {
-            return object == AstName() && method == AstName();
-        }
-
-        bool isGlobal(const char* name) const
-        {
-            return object == AstName() && method == name;
-        }
-
-        bool isMethod(const char* table, const char* name) const
-        {
-            return object == table && method == name;
-        }
     };
 
     struct LoopJump
@@ -3482,194 +2904,6 @@ struct Compiler
         AstExpr* untilCondition;
     };
 
-    Builtin getBuiltin(AstExpr* node)
-    {
-        if (AstExprLocal* expr = node->as<AstExprLocal>())
-        {
-            Local* l = locals.find(expr->local);
-
-            return l && !l->written && l->init ? getBuiltin(l->init) : Builtin();
-        }
-        else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
-        {
-            if (AstExprGlobal* object = expr->expr->as<AstExprGlobal>())
-            {
-                Global* g = globals.find(object->name);
-
-                return !g || (!g->writable && !g->written) ? Builtin{object->name, expr->index} : Builtin();
-            }
-            else
-            {
-                return Builtin();
-            }
-        }
-        else if (AstExprGlobal* expr = node->as<AstExprGlobal>())
-        {
-            Global* g = globals.find(expr->name);
-
-            return !g || !g->written ? Builtin{AstName(), expr->name} : Builtin();
-        }
-        else
-        {
-            return Builtin();
-        }
-    }
-
-    int getBuiltinFunctionId(const Builtin& builtin)
-    {
-        if (builtin.empty())
-            return -1;
-
-        if (builtin.isGlobal("assert"))
-            return LBF_ASSERT;
-
-        if (builtin.isGlobal("type"))
-            return LBF_TYPE;
-
-        if (builtin.isGlobal("typeof"))
-            return LBF_TYPEOF;
-
-        if (builtin.isGlobal("rawset"))
-            return LBF_RAWSET;
-        if (builtin.isGlobal("rawget"))
-            return LBF_RAWGET;
-        if (builtin.isGlobal("rawequal"))
-            return LBF_RAWEQUAL;
-
-        if (builtin.isGlobal("unpack"))
-            return LBF_TABLE_UNPACK;
-
-        if (builtin.object == "math")
-        {
-            if (builtin.method == "abs")
-                return LBF_MATH_ABS;
-            if (builtin.method == "acos")
-                return LBF_MATH_ACOS;
-            if (builtin.method == "asin")
-                return LBF_MATH_ASIN;
-            if (builtin.method == "atan2")
-                return LBF_MATH_ATAN2;
-            if (builtin.method == "atan")
-                return LBF_MATH_ATAN;
-            if (builtin.method == "ceil")
-                return LBF_MATH_CEIL;
-            if (builtin.method == "cosh")
-                return LBF_MATH_COSH;
-            if (builtin.method == "cos")
-                return LBF_MATH_COS;
-            if (builtin.method == "deg")
-                return LBF_MATH_DEG;
-            if (builtin.method == "exp")
-                return LBF_MATH_EXP;
-            if (builtin.method == "floor")
-                return LBF_MATH_FLOOR;
-            if (builtin.method == "fmod")
-                return LBF_MATH_FMOD;
-            if (builtin.method == "frexp")
-                return LBF_MATH_FREXP;
-            if (builtin.method == "ldexp")
-                return LBF_MATH_LDEXP;
-            if (builtin.method == "log10")
-                return LBF_MATH_LOG10;
-            if (builtin.method == "log")
-                return LBF_MATH_LOG;
-            if (builtin.method == "max")
-                return LBF_MATH_MAX;
-            if (builtin.method == "min")
-                return LBF_MATH_MIN;
-            if (builtin.method == "modf")
-                return LBF_MATH_MODF;
-            if (builtin.method == "pow")
-                return LBF_MATH_POW;
-            if (builtin.method == "rad")
-                return LBF_MATH_RAD;
-            if (builtin.method == "sinh")
-                return LBF_MATH_SINH;
-            if (builtin.method == "sin")
-                return LBF_MATH_SIN;
-            if (builtin.method == "sqrt")
-                return LBF_MATH_SQRT;
-            if (builtin.method == "tanh")
-                return LBF_MATH_TANH;
-            if (builtin.method == "tan")
-                return LBF_MATH_TAN;
-            if (builtin.method == "clamp")
-                return LBF_MATH_CLAMP;
-            if (builtin.method == "sign")
-                return LBF_MATH_SIGN;
-            if (builtin.method == "round")
-                return LBF_MATH_ROUND;
-        }
-
-        if (builtin.object == "bit32")
-        {
-            if (builtin.method == "arshift")
-                return LBF_BIT32_ARSHIFT;
-            if (builtin.method == "band")
-                return LBF_BIT32_BAND;
-            if (builtin.method == "bnot")
-                return LBF_BIT32_BNOT;
-            if (builtin.method == "bor")
-                return LBF_BIT32_BOR;
-            if (builtin.method == "bxor")
-                return LBF_BIT32_BXOR;
-            if (builtin.method == "btest")
-                return LBF_BIT32_BTEST;
-            if (builtin.method == "extract")
-                return LBF_BIT32_EXTRACT;
-            if (builtin.method == "lrotate")
-                return LBF_BIT32_LROTATE;
-            if (builtin.method == "lshift")
-                return LBF_BIT32_LSHIFT;
-            if (builtin.method == "replace")
-                return LBF_BIT32_REPLACE;
-            if (builtin.method == "rrotate")
-                return LBF_BIT32_RROTATE;
-            if (builtin.method == "rshift")
-                return LBF_BIT32_RSHIFT;
-            if (builtin.method == "countlz")
-                return LBF_BIT32_COUNTLZ;
-            if (builtin.method == "countrz")
-                return LBF_BIT32_COUNTRZ;
-        }
-
-        if (builtin.object == "string")
-        {
-            if (builtin.method == "byte")
-                return LBF_STRING_BYTE;
-            if (builtin.method == "char")
-                return LBF_STRING_CHAR;
-            if (builtin.method == "len")
-                return LBF_STRING_LEN;
-            if (builtin.method == "sub")
-                return LBF_STRING_SUB;
-        }
-
-        if (builtin.object == "table")
-        {
-            if (builtin.method == "insert")
-                return LBF_TABLE_INSERT;
-            if (builtin.method == "unpack")
-                return LBF_TABLE_UNPACK;
-        }
-
-        if (options.vectorCtor)
-        {
-            if (options.vectorLib)
-            {
-                if (builtin.isMethod(options.vectorLib, options.vectorCtor))
-                    return LBF_VECTOR;
-            }
-            else
-            {
-                if (builtin.isGlobal(options.vectorCtor))
-                    return LBF_VECTOR;
-            }
-        }
-
-        return -1;
-    }
-
     BytecodeBuilder& bytecode;
 
     CompileOptions options;
@@ -3677,8 +2911,9 @@ struct Compiler
     DenseHashMap<AstExprFunction*, Function> functions;
     DenseHashMap<AstLocal*, Local> locals;
     DenseHashMap<AstName, Global> globals;
+    DenseHashMap<AstLocal*, Variable> variables;
     DenseHashMap<AstExpr*, Constant> constants;
-    DenseHashMap<AstExprTable*, std::pair<unsigned int, unsigned int>> predictedTableSize;
+    DenseHashMap<AstExprTable*, TableShape> tableShapes;
 
     unsigned int regTop = 0;
     unsigned int stackSize = 0;
@@ -3699,23 +2934,18 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     Compiler compiler(bytecode, options);
 
     // since access to some global objects may result in values that change over time, we block imports from non-readonly tables
-    if (AstName name = names.get("_G"); name.value)
-        compiler.globals[name].writable = true;
+    assignMutable(compiler.globals, names, options.mutableGlobals);
 
-    if (options.mutableGlobals)
-        for (const char** ptr = options.mutableGlobals; *ptr; ++ptr)
-            if (AstName name = names.get(*ptr); name.value)
-                compiler.globals[name].writable = true;
+    // this pass analyzes mutability of locals/globals and associates locals with their initial values
+    trackValues(compiler.globals, compiler.variables, root);
 
-    // this visitor traverses the AST to analyze mutability of locals/globals, filling Local::written and Global::written
-    Compiler::AssignmentVisitor assignmentVisitor(&compiler);
-    root->visit(&assignmentVisitor);
-
-    // this visitor traverses the AST to analyze constantness of expressions, filling constants[] and Local::constant/Local::init
     if (options.optimizationLevel >= 1)
     {
-        Compiler::ConstantVisitor constantVisitor(&compiler);
-        root->visit(&constantVisitor);
+        // this pass analyzes constantness of expressions
+        foldConstants(compiler.constants, compiler.variables, root);
+
+        // this pass analyzes table assignments to estimate table shapes for initially empty tables
+        predictTableShapes(compiler.tableShapes, root);
     }
 
     // this visitor tracks calls to getfenv/setfenv and disables some optimizations when they are found
@@ -3734,8 +2964,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     for (AstExprFunction* expr : functions)
         compiler.compileFunction(expr);
 
-    AstExprFunction main(root->location, /*generics= */ AstArray<AstName>(), /*genericPacks= */ AstArray<AstName>(), /* self= */ nullptr,
-        AstArray<AstLocal*>(), /* vararg= */ Luau::Location(), root, /* functionDepth= */ 0, /* debugname= */ AstName());
+    AstExprFunction main(root->location, /*generics= */ AstArray<AstGenericType>(), /*genericPacks= */ AstArray<AstGenericTypePack>(),
+        /* self= */ nullptr, AstArray<AstLocal*>(), /* vararg= */ Luau::Location(), root, /* functionDepth= */ 0, /* debugname= */ AstName());
     uint32_t mainid = compiler.compileFunction(&main);
 
     bytecode.setMainFunction(mainid);
