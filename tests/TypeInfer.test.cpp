@@ -4525,7 +4525,9 @@ f(function(x) print(x) end)
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument")
-{
+{        
+    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
+
     CheckResult result = check(R"(
 local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
 return sum(2, 3, function(a, b) return a + b end)
@@ -4549,7 +4551,7 @@ local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} e
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    REQUIRE_EQ("{| c: number, s: number |}", toString(requireType("r")));
+    REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
@@ -4689,6 +4691,18 @@ a = setmetatable(a, { __call = function(x) end })
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "infer_through_group_expr")
+{
+    ScopedFastFlag luauGroupExpectedType{"LuauGroupExpectedType", true};
+
+    CheckResult result = check(R"(
+local function f(a: (number, number) -> number) return a(1, 3) end
+f(((function(a, b) return a + b end)))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 {
     CheckResult result = check(R"(
@@ -4743,46 +4757,75 @@ local c: X<B>
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions1")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
-
-    {
-        CheckResult result = check(R"(local a = if true then "true" else "false")");
-        LUAU_REQUIRE_NO_ERRORS(result);
-        TypeId aType = requireType("a");
-        CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
-    }
+    CheckResult result = check(R"(local a = if true then "true" else "false")");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId aType = requireType("a");
+    CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions2")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
+    // Test expression containing elseif
+    CheckResult result = check(R"(
+local a = if false then "a" elseif false then "b" else "c"
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    TypeId aType = requireType("a");
+    CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")
+{
+    ScopedFastFlag sff3{"LuauIfElseBranchTypeUnion", true};
 
     {
-        // Test expression containing elseif
-        CheckResult result = check(R"(
-local a = if false then "a" elseif false then "b" else "c"
-        )");
+        CheckResult result = check(R"(local a: number? = if true then 42 else nil)");
+
         LUAU_REQUIRE_NO_ERRORS(result);
-        TypeId aType = requireType("a");
-        CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
+        CHECK_EQ(toString(requireType("a"), {true}), "number?");
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions3")
+TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_1")
 {
-    ScopedFastFlag sff1{"LuauIfElseExpressionBaseSupport", true};
-    ScopedFastFlag sff2{"LuauIfElseExpressionAnalysisSupport", true};
+    ScopedFastFlag luauIfElseExpectedType2{"LuauIfElseExpectedType2", true};
+    ScopedFastFlag luauIfElseBranchTypeUnion{"LuauIfElseBranchTypeUnion", true};
 
-    {
-        CheckResult result = check(R"(local a = if true then "true" else 42)");
-        // We currently require both true/false expressions to unify to the same type.  However, we do intend to lift
-        // this restriction in the future.
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        TypeId aType = requireType("a");
-        CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
-    }
+    CheckResult result = check(R"(
+type X = {number | string}
+local a: X = if true then {"1", 2, 3} else {4, 5, 6}
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("a"), {true}), "{number | string}");
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_2")
+{
+    ScopedFastFlag luauIfElseExpectedType2{"LuauIfElseExpectedType2", true};
+    ScopedFastFlag luauIfElseBranchTypeUnion{ "LuauIfElseBranchTypeUnion", true };
+
+    CheckResult result = check(R"(
+local a: number? = if true then 1 else nil
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_3")
+{
+    ScopedFastFlag luauIfElseExpectedType2{"LuauIfElseExpectedType2", true};
+
+    CheckResult result = check(R"(
+local function times<T>(n: any, f: () -> T)
+    local result: {T} = {}
+    local res = f()
+    table.insert(result, if true then res else n)
+    return result
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_error_addition")
@@ -5034,6 +5077,53 @@ local t = {}
 function t.x(value)
     for k,v in pairs(t) do end
 end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_oop")
+{
+    CheckResult result = check(R"(
+   --!strict
+local Class = {}
+Class.__index = Class
+
+type Class = typeof(setmetatable({} :: { x: number }, Class))
+
+function Class.new(x: number): Class
+    return setmetatable({x = x}, Class)
+end
+
+function Class.getx(self: Class)
+    return self.x
+end
+
+function test()
+    local c = Class.new(42)
+    local n = c:getx()
+    local nn = c.x
+
+    print(string.format("%d %d", n, nn))
+end
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_metatable_crash")
+{
+    ScopedFastFlag luauMetatableAreEqualRecursion{"LuauMetatableAreEqualRecursion", true};
+
+    CheckResult result = check(R"(
+local function getIt()
+    local y
+    y = setmetatable({}, y)
+    return y
+end
+local a = getIt()
+local b = getIt()
+local c = a or b
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

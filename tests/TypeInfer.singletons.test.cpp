@@ -360,6 +360,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
     ScopedFastFlag sffs[] = {
         {"LuauParseSingletonTypes", true},
+        {"LuauUnsealedTableLiteral", true},
     };
 
     CheckResult result = check(R"(
@@ -369,7 +370,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Table type '{| ["\n"]: number |}' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
+    CHECK_EQ(R"(Table type '{ ["\n"]: number }' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
         toString(result.errors[0]));
 }
 
@@ -421,6 +422,29 @@ local a: Result = { success = false, result = 'something' }
 caused by:
   None of the union options are compatible. For example: Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')",
         toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauSingletonTypes", true},
+        {"LuauParseSingletonTypes", true},
+        {"LuauUnionHeuristic", true},
+        {"LuauExpectedTypesOfProperties", true},
+        {"LuauExtendedUnionMismatchError", true},
+        {"LuauIfElseExpectedType2", true},
+        {"LuauIfElseBranchTypeUnion", true},
+    };
+
+    CheckResult result = check(R"(
+type Cat = { tag: 'cat', catfood: string }
+type Dog = { tag: 'dog', dogfood: string }
+type Animal = Cat | Dog
+
+local a: Animal = if true then { tag = 'cat', catfood = 'something' } else { tag = 'dog', dogfood = 'other' }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

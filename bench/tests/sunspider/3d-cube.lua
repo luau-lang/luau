@@ -111,15 +111,10 @@ end
 -- multiplies two matrices
 function MMulti(M1, M2)
   local M = {{},{},{},{}};
-  local i = 1;
-  local j = 1;
-  while i <= 4 do
-    j = 1;
-    while j <= 4 do
-      M[i][j] = M1[i][1] * M2[1][j] + M1[i][2] * M2[2][j] + M1[i][3] * M2[3][j] + M1[i][4] * M2[4][j]; j = j + 1
+  for i = 1,4 do
+    for j = 1,4 do
+      M[i][j] = M1[i][1] * M2[1][j] + M1[i][2] * M2[2][j] + M1[i][3] * M2[3][j] + M1[i][4] * M2[4][j];
     end
-
-    i = i + 1
   end
   return M;
 end
@@ -127,28 +122,27 @@ end
 -- multiplies matrix with vector
 function VMulti(M, V)
   local Vect = {};
-  local i = 1;
-  while i <= 4 do Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3] + M[i][4] * V[4]; i = i + 1 end
+  for i = 1,4 do
+    Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3] + M[i][4] * V[4];
+  end
   return Vect;
 end
 
 function VMulti2(M, V)
   local Vect = {};
-  local i = 1;
-  while i < 4 do Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3]; i = i + 1 end
+  for i = 1,3 do
+    Vect[i] = M[i][1] * V[1] + M[i][2] * V[2] + M[i][3] * V[3];
+  end
   return Vect;
 end
 
 -- add to matrices
 function MAdd(M1, M2)
   local M = {{},{},{},{}};
-  local i = 1;
-  local j = 1;
-  while i <= 4 do
-    j = 1;
-    while j <= 4 do M[i][j] = M1[i][j] + M2[i][j]; j = j + 1 end
-
-    i = i + 1
+  for i = 1,4 do
+    for j = 1,4 do
+      M[i][j] = M1[i][j] + M2[i][j];
+    end
   end
   return M;
 end

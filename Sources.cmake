@@ -29,7 +29,15 @@ target_sources(Luau.Compiler PRIVATE
 
     Compiler/src/BytecodeBuilder.cpp
     Compiler/src/Compiler.cpp
+    Compiler/src/Builtins.cpp
+    Compiler/src/ConstantFolding.cpp
+    Compiler/src/TableShape.cpp
+    Compiler/src/ValueTracking.cpp
     Compiler/src/lcode.cpp
+    Compiler/src/Builtins.h
+    Compiler/src/ConstantFolding.h
+    Compiler/src/TableShape.h
+    Compiler/src/ValueTracking.h
 )
 
 # Luau.Analysis Sources

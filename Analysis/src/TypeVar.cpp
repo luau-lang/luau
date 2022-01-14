@@ -19,6 +19,7 @@
 
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
+LUAU_FASTFLAGVARIABLE(LuauMetatableAreEqualRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTagging, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAG(DebugLuauFreezeArena)
@@ -453,6 +454,9 @@ bool areEqual(SeenSet& seen, const TableTypeVar& lhs, const TableTypeVar& rhs)
 
 static bool areEqual(SeenSet& seen, const MetatableTypeVar& lhs, const MetatableTypeVar& rhs)
 {
+    if (FFlag::LuauMetatableAreEqualRecursion && areSeen(seen, &lhs, &rhs))
+        return true;
+
     return areEqual(seen, *lhs.table, *rhs.table) && areEqual(seen, *lhs.metatable, *rhs.metatable);
 }
 

@@ -6,6 +6,8 @@
 #include "lmem.h"
 #include "lgc.h"
 
+LUAU_FASTFLAGVARIABLE(LuauNoDirectUpvalRemoval, false)
+
 Proto* luaF_newproto(lua_State* L)
 {
     Proto* f = luaM_new(L, Proto, sizeof(Proto), L->activememcat);
@@ -113,14 +115,16 @@ void luaF_freeupval(lua_State* L, UpVal* uv)
 void luaF_close(lua_State* L, StkId level)
 {
     UpVal* uv;
-    global_State* g = L->global;
+    global_State* g = L->global; // TODO: remove with FFlagLuauNoDirectUpvalRemoval
     while (L->openupval != NULL && (uv = gco2uv(L->openupval))->v >= level)
     {
         GCObject* o = obj2gco(uv);
         LUAU_ASSERT(!isblack(o) && uv->v != &uv->u.value);
         L->openupval = uv->next; /* remove from `open' list */
-        if (isdead(g, o))
+        if (!FFlag::LuauNoDirectUpvalRemoval && isdead(g, o))
+        {
             luaF_freeupval(L, uv); /* free upvalue */
+        }
         else
         {
             unlinkupval(uv);
