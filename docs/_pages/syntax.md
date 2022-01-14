@@ -158,7 +158,7 @@ In addition to declaring types for a given value, Luau supports declaring type a
 ```lua
 type Point = { x: number, y: number }
 type Array<T> = { [number]: T }
-type Something = typeof(string.gmatch("", "\d"))
+type Something = typeof(string.gmatch("", "%d"))
 ```
 
 The right hand side of the type alias can be a type definition or a `typeof` expression; `typeof` expression doesn't evaluate its argument at runtime.
