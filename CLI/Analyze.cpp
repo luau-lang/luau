@@ -8,6 +8,8 @@
 
 #include "FileUtils.h"
 
+LUAU_FASTFLAG(DebugLuauTimeTracing)
+
 enum class ReportFormat
 {
     Default,
@@ -105,6 +107,7 @@ static void displayHelp(const char* argv0)
     printf("Available options:\n");
     printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
+    printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -213,7 +216,17 @@ int main(int argc, char** argv)
             format = ReportFormat::Gnu;
         else if (strcmp(argv[i], "--annotate") == 0)
             annotate = true;
+        else if (strcmp(argv[i], "--timetrace") == 0)
+            FFlag::DebugLuauTimeTracing.value = true;
     }
+
+#if !defined(LUAU_ENABLE_TIME_TRACE)
+    if (FFlag::DebugLuauTimeTracing)
+    {
+        printf("To run with --timetrace, Luau has to be built with LUAU_ENABLE_TIME_TRACE enabled\n");
+        return 1;
+    }
+#endif
 
     Luau::FrontendOptions frontendOptions;
     frontendOptions.retainFullTypeGraphs = annotate;
@@ -240,5 +253,8 @@ int main(int argc, char** argv)
             fprintf(stderr, "%s: %s\n", pair.first.c_str(), pair.second.c_str());
     }
 
-    return (format == ReportFormat::Luacheck) ? 0 : failed;
+    if (format == ReportFormat::Luacheck)
+        return 0;
+    else
+        return failed ? 1 : 0;
 }

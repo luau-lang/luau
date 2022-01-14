@@ -11,6 +11,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
+LUAU_FASTFLAG(LuauTypeAliasDefaults)
 
 /*
  * Prefix generic typenames with gen-
@@ -209,6 +210,14 @@ struct StringifierState
 
         result.name += s;
     }
+
+    void emit(const char* s)
+    {
+        if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
+            return;
+
+        result.name += s;
+    }
 };
 
 struct TypeVarStringifier
@@ -280,13 +289,28 @@ struct TypeVarStringifier
             else
                 first = false;
 
-            if (!singleTp)
-                state.emit("(");
+            if (FFlag::LuauTypeAliasDefaults)
+            {
+                bool wrap = !singleTp && get<TypePack>(follow(tp));
 
-            stringify(tp);
+                if (wrap)
+                    state.emit("(");
 
-            if (!singleTp)
-                state.emit(")");
+                stringify(tp);
+
+                if (wrap)
+                    state.emit(")");
+            }
+            else
+            {
+                if (!singleTp)
+                    state.emit("(");
+
+                stringify(tp);
+
+                if (!singleTp)
+                    state.emit(")");
+            }
         }
 
         if (types.size() || typePacks.size())
@@ -1086,7 +1110,7 @@ std::string toString(const TypePackVar& tp, const ToStringOptions& opts)
     return toString(const_cast<TypePackId>(&tp), std::move(opts));
 }
 
-std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
+std::string toStringNamedFunction_DEPRECATED(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
 {
     std::string s = prefix;
 
@@ -1173,6 +1197,77 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
         s += "(" + toStringPack_(ftv.retType) + ")";
 
     return s;
+}
+
+std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
+{
+    if (!FFlag::LuauTypeAliasDefaults)
+        return toStringNamedFunction_DEPRECATED(prefix, ftv, opts);
+
+    ToStringResult result;
+    StringifierState state(opts, result, opts.nameMap);
+    TypeVarStringifier tvs{state};
+
+    state.emit(prefix);
+
+    if (!opts.hideNamedFunctionTypeParameters)
+        tvs.stringify(ftv.generics, ftv.genericPacks);
+
+    state.emit("(");
+
+    auto argPackIter = begin(ftv.argTypes);
+    auto argNameIter = ftv.argNames.begin();
+
+    bool first = true;
+    while (argPackIter != end(ftv.argTypes))
+    {
+        if (!first)
+            state.emit(", ");
+        first = false;
+
+        // We don't currently respect opts.functionTypeArguments. I don't think this function should.
+        if (argNameIter != ftv.argNames.end())
+        {
+            state.emit((*argNameIter ? (*argNameIter)->name : "_") + ": ");
+            ++argNameIter;
+        }
+        else
+        {
+            state.emit("_: ");
+        }
+
+        tvs.stringify(*argPackIter);
+        ++argPackIter;
+    }
+
+    if (argPackIter.tail())
+    {
+        if (!first)
+            state.emit(", ");
+
+        state.emit("...: ");
+
+        if (auto vtp = get<VariadicTypePack>(*argPackIter.tail()))
+            tvs.stringify(vtp->ty);
+        else
+            tvs.stringify(*argPackIter.tail());
+    }
+
+    state.emit("): ");
+
+    size_t retSize = size(ftv.retType);
+    bool hasTail = !finite(ftv.retType);
+    bool wrap = get<TypePack>(follow(ftv.retType)) && (hasTail ? retSize != 0 : retSize != 1);
+
+    if (wrap)
+        state.emit("(");
+
+    tvs.stringify(ftv.retType);
+
+    if (wrap)
+        state.emit(")");
+
+    return result.name;
 }
 
 std::string dump(TypeId ty)

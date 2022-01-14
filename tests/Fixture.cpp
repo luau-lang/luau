@@ -191,7 +191,7 @@ ParseResult Fixture::tryParse(const std::string& source, const ParseOptions& par
     return result;
 }
 
-ParseResult Fixture::matchParseError(const std::string& source, const std::string& message)
+ParseResult Fixture::matchParseError(const std::string& source, const std::string& message, std::optional<Location> location)
 {
     ParseOptions options;
     options.allowDeclarationSyntax = true;
@@ -202,6 +202,9 @@ ParseResult Fixture::matchParseError(const std::string& source, const std::strin
     REQUIRE_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
 
     CHECK_EQ(result.errors.front().getMessage(), message);
+
+    if (location)
+        CHECK_EQ(result.errors.front().getLocation(), *location);
 
     return result;
 }

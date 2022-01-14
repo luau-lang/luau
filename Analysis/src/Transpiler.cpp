@@ -10,6 +10,8 @@
 #include <limits>
 #include <math.h>
 
+LUAU_FASTFLAG(LuauTypeAliasDefaults)
+
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -793,14 +795,47 @@ struct Printer
                     for (auto o : a->generics)
                     {
                         comma();
-                        writer.identifier(o.value);
+
+                        if (FFlag::LuauTypeAliasDefaults)
+                        {
+                            writer.advance(o.location.begin);
+                            writer.identifier(o.name.value);
+
+                            if (o.defaultValue)
+                            {
+                                writer.maybeSpace(o.defaultValue->location.begin, 2);
+                                writer.symbol("=");
+                                visualizeTypeAnnotation(*o.defaultValue);
+                            }
+                        }
+                        else
+                        {
+                            writer.identifier(o.name.value);
+                        }
                     }
 
                     for (auto o : a->genericPacks)
                     {
                         comma();
-                        writer.identifier(o.value);
-                        writer.symbol("...");
+
+                        if (FFlag::LuauTypeAliasDefaults)
+                        {
+                            writer.advance(o.location.begin);
+                            writer.identifier(o.name.value);
+                            writer.symbol("...");
+
+                            if (o.defaultValue)
+                            {
+                                writer.maybeSpace(o.defaultValue->location.begin, 2);
+                                writer.symbol("=");
+                                visualizeTypePackAnnotation(*o.defaultValue, false);
+                            }
+                        }
+                        else
+                        {
+                            writer.identifier(o.name.value);
+                            writer.symbol("...");
+                        }
                     }
 
                     writer.symbol(">");
@@ -846,12 +881,20 @@ struct Printer
             for (const auto& o : func.generics)
             {
                 comma();
-                writer.identifier(o.value);
+
+                if (FFlag::LuauTypeAliasDefaults)
+                    writer.advance(o.location.begin);
+
+                writer.identifier(o.name.value);
             }
             for (const auto& o : func.genericPacks)
             {
                 comma();
-                writer.identifier(o.value);
+
+                if (FFlag::LuauTypeAliasDefaults)
+                    writer.advance(o.location.begin);
+
+                writer.identifier(o.name.value);
                 writer.symbol("...");
             }
             writer.symbol(">");
@@ -979,12 +1022,20 @@ struct Printer
                 for (const auto& o : a->generics)
                 {
                     comma();
-                    writer.identifier(o.value);
+
+                    if (FFlag::LuauTypeAliasDefaults)
+                        writer.advance(o.location.begin);
+
+                    writer.identifier(o.name.value);
                 }
                 for (const auto& o : a->genericPacks)
                 {
                     comma();
-                    writer.identifier(o.value);
+
+                    if (FFlag::LuauTypeAliasDefaults)
+                        writer.advance(o.location.begin);
+
+                    writer.identifier(o.name.value);
                     writer.symbol("...");
                 }
                 writer.symbol(">");

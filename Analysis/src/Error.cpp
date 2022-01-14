@@ -190,24 +190,24 @@ struct ErrorConverter
         {
             name += "<";
             bool first = true;
-            for (TypeId t : e.typeFun.typeParams)
+            for (auto param : e.typeFun.typeParams)
             {
                 if (first)
                     first = false;
                 else
                     name += ", ";
 
-                name += toString(t);
+                name += toString(param.ty);
             }
 
-            for (TypePackId t : e.typeFun.typePackParams)
+            for (auto param : e.typeFun.typePackParams)
             {
                 if (first)
                     first = false;
                 else
                     name += ", ";
 
-                name += toString(t);
+                name += toString(param.tp);
             }
 
             name += ">";
@@ -544,13 +544,13 @@ bool IncorrectGenericParameterCount::operator==(const IncorrectGenericParameterC
 
     for (size_t i = 0; i < typeFun.typeParams.size(); ++i)
     {
-        if (typeFun.typeParams[i] != rhs.typeFun.typeParams[i])
+        if (typeFun.typeParams[i].ty != rhs.typeFun.typeParams[i].ty)
             return false;
     }
 
     for (size_t i = 0; i < typeFun.typePackParams.size(); ++i)
     {
-        if (typeFun.typePackParams[i] != rhs.typeFun.typePackParams[i])
+        if (typeFun.typePackParams[i].tp != rhs.typeFun.typePackParams[i].tp)
             return false;
     }
 

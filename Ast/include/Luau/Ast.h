@@ -334,6 +334,20 @@ struct AstTypeList
 
 using AstArgumentName = std::pair<AstName, Location>; // TODO: remove and replace when we get a common struct for this pair instead of AstName
 
+struct AstGenericType
+{
+    AstName name;
+    Location location;
+    AstType* defaultValue = nullptr;
+};
+
+struct AstGenericTypePack
+{
+    AstName name;
+    Location location;
+    AstTypePack* defaultValue = nullptr;
+};
+
 extern int gAstRttiIndex;
 
 template<typename T>
@@ -569,15 +583,15 @@ class AstExprFunction : public AstExpr
 public:
     LUAU_RTTI(AstExprFunction)
 
-    AstExprFunction(const Location& location, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks, AstLocal* self,
-        const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth, const AstName& debugname,
-        std::optional<AstTypeList> returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr, bool hasEnd = false,
+    AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+        AstLocal* self, const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth,
+        const AstName& debugname, std::optional<AstTypeList> returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr, bool hasEnd = false,
         std::optional<Location> argLocation = std::nullopt);
 
     void visit(AstVisitor* visitor) override;
 
-    AstArray<AstName> generics;
-    AstArray<AstName> genericPacks;
+    AstArray<AstGenericType> generics;
+    AstArray<AstGenericTypePack> genericPacks;
     AstLocal* self;
     AstArray<AstLocal*> args;
     bool hasReturnAnnotation;
@@ -942,14 +956,14 @@ class AstStatTypeAlias : public AstStat
 public:
     LUAU_RTTI(AstStatTypeAlias)
 
-    AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks,
-        AstType* type, bool exported);
+    AstStatTypeAlias(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+        const AstArray<AstGenericTypePack>& genericPacks, AstType* type, bool exported);
 
     void visit(AstVisitor* visitor) override;
 
     AstName name;
-    AstArray<AstName> generics;
-    AstArray<AstName> genericPacks;
+    AstArray<AstGenericType> generics;
+    AstArray<AstGenericTypePack> genericPacks;
     AstType* type;
     bool exported;
 };
@@ -972,14 +986,15 @@ class AstStatDeclareFunction : public AstStat
 public:
     LUAU_RTTI(AstStatDeclareFunction)
 
-    AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks,
-        const AstTypeList& params, const AstArray<AstArgumentName>& paramNames, const AstTypeList& retTypes);
+    AstStatDeclareFunction(const Location& location, const AstName& name, const AstArray<AstGenericType>& generics,
+        const AstArray<AstGenericTypePack>& genericPacks, const AstTypeList& params, const AstArray<AstArgumentName>& paramNames,
+        const AstTypeList& retTypes);
 
     void visit(AstVisitor* visitor) override;
 
     AstName name;
-    AstArray<AstName> generics;
-    AstArray<AstName> genericPacks;
+    AstArray<AstGenericType> generics;
+    AstArray<AstGenericTypePack> genericPacks;
     AstTypeList params;
     AstArray<AstArgumentName> paramNames;
     AstTypeList retTypes;
@@ -1077,13 +1092,13 @@ class AstTypeFunction : public AstType
 public:
     LUAU_RTTI(AstTypeFunction)
 
-    AstTypeFunction(const Location& location, const AstArray<AstName>& generics, const AstArray<AstName>& genericPacks, const AstTypeList& argTypes,
-        const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes);
+    AstTypeFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
+        const AstTypeList& argTypes, const AstArray<std::optional<AstArgumentName>>& argNames, const AstTypeList& returnTypes);
 
     void visit(AstVisitor* visitor) override;
 
-    AstArray<AstName> generics;
-    AstArray<AstName> genericPacks;
+    AstArray<AstGenericType> generics;
+    AstArray<AstGenericTypePack> genericPacks;
     AstTypeList argTypes;
     AstArray<std::optional<AstArgumentName>> argNames;
     AstTypeList returnTypes;

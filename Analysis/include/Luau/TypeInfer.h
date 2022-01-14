@@ -97,6 +97,12 @@ struct ApplyTypeFunction : Substitution
     TypePackId clean(TypePackId tp) override;
 };
 
+struct GenericTypeDefinitions
+{
+    std::vector<GenericTypeDefinition> genericTypes;
+    std::vector<GenericTypePackDefinition> genericPacks;
+};
+
 // All TypeVars are retained via Environment::typeVars.  All TypeIds
 // within a program are borrowed pointers into this set.
 struct TypeChecker
@@ -146,7 +152,7 @@ struct TypeChecker
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprBinary& expr);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr);
+    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
 
     TypeId checkExprTable(const ScopePtr& scope, const AstExprTable& expr, const std::vector<std::pair<TypeId, TypeId>>& fieldTypes,
         std::optional<TypeId> expectedType);
@@ -336,8 +342,8 @@ private:
         const std::vector<TypePackId>& typePackParams, const Location& location);
 
     // Note: `scope` must be a fresh scope.
-    std::pair<std::vector<TypeId>, std::vector<TypePackId>> createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt,
-        const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames);
+    GenericTypeDefinitions createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt, const AstNode& node,
+        const AstArray<AstGenericType>& genericNames, const AstArray<AstGenericTypePack>& genericPackNames);
 
 public:
     ErrorVec resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);

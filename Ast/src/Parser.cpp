@@ -10,10 +10,10 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionBaseSupport, false)
-LUAU_FASTFLAGVARIABLE(LuauIfStatementRecursionGuard, false)
 LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
+LUAU_FASTFLAGVARIABLE(LuauParseTypeAliasDefaults, false)
+LUAU_FASTFLAGVARIABLE(LuauParseRecoverTypePackEllipsis, false)
 
 namespace Luau
 {
@@ -394,23 +394,13 @@ AstStat* Parser::parseIf()
 
     if (lexer.current().type == Lexeme::ReservedElseif)
     {
-        if (FFlag::LuauIfStatementRecursionGuard)
-        {
-            unsigned int recursionCounterOld = recursionCounter;
-            incrementRecursionCounter("elseif");
-            elseLocation = lexer.current().location;
-            elsebody = parseIf();
-            end = elsebody->location;
-            hasEnd = elsebody->as<AstStatIf>()->hasEnd;
-            recursionCounter = recursionCounterOld;
-        }
-        else
-        {
-            elseLocation = lexer.current().location;
-            elsebody = parseIf();
-            end = elsebody->location;
-            hasEnd = elsebody->as<AstStatIf>()->hasEnd;
-        }
+        unsigned int recursionCounterOld = recursionCounter;
+        incrementRecursionCounter("elseif");
+        elseLocation = lexer.current().location;
+        elsebody = parseIf();
+        end = elsebody->location;
+        hasEnd = elsebody->as<AstStatIf>()->hasEnd;
+        recursionCounter = recursionCounterOld;
     }
     else
     {
@@ -772,7 +762,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
     if (!name)
         name = Name(nameError, lexer.current().location);
 
-    auto [generics, genericPacks] = parseGenericTypeList();
+    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ FFlag::LuauParseTypeAliasDefaults);
 
     expectAndConsume('=', "type alias");
 
@@ -788,8 +778,8 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
     Name fnName = parseName("function name");
 
     // TODO: generic method declarations CLI-39909
-    AstArray<AstName> generics;
-    AstArray<AstName> genericPacks;
+    AstArray<AstGenericType> generics;
+    AstArray<AstGenericTypePack> genericPacks;
     generics.size = 0;
     generics.data = nullptr;
     genericPacks.size = 0;
@@ -849,7 +839,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
         nextLexeme();
         Name globalName = parseName("global function name");
 
-        auto [generics, genericPacks] = parseGenericTypeList();
+        auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
 
         Lexeme matchParen = lexer.current();
 
@@ -991,7 +981,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 {
     Location start = matchFunction.location;
 
-    auto [generics, genericPacks] = parseGenericTypeList();
+    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
 
     Lexeme matchParen = lexer.current();
     expectAndConsume('(', "function");
@@ -1228,8 +1218,8 @@ std::pair<Location, AstTypeList> Parser::parseReturnTypeAnnotation()
         return {location, AstTypeList{copy(result), varargAnnotation}};
     }
 
-    AstArray<AstName> generics{nullptr, 0};
-    AstArray<AstName> genericPacks{nullptr, 0};
+    AstArray<AstGenericType> generics{nullptr, 0};
+    AstArray<AstGenericTypePack> genericPacks{nullptr, 0};
     AstArray<AstType*> types = copy(result);
     AstArray<std::optional<AstArgumentName>> names = copy(resultNames);
 
@@ -1363,7 +1353,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
 
     Lexeme begin = lexer.current();
 
-    auto [generics, genericPacks] = parseGenericTypeList();
+    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
 
     Lexeme parameterStart = lexer.current();
 
@@ -1401,7 +1391,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
     return {parseFunctionTypeAnnotationTail(begin, generics, genericPacks, paramTypes, paramNames, varargAnnotation), {}};
 }
 
-AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<AstName> generics, AstArray<AstName> genericPacks,
+AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<AstGenericType> generics, AstArray<AstGenericTypePack> genericPacks,
     AstArray<AstType*>& params, AstArray<std::optional<AstArgumentName>>& paramNames, AstTypePack* varargAnnotation)
 
 {
@@ -1448,7 +1438,7 @@ AstType* Parser::parseTypeAnnotation(TempVector<AstType*>& parts, const Location
         if (c == '|')
         {
             nextLexeme();
-            parts.push_back(parseSimpleTypeAnnotation(false).type);
+            parts.push_back(parseSimpleTypeAnnotation(/* allowPack= */ false).type);
             isUnion = true;
         }
         else if (c == '?')
@@ -1461,7 +1451,7 @@ AstType* Parser::parseTypeAnnotation(TempVector<AstType*>& parts, const Location
         else if (c == '&')
         {
             nextLexeme();
-            parts.push_back(parseSimpleTypeAnnotation(false).type);
+            parts.push_back(parseSimpleTypeAnnotation(/* allowPack= */ false).type);
             isIntersection = true;
         }
         else
@@ -1498,7 +1488,7 @@ AstTypeOrPack Parser::parseTypeOrPackAnnotation()
 
     TempVector<AstType*> parts(scratchAnnotation);
 
-    auto [type, typePack] = parseSimpleTypeAnnotation(true);
+    auto [type, typePack] = parseSimpleTypeAnnotation(/* allowPack= */ true);
 
     if (typePack)
     {
@@ -1521,7 +1511,7 @@ AstType* Parser::parseTypeAnnotation()
     Location begin = lexer.current().location;
 
     TempVector<AstType*> parts(scratchAnnotation);
-    parts.push_back(parseSimpleTypeAnnotation(false).type);
+    parts.push_back(parseSimpleTypeAnnotation(/* allowPack= */ false).type);
 
     recursionCounter = oldRecursionCount;
 
@@ -2121,7 +2111,7 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseTableConstructor();
     }
-    else if (FFlag::LuauIfElseExpressionBaseSupport && lexer.current().type == Lexeme::ReservedIf)
+    else if (lexer.current().type == Lexeme::ReservedIf)
     {
         return parseIfElseExpr();
     }
@@ -2341,10 +2331,10 @@ Parser::Name Parser::parseIndexName(const char* context, const Position& previou
     return Name(nameError, location);
 }
 
-std::pair<AstArray<AstName>, AstArray<AstName>> Parser::parseGenericTypeList()
+std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseGenericTypeList(bool withDefaultValues)
 {
-    TempVector<AstName> names{scratchName};
-    TempVector<AstName> namePacks{scratchPackName};
+    TempVector<AstGenericType> names{scratchGenericTypes};
+    TempVector<AstGenericTypePack> namePacks{scratchGenericTypePacks};
 
     if (lexer.current().type == '<')
     {
@@ -2352,21 +2342,73 @@ std::pair<AstArray<AstName>, AstArray<AstName>> Parser::parseGenericTypeList()
         nextLexeme();
 
         bool seenPack = false;
+        bool seenDefault = false;
+
         while (true)
         {
+            Location nameLocation = lexer.current().location;
             AstName name = parseName().name;
-            if (lexer.current().type == Lexeme::Dot3)
+            if (lexer.current().type == Lexeme::Dot3 || (FFlag::LuauParseRecoverTypePackEllipsis && seenPack))
             {
                 seenPack = true;
-                nextLexeme();
-                namePacks.push_back(name);
+
+                if (FFlag::LuauParseRecoverTypePackEllipsis && lexer.current().type != Lexeme::Dot3)
+                    report(lexer.current().location, "Generic types come before generic type packs");
+                else
+                    nextLexeme();
+
+                if (withDefaultValues && lexer.current().type == '=')
+                {
+                    seenDefault = true;
+                    nextLexeme();
+
+                    Lexeme packBegin = lexer.current();
+
+                    if (shouldParseTypePackAnnotation(lexer))
+                    {
+                        auto typePack = parseTypePackAnnotation();
+
+                        namePacks.push_back({name, nameLocation, typePack});
+                    }
+                    else if (lexer.current().type == '(')
+                    {
+                        auto [type, typePack] = parseTypeOrPackAnnotation();
+
+                        if (type)
+                            report(Location(packBegin.location.begin, lexer.previousLocation().end), "Expected type pack after '=', got type");
+
+                        namePacks.push_back({name, nameLocation, typePack});
+                    }
+                }
+                else
+                {
+                    if (seenDefault)
+                        report(lexer.current().location, "Expected default type pack after type pack name");
+
+                    namePacks.push_back({name, nameLocation, nullptr});
+                }
             }
             else
             {
-                if (seenPack)
+                if (!FFlag::LuauParseRecoverTypePackEllipsis && seenPack)
                     report(lexer.current().location, "Generic types come before generic type packs");
 
-                names.push_back(name);
+                if (withDefaultValues && lexer.current().type == '=')
+                {
+                    seenDefault = true;
+                    nextLexeme();
+
+                    AstType* defaultType = parseTypeAnnotation();
+
+                    names.push_back({name, nameLocation, defaultType});
+                }
+                else
+                {
+                    if (seenDefault)
+                        report(lexer.current().location, "Expected default type after type name");
+
+                    names.push_back({name, nameLocation, nullptr});
+                }
             }
 
             if (lexer.current().type == ',')
@@ -2378,8 +2420,8 @@ std::pair<AstArray<AstName>, AstArray<AstName>> Parser::parseGenericTypeList()
         expectMatchAndConsume('>', begin);
     }
 
-    AstArray<AstName> generics = copy(names);
-    AstArray<AstName> genericPacks = copy(namePacks);
+    AstArray<AstGenericType> generics = copy(names);
+    AstArray<AstGenericTypePack> genericPacks = copy(namePacks);
     return {generics, genericPacks};
 }
 

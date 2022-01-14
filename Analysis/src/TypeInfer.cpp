@@ -15,8 +15,8 @@
 #include "Luau/TypeVar.h"
 #include "Luau/TimeTrace.h"
 
-#include <deque>
 #include <algorithm>
+#include <iterator>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauMagicTypes, false)
 LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 500)
@@ -24,25 +24,30 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(LuauEqConstraint, false)
+LUAU_FASTFLAGVARIABLE(LuauGroupExpectedType, false)
 LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(LuauCloneCorrectlyBeforeMutatingTableType, false)
 LUAU_FASTFLAGVARIABLE(LuauStoreMatchingOverloadFnType, false)
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
-LUAU_FASTFLAGVARIABLE(LuauIfElseExpressionAnalysisSupport, false)
+LUAU_FASTFLAGVARIABLE(LuauIfElseBranchTypeUnion, false)
+LUAU_FASTFLAGVARIABLE(LuauIfElseExpectedType2, false)
 LUAU_FASTFLAGVARIABLE(LuauQuantifyInPlace2, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
 LUAU_FASTFLAGVARIABLE(LuauSingletonTypes, false)
+LUAU_FASTFLAGVARIABLE(LuauTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
 LUAU_FASTFLAGVARIABLE(LuauLValueAsKey, false)
 LUAU_FASTFLAGVARIABLE(LuauRefiLookupFromIndexExpr, false)
+LUAU_FASTFLAGVARIABLE(LuauPerModuleUnificationCache, false)
 LUAU_FASTFLAGVARIABLE(LuauProperTypeLevels, false)
 LUAU_FASTFLAGVARIABLE(LuauAscribeCorrectLevelToInferredProperitesOfFreeTables, false)
 LUAU_FASTFLAGVARIABLE(LuauFixRecursiveMetatableCall, false)
 LUAU_FASTFLAGVARIABLE(LuauBidirectionalAsExpr, false)
+LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAGVARIABLE(LuauUpdateFunctionNameBinding, false)
 
 namespace Luau
@@ -277,6 +282,14 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
     {
         reportError(TypeError{module.root->location,
             GenericError{"Free types leaked into this module's public interface. This is an internal Luau error; please report it."}});
+    }
+
+    if (FFlag::LuauPerModuleUnificationCache)
+    {
+        // Clear unifier cache since it's keyed off internal types that get deallocated
+        // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.
+        unifierState.cachedUnify.clear();
+        unifierState.skipCacheForType.clear();
     }
 
     return std::move(currentModule);
@@ -1213,18 +1226,18 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         ScopePtr aliasScope = childScope(scope, typealias.location);
         aliasScope->level = scope->level.incr();
 
-        for (TypeId ty : binding->typeParams)
+        for (auto param : binding->typeParams)
         {
-            auto generic = get<GenericTypeVar>(ty);
+            auto generic = get<GenericTypeVar>(param.ty);
             LUAU_ASSERT(generic);
-            aliasScope->privateTypeBindings[generic->name] = TypeFun{{}, ty};
+            aliasScope->privateTypeBindings[generic->name] = TypeFun{{}, param.ty};
         }
 
-        for (TypePackId tp : binding->typePackParams)
+        for (auto param : binding->typePackParams)
         {
-            auto generic = get<GenericTypePack>(tp);
+            auto generic = get<GenericTypePack>(param.tp);
             LUAU_ASSERT(generic);
-            aliasScope->privateTypePackBindings[generic->name] = tp;
+            aliasScope->privateTypePackBindings[generic->name] = param.tp;
         }
 
         TypeId ty = resolveType(aliasScope, *typealias.type);
@@ -1233,9 +1246,17 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
             // If the table is already named and we want to rename the type function, we have to bind new alias to a copy
             if (ttv->name)
             {
+                bool sameTys = std::equal(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(), binding->typeParams.begin(),
+                    binding->typeParams.end(), [](auto&& itp, auto&& tp) {
+                        return itp == tp.ty;
+                    });
+                bool sameTps = std::equal(ttv->instantiatedTypePackParams.begin(), ttv->instantiatedTypePackParams.end(),
+                    binding->typePackParams.begin(), binding->typePackParams.end(), [](auto&& itpp, auto&& tpp) {
+                        return itpp == tpp.tp;
+                    });
+
                 // Copy can be skipped if this is an identical alias
-                if (ttv->name != name || ttv->instantiatedTypeParams != binding->typeParams ||
-                    ttv->instantiatedTypePackParams != binding->typePackParams)
+                if (ttv->name != name || !sameTys || !sameTps)
                 {
                     // This is a shallow clone, original recursive links to self are not updated
                     TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
@@ -1243,8 +1264,12 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
                     clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
                     clone.definitionModuleName = ttv->definitionModuleName;
                     clone.name = name;
-                    clone.instantiatedTypeParams = binding->typeParams;
-                    clone.instantiatedTypePackParams = binding->typePackParams;
+
+                    for (auto param : binding->typeParams)
+                        clone.instantiatedTypeParams.push_back(param.ty);
+
+                    for (auto param : binding->typePackParams)
+                        clone.instantiatedTypePackParams.push_back(param.tp);
 
                     ty = addType(std::move(clone));
                 }
@@ -1252,8 +1277,14 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
             else
             {
                 ttv->name = name;
-                ttv->instantiatedTypeParams = binding->typeParams;
-                ttv->instantiatedTypePackParams = binding->typePackParams;
+
+                ttv->instantiatedTypeParams.clear();
+                for (auto param : binding->typeParams)
+                    ttv->instantiatedTypeParams.push_back(param.ty);
+
+                ttv->instantiatedTypePackParams.clear();
+                for (auto param : binding->typePackParams)
+                    ttv->instantiatedTypePackParams.push_back(param.tp);
             }
         }
         else if (auto mtv = getMutable<MetatableTypeVar>(follow(ty)))
@@ -1367,9 +1398,21 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareFunction& glo
 
     auto [generics, genericPacks] = createGenericTypes(funScope, std::nullopt, global, global.generics, global.genericPacks);
 
+    std::vector<TypeId> genericTys;
+    genericTys.reserve(generics.size());
+    std::transform(generics.begin(), generics.end(), std::back_inserter(genericTys), [](auto&& el) {
+        return el.ty;
+    });
+
+    std::vector<TypePackId> genericTps;
+    genericTps.reserve(genericPacks.size());
+    std::transform(genericPacks.begin(), genericPacks.end(), std::back_inserter(genericTps), [](auto&& el) {
+        return el.tp;
+    });
+
     TypePackId argPack = resolveTypePack(funScope, global.params);
     TypePackId retPack = resolveTypePack(funScope, global.retTypes);
-    TypeId fnType = addType(FunctionTypeVar{funScope->level, generics, genericPacks, argPack, retPack});
+    TypeId fnType = addType(FunctionTypeVar{funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack});
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(fnType);
 
     ftv->argNames.reserve(global.paramNames.size);
@@ -1394,7 +1437,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExpr& 
     ExprResult<TypeId> result;
 
     if (auto a = expr.as<AstExprGroup>())
-        result = checkExpr(scope, *a->expr);
+        result = checkExpr(scope, *a->expr, FFlag::LuauGroupExpectedType ? expectedType : std::nullopt);
     else if (expr.is<AstExprConstantNil>())
         result = {nilType};
     else if (const AstExprConstantBool* bexpr = expr.as<AstExprConstantBool>())
@@ -1438,21 +1481,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExpr& 
     else if (auto a = expr.as<AstExprError>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprIfElse>())
-    {
-        if (FFlag::LuauIfElseExpressionAnalysisSupport)
-        {
-            result = checkExpr(scope, *a);
-        }
-        else
-        {
-            // Note: When the fast flag is disabled we can't skip the handling of AstExprIfElse
-            // because we would generate an ICE.  We also can't use the default value
-            // of result, because it will lead to a compiler crash.
-            // Note: LuauIfElseExpressionBaseSupport can be used to disable parser support
-            // for if-else expressions which will mean this node type is never created.
-            result = {anyType};
-        }
-    }
+        result = checkExpr(scope, *a, FFlag::LuauIfElseExpectedType2 ? expectedType : std::nullopt);
     else
         ice("Unhandled AstExpr?");
 
@@ -1895,7 +1924,7 @@ TypeId TypeChecker::checkExprTable(
         }
     }
 
-    TableState state = (expr.items.size == 0 || isNonstrictMode()) ? TableState::Unsealed : TableState::Sealed;
+    TableState state = (expr.items.size == 0 || isNonstrictMode() || FFlag::LuauUnsealedTableLiteral) ? TableState::Unsealed : TableState::Sealed;
     TableTypeVar table = TableTypeVar{std::move(props), indexer, scope->level, state};
     table.definitionModuleName = currentModuleName;
     return addType(table);
@@ -2549,23 +2578,34 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprEr
     return {errorRecoveryType(scope)};
 }
 
-ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIfElse& expr)
+ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType)
 {
     ExprResult<TypeId> result = checkExpr(scope, *expr.condition);
     ScopePtr trueScope = childScope(scope, expr.trueExpr->location);
     reportErrors(resolve(result.predicates, trueScope, true));
-    ExprResult<TypeId> trueType = checkExpr(trueScope, *expr.trueExpr);
+    ExprResult<TypeId> trueType = checkExpr(trueScope, *expr.trueExpr, expectedType);
 
     ScopePtr falseScope = childScope(scope, expr.falseExpr->location);
     // Don't report errors for this scope to avoid potentially duplicating errors reported for the first scope.
     resolve(result.predicates, falseScope, false);
-    ExprResult<TypeId> falseType = checkExpr(falseScope, *expr.falseExpr);
+    ExprResult<TypeId> falseType = checkExpr(falseScope, *expr.falseExpr, expectedType);
 
-    unify(falseType.type, trueType.type, expr.location);
+    if (FFlag::LuauIfElseBranchTypeUnion)
+    {
+        if (falseType.type == trueType.type)
+            return {trueType.type};
 
-    // TODO: normalize(UnionTypeVar{{trueType, falseType}})
-    // For now both trueType and falseType must be the same type.
-    return {trueType.type};
+        std::vector<TypeId> types = reduceUnion({trueType.type, falseType.type});
+        return {types.size() == 1 ? types[0] : addType(UnionTypeVar{std::move(types)})};
+    }
+    else
+    {
+        unify(falseType.type, trueType.type, expr.location);
+
+        // TODO: normalize(UnionTypeVar{{trueType, falseType}})
+        // For now both trueType and falseType must be the same type.
+        return {trueType.type};
+    }
 }
 
 TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr)
@@ -3032,7 +3072,20 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
     defn.varargLocation = expr.vararg ? std::make_optional(expr.varargLocation) : std::nullopt;
     defn.originalNameLocation = originalName.value_or(Location(expr.location.begin, 0));
 
-    TypeId funTy = addType(FunctionTypeVar(funScope->level, generics, genericPacks, argPack, retPack, std::move(defn), bool(expr.self)));
+    std::vector<TypeId> genericTys;
+    genericTys.reserve(generics.size());
+    std::transform(generics.begin(), generics.end(), std::back_inserter(genericTys), [](auto&& el) {
+        return el.ty;
+    });
+
+    std::vector<TypePackId> genericTps;
+    genericTps.reserve(genericPacks.size());
+    std::transform(genericPacks.begin(), genericPacks.end(), std::back_inserter(genericTps), [](auto&& el) {
+        return el.tp;
+    });
+
+    TypeId funTy =
+        addType(FunctionTypeVar(funScope->level, std::move(genericTys), std::move(genericTps), argPack, retPack, std::move(defn), bool(expr.self)));
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(funTy);
 
@@ -4848,11 +4901,38 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         if (lit->parameters.size == 0 && tf->typeParams.empty() && tf->typePackParams.empty())
             return tf->type;
 
-        if (!lit->hasParameterList && !tf->typePackParams.empty())
+        bool hasDefaultTypes = false;
+        bool hasDefaultPacks = false;
+        bool parameterCountErrorReported = false;
+
+        if (FFlag::LuauTypeAliasDefaults)
         {
-            reportError(TypeError{annotation.location, GenericError{"Type parameter list is required"}});
-            if (!FFlag::LuauErrorRecoveryType)
-                return errorRecoveryType(scope);
+            hasDefaultTypes = std::any_of(tf->typeParams.begin(), tf->typeParams.end(), [](auto&& el) {
+                return el.defaultValue.has_value();
+            });
+            hasDefaultPacks = std::any_of(tf->typePackParams.begin(), tf->typePackParams.end(), [](auto&& el) {
+                return el.defaultValue.has_value();
+            });
+
+            if (!lit->hasParameterList)
+            {
+                if ((!tf->typeParams.empty() && !hasDefaultTypes) || (!tf->typePackParams.empty() && !hasDefaultPacks))
+                {
+                    reportError(TypeError{annotation.location, GenericError{"Type parameter list is required"}});
+                    parameterCountErrorReported = true;
+                    if (!FFlag::LuauErrorRecoveryType)
+                        return errorRecoveryType(scope);
+                }
+            }
+        }
+        else
+        {
+            if (!lit->hasParameterList && !tf->typePackParams.empty())
+            {
+                reportError(TypeError{annotation.location, GenericError{"Type parameter list is required"}});
+                if (!FFlag::LuauErrorRecoveryType)
+                    return errorRecoveryType(scope);
+            }
         }
 
         std::vector<TypeId> typeParams;
@@ -4892,14 +4972,89 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         if (typePackParams.empty() && !extraTypes.empty())
             typePackParams.push_back(addTypePack(extraTypes));
 
+        if (FFlag::LuauTypeAliasDefaults)
+        {
+            size_t typesProvided = typeParams.size();
+            size_t typesRequired = tf->typeParams.size();
+
+            size_t packsProvided = typePackParams.size();
+            size_t packsRequired = tf->typePackParams.size();
+
+            bool notEnoughParameters =
+                (typesProvided < typesRequired && packsProvided == 0) || (typesProvided == typesRequired && packsProvided < packsRequired);
+            bool hasDefaultParameters = hasDefaultTypes || hasDefaultPacks;
+
+            // Add default type and type pack parameters if that's required and it's possible
+            if (notEnoughParameters && hasDefaultParameters)
+            {
+                // 'applyTypeFunction' is used to substitute default types that reference previous generic types
+                applyTypeFunction.typeArguments.clear();
+                applyTypeFunction.typePackArguments.clear();
+                applyTypeFunction.currentModule = currentModule;
+                applyTypeFunction.level = scope->level;
+                applyTypeFunction.encounteredForwardedType = false;
+
+                for (size_t i = 0; i < typesProvided; ++i)
+                    applyTypeFunction.typeArguments[tf->typeParams[i].ty] = typeParams[i];
+
+                if (typesProvided < typesRequired)
+                {
+                    for (size_t i = typesProvided; i < typesRequired; ++i)
+                    {
+                        TypeId defaultTy = tf->typeParams[i].defaultValue.value_or(nullptr);
+
+                        if (!defaultTy)
+                            break;
+
+                        std::optional<TypeId> maybeInstantiated = applyTypeFunction.substitute(defaultTy);
+
+                        if (!maybeInstantiated.has_value())
+                        {
+                            reportError(annotation.location, UnificationTooComplex{});
+                            maybeInstantiated = errorRecoveryType(scope);
+                        }
+
+                        applyTypeFunction.typeArguments[tf->typeParams[i].ty] = *maybeInstantiated;
+                        typeParams.push_back(*maybeInstantiated);
+                    }
+                }
+
+                for (size_t i = 0; i < packsProvided; ++i)
+                    applyTypeFunction.typePackArguments[tf->typePackParams[i].tp] = typePackParams[i];
+
+                if (packsProvided < packsRequired)
+                {
+                    for (size_t i = packsProvided; i < packsRequired; ++i)
+                    {
+                        TypePackId defaultTp = tf->typePackParams[i].defaultValue.value_or(nullptr);
+
+                        if (!defaultTp)
+                            break;
+
+                        std::optional<TypePackId> maybeInstantiated = applyTypeFunction.substitute(defaultTp);
+
+                        if (!maybeInstantiated.has_value())
+                        {
+                            reportError(annotation.location, UnificationTooComplex{});
+                            maybeInstantiated = errorRecoveryTypePack(scope);
+                        }
+
+                        applyTypeFunction.typePackArguments[tf->typePackParams[i].tp] = *maybeInstantiated;
+                        typePackParams.push_back(*maybeInstantiated);
+                    }
+                }
+            }
+        }
+
         // If we didn't combine regular types into a type pack and we're still one type pack short, provide an empty type pack
         if (extraTypes.empty() && typePackParams.size() + 1 == tf->typePackParams.size())
             typePackParams.push_back(addTypePack({}));
 
         if (typeParams.size() != tf->typeParams.size() || typePackParams.size() != tf->typePackParams.size())
         {
-            reportError(
-                TypeError{annotation.location, IncorrectGenericParameterCount{lit->name.value, *tf, typeParams.size(), typePackParams.size()}});
+            if (!parameterCountErrorReported)
+                reportError(
+                    TypeError{annotation.location, IncorrectGenericParameterCount{lit->name.value, *tf, typeParams.size(), typePackParams.size()}});
 
             if (FFlag::LuauErrorRecoveryType)
             {
@@ -4913,11 +5068,20 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
                 return errorRecoveryType(scope);
         }
 
-        if (FFlag::LuauRecursiveTypeParameterRestriction && typeParams == tf->typeParams && typePackParams == tf->typePackParams)
+        if (FFlag::LuauRecursiveTypeParameterRestriction)
         {
+            bool sameTys = std::equal(typeParams.begin(), typeParams.end(), tf->typeParams.begin(), tf->typeParams.end(), [](auto&& itp, auto&& tp) {
+                return itp == tp.ty;
+            });
+            bool sameTps = std::equal(
+                typePackParams.begin(), typePackParams.end(), tf->typePackParams.begin(), tf->typePackParams.end(), [](auto&& itpp, auto&& tpp) {
+                    return itpp == tpp.tp;
+                });
+
             // If the generic parameters and the type arguments are the same, we are about to
             // perform an identity substitution, which we can just short-circuit.
-            return tf->type;
+            if (sameTys && sameTps)
+                return tf->type;
         }
 
         return instantiateTypeFun(scope, *tf, typeParams, typePackParams, annotation.location);
@@ -4948,7 +5112,19 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         TypePackId argTypes = resolveTypePack(funcScope, func->argTypes);
         TypePackId retTypes = resolveTypePack(funcScope, func->returnTypes);
 
-        TypeId fnType = addType(FunctionTypeVar{funcScope->level, std::move(generics), std::move(genericPacks), argTypes, retTypes});
+        std::vector<TypeId> genericTys;
+        genericTys.reserve(generics.size());
+        std::transform(generics.begin(), generics.end(), std::back_inserter(genericTys), [](auto&& el) {
+            return el.ty;
+        });
+
+        std::vector<TypePackId> genericTps;
+        genericTps.reserve(genericPacks.size());
+        std::transform(genericPacks.begin(), genericPacks.end(), std::back_inserter(genericTps), [](auto&& el) {
+            return el.tp;
+        });
+
+        TypeId fnType = addType(FunctionTypeVar{funcScope->level, std::move(genericTys), std::move(genericTps), argTypes, retTypes});
 
         FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(fnType);
 
@@ -5137,11 +5313,11 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
 
     applyTypeFunction.typeArguments.clear();
     for (size_t i = 0; i < tf.typeParams.size(); ++i)
-        applyTypeFunction.typeArguments[tf.typeParams[i]] = typeParams[i];
+        applyTypeFunction.typeArguments[tf.typeParams[i].ty] = typeParams[i];
 
     applyTypeFunction.typePackArguments.clear();
     for (size_t i = 0; i < tf.typePackParams.size(); ++i)
-        applyTypeFunction.typePackArguments[tf.typePackParams[i]] = typePackParams[i];
+        applyTypeFunction.typePackArguments[tf.typePackParams[i].tp] = typePackParams[i];
 
     applyTypeFunction.currentModule = currentModule;
     applyTypeFunction.level = scope->level;
@@ -5213,17 +5389,23 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     return instantiated;
 }
 
-std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt,
-    const AstNode& node, const AstArray<AstName>& genericNames, const AstArray<AstName>& genericPackNames)
+GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt, const AstNode& node,
+    const AstArray<AstGenericType>& genericNames, const AstArray<AstGenericTypePack>& genericPackNames)
 {
     LUAU_ASSERT(scope->parent);
 
     const TypeLevel level = (FFlag::LuauQuantifyInPlace2 && levelOpt) ? *levelOpt : scope->level;
 
-    std::vector<TypeId> generics;
-    for (const AstName& generic : genericNames)
+    std::vector<GenericTypeDefinition> generics;
+
+    for (const AstGenericType& generic : genericNames)
     {
-        Name n = generic.value;
+        std::optional<TypeId> defaultValue;
+
+        if (FFlag::LuauTypeAliasDefaults && generic.defaultValue)
+            defaultValue = resolveType(scope, *generic.defaultValue);
+
+        Name n = generic.name.value;
 
         // These generics are the only thing that will ever be added to scope, so we can be certain that
         // a collision can only occur when two generic typevars have the same name.
@@ -5246,14 +5428,20 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGener
             g = addType(Unifiable::Generic{level, n});
         }
 
-        generics.push_back(g);
+        generics.push_back({g, defaultValue});
         scope->privateTypeBindings[n] = TypeFun{{}, g};
     }
 
-    std::vector<TypePackId> genericPacks;
-    for (const AstName& genericPack : genericPackNames)
+    std::vector<GenericTypePackDefinition> genericPacks;
+
+    for (const AstGenericTypePack& genericPack : genericPackNames)
     {
-        Name n = genericPack.value;
+        std::optional<TypePackId> defaultValue;
+
+        if (FFlag::LuauTypeAliasDefaults && genericPack.defaultValue)
+            defaultValue = resolveTypePack(scope, *genericPack.defaultValue);
+
+        Name n = genericPack.name.value;
 
         // These generics are the only thing that will ever be added to scope, so we can be certain that
         // a collision can only occur when two generic typevars have the same name.
@@ -5276,7 +5464,7 @@ std::pair<std::vector<TypeId>, std::vector<TypePackId>> TypeChecker::createGener
             g = addTypePack(TypePackVar{Unifiable::Generic{level, n}});
         }
 
-        genericPacks.push_back(g);
+        genericPacks.push_back({g, defaultValue});
         scope->privateTypePackBindings[n] = g;
     }
 

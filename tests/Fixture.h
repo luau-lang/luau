@@ -106,7 +106,7 @@ struct Fixture
     /// Parse with all language extensions enabled
     ParseResult parseEx(const std::string& source, const ParseOptions& parseOptions = {});
     ParseResult tryParse(const std::string& source, const ParseOptions& parseOptions = {});
-    ParseResult matchParseError(const std::string& source, const std::string& message);
+    ParseResult matchParseError(const std::string& source, const std::string& message, std::optional<Location> location = std::nullopt);
     // Verify a parse error occurs and the parse error message has the specified prefix
     ParseResult matchParseErrorPrefix(const std::string& source, const std::string& prefix);
 

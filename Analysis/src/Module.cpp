@@ -14,6 +14,7 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
+LUAU_FASTFLAG(LuauTypeAliasDefaults)
 
 namespace Luau
 {
@@ -447,11 +448,28 @@ TypeId clone(TypeId typeId, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState)
 {
     TypeFun result;
-    for (TypeId ty : typeFun.typeParams)
-        result.typeParams.push_back(clone(ty, dest, seenTypes, seenTypePacks, cloneState));
 
-    for (TypePackId tp : typeFun.typePackParams)
-        result.typePackParams.push_back(clone(tp, dest, seenTypes, seenTypePacks, cloneState));
+    for (auto param : typeFun.typeParams)
+    {
+        TypeId ty = clone(param.ty, dest, seenTypes, seenTypePacks, cloneState);
+        std::optional<TypeId> defaultValue;
+
+        if (FFlag::LuauTypeAliasDefaults && param.defaultValue)
+            defaultValue = clone(*param.defaultValue, dest, seenTypes, seenTypePacks, cloneState);
+
+        result.typeParams.push_back({ty, defaultValue});
+    }
+
+    for (auto param : typeFun.typePackParams)
+    {
+        TypePackId tp = clone(param.tp, dest, seenTypes, seenTypePacks, cloneState);
+        std::optional<TypePackId> defaultValue;
+
+        if (FFlag::LuauTypeAliasDefaults && param.defaultValue)
+            defaultValue = clone(*param.defaultValue, dest, seenTypes, seenTypePacks, cloneState);
+
+        result.typePackParams.push_back({tp, defaultValue});
+    }
 
     result.type = clone(typeFun.type, dest, seenTypes, seenTypePacks, cloneState);
 

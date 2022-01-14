@@ -96,24 +96,24 @@ std::ostream& operator<<(std::ostream& stream, const IncorrectGenericParameterCo
     {
         stream << "<";
         bool first = true;
-        for (TypeId t : error.typeFun.typeParams)
+        for (auto param : error.typeFun.typeParams)
         {
             if (first)
                 first = false;
             else
                 stream << ", ";
 
-            stream << toString(t);
+            stream << toString(param.ty);
         }
 
-        for (TypePackId t : error.typeFun.typePackParams)
+        for (auto param : error.typeFun.typePackParams)
         {
             if (first)
                 first = false;
             else
                 stream << ", ";
 
-            stream << toString(t);
+            stream << toString(param.tp);
         }
 
         stream << ">";

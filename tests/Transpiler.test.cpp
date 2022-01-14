@@ -421,8 +421,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_type_assertion")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_if_then_else")
 {
-    ScopedFastFlag luauIfElseExpressionBaseSupport("LuauIfElseExpressionBaseSupport", true);
-
     std::string code = "local a = if 1 then 2 else 3";
 
     CHECK_EQ(code, transpile(code).code);
@@ -641,4 +639,16 @@ TEST_CASE_FIXTURE(Fixture, "transpile_to_string")
     CHECK_EQ("'hello'", toString(expr));
 }
 
+TEST_CASE_FIXTURE(Fixture, "transpile_type_alias_default_type_parameters")
+{
+    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
+    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
+
+    std::string code = R"(
+type Packed<T = string, U = T, V... = ...boolean, W... = (T, U, V...)> = (T, U, V...)->(W...)
+local a: Packed<number>
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
 TEST_SUITE_END();
