@@ -21,21 +21,13 @@ local function tree_insert(tree, x)
 end
 ```
 
-Note that future versions of Lua extend the Lua 5.1 syntax with the following features; Luau does support string literal extensions but does not support other features from this list:
-
-- hexadecimal (`\x`), Unicode (`\u`) and `\z` escapes for string literals
-- goto statements and labels
-- bitwise operators
-- floor division operator (`//`)
-- `<toclose>` and `<const>` local attributes
-
-> For details please refer to [compatibility section](compatibility).
+Note that future versions of Lua extend the Lua 5.1 syntax with more  features; Luau does  support string literal extensions but does not support other 5.x additions; for details please refer to [compatibility section](compatibility).
 
 The rest of this document documents additional syntax used in Luau.
 
 ## String literals
 
-As noted above, Luau implements support for hexadecimal (`\0x`), Unicode (`\u`) and `\z` escapes for string literals. This syntax follows [Lua 5.3 syntax](https://www.lua.org/manual/5.3/manual.html#3.1):
+Luau implements support for hexadecimal (`\0x`), Unicode (`\u`) and `\z` escapes for string literals. This syntax follows [Lua 5.3 syntax](https://www.lua.org/manual/5.3/manual.html#3.1):
 
 - `\xAB` inserts a character with the code 0xAB into the string
 - `\u{ABC}` inserts a UTF8 byte sequence that encodes U+0ABC character into the string (note that braces are mandatory)

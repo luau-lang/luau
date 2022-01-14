@@ -4,6 +4,8 @@
 
 The way `::` works today is really strange.  The best solution we can come up with is to allow `::` to convert between any two related types.
 
+**Status**: Implemented
+
 ## Motivation
 
 Due to an accident of the implementation, the Luau `::` operator can only be used for downcasts and casts to `any`.
