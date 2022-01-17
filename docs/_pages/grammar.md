@@ -58,13 +58,13 @@ unop = '-' | 'not' | '#'
 
 SimpleType =
     'nil' |
-    STRING |
-    'true' |
-    'false' |
+    SingletonType |
     NAME ['.' NAME] [ '<' [TypeParams] '>' ] |
     'typeof' '(' exp ')' |
     TableType |
     FunctionType
+
+SingletonType = STRING | 'true' | 'false'
 
 Type =
     SimpleType ['?'] |
