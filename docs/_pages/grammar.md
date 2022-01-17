@@ -73,7 +73,7 @@ Type =
     SimpleType ['|' Type] |
     SimpleType ['&' Type]
 
-GenericTypeList = NAME ['...'] {',' NAME ['...']}
+GenericTypeList = NAME [',' GenericTypeList] | NAME '...' {',' NAME '...'}
 TypeList = Type [',' TypeList] | '...' Type
 ReturnType = Type | '(' TypeList ')'
 TableIndexer = '[' Type ']' ':' Type
