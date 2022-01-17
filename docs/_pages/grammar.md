@@ -29,7 +29,7 @@ stat = varlist '=' explist |
 laststat = 'return' [explist] | 'break' | 'continue'
 
 funcname = NAME {'.' NAME} [':' NAME]
-funcbody = '(' [parlist] ')' [':' ReturnType] block 'end'
+funcbody = ['<' GenericTypeList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
 parlist = bindinglist [',' '...'] | '...'
 
 explist = {exp ','} exp
