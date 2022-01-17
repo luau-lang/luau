@@ -7,8 +7,6 @@ classes: wide
 This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes String and Number
 is available in the [syntax section](syntax).
 
-> Note: this grammar is currently missing type pack syntax for generic arguments
-
 ```ebnf
 chunk = block
 block = {stat [';']} [laststat [';']]
@@ -63,7 +61,7 @@ SimpleType =
     STRING |
     'true' |
     'false' |
-    NAME ['.' NAME] [ '<' TypeList '>' ] |
+    NAME ['.' NAME] [ '<' [TypeParams] '>' ] |
     'typeof' '(' exp ')' |
     TableType |
     FunctionType
@@ -76,7 +74,9 @@ Type =
 GenericTypePack = NAME '...' ['=' '(' TypeList ')']
 GenericTypeList = NAME ['=' Type] [',' GenericTypeList] | GenericTypePack {',' GenericTypePack}
 TypeList = Type [',' TypeList] | '...' Type
-ReturnType = Type | '(' TypeList ')'
+TypeParams = (Type | TypePack | '...' Type | NAME '...') [',' TypeParams]
+TypePack = '(' [TypeList] ')'
+ReturnType = Type | TypePack
 TableIndexer = '[' Type ']' ':' Type
 TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
