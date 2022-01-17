@@ -8,7 +8,7 @@ One of main goals of Luau is to enable high performance code. To help with that 
 code is in developers' hands, and is a combination of good algorithm design and implementation that adheres to the strengths of the language. To help write efficient code, Luau
 provides a built-in profiler that samples the execution of the program and outputs a profiler dump that can be converted to an interactive flamegraph.
 
-To run the profiler, make sure you have an optimized build of the intepreter (otherwise profiling results are going to be very skewed) and run it with `--profile` argument:
+To run the profiler, make sure you have an optimized build of the interpreter (otherwise profiling results are going to be very skewed) and run it with `--profile` argument:
 
 ```
 $ luau --profile tests/chess.lua
