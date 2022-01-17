@@ -60,6 +60,9 @@ unop = '-' | 'not' | '#'
 
 SimpleType =
     'nil' |
+    STRING |
+    'true' |
+    'false' |
     NAME ['.' NAME] [ '<' TypeList '>' ] |
     'typeof' '(' exp ')' |
     TableType |
