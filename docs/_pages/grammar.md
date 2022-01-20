@@ -22,12 +22,12 @@ stat = varlist '=' explist |
     'function' funcname funcbody |
     'local' 'function' NAME funcbody |
     'local' bindinglist ['=' explist] |
-    ['export'] 'type' NAME ['<' GenericTypeList '>'] '=' Type
+    ['export'] 'type' NAME ['<' GenericTypeParameterList '>'] '=' Type
 
 laststat = 'return' [explist] | 'break' | 'continue'
 
 funcname = NAME {'.' NAME} [':' NAME]
-funcbody = ['<' GenericTypeList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
+funcbody = ['<' GenericTypeParameterList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
 parlist = bindinglist [',' '...'] | '...'
 
 explist = {exp ','} exp
