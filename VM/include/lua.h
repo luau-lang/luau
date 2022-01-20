@@ -382,7 +382,7 @@ typedef struct lua_Callbacks lua_Callbacks;
 LUA_API lua_Callbacks* lua_callbacks(lua_State* L);
 
 /******************************************************************************
- * Copyright (c) 2019-2021 Roblox Corporation
+ * Copyright (c) 2019-2022 Roblox Corporation
  * Copyright (C) 1994-2008 Lua.org, PUC-Rio.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining
