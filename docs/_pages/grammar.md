@@ -71,7 +71,7 @@ Type =
     SimpleType ['|' Type] |
     SimpleType ['&' Type]
 
-GenericTypePack = NAME '...' ['=' '(' TypeList ')']
+GenericTypePack = NAME '...' ['=' (TypePack | '...' Type | NAME '...')]
 GenericTypeList = NAME ['=' Type] [',' GenericTypeList] | GenericTypePack {',' GenericTypePack}
 TypeList = Type [',' TypeList] | '...' Type
 TypeParams = (Type | TypePack | '...' Type | NAME '...') [',' TypeParams]
