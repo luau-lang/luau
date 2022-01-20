@@ -1,5 +1,7 @@
 # Records
 
+TODO: cover generic records more comprehensively, including "what happens to generic type arguments in method declarations"
+
 ## Summary
 
 Introduces a new data type, record, which is essentially a dictionary with fixed structure.
