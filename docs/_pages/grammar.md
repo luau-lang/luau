@@ -71,11 +71,13 @@ Type =
     SimpleType ['|' Type] |
     SimpleType ['&' Type]
 
-GenericTypePack = NAME '...' ['=' (TypePack | '...' Type | NAME '...')]
-GenericTypeList = NAME ['=' Type] [',' GenericTypeList] | GenericTypePack {',' GenericTypePack}
+GenericTypePackParameter = NAME '...' ['=' (TypePack | VariadicTypePack | GenericTypePack)]
+GenericTypeParameterList = NAME ['=' Type] [',' GenericTypeParameterList] | GenericTypePackParameter {',' GenericTypePackParameter}
 TypeList = Type [',' TypeList] | '...' Type
-TypeParams = (Type | TypePack | '...' Type | NAME '...') [',' TypeParams]
+TypeParams = (Type | TypePack | VariadicTypePack | GenericTypePack) [',' TypeParams]
 TypePack = '(' [TypeList] ')'
+GenericTypePack = NAME '...'
+VariadicTypePack = '...' Type
 ReturnType = Type | TypePack
 TableIndexer = '[' Type ']' ':' Type
 TableProp = NAME ':' Type
