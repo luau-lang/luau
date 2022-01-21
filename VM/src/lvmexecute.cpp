@@ -496,7 +496,7 @@ static void luau_execute(lua_State* L)
                 Instruction insn = *pc++;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
-                if (L->openupval && gco2uv(L->openupval)->v >= ra)
+                if (L->openupval && L->openupval->v >= ra)
                     luaF_close(L, ra);
                 VM_NEXT();
             }

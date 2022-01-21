@@ -5,6 +5,7 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Error.h"
+#include "Luau/RecursionCounter.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
@@ -19,6 +20,8 @@
 
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
+LUAU_FASTINT(LuauTypeInferRecursionLimit)
+LUAU_FASTFLAG(LuauLengthOnCompositeType)
 LUAU_FASTFLAGVARIABLE(LuauMetatableAreEqualRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTagging, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
@@ -323,6 +326,49 @@ bool maybeSingleton(TypeId ty)
         for (TypeId option : utv)
             if (get<SingletonTypeVar>(follow(option)))
                 return true;
+    return false;
+}
+
+bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
+{
+    LUAU_ASSERT(FFlag::LuauLengthOnCompositeType);
+
+    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
+
+    ty = follow(ty);
+
+    if (seen.contains(ty))
+        return true;
+
+    if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty))
+        return true;
+
+    if (auto uty = get<UnionTypeVar>(ty))
+    {
+        seen.insert(ty);
+
+        for (TypeId part : uty->options)
+        {
+            if (!hasLength(part, seen, recursionCount))
+                return false;
+        }
+
+        return true;
+    }
+
+    if (auto ity = get<IntersectionTypeVar>(ty))
+    {
+        seen.insert(ty);
+
+        for (TypeId part : ity->parts)
+        {
+            if (hasLength(part, seen, recursionCount))
+                return true;
+        }
+
+        return false;
+    }
+
     return false;
 }
 

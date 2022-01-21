@@ -14,6 +14,7 @@ LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauParseRecoverTypePackEllipsis, false)
+LUAU_FASTFLAGVARIABLE(LuauStartingBrokenComment, false)
 
 namespace Luau
 {
@@ -174,10 +175,23 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
             const Lexeme::Type type = p.lexer.current().type;
             const Location loc = p.lexer.current().location;
 
-            p.lexer.next();
+            if (FFlag::LuauStartingBrokenComment)
+            {
+                if (options.captureComments)
+                    p.commentLocations.push_back(Comment{type, loc});
 
-            if (options.captureComments)
-                p.commentLocations.push_back(Comment{type, loc});
+                if (type == Lexeme::BrokenComment)
+                    break;
+
+                p.lexer.next();
+            }
+            else
+            {
+                p.lexer.next();
+
+                if (options.captureComments)
+                    p.commentLocations.push_back(Comment{type, loc});
+            }
         }
 
         p.lexer.setSkipComments(true);

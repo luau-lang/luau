@@ -2180,4 +2180,52 @@ b()
     CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable { __call: t1 }, {  } })");
 }
 
+TEST_CASE_FIXTURE(Fixture, "length_operator_union")
+{
+    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
+
+    CheckResult result = check(R"(
+local x: {number} | {string}
+local y = #x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "length_operator_intersection")
+{
+    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
+
+    CheckResult result = check(R"(
+local x: {number} & {z:string} -- mixed tables are evil
+local y = #x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "length_operator_non_table_union")
+{
+    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
+
+    CheckResult result = check(R"(
+local x: {number} | any | string
+local y = #x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "length_operator_union_errors")
+{
+    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
+
+    CheckResult result = check(R"(
+local x: {number} | number | string
+local y = #x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_SUITE_END();

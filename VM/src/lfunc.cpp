@@ -7,10 +7,11 @@
 #include "lgc.h"
 
 LUAU_FASTFLAGVARIABLE(LuauNoDirectUpvalRemoval, false)
+LUAU_FASTFLAG(LuauGcPagedSweep)
 
 Proto* luaF_newproto(lua_State* L)
 {
-    Proto* f = luaM_new(L, Proto, sizeof(Proto), L->activememcat);
+    Proto* f = luaM_newgco(L, Proto, sizeof(Proto), L->activememcat);
     luaC_link(L, f, LUA_TPROTO);
     f->k = NULL;
     f->sizek = 0;
@@ -38,7 +39,7 @@ Proto* luaF_newproto(lua_State* L)
 
 Closure* luaF_newLclosure(lua_State* L, int nelems, Table* e, Proto* p)
 {
-    Closure* c = luaM_new(L, Closure, sizeLclosure(nelems), L->activememcat);
+    Closure* c = luaM_newgco(L, Closure, sizeLclosure(nelems), L->activememcat);
     luaC_link(L, c, LUA_TFUNCTION);
     c->isC = 0;
     c->env = e;
@@ -53,7 +54,7 @@ Closure* luaF_newLclosure(lua_State* L, int nelems, Table* e, Proto* p)
 
 Closure* luaF_newCclosure(lua_State* L, int nelems, Table* e)
 {
-    Closure* c = luaM_new(L, Closure, sizeCclosure(nelems), L->activememcat);
+    Closure* c = luaM_newgco(L, Closure, sizeCclosure(nelems), L->activememcat);
     luaC_link(L, c, LUA_TFUNCTION);
     c->isC = 1;
     c->env = e;
@@ -69,10 +70,9 @@ Closure* luaF_newCclosure(lua_State* L, int nelems, Table* e)
 UpVal* luaF_findupval(lua_State* L, StkId level)
 {
     global_State* g = L->global;
-    GCObject** pp = &L->openupval;
+    UpVal** pp = &L->openupval;
     UpVal* p;
-    UpVal* uv;
-    while (*pp != NULL && (p = gco2uv(*pp))->v >= level)
+    while (*pp != NULL && (p = *pp)->v >= level)
     {
         LUAU_ASSERT(p->v != &p->u.value);
         if (p->v == level)
@@ -81,53 +81,95 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
                 changewhite(obj2gco(p)); /* resurrect it */
             return p;
         }
-        pp = &p->next;
+
+        // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
+        pp = (UpVal**)&p->next;
     }
-    uv = luaM_new(L, UpVal, sizeof(UpVal), L->activememcat); /* not found: create a new one */
+
+    UpVal* uv = luaM_newgco(L, UpVal, sizeof(UpVal), L->activememcat); /* not found: create a new one */
     uv->tt = LUA_TUPVAL;
     uv->marked = luaC_white(g);
     uv->memcat = L->activememcat;
     uv->v = level;  /* current value lives in the stack */
-    uv->next = *pp; /* chain it in the proper position */
-    *pp = obj2gco(uv);
-    uv->u.l.prev = &g->uvhead; /* double link it in `uvhead' list */
+
+    // chain the upvalue in the threads open upvalue list at the proper position
+    UpVal* next = *pp;
+
+    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
+    uv->next = (GCObject*)next;
+
+    if (FFlag::LuauGcPagedSweep)
+    {
+        uv->u.l.threadprev = pp;
+        if (next)
+        {
+            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
+            next->u.l.threadprev = (UpVal**)&uv->next;
+        }
+    }
+
+    *pp = uv;
+
+    // double link the upvalue in the global open upvalue list
+    uv->u.l.prev = &g->uvhead;
     uv->u.l.next = g->uvhead.u.l.next;
     uv->u.l.next->u.l.prev = uv;
     g->uvhead.u.l.next = uv;
     LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
     return uv;
 }
-
-static void unlinkupval(UpVal* uv)
+void luaF_unlinkupval(UpVal* uv)
 {
+    // unlink upvalue from the global open upvalue list
     LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
-    uv->u.l.next->u.l.prev = uv->u.l.prev; /* remove from `uvhead' list */
+    uv->u.l.next->u.l.prev = uv->u.l.prev;
     uv->u.l.prev->u.l.next = uv->u.l.next;
+
+    if (FFlag::LuauGcPagedSweep)
+    {
+        // unlink upvalue from the thread open upvalue list
+        // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and this and the following cast will not be required
+        *uv->u.l.threadprev = (UpVal*)uv->next;
+
+        if (UpVal* next = (UpVal*)uv->next)
+            next->u.l.threadprev = uv->u.l.threadprev;
+    }
 }
 
-void luaF_freeupval(lua_State* L, UpVal* uv)
+void luaF_freeupval(lua_State* L, UpVal* uv, lua_Page* page)
 {
     if (uv->v != &uv->u.value)                   /* is it open? */
-        unlinkupval(uv);                         /* remove from open list */
-    luaM_free(L, uv, sizeof(UpVal), uv->memcat); /* free upvalue */
+        luaF_unlinkupval(uv);                    /* remove from open list */
+    luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page); /* free upvalue */
 }
 
 void luaF_close(lua_State* L, StkId level)
 {
-    UpVal* uv;
     global_State* g = L->global; // TODO: remove with FFlagLuauNoDirectUpvalRemoval
-    while (L->openupval != NULL && (uv = gco2uv(L->openupval))->v >= level)
+    UpVal* uv;
+    while (L->openupval != NULL && (uv = L->openupval)->v >= level)
     {
         GCObject* o = obj2gco(uv);
         LUAU_ASSERT(!isblack(o) && uv->v != &uv->u.value);
-        L->openupval = uv->next; /* remove from `open' list */
-        if (!FFlag::LuauNoDirectUpvalRemoval && isdead(g, o))
+
+        if (!FFlag::LuauGcPagedSweep)
+            L->openupval = (UpVal*)uv->next; /* remove from `open' list */
+
+        if (FFlag::LuauGcPagedSweep && isdead(g, o))
         {
-            luaF_freeupval(L, uv); /* free upvalue */
+            // by removing the upvalue from global/thread open upvalue lists, L->openupval will be pointing to the next upvalue
+            luaF_unlinkupval(uv);
+            // close the upvalue without copying the dead data so that luaF_freeupval will not unlink again
+            uv->v = &uv->u.value;
+        }
+        else if (!FFlag::LuauNoDirectUpvalRemoval && isdead(g, o))
+        {
+            luaF_freeupval(L, uv, NULL); /* free upvalue */
         }
         else
         {
-            unlinkupval(uv);
+            // by removing the upvalue from global/thread open upvalue lists, L->openupval will be pointing to the next upvalue
+            luaF_unlinkupval(uv);
             setobj(L, &uv->u.value, uv->v);
             uv->v = &uv->u.value;  /* now current value lives here */
             luaC_linkupval(L, uv); /* link upvalue into `gcroot' list */
@@ -135,7 +177,7 @@ void luaF_close(lua_State* L, StkId level)
     }
 }
 
-void luaF_freeproto(lua_State* L, Proto* f)
+void luaF_freeproto(lua_State* L, Proto* f, lua_Page* page)
 {
     luaM_freearray(L, f->code, f->sizecode, Instruction, f->memcat);
     luaM_freearray(L, f->p, f->sizep, Proto*, f->memcat);
@@ -146,13 +188,13 @@ void luaF_freeproto(lua_State* L, Proto* f)
     luaM_freearray(L, f->upvalues, f->sizeupvalues, TString*, f->memcat);
     if (f->debuginsn)
         luaM_freearray(L, f->debuginsn, f->sizecode, uint8_t, f->memcat);
-    luaM_free(L, f, sizeof(Proto), f->memcat);
+    luaM_freegco(L, f, sizeof(Proto), f->memcat, page);
 }
 
-void luaF_freeclosure(lua_State* L, Closure* c)
+void luaF_freeclosure(lua_State* L, Closure* c, lua_Page* page)
 {
     int size = c->isC ? sizeCclosure(c->nupvalues) : sizeLclosure(c->nupvalues);
-    luaM_free(L, c, size, c->memcat);
+    luaM_freegco(L, c, size, c->memcat, page);
 }
 
 const LocVar* luaF_getlocal(const Proto* f, int local_number, int pc)

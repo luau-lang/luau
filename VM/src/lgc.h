@@ -13,6 +13,7 @@
 #define GCSpropagate 1
 #define GCSpropagateagain 2
 #define GCSatomic 3
+// TODO: remove with FFlagLuauGcPagedSweep
 #define GCSsweepstring 4
 #define GCSsweep 5
 

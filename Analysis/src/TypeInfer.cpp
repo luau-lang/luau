@@ -33,6 +33,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseBranchTypeUnion, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpectedType2, false)
+LUAU_FASTFLAGVARIABLE(LuauLengthOnCompositeType, false)
 LUAU_FASTFLAGVARIABLE(LuauQuantifyInPlace2, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
 LUAU_FASTFLAGVARIABLE(LuauSingletonTypes, false)
@@ -2066,17 +2067,27 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprUn
         if (get<ErrorTypeVar>(operandType))
             return {errorRecoveryType(scope)};
 
-        if (get<AnyTypeVar>(operandType))
-            return {numberType}; // Not strictly correct: metatables permit overriding this
-
-        if (auto p = get<PrimitiveTypeVar>(operandType))
+        if (FFlag::LuauLengthOnCompositeType)
         {
-            if (p->type == PrimitiveTypeVar::String)
-                return {numberType};
-        }
+            DenseHashSet<TypeId> seen{nullptr};
 
-        if (!getTableType(operandType))
-            reportError(TypeError{expr.location, NotATable{operandType}});
+            if (!hasLength(operandType, seen, &recursionCount))
+                reportError(TypeError{expr.location, NotATable{operandType}});
+        }
+        else
+        {
+            if (get<AnyTypeVar>(operandType))
+                return {numberType}; // Not strictly correct: metatables permit overriding this
+
+            if (auto p = get<PrimitiveTypeVar>(operandType))
+            {
+                if (p->type == PrimitiveTypeVar::String)
+                    return {numberType};
+            }
+
+            if (!getTableType(operandType))
+                reportError(TypeError{expr.location, NotATable{operandType}});
+        }
 
         return {numberType};
 
