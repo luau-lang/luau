@@ -145,7 +145,7 @@ In some cases the linter can detect code that is never executed, because all exe
 ```lua
 function cbrt(v)
     if v >= 0 then
-        return v ^ 1/3
+        return v ^ (1/3)
     else
         error('cbrt expects a non-negative argument')
     end

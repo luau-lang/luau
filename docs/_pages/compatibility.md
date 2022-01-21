@@ -116,7 +116,7 @@ Floor division is less harmful, but it's used rarely enough that `math.floor(a/b
 | The function print calls `__tostring` instead of tostring to format its arguments. | ✔️ | |
 | By default, the decoding functions in the utf8 library do not accept surrogates. | 😞 | breaks compatibility and doesn't seem very interesting otherwise |
 
-Lua has a beautiful syntax and frankly we're disappointed in the `<const>`/`<toclose>` which takes away from that beauty. Taking syntax aside, `<toclose>` isn't very useful in Luau - its dominant use case is for code that works with external resources like files or sockets, but we don't provide such APIs - and has a very large complexity cost, evidences by a lot of bug fixes since the initial implementation in 5.4 work versions. `<const>` in Luau doesn't matter for performance - our multi-pass compiler is already able to analyze the usage of the variable to know if it's modified or not and extract all performance gains from it - so the only use here is for code readability, where the `<const>` syntax is... suboptimal.
+Lua has a beautiful syntax and frankly we're disappointed in the `<const>`/`<close>` which takes away from that beauty. Taking syntax aside, `<close>` isn't very useful in Luau - its dominant use case is for code that works with external resources like files or sockets, but we don't provide such APIs - and has a very large complexity cost, evidences by a lot of bug fixes since the initial implementation in 5.4 work versions. `<const>` in Luau doesn't matter for performance - our multi-pass compiler is already able to analyze the usage of the variable to know if it's modified or not and extract all performance gains from it - so the only use here is for code readability, where the `<const>` syntax is... suboptimal.
 
 If we do end up introducing const variables, it would be through a `const var = value` syntax, which is backwards compatible through a context-sensitive keyword similar to `type`.
 
@@ -127,5 +127,5 @@ We have a few behavior deviations from Lua 5.x that come from either a different
 * Tail calls are not supported to simplify implementation, make debugging/stack traces more predictable and allow deep validation of caller identity for security
 * Order of table assignment in table literals follows program order in mixed tables (Lua 5.x assigns array elements first in some cases)
 * Equality comparisons call `__eq` metamethod even when objects are rawequal (which matches other metamethods like `<=` and facilitates NaN checking)
-* `function()` expressions may reuse a previosly created closure in certain scenarios (when all upvalues captured are the same) for efficiency, which changes object identity but doesn't change call semantics -- this is different from Lua 5.1 but similar to Lua 5.2/5.3
+* `function()` expressions may reuse a previously created closure in certain scenarios (when all upvalues captured are the same) for efficiency, which changes object identity but doesn't change call semantics -- this is different from Lua 5.1 but similar to Lua 5.2/5.3
 * `os.time` returns UTC timestamp when called with a table for consistency

@@ -7,8 +7,6 @@ classes: wide
 This is the complete syntax grammar for Luau in EBNF. More information about the terminal nodes String and Number
 is available in the [syntax section](syntax).
 
-> Note: this grammar is currently missing type pack syntax for generic arguments
-
 ```ebnf
 chunk = block
 block = {stat [';']} [laststat [';']]
@@ -24,12 +22,12 @@ stat = varlist '=' explist |
     'function' funcname funcbody |
     'local' 'function' NAME funcbody |
     'local' bindinglist ['=' explist] |
-    ['export'] 'type' NAME ['<' GenericTypeList '>'] '=' Type
+    ['export'] 'type' NAME ['<' GenericTypeParameterList '>'] '=' Type
 
 laststat = 'return' [explist] | 'break' | 'continue'
 
 funcname = NAME {'.' NAME} [':' NAME]
-funcbody = '(' [parlist] ')' [':' ReturnType] block 'end'
+funcbody = ['<' GenericTypeParameterList '>'] '(' [parlist] ')' [':' ReturnType] block 'end'
 parlist = bindinglist [',' '...'] | '...'
 
 explist = {exp ','} exp
@@ -60,19 +58,27 @@ unop = '-' | 'not' | '#'
 
 SimpleType =
     'nil' |
-    NAME ['.' NAME] [ '<' TypeList '>' ] |
+    SingletonType |
+    NAME ['.' NAME] [ '<' [TypeParams] '>' ] |
     'typeof' '(' exp ')' |
     TableType |
     FunctionType
+
+SingletonType = STRING | 'true' | 'false'
 
 Type =
     SimpleType ['?'] |
     SimpleType ['|' Type] |
     SimpleType ['&' Type]
 
-GenericTypeList = NAME ['...'] {',' NAME ['...']}
+GenericTypePackParameter = NAME '...' ['=' (TypePack | VariadicTypePack | GenericTypePack)]
+GenericTypeParameterList = NAME ['=' Type] [',' GenericTypeParameterList] | GenericTypePackParameter {',' GenericTypePackParameter}
 TypeList = Type [',' TypeList] | '...' Type
-ReturnType = Type | '(' TypeList ')'
+TypeParams = (Type | TypePack | VariadicTypePack | GenericTypePack) [',' TypeParams]
+TypePack = '(' [TypeList] ')'
+GenericTypePack = NAME '...'
+VariadicTypePack = '...' Type
+ReturnType = Type | TypePack
 TableIndexer = '[' Type ']' ':' Type
 TableProp = NAME ':' Type
 TablePropOrIndexer = TableProp | TableIndexer
