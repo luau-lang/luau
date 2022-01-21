@@ -12,6 +12,8 @@
 #include <math.h>
 #include <limits.h>
 
+LUAU_FASTFLAGVARIABLE(LuauLintTableCreateTable, false)
+
 namespace Luau
 {
 
@@ -2151,6 +2153,19 @@ private:
             else if (isConstant(args[3], 0.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[3]->location,
                     "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+        }
+
+        if (FFlag::LuauLintTableCreateTable && func->index == "create" && node->args.size == 2)
+        {
+            // table.create(n, {...})
+            if (args[1]->is<AstExprTable>())
+                emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
+                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+
+            // table.create(n, {...} :: ?)
+            if (AstExprTypeAssertion* as = args[1]->as<AstExprTypeAssertion>(); as && as->expr->is<AstExprTable>())
+                emitWarning(*context, LintWarning::Code_TableOperations, as->expr->location,
+                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
         }
 
         return true;

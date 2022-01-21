@@ -11,12 +11,11 @@
 typedef union GCObject GCObject;
 
 /*
-** Common Header for all collectible objects (in macro form, to be
-** included in other objects)
+** Common Header for all collectible objects (in macro form, to be included in other objects)
 */
 // clang-format off
 #define CommonHeader \
-    GCObject* next; \
+    GCObject* next; /* TODO: remove with FFlagLuauGcPagedSweep */ \
      uint8_t tt; uint8_t marked; uint8_t memcat
 // clang-format on
 
@@ -229,8 +228,10 @@ typedef TValue* StkId; /* index to stack elements */
 typedef struct TString
 {
     CommonHeader;
+    // 1 byte padding
 
     int16_t atom;
+    // 2 byte padding
 
     unsigned int hash;
     unsigned int len;
@@ -314,14 +315,21 @@ typedef struct LocVar
 typedef struct UpVal
 {
     CommonHeader;
+    // 1 (x86) or 5 (x64) byte padding
     TValue* v; /* points to stack or to its own value */
     union
     {
         TValue value; /* the value (when closed) */
         struct
-        { /* double linked list (when open) */
+        {
+            /* global double linked list (when open) */
             struct UpVal* prev;
             struct UpVal* next;
+
+            /* thread double linked list (when open) */
+            // TODO: when FFlagLuauGcPagedSweep is removed, old outer 'next' value will be placed here
+            /* note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State */
+            struct UpVal** threadprev;
         } l;
     } u;
 } UpVal;

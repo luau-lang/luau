@@ -424,7 +424,7 @@ static void rehash(lua_State* L, Table* t, const TValue* ek)
 
 Table* luaH_new(lua_State* L, int narray, int nhash)
 {
-    Table* t = luaM_new(L, Table, sizeof(Table), L->activememcat);
+    Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
     luaC_link(L, t, LUA_TTABLE);
     t->metatable = NULL;
     t->flags = cast_byte(~0);
@@ -443,12 +443,12 @@ Table* luaH_new(lua_State* L, int narray, int nhash)
     return t;
 }
 
-void luaH_free(lua_State* L, Table* t)
+void luaH_free(lua_State* L, Table* t, lua_Page* page)
 {
     if (t->node != dummynode)
         luaM_freearray(L, t->node, sizenode(t), LuaNode, t->memcat);
     luaM_freearray(L, t->array, t->sizearray, TValue, t->memcat);
-    luaM_free(L, t, sizeof(Table), t->memcat);
+    luaM_freegco(L, t, sizeof(Table), t->memcat, page);
 }
 
 static LuaNode* getfreepos(Table* t)
@@ -741,7 +741,7 @@ int luaH_getn(Table* t)
 
 Table* luaH_clone(lua_State* L, Table* tt)
 {
-    Table* t = luaM_new(L, Table, sizeof(Table), L->activememcat);
+    Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
     luaC_link(L, t, LUA_TTABLE);
     t->metatable = tt->metatable;
     t->flags = tt->flags;

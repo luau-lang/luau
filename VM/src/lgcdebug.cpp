@@ -2,15 +2,18 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lgc.h"
 
+#include "lfunc.h"
+#include "lmem.h"
 #include "lobject.h"
 #include "lstate.h"
-#include "ltable.h"
-#include "lfunc.h"
 #include "lstring.h"
+#include "ltable.h"
 #include "ludata.h"
 
 #include <string.h>
 #include <stdio.h>
+
+LUAU_FASTFLAG(LuauGcPagedSweep)
 
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
@@ -101,10 +104,11 @@ static void validatestack(global_State* g, lua_State* l)
     if (l->namecall)
         validateobjref(g, obj2gco(l), obj2gco(l->namecall));
 
-    for (GCObject* uv = l->openupval; uv; uv = uv->gch.next)
+    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
+    for (UpVal* uv = l->openupval; uv; uv = (UpVal*)uv->next)
     {
-        LUAU_ASSERT(uv->gch.tt == LUA_TUPVAL);
-        LUAU_ASSERT(gco2uv(uv)->v != &gco2uv(uv)->u.value);
+        LUAU_ASSERT(uv->tt == LUA_TUPVAL);
+        LUAU_ASSERT(uv->v != &uv->u.value);
     }
 }
 
@@ -178,6 +182,8 @@ static void validateobj(global_State* g, GCObject* o)
 
 static void validatelist(global_State* g, GCObject* o)
 {
+    LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
+
     while (o)
     {
         validateobj(g, o);
@@ -216,6 +222,17 @@ static void validategraylist(global_State* g, GCObject* o)
     }
 }
 
+static bool validategco(void* context, lua_Page* page, GCObject* gco)
+{
+    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
+
+    lua_State* L = (lua_State*)context;
+    global_State* g = L->global;
+
+    validateobj(g, gco);
+    return false;
+}
+
 void luaC_validate(lua_State* L)
 {
     global_State* g = L->global;
@@ -231,11 +248,18 @@ void luaC_validate(lua_State* L)
     validategraylist(g, g->gray);
     validategraylist(g, g->grayagain);
 
-    for (int i = 0; i < g->strt.size; ++i)
-        validatelist(g, g->strt.hash[i]);
+    if (FFlag::LuauGcPagedSweep)
+    {
+        luaM_visitgco(L, L, validategco);
+    }
+    else
+    {
+        for (int i = 0; i < g->strt.size; ++i)
+            validatelist(g, (GCObject*)(g->strt.hash[i]));
 
-    validatelist(g, g->rootgc);
-    validatelist(g, g->strbufgc);
+        validatelist(g, g->rootgc);
+        validatelist(g, (GCObject*)(g->strbufgc));
+    }
 
     for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
     {
@@ -499,6 +523,8 @@ static void dumpobj(FILE* f, GCObject* o)
 
 static void dumplist(FILE* f, GCObject* o)
 {
+    LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
+
     while (o)
     {
         dumpref(f, o);
@@ -509,10 +535,25 @@ static void dumplist(FILE* f, GCObject* o)
 
         // thread has additional list containing collectable objects that are not present in rootgc
         if (o->gch.tt == LUA_TTHREAD)
-            dumplist(f, gco2th(o)->openupval);
+            dumplist(f, (GCObject*)gco2th(o)->openupval);
 
         o = o->gch.next;
     }
+}
+
+static bool dumpgco(void* context, lua_Page* page, GCObject* gco)
+{
+    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
+
+    FILE* f = (FILE*)context;
+
+    dumpref(f, gco);
+    fputc(':', f);
+    dumpobj(f, gco);
+    fputc(',', f);
+    fputc('\n', f);
+
+    return false;
 }
 
 void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat))
@@ -521,10 +562,18 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
     FILE* f = static_cast<FILE*>(file);
 
     fprintf(f, "{\"objects\":{\n");
-    dumplist(f, g->rootgc);
-    dumplist(f, g->strbufgc);
-    for (int i = 0; i < g->strt.size; ++i)
-        dumplist(f, g->strt.hash[i]);
+
+    if (FFlag::LuauGcPagedSweep)
+    {
+        luaM_visitgco(L, f, dumpgco);
+    }
+    else
+    {
+        dumplist(f, g->rootgc);
+        dumplist(f, (GCObject*)(g->strbufgc));
+        for (int i = 0; i < g->strt.size; ++i)
+            dumplist(f, (GCObject*)(g->strt.hash[i]));
+    }
 
     fprintf(f, "\"0\":{\"type\":\"userdata\",\"cat\":0,\"size\":0}\n"); // to avoid issues with trailing ,
     fprintf(f, "},\"roots\":{\n");

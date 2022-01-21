@@ -8,12 +8,16 @@
 #include "lfunc.h"
 #include "lstring.h"
 #include "ldo.h"
+#include "lmem.h"
 #include "ludata.h"
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauGcPagedSweep, false)
+
 #define GC_SWEEPMAX 40
 #define GC_SWEEPCOST 10
+#define GC_SWEEPPAGESTEPCOST 4
 
 #define GC_INTERRUPT(state) \
     { \
@@ -457,31 +461,31 @@ static void shrinkstack(lua_State* L)
     condhardstacktests(luaD_reallocstack(L, s_used));
 }
 
-static void freeobj(lua_State* L, GCObject* o)
+static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
 {
     switch (o->gch.tt)
     {
     case LUA_TPROTO:
-        luaF_freeproto(L, gco2p(o));
+        luaF_freeproto(L, gco2p(o), page);
         break;
     case LUA_TFUNCTION:
-        luaF_freeclosure(L, gco2cl(o));
+        luaF_freeclosure(L, gco2cl(o), page);
         break;
     case LUA_TUPVAL:
-        luaF_freeupval(L, gco2uv(o));
+        luaF_freeupval(L, gco2uv(o), page);
         break;
     case LUA_TTABLE:
-        luaH_free(L, gco2h(o));
+        luaH_free(L, gco2h(o), page);
         break;
     case LUA_TTHREAD:
         LUAU_ASSERT(gco2th(o) != L && gco2th(o) != L->global->mainthread);
-        luaE_freethread(L, gco2th(o));
+        luaE_freethread(L, gco2th(o), page);
         break;
     case LUA_TSTRING:
-        luaS_free(L, gco2ts(o));
+        luaS_free(L, gco2ts(o), page);
         break;
     case LUA_TUSERDATA:
-        luaU_freeudata(L, gco2u(o));
+        luaU_freeudata(L, gco2u(o), page);
         break;
     default:
         LUAU_ASSERT(0);
@@ -492,6 +496,8 @@ static void freeobj(lua_State* L, GCObject* o)
 
 static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count, size_t* traversedcount)
 {
+    LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
+
     GCObject* curr;
     global_State* g = L->global;
     int deadmask = otherwhite(g);
@@ -502,7 +508,7 @@ static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count, size_t* tr
         int alive = (curr->gch.marked ^ WHITEBITS) & deadmask;
         if (curr->gch.tt == LUA_TTHREAD)
         {
-            sweepwholelist(L, &gco2th(curr)->openupval, traversedcount); /* sweep open upvalues */
+            sweepwholelist(L, (GCObject**)&gco2th(curr)->openupval, traversedcount); /* sweep open upvalues */
 
             lua_State* th = gco2th(curr);
 
@@ -524,7 +530,7 @@ static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count, size_t* tr
             *p = curr->gch.next;
             if (curr == g->rootgc)          /* is the first element of the list? */
                 g->rootgc = curr->gch.next; /* adjust first */
-            freeobj(L, curr);
+            freeobj(L, curr, NULL);
         }
     }
 
@@ -537,14 +543,16 @@ static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count, size_t* tr
 
 static void deletelist(lua_State* L, GCObject** p, GCObject* limit)
 {
+    LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
+
     GCObject* curr;
     while ((curr = *p) != limit)
     {
         if (curr->gch.tt == LUA_TTHREAD) /* delete open upvalues of each thread */
-            deletelist(L, &gco2th(curr)->openupval, NULL);
+            deletelist(L, (GCObject**)&gco2th(curr)->openupval, NULL);
 
         *p = curr->gch.next;
-        freeobj(L, curr);
+        freeobj(L, curr, NULL);
     }
 }
 
@@ -567,23 +575,62 @@ static void shrinkbuffersfull(lua_State* L)
         luaS_resize(L, hashsize); /* table is too big */
 }
 
+static bool deletegco(void* context, lua_Page* page, GCObject* gco)
+{
+    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
+
+    // we are in the process of deleting everything
+    // threads with open upvalues will attempt to close them all on removal
+    // but those upvalues might point to stack values that were already deleted
+    if (gco->gch.tt == LUA_TTHREAD)
+    {
+        lua_State* th = gco2th(gco);
+
+        while (UpVal* uv = th->openupval)
+        {
+            luaF_unlinkupval(uv);
+            // close the upvalue without copying the dead data so that luaF_freeupval will not unlink again
+            uv->v = &uv->u.value;
+        }
+    }
+
+    lua_State* L = (lua_State*)context;
+    freeobj(L, gco, page);
+    return true;
+}
+
 void luaC_freeall(lua_State* L)
 {
     global_State* g = L->global;
 
     LUAU_ASSERT(L == g->mainthread);
-    LUAU_ASSERT(L->next == NULL); /* mainthread is at the end of rootgc list */
 
-    deletelist(L, &g->rootgc, obj2gco(L));
+    if (FFlag::LuauGcPagedSweep)
+    {
+        luaM_visitgco(L, L, deletegco);
 
-    for (int i = 0; i < g->strt.size; i++) /* free all string lists */
-        deletelist(L, &g->strt.hash[i], NULL);
+        for (int i = 0; i < g->strt.size; i++) /* free all string lists */
+            LUAU_ASSERT(g->strt.hash[i] == NULL);
 
-    LUAU_ASSERT(L->global->strt.nuse == 0);
-    deletelist(L, &g->strbufgc, NULL);
-    // unfortunately, when string objects are freed, the string table use count is decremented
-    // even when the string is a buffer that wasn't placed into the table
-    L->global->strt.nuse = 0;
+        LUAU_ASSERT(L->global->strt.nuse == 0);
+        LUAU_ASSERT(g->strbufgc == NULL);
+    }
+    else
+    {
+        LUAU_ASSERT(L->next == NULL); /* mainthread is at the end of rootgc list */
+
+        deletelist(L, &g->rootgc, obj2gco(L));
+
+        for (int i = 0; i < g->strt.size; i++) /* free all string lists */
+            deletelist(L, (GCObject**)&g->strt.hash[i], NULL);
+
+        LUAU_ASSERT(L->global->strt.nuse == 0);
+        deletelist(L, (GCObject**)&g->strbufgc, NULL);
+
+        // unfortunately, when string objects are freed, the string table use count is decremented
+        // even when the string is a buffer that wasn't placed into the table
+        L->global->strt.nuse = 0;
+    }
 }
 
 static void markmt(global_State* g)
@@ -648,10 +695,86 @@ static size_t atomic(lua_State* L)
     /* flip current white */
     g->currentwhite = cast_byte(otherwhite(g));
     g->sweepstrgc = 0;
-    g->sweepgc = &g->rootgc;
-    g->gcstate = GCSsweepstring;
+
+    if (FFlag::LuauGcPagedSweep)
+    {
+        g->sweepgcopage = g->allgcopages;
+        g->gcstate = GCSsweep;
+    }
+    else
+    {
+        g->sweepgc = &g->rootgc;
+        g->gcstate = GCSsweepstring;
+    }
 
     return work;
+}
+
+static bool sweepgco(lua_State* L, lua_Page* page, GCObject* gco)
+{
+    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
+
+    global_State* g = L->global;
+
+    int deadmask = otherwhite(g);
+    LUAU_ASSERT(testbit(deadmask, FIXEDBIT)); // make sure we never sweep fixed objects
+
+    int alive = (gco->gch.marked ^ WHITEBITS) & deadmask;
+
+    g->gcstats.currcycle.sweepitems++;
+
+    if (gco->gch.tt == LUA_TTHREAD)
+    {
+        lua_State* th = gco2th(gco);
+
+        if (alive)
+        {
+            resetbit(th->stackstate, THREAD_SLEEPINGBIT);
+            shrinkstack(th);
+        }
+    }
+
+    if (alive)
+    {
+        LUAU_ASSERT(!isdead(g, gco));
+        makewhite(g, gco); // make it white (for next cycle)
+        return false;
+    }
+
+    LUAU_ASSERT(isdead(g, gco));
+    freeobj(L, gco, page);
+    return true;
+}
+
+// a version of generic luaM_visitpage specialized for the main sweep stage
+static int sweepgcopage(lua_State* L, lua_Page* page)
+{
+    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
+
+    char* start;
+    char* end;
+    int busyBlocks;
+    int blockSize;
+    luaM_getpagewalkinfo(page, &start, &end, &busyBlocks, &blockSize);
+
+    for (char* pos = start; pos != end; pos += blockSize)
+    {
+        GCObject* gco = (GCObject*)pos;
+
+        // skip memory blocks that are already freed
+        if (gco->gch.tt == LUA_TNIL)
+            continue;
+
+        // when true is returned it means that the element was deleted
+        if (sweepgco(L, page, gco))
+        {
+            // if the last block was removed, page would be removed as well
+            if (--busyBlocks == 0)
+                return (pos - start) / blockSize + 1;
+        }
+    }
+
+    return (end - start) / blockSize;
 }
 
 static size_t gcstep(lua_State* L, size_t limit)
@@ -706,15 +829,21 @@ static size_t gcstep(lua_State* L, size_t limit)
         g->gcstats.currcycle.atomicstarttotalsizebytes = g->totalbytes;
 
         cost = atomic(L); /* finish mark phase */
-        LUAU_ASSERT(g->gcstate == GCSsweepstring);
+
+        if (FFlag::LuauGcPagedSweep)
+            LUAU_ASSERT(g->gcstate == GCSsweep);
+        else
+            LUAU_ASSERT(g->gcstate == GCSsweepstring);
         break;
     }
     case GCSsweepstring:
     {
+        LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
+
         while (g->sweepstrgc < g->strt.size && cost < limit)
         {
             size_t traversedcount = 0;
-            sweepwholelist(L, &g->strt.hash[g->sweepstrgc++], &traversedcount);
+            sweepwholelist(L, (GCObject**)&g->strt.hash[g->sweepstrgc++], &traversedcount);
 
             g->gcstats.currcycle.sweepitems += traversedcount;
             cost += GC_SWEEPCOST;
@@ -727,7 +856,7 @@ static size_t gcstep(lua_State* L, size_t limit)
             uint32_t nuse = L->global->strt.nuse;
 
             size_t traversedcount = 0;
-            sweepwholelist(L, &g->strbufgc, &traversedcount);
+            sweepwholelist(L, (GCObject**)&g->strbufgc, &traversedcount);
 
             L->global->strt.nuse = nuse;
 
@@ -738,19 +867,44 @@ static size_t gcstep(lua_State* L, size_t limit)
     }
     case GCSsweep:
     {
-        while (*g->sweepgc && cost < limit)
+        if (FFlag::LuauGcPagedSweep)
         {
-            size_t traversedcount = 0;
-            g->sweepgc = sweeplist(L, g->sweepgc, GC_SWEEPMAX, &traversedcount);
+            while (g->sweepgcopage && cost < limit)
+            {
+                lua_Page* next = luaM_getnextgcopage(g->sweepgcopage); // page sweep might destroy the page
 
-            g->gcstats.currcycle.sweepitems += traversedcount;
-            cost += GC_SWEEPMAX * GC_SWEEPCOST;
+                int steps = sweepgcopage(L, g->sweepgcopage);
+
+                g->sweepgcopage = next;
+                cost += steps * GC_SWEEPPAGESTEPCOST;
+            }
+
+            // nothing more to sweep?
+            if (g->sweepgcopage == NULL)
+            {
+                // don't forget to visit main thread
+                sweepgco(L, NULL, obj2gco(g->mainthread));
+
+                shrinkbuffers(L);
+                g->gcstate = GCSpause; /* end collection */
+            }
         }
+        else
+        {
+            while (*g->sweepgc && cost < limit)
+            {
+                size_t traversedcount = 0;
+                g->sweepgc = sweeplist(L, g->sweepgc, GC_SWEEPMAX, &traversedcount);
 
-        if (*g->sweepgc == NULL)
-        { /* nothing more to sweep? */
-            shrinkbuffers(L);
-            g->gcstate = GCSpause; /* end collection */
+                g->gcstats.currcycle.sweepitems += traversedcount;
+                cost += GC_SWEEPMAX * GC_SWEEPCOST;
+            }
+
+            if (*g->sweepgc == NULL)
+            { /* nothing more to sweep? */
+                shrinkbuffers(L);
+                g->gcstate = GCSpause; /* end collection */
+            }
         }
         break;
     }
@@ -877,12 +1031,19 @@ void luaC_fullgc(lua_State* L)
     {
         /* reset sweep marks to sweep all elements (returning them to white) */
         g->sweepstrgc = 0;
-        g->sweepgc = &g->rootgc;
+        if (FFlag::LuauGcPagedSweep)
+            g->sweepgcopage = g->allgcopages;
+        else
+            g->sweepgc = &g->rootgc;
         /* reset other collector lists */
         g->gray = NULL;
         g->grayagain = NULL;
         g->weak = NULL;
-        g->gcstate = GCSsweepstring;
+
+        if (FFlag::LuauGcPagedSweep)
+            g->gcstate = GCSsweep;
+        else
+            g->gcstate = GCSsweepstring;
     }
     LUAU_ASSERT(g->gcstate == GCSsweepstring || g->gcstate == GCSsweep);
     /* finish any pending sweep phase */
@@ -979,8 +1140,11 @@ void luaC_barrierback(lua_State* L, Table* t)
 void luaC_linkobj(lua_State* L, GCObject* o, uint8_t tt)
 {
     global_State* g = L->global;
-    o->gch.next = g->rootgc;
-    g->rootgc = o;
+    if (!FFlag::LuauGcPagedSweep)
+    {
+        o->gch.next = g->rootgc;
+        g->rootgc = o;
+    }
     o->gch.marked = luaC_white(g);
     o->gch.tt = tt;
     o->gch.memcat = L->activememcat;
@@ -990,8 +1154,13 @@ void luaC_linkupval(lua_State* L, UpVal* uv)
 {
     global_State* g = L->global;
     GCObject* o = obj2gco(uv);
-    o->gch.next = g->rootgc; /* link upvalue into `rootgc' list */
-    g->rootgc = o;
+
+    if (!FFlag::LuauGcPagedSweep)
+    {
+        o->gch.next = g->rootgc; /* link upvalue into `rootgc' list */
+        g->rootgc = o;
+    }
+
     if (isgray(o))
     {
         if (keepinvariant(g))

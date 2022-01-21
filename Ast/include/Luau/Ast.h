@@ -1265,7 +1265,8 @@ struct hash<Luau::AstName>
     size_t operator()(const Luau::AstName& value) const
     {
         // note: since operator== uses pointer identity, hashing function uses it as well
-        return value.value ? std::hash<const void*>()(value.value) : 0;
+        // the hasher is the same as DenseHashPointer (DenseHash.h)
+        return (uintptr_t(value.value) >> 4) ^ (uintptr_t(value.value) >> 9);
     }
 };
 

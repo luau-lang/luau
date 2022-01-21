@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/DenseHash.h"
 #include "Luau/Predicate.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
@@ -498,6 +499,9 @@ bool maybeGeneric(const TypeId ty);
 
 // Checks if a type is of the form T1|...|Tn where one of the Ti is a singleton
 bool maybeSingleton(TypeId ty);
+
+// Checks if the length operator can be applied on the value of type
+bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount);
 
 struct SingletonTypes
 {

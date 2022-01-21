@@ -78,6 +78,12 @@ target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.Analysis PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
 
+if (MSVC AND MSVC_VERSION GREATER_EQUAL 1924)
+    # disable partial redundancy elimination which regresses interpreter codegen substantially in VS2022:
+    # https://developercommunity.visualstudio.com/t/performance-regression-on-a-complex-interpreter-lo/1631863
+    set_source_files_properties(VM/src/lvmexecute.cpp PROPERTIES COMPILE_FLAGS /d2ssa-pre-)
+endif()
+
 if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Repl.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})

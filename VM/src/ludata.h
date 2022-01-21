@@ -10,4 +10,4 @@
 #define sizeudata(len) (offsetof(Udata, data) + len)
 
 LUAI_FUNC Udata* luaU_newudata(lua_State* L, size_t s, int tag);
-LUAI_FUNC void luaU_freeudata(lua_State* L, Udata* u);
+LUAI_FUNC void luaU_freeudata(lua_State* L, Udata* u, struct lua_Page* page);

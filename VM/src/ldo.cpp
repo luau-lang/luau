@@ -150,12 +150,11 @@ l_noret luaD_throw(lua_State* L, int errcode)
 
 static void correctstack(lua_State* L, TValue* oldstack)
 {
-    CallInfo* ci;
-    GCObject* up;
     L->top = (L->top - oldstack) + L->stack;
-    for (up = L->openupval; up != NULL; up = up->gch.next)
-        gco2uv(up)->v = (gco2uv(up)->v - oldstack) + L->stack;
-    for (ci = L->base_ci; ci <= L->ci; ci++)
+    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
+    for (UpVal* up = L->openupval; up != NULL; up = (UpVal*)up->next)
+        up->v = (up->v - oldstack) + L->stack;
+    for (CallInfo* ci = L->base_ci; ci <= L->ci; ci++)
     {
         ci->top = (ci->top - oldstack) + L->stack;
         ci->base = (ci->base - oldstack) + L->stack;

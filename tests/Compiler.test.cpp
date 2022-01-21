@@ -756,6 +756,30 @@ RETURN R0 1
 )");
 }
 
+TEST_CASE("TableSizePredictionLoop")
+{
+    ScopedFastFlag sff("LuauPredictTableSizeLoop", true);
+
+    CHECK_EQ("\n" + compileFunction0(R"(
+local t = {}
+for i=1,4 do
+    t[i] = 0
+end
+return t
+)"),
+        R"(
+NEWTABLE R0 0 4
+LOADN R3 1
+LOADN R1 4
+LOADN R2 1
+FORNPREP R1 +3
+LOADN R4 0
+SETTABLE R4 R0 R3
+FORNLOOP R1 -3
+RETURN R0 1
+)");
+}
+
 TEST_CASE("ReflectionEnums")
 {
     CHECK_EQ("\n" + compileFunction0("return Enum.EasingStyle.Linear"), R"(

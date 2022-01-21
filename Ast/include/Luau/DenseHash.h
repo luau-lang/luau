@@ -12,10 +12,6 @@
 namespace Luau
 {
 
-// Internal implementation of DenseHashSet and DenseHashMap
-namespace detail
-{
-
 struct DenseHashPointer
 {
     size_t operator()(const void* key) const
@@ -23,6 +19,10 @@ struct DenseHashPointer
         return (uintptr_t(key) >> 4) ^ (uintptr_t(key) >> 9);
     }
 };
+
+// Internal implementation of DenseHashSet and DenseHashMap
+namespace detail
+{
 
 template<typename T>
 using DenseHashDefault = std::conditional_t<std::is_pointer_v<T>, DenseHashPointer, std::hash<T>>;

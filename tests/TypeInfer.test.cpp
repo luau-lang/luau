@@ -5129,4 +5129,33 @@ local c = a or b
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "bound_typepack_promote")
+{
+    ScopedFastFlag luauCommittingTxnLogFreeTpPromote{"LuauCommittingTxnLogFreeTpPromote", true};
+
+    // No assertions should trigger
+    check(R"(
+local function p()
+    local this = {}
+    this.pf = foo()
+    function this:IsActive() end
+    function this:Start(o) end
+    return this
+end
+
+local function h(tp, o)
+    ep = tp
+    tp:Start(o)
+    tp.pf.Connect(function()
+        ep:IsActive()
+    end)
+end
+
+function on()
+    local t = p()
+    h(t)
+end
+    )");
+}
+
 TEST_SUITE_END();

@@ -10,6 +10,8 @@
 #include "ldo.h"
 #include "ldebug.h"
 
+LUAU_FASTFLAG(LuauGcPagedSweep)
+
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -86,14 +88,21 @@ static void close_state(lua_State* L)
     global_State* g = L->global;
     luaF_close(L, L->stack); /* close all upvalues for this thread */
     luaC_freeall(L);         /* collect all objects */
-    LUAU_ASSERT(g->rootgc == obj2gco(L));
+    if (!FFlag::LuauGcPagedSweep)
+        LUAU_ASSERT(g->rootgc == obj2gco(L));
     LUAU_ASSERT(g->strbufgc == NULL);
     LUAU_ASSERT(g->strt.nuse == 0);
     luaM_freearray(L, L->global->strt.hash, L->global->strt.size, TString*, 0);
     freestack(L, L);
-    LUAU_ASSERT(g->totalbytes == sizeof(LG));
     for (int i = 0; i < LUA_SIZECLASSES; i++)
+    {
         LUAU_ASSERT(g->freepages[i] == NULL);
+        if (FFlag::LuauGcPagedSweep)
+            LUAU_ASSERT(g->freegcopages[i] == NULL);
+    }
+    if (FFlag::LuauGcPagedSweep)
+        LUAU_ASSERT(g->allgcopages == NULL);
+    LUAU_ASSERT(g->totalbytes == sizeof(LG));
     LUAU_ASSERT(g->memcatbytes[0] == sizeof(LG));
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)
         LUAU_ASSERT(g->memcatbytes[i] == 0);
@@ -102,7 +111,7 @@ static void close_state(lua_State* L)
 
 lua_State* luaE_newthread(lua_State* L)
 {
-    lua_State* L1 = luaM_new(L, lua_State, sizeof(lua_State), L->activememcat);
+    lua_State* L1 = luaM_newgco(L, lua_State, sizeof(lua_State), L->activememcat);
     luaC_link(L, L1, LUA_TTHREAD);
     preinit_state(L1, L->global);
     L1->activememcat = L->activememcat; // inherit the active memory category
@@ -113,7 +122,7 @@ lua_State* luaE_newthread(lua_State* L)
     return L1;
 }
 
-void luaE_freethread(lua_State* L, lua_State* L1)
+void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
 {
     luaF_close(L1, L1->stack); /* close all upvalues for this thread */
     LUAU_ASSERT(L1->openupval == NULL);
@@ -121,7 +130,7 @@ void luaE_freethread(lua_State* L, lua_State* L1)
     if (g->cb.userthread)
         g->cb.userthread(NULL, L1);
     freestack(L, L1);
-    luaM_free(L, L1, sizeof(lua_State), L1->memcat);
+    luaM_freegco(L, L1, sizeof(lua_State), L1->memcat, page);
 }
 
 void lua_resetthread(lua_State* L)
@@ -162,7 +171,8 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
         return NULL;
     L = (lua_State*)l;
     g = &((LG*)L)->g;
-    L->next = NULL;
+    if (!FFlag::LuauGcPagedSweep)
+        L->next = NULL;
     L->tt = LUA_TTHREAD;
     L->marked = g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
     L->memcat = 0;
@@ -185,9 +195,11 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->strt.hash = NULL;
     setnilvalue(registry(L));
     g->gcstate = GCSpause;
-    g->rootgc = obj2gco(L);
+    if (!FFlag::LuauGcPagedSweep)
+        g->rootgc = obj2gco(L);
     g->sweepstrgc = 0;
-    g->sweepgc = &g->rootgc;
+    if (!FFlag::LuauGcPagedSweep)
+        g->sweepgc = &g->rootgc;
     g->gray = NULL;
     g->grayagain = NULL;
     g->weak = NULL;
@@ -197,7 +209,16 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->gcstepmul = LUAI_GCSTEPMUL;
     g->gcstepsize = LUAI_GCSTEPSIZE << 10;
     for (i = 0; i < LUA_SIZECLASSES; i++)
+    {
         g->freepages[i] = NULL;
+        if (FFlag::LuauGcPagedSweep)
+            g->freegcopages[i] = NULL;
+    }
+    if (FFlag::LuauGcPagedSweep)
+    {
+        g->allgcopages = NULL;
+        g->sweepgcopage = NULL;
+    }
     for (i = 0; i < LUA_T_COUNT; i++)
         g->mt[i] = NULL;
     for (i = 0; i < LUA_UTAG_LIMIT; i++)

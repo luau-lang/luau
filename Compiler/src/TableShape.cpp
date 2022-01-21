@@ -1,10 +1,15 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "TableShape.h"
 
+LUAU_FASTFLAGVARIABLE(LuauPredictTableSizeLoop, false)
+
 namespace Luau
 {
 namespace Compile
 {
+
+// conservative limit for the loop bound that establishes table array size
+static const int kMaxLoopBound = 16;
 
 static AstExprTable* getTableHint(AstExpr* expr)
 {
@@ -27,7 +32,7 @@ struct ShapeVisitor : AstVisitor
     {
         size_t operator()(const std::pair<AstExprTable*, AstName>& p) const
         {
-            return std::hash<AstExprTable*>()(p.first) ^ std::hash<AstName>()(p.second);
+            return DenseHashPointer()(p.first) ^ std::hash<AstName>()(p.second);
         }
     };
 
@@ -36,10 +41,13 @@ struct ShapeVisitor : AstVisitor
     DenseHashMap<AstLocal*, AstExprTable*> tables;
     DenseHashSet<std::pair<AstExprTable*, AstName>, Hasher> fields;
 
+    DenseHashMap<AstLocal*, unsigned int> loops; // iterator => upper bound for 1..k
+
     ShapeVisitor(DenseHashMap<AstExprTable*, TableShape>& shapes)
         : shapes(shapes)
         , tables(nullptr)
         , fields(std::pair<AstExprTable*, AstName>())
+        , loops(nullptr)
     {
     }
 
@@ -63,16 +71,31 @@ struct ShapeVisitor : AstVisitor
     void assignField(AstExpr* expr, AstExpr* index)
     {
         AstExprLocal* lv = expr->as<AstExprLocal>();
-        AstExprConstantNumber* number = index->as<AstExprConstantNumber>();
+        if (!lv)
+            return;
 
-        if (lv && number)
+        AstExprTable** table = tables.find(lv->local);
+        if (!table)
+            return;
+
+        if (AstExprConstantNumber* number = index->as<AstExprConstantNumber>())
         {
-            if (AstExprTable** table = tables.find(lv->local))
+            TableShape& shape = shapes[*table];
+
+            if (number->value == double(shape.arraySize + 1))
+                shape.arraySize += 1;
+        }
+        else if (AstExprLocal* iter = index->as<AstExprLocal>())
+        {
+            if (!FFlag::LuauPredictTableSizeLoop)
+                return;
+
+            if (const unsigned int* bound = loops.find(iter->local))
             {
                 TableShape& shape = shapes[*table];
 
-                if (number->value == double(shape.arraySize + 1))
-                    shape.arraySize += 1;
+                if (shape.arraySize == 0)
+                    shape.arraySize = *bound;
             }
         }
     }
@@ -116,6 +139,20 @@ struct ShapeVisitor : AstVisitor
         node->func->visit(this);
 
         return false;
+    }
+
+    bool visit(AstStatFor* node) override
+    {
+        if (!FFlag::LuauPredictTableSizeLoop)
+            return true;
+
+        AstExprConstantNumber* from = node->from->as<AstExprConstantNumber>();
+        AstExprConstantNumber* to = node->to->as<AstExprConstantNumber>();
+
+        if (from && to && from->value == 1.0 && to->value >= 1.0 && to->value <= double(kMaxLoopBound) && !node->step)
+            loops[node->var] = unsigned(to->value);
+
+        return true;
     }
 };
 
