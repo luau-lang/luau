@@ -200,7 +200,7 @@ static lua_Page* newpage(lua_State* L, lua_Page** gcopageset, int pageSize, int 
 
     global_State* g = L->global;
 
-    LUAU_ASSERT(pageSize - offsetof(lua_Page, data) >= blockSize * blockCount);
+    LUAU_ASSERT(pageSize - int(offsetof(lua_Page, data)) >= blockSize * blockCount);
 
     lua_Page* page = (lua_Page*)(*g->frealloc)(L, g->ud, NULL, 0, pageSize);
     if (!page)
