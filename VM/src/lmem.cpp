@@ -520,7 +520,7 @@ GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat)
     }
     else
     {
-        lua_Page* page = newpage(L, &g->allgcopages, offsetof(lua_Page, data) + nsize, nsize, 1);
+        lua_Page* page = newpage(L, &g->allgcopages, offsetof(lua_Page, data) + int(nsize), int(nsize), 1);
 
         block = &page->data;
         ASAN_UNPOISON_MEMORY_REGION(block, page->blockSize);

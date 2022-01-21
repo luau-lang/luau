@@ -770,11 +770,11 @@ static int sweepgcopage(lua_State* L, lua_Page* page)
         {
             // if the last block was removed, page would be removed as well
             if (--busyBlocks == 0)
-                return (pos - start) / blockSize + 1;
+                return int(pos - start) / blockSize + 1;
         }
     }
 
-    return (end - start) / blockSize;
+    return int(end - start) / blockSize;
 }
 
 static size_t gcstep(lua_State* L, size_t limit)
