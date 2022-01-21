@@ -376,7 +376,7 @@ static void* luaM_newgcoblock(lua_State* L, int sizeClass)
 
     LUAU_ASSERT(!page->prev);
     LUAU_ASSERT(page->freeList || page->freeNext >= 0);
-    LUAU_ASSERT(size_t(page->blockSize) == kSizeClassConfig.sizeOfClass[sizeClass]);
+    LUAU_ASSERT(page->blockSize == kSizeClassConfig.sizeOfClass[sizeClass]);
 
     void* block;
 
