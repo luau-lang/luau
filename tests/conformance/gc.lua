@@ -291,4 +291,32 @@ do
   for i = 1,10 do table.insert(___Glob, newproxy(true)) end
 end
 
+-- create threads that die together with their unmarked upvalues
+do
+  local t = {}
+
+  for i = 1,100 do
+    local c = coroutine.wrap(function()
+      local uv = {i + 1}
+      local function f()
+        return uv[1] * 10
+      end
+      coroutine.yield(uv[1])
+      uv = {i + 2}
+      coroutine.yield(f())
+    end)
+
+    assert(c() == i + 1)
+    table.insert(t, c)
+  end
+
+  for i = 1,100 do
+    t[i] = nil
+  end
+
+  collectgarbage()
+
+end
+
+
 return('OK')

@@ -35,10 +35,15 @@ enum class CompileFormat
     Binary
 };
 
+struct GlobalOptions
+{
+    int optimizationLevel = 1;
+} globalOptions;
+
 static Luau::CompileOptions copts()
 {
     Luau::CompileOptions result = {};
-    result.optimizationLevel = 1;
+    result.optimizationLevel = globalOptions.optimizationLevel;
     result.debugLevel = 1;
     result.coverageLevel = coverageActive() ? 2 : 0;
 
@@ -232,13 +237,14 @@ static std::string runCode(lua_State* L, const std::string& source)
 static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, std::vector<std::string>& completions)
 {
     std::string_view lookup = editBuffer + start;
+    char lastSep = 0;
 
     for (;;)
     {
-        size_t dot = lookup.find('.');
-        std::string_view prefix = lookup.substr(0, dot);
+        size_t sep = lookup.find_first_of(".:");
+        std::string_view prefix = lookup.substr(0, sep);
 
-        if (dot == std::string_view::npos)
+        if (sep == std::string_view::npos)
         {
             // table, key
             lua_pushnil(L);
@@ -249,11 +255,22 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
                 {
                     // table, key, value
                     std::string_view key = lua_tostring(L, -2);
+                    int valueType = lua_type(L, -1);
 
-                    if (!key.empty() && Luau::startsWith(key, prefix))
-                        completions.push_back(editBuffer + std::string(key.substr(prefix.size())));
+                    // If the last separator was a ':' (i.e. a method call) then only functions should be completed.
+                    bool requiredValueType = (lastSep != ':' || valueType == LUA_TFUNCTION);
+
+                    if (!key.empty() && requiredValueType && Luau::startsWith(key, prefix))
+                    {
+                        std::string completion(editBuffer + std::string(key.substr(prefix.size())));
+                        if (valueType == LUA_TFUNCTION)
+                        {
+                            // Add an opening paren for function calls by default.
+                            completion += "(";
+                        }
+                        completions.push_back(completion);
+                    }
                 }
-
                 lua_pop(L, 1);
             }
 
@@ -266,10 +283,21 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
             lua_rawget(L, -2);
             lua_remove(L, -2);
 
-            if (!lua_istable(L, -1))
+            if (lua_type(L, -1) == LUA_TSTRING)
+            {
+                // Replace the string object with the string class to perform further lookups of string functions
+                // Note: We retrieve the string class from _G to prevent issues if the user assigns to `string`.
+                lua_getglobal(L, "_G");
+                lua_pushlstring(L, "string", 6);
+                lua_rawget(L, -2);
+                lua_remove(L, -2);
+                LUAU_ASSERT(lua_istable(L, -1));
+            }
+            else if (!lua_istable(L, -1))
                 break;
 
-            lookup.remove_prefix(dot + 1);
+            lastSep = lookup[sep];
+            lookup.remove_prefix(sep + 1);
         }
     }
 
@@ -279,7 +307,7 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
 static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::string>& completions)
 {
     size_t start = strlen(editBuffer);
-    while (start > 0 && (isalnum(editBuffer[start - 1]) || editBuffer[start - 1] == '.' || editBuffer[start - 1] == '_'))
+    while (start > 0 && (isalnum(editBuffer[start - 1]) || editBuffer[start - 1] == '.' || editBuffer[start - 1] == ':' || editBuffer[start - 1] == '_'))
         start--;
 
     // look the value up in current global table first
@@ -319,15 +347,8 @@ struct LinenoiseScopedHistory
     std::string historyFilepath;
 };
 
-static void runRepl()
+static void runReplImpl(lua_State* L)
 {
-    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
-    lua_State* L = globalState.get();
-
-    setupState(L);
-
-    luaL_sandboxthread(L);
-
     linenoise::SetCompletionCallback([L](const char* editBuffer, std::vector<std::string>& completions) {
         completeRepl(L, editBuffer, completions);
     });
@@ -368,7 +389,18 @@ static void runRepl()
     }
 }
 
-static bool runFile(const char* name, lua_State* GL)
+static void runRepl()
+{
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    setupState(L);
+    luaL_sandboxthread(L);
+    runReplImpl(L);
+}
+
+// `repl` is used it indicate if a repl should be started after executing the file.
+static bool runFile(const char* name, lua_State* GL, bool repl)
 {
     std::optional<std::string> source = readFile(name);
     if (!source)
@@ -419,6 +451,10 @@ static bool runFile(const char* name, lua_State* GL)
         fprintf(stderr, "%s", error.c_str());
     }
 
+    if (repl)
+    {
+        runReplImpl(L);
+    }
     lua_pop(GL, 1);
     return status == 0;
 }
@@ -457,7 +493,7 @@ static bool compileFile(const char* name, CompileFormat format)
             bcb.setDumpSource(*source);
         }
 
-        Luau::compileOrThrow(bcb, *source);
+        Luau::compileOrThrow(bcb, *source, copts());
 
         switch (format)
         {
@@ -495,9 +531,11 @@ static void displayHelp(const char* argv0)
     printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary or text)\n");
     printf("\n");
     printf("Available options:\n");
-    printf("  -h, --help: Display this usage message.\n");
-    printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
+    printf("  -h, --help: Display this usage message.\n");
+    printf("  -i, --interactive: Run an interactive REPL after executing the last script specified.\n");
+    printf("  -O<n>: use compiler optimization level (n=0-2).\n");
+    printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
@@ -519,6 +557,7 @@ int main(int argc, char** argv)
     CompileFormat compileFormat{};
     int profile = 0;
     bool coverage = false;
+    bool interactive = false;
 
     // Set the mode if the user has explicitly specified one.
     int argStart = 1;
@@ -540,8 +579,8 @@ int main(int argc, char** argv)
         }
         else
         {
-            fprintf(stdout, "Error: Unrecognized value for '--compile' specified.\n");
-            return -1;
+            fprintf(stderr, "Error: Unrecognized value for '--compile' specified.\n");
+            return 1;
         }
     }
 
@@ -551,6 +590,20 @@ int main(int argc, char** argv)
         {
             displayHelp(argv[0]);
             return 0;
+        }
+        else if (strcmp(argv[i], "-i") == 0 || strcmp(argv[i], "--interactive") == 0)
+        {
+            interactive = true;
+        }
+        else if (strncmp(argv[i], "-O", 2) == 0)
+        {
+            int level = atoi(argv[i] + 2);
+            if (level < 0 || level > 2)
+            {
+                fprintf(stderr, "Error: Optimization level must be between 0 and 2 inclusive.\n");
+                return 1;
+            }
+            globalOptions.optimizationLevel = level;
         }
         else if (strcmp(argv[i], "--profile") == 0)
         {
@@ -575,7 +628,7 @@ int main(int argc, char** argv)
         }
         else if (argv[i][0] == '-')
         {
-            fprintf(stdout, "Error: Unrecognized option '%s'.\n\n", argv[i]);
+            fprintf(stderr, "Error: Unrecognized option '%s'.\n\n", argv[i]);
             displayHelp(argv[0]);
             return 1;
         }
@@ -623,8 +676,11 @@ int main(int argc, char** argv)
 
         int failed = 0;
 
-        for (const std::string& path : files)
-            failed += !runFile(path.c_str(), L);
+        for (size_t i = 0; i < files.size(); ++i)
+        {
+            bool isLastFile = i == files.size() - 1;
+            failed += !runFile(files[i].c_str(), L, interactive && isLastFile);
+        }
 
         if (profile)
         {

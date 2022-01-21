@@ -11,7 +11,7 @@ Udata* luaU_newudata(lua_State* L, size_t s, int tag)
 {
     if (s > INT_MAX - sizeof(Udata))
         luaM_toobig(L);
-    Udata* u = luaM_new(L, Udata, sizeudata(s), L->activememcat);
+    Udata* u = luaM_newgco(L, Udata, sizeudata(s), L->activememcat);
     luaC_link(L, u, LUA_TUSERDATA);
     u->len = int(s);
     u->metatable = NULL;
@@ -20,7 +20,7 @@ Udata* luaU_newudata(lua_State* L, size_t s, int tag)
     return u;
 }
 
-void luaU_freeudata(lua_State* L, Udata* u)
+void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
 {
     LUAU_ASSERT(u->tag < LUA_UTAG_LIMIT || u->tag == UTAG_IDTOR);
 
@@ -33,5 +33,5 @@ void luaU_freeudata(lua_State* L, Udata* u)
     if (dtor)
         dtor(u->data);
 
-    luaM_free(L, u, sizeudata(u->len), u->memcat);
+    luaM_freegco(L, u, sizeudata(u->len), u->memcat, page);
 }

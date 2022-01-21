@@ -22,7 +22,7 @@
 typedef struct stringtable
 {
 
-    GCObject** hash;
+    TString** hash;
     uint32_t nuse; /* number of elements */
     int size;
 } stringtable;
@@ -149,13 +149,15 @@ typedef struct global_State
 
 
     int sweepstrgc;      /* position of sweep in `strt' */
+    // TODO: remove with FFlagLuauGcPagedSweep
     GCObject* rootgc;    /* list of all collectable objects */
+    // TODO: remove with FFlagLuauGcPagedSweep
     GCObject** sweepgc;  /* position of sweep in `rootgc' */
     GCObject* gray;      /* list of gray objects */
     GCObject* grayagain; /* list of objects to be traversed atomically */
     GCObject* weak;     /* list of weak tables (to be cleared) */
 
-    GCObject* strbufgc; // list of all string buffer objects
+    TString* strbufgc; // list of all string buffer objects
 
 
     size_t GCthreshold;                       // when totalbytes > GCthreshold; run GC step
@@ -164,7 +166,10 @@ typedef struct global_State
     int gcstepmul;                            // see LUAI_GCSTEPMUL
     int gcstepsize;                          // see LUAI_GCSTEPSIZE
 
-    struct lua_Page* freepages[LUA_SIZECLASSES]; /* free page linked list for each size class */
+    struct lua_Page* freepages[LUA_SIZECLASSES]; // free page linked list for each size class for non-collectable objects
+    struct lua_Page* freegcopages[LUA_SIZECLASSES]; // free page linked list for each size class for collectable objects 
+    struct lua_Page* allgcopages; // page linked list with all pages for all classes
+    struct lua_Page* sweepgcopage; // position of the sweep in `allgcopages'
 
     size_t memcatbytes[LUA_MEMORY_CATEGORIES]; /* total amount of memory used by each memory category */
 
@@ -231,7 +236,7 @@ struct lua_State
 
     TValue l_gt;            /* table of globals */
     TValue env;             /* temporary place for environments */
-    GCObject* openupval;    /* list of open upvalues in this stack */
+    UpVal* openupval;    /* list of open upvalues in this stack */
     GCObject* gclist;
 
     TString* namecall; /* when invoked from Luau using NAMECALL, what method do we need to invoke? */
@@ -268,4 +273,4 @@ union GCObject
 #define obj2gco(v) check_exp(iscollectable(v), cast_to(GCObject*, (v) + 0))
 
 LUAI_FUNC lua_State* luaE_newthread(lua_State* L);
-LUAI_FUNC void luaE_freethread(lua_State* L, lua_State* L1);
+LUAI_FUNC void luaE_freethread(lua_State* L, lua_State* L1, struct lua_Page* page);

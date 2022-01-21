@@ -1396,6 +1396,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "TableOperations")
 {
+    ScopedFastFlag sff("LuauLintTableCreateTable", true);
+
     LintResult result = lintTyped(R"(
 local t = {}
 local tt = {}
@@ -1416,9 +1418,12 @@ table.insert(t, string.find("hello", "h"))
 
 table.move(t, 0, #t, 1, tt)
 table.move(t, 1, #t, 0, tt)
+
+table.create(42, {})
+table.create(42, {} :: {})
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 8);
+    REQUIRE_EQ(result.warnings.size(), 10);
     CHECK_EQ(result.warnings[0].text, "table.insert will insert the value before the last element, which is likely a bug; consider removing the "
                                       "second argument or wrap it in parentheses to silence");
     CHECK_EQ(result.warnings[1].text, "table.insert will append the value to the table; consider removing the second argument for efficiency");
@@ -1430,6 +1435,8 @@ table.move(t, 1, #t, 0, tt)
         "table.insert may change behavior if the call returns more than one result; consider adding parentheses around second argument");
     CHECK_EQ(result.warnings[6].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
     CHECK_EQ(result.warnings[7].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+    CHECK_EQ(result.warnings[8].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+    CHECK_EQ(result.warnings[9].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")

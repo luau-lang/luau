@@ -13,6 +13,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
+LUAU_FASTFLAGVARIABLE(LuauCommittingTxnLogFreeTpPromote, false)
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 2000);
 LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
@@ -99,6 +100,11 @@ struct PromoteTypeLevels
 
     bool operator()(TypePackId tp, const FreeTypePack&)
     {
+        // Surprise, it's actually a BoundTypePack that hasn't been committed yet.
+        // Calling getMutable on this will trigger an assertion.
+        if (FFlag::LuauCommittingTxnLogFreeTpPromote && FFlag::LuauUseCommittingTxnLog && !log.is<FreeTypePack>(tp))
+            return true;
+
         promote(tp, FFlag::LuauUseCommittingTxnLog ? log.getMutable<FreeTypePack>(tp) : getMutable<FreeTypePack>(tp));
         return true;
     }

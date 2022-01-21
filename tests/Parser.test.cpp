@@ -1498,6 +1498,17 @@ return
     CHECK_EQ(std::string(str->value.data, str->value.size), "\n");
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_error_broken_comment")
+{
+    ScopedFastFlag luauStartingBrokenComment{"LuauStartingBrokenComment", true};
+
+    const char* expected = "Expected identifier when parsing expression, got unfinished comment";
+
+    matchParseError("--[[unfinished work", expected);
+    matchParseError("--!strict\n--[[unfinished work", expected);
+    matchParseError("local x = 1 --[[unfinished work", expected);
+}
+
 TEST_CASE_FIXTURE(Fixture, "string_literals_escapes_broken")
 {
     const char* expected = "String literal contains malformed escape sequence";
@@ -2333,7 +2344,7 @@ TEST_CASE_FIXTURE(Fixture, "capture_broken_comment_at_the_start_of_the_file")
     ParseOptions options;
     options.captureComments = true;
 
-    ParseResult result = parseEx(R"(
+    ParseResult result = tryParse(R"(
         --[[
     )",
         options);
