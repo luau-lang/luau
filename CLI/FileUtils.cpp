@@ -76,7 +76,8 @@ std::optional<std::string> readFile(const std::string& name)
     return result;
 }
 
-std::optional<std::string> readStdin() {
+std::optional<std::string> readStdin()
+{
     std::string result;
     char buffer[READ_BUFFER_SIZE] = { };
 
