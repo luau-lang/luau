@@ -6,9 +6,6 @@
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
 
-#include <iterator>
-#include <iostream>
-
 #include "FileUtils.h"
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
@@ -124,22 +121,25 @@ struct CliFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
     {
+        Luau::SourceCode::Type sourceType;
+        std::optional<std::string> source = std::nullopt;
+
         // If the module name is "-", then read source from stdin
         if (name == "-")
         {
-            std::cin >> std::noskipws; // Do not skip whitespace when reading from stdin
-            std::string source {std::istreambuf_iterator<char>(std::cin), std::istreambuf_iterator<char>()};
-            if (source.empty())
-                return std::nullopt;
-
-            return Luau::SourceCode{source, Luau::SourceCode::Script};
+            source = readStdin();
+            sourceType = Luau::SourceCode::Script;
+        }
+        else
+        {
+            source = readFile(name);
+            sourceType = Luau::SourceCode::Module;
         }
 
-        std::optional<std::string> source = readFile(name);
         if (!source)
             return std::nullopt;
 
-        return Luau::SourceCode{*source, Luau::SourceCode::Module};
+        return Luau::SourceCode{*source, sourceType};
     }
 
     std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node) override

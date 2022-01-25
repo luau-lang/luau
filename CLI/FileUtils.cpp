@@ -15,6 +15,8 @@
 
 #include <string.h>
 
+#define READ_BUFFER_SIZE 4096
+
 #ifdef _WIN32
 static std::wstring fromUtf8(const std::string& path)
 {
@@ -70,6 +72,20 @@ std::optional<std::string> readFile(const std::string& name)
     // Skip first line if it's a shebang
     if (length > 2 && result[0] == '#' && result[1] == '!')
         result.erase(0, result.find('\n'));
+
+    return result;
+}
+
+std::optional<std::string> readStdin() {
+    std::string result;
+    char buffer[READ_BUFFER_SIZE] = { };
+
+    while (fgets(buffer, READ_BUFFER_SIZE, stdin) != nullptr)
+        result.append(buffer);
+
+    // If eof was not reached for stdin, then a read error occurred
+    if (!feof(stdin))
+        return std::nullopt;
 
     return result;
 }
