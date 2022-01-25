@@ -265,9 +265,8 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
     {
         // Treat '-' as a special file whose source is read from stdin
         // All other arguments that start with '-' are skipped
-        if (argv[i][0] == '-' && argv[i][1] != '\0') {
+        if (argv[i][0] == '-' && argv[i][1] != '\0')
             continue;
-        }
 
         if (isDirectory(argv[i]))
         {

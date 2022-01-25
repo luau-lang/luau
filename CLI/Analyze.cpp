@@ -45,7 +45,7 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
 
 static void reportError(Luau::Frontend& frontend, ReportFormat format, const Luau::TypeError& error)
 {
-    std::string humanReadableName { frontend.fileResolver->getHumanReadableModuleName(error.moduleName) };
+    std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(error.moduleName);
 
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
         report(format, humanReadableName.c_str(), error.location, "SyntaxError", syntaxError->message.c_str());
