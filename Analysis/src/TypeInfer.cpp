@@ -5929,7 +5929,9 @@ void TypeChecker::resolve(const EqPredicate& eqP, ErrorVec& errVec, RefinementMa
                 if (!sense || canUnify(eqP.type, option, eqP.location).empty())
                     return sense ? eqP.type : option;
 
-                return std::nullopt;
+                // local variable works around an odd gcc 9.3 warning: <anonymous> may be used uninitialized
+                std::optional<TypeId> res = std::nullopt;
+                return res;
             }
 
             return option;
