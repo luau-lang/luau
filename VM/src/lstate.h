@@ -96,9 +96,6 @@ struct GCCycleStats
 
     double sweeptime = 0.0;
 
-    size_t markitems = 0;
-    size_t sweepitems = 0;
-
     size_t assistwork = 0;
     size_t explicitwork = 0;
 

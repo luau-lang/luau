@@ -2626,7 +2626,6 @@ local a: A<(number, s@1>
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_first_function_arg_expected_type")
 {
     ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
-    ScopedFastFlag luauAutocompleteFirstArg("LuauAutocompleteFirstArg", true);
 
     check(R"(
 local function foo1() return 1 end
@@ -2726,6 +2725,41 @@ end
     auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.count("getx"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauRefactorTypeVarQuestions", true},
+    };
+
+    check(R"(
+        --!strict
+        local foo: "hello" | "bye" = "hello"
+        foo:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("format"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "function_in_assignment_has_parentheses_2")
+{
+    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
+    ScopedFastFlag preferToCallFunctionsForIntersects("PreferToCallFunctionsForIntersects", true);
+
+    check(R"(
+local bar: ((number) -> number) & (number, number) -> number)
+local abc = b@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("bar"));
+    CHECK(ac.entryMap["bar"].parens == ParenthesesRecommendation::CursorInside);
 }
 
 TEST_SUITE_END();

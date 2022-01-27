@@ -1087,6 +1087,34 @@ static int luauF_countrz(lua_State* L, StkId res, TValue* arg0, int nresults, St
     return -1;
 }
 
+static int luauF_select(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams == 1 && nresults == 1)
+    {
+        int n = cast_int(L->base - L->ci->func) - clvalue(L->ci->func)->l.p->numparams - 1;
+
+        if (ttisnumber(arg0))
+        {
+            int i = int(nvalue(arg0));
+
+            // i >= 1 && i <= n
+            if (unsigned(i - 1) <= unsigned(n))
+            {
+                setobj2s(L, res, L->base - n + (i - 1));
+                return 1;
+            }
+            // note: for now we don't handle negative case (wrap around) and defer to fallback
+        }
+        else if (ttisstring(arg0) && *svalue(arg0) == '#')
+        {
+            setnvalue(res, double(n));
+            return 1;
+        }
+    }
+
+    return -1;
+}
+
 luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -1156,4 +1184,6 @@ luau_FastFunction luauF_table[256] = {
 
     luauF_countlz,
     luauF_countrz,
+
+    luauF_select,
 };

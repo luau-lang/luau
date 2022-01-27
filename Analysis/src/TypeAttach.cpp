@@ -97,7 +97,7 @@ public:
 
     AstType* operator()(const SingletonTypeVar& stv)
     {
-        if (const BoolSingleton* bs = get<BoolSingleton>(&stv))
+        if (const BooleanSingleton* bs = get<BooleanSingleton>(&stv))
             return allocator->alloc<AstTypeSingletonBool>(Location(), bs->value);
         else if (const StringSingleton* ss = get<StringSingleton>(&stv))
         {

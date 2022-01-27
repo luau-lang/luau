@@ -18,7 +18,6 @@
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauTypeCheckTwice, false)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTFLAGVARIABLE(LuauPersistDefinitionFileTypes, false)
 
 namespace Luau
 {
@@ -102,8 +101,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
         generateDocumentationSymbols(globalTy, documentationSymbol);
         targetScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
 
-        if (FFlag::LuauPersistDefinitionFileTypes)
-            persist(globalTy);
+        persist(globalTy);
     }
 
     for (const auto& [name, ty] : checkedModule->getModuleScope()->exportedTypeBindings)
@@ -113,8 +111,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
         targetScope->exportedTypeBindings[name] = globalTy;
 
-        if (FFlag::LuauPersistDefinitionFileTypes)
-            persist(globalTy.type);
+        persist(globalTy.type);
     }
 
     return LoadDefinitionFileResult{true, parseResult, checkedModule};

@@ -271,6 +271,32 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
     CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?"); // a ~= b
 }
 
+// Also belongs in TypeInfer.refinements.test.cpp.
+// Just needs to fully support equality refinement. Which is annoying without type states.
+TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
+{
+    ScopedFastFlag sff{"LuauDiscriminableUnions", true};
+
+    CheckResult result = check(R"(
+        type T = {x: string, y: number} | {x: nil, y: nil}
+
+        local function f(t: T)
+            if t.x ~= nil then
+                local foo = t
+            else
+                local bar = t
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{| x: string, y: number |}", toString(requireTypeAtPosition({5, 28})));
+
+    // Should be {| x: nil, y: nil |}
+    CHECK_EQ("{| x: nil, y: nil |} | {| x: string, y: number |}", toString(requireTypeAtPosition({7, 28})));
+}
+
 TEST_CASE_FIXTURE(Fixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
     ScopedFastInt sffi{"LuauTarjanChildLimit", 1};
@@ -590,8 +616,6 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 {
-    ScopedFastFlag luauCloneCorrectlyBeforeMutatingTableType{"LuauCloneCorrectlyBeforeMutatingTableType", true};
-
     // Mutability in type function application right now can create strange recursive types
     // TODO: instantiation right now is problematic, in this example should either leave the Table type alone
     // or it should rename the type to 'Self' so that the result will be 'Self<Table>'

@@ -17,15 +17,11 @@ LUAU_FASTFLAGVARIABLE(LuauCommittingTxnLogFreeTpPromote, false)
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 2000);
 LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
-LUAU_FASTFLAGVARIABLE(LuauUnionHeuristic, false)
 LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
-LUAU_FASTFLAGVARIABLE(LuauOccursCheckOkWithRecursiveFunctions, false)
 LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauProperTypeLevels);
 LUAU_FASTFLAGVARIABLE(LuauUnifyPackTails, false)
-LUAU_FASTFLAGVARIABLE(LuauExtendedUnionMismatchError, false)
-LUAU_FASTFLAGVARIABLE(LuauExtendedFunctionMismatchError, false)
 
 namespace Luau
 {
@@ -229,8 +225,6 @@ static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
 // Used for tagged union matching heuristic, returns first singleton type field
 static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMatchTag(TypeId type)
 {
-    LUAU_ASSERT(FFlag::LuauExtendedUnionMismatchError);
-
     type = follow(type);
 
     if (auto ttv = get<TableTypeVar>(type))
@@ -291,7 +285,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     if (FInt::LuauTypeInferIterationLimit > 0 && FInt::LuauTypeInferIterationLimit < sharedState.counters.iterationCount)
     {
-        errors.push_back(TypeError{location, UnificationTooComplex{}});
+        reportError(TypeError{location, UnificationTooComplex{}});
         return;
     }
 
@@ -403,7 +397,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         if (subGeneric && !subGeneric->level.subsumes(superLevel))
         {
             // TODO: a more informative error message? CLI-39912
-            errors.push_back(TypeError{location, GenericError{"Generic subtype escaping scope"}});
+            reportError(TypeError{location, GenericError{"Generic subtype escaping scope"}});
             return;
         }
 
@@ -448,7 +442,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         if (superGeneric && !superGeneric->level.subsumes(subFree->level))
         {
             // TODO: a more informative error message? CLI-39912
-            errors.push_back(TypeError{location, GenericError{"Generic supertype escaping scope"}});
+            reportError(TypeError{location, GenericError{"Generic supertype escaping scope"}});
             return;
         }
 
@@ -561,13 +555,13 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         }
 
         if (unificationTooComplex)
-            errors.push_back(*unificationTooComplex);
+            reportError(*unificationTooComplex);
         else if (failed)
         {
             if (firstFailedOption)
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "Not all union options are compatible.", *firstFailedOption}});
+                reportError(TypeError{location, TypeMismatch{superTy, subTy, "Not all union options are compatible.", *firstFailedOption}});
             else
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+                reportError(TypeError{location, TypeMismatch{superTy, subTy}});
         }
     }
     else if (const UnionTypeVar* uv = FFlag::LuauUseCommittingTxnLog ? log.getMutable<UnionTypeVar>(superTy) : get<UnionTypeVar>(superTy))
@@ -582,50 +576,44 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         bool foundHeuristic = false;
         size_t startIndex = 0;
 
-        if (FFlag::LuauUnionHeuristic)
+        if (const std::string* subName = getName(subTy))
         {
-            if (const std::string* subName = getName(subTy))
+            for (size_t i = 0; i < uv->options.size(); ++i)
             {
-                for (size_t i = 0; i < uv->options.size(); ++i)
+                const std::string* optionName = getName(uv->options[i]);
+                if (optionName && *optionName == *subName)
                 {
-                    const std::string* optionName = getName(uv->options[i]);
-                    if (optionName && *optionName == *subName)
-                    {
-                        foundHeuristic = true;
-                        startIndex = i;
-                        break;
-                    }
+                    foundHeuristic = true;
+                    startIndex = i;
+                    break;
                 }
             }
+        }
 
-            if (FFlag::LuauExtendedUnionMismatchError)
+        if (auto subMatchTag = getTableMatchTag(subTy))
+        {
+            for (size_t i = 0; i < uv->options.size(); ++i)
             {
-                if (auto subMatchTag = getTableMatchTag(subTy))
+                auto optionMatchTag = getTableMatchTag(uv->options[i]);
+                if (optionMatchTag && optionMatchTag->first == subMatchTag->first && *optionMatchTag->second == *subMatchTag->second)
                 {
-                    for (size_t i = 0; i < uv->options.size(); ++i)
-                    {
-                        auto optionMatchTag = getTableMatchTag(uv->options[i]);
-                        if (optionMatchTag && optionMatchTag->first == subMatchTag->first && *optionMatchTag->second == *subMatchTag->second)
-                        {
-                            foundHeuristic = true;
-                            startIndex = i;
-                            break;
-                        }
-                    }
+                    foundHeuristic = true;
+                    startIndex = i;
+                    break;
                 }
             }
+        }
 
-            if (!foundHeuristic && cacheEnabled)
+        if (!foundHeuristic && cacheEnabled)
+        {
+            for (size_t i = 0; i < uv->options.size(); ++i)
             {
-                for (size_t i = 0; i < uv->options.size(); ++i)
-                {
-                    TypeId type = uv->options[i];
+                TypeId type = uv->options[i];
 
-                    if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
-                    {
-                        startIndex = i;
-                        break;
-                    }
+                if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
+                {
+                    startIndex = i;
+                    break;
                 }
             }
         }
@@ -650,7 +638,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             {
                 unificationTooComplex = e;
             }
-            else if (FFlag::LuauExtendedUnionMismatchError && !isNil(type))
+            else if (!isNil(type))
             {
                 failedOptionCount++;
 
@@ -664,15 +652,15 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
         if (unificationTooComplex)
         {
-            errors.push_back(*unificationTooComplex);
+            reportError(*unificationTooComplex);
         }
         else if (!found)
         {
-            if (FFlag::LuauExtendedUnionMismatchError && (failedOptionCount == 1 || foundHeuristic) && failedOption)
-                errors.push_back(
+            if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
+                reportError(
                     TypeError{location, TypeMismatch{superTy, subTy, "None of the union options are compatible. For example:", *failedOption}});
             else
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "none of the union options are compatible"}});
+                reportError(TypeError{location, TypeMismatch{superTy, subTy, "none of the union options are compatible"}});
         }
     }
     else if (const IntersectionTypeVar* uv =
@@ -702,9 +690,9 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         }
 
         if (unificationTooComplex)
-            errors.push_back(*unificationTooComplex);
+            reportError(*unificationTooComplex);
         else if (firstFailedOption)
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption}});
+            reportError(TypeError{location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption}});
     }
     else if (const IntersectionTypeVar* uv =
                  FFlag::LuauUseCommittingTxnLog ? log.getMutable<IntersectionTypeVar>(subTy) : get<IntersectionTypeVar>(subTy))
@@ -754,10 +742,10 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         }
 
         if (unificationTooComplex)
-            errors.push_back(*unificationTooComplex);
+            reportError(*unificationTooComplex);
         else if (!found)
         {
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "none of the intersection parts are compatible"}});
+            reportError(TypeError{location, TypeMismatch{superTy, subTy, "none of the intersection parts are compatible"}});
         }
     }
     else if ((FFlag::LuauUseCommittingTxnLog && log.getMutable<PrimitiveTypeVar>(superTy) && log.getMutable<PrimitiveTypeVar>(subTy)) ||
@@ -801,7 +789,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         tryUnifyWithClass(subTy, superTy, /*reversed*/ true);
 
     else
-        errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+        reportError(TypeError{location, TypeMismatch{superTy, subTy}});
 
     if (FFlag::LuauUseCommittingTxnLog)
         log.popSeen(superTy, subTy);
@@ -1067,7 +1055,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
     if (FInt::LuauTypeInferIterationLimit > 0 && FInt::LuauTypeInferIterationLimit < sharedState.counters.iterationCount)
     {
-        errors.push_back(TypeError{location, UnificationTooComplex{}});
+        reportError(TypeError{location, UnificationTooComplex{}});
         return;
     }
 
@@ -1166,7 +1154,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 {
                     tryUnify_(*subIter, *superIter);
 
-                    if (FFlag::LuauExtendedFunctionMismatchError && !errors.empty() && !firstPackErrorPos)
+                    if (!errors.empty() && !firstPackErrorPos)
                         firstPackErrorPos = loopCount;
 
                     superIter.advance();
@@ -1251,7 +1239,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                     size_t actualSize = size(subTp);
                     if (ctx == CountMismatch::Result)
                         std::swap(expectedSize, actualSize);
-                    errors.push_back(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
+                    reportError(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
 
                     while (superIter.good())
                     {
@@ -1272,7 +1260,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         }
         else
         {
-            errors.push_back(TypeError{location, GenericError{"Failed to unify type packs"}});
+            reportError(TypeError{location, GenericError{"Failed to unify type packs"}});
         }
     }
     else
@@ -1372,7 +1360,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 {
                     tryUnify_(*subIter, *superIter);
 
-                    if (FFlag::LuauExtendedFunctionMismatchError && !errors.empty() && !firstPackErrorPos)
+                    if (!errors.empty() && !firstPackErrorPos)
                         firstPackErrorPos = loopCount;
 
                     superIter.advance();
@@ -1459,7 +1447,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                     size_t actualSize = size(subTp);
                     if (ctx == CountMismatch::Result)
                         std::swap(expectedSize, actualSize);
-                    errors.push_back(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
+                    reportError(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
 
                     while (superIter.good())
                     {
@@ -1480,7 +1468,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         }
         else
         {
-            errors.push_back(TypeError{location, GenericError{"Failed to unify type packs"}});
+            reportError(TypeError{location, GenericError{"Failed to unify type packs"}});
         }
     }
 }
@@ -1493,7 +1481,7 @@ void Unifier::tryUnifyPrimitives(TypeId subTy, TypeId superTy)
         ice("passed non primitive types to unifyPrimitives");
 
     if (superPrim->type != subPrim->type)
-        errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+        reportError(TypeError{location, TypeMismatch{superTy, subTy}});
 }
 
 void Unifier::tryUnifySingletons(TypeId subTy, TypeId superTy)
@@ -1508,13 +1496,13 @@ void Unifier::tryUnifySingletons(TypeId subTy, TypeId superTy)
     if (superSingleton && *superSingleton == *subSingleton)
         return;
 
-    if (superPrim && superPrim->type == PrimitiveTypeVar::Boolean && get<BoolSingleton>(subSingleton) && variance == Covariant)
+    if (superPrim && superPrim->type == PrimitiveTypeVar::Boolean && get<BooleanSingleton>(subSingleton) && variance == Covariant)
         return;
 
     if (superPrim && superPrim->type == PrimitiveTypeVar::String && get<StringSingleton>(subSingleton) && variance == Covariant)
         return;
 
-    errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+    reportError(TypeError{location, TypeMismatch{superTy, subTy}});
 }
 
 void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall)
@@ -1536,10 +1524,7 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
     {
         numGenerics = std::min(superFunction->generics.size(), subFunction->generics.size());
 
-        if (FFlag::LuauExtendedFunctionMismatchError)
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "different number of generic type parameters"}});
-        else
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+        reportError(TypeError{location, TypeMismatch{superTy, subTy, "different number of generic type parameters"}});
     }
 
     size_t numGenericPacks = superFunction->genericPacks.size();
@@ -1547,10 +1532,7 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
     {
         numGenericPacks = std::min(superFunction->genericPacks.size(), subFunction->genericPacks.size());
 
-        if (FFlag::LuauExtendedFunctionMismatchError)
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "different number of generic type pack parameters"}});
-        else
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+        reportError(TypeError{location, TypeMismatch{superTy, subTy, "different number of generic type pack parameters"}});
     }
 
     for (size_t i = 0; i < numGenerics; i++)
@@ -1567,48 +1549,35 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
     {
         Unifier innerState = makeChildUnifier();
 
-        if (FFlag::LuauExtendedFunctionMismatchError)
+        innerState.ctx = CountMismatch::Arg;
+        innerState.tryUnify_(superFunction->argTypes, subFunction->argTypes, isFunctionCall);
+
+        bool reported = !innerState.errors.empty();
+
+        if (auto e = hasUnificationTooComplex(innerState.errors))
+            reportError(*e);
+        else if (!innerState.errors.empty() && innerState.firstPackErrorPos)
+            reportError(
+                TypeError{location, TypeMismatch{superTy, subTy, format("Argument #%d type is not compatible.", *innerState.firstPackErrorPos),
+                                        innerState.errors.front()}});
+        else if (!innerState.errors.empty())
+            reportError(TypeError{location, TypeMismatch{superTy, subTy, "", innerState.errors.front()}});
+
+        innerState.ctx = CountMismatch::Result;
+        innerState.tryUnify_(subFunction->retType, superFunction->retType);
+
+        if (!reported)
         {
-            innerState.ctx = CountMismatch::Arg;
-            innerState.tryUnify_(superFunction->argTypes, subFunction->argTypes, isFunctionCall);
-
-            bool reported = !innerState.errors.empty();
-
             if (auto e = hasUnificationTooComplex(innerState.errors))
-                errors.push_back(*e);
+                reportError(*e);
+            else if (!innerState.errors.empty() && size(superFunction->retType) == 1 && finite(superFunction->retType))
+                reportError(TypeError{location, TypeMismatch{superTy, subTy, "Return type is not compatible.", innerState.errors.front()}});
             else if (!innerState.errors.empty() && innerState.firstPackErrorPos)
-                errors.push_back(
-                    TypeError{location, TypeMismatch{superTy, subTy, format("Argument #%d type is not compatible.", *innerState.firstPackErrorPos),
+                reportError(
+                    TypeError{location, TypeMismatch{superTy, subTy, format("Return #%d type is not compatible.", *innerState.firstPackErrorPos),
                                             innerState.errors.front()}});
             else if (!innerState.errors.empty())
-                errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "", innerState.errors.front()}});
-
-            innerState.ctx = CountMismatch::Result;
-            innerState.tryUnify_(subFunction->retType, superFunction->retType);
-
-            if (!reported)
-            {
-                if (auto e = hasUnificationTooComplex(innerState.errors))
-                    errors.push_back(*e);
-                else if (!innerState.errors.empty() && size(superFunction->retType) == 1 && finite(superFunction->retType))
-                    errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "Return type is not compatible.", innerState.errors.front()}});
-                else if (!innerState.errors.empty() && innerState.firstPackErrorPos)
-                    errors.push_back(
-                        TypeError{location, TypeMismatch{superTy, subTy, format("Return #%d type is not compatible.", *innerState.firstPackErrorPos),
-                                                innerState.errors.front()}});
-                else if (!innerState.errors.empty())
-                    errors.push_back(TypeError{location, TypeMismatch{superTy, subTy, "", innerState.errors.front()}});
-            }
-        }
-        else
-        {
-            ctx = CountMismatch::Arg;
-            innerState.tryUnify_(superFunction->argTypes, subFunction->argTypes, isFunctionCall);
-
-            ctx = CountMismatch::Result;
-            innerState.tryUnify_(subFunction->retType, superFunction->retType);
-
-            checkChildUnifierTypeMismatch(innerState.errors, superTy, subTy);
+                reportError(TypeError{location, TypeMismatch{superTy, subTy, "", innerState.errors.front()}});
         }
 
         if (FFlag::LuauUseCommittingTxnLog)
@@ -1716,7 +1685,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
         if (!missingProperties.empty())
         {
-            errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(missingProperties)}});
+            reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(missingProperties)}});
             return;
         }
     }
@@ -1734,7 +1703,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
         if (!extraProperties.empty())
         {
-            errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(extraProperties), MissingProperties::Extra}});
+            reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(extraProperties), MissingProperties::Extra}});
             return;
         }
     }
@@ -1957,13 +1926,13 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
     if (!missingProperties.empty())
     {
-        errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(missingProperties)}});
+        reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(missingProperties)}});
         return;
     }
 
     if (!extraProperties.empty())
     {
-        errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(extraProperties), MissingProperties::Extra}});
+        reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(extraProperties), MissingProperties::Extra}});
         return;
     }
 
@@ -2051,7 +2020,7 @@ void Unifier::DEPRECATED_tryUnifyTables(TypeId subTy, TypeId superTy, bool isInt
         return tryUnifySealedTables(subTy, superTy, isIntersection);
     else if ((superTable->state == TableState::Sealed && subTable->state == TableState::Generic) ||
              (superTable->state == TableState::Generic && subTable->state == TableState::Sealed))
-        errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+        reportError(TypeError{location, TypeMismatch{superTy, subTy}});
     else if ((superTable->state == TableState::Free) != (subTable->state == TableState::Free)) // one table is free and the other is not
     {
         TypeId freeTypeId = subTable->state == TableState::Free ? subTy : superTy;
@@ -2090,7 +2059,7 @@ void Unifier::DEPRECATED_tryUnifyTables(TypeId subTy, TypeId superTy, bool isInt
         {
             const auto& r = subTable->props.find(name);
             if (r == subTable->props.end())
-                errors.push_back(TypeError{location, UnknownProperty{subTy, name}});
+                reportError(TypeError{location, UnknownProperty{subTy, name}});
             else
                 tryUnify_(r->second.type, prop.type);
         }
@@ -2113,7 +2082,7 @@ void Unifier::DEPRECATED_tryUnifyTables(TypeId subTy, TypeId superTy, bool isInt
                 }
             }
             else
-                errors.push_back(TypeError{location, CannotExtendTable{subTy, CannotExtendTable::Indexer}});
+                reportError(TypeError{location, CannotExtendTable{subTy, CannotExtendTable::Indexer}});
         }
     }
     else if (superTable->state == TableState::Sealed)
@@ -2194,7 +2163,7 @@ void Unifier::tryUnifyFreeTable(TypeId subTy, TypeId superTy)
                 }
             }
             else
-                errors.push_back(TypeError{location, UnknownProperty{subTy, freeName}});
+                reportError(TypeError{location, UnknownProperty{subTy, freeName}});
         }
     }
 
@@ -2268,7 +2237,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
 
         if (!missingPropertiesInSuper.empty())
         {
-            errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(missingPropertiesInSuper)}});
+            reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(missingPropertiesInSuper)}});
             return;
         }
     }
@@ -2284,7 +2253,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
 
             missingPropertiesInSuper.push_back(it.first);
 
-            innerState.errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+            innerState.reportError(TypeError{location, TypeMismatch{superTy, subTy}});
         }
         else
         {
@@ -2299,7 +2268,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
                 if (oldErrorSize != innerState.errors.size() && !errorReported)
                 {
                     errorReported = true;
-                    errors.push_back(innerState.errors.back());
+                    reportError(innerState.errors.back());
                 }
             }
             else
@@ -2340,7 +2309,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
                 }
             }
             else
-                innerState.errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+                innerState.reportError(TypeError{location, TypeMismatch{superTy, subTy}});
         }
         else
         {
@@ -2369,7 +2338,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
                 }
             }
             else
-                innerState.errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+                innerState.reportError(TypeError{location, TypeMismatch{superTy, subTy}});
         }
     }
 
@@ -2386,7 +2355,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
 
     if (!missingPropertiesInSuper.empty())
     {
-        errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(missingPropertiesInSuper)}});
+        reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(missingPropertiesInSuper)}});
         return;
     }
 
@@ -2413,7 +2382,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
 
         if (!extraPropertiesInSub.empty())
         {
-            errors.push_back(TypeError{location, MissingProperties{superTy, subTy, std::move(extraPropertiesInSub), MissingProperties::Extra}});
+            reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(extraPropertiesInSub), MissingProperties::Extra}});
             return;
         }
     }
@@ -2437,9 +2406,9 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         innerState.tryUnify_(subMetatable->metatable, superMetatable->metatable);
 
         if (auto e = hasUnificationTooComplex(innerState.errors))
-            errors.push_back(*e);
+            reportError(*e);
         else if (!innerState.errors.empty())
-            errors.push_back(
+            reportError(
                 TypeError{location, TypeMismatch{reversed ? subTy : superTy, reversed ? superTy : subTy, "", innerState.errors.front()}});
 
         if (FFlag::LuauUseCommittingTxnLog)
@@ -2470,7 +2439,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         case TableState::Sealed:
         case TableState::Unsealed:
         case TableState::Generic:
-            errors.push_back(mismatchError);
+            reportError(mismatchError);
         }
     }
     else if (FFlag::LuauUseCommittingTxnLog ? (log.getMutable<AnyTypeVar>(subTy) || log.getMutable<ErrorTypeVar>(subTy))
@@ -2479,7 +2448,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
     }
     else
     {
-        errors.push_back(mismatchError);
+        reportError(mismatchError);
     }
 }
 
@@ -2491,9 +2460,9 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
 
     auto fail = [&]() {
         if (!reversed)
-            errors.push_back(TypeError{location, TypeMismatch{superTy, subTy}});
+            reportError(TypeError{location, TypeMismatch{superTy, subTy}});
         else
-            errors.push_back(TypeError{location, TypeMismatch{subTy, superTy}});
+            reportError(TypeError{location, TypeMismatch{subTy, superTy}});
     };
 
     const ClassTypeVar* superClass = get<ClassTypeVar>(superTy);
@@ -2538,7 +2507,7 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
             if (!classProp)
             {
                 ok = false;
-                errors.push_back(TypeError{location, UnknownProperty{superTy, propName}});
+                reportError(TypeError{location, UnknownProperty{superTy, propName}});
             }
             else
             {
@@ -2577,7 +2546,7 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
         {
             ok = false;
             std::string msg = "Class " + superClass->name + " does not have an indexer";
-            errors.push_back(TypeError{location, GenericError{msg}});
+            reportError(TypeError{location, GenericError{msg}});
         }
 
         if (!ok)
@@ -2695,7 +2664,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
             }
             else if (get<Unifiable::Generic>(tail))
             {
-                errors.push_back(TypeError{location, GenericError{"Cannot unify variadic and generic packs"}});
+                reportError(TypeError{location, GenericError{"Cannot unify variadic and generic packs"}});
             }
             else if (get<Unifiable::Error>(tail))
             {
@@ -2709,7 +2678,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
     }
     else
     {
-        errors.push_back(TypeError{location, GenericError{"Failed to unify variadic packs"}});
+        reportError(TypeError{location, GenericError{"Failed to unify variadic packs"}});
     }
 }
 
@@ -2886,7 +2855,7 @@ void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
 
         if (needle == haystack)
         {
-            errors.push_back(TypeError{location, OccursCheckFailed{}});
+            reportError(TypeError{location, OccursCheckFailed{}});
             log.replace(needle, *getSingletonTypes().errorRecoveryType());
 
             return;
@@ -2894,17 +2863,6 @@ void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
 
         if (log.getMutable<FreeTypeVar>(haystack))
             return;
-        else if (auto a = log.getMutable<FunctionTypeVar>(haystack))
-        {
-            if (!FFlag::LuauOccursCheckOkWithRecursiveFunctions)
-            {
-                for (TypePackIterator it(a->argTypes, &log); it != end(a->argTypes); ++it)
-                    check(*it);
-
-                for (TypePackIterator it(a->retType, &log); it != end(a->retType); ++it)
-                    check(*it);
-            }
-        }
         else if (auto a = log.getMutable<UnionTypeVar>(haystack))
         {
             for (TypeId ty : a->options)
@@ -2934,7 +2892,7 @@ void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
 
         if (needle == haystack)
         {
-            errors.push_back(TypeError{location, OccursCheckFailed{}});
+            reportError(TypeError{location, OccursCheckFailed{}});
             DEPRECATED_log(needle);
             *asMutable(needle) = *getSingletonTypes().errorRecoveryType();
             return;
@@ -2942,17 +2900,6 @@ void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
 
         if (get<FreeTypeVar>(haystack))
             return;
-        else if (auto a = get<FunctionTypeVar>(haystack))
-        {
-            if (!FFlag::LuauOccursCheckOkWithRecursiveFunctions)
-            {
-                for (TypeId ty : a->argTypes)
-                    check(ty);
-
-                for (TypeId ty : a->retType)
-                    check(ty);
-            }
-        }
         else if (auto a = get<UnionTypeVar>(haystack))
         {
             for (TypeId ty : a->options)
@@ -2988,7 +2935,7 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
         if (log.getMutable<Unifiable::Error>(needle))
             return;
 
-        if (!get<Unifiable::Free>(needle))
+        if (!log.getMutable<Unifiable::Free>(needle))
             ice("Expected needle pack to be free");
 
         RecursionLimiter _ra(&sharedState.counters.recursionCount, FInt::LuauTypeInferRecursionLimit);
@@ -2997,32 +2944,18 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
         {
             if (needle == haystack)
             {
-                errors.push_back(TypeError{location, OccursCheckFailed{}});
+                reportError(TypeError{location, OccursCheckFailed{}});
                 log.replace(needle, *getSingletonTypes().errorRecoveryTypePack());
 
                 return;
             }
 
-            if (auto a = get<TypePack>(haystack))
+            if (auto a = get<TypePack>(haystack); a && a->tail)
             {
-                for (const auto& ty : a->head)
-                {
-                    if (!FFlag::LuauOccursCheckOkWithRecursiveFunctions)
-                    {
-                        if (auto f = log.getMutable<FunctionTypeVar>(log.follow(ty)))
-                        {
-                            occursCheck(seen, needle, f->argTypes);
-                            occursCheck(seen, needle, f->retType);
-                        }
-                    }
-                }
-
-                if (a->tail)
-                {
-                    haystack = follow(*a->tail);
-                    continue;
-                }
+                haystack = log.follow(*a->tail);
+                continue;
             }
+
             break;
         }
     }
@@ -3048,31 +2981,17 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
         {
             if (needle == haystack)
             {
-                errors.push_back(TypeError{location, OccursCheckFailed{}});
+                reportError(TypeError{location, OccursCheckFailed{}});
                 DEPRECATED_log(needle);
                 *asMutable(needle) = *getSingletonTypes().errorRecoveryTypePack();
             }
 
-            if (auto a = get<TypePack>(haystack))
+            if (auto a = get<TypePack>(haystack); a && a->tail)
             {
-                if (!FFlag::LuauOccursCheckOkWithRecursiveFunctions)
-                {
-                    for (const auto& ty : a->head)
-                    {
-                        if (auto f = get<FunctionTypeVar>(follow(ty)))
-                        {
-                            occursCheck(seen, needle, f->argTypes);
-                            occursCheck(seen, needle, f->retType);
-                        }
-                    }
-                }
-
-                if (a->tail)
-                {
-                    haystack = follow(*a->tail);
-                    continue;
-                }
+                haystack = follow(*a->tail);
+                continue;
             }
+
             break;
         }
     }
@@ -3094,17 +3013,17 @@ bool Unifier::isNonstrictMode() const
 void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId wantedType, TypeId givenType)
 {
     if (auto e = hasUnificationTooComplex(innerErrors))
-        errors.push_back(*e);
+        reportError(*e);
     else if (!innerErrors.empty())
-        errors.push_back(TypeError{location, TypeMismatch{wantedType, givenType}});
+        reportError(TypeError{location, TypeMismatch{wantedType, givenType}});
 }
 
 void Unifier::checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, const std::string& prop, TypeId wantedType, TypeId givenType)
 {
     if (auto e = hasUnificationTooComplex(innerErrors))
-        errors.push_back(*e);
+        reportError(*e);
     else if (!innerErrors.empty())
-        errors.push_back(
+        reportError(
             TypeError{location, TypeMismatch{wantedType, givenType, format("Property '%s' is not compatible.", prop.c_str()), innerErrors.front()}});
 }
 

@@ -200,7 +200,7 @@ static lua_Page* newpage(lua_State* L, lua_Page** gcopageset, int pageSize, int 
 
     global_State* g = L->global;
 
-    LUAU_ASSERT(pageSize - offsetof(lua_Page, data) >= blockSize * blockCount);
+    LUAU_ASSERT(pageSize - int(offsetof(lua_Page, data)) >= blockSize * blockCount);
 
     lua_Page* page = (lua_Page*)(*g->frealloc)(L, g->ud, NULL, 0, pageSize);
     if (!page)
@@ -376,7 +376,7 @@ static void* luaM_newgcoblock(lua_State* L, int sizeClass)
 
     LUAU_ASSERT(!page->prev);
     LUAU_ASSERT(page->freeList || page->freeNext >= 0);
-    LUAU_ASSERT(size_t(page->blockSize) == kSizeClassConfig.sizeOfClass[sizeClass]);
+    LUAU_ASSERT(page->blockSize == kSizeClassConfig.sizeOfClass[sizeClass]);
 
     void* block;
 
@@ -520,7 +520,7 @@ GCObject* luaM_newgco_(lua_State* L, size_t nsize, uint8_t memcat)
     }
     else
     {
-        lua_Page* page = newpage(L, &g->allgcopages, offsetof(lua_Page, data) + nsize, nsize, 1);
+        lua_Page* page = newpage(L, &g->allgcopages, offsetof(lua_Page, data) + int(nsize), int(nsize), 1);
 
         block = &page->data;
         ASAN_UNPOISON_MEMORY_REGION(block, page->blockSize);

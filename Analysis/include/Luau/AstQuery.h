@@ -42,6 +42,21 @@ struct ExprOrLocal
     {
         return expr ? expr->location : (local ? local->location : std::optional<Location>{});
     }
+    std::optional<AstName> getName()
+    {
+        if (expr)
+        {
+            if (AstName name = getIdentifier(expr); name.value)
+            {
+                return name;
+            }
+        }
+        else if (local)
+        {
+            return local->name;
+        }
+        return std::nullopt;
+    }
 
 private:
     AstExpr* expr = nullptr;

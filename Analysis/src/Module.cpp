@@ -16,6 +16,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 LUAU_FASTFLAG(LuauTypeAliasDefaults)
 
+LUAU_FASTFLAGVARIABLE(LuauPrepopulateUnionOptionsBeforeAllocation, false)
+
 namespace Luau
 {
 
@@ -377,14 +379,28 @@ void TypeCloner::operator()(const AnyTypeVar& t)
 
 void TypeCloner::operator()(const UnionTypeVar& t)
 {
-    TypeId result = dest.addType(UnionTypeVar{});
-    seenTypes[typeId] = result;
+    if (FFlag::LuauPrepopulateUnionOptionsBeforeAllocation)
+    {
+        std::vector<TypeId> options;
+        options.reserve(t.options.size());
 
-    UnionTypeVar* option = getMutable<UnionTypeVar>(result);
-    LUAU_ASSERT(option != nullptr);
+        for (TypeId ty : t.options)
+            options.push_back(clone(ty, dest, seenTypes, seenTypePacks, cloneState));
 
-    for (TypeId ty : t.options)
-        option->options.push_back(clone(ty, dest, seenTypes, seenTypePacks, cloneState));
+        TypeId result = dest.addType(UnionTypeVar{std::move(options)});
+        seenTypes[typeId] = result;
+    }
+    else
+    {
+        TypeId result = dest.addType(UnionTypeVar{});
+        seenTypes[typeId] = result;
+
+        UnionTypeVar* option = getMutable<UnionTypeVar>(result);
+        LUAU_ASSERT(option != nullptr);
+
+        for (TypeId ty : t.options)
+            option->options.push_back(clone(ty, dest, seenTypes, seenTypePacks, cloneState));
+    }
 }
 
 void TypeCloner::operator()(const IntersectionTypeVar& t)

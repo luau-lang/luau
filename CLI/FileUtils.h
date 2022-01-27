@@ -7,6 +7,7 @@
 #include <vector>
 
 std::optional<std::string> readFile(const std::string& name);
+std::optional<std::string> readStdin();
 
 bool isDirectory(const std::string& path);
 bool traverseDirectory(const std::string& path, const std::function<void(const std::string& name)>& callback);

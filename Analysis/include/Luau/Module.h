@@ -13,6 +13,8 @@
 #include <unordered_map>
 #include <optional>
 
+LUAU_FASTFLAG(LuauPrepopulateUnionOptionsBeforeAllocation)
+
 namespace Luau
 {
 
@@ -58,6 +60,12 @@ struct TypeArena
     template<typename T>
     TypeId addType(T tv)
     {
+        if (FFlag::LuauPrepopulateUnionOptionsBeforeAllocation)
+        {
+            if constexpr (std::is_same_v<T, UnionTypeVar>)
+                LUAU_ASSERT(tv.options.size() >= 2);
+        }
+
         return addTV(TypeVar(std::move(tv)));
     }
 

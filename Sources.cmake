@@ -176,7 +176,8 @@ if(TARGET Luau.Repl.CLI)
         CLI/FileUtils.cpp
         CLI/Profiler.h
         CLI/Profiler.cpp
-        CLI/Repl.cpp)
+        CLI/Repl.cpp
+        CLI/ReplEntry.cpp)
 endif()
 
 if(TARGET Luau.Analyze.CLI)
@@ -240,6 +241,21 @@ if(TARGET Luau.Conformance)
     # Luau.Conformance Sources
     target_sources(Luau.Conformance PRIVATE
         tests/Conformance.test.cpp
+        tests/main.cpp)
+endif()
+
+if(TARGET Luau.CLI.Test)
+    # Luau.CLI.Test Sources
+    target_sources(Luau.CLI.Test PRIVATE
+        CLI/Coverage.h
+        CLI/Coverage.cpp
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+        CLI/Profiler.h
+        CLI/Profiler.cpp
+        CLI/Repl.cpp
+    
+        tests/Repl.test.cpp
         tests/main.cpp)
 endif()
 

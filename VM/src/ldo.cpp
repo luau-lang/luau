@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCoroutineClose)
-
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -300,7 +298,7 @@ static void resume(lua_State* L, void* ud)
     {
         // start coroutine
         LUAU_ASSERT(L->ci == L->base_ci && firstArg >= L->base);
-        if (FFlag::LuauCoroutineClose && firstArg == L->base)
+        if (firstArg == L->base)
             luaG_runerror(L, "cannot resume dead coroutine");
 
         if (luau_precall(L, firstArg - 1, LUA_MULTRET) != PCRLUA)
