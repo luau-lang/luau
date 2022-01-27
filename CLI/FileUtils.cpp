@@ -15,8 +15,6 @@
 
 #include <string.h>
 
-#define READ_BUFFER_SIZE 4096
-
 #ifdef _WIN32
 static std::wstring fromUtf8(const std::string& path)
 {
@@ -79,9 +77,9 @@ std::optional<std::string> readFile(const std::string& name)
 std::optional<std::string> readStdin()
 {
     std::string result;
-    char buffer[READ_BUFFER_SIZE] = { };
+    char buffer[4096] = { };
 
-    while (fgets(buffer, READ_BUFFER_SIZE, stdin) != nullptr)
+    while (fgets(buffer, sizeof(buffer), stdin) != nullptr)
         result.append(buffer);
 
     // If eof was not reached for stdin, then a read error occurred

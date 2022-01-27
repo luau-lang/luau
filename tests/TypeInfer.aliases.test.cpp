@@ -11,8 +11,6 @@ TEST_SUITE_BEGIN("TypeAliases");
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         type F = () -> F?
         local function f()
@@ -194,8 +192,6 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         type A = () -> (number, B)
         type B = () -> (string, A)

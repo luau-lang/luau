@@ -16,7 +16,6 @@
 
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
 LUAU_FASTFLAG(LuauEqConstraint)
-LUAU_FASTFLAG(LuauExtendedFunctionMismatchError)
 
 using namespace Luau;
 
@@ -959,8 +958,6 @@ TEST_CASE_FIXTURE(Fixture, "another_recursive_local_function")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         function f()
             return f
@@ -973,8 +970,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         function f(g)
             return f(f)
@@ -1699,8 +1694,6 @@ TEST_CASE_FIXTURE(Fixture, "first_argument_can_be_optional")
 
 TEST_CASE_FIXTURE(Fixture, "dont_ice_when_failing_the_occurs_check")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         --!strict
         local s
@@ -1711,8 +1704,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_ice_when_failing_the_occurs_check")
 
 TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_traverse_a_cyclic_type")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
          --!strict
         function u(t, w)
@@ -3326,11 +3317,12 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_comparison")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "relation_op_on_any_lhs_where_rhs_maybe_has_metatable")
+TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
 {
     CheckResult result = check(R"(
-        local x
-        print((x == true and (x .. "y")) .. 1)
+        local function f(x)
+            return x .. "y"
+        end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -3340,13 +3332,14 @@ TEST_CASE_FIXTURE(Fixture, "relation_op_on_any_lhs_where_rhs_maybe_has_metatable
 TEST_CASE_FIXTURE(Fixture, "concat_op_on_string_lhs_and_free_rhs")
 {
     CheckResult result = check(R"(
-        local x
-        print("foo" .. x)
+        local function f(x)
+            return "foo" .. x
+        end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("string", toString(requireType("x")));
+    CHECK_EQ("(string) -> string", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
@@ -4374,8 +4367,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 
 TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 {
-    ScopedFastFlag sffs("LuauStoreMatchingOverloadFnType", true);
-
     CheckResult result = check(R"(
         type Overload = ((string) -> string) & ((number) -> number)
         local abc: Overload
@@ -4475,17 +4466,10 @@ f(function(a, b, c, ...) return a + b end)
 
     LUAU_REQUIRE_ERRORS(result);
 
-    if (FFlag::LuauExtendedFunctionMismatchError)
-    {
-        CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
+    CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
 caused by:
   Argument count mismatch. Function expects 3 arguments, but only 2 are specified)",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number')", toString(result.errors[0]));
-    }
+        toString(result.errors[0]));
 
     // Infer from variadic packs into elements
     result = check(R"(
@@ -4618,17 +4602,9 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauExtendedFunctionMismatchError)
-    {
-        CHECK_EQ(
-            "Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
-            "parameters",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ("Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'", toString(result.errors[0]));
-    }
+    CHECK_EQ("Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
+             "parameters",
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
@@ -4741,8 +4717,6 @@ TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
-    ScopedFastFlag luauCloneCorrectlyBeforeMutatingTableType{"LuauCloneCorrectlyBeforeMutatingTableType", true};
-
     CheckResult result = check(R"(
 type A = { x: number }
 local a: A = { x = 1 }
@@ -4965,8 +4939,6 @@ TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_arg_count")
 {
-    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
-
     CheckResult result = check(R"(
 type A = (number, number) -> string
 type B = (number) -> string
@@ -4983,8 +4955,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_arg")
 {
-    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
-
     CheckResult result = check(R"(
 type A = (number, number) -> string
 type B = (number, string) -> string
@@ -5001,8 +4971,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret_count")
 {
-    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
-
     CheckResult result = check(R"(
 type A = (number, number) -> (number)
 type B = (number, number) -> (number, boolean)
@@ -5019,8 +4987,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret")
 {
-    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
-
     CheckResult result = check(R"(
 type A = (number, number) -> string
 type B = (number, number) -> number
@@ -5037,8 +5003,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret_mult")
 {
-    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
-
     CheckResult result = check(R"(
 type A = (number, number) -> (number, string)
 type B = (number, number) -> (number, boolean)
@@ -5069,8 +5033,6 @@ TEST_CASE_FIXTURE(Fixture, "prop_access_on_any_with_other_options")
 
 TEST_CASE_FIXTURE(Fixture, "table_function_check_use_after_free")
 {
-    ScopedFastFlag luauUnifyFunctionCheckResult{"LuauUpdateFunctionNameBinding", true};
-
     CheckResult result = check(R"(
 local t = {}
 

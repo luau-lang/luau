@@ -2000,6 +2000,73 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
     matchParseError("type Y<T... = (string) -> number> = {}", "Expected type pack after '=', got type", Location{{0, 14}, {0, 32}});
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
+{
+    {
+        AstStat* stat = parse("return if true then 1 else 2");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr != nullptr);
+    }
+
+    {
+        AstStat* stat = parse("return if true then 1 elseif true then 2 else 3");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr1 != nullptr);
+        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr2 != nullptr);
+    }
+
+    // Use "else if" as opposed to elseif
+    {
+        AstStat* stat = parse("return if true then 1 else if true then 2 else 3");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr1 != nullptr);
+        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr2 != nullptr);
+    }
+
+    // Use an if-else expression as the conditional expression of an if-else expression
+    {
+        AstStat* stat = parse("return if if true then false else true then 1 else 2");
+
+        REQUIRE(stat != nullptr);
+        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
+        REQUIRE(str != nullptr);
+        CHECK(str->list.size == 1);
+        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
+        REQUIRE(ifElseExpr != nullptr);
+        auto* nestedIfElseExpr = ifElseExpr->condition->as<AstExprIfElse>();
+        REQUIRE(nestedIfElseExpr != nullptr);
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_pack_type_parameters")
+{
+    AstStat* stat = parse(R"(
+type Packed<T...> = () -> T...
+
+type A<X...> = Packed<X...>
+type B<X...> = Packed<...number>
+type C<X...> = Packed<(number, X...)>
+    )");
+    REQUIRE(stat != nullptr);
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("ParseErrorRecovery");
@@ -2502,73 +2569,6 @@ TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
 type Y<T..., U = T...> = (T...) -> U...
     )");
     CHECK_EQ(1, result.errors.size());
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
-{
-    {
-        AstStat* stat = parse("return if true then 1 else 2");
-
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr != nullptr);
-    }
-
-    {
-        AstStat* stat = parse("return if true then 1 elseif true then 2 else 3");
-
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr1 != nullptr);
-        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr2 != nullptr);
-    }
-
-    // Use "else if" as opposed to elseif
-    {
-        AstStat* stat = parse("return if true then 1 else if true then 2 else 3");
-
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr1 = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr1 != nullptr);
-        auto* ifElseExpr2 = ifElseExpr1->falseExpr->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr2 != nullptr);
-    }
-
-    // Use an if-else expression as the conditional expression of an if-else expression
-    {
-        AstStat* stat = parse("return if if true then false else true then 1 else 2");
-
-        REQUIRE(stat != nullptr);
-        AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-        REQUIRE(str != nullptr);
-        CHECK(str->list.size == 1);
-        auto* ifElseExpr = str->list.data[0]->as<AstExprIfElse>();
-        REQUIRE(ifElseExpr != nullptr);
-        auto* nestedIfElseExpr = ifElseExpr->condition->as<AstExprIfElse>();
-        REQUIRE(nestedIfElseExpr != nullptr);
-    }
-}
-
-TEST_CASE_FIXTURE(Fixture, "parse_type_pack_type_parameters")
-{
-    AstStat* stat = parse(R"(
-type Packed<T...> = () -> T...
-
-type A<X...> = Packed<X...>
-type B<X...> = Packed<...number>
-type C<X...> = Packed<(number, X...)>
-    )");
-    REQUIRE(stat != nullptr);
 }
 
 TEST_SUITE_END();

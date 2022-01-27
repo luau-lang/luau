@@ -10,7 +10,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauOccursCheckOkWithRecursiveFunctions)
 LUAU_FASTFLAG(LuauTypeAliasDefaults)
 
 /*
@@ -374,7 +373,7 @@ struct TypeVarStringifier
 
     void operator()(TypeId, const SingletonTypeVar& stv)
     {
-        if (const BoolSingleton* bs = Luau::get<BoolSingleton>(&stv))
+        if (const BooleanSingleton* bs = Luau::get<BooleanSingleton>(&stv))
             state.emit(bs->value ? "true" : "false");
         else if (const StringSingleton* ss = Luau::get<StringSingleton>(&stv))
         {
@@ -617,9 +616,7 @@ struct TypeVarStringifier
 
             std::string saved = std::move(state.result.name);
 
-            bool needParens = FFlag::LuauOccursCheckOkWithRecursiveFunctions
-                                  ? !state.cycleNames.count(el) && (get<IntersectionTypeVar>(el) || get<FunctionTypeVar>(el))
-                                  : get<IntersectionTypeVar>(el) || get<FunctionTypeVar>(el);
+            bool needParens = !state.cycleNames.count(el) && (get<IntersectionTypeVar>(el) || get<FunctionTypeVar>(el));
 
             if (needParens)
                 state.emit("(");
@@ -675,9 +672,7 @@ struct TypeVarStringifier
 
             std::string saved = std::move(state.result.name);
 
-            bool needParens = FFlag::LuauOccursCheckOkWithRecursiveFunctions
-                                  ? !state.cycleNames.count(el) && (get<UnionTypeVar>(el) || get<FunctionTypeVar>(el))
-                                  : get<UnionTypeVar>(el) || get<FunctionTypeVar>(el);
+            bool needParens = !state.cycleNames.count(el) && (get<UnionTypeVar>(el) || get<FunctionTypeVar>(el));
 
             if (needParens)
                 state.emit("(");

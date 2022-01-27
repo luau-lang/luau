@@ -4,6 +4,8 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
+LUAU_FASTFLAGVARIABLE(LuauCompileSelectBuiltin, false)
+
 namespace Luau
 {
 namespace Compile
@@ -61,6 +63,9 @@ int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& options)
 
     if (builtin.isGlobal("unpack"))
         return LBF_TABLE_UNPACK;
+
+    if (FFlag::LuauCompileSelectBuiltin && builtin.isGlobal("select"))
+        return LBF_SELECT_VARARG;
 
     if (builtin.object == "math")
     {

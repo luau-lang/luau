@@ -379,9 +379,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
     ScopedFastFlag sffs[] = {
         {"LuauSingletonTypes", true},
         {"LuauParseSingletonTypes", true},
-        {"LuauUnionHeuristic", true},
         {"LuauExpectedTypesOfProperties", true},
-        {"LuauExtendedUnionMismatchError", true},
     };
 
     CheckResult result = check(R"(
@@ -404,9 +402,7 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
     ScopedFastFlag sffs[] = {
         {"LuauSingletonTypes", true},
         {"LuauParseSingletonTypes", true},
-        {"LuauUnionHeuristic", true},
         {"LuauExpectedTypesOfProperties", true},
-        {"LuauExtendedUnionMismatchError", true},
     };
 
     CheckResult result = check(R"(
@@ -429,9 +425,7 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
     ScopedFastFlag sffs[] = {
         {"LuauSingletonTypes", true},
         {"LuauParseSingletonTypes", true},
-        {"LuauUnionHeuristic", true},
         {"LuauExpectedTypesOfProperties", true},
-        {"LuauExtendedUnionMismatchError", true},
         {"LuauIfElseExpectedType2", true},
         {"LuauIfElseBranchTypeUnion", true},
     };

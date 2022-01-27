@@ -956,7 +956,6 @@ TEST_CASE("no_use_after_free_with_type_fun_instantiation")
 {
     // This flag forces this test to crash if there's a UAF in this code.
     ScopedFastFlag sff_DebugLuauFreezeArena("DebugLuauFreezeArena", true);
-    ScopedFastFlag sff_LuauCloneCorrectlyBeforeMutatingTableType("LuauCloneCorrectlyBeforeMutatingTableType", true);
 
     FrontendFixture fix;
 

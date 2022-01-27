@@ -15,6 +15,9 @@
 #include <bitset>
 #include <math.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexOpt, false)
+LUAU_FASTFLAG(LuauCompileSelectBuiltin)
+
 namespace Luau
 {
 
@@ -261,6 +264,122 @@ struct Compiler
         bytecode.emitABC(LOP_GETVARARGS, target, multRet ? 0 : uint8_t(targetCount + 1), 0);
     }
 
+    void compileExprSelectVararg(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop, bool multRet, uint8_t regs)
+    {
+        LUAU_ASSERT(FFlag::LuauCompileSelectBuiltin);
+        LUAU_ASSERT(targetCount == 1);
+        LUAU_ASSERT(!expr->self);
+        LUAU_ASSERT(expr->args.size == 2 && expr->args.data[1]->is<AstExprVarargs>());
+
+        AstExpr* arg = expr->args.data[0];
+
+        uint8_t argreg;
+
+        if (isExprLocalReg(arg))
+            argreg = getLocal(arg->as<AstExprLocal>()->local);
+        else
+        {
+            argreg = uint8_t(regs + 1);
+            compileExprTempTop(arg, argreg);
+        }
+
+        size_t fastcallLabel = bytecode.emitLabel();
+
+        bytecode.emitABC(LOP_FASTCALL1, LBF_SELECT_VARARG, argreg, 0);
+
+        // note, these instructions are normally not executed and are used as a fallback for FASTCALL
+        // we can't use TempTop variant here because we need to make sure the arguments we already computed aren't overwritten
+        compileExprTemp(expr->func, regs);
+
+        bytecode.emitABC(LOP_GETVARARGS, uint8_t(regs + 2), 0, 0);
+
+        size_t callLabel = bytecode.emitLabel();
+        if (!bytecode.patchSkipC(fastcallLabel, callLabel))
+            CompileError::raise(expr->func->location, "Exceeded jump distance limit; simplify the code to compile");
+
+        // note, this is always multCall (last argument is variadic)
+        bytecode.emitABC(LOP_CALL, regs, 0, multRet ? 0 : uint8_t(targetCount + 1));
+
+        // if we didn't output results directly to target, we need to move them
+        if (!targetTop)
+        {
+            for (size_t i = 0; i < targetCount; ++i)
+                bytecode.emitABC(LOP_MOVE, uint8_t(target + i), uint8_t(regs + i), 0);
+        }
+    }
+
+    void compileExprFastcallN(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop, bool multRet, uint8_t regs, int bfid)
+    {
+        LUAU_ASSERT(!expr->self);
+        LUAU_ASSERT(expr->args.size <= 2);
+
+        LuauOpcode opc = expr->args.size == 1 ? LOP_FASTCALL1 : LOP_FASTCALL2;
+
+        uint32_t args[2] = {};
+
+        for (size_t i = 0; i < expr->args.size; ++i)
+        {
+            if (i > 0)
+            {
+                if (int32_t cid = getConstantIndex(expr->args.data[i]); cid >= 0)
+                {
+                    opc = LOP_FASTCALL2K;
+                    args[i] = cid;
+                    break;
+                }
+            }
+
+            if (isExprLocalReg(expr->args.data[i]))
+                args[i] = getLocal(expr->args.data[i]->as<AstExprLocal>()->local);
+            else
+            {
+                args[i] = uint8_t(regs + 1 + i);
+                compileExprTempTop(expr->args.data[i], uint8_t(args[i]));
+            }
+        }
+
+        size_t fastcallLabel = bytecode.emitLabel();
+
+        bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
+        if (opc != LOP_FASTCALL1)
+            bytecode.emitAux(args[1]);
+
+        // Set up a traditional Lua stack for the subsequent LOP_CALL.
+        // Note, as with other instructions that immediately follow FASTCALL, these are normally not executed and are used as a fallback for
+        // these FASTCALL variants.
+        for (size_t i = 0; i < expr->args.size; ++i)
+        {
+            if (i > 0 && opc == LOP_FASTCALL2K)
+            {
+                emitLoadK(uint8_t(regs + 1 + i), args[i]);
+                break;
+            }
+
+            if (args[i] != regs + 1 + i)
+                bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
+        }
+
+        // note, these instructions are normally not executed and are used as a fallback for FASTCALL
+        // we can't use TempTop variant here because we need to make sure the arguments we already computed aren't overwritten
+        compileExprTemp(expr->func, regs);
+
+        size_t callLabel = bytecode.emitLabel();
+
+        // FASTCALL will skip over the instructions needed to compute function and jump over CALL which must immediately follow the instruction
+        // sequence after FASTCALL
+        if (!bytecode.patchSkipC(fastcallLabel, callLabel))
+            CompileError::raise(expr->func->location, "Exceeded jump distance limit; simplify the code to compile");
+
+        bytecode.emitABC(LOP_CALL, regs, uint8_t(expr->args.size + 1), multRet ? 0 : uint8_t(targetCount + 1));
+
+        // if we didn't output results directly to target, we need to move them
+        if (!targetTop)
+        {
+            for (size_t i = 0; i < targetCount; ++i)
+                bytecode.emitABC(LOP_MOVE, uint8_t(target + i), uint8_t(regs + i), 0);
+        }
+    }
+
     void compileExprCall(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop = false, bool multRet = false)
     {
         LUAU_ASSERT(!targetTop || unsigned(target + targetCount) == regTop);
@@ -282,6 +401,25 @@ struct Compiler
         {
             Builtin builtin = getBuiltin(expr->func, globals, variables);
             bfid = getBuiltinFunctionId(builtin, options);
+        }
+
+        if (bfid == LBF_SELECT_VARARG)
+        {
+            LUAU_ASSERT(FFlag::LuauCompileSelectBuiltin);
+            // Optimization: compile select(_, ...) as FASTCALL1; the builtin will read variadic arguments directly
+            // note: for now we restrict this to single-return expressions since our runtime code doesn't deal with general cases
+            if (multRet == false && targetCount == 1 && expr->args.size == 2 && expr->args.data[1]->is<AstExprVarargs>())
+                return compileExprSelectVararg(expr, target, targetCount, targetTop, multRet, regs);
+            else
+                bfid = -1;
+        }
+
+        // Optimization: for 1/2 argument fast calls use specialized opcodes
+        if (!expr->self && bfid >= 0 && expr->args.size >= 1 && expr->args.size <= 2)
+        {
+            AstExpr* last = expr->args.data[expr->args.size - 1];
+            if (!last->is<AstExprCall>() && !last->is<AstExprVarargs>())
+                return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, bfid);
         }
 
         if (expr->self)
@@ -309,24 +447,13 @@ struct Compiler
             compileExprTempTop(expr->func, regs);
         }
 
-        // Note: if the last argument is ExprVararg or ExprCall, we need to route that directly to the called function preserving the # of args
         bool multCall = false;
-        bool skipArgs = false;
 
-        if (!expr->self && bfid >= 0 && expr->args.size >= 1 && expr->args.size <= 2)
-        {
-            AstExpr* last = expr->args.data[expr->args.size - 1];
-            skipArgs = !(last->is<AstExprCall>() || last->is<AstExprVarargs>());
-        }
-
-        if (!skipArgs)
-        {
-            for (size_t i = 0; i < expr->args.size; ++i)
-                if (i + 1 == expr->args.size)
-                    multCall = compileExprTempMultRet(expr->args.data[i], uint8_t(regs + 1 + expr->self + i));
-                else
-                    compileExprTempTop(expr->args.data[i], uint8_t(regs + 1 + expr->self + i));
-        }
+        for (size_t i = 0; i < expr->args.size; ++i)
+            if (i + 1 == expr->args.size)
+                multCall = compileExprTempMultRet(expr->args.data[i], uint8_t(regs + 1 + expr->self + i));
+            else
+                compileExprTempTop(expr->args.data[i], uint8_t(regs + 1 + expr->self + i));
 
         setDebugLineEnd(expr->func);
 
@@ -347,59 +474,8 @@ struct Compiler
         }
         else if (bfid >= 0)
         {
-            size_t fastcallLabel;
-
-            if (skipArgs)
-            {
-                LuauOpcode opc = expr->args.size == 1 ? LOP_FASTCALL1 : LOP_FASTCALL2;
-
-                uint32_t args[2] = {};
-                for (size_t i = 0; i < expr->args.size; ++i)
-                {
-                    if (i > 0)
-                    {
-                        if (int32_t cid = getConstantIndex(expr->args.data[i]); cid >= 0)
-                        {
-                            opc = LOP_FASTCALL2K;
-                            args[i] = cid;
-                            break;
-                        }
-                    }
-
-                    if (isExprLocalReg(expr->args.data[i]))
-                        args[i] = getLocal(expr->args.data[i]->as<AstExprLocal>()->local);
-                    else
-                    {
-                        args[i] = uint8_t(regs + 1 + i);
-                        compileExprTempTop(expr->args.data[i], uint8_t(args[i]));
-                    }
-                }
-
-                fastcallLabel = bytecode.emitLabel();
-                bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
-                if (opc != LOP_FASTCALL1)
-                    bytecode.emitAux(args[1]);
-
-                // Set up a traditional Lua stack for the subsequent LOP_CALL.
-                // Note, as with other instructions that immediately follow FASTCALL, these are normally not executed and are used as a fallback for
-                // these FASTCALL variants.
-                for (size_t i = 0; i < expr->args.size; ++i)
-                {
-                    if (i > 0 && opc == LOP_FASTCALL2K)
-                    {
-                        emitLoadK(uint8_t(regs + 1 + i), args[i]);
-                        break;
-                    }
-
-                    if (args[i] != regs + 1 + i)
-                        bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
-                }
-            }
-            else
-            {
-                fastcallLabel = bytecode.emitLabel();
-                bytecode.emitABC(LOP_FASTCALL, uint8_t(bfid), 0, 0);
-            }
+            size_t fastcallLabel = bytecode.emitLabel();
+            bytecode.emitABC(LOP_FASTCALL, uint8_t(bfid), 0, 0);
 
             // note, these instructions are normally not executed and are used as a fallback for FASTCALL
             // we can't use TempTop variant here because we need to make sure the arguments we already computed aren't overwritten
@@ -1101,9 +1177,20 @@ struct Compiler
             for (size_t i = 0; i < expr->items.size; ++i)
             {
                 const AstExprTable::Item& item = expr->items.data[i];
-                AstExprConstantNumber* ckey = item.key->as<AstExprConstantNumber>();
+                LUAU_ASSERT(item.key); // no list portion => all items have keys
 
-                indexSize += (ckey && ckey->value == double(indexSize + 1));
+                if (FFlag::LuauCompileTableIndexOpt)
+                {
+                    const Constant* ckey = constants.find(item.key);
+
+                    indexSize += (ckey && ckey->type == Constant::Type_Number && ckey->valueNumber == double(indexSize + 1));
+                }
+                else
+                {
+                    AstExprConstantNumber* ckey = item.key->as<AstExprConstantNumber>();
+
+                    indexSize += (ckey && ckey->value == double(indexSize + 1));
+                }
             }
 
             // we only perform the optimization if we don't have any other []-keys
@@ -1200,37 +1287,47 @@ struct Compiler
                 arrayChunkCurrent = 0;
             }
 
-            // items with a key are set one by one via SETTABLE/SETTABLEKS
+            // items with a key are set one by one via SETTABLE/SETTABLEKS/SETTABLEN
             if (key)
             {
                 RegScope rsi(this);
 
-                // Optimization: use SETTABLEKS/SETTABLEN for literal keys, this happens often as part of usual table construction syntax
-                if (AstExprConstantString* ckey = key->as<AstExprConstantString>())
+                if (FFlag::LuauCompileTableIndexOpt)
                 {
-                    BytecodeBuilder::StringRef cname = sref(ckey->value);
-                    int32_t cid = bytecode.addConstantString(cname);
-                    if (cid < 0)
-                        CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
-
+                    LValue lv = compileLValueIndex(reg, key, rsi);
                     uint8_t rv = compileExprAuto(value, rsi);
 
-                    bytecode.emitABC(LOP_SETTABLEKS, rv, reg, uint8_t(BytecodeBuilder::getStringHash(cname)));
-                    bytecode.emitAux(cid);
-                }
-                else if (AstExprConstantNumber* ckey = key->as<AstExprConstantNumber>();
-                         ckey && ckey->value >= 1 && ckey->value <= 256 && double(int(ckey->value)) == ckey->value)
-                {
-                    uint8_t rv = compileExprAuto(value, rsi);
-
-                    bytecode.emitABC(LOP_SETTABLEN, rv, reg, uint8_t(int(ckey->value) - 1));
+                    compileAssign(lv, rv);
                 }
                 else
                 {
-                    uint8_t rk = compileExprAuto(key, rsi);
-                    uint8_t rv = compileExprAuto(value, rsi);
+                    // Optimization: use SETTABLEKS/SETTABLEN for literal keys, this happens often as part of usual table construction syntax
+                    if (AstExprConstantString* ckey = key->as<AstExprConstantString>())
+                    {
+                        BytecodeBuilder::StringRef cname = sref(ckey->value);
+                        int32_t cid = bytecode.addConstantString(cname);
+                        if (cid < 0)
+                            CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
-                    bytecode.emitABC(LOP_SETTABLE, rv, reg, rk);
+                        uint8_t rv = compileExprAuto(value, rsi);
+
+                        bytecode.emitABC(LOP_SETTABLEKS, rv, reg, uint8_t(BytecodeBuilder::getStringHash(cname)));
+                        bytecode.emitAux(cid);
+                    }
+                    else if (AstExprConstantNumber* ckey = key->as<AstExprConstantNumber>();
+                             ckey && ckey->value >= 1 && ckey->value <= 256 && double(int(ckey->value)) == ckey->value)
+                    {
+                        uint8_t rv = compileExprAuto(value, rsi);
+
+                        bytecode.emitABC(LOP_SETTABLEN, rv, reg, uint8_t(int(ckey->value) - 1));
+                    }
+                    else
+                    {
+                        uint8_t rk = compileExprAuto(key, rsi);
+                        uint8_t rv = compileExprAuto(value, rsi);
+
+                        bytecode.emitABC(LOP_SETTABLE, rv, reg, rk);
+                    }
                 }
             }
             // items without a key are set using SETLIST so that we can initialize large arrays quickly
@@ -1339,6 +1436,9 @@ struct Compiler
             uint8_t rt = compileExprAuto(expr->expr, rs);
             uint8_t i = uint8_t(int(cv->valueNumber) - 1);
 
+            if (FFlag::LuauCompileTableIndexOpt)
+                setDebugLine(expr->index);
+
             bytecode.emitABC(LOP_GETTABLEN, target, rt, i);
         }
         else if (cv && cv->type == Constant::Type_String)
@@ -1349,6 +1449,9 @@ struct Compiler
             int32_t cid = bytecode.addConstantString(iname);
             if (cid < 0)
                 CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+            if (FFlag::LuauCompileTableIndexOpt)
+                setDebugLine(expr->index);
 
             bytecode.emitABC(LOP_GETTABLEKS, target, rt, uint8_t(BytecodeBuilder::getStringHash(iname)));
             bytecode.emitAux(cid);
@@ -1657,6 +1760,40 @@ struct Compiler
         Location location;
     };
 
+    LValue compileLValueIndex(uint8_t reg, AstExpr* index, RegScope& rs)
+    {
+        const Constant* cv = constants.find(index);
+
+        if (cv && cv->type == Constant::Type_Number && cv->valueNumber >= 1 && cv->valueNumber <= 256 &&
+            double(int(cv->valueNumber)) == cv->valueNumber)
+        {
+            LValue result = {LValue::Kind_IndexNumber};
+            result.reg = reg;
+            result.number = uint8_t(int(cv->valueNumber) - 1);
+            result.location = index->location;
+
+            return result;
+        }
+        else if (cv && cv->type == Constant::Type_String)
+        {
+            LValue result = {LValue::Kind_IndexName};
+            result.reg = reg;
+            result.name = sref(cv->getString());
+            result.location = index->location;
+
+            return result;
+        }
+        else
+        {
+            LValue result = {LValue::Kind_IndexExpr};
+            result.reg = reg;
+            result.index = compileExprAuto(index, rs);
+            result.location = index->location;
+
+            return result;
+        }
+    }
+
     LValue compileLValue(AstExpr* node, RegScope& rs)
     {
         setDebugLine(node);
@@ -1699,36 +1836,9 @@ struct Compiler
         }
         else if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
         {
-            const Constant* cv = constants.find(expr->index);
+            uint8_t reg = compileExprAuto(expr->expr, rs);
 
-            if (cv && cv->type == Constant::Type_Number && cv->valueNumber >= 1 && cv->valueNumber <= 256 &&
-                double(int(cv->valueNumber)) == cv->valueNumber)
-            {
-                LValue result = {LValue::Kind_IndexNumber};
-                result.reg = compileExprAuto(expr->expr, rs);
-                result.number = uint8_t(int(cv->valueNumber) - 1);
-                result.location = node->location;
-
-                return result;
-            }
-            else if (cv && cv->type == Constant::Type_String)
-            {
-                LValue result = {LValue::Kind_IndexName};
-                result.reg = compileExprAuto(expr->expr, rs);
-                result.name = sref(cv->getString());
-                result.location = node->location;
-
-                return result;
-            }
-            else
-            {
-                LValue result = {LValue::Kind_IndexExpr};
-                result.reg = compileExprAuto(expr->expr, rs);
-                result.index = compileExprAuto(expr->index, rs);
-                result.location = node->location;
-
-                return result;
-            }
+            return compileLValueIndex(reg, expr->index, rs);
         }
         else
         {
@@ -1740,6 +1850,9 @@ struct Compiler
 
     void compileLValueUse(const LValue& lv, uint8_t reg, bool set)
     {
+        if (FFlag::LuauCompileTableIndexOpt)
+            setDebugLine(lv.location);
+
         switch (lv.kind)
         {
         case LValue::Kind_Local:

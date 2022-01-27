@@ -464,8 +464,6 @@ local a: XYZ = { w = 4 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
 {
-    ScopedFastFlag luauExtendedUnionMismatchError{"LuauExtendedUnionMismatchError", true};
-
     CheckResult result = check(R"(
 type X = { x: number }
 

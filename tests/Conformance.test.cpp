@@ -331,8 +331,6 @@ TEST_CASE("UTF8")
 
 TEST_CASE("Coroutine")
 {
-    ScopedFastFlag sff("LuauCoroutineClose", true);
-
     runConformance("coroutine.lua");
 }
 
