@@ -135,7 +135,8 @@ struct TypeChecker
     void checkBlock(const ScopePtr& scope, const AstStatBlock& statement);
     void checkBlockTypeAliases(const ScopePtr& scope, std::vector<AstStat*>& sorted);
 
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExpr& expr, std::optional<TypeId> expectedType = std::nullopt);
+    ExprResult<TypeId> checkExpr(
+        const ScopePtr& scope, const AstExpr& expr, std::optional<TypeId> expectedType = std::nullopt, bool forceSingleton = false);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprLocal& expr);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprGlobal& expr);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprVarargs& expr);
@@ -160,14 +161,12 @@ struct TypeChecker
     // Returns the type of the lvalue.
     TypeId checkLValue(const ScopePtr& scope, const AstExpr& expr);
 
-    // Returns both the type of the lvalue and its binding (if the caller wants to mutate the binding).
-    // Note: the binding may be null.
-    // TODO: remove second return value with FFlagLuauUpdateFunctionNameBinding
-    std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExpr& expr);
-    std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprLocal& expr);
-    std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprGlobal& expr);
-    std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr);
-    std::pair<TypeId, TypeId*> checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr);
+    // Returns the type of the lvalue.
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExpr& expr);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprLocal& expr);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprGlobal& expr);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprIndexName& expr);
+    TypeId checkLValueBinding(const ScopePtr& scope, const AstExprIndexExpr& expr);
 
     TypeId checkFunctionName(const ScopePtr& scope, AstExpr& funName, TypeLevel level);
     std::pair<TypeId, ScopePtr> checkFunctionSignature(const ScopePtr& scope, int subLevel, const AstExprFunction& expr,
@@ -322,8 +321,6 @@ private:
         return addTV(TypeVar(tv));
     }
 
-    TypeId addType(const UnionTypeVar& utv);
-
     TypeId addTV(TypeVar&& tv);
 
     TypePackId addTypePack(TypePackVar&& tp);
@@ -349,6 +346,8 @@ public:
     ErrorVec resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);
 
 private:
+    void refineLValue(const LValue& lvalue, RefinementMap& refis, const ScopePtr& scope, TypeIdPredicate predicate);
+
     std::optional<TypeId> resolveLValue(const ScopePtr& scope, const LValue& lvalue);
     std::optional<TypeId> DEPRECATED_resolveLValue(const ScopePtr& scope, const LValue& lvalue);
     std::optional<TypeId> resolveLValue(const RefinementMap& refis, const ScopePtr& scope, const LValue& lvalue);

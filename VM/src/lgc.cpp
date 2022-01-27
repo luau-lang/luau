@@ -93,10 +93,8 @@ static void finishGcCycleStats(global_State* g)
     g->gcstats.lastcycle = g->gcstats.currcycle;
     g->gcstats.currcycle = GCCycleStats();
 
-    g->gcstats.cyclestatsacc.markitems += g->gcstats.lastcycle.markitems;
     g->gcstats.cyclestatsacc.marktime += g->gcstats.lastcycle.marktime;
     g->gcstats.cyclestatsacc.atomictime += g->gcstats.lastcycle.atomictime;
-    g->gcstats.cyclestatsacc.sweepitems += g->gcstats.lastcycle.sweepitems;
     g->gcstats.cyclestatsacc.sweeptime += g->gcstats.lastcycle.sweeptime;
 }
 
@@ -492,23 +490,22 @@ static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
     }
 }
 
-#define sweepwholelist(L, p, tc) sweeplist(L, p, SIZE_MAX, tc)
+#define sweepwholelist(L, p) sweeplist(L, p, SIZE_MAX)
 
-static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count, size_t* traversedcount)
+static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count)
 {
     LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
 
     GCObject* curr;
     global_State* g = L->global;
     int deadmask = otherwhite(g);
-    size_t startcount = count;
     LUAU_ASSERT(testbit(deadmask, FIXEDBIT)); /* make sure we never sweep fixed objects */
     while ((curr = *p) != NULL && count-- > 0)
     {
         int alive = (curr->gch.marked ^ WHITEBITS) & deadmask;
         if (curr->gch.tt == LUA_TTHREAD)
         {
-            sweepwholelist(L, (GCObject**)&gco2th(curr)->openupval, traversedcount); /* sweep open upvalues */
+            sweepwholelist(L, (GCObject**)&gco2th(curr)->openupval); /* sweep open upvalues */
 
             lua_State* th = gco2th(curr);
 
@@ -533,10 +530,6 @@ static GCObject** sweeplist(lua_State* L, GCObject** p, size_t count, size_t* tr
             freeobj(L, curr, NULL);
         }
     }
-
-    // if we didn't reach the end of the list it means that we've stopped because the count dropped below zero
-    if (traversedcount)
-        *traversedcount += startcount - (curr ? count + 1 : count);
 
     return p;
 }
@@ -721,8 +714,6 @@ static bool sweepgco(lua_State* L, lua_Page* page, GCObject* gco)
 
     int alive = (gco->gch.marked ^ WHITEBITS) & deadmask;
 
-    g->gcstats.currcycle.sweepitems++;
-
     if (gco->gch.tt == LUA_TTHREAD)
     {
         lua_State* th = gco2th(gco);
@@ -793,8 +784,6 @@ static size_t gcstep(lua_State* L, size_t limit)
     {
         while (g->gray && cost < limit)
         {
-            g->gcstats.currcycle.markitems++;
-
             cost += propagatemark(g);
         }
 
@@ -812,8 +801,6 @@ static size_t gcstep(lua_State* L, size_t limit)
     {
         while (g->gray && cost < limit)
         {
-            g->gcstats.currcycle.markitems++;
-
             cost += propagatemark(g);
         }
 
@@ -842,10 +829,8 @@ static size_t gcstep(lua_State* L, size_t limit)
 
         while (g->sweepstrgc < g->strt.size && cost < limit)
         {
-            size_t traversedcount = 0;
-            sweepwholelist(L, (GCObject**)&g->strt.hash[g->sweepstrgc++], &traversedcount);
+            sweepwholelist(L, (GCObject**)&g->strt.hash[g->sweepstrgc++]);
 
-            g->gcstats.currcycle.sweepitems += traversedcount;
             cost += GC_SWEEPCOST;
         }
 
@@ -855,12 +840,10 @@ static size_t gcstep(lua_State* L, size_t limit)
             // sweep string buffer list and preserve used string count
             uint32_t nuse = L->global->strt.nuse;
 
-            size_t traversedcount = 0;
-            sweepwholelist(L, (GCObject**)&g->strbufgc, &traversedcount);
+            sweepwholelist(L, (GCObject**)&g->strbufgc);
 
             L->global->strt.nuse = nuse;
 
-            g->gcstats.currcycle.sweepitems += traversedcount;
             g->gcstate = GCSsweep; // end sweep-string phase
         }
         break;
@@ -893,10 +876,8 @@ static size_t gcstep(lua_State* L, size_t limit)
         {
             while (*g->sweepgc && cost < limit)
             {
-                size_t traversedcount = 0;
-                g->sweepgc = sweeplist(L, g->sweepgc, GC_SWEEPMAX, &traversedcount);
+                g->sweepgc = sweeplist(L, g->sweepgc, GC_SWEEPMAX);
 
-                g->gcstats.currcycle.sweepitems += traversedcount;
                 cost += GC_SWEEPMAX * GC_SWEEPCOST;
             }
 

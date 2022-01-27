@@ -111,16 +111,16 @@ struct PrimitiveTypeVar
 
 // Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
 // Types for true and false
-struct BoolSingleton
+struct BooleanSingleton
 {
     bool value;
 
-    bool operator==(const BoolSingleton& rhs) const
+    bool operator==(const BooleanSingleton& rhs) const
     {
         return value == rhs.value;
     }
 
-    bool operator!=(const BoolSingleton& rhs) const
+    bool operator!=(const BooleanSingleton& rhs) const
     {
         return !(*this == rhs);
     }
@@ -145,7 +145,7 @@ struct StringSingleton
 // No type for float singletons, partly because === isn't any equalivalence on floats
 // (NaN != NaN).
 
-using SingletonVariant = Luau::Variant<BoolSingleton, StringSingleton>;
+using SingletonVariant = Luau::Variant<BooleanSingleton, StringSingleton>;
 
 struct SingletonTypeVar
 {

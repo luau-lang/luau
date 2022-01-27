@@ -6,10 +6,76 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauDiscriminableUnions)
 LUAU_FASTFLAG(LuauWeakEqConstraint)
 LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
 using namespace Luau;
+
+namespace
+{
+std::optional<ExprResult<TypePackId>> magicFunctionInstanceIsA(
+    TypeChecker& typeChecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+{
+    if (expr.args.size != 1)
+        return std::nullopt;
+
+    auto index = expr.func->as<Luau::AstExprIndexName>();
+    auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
+    if (!index || !str)
+        return std::nullopt;
+
+    std::optional<LValue> lvalue = tryGetLValue(*index->expr);
+    std::optional<TypeFun> tfun = scope->lookupType(std::string(str->value.data, str->value.size));
+    if (!lvalue || !tfun)
+        return std::nullopt;
+
+    unfreeze(typeChecker.globalTypes);
+    TypePackId booleanPack = typeChecker.globalTypes.addTypePack({typeChecker.booleanType});
+    freeze(typeChecker.globalTypes);
+    return ExprResult<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
+}
+
+struct RefinementClassFixture : Fixture
+{
+    RefinementClassFixture()
+    {
+        TypeArena& arena = typeChecker.globalTypes;
+
+        unfreeze(arena);
+        TypeId vec3 = arena.addType(ClassTypeVar{"Vector3", {}, std::nullopt, std::nullopt, {}, nullptr});
+        getMutable<ClassTypeVar>(vec3)->props = {
+            {"X", Property{typeChecker.numberType}},
+            {"Y", Property{typeChecker.numberType}},
+            {"Z", Property{typeChecker.numberType}},
+        };
+
+        TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr});
+
+        TypePackId isAParams = arena.addTypePack({inst, typeChecker.stringType});
+        TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
+        TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
+        getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
+
+        getMutable<ClassTypeVar>(inst)->props = {
+            {"Name", Property{typeChecker.stringType}},
+            {"IsA", Property{isA}},
+        };
+
+        TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr});
+        TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr});
+        getMutable<ClassTypeVar>(part)->props = {
+            {"Position", Property{vec3}},
+        };
+
+        typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
+        typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
+        typeChecker.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
+        typeChecker.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
+        freeze(typeChecker.globalTypes);
+    }
+};
+} // namespace
 
 TEST_SUITE_BEGIN("RefinementTest");
 
@@ -196,8 +262,18 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_only_look_up_types_from_global_scope")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Type 'number' has no overlap with 'string'", toString(result.errors[0]));
+    if (FFlag::LuauDiscriminableUnions)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+
+        CHECK_EQ("*unknown*", toString(requireTypeAtPosition({8, 44})));
+        CHECK_EQ("*unknown*", toString(requireTypeAtPosition({9, 38})));
+    }
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("Type 'number' has no overlap with 'string'", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
@@ -237,7 +313,6 @@ TEST_CASE_FIXTURE(Fixture, "impossible_type_narrow_is_not_an_error")
 
 TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
 {
-
     CheckResult result = check(R"(
         local t: {x: number?} = {x = 1}
 
@@ -254,7 +329,6 @@ TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_refined_property")
 {
-
     CheckResult result = check(R"(
         local t: {x: {y: string}?} = {x = {y = "hello!"}}
 
@@ -360,7 +434,10 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 
 TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
+    ScopedFastFlag sff[] = {
+        {"LuauDiscriminableUnions", true},
+        {"LuauSingletonTypes", true},
+    };
 
     CheckResult result = check(R"(
         local function f(a: (string | number)?)
@@ -374,16 +451,8 @@ TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == "hello"
-        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= "hello"
-    }
-    else
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "string");             // a == "hello"
-        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= "hello"
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), R"("hello")");         // a == "hello"
+    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= "hello"
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
@@ -416,7 +485,8 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
+    ScopedFastFlag sff{"LuauDiscriminableUnions", true};
+    ScopedFastFlag sff2{"LuauWeakEqConstraint", true};
 
     CheckResult result = check(R"(
         local function f(a, b: string?)
@@ -428,16 +498,8 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
-        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
-    }
-    else
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "string?"); // a == b
-        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
 }
 
 TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_equal")
@@ -527,9 +589,17 @@ TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
         end
     )");
 
-    // This is kinda weird to see, but this actually only happens in Luau without Roblox type bindings because we don't have a Vector3 type.
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Unknown type 'Vector3'", toString(result.errors[0]));
+    if (FFlag::LuauDiscriminableUnions)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        // This is kinda weird to see, but this actually only happens in Luau without Roblox type bindings because we don't have a Vector3 type.
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ("Unknown type 'Vector3'", toString(result.errors[0]));
+    }
+
     CHECK_EQ("*unknown*", toString(requireTypeAtPosition({3, 28})));
 }
 
@@ -612,214 +682,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_functions")
 
     CHECK_EQ("(number) -> string", toString(requireTypeAtPosition({3, 28}))); // type(x) == "function"
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));             // type(x) ~= "function"
-}
-
-namespace
-{
-std::optional<ExprResult<TypePackId>> magicFunctionInstanceIsA(
-    TypeChecker& typeChecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
-{
-    if (expr.args.size != 1)
-        return std::nullopt;
-
-    auto index = expr.func->as<Luau::AstExprIndexName>();
-    auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
-    if (!index || !str)
-        return std::nullopt;
-
-    std::optional<LValue> lvalue = tryGetLValue(*index->expr);
-    std::optional<TypeFun> tfun = scope->lookupType(std::string(str->value.data, str->value.size));
-    if (!lvalue || !tfun)
-        return std::nullopt;
-
-    unfreeze(typeChecker.globalTypes);
-    TypePackId booleanPack = typeChecker.globalTypes.addTypePack({typeChecker.booleanType});
-    freeze(typeChecker.globalTypes);
-    return ExprResult<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
-}
-
-struct RefinementClassFixture : Fixture
-{
-    RefinementClassFixture()
-    {
-        TypeArena& arena = typeChecker.globalTypes;
-
-        unfreeze(arena);
-        TypeId vec3 = arena.addType(ClassTypeVar{"Vector3", {}, std::nullopt, std::nullopt, {}, nullptr});
-        getMutable<ClassTypeVar>(vec3)->props = {
-            {"X", Property{typeChecker.numberType}},
-            {"Y", Property{typeChecker.numberType}},
-            {"Z", Property{typeChecker.numberType}},
-        };
-
-        TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr});
-
-        TypePackId isAParams = arena.addTypePack({inst, typeChecker.stringType});
-        TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
-        TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
-        getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
-
-        getMutable<ClassTypeVar>(inst)->props = {
-            {"Name", Property{typeChecker.stringType}},
-            {"IsA", Property{isA}},
-        };
-
-        TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr});
-        TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr});
-        getMutable<ClassTypeVar>(part)->props = {
-            {"Position", Property{vec3}},
-        };
-
-        typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
-        typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
-        typeChecker.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
-        typeChecker.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
-        freeze(typeChecker.globalTypes);
-    }
-};
-} // namespace
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
-{
-    CheckResult result = check(R"(
-        local function f(vec)
-            local X, Y, Z = vec.X, vec.Y, vec.Z
-
-            if type(vec) == "vector" then
-                local foo = vec
-            elseif typeof(vec) == "Instance" then
-                local foo = vec
-            else
-                local foo = vec
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28}))); // type(vec) == "vector"
-
-    if (FFlag::LuauQuantifyInPlace2)
-        CHECK_EQ("Type '{+ X: a, Y: b, Z: c +}' could not be converted into 'Instance'", toString(result.errors[0]));
-    else
-        CHECK_EQ("Type '{- X: a, Y: b, Z: c -}' could not be converted into 'Instance'", toString(result.errors[0]));
-
-    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({7, 28}))); // typeof(vec) == "Instance"
-
-    if (FFlag::LuauQuantifyInPlace2)
-        CHECK_EQ("{+ X: a, Y: b, Z: c +}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
-    else
-        CHECK_EQ("{- X: a, Y: b, Z: c -}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
-}
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to_vector")
-{
-    CheckResult result = check(R"(
-        local function f(x: Instance | Vector3)
-            if typeof(x) == "Vector3" then
-                local foo = x
-            else
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Vector3", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
-}
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
-{
-    CheckResult result = check(R"(
-        local function f(x: string | number | Instance | Vector3)
-            if type(x) == "userdata" then
-                local foo = x
-            else
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Instance | Vector3", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
-}
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
-{
-    CheckResult result = check(R"(
-        local function f(x: Part | Folder | string)
-            if typeof(x) == "Instance" then
-                local foo = x
-            else
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));
-}
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
-{
-    CheckResult result = check(R"(
-        local function f(x: Part | Folder | Instance | string | Vector3 | any)
-            if typeof(x) == "Instance" then
-                local foo = x
-            else
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Folder | Instance | Part", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Vector3 | any | string", toString(requireTypeAtPosition({5, 28})));
-}
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is_table")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-
-        local function f(x)
-            if typeof(x) == "Instance" and x:IsA("Folder") then
-                local foo = x
-            elseif typeof(x) == "table" then
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Folder", toString(requireTypeAtPosition({5, 28})));
-    CHECK_EQ("any", toString(requireTypeAtPosition({7, 28})));
-}
-
-TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
-{
-    CheckResult result = check(R"(
-        local function f(x: Part | Folder | string)
-            if typeof(x) ~= "Instance" or not x:IsA("Part") then
-                local foo = x
-            else
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("Folder | string", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
@@ -1143,6 +1005,261 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauDiscriminableUnions", true},
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
+
+        local function f(t: T)
+            if t.x then
+                local foo = t
+            else
+                local bar = t
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"({| tag: "exists", x: string |})", toString(requireTypeAtPosition({5, 28})));
+    CHECK_EQ(R"({| tag: "missing", x: nil |})", toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauDiscriminableUnions", true},
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        type Cat = {tag: "Cat", name: string, catfood: string}
+        type Dog = {tag: "Dog", name: string, dogfood: string}
+        type Animal = Cat | Dog
+
+        local function f(animal: Animal)
+            if animal.tag == "Cat" then
+                local cat: Cat = animal
+            elseif animal.tag == "Dog" then
+                local dog: Dog = animal
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Cat", toString(requireTypeAtPosition({7, 33})));
+    CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscript_expr_is_constant_string")
+{
+    ScopedFastFlag sff{"LuauRefiLookupFromIndexExpr", true};
+
+    CheckResult result = check(R"(
+        type T = { [string]: { prop: number }? }
+        local t: T = {}
+
+        if t["hello"] then
+            local foo = t["hello"].prop
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
+{
+    CheckResult result = check(R"(
+        local function len(a: {any})
+            return a and #a or nil
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauDiscriminableUnions", true},
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {tag: "Part", x: Part} | {tag: "Folder", x: Folder}
+
+        local function f(t: T)
+            if t.x:IsA("Part") then
+                local foo = t
+            else
+                local bar = t
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"({| tag: "Part", x: Part |})", toString(requireTypeAtPosition({5, 28})));
+    CHECK_EQ(R"({| tag: "Folder", x: Folder |})", toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
+{
+    CheckResult result = check(R"(
+        local function f(vec)
+            local X, Y, Z = vec.X, vec.Y, vec.Z
+
+            if type(vec) == "vector" then
+                local foo = vec
+            elseif typeof(vec) == "Instance" then
+                local foo = vec
+            else
+                local foo = vec
+            end
+        end
+    )");
+
+    if (FFlag::LuauDiscriminableUnions)
+        LUAU_REQUIRE_NO_ERRORS(result);
+    else
+    {
+        LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+        if (FFlag::LuauQuantifyInPlace2)
+            CHECK_EQ("Type '{+ X: a, Y: b, Z: c +}' could not be converted into 'Instance'", toString(result.errors[0]));
+        else
+            CHECK_EQ("Type '{- X: a, Y: b, Z: c -}' could not be converted into 'Instance'", toString(result.errors[0]));
+    }
+
+    CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28}))); // type(vec) == "vector"
+
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({7, 28}))); // typeof(vec) == "Instance"
+
+    if (FFlag::LuauQuantifyInPlace2)
+        CHECK_EQ("{+ X: a, Y: b, Z: c +}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
+    else
+        CHECK_EQ("{- X: a, Y: b, Z: c -}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to_vector")
+{
+    CheckResult result = check(R"(
+        local function f(x: Instance | Vector3)
+            if typeof(x) == "Vector3" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Vector3", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
+{
+    CheckResult result = check(R"(
+        local function f(x: string | number | Instance | Vector3)
+            if type(x) == "userdata" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Instance | Vector3", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
+{
+    CheckResult result = check(R"(
+        local function f(x: Part | Folder | string)
+            if typeof(x) == "Instance" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
+{
+    CheckResult result = check(R"(
+        local function f(x: Part | Folder | Instance | string | Vector3 | any)
+            if typeof(x) == "Instance" then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Folder | Instance | Part", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("Vector3 | any | string", toString(requireTypeAtPosition({5, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is_table")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        local function f(x)
+            if typeof(x) == "Instance" and x:IsA("Folder") then
+                local foo = x
+            elseif typeof(x) == "table" then
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Folder", toString(requireTypeAtPosition({5, 28})));
+    CHECK_EQ("any", toString(requireTypeAtPosition({7, 28})));
+}
+
+TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
+{
+    CheckResult result = check(R"(
+        local function f(x: Part | Folder | string)
+            if typeof(x) ~= "Instance" or not x:IsA("Part") then
+                local foo = x
+            else
+                local foo = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("Folder | string", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
 }
 
 TEST_SUITE_END();

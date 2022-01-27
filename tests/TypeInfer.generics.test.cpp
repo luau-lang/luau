@@ -9,8 +9,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauExtendedFunctionMismatchError)
-
 TEST_SUITE_BEGIN("GenericsTests");
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
@@ -656,11 +654,7 @@ local d: D = c
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauExtendedFunctionMismatchError)
-        CHECK_EQ(
-            toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T>() -> ()'; different number of generic type parameters)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T>() -> ()')");
+    CHECK_EQ(toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T>() -> ()'; different number of generic type parameters)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
@@ -675,11 +669,8 @@ local d: D = c
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauExtendedFunctionMismatchError)
-        CHECK_EQ(toString(result.errors[0]),
-            R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T...>() -> ()')");
+    CHECK_EQ(toString(result.errors[0]),
+        R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
 }
 
 TEST_SUITE_END();

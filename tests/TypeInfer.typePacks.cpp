@@ -931,7 +931,6 @@ type R = { m: F<R> }
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")
 {
     ScopedFastFlag luauUnifyPackTails{"LuauUnifyPackTails", true};
-    ScopedFastFlag luauExtendedFunctionMismatchError{"LuauExtendedFunctionMismatchError", true};
 
     CheckResult result = check(R"(
 local a: () -> (number, ...string)

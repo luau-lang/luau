@@ -158,7 +158,7 @@ static int lua_collectgarbage(lua_State* L)
     luaL_error(L, "collectgarbage must be called with 'count' or 'collect'");
 }
 
-static void setupState(lua_State* L)
+void setupState(lua_State* L)
 {
     luaL_openlibs(L);
 
@@ -176,7 +176,7 @@ static void setupState(lua_State* L)
     luaL_sandbox(L);
 }
 
-static std::string runCode(lua_State* L, const std::string& source)
+std::string runCode(lua_State* L, const std::string& source)
 {
     std::string bytecode = Luau::compile(source, copts());
 
@@ -206,7 +206,13 @@ static std::string runCode(lua_State* L, const std::string& source)
         if (n)
         {
             luaL_checkstack(T, LUA_MINSTACK, "too many results to print");
-            lua_getglobal(T, "print");
+            lua_getglobal(T, "_PRETTYPRINT");
+            // If _PRETTYPRINT is nil, then use the standard print function instead
+            if (lua_isnil(T, -1))
+            {
+                lua_pop(T, 1);
+                lua_getglobal(T, "print");
+            }
             lua_insert(T, 1);
             lua_pcall(T, n, 0, 0);
         }
@@ -545,7 +551,7 @@ static int assertionHandler(const char* expr, const char* file, int line, const 
     return 1;
 }
 
-int main(int argc, char** argv)
+int replMain(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
 
@@ -696,5 +702,6 @@ int main(int argc, char** argv)
     case CliMode::Unknown:
     default:
         LUAU_ASSERT(!"Unhandled cli mode.");
+        return 1;
     }
 }

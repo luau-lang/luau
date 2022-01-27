@@ -14,9 +14,9 @@
 
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteFirstArg, false);
 LUAU_FASTFLAGVARIABLE(LuauCompleteBrokenStringParams, false);
 LUAU_FASTFLAGVARIABLE(LuauMissingFollowACMetatables, false);
+LUAU_FASTFLAGVARIABLE(PreferToCallFunctionsForIntersects, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -194,8 +194,6 @@ static ParenthesesRecommendation getParenRecommendation(TypeId id, const std::ve
 
 static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* node, Position position)
 {
-    LUAU_ASSERT(FFlag::LuauAutocompleteFirstArg);
-
     auto expr = node->asExpr();
     if (!expr)
         return std::nullopt;
@@ -266,43 +264,63 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         }
     };
 
-    TypeId expectedType;
+    auto typeAtPosition = findExpectedTypeAt(module, node, position);
 
-    if (FFlag::LuauAutocompleteFirstArg)
+    if (!typeAtPosition)
+        return TypeCorrectKind::None;
+
+    TypeId expectedType = follow(*typeAtPosition);
+
+    if (FFlag::PreferToCallFunctionsForIntersects)
     {
-        auto typeAtPosition = findExpectedTypeAt(module, node, position);
+        auto checkFunctionType = [&canUnify, &expectedType](const FunctionTypeVar* ftv) {
+            auto [retHead, retTail] = flatten(ftv->retType);
 
-        if (!typeAtPosition)
-            return TypeCorrectKind::None;
+            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
+                return true;
 
-        expectedType = follow(*typeAtPosition);
+            // We might only have a variadic tail pack, check if the element is compatible
+            if (retTail)
+            {
+                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
+                    return true;
+            }
+
+            return false;
+        };
+
+        // We also want to suggest functions that return compatible result
+        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty); ftv && checkFunctionType(ftv))
+        {
+            return TypeCorrectKind::CorrectFunctionResult;
+        }
+        else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+        {
+            for (TypeId id : itv->parts)
+            {
+                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(id); ftv && checkFunctionType(ftv))
+                {
+                    return TypeCorrectKind::CorrectFunctionResult;
+                }
+            }
+        }
     }
     else
     {
-        auto expr = node->asExpr();
-        if (!expr)
-            return TypeCorrectKind::None;
-
-        auto it = module.astExpectedTypes.find(expr);
-        if (!it)
-            return TypeCorrectKind::None;
-
-        expectedType = follow(*it);
-    }
-
-    // We also want to suggest functions that return compatible result
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
-    {
-        auto [retHead, retTail] = flatten(ftv->retType);
-
-        if (!retHead.empty() && canUnify(retHead.front(), expectedType))
-            return TypeCorrectKind::CorrectFunctionResult;
-
-        // We might only have a variadic tail pack, check if the element is compatible
-        if (retTail)
+        // We also want to suggest functions that return compatible result
+        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
         {
-            if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
+            auto [retHead, retTail] = flatten(ftv->retType);
+
+            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
                 return TypeCorrectKind::CorrectFunctionResult;
+
+            // We might only have a variadic tail pack, check if the element is compatible
+            if (retTail)
+            {
+                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
+                    return TypeCorrectKind::CorrectFunctionResult;
+            }
         }
     }
 
@@ -741,29 +759,12 @@ std::optional<const T*> returnFirstNonnullOptionOfType(const UnionTypeVar* utv)
 
 static std::optional<bool> functionIsExpectedAt(const Module& module, AstNode* node, Position position)
 {
-    TypeId expectedType;
+    auto typeAtPosition = findExpectedTypeAt(module, node, position);
 
-    if (FFlag::LuauAutocompleteFirstArg)
-    {
-        auto typeAtPosition = findExpectedTypeAt(module, node, position);
+    if (!typeAtPosition)
+        return std::nullopt;
 
-        if (!typeAtPosition)
-            return std::nullopt;
-
-        expectedType = follow(*typeAtPosition);
-    }
-    else
-    {
-        auto expr = node->asExpr();
-        if (!expr)
-            return std::nullopt;
-
-        auto it = module.astExpectedTypes.find(expr);
-        if (!it)
-            return std::nullopt;
-
-        expectedType = follow(*it);
-    }
+    TypeId expectedType = follow(*typeAtPosition);
 
     if (get<FunctionTypeVar>(expectedType))
         return true;

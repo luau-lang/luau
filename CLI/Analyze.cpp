@@ -43,7 +43,7 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
     }
 }
 
-static void reportError(Luau::Frontend& frontend, ReportFormat format, const Luau::TypeError& error)
+static void reportError(const Luau::Frontend& frontend, ReportFormat format, const Luau::TypeError& error)
 {
     std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(error.moduleName);
 

@@ -603,6 +603,37 @@ RETURN R0 1
 )");
 }
 
+TEST_CASE("TableLiteralsIndexConstant")
+{
+    ScopedFastFlag sff("LuauCompileTableIndexOpt", true);
+
+    // validate that we use SETTTABLEKS for constant variable keys
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = "key", "value"
+        return {[a] = 42, [b] = 0}
+)"), R"(
+NEWTABLE R0 2 0
+LOADN R1 42
+SETTABLEKS R1 R0 K0
+LOADN R1 0
+SETTABLEKS R1 R0 K1
+RETURN R0 1
+)");
+
+    // validate that we use SETTABLEN for constant variable keys *and* that we predict array size
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = 1, 2
+        return {[a] = 42, [b] = 0}
+)"), R"(
+NEWTABLE R0 0 2
+LOADN R1 42
+SETTABLEN R1 R0 1
+LOADN R1 0
+SETTABLEN R1 R0 2
+RETURN R0 1
+)");
+}
+
 TEST_CASE("TableSizePredictionBasic")
 {
     CHECK_EQ("\n" + compileFunction0(R"(
@@ -2450,6 +2481,37 @@ return
 )");
 }
 
+TEST_CASE("DebugLineInfoAssignment")
+{
+    ScopedFastFlag sff("LuauCompileTableIndexOpt", true);
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
+    Luau::compileOrThrow(bcb, R"(
+   local a = { b = { c = { d = 3 } } }
+
+a
+["b"]
+["c"]
+["d"] = 4
+)");
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+2: DUPTABLE R0 1
+2: DUPTABLE R1 3
+2: DUPTABLE R2 5
+2: LOADN R3 3
+2: SETTABLEKS R3 R2 K4
+2: SETTABLEKS R2 R1 K2
+2: SETTABLEKS R1 R0 K0
+5: GETTABLEKS R2 R0 K0
+6: GETTABLEKS R1 R2 K2
+7: LOADN R2 4
+7: SETTABLEKS R2 R1 K4
+8: RETURN R0 0
+)");
+}
+
 TEST_CASE("DebugSource")
 {
     const char* source = R"(
@@ -2760,6 +2822,75 @@ MOVE R1 R0
 LOADN R2 -5
 CALL R1 1 -1
 RETURN R1 -1
+)");
+}
+
+TEST_CASE("FastcallSelect")
+{
+    ScopedFastFlag sff("LuauCompileSelectBuiltin", true);
+
+    // select(_, ...) compiles to a builtin call
+    CHECK_EQ("\n" + compileFunction0("return (select('#', ...))"), R"(
+LOADK R1 K0
+FASTCALL1 57 R1 +3
+GETIMPORT R0 2
+GETVARARGS R2 -1
+CALL R0 -1 1
+RETURN R0 1
+)");
+
+    // more complex example: select inside a for loop bound + select from a iterator
+    CHECK_EQ("\n" + compileFunction0(R"(
+local sum = 0
+for i=1, select('#', ...) do
+    sum += select(i, ...)
+end
+return sum
+)"), R"(
+LOADN R0 0
+LOADN R3 1
+LOADK R5 K0
+FASTCALL1 57 R5 +3
+GETIMPORT R4 2
+GETVARARGS R6 -1
+CALL R4 -1 1
+MOVE R1 R4
+LOADN R2 1
+FORNPREP R1 +7
+FASTCALL1 57 R3 +3
+GETIMPORT R4 2
+GETVARARGS R6 -1
+CALL R4 -1 1
+ADD R0 R0 R4
+FORNLOOP R1 -7
+RETURN R0 1
+)");
+
+    // currently we assume a single value return to avoid dealing with stack resizing
+    CHECK_EQ("\n" + compileFunction0("return select('#', ...)"), R"(
+GETIMPORT R0 1
+LOADK R1 K2
+GETVARARGS R2 -1
+CALL R0 -1 -1
+RETURN R0 -1
+)");
+
+    // note that select with a non-variadic second argument doesn't get optimized
+    CHECK_EQ("\n" + compileFunction0("return select('#')"), R"(
+GETIMPORT R0 1
+LOADK R1 K2
+CALL R0 1 -1
+RETURN R0 -1
+)");
+
+    // note that select with a non-variadic second argument doesn't get optimized
+    CHECK_EQ("\n" + compileFunction0("return select('#', foo())"), R"(
+GETIMPORT R0 1
+LOADK R1 K2
+GETIMPORT R2 4
+CALL R2 0 -1
+CALL R0 -1 -1
+RETURN R0 -1
 )");
 }
 

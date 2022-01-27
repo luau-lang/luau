@@ -85,6 +85,13 @@ public:
 
     Unifier makeChildUnifier();
 
+    // A utility function that appends the given error to the unifier's error log.
+    // This allows setting a breakpoint wherever the unifier reports an error.
+    void reportError(TypeError error)
+    {
+        errors.push_back(error);
+    }
+
 private:
     bool isNonstrictMode() const;
 

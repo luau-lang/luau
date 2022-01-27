@@ -12,8 +12,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauExtendedFunctionMismatchError)
-
 TEST_SUITE_BEGIN("TableTests");
 
 TEST_CASE_FIXTURE(Fixture, "basic")
@@ -2075,22 +2073,11 @@ caused by:
 caused by:
   Property 'y' is not compatible. Type 'string' could not be converted into 'number')");
 
-    if (FFlag::LuauExtendedFunctionMismatchError)
-    {
-        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+    CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
 caused by:
   Type '{ __call: (a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
 caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
-    }
-    else
-    {
-        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
-caused by:
-  Type '{ __call: (a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
-caused by:
-  Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()')");
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
@@ -2166,7 +2153,6 @@ a.p = { x = 9 }
 TEST_CASE_FIXTURE(Fixture, "recursive_metatable_type_call")
 {
     ScopedFastFlag sff[]{
-        {"LuauFixRecursiveMetatableCall", true},
         {"LuauUnsealedTableLiteral", true},
     };
 

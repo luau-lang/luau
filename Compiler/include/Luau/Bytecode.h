@@ -472,6 +472,9 @@ enum LuauBuiltinFunction
     // bit32.count
     LBF_BIT32_COUNTLZ,
     LBF_BIT32_COUNTRZ,
+
+    // select(_, ...)
+    LBF_SELECT_VARARG,
 };
 
 // Capture type, used in LOP_CAPTURE

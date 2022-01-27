@@ -113,6 +113,7 @@
             luaC_barrierf(L, obj2gco(p), obj2gco(o)); \
     }
 
+// TODO: remove with FFlagLuauGcForwardMetatableBarrier
 #define luaC_objbarriert(L, t, o) \
     { \
         if (isblack(obj2gco(t)) && iswhite(obj2gco(o))) \

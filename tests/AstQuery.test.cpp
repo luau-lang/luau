@@ -44,10 +44,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "prop")
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "event_callback_arg")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauPersistDefinitionFileTypes", true},
-    };
-
     loadDefinition(R"(
         declare function Connect(fn: (string) -> ())
     )");
@@ -63,8 +59,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "event_callback_arg")
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
 {
-    ScopedFastFlag sffs{"LuauStoreMatchingOverloadFnType", true};
-
     loadDefinition(R"(
         declare foo: ((string) -> number) & ((number) -> string)
     )");

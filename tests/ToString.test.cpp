@@ -435,8 +435,6 @@ TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_T
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         type F = ((() -> number)?) -> F?
         local function f(p) return f end
@@ -450,8 +448,6 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_intersection")
 {
-    ScopedFastFlag sff{"LuauOccursCheckOkWithRecursiveFunctions", true};
-
     CheckResult result = check(R"(
         function f() return f end
         local a: ((number) -> ()) & typeof(f)
