@@ -15,6 +15,8 @@
 
 #include <string.h>
 
+#define READ_BUFFER_SIZE 4096
+
 #ifdef _WIN32
 static std::wstring fromUtf8(const std::string& path)
 {
@@ -70,6 +72,21 @@ std::optional<std::string> readFile(const std::string& name)
     // Skip first line if it's a shebang
     if (length > 2 && result[0] == '#' && result[1] == '!')
         result.erase(0, result.find('\n'));
+
+    return result;
+}
+
+std::optional<std::string> readStdin()
+{
+    std::string result;
+    char buffer[READ_BUFFER_SIZE] = { };
+
+    while (fgets(buffer, READ_BUFFER_SIZE, stdin) != nullptr)
+        result.append(buffer);
+
+    // If eof was not reached for stdin, then a read error occurred
+    if (!feof(stdin))
+        return std::nullopt;
 
     return result;
 }
@@ -190,7 +207,10 @@ bool traverseDirectory(const std::string& path, const std::function<void(const s
 bool isDirectory(const std::string& path)
 {
 #ifdef _WIN32
-    return (GetFileAttributesW(fromUtf8(path).c_str()) & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    DWORD fileAttributes = GetFileAttributesW(fromUtf8(path).c_str());
+    if (fileAttributes == INVALID_FILE_ATTRIBUTES)
+        return false;
+    return (fileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
 #else
     struct stat st = {};
     lstat(path.c_str(), &st);
@@ -244,7 +264,9 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
 
     for (int i = 1; i < argc; ++i)
     {
-        if (argv[i][0] == '-')
+        // Treat '-' as a special file whose source is read from stdin
+        // All other arguments that start with '-' are skipped
+        if (argv[i][0] == '-' && argv[i][1] != '\0')
             continue;
 
         if (isDirectory(argv[i]))

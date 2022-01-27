@@ -43,14 +43,14 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
     }
 }
 
-static void reportError(ReportFormat format, const Luau::TypeError& error)
+static void reportError(Luau::Frontend& frontend, ReportFormat format, const Luau::TypeError& error)
 {
-    const char* name = error.moduleName.c_str();
+    std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(error.moduleName);
 
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
-        report(format, name, error.location, "SyntaxError", syntaxError->message.c_str());
+        report(format, humanReadableName.c_str(), error.location, "SyntaxError", syntaxError->message.c_str());
     else
-        report(format, name, error.location, "TypeError", Luau::toString(error).c_str());
+        report(format, humanReadableName.c_str(), error.location, "TypeError", Luau::toString(error).c_str());
 }
 
 static void reportWarning(ReportFormat format, const char* name, const Luau::LintWarning& warning)
@@ -72,14 +72,15 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
     }
 
     for (auto& error : cr.errors)
-        reportError(format, error);
+        reportError(frontend, format, error);
 
     Luau::LintResult lr = frontend.lint(name);
 
+    std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(name);
     for (auto& error : lr.errors)
-        reportWarning(format, name, error);
+        reportWarning(format, humanReadableName.c_str(), error);
     for (auto& warning : lr.warnings)
-        reportWarning(format, name, warning);
+        reportWarning(format, humanReadableName.c_str(), warning);
 
     if (annotate)
     {
@@ -120,11 +121,25 @@ struct CliFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
     {
-        std::optional<std::string> source = readFile(name);
+        Luau::SourceCode::Type sourceType;
+        std::optional<std::string> source = std::nullopt;
+
+        // If the module name is "-", then read source from stdin
+        if (name == "-")
+        {
+            source = readStdin();
+            sourceType = Luau::SourceCode::Script;
+        }
+        else
+        {
+            source = readFile(name);
+            sourceType = Luau::SourceCode::Module;
+        }
+
         if (!source)
             return std::nullopt;
 
-        return Luau::SourceCode{*source, Luau::SourceCode::Module};
+        return Luau::SourceCode{*source, sourceType};
     }
 
     std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node) override
@@ -142,6 +157,13 @@ struct CliFileResolver : Luau::FileResolver
         }
 
         return std::nullopt;
+    }
+
+    std::string getHumanReadableModuleName(const Luau::ModuleName& name) const override
+    {
+        if (name == "-")
+            return "stdin";
+        return name;
     }
 };
 
