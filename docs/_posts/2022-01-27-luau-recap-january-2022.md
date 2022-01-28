@@ -1,0 +1,103 @@
+---
+layout: single
+title:  "Luau Recap: January 2022"
+---
+
+Luau is our programming language that you can read more about at [https://luau-lang.org](https://luau-lang.org).
+
+[Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-january-2022/).]
+
+## New tostring implementation
+
+This change replaces the default number->string conversion with a new algorithm called Schubfach, which allows us to
+produce the shortest precise round-trippable representation of any input number very quickly.
+
+This results in a 10% lift on the 3d-raytrace benchmark by accelerating the canvas printing since sprintf is no longer
+the bottleneck there.
+
+## Improvements to type assertions
+
+The `::` type assertion operator can now be used to coerce a value between any two related types.  Previously, it could
+only be used for downcasts or casts to `any`.  The following used to be invalid, but is now valid:
+
+```lua
+local t = {x=0, y=0}
+local a = t :: {x: number}
+```
+
+## Typechecking improvements
+
+An issue surrounding table literals and indexers has been fixed:
+
+```lua
+type RecolorMap = {[string]: RecolorMap | Color3}
+
+local hatRecolorMap: RecolorMap = {
+    Brim = Color3.fromRGB(255, 0, 0), -- We used to report an error here
+    Top = Color3.fromRGB(255, 0, 0)
+}
+```
+
+---
+Accessing a property whose base expression was previously refined will now return the correct result.
+
+## Error reporting improvements
+
+When a type error involves a union (or an option), we now provide more context in the error message.
+
+For instance, given the following code:
+
+```lua
+--!strict
+
+type T = {x: number}
+
+local x: T? = {w=4}
+```
+
+We now report the following:
+
+```
+Type 'x' could not be converted into 'T?'
+caused by:
+  None of the union options are compatible. For example: Table type 'x' not compatible with type 'T' because the former is missing field 'x'
+```
+
+---
+Luau now gives up and reports an `*unknown*` type in far fewer cases when typechecking programs that have type errors.
+
+## New APIs
+
+We have brought in the [`coroutine.close`](https://luau-lang.org/library#coroutine-library) function from Lua 5.4.  It accepts a suspended coroutine and marks it as non-runnable.
+
+## REPL improvements
+
+Added `--interactive` option to run the REPL after running the last script file.
+
+Allowed the compiler optimization level to be specified.
+
+Allowed methods to be tab completed
+
+Allowed methods on string instances to be completed
+
+Improved Luau REPL argument parsing and error reporting
+
+Input history is now saved/loaded
+
+## Thanks
+
+A special thanks from all the fine folks who contributed PRs over the last few months!
+
+* [Halalaluyafail3](https://github.com/Halalaluyafail3)
+* [JohnnyMorganz](https://github.com/JohnnyMorganz)
+* [Kampfkarren](https://github.com/Kampfkarren)
+* [kunitoki](https://github.com/kunitoki)
+* [MathematicalDessert](https://github.com/MathematicalDessert)
+* [metatablecat](https://github.com/metatablecat)
+* [petrihakkinen](https://github.com/petrihakkinen)
+* [rafa_br34](https://github.com/rafa_br34)
+* [Rerumu](https://github.com/Rerumu)
+* [Slappy826](https://github.com/Slappy826)
+* [SnowyShiro](https://github.com/SnowyShiro)
+* [vladmarica](https://github.com/vladmarica)
+* [xgladius](https://github.com/xgladius)
