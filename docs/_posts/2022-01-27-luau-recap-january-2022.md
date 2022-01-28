@@ -68,7 +68,7 @@ Luau now gives up and reports an `*unknown*` type in far fewer cases when typech
 
 ## New APIs
 
-We have brought in the [`coroutine.close`](https://luau-lang.org/library#coroutine-library) function from Lua 5.4.  It accepts a suspended coroutine and marks it as non-runnable.
+We have brought in the [`coroutine.close`](https://luau-lang.org/library#coroutine-library) function from Lua 5.4.  It accepts a suspended coroutine and marks it as non-runnable. In Roblox, this can be useful in combination with `task.defer` to implement cancellation.
 
 ## REPL improvements
 
