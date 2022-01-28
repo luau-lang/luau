@@ -5,15 +5,31 @@ title:  "Luau Recap: January 2022"
 
 Luau is our programming language that you can read more about at [https://luau-lang.org](https://luau-lang.org).
 
+[Find us on github](https:llgithub.com/Roblox/luau)!
+
 [Cross-posted to the [Roblox Developer Forum](https://devforum.roblox.com/t/luau-recap-january-2022/).]
 
-## New tostring implementation
+## Performance improvements
 
-This change replaces the default number->string conversion with a new algorithm called Schubfach, which allows us to
-produce the shortest precise round-trippable representation of any input number very quickly.
+The implementation of `tostring` has been rewritten.  This change replaces the default number->string conversion with a
+new algorithm called Schubfach, which allows us to produce the shortest precise round-trippable representation of any
+input number very quickly.
 
-While performance is not the main driving factor, this also happens to be significantly faster than our old implementation (up to 10x depending on the number and the platform).
-the bottleneck there.
+While performance is not the main driving factor, this also happens to be significantly faster than our old
+implementation (up to 10x depending on the number and the platform). the bottleneck there.
+
+---
+
+Make `toNumber(x)` ~2x faster by avoiding reparsing string arguments.
+
+---
+
+Luau compiler now optimizes table literals where keys are constant variables the same way as if they were constants, eg
+
+```lua
+local r, g, b = 1, 2, 3
+local col = { [r] = 255, [g] = 0, [b] = 255 }
+```
 
 ## Improvements to type assertions
 
@@ -40,6 +56,10 @@ local hatRecolorMap: RecolorMap = {
 
 ---
 Accessing a property whose base expression was previously refined will now return the correct result.
+
+## Linter improvements
+
+`table.create(N, {})` will now produce a static analysis warning since the element is going to be shared for all table entries
 
 ## Error reporting improvements
 
@@ -72,17 +92,14 @@ We have brought in the [`coroutine.close`](https://luau-lang.org/library#corouti
 
 ## REPL improvements
 
-Added `--interactive` option to run the REPL after running the last script file.
+The `luau` REPL application can be compiled from source.  It has grown some new features:
 
-Allowed the compiler optimization level to be specified.
-
-Allowed methods to be tab completed
-
-Allowed methods on string instances to be completed
-
-Improved Luau REPL argument parsing and error reporting
-
-Input history is now saved/loaded
+* Added `--interactive` option to run the REPL after running the last script file.
+* Allowed the compiler optimization level to be specified.
+* Allowed methods to be tab completed
+* Allowed methods on string instances to be completed
+* Improved Luau REPL argument parsing and error reporting
+* Input history is now saved/loaded
 
 ## Thanks
 
@@ -101,3 +118,5 @@ A special thanks from all the fine folks who contributed PRs over the last few m
 * [SnowyShiro](https://github.com/SnowyShiro)
 * [vladmarica](https://github.com/vladmarica)
 * [xgladius](https://github.com/xgladius)
+
+[Contribution guide](https://github.com/Roblox/luau/blob/2f989fc049772f36de1a4281834c375858507bda/CONTRIBUTING.md)
