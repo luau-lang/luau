@@ -12,7 +12,7 @@ Luau is our programming language that you can read more about at [https://luau-l
 This change replaces the default number->string conversion with a new algorithm called Schubfach, which allows us to
 produce the shortest precise round-trippable representation of any input number very quickly.
 
-This results in a 10% lift on the 3d-raytrace benchmark by accelerating the canvas printing since sprintf is no longer
+While performance is not the main driving factor, this also happens to be significantly faster than our old implementation (up to 10x depending on the number and the platform).
 the bottleneck there.
 
 ## Improvements to type assertions
