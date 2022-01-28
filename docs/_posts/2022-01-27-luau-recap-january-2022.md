@@ -20,7 +20,7 @@ implementation (up to 10x depending on the number and the platform). the bottlen
 
 ---
 
-Make `toNumber(x)` ~2x faster by avoiding reparsing string arguments.
+Make `tonumber(x)` ~2x faster by avoiding reparsing string arguments.
 
 ---
 
