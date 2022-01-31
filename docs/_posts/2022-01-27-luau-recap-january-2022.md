@@ -59,7 +59,7 @@ Accessing a property whose base expression was previously refined will now retur
 
 ## Linter improvements
 
-`table.create(N, {})` will now produce a static analysis warning since the element is going to be shared for all table entries
+`table.create(N, {})` will now produce a static analysis warning since the element is going to be shared for all table entries.
 
 ## Error reporting improvements
 
