@@ -16,7 +16,7 @@ new algorithm called Schubfach, which allows us to produce the shortest precise 
 input number very quickly.
 
 While performance is not the main driving factor, this also happens to be significantly faster than our old
-implementation (up to 10x depending on the number and the platform). the bottleneck there.
+implementation (up to 10x depending on the number and the platform).
 
 ---
 
