@@ -103,7 +103,7 @@ The `luau` REPL application can be compiled from source.  It has grown some new 
 
 ## Thanks
 
-A special thanks from all the fine folks who contributed PRs over the last few months!
+A special thanks to all the fine folks who contributed PRs over the last few months!
 
 * [Halalaluyafail3](https://github.com/Halalaluyafail3)
 * [JohnnyMorganz](https://github.com/JohnnyMorganz)
