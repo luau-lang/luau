@@ -92,7 +92,7 @@ We have brought in the [`coroutine.close`](https://luau-lang.org/library#corouti
 
 ## REPL improvements
 
-The `luau` REPL application can be compiled from source.  It has grown some new features:
+The `luau` REPL application can be compiled from source or downloaded from [releases page](https://github.com/Roblox/luau/releases).  It has grown some new features:
 
 * Added `--interactive` option to run the REPL after running the last script file.
 * Allowed the compiler optimization level to be specified.
