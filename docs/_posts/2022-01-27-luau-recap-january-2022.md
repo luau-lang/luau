@@ -24,7 +24,7 @@ Make `tonumber(x)` ~2x faster by avoiding reparsing string arguments.
 
 ---
 
-Luau compiler now optimizes table literals where keys are constant variables the same way as if they were constants, eg
+The Luau compiler now optimizes table literals where keys are constant variables the same way as if they were constants, eg
 
 ```lua
 local r, g, b = 1, 2, 3
