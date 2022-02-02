@@ -71,6 +71,8 @@ Luau compiler already emits a bytecode instruction, FORGPREP*, to perform initia
 
 If the argument is a table and it does not implement `__iter` metamethod, we treat this as an attempt to iterate through the table using the builtin iteration order.
 
+> Note: we also check if the table implements `__call`; if it does, we fall back to the default handling. We may be able to remove this check in the future, but we will need this initially to preserve backwards compatibility with custom table-driven iterator objects that implement `__call`.
+
 To have a single, unified, iteration scheme over tables regardless of whether they are arrays or dictionaries, we establish the following semantics:
 
 - First, the traversal goes over numeric keys in range `1..k` up until reaching the first `k` such that `t[k] == nil`
@@ -89,8 +91,18 @@ These changes guarantee that the order observed via standard traversal with `nex
 
 ## Drawbacks
 
-Why should we *not* do this?
+This makes `for` desugaring and implementation a little more complicated; it's not a large complexity factor in Luau because we already have special handling for `for` loops in the VM, but it's something to keep in mind.
+
+While the proposed iteration scheme should be a superset to both `pairs` and `ipairs` for tables, for arrays `ipairs` may in some cases be faster because it stops at the first `nil`, whereas the proposed new scheme (like `pairs`) needs to iterate through the rest of the table's array storage. This may be fixable in the future, if we replace our cached table length (`aboundary`) with Lua 5.4's `alimit`, which maintains the invariant that all values after `alimit` in the array are `nil`. This would make default table iteration maximally performant as well as help us accelerate GC in some cases, but will require extra checks during table assignments which is a cost we may not be willing to pay. Thus it is theoretically possible that we will end up with `ipairs` being a slightly faster equivalent for array iteration forever.
+
+The resulting iteration behavior, while powerful, increases the divergence between Luau and Lua, making more programs that are written for Luau not runnable in Lua. Luau language in general does not consider this type of compatibility essential, but this is noted for posterity.
 
 ## Alternatives
 
-What other designs have been considered? What is the impact of not doing this?
+Two other major designs have been considered.
+
+First, minor variation of the proposal, involves having `__iter` be called on every iteration instead of at loop startup, effectively having `__iter` work as an alternative to `__call`. The issue with this variant is that while it's a little simpler to specify and implement, it restricts the options when implementing custom iteratable objects, because it would be difficult for iteratable objects to store custom iteration state elsewhere since `__iter` method would effectively need to be pure, as it can't modify the object itself as more than one concurrent iteration needs to be supported.
+
+Second, major variation of the proposal, involves instead supporting `__pairs` from Lua 5.2. The issue with this variant is that it still requires the use of a library method, `pairs`, to work, which doesn't make the language simpler as far as table iteration, which is the 95% case, is concerned. Additionally, with some rare exceptions metamethods today extend the *language* behavior, not the *library* behavior, and extending extra library functions with metamethods does not seem true to the core of the language. Finally, this only works if the user uses `pairs` to iterate and doesn't work with `ipairs`/`next`.
+
+Finally, the author also considered and rejected extending the iteration protocol as part of this change. One problem with the current protocol is that the iterator requires an allocation (per loop execution) to keep extra state that isn't exposed to the user. The builtin iterators like `pairs`/`ipairs` work around this by feeding the user-visible index back to the search function, but that's not always practical. That said, having a different iteration protocol in effect only when `__iter` is used makes the language more complicated for unclear efficiency gains, thus this design doesn't suggest a new core protocol to favor simplicity.
