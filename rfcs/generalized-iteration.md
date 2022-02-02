@@ -103,6 +103,8 @@ While the proposed iteration scheme should be a superset to both `pairs` and `ip
 
 The resulting iteration behavior, while powerful, increases the divergence between Luau and Lua, making more programs that are written for Luau not runnable in Lua. Luau language in general does not consider this type of compatibility essential, but this is noted for posterity.
 
+The changes in insertion behavior that facilitate single iteration order may have a small cost; that said, they are currently understood to belong to paths that are already slow and the added cost is minimal.
+
 ## Alternatives
 
 Two other major designs have been considered.
