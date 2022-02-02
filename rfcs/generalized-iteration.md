@@ -36,7 +36,7 @@ This is a general mechanism that can support iteration through many containers, 
 
 Thus, today the loop `for k, v in tab do` effectively executes `k, v = tab()` on the first iteration, which is why it yields `attempt to call a table value`. If the object defines `__call` metamethod then it can act as a self-iterating method, but this is not idiomatic, not efficient and not pure/clean.
 
-This proposal comes in two pars: general support for `__iter` metamethod and default implementation for tables without one. After this proposal, there's going to be a single, idiomatic, general and performant way to iterate through the object of any type:
+This proposal comes in two parts: general support for `__iter` metamethod and default implementation for tables without one. With both of these in place, there's going to be a single, idiomatic, general and performant way to iterate through the object of any type:
 
 ```lua
 for k, v in obj do
