@@ -107,6 +107,8 @@ The resulting iteration behavior, while powerful, increases the divergence betwe
 
 The changes in insertion behavior that facilitate single iteration order may have a small cost; that said, they are currently understood to belong to paths that are already slow and the added cost is minimal.
 
+The extra semantics will make inferring the types of the variables in a for loop more difficult - if we know the type of the expression that is being iterated through it probably is not a problem though.
+
 ## Alternatives
 
 Two other major designs have been considered.
