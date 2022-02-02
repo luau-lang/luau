@@ -36,7 +36,13 @@ This is a general mechanism that can support iteration through many containers, 
 
 Thus, today the loop `for k, v in tab do` effectively executes `k, v = tab()` on the first iteration, which is why it yields `attempt to call a table value`. If the object defines `__call` metamethod then it can act as a self-iterating method, but this is not idiomatic, not efficient and not pure/clean.
 
-This proposal comes in two pars: general support for `__iter` metamethod and default implementation for tables without one.
+This proposal comes in two pars: general support for `__iter` metamethod and default implementation for tables without one. After this proposal, there's going to be a single, idiomatic, general and performant way to iterate through the object of any type:
+
+```lua
+for k, v in obj do
+...
+end
+```
 
 ### __iter
 
@@ -71,7 +77,7 @@ Luau compiler already emits a bytecode instruction, FORGPREP*, to perform initia
 
 If the argument is a table and it does not implement `__iter` metamethod, we treat this as an attempt to iterate through the table using the builtin iteration order.
 
-> Note: we also check if the table implements `__call`; if it does, we fall back to the default handling. We may be able to remove this check in the future, but we will need this initially to preserve backwards compatibility with custom table-driven iterator objects that implement `__call`.
+> Note: we also check if the table implements `__call`; if it does, we fall back to the default handling. We may be able to remove this check in the future, but we will need this initially to preserve backwards compatibility with custom table-driven iterator objects that implement `__call`. In either case, we will be able to collect detailed analytics about the use of `__call` in iteration, and if neither is present we can emit a specialized error message such as `object X is not iteratable`.
 
 To have a single, unified, iteration scheme over tables regardless of whether they are arrays or dictionaries, we establish the following semantics:
 
