@@ -73,6 +73,8 @@ end
 
 Luau compiler already emits a bytecode instruction, FORGPREP*, to perform initial loop setup - this is where we can evaluate `__iter` as well.
 
+Naturally, this means that if the table has `__iter` metamethod and you need to iterate through the table fields instead of using the provided metamethod, you can't rely on the general iteration scheme and need to use `pairs`. This is similar to other parts of the language, like `t[k]` vs `rawget(t, 'k')`, where the default behavior is overrideable but a library function can help peek behind the curtain.
+
 ### Default table iteration
 
 If the argument is a table and it does not implement `__iter` metamethod, we treat this as an attempt to iterate through the table using the builtin iteration order.
