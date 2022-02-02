@@ -22,7 +22,7 @@ This proposal solves all of these by providing a way to implement uniform iterat
 
 In Lua, `for vars in iter do` has the following semantics (otherwise known as the iteration protocol): `iter` is expanded into three variables, `gen`, `state` and `index` (using `nil` if `iter` evaluates to fewer than 3 results); after this the loop is converted to the following pseudocode:
 
-```
+```lua
 while true do
   vars... = gen(state, index)
   index = vars... -- copy the first variable into the index
