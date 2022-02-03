@@ -12,8 +12,6 @@
 #include <math.h>
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLintTableCreateTable, false)
-
 namespace Luau
 {
 
@@ -2155,7 +2153,7 @@ private:
                     "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
         }
 
-        if (FFlag::LuauLintTableCreateTable && func->index == "create" && node->args.size == 2)
+        if (func->index == "create" && node->args.size == 2)
         {
             // table.create(n, {...})
             if (args[1]->is<AstExprTable>())

@@ -51,6 +51,10 @@ struct Unifier
 
 private:
     void tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall = false, bool isIntersection = false);
+    void tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId superTy);
+    void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTypeVar* uv, bool cacheEnabled, bool isFunctionCall);
+    void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionTypeVar* uv);
+    void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeVar* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);

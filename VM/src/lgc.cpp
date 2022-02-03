@@ -759,6 +759,8 @@ static int sweepgcopage(lua_State* L, lua_Page* page)
         // when true is returned it means that the element was deleted
         if (sweepgco(L, page, gco))
         {
+            LUAU_ASSERT(busyBlocks > 0);
+
             // if the last block was removed, page would be removed as well
             if (--busyBlocks == 0)
                 return int(pos - start) / blockSize + 1;

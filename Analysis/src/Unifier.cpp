@@ -8,6 +8,7 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/TimeTrace.h"
 #include "Luau/VisitTypeVar.h"
+#include "Luau/ToString.h"
 
 #include <algorithm>
 
@@ -22,6 +23,7 @@ LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauProperTypeLevels);
 LUAU_FASTFLAGVARIABLE(LuauUnifyPackTails, false)
+LUAU_FASTFLAGVARIABLE(LuauUnionTagMatchFix, false)
 
 namespace Luau
 {
@@ -225,19 +227,33 @@ static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
 // Used for tagged union matching heuristic, returns first singleton type field
 static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMatchTag(TypeId type)
 {
-    type = follow(type);
-
-    if (auto ttv = get<TableTypeVar>(type))
+    if (FFlag::LuauUnionTagMatchFix)
     {
-        for (auto&& [name, prop] : ttv->props)
+        if (auto ttv = getTableType(type))
         {
-            if (auto sing = get<SingletonTypeVar>(follow(prop.type)))
-                return {{name, sing}};
+            for (auto&& [name, prop] : ttv->props)
+            {
+                if (auto sing = get<SingletonTypeVar>(follow(prop.type)))
+                    return {{name, sing}};
+            }
         }
     }
-    else if (auto mttv = get<MetatableTypeVar>(type))
+    else
     {
-        return getTableMatchTag(mttv->table);
+        type = follow(type);
+
+        if (auto ttv = get<TableTypeVar>(type))
+        {
+            for (auto&& [name, prop] : ttv->props)
+            {
+                if (auto sing = get<SingletonTypeVar>(follow(prop.type)))
+                    return {{name, sing}};
+            }
+        }
+        else if (auto mttv = get<MetatableTypeVar>(type))
+        {
+            return getTableMatchTag(mttv->table);
+        }
     }
 
     return std::nullopt;
@@ -508,245 +524,21 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     if (const UnionTypeVar* uv = FFlag::LuauUseCommittingTxnLog ? log.getMutable<UnionTypeVar>(subTy) : get<UnionTypeVar>(subTy))
     {
-        // A | B <: T if A <: T and B <: T
-        bool failed = false;
-        std::optional<TypeError> unificationTooComplex;
-        std::optional<TypeError> firstFailedOption;
-
-        size_t count = uv->options.size();
-        size_t i = 0;
-
-        for (TypeId type : uv->options)
-        {
-            Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(type, superTy);
-
-            if (auto e = hasUnificationTooComplex(innerState.errors))
-                unificationTooComplex = e;
-            else if (!innerState.errors.empty())
-            {
-                // 'nil' option is skipped from extended report because we present the type in a special way - 'T?'
-                if (!firstFailedOption && !isNil(type))
-                    firstFailedOption = {innerState.errors.front()};
-
-                failed = true;
-            }
-
-            if (FFlag::LuauUseCommittingTxnLog)
-            {
-                if (i == count - 1)
-                {
-                    log.concat(std::move(innerState.log));
-                }
-            }
-            else
-            {
-                if (i != count - 1)
-                {
-                    innerState.DEPRECATED_log.rollback();
-                }
-                else
-                {
-                    DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
-                }
-            }
-
-            ++i;
-        }
-
-        if (unificationTooComplex)
-            reportError(*unificationTooComplex);
-        else if (failed)
-        {
-            if (firstFailedOption)
-                reportError(TypeError{location, TypeMismatch{superTy, subTy, "Not all union options are compatible.", *firstFailedOption}});
-            else
-                reportError(TypeError{location, TypeMismatch{superTy, subTy}});
-        }
+        tryUnifyUnionWithType(subTy, uv, superTy);
     }
     else if (const UnionTypeVar* uv = FFlag::LuauUseCommittingTxnLog ? log.getMutable<UnionTypeVar>(superTy) : get<UnionTypeVar>(superTy))
     {
-        // T <: A | B if T <: A or T <: B
-        bool found = false;
-        std::optional<TypeError> unificationTooComplex;
-
-        size_t failedOptionCount = 0;
-        std::optional<TypeError> failedOption;
-
-        bool foundHeuristic = false;
-        size_t startIndex = 0;
-
-        if (const std::string* subName = getName(subTy))
-        {
-            for (size_t i = 0; i < uv->options.size(); ++i)
-            {
-                const std::string* optionName = getName(uv->options[i]);
-                if (optionName && *optionName == *subName)
-                {
-                    foundHeuristic = true;
-                    startIndex = i;
-                    break;
-                }
-            }
-        }
-
-        if (auto subMatchTag = getTableMatchTag(subTy))
-        {
-            for (size_t i = 0; i < uv->options.size(); ++i)
-            {
-                auto optionMatchTag = getTableMatchTag(uv->options[i]);
-                if (optionMatchTag && optionMatchTag->first == subMatchTag->first && *optionMatchTag->second == *subMatchTag->second)
-                {
-                    foundHeuristic = true;
-                    startIndex = i;
-                    break;
-                }
-            }
-        }
-
-        if (!foundHeuristic && cacheEnabled)
-        {
-            for (size_t i = 0; i < uv->options.size(); ++i)
-            {
-                TypeId type = uv->options[i];
-
-                if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
-                {
-                    startIndex = i;
-                    break;
-                }
-            }
-        }
-
-        for (size_t i = 0; i < uv->options.size(); ++i)
-        {
-            TypeId type = uv->options[(i + startIndex) % uv->options.size()];
-            Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(subTy, type, isFunctionCall);
-
-            if (innerState.errors.empty())
-            {
-                found = true;
-                if (FFlag::LuauUseCommittingTxnLog)
-                    log.concat(std::move(innerState.log));
-                else
-                    DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
-
-                break;
-            }
-            else if (auto e = hasUnificationTooComplex(innerState.errors))
-            {
-                unificationTooComplex = e;
-            }
-            else if (!isNil(type))
-            {
-                failedOptionCount++;
-
-                if (!failedOption)
-                    failedOption = {innerState.errors.front()};
-            }
-
-            if (!FFlag::LuauUseCommittingTxnLog)
-                innerState.DEPRECATED_log.rollback();
-        }
-
-        if (unificationTooComplex)
-        {
-            reportError(*unificationTooComplex);
-        }
-        else if (!found)
-        {
-            if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
-                reportError(
-                    TypeError{location, TypeMismatch{superTy, subTy, "None of the union options are compatible. For example:", *failedOption}});
-            else
-                reportError(TypeError{location, TypeMismatch{superTy, subTy, "none of the union options are compatible"}});
-        }
+        tryUnifyTypeWithUnion(subTy, superTy, uv, cacheEnabled, isFunctionCall);
     }
     else if (const IntersectionTypeVar* uv =
                  FFlag::LuauUseCommittingTxnLog ? log.getMutable<IntersectionTypeVar>(superTy) : get<IntersectionTypeVar>(superTy))
     {
-        std::optional<TypeError> unificationTooComplex;
-        std::optional<TypeError> firstFailedOption;
-
-        // T <: A & B if A <: T and B <: T
-        for (TypeId type : uv->parts)
-        {
-            Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(subTy, type, /*isFunctionCall*/ false, /*isIntersection*/ true);
-
-            if (auto e = hasUnificationTooComplex(innerState.errors))
-                unificationTooComplex = e;
-            else if (!innerState.errors.empty())
-            {
-                if (!firstFailedOption)
-                    firstFailedOption = {innerState.errors.front()};
-            }
-
-            if (FFlag::LuauUseCommittingTxnLog)
-                log.concat(std::move(innerState.log));
-            else
-                DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
-        }
-
-        if (unificationTooComplex)
-            reportError(*unificationTooComplex);
-        else if (firstFailedOption)
-            reportError(TypeError{location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption}});
+        tryUnifyTypeWithIntersection(subTy, superTy, uv);
     }
     else if (const IntersectionTypeVar* uv =
                  FFlag::LuauUseCommittingTxnLog ? log.getMutable<IntersectionTypeVar>(subTy) : get<IntersectionTypeVar>(subTy))
     {
-        // A & B <: T if T <: A or T <: B
-        bool found = false;
-        std::optional<TypeError> unificationTooComplex;
-
-        size_t startIndex = 0;
-
-        if (cacheEnabled)
-        {
-            for (size_t i = 0; i < uv->parts.size(); ++i)
-            {
-                TypeId type = uv->parts[i];
-
-                if (cache.contains({superTy, type}) && (variance == Covariant || cache.contains({type, superTy})))
-                {
-                    startIndex = i;
-                    break;
-                }
-            }
-        }
-
-        for (size_t i = 0; i < uv->parts.size(); ++i)
-        {
-            TypeId type = uv->parts[(i + startIndex) % uv->parts.size()];
-            Unifier innerState = makeChildUnifier();
-            innerState.tryUnify_(type, superTy, isFunctionCall);
-
-            if (innerState.errors.empty())
-            {
-                found = true;
-                if (FFlag::LuauUseCommittingTxnLog)
-                    log.concat(std::move(innerState.log));
-                else
-                    DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
-                break;
-            }
-            else if (auto e = hasUnificationTooComplex(innerState.errors))
-            {
-                unificationTooComplex = e;
-            }
-
-            if (!FFlag::LuauUseCommittingTxnLog)
-                innerState.DEPRECATED_log.rollback();
-        }
-
-        if (unificationTooComplex)
-            reportError(*unificationTooComplex);
-        else if (!found)
-        {
-            reportError(TypeError{location, TypeMismatch{superTy, subTy, "none of the intersection parts are compatible"}});
-        }
+        tryUnifyIntersectionWithType(subTy, uv, superTy, cacheEnabled, isFunctionCall);
     }
     else if ((FFlag::LuauUseCommittingTxnLog && log.getMutable<PrimitiveTypeVar>(superTy) && log.getMutable<PrimitiveTypeVar>(subTy)) ||
              (!FFlag::LuauUseCommittingTxnLog && get<PrimitiveTypeVar>(superTy) && get<PrimitiveTypeVar>(subTy)))
@@ -795,6 +587,253 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         log.popSeen(superTy, subTy);
     else
         DEPRECATED_log.popSeen(superTy, subTy);
+}
+
+void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId superTy)
+{
+    // A | B <: T if A <: T and B <: T
+    bool failed = false;
+    std::optional<TypeError> unificationTooComplex;
+    std::optional<TypeError> firstFailedOption;
+
+    size_t count = uv->options.size();
+    size_t i = 0;
+
+    for (TypeId type : uv->options)
+    {
+        Unifier innerState = makeChildUnifier();
+        innerState.tryUnify_(type, superTy);
+
+        if (auto e = hasUnificationTooComplex(innerState.errors))
+            unificationTooComplex = e;
+        else if (!innerState.errors.empty())
+        {
+            // 'nil' option is skipped from extended report because we present the type in a special way - 'T?'
+            if (!firstFailedOption && !isNil(type))
+                firstFailedOption = {innerState.errors.front()};
+
+            failed = true;
+        }
+
+        if (FFlag::LuauUseCommittingTxnLog)
+        {
+            if (i == count - 1)
+            {
+                log.concat(std::move(innerState.log));
+            }
+        }
+        else
+        {
+            if (i != count - 1)
+            {
+                innerState.DEPRECATED_log.rollback();
+            }
+            else
+            {
+                DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
+            }
+        }
+
+        ++i;
+    }
+
+    if (unificationTooComplex)
+        reportError(*unificationTooComplex);
+    else if (failed)
+    {
+        if (firstFailedOption)
+            reportError(TypeError{location, TypeMismatch{superTy, subTy, "Not all union options are compatible.", *firstFailedOption}});
+        else
+            reportError(TypeError{location, TypeMismatch{superTy, subTy}});
+    }
+}
+
+void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTypeVar* uv, bool cacheEnabled, bool isFunctionCall)
+{
+    // T <: A | B if T <: A or T <: B
+    bool found = false;
+    std::optional<TypeError> unificationTooComplex;
+
+    size_t failedOptionCount = 0;
+    std::optional<TypeError> failedOption;
+
+    bool foundHeuristic = false;
+    size_t startIndex = 0;
+
+    if (const std::string* subName = getName(subTy))
+    {
+        for (size_t i = 0; i < uv->options.size(); ++i)
+        {
+            const std::string* optionName = getName(uv->options[i]);
+            if (optionName && *optionName == *subName)
+            {
+                foundHeuristic = true;
+                startIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (auto subMatchTag = getTableMatchTag(subTy))
+    {
+        for (size_t i = 0; i < uv->options.size(); ++i)
+        {
+            auto optionMatchTag = getTableMatchTag(uv->options[i]);
+            if (optionMatchTag && optionMatchTag->first == subMatchTag->first && *optionMatchTag->second == *subMatchTag->second)
+            {
+                foundHeuristic = true;
+                startIndex = i;
+                break;
+            }
+        }
+    }
+
+    if (!foundHeuristic && cacheEnabled)
+    {
+        auto& cache = sharedState.cachedUnify;
+
+        for (size_t i = 0; i < uv->options.size(); ++i)
+        {
+            TypeId type = uv->options[i];
+
+            if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
+            {
+                startIndex = i;
+                break;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < uv->options.size(); ++i)
+    {
+        TypeId type = uv->options[(i + startIndex) % uv->options.size()];
+        Unifier innerState = makeChildUnifier();
+        innerState.tryUnify_(subTy, type, isFunctionCall);
+
+        if (innerState.errors.empty())
+        {
+            found = true;
+            if (FFlag::LuauUseCommittingTxnLog)
+                log.concat(std::move(innerState.log));
+            else
+                DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
+
+            break;
+        }
+        else if (auto e = hasUnificationTooComplex(innerState.errors))
+        {
+            unificationTooComplex = e;
+        }
+        else if (!isNil(type))
+        {
+            failedOptionCount++;
+
+            if (!failedOption)
+                failedOption = {innerState.errors.front()};
+        }
+
+        if (!FFlag::LuauUseCommittingTxnLog)
+            innerState.DEPRECATED_log.rollback();
+    }
+
+    if (unificationTooComplex)
+    {
+        reportError(*unificationTooComplex);
+    }
+    else if (!found)
+    {
+        if ((failedOptionCount == 1 || foundHeuristic) && failedOption)
+            reportError(TypeError{location, TypeMismatch{superTy, subTy, "None of the union options are compatible. For example:", *failedOption}});
+        else
+            reportError(TypeError{location, TypeMismatch{superTy, subTy, "none of the union options are compatible"}});
+    }
+}
+
+void Unifier::tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionTypeVar* uv)
+{
+    std::optional<TypeError> unificationTooComplex;
+    std::optional<TypeError> firstFailedOption;
+
+    // T <: A & B if A <: T and B <: T
+    for (TypeId type : uv->parts)
+    {
+        Unifier innerState = makeChildUnifier();
+        innerState.tryUnify_(subTy, type, /*isFunctionCall*/ false, /*isIntersection*/ true);
+
+        if (auto e = hasUnificationTooComplex(innerState.errors))
+            unificationTooComplex = e;
+        else if (!innerState.errors.empty())
+        {
+            if (!firstFailedOption)
+                firstFailedOption = {innerState.errors.front()};
+        }
+
+        if (FFlag::LuauUseCommittingTxnLog)
+            log.concat(std::move(innerState.log));
+        else
+            DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
+    }
+
+    if (unificationTooComplex)
+        reportError(*unificationTooComplex);
+    else if (firstFailedOption)
+        reportError(TypeError{location, TypeMismatch{superTy, subTy, "Not all intersection parts are compatible.", *firstFailedOption}});
+}
+
+void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeVar* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall)
+{
+    // A & B <: T if T <: A or T <: B
+    bool found = false;
+    std::optional<TypeError> unificationTooComplex;
+
+    size_t startIndex = 0;
+
+    if (cacheEnabled)
+    {
+        auto& cache = sharedState.cachedUnify;
+
+        for (size_t i = 0; i < uv->parts.size(); ++i)
+        {
+            TypeId type = uv->parts[i];
+
+            if (cache.contains({superTy, type}) && (variance == Covariant || cache.contains({type, superTy})))
+            {
+                startIndex = i;
+                break;
+            }
+        }
+    }
+
+    for (size_t i = 0; i < uv->parts.size(); ++i)
+    {
+        TypeId type = uv->parts[(i + startIndex) % uv->parts.size()];
+        Unifier innerState = makeChildUnifier();
+        innerState.tryUnify_(type, superTy, isFunctionCall);
+
+        if (innerState.errors.empty())
+        {
+            found = true;
+            if (FFlag::LuauUseCommittingTxnLog)
+                log.concat(std::move(innerState.log));
+            else
+                DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
+            break;
+        }
+        else if (auto e = hasUnificationTooComplex(innerState.errors))
+        {
+            unificationTooComplex = e;
+        }
+
+        if (!FFlag::LuauUseCommittingTxnLog)
+            innerState.DEPRECATED_log.rollback();
+    }
+
+    if (unificationTooComplex)
+        reportError(*unificationTooComplex);
+    else if (!found)
+    {
+        reportError(TypeError{location, TypeMismatch{superTy, subTy, "none of the intersection parts are compatible"}});
+    }
 }
 
 void Unifier::cacheResult(TypeId subTy, TypeId superTy)
@@ -1119,8 +1158,8 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             auto [superTypes, superTail] = logAwareFlatten(superTp, log);
             auto [subTypes, subTail] = logAwareFlatten(subTp, log);
 
-            bool noInfiniteGrowth =
-                (superTypes.size() != subTypes.size()) && (superTail && get<FreeTypePack>(*superTail)) && (subTail && get<FreeTypePack>(*subTail));
+            bool noInfiniteGrowth = (superTypes.size() != subTypes.size()) && (superTail && log.getMutable<FreeTypePack>(*superTail)) &&
+                                    (subTail && log.getMutable<FreeTypePack>(*subTail));
 
             auto superIter = WeirdIter(superTp, log);
             auto subIter = WeirdIter(subTp, log);
@@ -1667,6 +1706,13 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
     TableTypeVar* superTable = getMutable<TableTypeVar>(superTy);
     TableTypeVar* subTable = getMutable<TableTypeVar>(subTy);
+
+    if (FFlag::LuauUseCommittingTxnLog)
+    {
+        superTable = log.getMutable<TableTypeVar>(superTy);
+        subTable = log.getMutable<TableTypeVar>(subTy);
+    }
+
     if (!superTable || !subTable)
         ice("passed non-table types to unifyTables");
 
@@ -1679,7 +1725,11 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         for (const auto& [propName, superProp] : superTable->props)
         {
             auto subIter = subTable->props.find(propName);
-            if (subIter == subTable->props.end() && !isOptional(superProp.type) && !get<AnyTypeVar>(follow(superProp.type)))
+
+            bool isAny =
+                FFlag::LuauUseCommittingTxnLog ? log.getMutable<AnyTypeVar>(log.follow(superProp.type)) : get<AnyTypeVar>(follow(superProp.type));
+
+            if (subIter == subTable->props.end() && !isOptional(superProp.type) && !isAny)
                 missingProperties.push_back(propName);
         }
 
@@ -1697,7 +1747,10 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         for (const auto& [propName, subProp] : subTable->props)
         {
             auto superIter = superTable->props.find(propName);
-            if (superIter == superTable->props.end() && !isOptional(subProp.type) && !get<AnyTypeVar>(follow(subProp.type)))
+
+            bool isAny =
+                FFlag::LuauUseCommittingTxnLog ? log.getMutable<AnyTypeVar>(log.follow(subProp.type)) : get<AnyTypeVar>(follow(subProp.type));
+            if (superIter == superTable->props.end() && !isOptional(subProp.type) && !isAny)
                 extraProperties.push_back(propName);
         }
 
@@ -1775,6 +1828,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
                 TableTypeVar* ttv = getMutable<TableTypeVar>(pendingSub);
                 LUAU_ASSERT(ttv);
                 ttv->props[name] = prop;
+                subTable = ttv;
             }
             else
             {
@@ -1831,6 +1885,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
                 PendingType* pendingSuper = log.queue(superTy);
                 TableTypeVar* pendingSuperTtv = getMutable<TableTypeVar>(pendingSuper);
                 pendingSuperTtv->props[name] = clone;
+                superTable = pendingSuperTtv;
             }
             else
             {
@@ -1853,6 +1908,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
                 PendingType* pendingSuper = log.queue(superTy);
                 TableTypeVar* pendingSuperTtv = getMutable<TableTypeVar>(pendingSuper);
                 pendingSuperTtv->props[name] = prop;
+                superTable = pendingSuperTtv;
             }
             else
             {
@@ -1967,7 +2023,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         }
         else
         {
-            DEPRECATED_log(subTy);
+            DEPRECATED_log(subTable);
             subTable->boundTo = superTy;
         }
     }
@@ -2408,8 +2464,7 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         if (auto e = hasUnificationTooComplex(innerState.errors))
             reportError(*e);
         else if (!innerState.errors.empty())
-            reportError(
-                TypeError{location, TypeMismatch{reversed ? subTy : superTy, reversed ? superTy : subTy, "", innerState.errors.front()}});
+            reportError(TypeError{location, TypeMismatch{reversed ? subTy : superTy, reversed ? superTy : subTy, "", innerState.errors.front()}});
 
         if (FFlag::LuauUseCommittingTxnLog)
             log.concat(std::move(innerState.log));

@@ -55,6 +55,8 @@
 namespace Luau
 {
 
+struct TxnLog;
+
 enum class TarjanResult
 {
     TooManyChildren,
@@ -88,6 +90,10 @@ struct Tarjan
     std::vector<int> lowlink;
 
     int childCount = 0;
+
+    // This should never be null; ensure you initialize it before calling
+    // substitution methods.
+    const TxnLog* log;
 
     std::vector<TypeId> edgesTy;
     std::vector<TypePackId> edgesTp;

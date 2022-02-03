@@ -10,7 +10,7 @@
 #include "Profiler.h"
 #include "Coverage.h"
 
-#include "linenoise.hpp"
+#include "isocline.h"
 
 #include <memory>
 
@@ -240,9 +240,10 @@ std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
-static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, std::vector<std::string>& completions)
+static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
 {
-    std::string_view lookup = editBuffer + start;
+    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
+    std::string_view lookup = editBuffer;
     char lastSep = 0;
 
     for (;;)
@@ -268,13 +269,14 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
 
                     if (!key.empty() && requiredValueType && Luau::startsWith(key, prefix))
                     {
-                        std::string completion(editBuffer + std::string(key.substr(prefix.size())));
+                        std::string completedComponent(key.substr(prefix.size()));
+                        std::string completion(editBuffer + completedComponent);
                         if (valueType == LUA_TFUNCTION)
                         {
                             // Add an opening paren for function calls by default.
                             completion += "(";
                         }
-                        completions.push_back(completion);
+                        ic_add_completion_ex(cenv, completion.data(), key.data(), nullptr);
                     }
                 }
                 lua_pop(L, 1);
@@ -310,19 +312,23 @@ static void completeIndexer(lua_State* L, const char* editBuffer, size_t start, 
     lua_pop(L, 1);
 }
 
-static void completeRepl(lua_State* L, const char* editBuffer, std::vector<std::string>& completions)
+static bool isMethodOrFunctionChar(const char* s, long len)
 {
-    size_t start = strlen(editBuffer);
-    while (start > 0 && (isalnum(editBuffer[start - 1]) || editBuffer[start - 1] == '.' || editBuffer[start - 1] == ':' || editBuffer[start - 1] == '_'))
-        start--;
+    char c = *s;
+    return len == 1 && (isalnum(c) || c == '.' || c == ':' || c == '_');
+}
+
+static void completeRepl(ic_completion_env_t* cenv, const char* editBuffer)
+{
+    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
 
     // look the value up in current global table first
     lua_pushvalue(L, LUA_GLOBALSINDEX);
-    completeIndexer(L, editBuffer, start, completions);
+    ic_complete_word(cenv, editBuffer, completeIndexer, isMethodOrFunctionChar);
 
     // and in actual global table after that
     lua_getglobal(L, "_G");
-    completeIndexer(L, editBuffer, start, completions);
+    ic_complete_word(cenv, editBuffer, completeIndexer, isMethodOrFunctionChar);
 }
 
 struct LinenoiseScopedHistory
@@ -341,13 +347,11 @@ struct LinenoiseScopedHistory
         }
 
         if (!historyFilepath.empty())
-            linenoise::LoadHistory(historyFilepath.c_str());
+            ic_set_history(historyFilepath.c_str(), -1 /* default entries (= 200) */);
     }
 
     ~LinenoiseScopedHistory()
     {
-        if (!historyFilepath.empty())
-            linenoise::SaveHistory(historyFilepath.c_str());
     }
 
     std::string historyFilepath;
@@ -355,28 +359,32 @@ struct LinenoiseScopedHistory
 
 static void runReplImpl(lua_State* L)
 {
-    linenoise::SetCompletionCallback([L](const char* editBuffer, std::vector<std::string>& completions) {
-        completeRepl(L, editBuffer, completions);
-    });
+    ic_set_default_completer(completeRepl, L);
+
+    // Make brace matching easier to see
+    ic_style_def("ic-bracematch", "teal");
+
+    // Prevent auto insertion of braces
+    ic_enable_brace_insertion(false);
 
     std::string buffer;
     LinenoiseScopedHistory scopedHistory;
 
     for (;;)
     {
-        bool quit = false;
-        std::string line = linenoise::Readline(buffer.empty() ? "> " : ">> ", quit);
-        if (quit)
+        const char* line = ic_readline(buffer.empty() ? "" : ">");
+        if (!line)
             break;
 
         if (buffer.empty() && runCode(L, std::string("return ") + line) == std::string())
         {
-            linenoise::AddHistory(line.c_str());
+            ic_history_add(line);
             continue;
         }
 
+        if (!buffer.empty())
+            buffer += "\n";
         buffer += line;
-        buffer += " "; // linenoise doesn't work very well with multiline history entries
 
         std::string error = runCode(L, buffer);
 
@@ -390,8 +398,9 @@ static void runReplImpl(lua_State* L)
             fprintf(stdout, "%s\n", error.c_str());
         }
 
-        linenoise::AddHistory(buffer.c_str());
+        ic_history_add(buffer.c_str());
         buffer.clear();
+        free((void*)line);
     }
 }
 

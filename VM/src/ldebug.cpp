@@ -12,7 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauBytecodeV2Read)
 LUAU_FASTFLAG(LuauBytecodeV2Force)
 
 static const char* getfuncname(Closure* f);
@@ -96,7 +95,7 @@ static int getlinedefined(Proto* p)
 {
     if (FFlag::LuauBytecodeV2Force)
         return p->linedefined;
-    else if (FFlag::LuauBytecodeV2Read && p->linedefined >= 0)
+    else if (p->linedefined >= 0)
         return p->linedefined;
     else
         return luaG_getline(p, 0);

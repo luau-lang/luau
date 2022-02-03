@@ -118,6 +118,10 @@ assert((function() return #_G end)() == 0)
 assert((function() return #{1,2} end)() == 2)
 assert((function() return #'g' end)() == 1)
 
+local ud = newproxy(true)
+getmetatable(ud).__len = function() return 42 end
+assert((function() return #ud end)() == 42)
+
 assert((function() local a = 1 a = -a return a end)() == -1)
 
 -- while/repeat

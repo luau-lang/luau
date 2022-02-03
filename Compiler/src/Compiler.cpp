@@ -16,7 +16,7 @@
 #include <math.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileTableIndexOpt, false)
-LUAU_FASTFLAG(LuauCompileSelectBuiltin)
+LUAU_FASTFLAG(LuauCompileSelectBuiltin2)
 
 namespace Luau
 {
@@ -266,7 +266,7 @@ struct Compiler
 
     void compileExprSelectVararg(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop, bool multRet, uint8_t regs)
     {
-        LUAU_ASSERT(FFlag::LuauCompileSelectBuiltin);
+        LUAU_ASSERT(FFlag::LuauCompileSelectBuiltin2);
         LUAU_ASSERT(targetCount == 1);
         LUAU_ASSERT(!expr->self);
         LUAU_ASSERT(expr->args.size == 2 && expr->args.data[1]->is<AstExprVarargs>());
@@ -290,6 +290,9 @@ struct Compiler
         // note, these instructions are normally not executed and are used as a fallback for FASTCALL
         // we can't use TempTop variant here because we need to make sure the arguments we already computed aren't overwritten
         compileExprTemp(expr->func, regs);
+
+        if (argreg != regs + 1)
+            bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1), argreg, 0);
 
         bytecode.emitABC(LOP_GETVARARGS, uint8_t(regs + 2), 0, 0);
 
@@ -405,7 +408,7 @@ struct Compiler
 
         if (bfid == LBF_SELECT_VARARG)
         {
-            LUAU_ASSERT(FFlag::LuauCompileSelectBuiltin);
+            LUAU_ASSERT(FFlag::LuauCompileSelectBuiltin2);
             // Optimization: compile select(_, ...) as FASTCALL1; the builtin will read variadic arguments directly
             // note: for now we restrict this to single-return expressions since our runtime code doesn't deal with general cases
             if (multRet == false && targetCount == 1 && expr->args.size == 2 && expr->args.data[1]->is<AstExprVarargs>())

@@ -6,8 +6,6 @@
 #include <vector>
 #include <memory>
 
-LUAU_FASTFLAG(LuauTypedAllocatorZeroStart)
-
 namespace Luau
 {
 
@@ -22,10 +20,7 @@ class TypedAllocator
 public:
     TypedAllocator()
     {
-        if (FFlag::LuauTypedAllocatorZeroStart)
-            currentBlockSize = kBlockSize;
-        else
-            appendBlock();
+        currentBlockSize = kBlockSize;
     }
 
     ~TypedAllocator()
@@ -64,18 +59,12 @@ public:
 
     bool empty() const
     {
-        if (FFlag::LuauTypedAllocatorZeroStart)
-            return stuff.empty();
-        else
-            return stuff.size() == 1 && currentBlockSize == 0;
+        return stuff.empty();
     }
 
     size_t size() const
     {
-        if (FFlag::LuauTypedAllocatorZeroStart)
-            return stuff.empty() ? 0 : kBlockSize * (stuff.size() - 1) + currentBlockSize;
-        else
-            return kBlockSize * (stuff.size() - 1) + currentBlockSize;
+        return stuff.empty() ? 0 : kBlockSize * (stuff.size() - 1) + currentBlockSize;
     }
 
     void clear()
@@ -84,10 +73,7 @@ public:
             unfreeze();
         free();
 
-        if (FFlag::LuauTypedAllocatorZeroStart)
-            currentBlockSize = kBlockSize;
-        else
-            appendBlock();
+        currentBlockSize = kBlockSize;
     }
 
     void freeze()

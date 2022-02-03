@@ -260,4 +260,17 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
     CHECK(unifyErrors.size() == 0);
 }
 
+TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
+{
+    ScopedFastFlag luauUnionTagMatchFix{"LuauUnionTagMatchFix", true};
+
+    TypeVar redirect{FreeTypeVar{TypeLevel{}}};
+    TypeVar table{TableTypeVar{}};
+    TypeVar metatable{MetatableTypeVar{&redirect, &table}};
+    redirect = BoundTypeVar{&metatable}; // Now we have a metatable that is recursive on the table type
+    TypeVar variant{UnionTypeVar{{&metatable, typeChecker.numberType}}};
+
+    state.tryUnify(&metatable, &variant);
+}
+
 TEST_SUITE_END();

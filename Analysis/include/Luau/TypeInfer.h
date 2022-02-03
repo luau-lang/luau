@@ -262,7 +262,7 @@ public:
      *     {method: ({method: (<CYCLE>) -> a}) -> a}
      *
      */
-    TypeId instantiate(const ScopePtr& scope, TypeId ty, Location location);
+    TypeId instantiate(const ScopePtr& scope, TypeId ty, Location location, const TxnLog* log = TxnLog::empty());
 
     // Replace any free types or type packs by `any`.
     // This is used when exporting types from modules, to make sure free types don't leak.
@@ -308,9 +308,15 @@ private:
     TypeId singletonType(bool value);
     TypeId singletonType(std::string value);
 
+    TypeIdPredicate mkTruthyPredicate(bool sense);
+
     // Returns nullopt if the predicate filters down the TypeId to 0 options.
     std::optional<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
 
+public:
+    std::optional<TypeId> pickTypesFromSense(TypeId type, bool sense);
+
+private:
     TypeId unionOfTypes(TypeId a, TypeId b, const Location& location, bool unifyFreeTypes = true);
 
     // ex
@@ -349,7 +355,6 @@ private:
     void refineLValue(const LValue& lvalue, RefinementMap& refis, const ScopePtr& scope, TypeIdPredicate predicate);
 
     std::optional<TypeId> resolveLValue(const ScopePtr& scope, const LValue& lvalue);
-    std::optional<TypeId> DEPRECATED_resolveLValue(const ScopePtr& scope, const LValue& lvalue);
     std::optional<TypeId> resolveLValue(const RefinementMap& refis, const ScopePtr& scope, const LValue& lvalue);
 
     void resolve(const PredicateVec& predicates, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr = false);

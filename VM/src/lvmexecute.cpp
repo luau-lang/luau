@@ -676,14 +676,9 @@ static void luau_execute(lua_State* L)
                         VM_PROTECT_PC(); // set may fail
 
                         TValue* res = luaH_setstr(L, h, tsvalue(kv));
-
-                        if (res != luaO_nilobject)
-                        {
-                            int cachedslot = gval2slot(h, res);
-                            // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
-                            VM_PATCH_C(pc - 2, cachedslot);
-                        }
-
+                        int cachedslot = gval2slot(h, res);
+                        // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
+                        VM_PATCH_C(pc - 2, cachedslot);
                         setobj(L, res, ra);
                         luaC_barriert(L, h, ra);
                         VM_NEXT();

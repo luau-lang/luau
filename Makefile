@@ -23,6 +23,10 @@ VM_SOURCES=$(wildcard VM/src/*.cpp)
 VM_OBJECTS=$(VM_SOURCES:%=$(BUILD)/%.o)
 VM_TARGET=$(BUILD)/libluauvm.a
 
+ISOCLINE_SOURCES=extern/isocline/src/isocline.c
+ISOCLINE_OBJECTS=$(ISOCLINE_SOURCES:%=$(BUILD)/%.o)
+ISOCLINE_TARGET=$(BUILD)/libisocline.a
+
 TESTS_SOURCES=$(wildcard tests/*.cpp) CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
 TESTS_OBJECTS=$(TESTS_SOURCES:%=$(BUILD)/%.o)
 TESTS_TARGET=$(BUILD)/luau-tests
@@ -43,7 +47,7 @@ ifneq ($(flags),)
 	TESTS_ARGS+=--fflags=$(flags)
 endif
 
-OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(VM_OBJECTS) $(TESTS_OBJECTS) $(CLI_OBJECTS) $(FUZZ_OBJECTS)
+OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(VM_OBJECTS) $(ISOCLINE_OBJECTS) $(TESTS_OBJECTS) $(CLI_OBJECTS) $(FUZZ_OBJECTS)
 
 # common flags
 CXXFLAGS=-g -Wall
@@ -90,8 +94,9 @@ $(AST_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include
 $(COMPILER_OBJECTS): CXXFLAGS+=-std=c++17 -ICompiler/include -IAst/include
 $(ANALYSIS_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include -IAnalysis/include
 $(VM_OBJECTS): CXXFLAGS+=-std=c++11 -IVM/include
+$(ISOCLINE_OBJECTS): CXXFLAGS+=-Wno-unused-function -Iextern/isocline/include
 $(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include -ICompiler/include -IAnalysis/include -IVM/include -ICLI -Iextern
-$(REPL_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include -ICompiler/include -IVM/include -Iextern
+$(REPL_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include -ICompiler/include -IVM/include -Iextern -Iextern/isocline/include
 $(ANALYZE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include -IAnalysis/include -Iextern
 $(FUZZ_OBJECTS): CXXFLAGS+=-std=c++17 -IAst/include -ICompiler/include -IAnalysis/include -IVM/include
 
@@ -116,8 +121,8 @@ coverage: $(TESTS_TARGET)
 	$(TESTS_TARGET)
 	llvm-profdata merge default.profraw default-flags.profraw -o default.profdata
 	rm default.profraw default-flags.profraw
-	llvm-cov show -format=html -show-instantiations=false -show-line-counts=true -show-region-summary=false -ignore-filename-regex=\(tests\|extern\)/.* -output-dir=coverage --instr-profile default.profdata build/coverage/luau-tests
-	llvm-cov report -ignore-filename-regex=\(tests\|extern\)/.* -show-region-summary=false --instr-profile default.profdata build/coverage/luau-tests
+	llvm-cov show -format=html -show-instantiations=false -show-line-counts=true -show-region-summary=false -ignore-filename-regex=\(tests\|extern\|CLI\)/.* -output-dir=coverage --instr-profile default.profdata build/coverage/luau-tests
+	llvm-cov report -ignore-filename-regex=\(tests\|extern\|CLI\)/.* -show-region-summary=false --instr-profile default.profdata build/coverage/luau-tests
 	llvm-cov export -format lcov --instr-profile default.profdata build/coverage/luau-tests >coverage.info
 
 format:
@@ -135,8 +140,8 @@ luau-analyze: $(ANALYZE_CLI_TARGET)
 	ln -fs $^ $@
 
 # executable targets
-$(TESTS_TARGET): $(TESTS_OBJECTS) $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET)
-$(REPL_CLI_TARGET): $(REPL_CLI_OBJECTS) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET)
+$(TESTS_TARGET): $(TESTS_OBJECTS) $(ANALYSIS_TARGET) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET) $(ISOCLINE_TARGET)
+$(REPL_CLI_TARGET): $(REPL_CLI_OBJECTS) $(COMPILER_TARGET) $(AST_TARGET) $(VM_TARGET) $(ISOCLINE_TARGET)
 $(ANALYZE_CLI_TARGET): $(ANALYZE_CLI_OBJECTS) $(ANALYSIS_TARGET) $(AST_TARGET)
 
 $(TESTS_TARGET) $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET):
@@ -154,14 +159,19 @@ $(AST_TARGET): $(AST_OBJECTS)
 $(COMPILER_TARGET): $(COMPILER_OBJECTS)
 $(ANALYSIS_TARGET): $(ANALYSIS_OBJECTS)
 $(VM_TARGET): $(VM_OBJECTS)
+$(ISOCLINE_TARGET): $(ISOCLINE_OBJECTS)
 
-$(AST_TARGET) $(COMPILER_TARGET) $(ANALYSIS_TARGET) $(VM_TARGET):
+$(AST_TARGET) $(COMPILER_TARGET) $(ANALYSIS_TARGET) $(VM_TARGET) $(ISOCLINE_TARGET):
 	ar rcs $@ $^
 
 # object file targets
 $(BUILD)/%.cpp.o: %.cpp
 	@mkdir -p $(dir $@)
 	$(CXX) $< $(CXXFLAGS) -c -MMD -MP -o $@
+
+$(BUILD)/%.c.o: %.c
+	@mkdir -p $(dir $@)
+	$(CXX) -x c $< $(CXXFLAGS) -c -MMD -MP -o $@
 
 # protobuf fuzzer setup
 fuzz/luau.pb.cpp: fuzz/luau.proto build/libprotobuf-mutator
