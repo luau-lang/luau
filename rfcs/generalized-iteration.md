@@ -84,7 +84,7 @@ If the argument is a table and it does not implement `__iter` metamethod, we tre
 To have a single, unified, iteration scheme over tables regardless of whether they are arrays or dictionaries, we establish the following semantics:
 
 - First, the traversal goes over numeric keys in range `1..k` up until reaching the first `k` such that `t[k] == nil`
-- Then, the traversal goes over the remaining keys, numeric and otherwise, in unspecified order.
+- Then, the traversal goes over the remaining keys (with non-nil values), numeric and otherwise, in unspecified order.
 
 For arrays with gaps, this iterates until the first gap in order, and the remaining order is not specified.
 
@@ -111,10 +111,12 @@ The extra semantics will make inferring the types of the variables in a for loop
 
 ## Alternatives
 
-Two other major designs have been considered.
+Other major designs have been considered.
 
-First, minor variation of the proposal, involves having `__iter` be called on every iteration instead of at loop startup, effectively having `__iter` work as an alternative to `__call`. The issue with this variant is that while it's a little simpler to specify and implement, it restricts the options when implementing custom iteratable objects, because it would be difficult for iteratable objects to store custom iteration state elsewhere since `__iter` method would effectively need to be pure, as it can't modify the object itself as more than one concurrent iteration needs to be supported.
+A minor variation of the proposal involves having `__iter` be called on every iteration instead of at loop startup, effectively having `__iter` work as an alternative to `__call`. The issue with this variant is that while it's a little simpler to specify and implement, it restricts the options when implementing custom iteratable objects, because it would be difficult for iteratable objects to store custom iteration state elsewhere since `__iter` method would effectively need to be pure, as it can't modify the object itself as more than one concurrent iteration needs to be supported.
 
-Second, major variation of the proposal, involves instead supporting `__pairs` from Lua 5.2. The issue with this variant is that it still requires the use of a library method, `pairs`, to work, which doesn't make the language simpler as far as table iteration, which is the 95% case, is concerned. Additionally, with some rare exceptions metamethods today extend the *language* behavior, not the *library* behavior, and extending extra library functions with metamethods does not seem true to the core of the language. Finally, this only works if the user uses `pairs` to iterate and doesn't work with `ipairs`/`next`.
+A major variation of the proposal involves instead supporting `__pairs` from Lua 5.2. The issue with this variant is that it still requires the use of a library method, `pairs`, to work, which doesn't make the language simpler as far as table iteration, which is the 95% case, is concerned. Additionally, with some rare exceptions metamethods today extend the *language* behavior, not the *library* behavior, and extending extra library functions with metamethods does not seem true to the core of the language. Finally, this only works if the user uses `pairs` to iterate and doesn't work with `ipairs`/`next`.
+
+Another variation involves using a new pseudo-keyword, `foreach`, instead of overloading existing `for`, and only using the new `__iter` semantics there. This can more cleanly separate behavior, requiring the object to have an `__iter` metamethod (or be a table) in `foreach` - which also avoids having to deal with `__call` - but it also requires teaching the users a new keyword which fragments the iteration space a little bit more. Compared to that, the main proposal doesn't introduce new divergent syntax, and merely tweaks existing behavior to be more general, thus making an existing construct easier to use.
 
 Finally, the author also considered and rejected extending the iteration protocol as part of this change. One problem with the current protocol is that the iterator requires an allocation (per loop execution) to keep extra state that isn't exposed to the user. The builtin iterators like `pairs`/`ipairs` work around this by feeding the user-visible index back to the search function, but that's not always practical. That said, having a different iteration protocol in effect only when `__iter` is used makes the language more complicated for unclear efficiency gains, thus this design doesn't suggest a new core protocol to favor simplicity.
