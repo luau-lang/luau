@@ -250,7 +250,7 @@ static int coclose(lua_State* L)
     {
         lua_pushboolean(L, false);
         if (lua_gettop(co))
-            lua_xmove(co, L, 1);  /* move error message */
+            lua_xmove(co, L, 1); /* move error message */
         lua_resetthread(co);
         return 2;
     }

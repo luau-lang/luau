@@ -1482,7 +1482,7 @@ TEST_CASE_FIXTURE(Fixture, "casting_unsealed_tables_with_props_into_table_with_i
     REQUIRE(tm);
     CHECK_EQ("{| [string]: string |}", toString(tm->wantedType, o));
     // Should t now have an indexer?
-    // It would if the assignment to rt was correctly typed. 
+    // It would if the assignment to rt was correctly typed.
     CHECK_EQ("{ [string]: string, foo: number }", toString(tm->givenType, o));
 }
 
@@ -2082,7 +2082,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauPropertiesGetExpectedType", true},
         {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
@@ -2103,7 +2103,7 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauPropertiesGetExpectedType", true},
         {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
@@ -2131,7 +2131,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauPropertiesGetExpectedType", true},
         {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},

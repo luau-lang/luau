@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauFixAmbiguousErrorRecoveryInAssign)
-
 using namespace Luau;
 
 namespace
@@ -1639,10 +1637,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
         "statements");
 
-    if (FFlag::LuauFixAmbiguousErrorRecoveryInAssign)
-        CHECK(result4.errors.size() == 1);
-    else
-        CHECK(result4.errors.size() == 5);
+    CHECK(result4.errors.size() == 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_varargs")

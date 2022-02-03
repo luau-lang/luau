@@ -167,6 +167,11 @@ target_sources(Luau.VM PRIVATE
     VM/src/lvm.h
 )
 
+target_sources(isocline PRIVATE
+    extern/isocline/include/isocline.h
+    extern/isocline/src/isocline.c
+)
+
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE

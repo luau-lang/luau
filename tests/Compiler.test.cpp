@@ -611,7 +611,8 @@ TEST_CASE("TableLiteralsIndexConstant")
     CHECK_EQ("\n" + compileFunction0(R"(
         local a, b = "key", "value"
         return {[a] = 42, [b] = 0}
-)"), R"(
+)"),
+        R"(
 NEWTABLE R0 2 0
 LOADN R1 42
 SETTABLEKS R1 R0 K0
@@ -624,7 +625,8 @@ RETURN R0 1
     CHECK_EQ("\n" + compileFunction0(R"(
         local a, b = 1, 2
         return {[a] = 42, [b] = 0}
-)"), R"(
+)"),
+        R"(
 NEWTABLE R0 0 2
 LOADN R1 42
 SETTABLEN R1 R0 1
@@ -789,8 +791,6 @@ RETURN R0 1
 
 TEST_CASE("TableSizePredictionLoop")
 {
-    ScopedFastFlag sff("LuauPredictTableSizeLoop", true);
-
     CHECK_EQ("\n" + compileFunction0(R"(
 local t = {}
 for i=1,4 do
@@ -2827,7 +2827,7 @@ RETURN R1 -1
 
 TEST_CASE("FastcallSelect")
 {
-    ScopedFastFlag sff("LuauCompileSelectBuiltin", true);
+    ScopedFastFlag sff("LuauCompileSelectBuiltin2", true);
 
     // select(_, ...) compiles to a builtin call
     CHECK_EQ("\n" + compileFunction0("return (select('#', ...))"), R"(
@@ -2846,7 +2846,8 @@ for i=1, select('#', ...) do
     sum += select(i, ...)
 end
 return sum
-)"), R"(
+)"),
+        R"(
 LOADN R0 0
 LOADN R3 1
 LOADK R5 K0
@@ -2856,13 +2857,14 @@ GETVARARGS R6 -1
 CALL R4 -1 1
 MOVE R1 R4
 LOADN R2 1
-FORNPREP R1 +7
-FASTCALL1 57 R3 +3
+FORNPREP R1 +8
+FASTCALL1 57 R3 +4
 GETIMPORT R4 2
+MOVE R5 R3
 GETVARARGS R6 -1
 CALL R4 -1 1
 ADD R0 R0 R4
-FORNLOOP R1 -7
+FORNLOOP R1 -8
 RETURN R0 1
 )");
 

@@ -5,8 +5,6 @@
 
 #include <vector>
 
-LUAU_FASTFLAG(LuauLValueAsKey)
-
 namespace Luau
 {
 
@@ -94,17 +92,7 @@ std::pair<Symbol, std::vector<std::string>> getFullName(const LValue& lvalue)
     return {*symbol, std::vector<std::string>(keys.rbegin(), keys.rend())};
 }
 
-// Kill with LuauLValueAsKey.
-std::string toString(const LValue& lvalue)
-{
-    auto [symbol, keys] = getFullName(lvalue);
-    std::string s = toString(symbol);
-    for (std::string key : keys)
-        s += "." + key;
-    return s;
-}
-
-static void merge(NEW_RefinementMap& l, const NEW_RefinementMap& r, std::function<TypeId(TypeId, TypeId)> f)
+void merge(RefinementMap& l, const RefinementMap& r, std::function<TypeId(TypeId, TypeId)> f)
 {
     for (const auto& [k, a] : r)
     {
@@ -115,45 +103,9 @@ static void merge(NEW_RefinementMap& l, const NEW_RefinementMap& r, std::functio
     }
 }
 
-static void merge(DEPRECATED_RefinementMap& l, const DEPRECATED_RefinementMap& r, std::function<TypeId(TypeId, TypeId)> f)
-{
-    auto itL = l.begin();
-    auto itR = r.begin();
-    while (itL != l.end() && itR != r.end())
-    {
-        const auto& [k, a] = *itR;
-        if (itL->first == k)
-        {
-            l[k] = f(itL->second, a);
-            ++itL;
-            ++itR;
-        }
-        else if (itL->first < k)
-            ++itL;
-        else
-        {
-            l[k] = a;
-            ++itR;
-        }
-    }
-
-    l.insert(itR, r.end());
-}
-
-void merge(RefinementMap& l, const RefinementMap& r, std::function<TypeId(TypeId, TypeId)> f)
-{
-    if (FFlag::LuauLValueAsKey)
-        return merge(l.NEW_refinements, r.NEW_refinements, f);
-    else
-        return merge(l.DEPRECATED_refinements, r.DEPRECATED_refinements, f);
-}
-
 void addRefinement(RefinementMap& refis, const LValue& lvalue, TypeId ty)
 {
-    if (FFlag::LuauLValueAsKey)
-        refis.NEW_refinements[lvalue] = ty;
-    else
-        refis.DEPRECATED_refinements[toString(lvalue)] = ty;
+    refis[lvalue] = ty;
 }
 
 } // namespace Luau
