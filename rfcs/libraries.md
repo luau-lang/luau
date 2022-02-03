@@ -89,6 +89,8 @@ Libraries can be embedded in other libraries. In this case aliases are inherited
 - Aliases cannot reference other aliases
 - Aliases cannot contain certain characters such as `/` or `$` (full list TBD)
 - All aliases must be prefixed with $ when used in a require statement to avoid ambiguity
+- Aliases can only occur at the beginning of a path
+- Multiple aliases are not supported
 
 #### Directories
 
