@@ -2,18 +2,29 @@ module Main where
 
 open import Agda.Builtin.IO using (IO)
 open import Agda.Builtin.Unit using (⊤)
+open import Agda.Builtin.String using (String) renaming (primStringAppend to _++_)
 
 open import FFI.IO using (getContents; putStrLn; _>>=_)
 open import FFI.Data.Aeson using (Value; eitherDecode)
 open import FFI.Data.Either using (Left; Right)
-open import FFI.Data.HaskellString using (HaskellString; pack; unpack)
 open import FFI.Data.Text.Encoding using (encodeUtf8)
 
-main2 : HaskellString → IO ⊤
-main2 txt with eitherDecode (encodeUtf8 (pack txt))
-main2 txt | (Left x) = putStrLn x
-main2 txt | (Right x) = putStrLn (unpack "OK")
+open import Luau.Syntax using (Block)
+open import Luau.Syntax.FromJSON using (blockFromJSON)
+
+runBlock : Block → IO ⊤
+runBlock block = putStrLn "OK"
+
+runJSON : Value → IO ⊤
+runJSON value with blockFromJSON(value)
+runJSON value | (Left err) = putStrLn ("Luau error: " ++ err)
+runJSON value | (Right block) = runBlock block
+
+runString : String → IO ⊤
+runString txt with eitherDecode (encodeUtf8 txt)
+runString txt | (Left err) = putStrLn ("JSON error: " ++ err)
+runString txt | (Right value) = runJSON value
 
 main : IO ⊤
-main = getContents >>= main2
+main = getContents >>= runString
 
