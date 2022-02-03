@@ -50,7 +50,7 @@ To support self-iterating objects, we modify the iteration protocol as follows: 
 
 ```lua
 if getmetatable(gen) and getmetatable(gen).__iter then
-   gen, state, index = getmetatable(state).__iter(gen)
+   gen, state, index = getmetatable(gen).__iter(gen)
 end
 ```
 
