@@ -97,10 +97,6 @@ Libraries can be embedded in other libraries. In this case aliases are inherited
 If the string resolves to a directory rather than a file then we will attempt to require a specific file in that directory with the following name:
 1. `init.lua`
 2. `init.luau`
-3. `main.lua`
-4. `main.luau`
-
-Why `main` as well as `init`? In the past `MainModule` was the way to define the entry point of an asset on the Roblox platform. Meanwhile, Lua favors `init.lua`. Given both have precedent it seems reasonable to support them.
 
 #### DataModel as VFS
 
