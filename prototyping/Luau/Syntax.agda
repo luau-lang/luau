@@ -17,7 +17,7 @@ data Block : Set
 data Expr : Set
 
 data Block where
-  function_⟨_⟩_end_ : Var → Block → Block → Block
+  function_⟨_⟩_end_ : Var → Var → Block → Block → Block
   local_←_∙_ : Var → Expr → Block → Block
   return : Expr → Block
 

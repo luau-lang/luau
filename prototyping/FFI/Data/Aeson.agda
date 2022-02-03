@@ -11,11 +11,21 @@ open import FFI.Data.Scientific using (Scientific)
 open import FFI.Data.Vector using (Vector)
 
 {-# FOREIGN GHC import qualified Data.Aeson #-}
+{-# FOREIGN GHC import qualified Data.Aeson.Key #-}
 {-# FOREIGN GHC import qualified Data.Aeson.KeyMap #-}
 
-postulate KeyMap : Set → Set
+postulate
+  KeyMap : Set → Set
+  Key : Set
+  fromString : String → Key
+  toString : Key → String
+  lookup : ∀ {A} → Key -> KeyMap A -> Maybe A
 {-# POLARITY KeyMap ++ #-}
 {-# COMPILE GHC KeyMap = type Data.Aeson.KeyMap.KeyMap #-}
+{-# COMPILE GHC Key = type Data.Aeson.Key.Key #-}
+{-# COMPILE GHC fromString = Data.Aeson.Key.fromText #-}
+{-# COMPILE GHC toString = Data.Aeson.Key.toText #-}
+{-# COMPILE GHC lookup = \_ -> Data.Aeson.KeyMap.lookup #-}
 
 data Value : Set where
   object : KeyMap Value → Value
@@ -24,16 +34,15 @@ data Value : Set where
   number : Scientific → Value
   bool : Bool → Value
   null : Value
+{-# COMPILE GHC Value = data Data.Aeson.Value (Data.Aeson.Object|Data.Aeson.Array|Data.Aeson.String|Data.Aeson.Number|Data.Aeson.Bool|Data.Aeson.Null) #-}
 
 Object = KeyMap Value
 Array = Vector Value
 
-{-# COMPILE GHC Value = data Data.Aeson.Value (Data.Aeson.Object|Data.Aeson.Array|Data.Aeson.String|Data.Aeson.Number|Data.Aeson.Bool|Data.Aeson.Null) #-}
-
-postulate decode : ByteString → Maybe Value
+postulate
+  decode : ByteString → Maybe Value
+  eitherHDecode : ByteString → Either HaskellString Value
 {-# COMPILE GHC decode = Data.Aeson.decodeStrict #-}
-
-postulate eitherHDecode : ByteString → Either HaskellString Value
 {-# COMPILE GHC eitherHDecode = Data.Aeson.eitherDecodeStrict #-}
 
 eitherDecode : ByteString → Either String Value

@@ -2,18 +2,19 @@ module Main where
 
 open import Agda.Builtin.IO using (IO)
 open import Agda.Builtin.Unit using (⊤)
-open import Agda.Builtin.String using (String) renaming (primStringAppend to _++_)
 
 open import FFI.IO using (getContents; putStrLn; _>>=_)
 open import FFI.Data.Aeson using (Value; eitherDecode)
 open import FFI.Data.Either using (Left; Right)
+open import FFI.Data.String using (String; _++_)
 open import FFI.Data.Text.Encoding using (encodeUtf8)
 
 open import Luau.Syntax using (Block)
 open import Luau.Syntax.FromJSON using (blockFromJSON)
+open import Luau.Syntax.ToString using (blockToString)
 
 runBlock : Block → IO ⊤
-runBlock block = putStrLn "OK"
+runBlock block = putStrLn (blockToString block)
 
 runJSON : Value → IO ⊤
 runJSON value with blockFromJSON(value)
