@@ -11,7 +11,7 @@ First install Haskell and Agda.
 Install dependencies:
 ```
   cabal update
-  cabal install --lib aeson
+  cabal install --lib aeson scientific vector
 ```
 
 Then compile
