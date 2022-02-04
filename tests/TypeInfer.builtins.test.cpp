@@ -889,4 +889,55 @@ TEST_CASE_FIXTURE(Fixture, "dont_add_definitions_to_persistent_types")
     REQUIRE(gtv->definition);
 }
 
+TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
+{
+    ScopedFastFlag sff[]{
+        {"LuauAssertStripsFalsyTypes", true},
+        {"LuauDiscriminableUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: (number | boolean)?)
+            return assert(x)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types_even_from_type_pack_tail_but_only_for_the_first_type")
+{
+    ScopedFastFlag sff[]{
+        {"LuauAssertStripsFalsyTypes", true},
+        {"LuauDiscriminableUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(...: number?)
+            return assert(...)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(...number?) -> (number, ...number?)", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assert_returns_false_and_string_iff_it_knows_the_first_argument_cannot_be_truthy")
+{
+    ScopedFastFlag sff[]{
+        {"LuauAssertStripsFalsyTypes", true},
+        {"LuauDiscriminableUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: nil)
+            return assert(x, "hmm")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(nil) -> nil", toString(requireType("f")));
+}
+
 TEST_SUITE_END();

@@ -68,7 +68,7 @@ void coverageDump(const char* path)
 
     fprintf(f, "TN:\n");
 
-    for (int fref: gCoverage.functions)
+    for (int fref : gCoverage.functions)
     {
         lua_getref(L, fref);
 

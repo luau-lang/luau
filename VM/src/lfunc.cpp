@@ -90,7 +90,7 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     uv->tt = LUA_TUPVAL;
     uv->marked = luaC_white(g);
     uv->memcat = L->activememcat;
-    uv->v = level;  /* current value lives in the stack */
+    uv->v = level; /* current value lives in the stack */
 
     // chain the upvalue in the threads open upvalue list at the proper position
     UpVal* next = *pp;
@@ -138,8 +138,8 @@ void luaF_unlinkupval(UpVal* uv)
 
 void luaF_freeupval(lua_State* L, UpVal* uv, lua_Page* page)
 {
-    if (uv->v != &uv->u.value)                   /* is it open? */
-        luaF_unlinkupval(uv);                    /* remove from open list */
+    if (uv->v != &uv->u.value)                            /* is it open? */
+        luaF_unlinkupval(uv);                             /* remove from open list */
     luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page); /* free upvalue */
 }
 
