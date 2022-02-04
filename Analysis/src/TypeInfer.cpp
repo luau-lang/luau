@@ -29,6 +29,7 @@ LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as fals
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
+LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsDontCacheTypeParams, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseBranchTypeUnion, false)
 LUAU_FASTFLAGVARIABLE(LuauIfElseExpectedType2, false)
 LUAU_FASTFLAGVARIABLE(LuauLengthOnCompositeType, false)
@@ -1199,7 +1200,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
             if (FFlag::LuauProperTypeLevels)
                 aliasScope->level.subLevel = subLevel;
 
-            auto [generics, genericPacks] = createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks);
+            auto [generics, genericPacks] = createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks, /* useCache = */ true);
 
             TypeId ty = freshType(aliasScope);
             FreeTypeVar* ftv = getMutable<FreeTypeVar>(ty);
@@ -5362,7 +5363,7 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
 }
 
 GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, std::optional<TypeLevel> levelOpt, const AstNode& node,
-    const AstArray<AstGenericType>& genericNames, const AstArray<AstGenericTypePack>& genericPackNames)
+    const AstArray<AstGenericType>& genericNames, const AstArray<AstGenericTypePack>& genericPackNames, bool useCache)
 {
     LUAU_ASSERT(scope->parent);
 
@@ -5388,7 +5389,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
         }
 
         TypeId g;
-        if (FFlag::LuauRecursiveTypeParameterRestriction)
+        if (FFlag::LuauRecursiveTypeParameterRestriction && (!FFlag::LuauGenericFunctionsDontCacheTypeParams || useCache))
         {
             TypeId& cached = scope->parent->typeAliasTypeParameters[n];
             if (!cached)
