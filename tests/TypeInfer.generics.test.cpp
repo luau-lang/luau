@@ -673,4 +673,29 @@ local d: D = c
         R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
 }
 
+TEST_CASE_FIXTURE(Fixture, "generic_functions_dont_cache_type_parameters")
+{
+    ScopedFastFlag sff{"LuauGenericFunctionsDontCacheTypeParams", true};
+
+    CheckResult result = check(R"(
+-- See https://github.com/Roblox/luau/issues/332
+-- This function has a type parameter with the same name as clones,
+-- so if we cache type parameter names for functions these get confused.
+-- function id<Z>(x : Z) : Z
+function id<X>(x : X) : X
+  return x
+end
+
+function clone<X, Y>(dict: {[X]:Y}): {[X]:Y}
+  local copy = {}
+  for k, v in pairs(dict) do
+    copy[k] = v
+  end
+  return copy
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
