@@ -4977,6 +4977,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
             if (notEnoughParameters && hasDefaultParameters)
             {
                 // 'applyTypeFunction' is used to substitute default types that reference previous generic types
+                applyTypeFunction.log = TxnLog::empty();
                 applyTypeFunction.typeArguments.clear();
                 applyTypeFunction.typePackArguments.clear();
                 applyTypeFunction.currentModule = currentModule;
