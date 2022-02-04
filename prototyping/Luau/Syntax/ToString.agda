@@ -13,6 +13,7 @@ blockToString′ : String → Block → String
 blockToString′ lb (function f ⟨ x ⟩ B end C) =
   "function " ++ f ++ "(" ++ x ++ ")" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
+  "end" ++ lb ++
   blockToString′ lb C
 blockToString′ lb (local x ← M ∙ B) =
   "local " ++ x ++ " = " ++ (exprToString M) ++ lb ++
