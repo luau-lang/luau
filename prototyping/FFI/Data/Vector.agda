@@ -13,14 +13,19 @@ postulate
   empty : ∀ {A} → (Vector A)
   null : ∀ {A} → (Vector A) → Bool
   unsafeHead : ∀ {A} → (Vector A) → A
-  tail : ∀ {A} → (Vector A) → (Vector A)
+  unsafeTail : ∀ {A} → (Vector A) → (Vector A)
 {-# COMPILE GHC empty = \_ -> Data.Vector.empty #-}
 {-# COMPILE GHC null = \_ -> Data.Vector.null #-}
 {-# COMPILE GHC unsafeHead = \_ -> Data.Vector.unsafeHead #-}
-{-# COMPILE GHC tail = \_ -> Data.Vector.tail #-}
+{-# COMPILE GHC unsafeTail = \_ -> Data.Vector.unsafeTail #-}
 
 head : ∀ {A} → (Vector A) → (Maybe A)
 head vec with null vec
 head vec | false = just (unsafeHead vec)
 head vec | true = nothing
+
+tail : ∀ {A} → (Vector A) → Vector A
+tail vec with null vec
+tail vec | false = unsafeTail vec
+tail vec | true = empty
 

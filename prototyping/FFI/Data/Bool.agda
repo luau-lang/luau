@@ -5,4 +5,4 @@ module FFI.Data.Bool where
 data Bool : Set where
   false : Bool
   true : Bool
-{-# COMPILE GHC Bool = data Data.Bool.Bool (Data.Bool.True|Data.Bool.False) #-}
+{-# COMPILE GHC Bool = data Data.Bool.Bool (Data.Bool.False|Data.Bool.True) #-}

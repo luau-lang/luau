@@ -21,5 +21,5 @@ Then compile
 
 and run!
 ```
-  echo '{"some": "JSON"}' | ./Main
+  echo '[{"AstStatReturn":{"AstExprConstantNil": {}}}]' | ./Main
 ```
