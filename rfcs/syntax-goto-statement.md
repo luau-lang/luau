@@ -38,7 +38,7 @@ end
 ```
 The problems that this solution has are:<br>
 Messy: In a bigger scale this will get messy and confusing.<br>
-Uneeded checks: Why to do those checks when we could just jump out directly?
+Uneeded checks: Why do those checks when we could just jump out directly?
 
 
 
@@ -54,7 +54,7 @@ while true do
         end
     end
 end
-LoopEnd: -- Could follow Lua syntax(:LABEL:)
+:LoopEnd: -- Could follow Lua syntax(:LABEL:)
 ```
 
 
@@ -62,12 +62,12 @@ LoopEnd: -- Could follow Lua syntax(:LABEL:)
 
 
 
-`<ConstantString>:` Sets a label<br>
+`:<ConstantString>:` Sets a label<br>
 Notes:<br>
 A label can't be used in another scope
 ```lua
 function A()
-    FunctionStart:
+    :FunctionStart:
         
     do
         if Y == Y then
