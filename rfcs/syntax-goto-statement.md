@@ -87,19 +87,10 @@ end
 
 `goto <ConstantString>` Jumps to a set label
 
-
-`goto <Number>` Jumps to X line
-Notes:<br>
-If the number is a constant number, the compiler should optmize it<br>
-Otherwise if the number is a variable, any registers needed should be saved before the jump<br>
-If the X line is in another scope a error should be thrown<br>
-If the X line is in a invalid place(inside an statement) a error should be thrown
-
 ## Drawbacks
 
 Cross thread jumping could be a problem(but it would be very interesting if implemented and used correctly).<br>
 Lambdas/Functions that are called could bypass the scope boundary without runtime checks.<br>
-
 
 ## Alternatives
 
