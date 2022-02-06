@@ -36,7 +36,7 @@ while RunLoop do
     end
 end
 ```
-The problems that this solution has are:
+The problems that this solution has are:<br>
 Messy: In a bigger scale this will get messy and confusing.<br>
 Uneeded checks: Why to do those checks when we could just jump out directly?
 
