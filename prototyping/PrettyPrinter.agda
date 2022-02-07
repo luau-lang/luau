@@ -1,4 +1,4 @@
-module Main where
+module PrettyPrinter where
 
 open import Agda.Builtin.IO using (IO)
 open import Agda.Builtin.Int using (pos)
