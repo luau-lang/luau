@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "TableShape.h"
 
-LUAU_FASTFLAGVARIABLE(LuauPredictTableSizeLoop, false)
-
 namespace Luau
 {
 namespace Compile
@@ -87,9 +85,6 @@ struct ShapeVisitor : AstVisitor
         }
         else if (AstExprLocal* iter = index->as<AstExprLocal>())
         {
-            if (!FFlag::LuauPredictTableSizeLoop)
-                return;
-
             if (const unsigned int* bound = loops.find(iter->local))
             {
                 TableShape& shape = shapes[*table];
@@ -143,9 +138,6 @@ struct ShapeVisitor : AstVisitor
 
     bool visit(AstStatFor* node) override
     {
-        if (!FFlag::LuauPredictTableSizeLoop)
-            return true;
-
         AstExprConstantNumber* from = node->from->as<AstExprConstantNumber>();
         AstExprConstantNumber* to = node->to->as<AstExprConstantNumber>();
 

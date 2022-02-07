@@ -54,6 +54,17 @@ return _
     CHECK_EQ(result.warnings[0].text, "Placeholder value '_' is read here; consider using a named variable");
 }
 
+TEST_CASE_FIXTURE(Fixture, "PlaceholderReadGlobal")
+{
+    LintResult result = lint(R"(
+_ = 5
+print(_)
+)");
+
+    CHECK_EQ(result.warnings.size(), 1);
+    CHECK_EQ(result.warnings[0].text, "Placeholder value '_' is read here; consider using a named variable");
+}
+
 TEST_CASE_FIXTURE(Fixture, "PlaceholderWrite")
 {
     LintResult result = lint(R"(
@@ -853,7 +864,7 @@ string.format("%Y")
 local _ = ("%"):format()
 
 -- correct format strings, just to uh make sure
-string.format("hello %d %f", 4, 5)
+string.format("hello %+10d %.02f %%", 4, 5)
 )");
 
     CHECK_EQ(result.warnings.size(), 4);
@@ -1078,16 +1089,18 @@ TEST_CASE_FIXTURE(Fixture, "FormatStringDate")
 os.date("%")
 os.date("%L")
 os.date("%?")
+os.date("\0")
 
 -- correct formats
 os.date("it's %c now")
 os.date("!*t")
 )");
 
-    CHECK_EQ(result.warnings.size(), 3);
+    CHECK_EQ(result.warnings.size(), 4);
     CHECK_EQ(result.warnings[0].text, "Invalid date format: unfinished replacement");
     CHECK_EQ(result.warnings[1].text, "Invalid date format: unexpected replacement character; must be a date format specifier or %");
     CHECK_EQ(result.warnings[2].text, "Invalid date format: unexpected replacement character; must be a date format specifier or %");
+    CHECK_EQ(result.warnings[3].text, "Invalid date format: date format can not contain null characters");
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringTyped")
@@ -1396,8 +1409,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "TableOperations")
 {
-    ScopedFastFlag sff("LuauLintTableCreateTable", true);
-
     LintResult result = lintTyped(R"(
 local t = {}
 local tt = {}
@@ -1435,8 +1446,10 @@ table.create(42, {} :: {})
         "table.insert may change behavior if the call returns more than one result; consider adding parentheses around second argument");
     CHECK_EQ(result.warnings[6].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
     CHECK_EQ(result.warnings[7].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
-    CHECK_EQ(result.warnings[8].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
-    CHECK_EQ(result.warnings[9].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+    CHECK_EQ(
+        result.warnings[8].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+    CHECK_EQ(
+        result.warnings[9].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")

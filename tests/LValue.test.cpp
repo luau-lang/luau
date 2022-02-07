@@ -38,8 +38,6 @@ TEST_SUITE_BEGIN("LValue");
 
 TEST_CASE("Luau_merge_hashmap_order")
 {
-    ScopedFastFlag sff{"LuauLValueAsKey", true};
-
     std::string a = "a";
     std::string b = "b";
     std::string c = "c";
@@ -58,20 +56,18 @@ TEST_CASE("Luau_merge_hashmap_order")
     TypeArena arena;
     merge(arena, m, other);
 
-    REQUIRE_EQ(3, m.NEW_refinements.size());
-    REQUIRE(m.NEW_refinements.count(mkSymbol(a)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(b)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(c)));
+    REQUIRE_EQ(3, m.size());
+    REQUIRE(m.count(mkSymbol(a)));
+    REQUIRE(m.count(mkSymbol(b)));
+    REQUIRE(m.count(mkSymbol(c)));
 
-    CHECK_EQ("string", toString(m.NEW_refinements[mkSymbol(a)]));
-    CHECK_EQ("string", toString(m.NEW_refinements[mkSymbol(b)]));
-    CHECK_EQ("boolean | number", toString(m.NEW_refinements[mkSymbol(c)]));
+    CHECK_EQ("string", toString(m[mkSymbol(a)]));
+    CHECK_EQ("string", toString(m[mkSymbol(b)]));
+    CHECK_EQ("boolean | number", toString(m[mkSymbol(c)]));
 }
 
 TEST_CASE("Luau_merge_hashmap_order2")
 {
-    ScopedFastFlag sff{"LuauLValueAsKey", true};
-
     std::string a = "a";
     std::string b = "b";
     std::string c = "c";
@@ -90,20 +86,18 @@ TEST_CASE("Luau_merge_hashmap_order2")
     TypeArena arena;
     merge(arena, m, other);
 
-    REQUIRE_EQ(3, m.NEW_refinements.size());
-    REQUIRE(m.NEW_refinements.count(mkSymbol(a)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(b)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(c)));
+    REQUIRE_EQ(3, m.size());
+    REQUIRE(m.count(mkSymbol(a)));
+    REQUIRE(m.count(mkSymbol(b)));
+    REQUIRE(m.count(mkSymbol(c)));
 
-    CHECK_EQ("string", toString(m.NEW_refinements[mkSymbol(a)]));
-    CHECK_EQ("string", toString(m.NEW_refinements[mkSymbol(b)]));
-    CHECK_EQ("boolean | number", toString(m.NEW_refinements[mkSymbol(c)]));
+    CHECK_EQ("string", toString(m[mkSymbol(a)]));
+    CHECK_EQ("string", toString(m[mkSymbol(b)]));
+    CHECK_EQ("boolean | number", toString(m[mkSymbol(c)]));
 }
 
 TEST_CASE("one_map_has_overlap_at_end_whereas_other_has_it_in_start")
 {
-    ScopedFastFlag sff{"LuauLValueAsKey", true};
-
     std::string a = "a";
     std::string b = "b";
     std::string c = "c";
@@ -125,18 +119,18 @@ TEST_CASE("one_map_has_overlap_at_end_whereas_other_has_it_in_start")
     TypeArena arena;
     merge(arena, m, other);
 
-    REQUIRE_EQ(5, m.NEW_refinements.size());
-    REQUIRE(m.NEW_refinements.count(mkSymbol(a)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(b)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(c)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(d)));
-    REQUIRE(m.NEW_refinements.count(mkSymbol(e)));
+    REQUIRE_EQ(5, m.size());
+    REQUIRE(m.count(mkSymbol(a)));
+    REQUIRE(m.count(mkSymbol(b)));
+    REQUIRE(m.count(mkSymbol(c)));
+    REQUIRE(m.count(mkSymbol(d)));
+    REQUIRE(m.count(mkSymbol(e)));
 
-    CHECK_EQ("string", toString(m.NEW_refinements[mkSymbol(a)]));
-    CHECK_EQ("number", toString(m.NEW_refinements[mkSymbol(b)]));
-    CHECK_EQ("boolean | string", toString(m.NEW_refinements[mkSymbol(c)]));
-    CHECK_EQ("number", toString(m.NEW_refinements[mkSymbol(d)]));
-    CHECK_EQ("boolean", toString(m.NEW_refinements[mkSymbol(e)]));
+    CHECK_EQ("string", toString(m[mkSymbol(a)]));
+    CHECK_EQ("number", toString(m[mkSymbol(b)]));
+    CHECK_EQ("boolean | string", toString(m[mkSymbol(c)]));
+    CHECK_EQ("number", toString(m[mkSymbol(d)]));
+    CHECK_EQ("boolean", toString(m[mkSymbol(e)]));
 }
 
 TEST_CASE("hashing_lvalue_global_prop_access")
@@ -159,7 +153,7 @@ TEST_CASE("hashing_lvalue_global_prop_access")
     CHECK_EQ(LValueHasher{}(t_x1), LValueHasher{}(t_x2));
     CHECK_EQ(LValueHasher{}(t_x2), LValueHasher{}(t_x2));
 
-    NEW_RefinementMap m;
+    RefinementMap m;
     m[t_x1] = getSingletonTypes().stringType;
     m[t_x2] = getSingletonTypes().numberType;
 
@@ -188,7 +182,7 @@ TEST_CASE("hashing_lvalue_local_prop_access")
     CHECK_NE(LValueHasher{}(t_x1), LValueHasher{}(t_x2));
     CHECK_EQ(LValueHasher{}(t_x2), LValueHasher{}(t_x2));
 
-    NEW_RefinementMap m;
+    RefinementMap m;
     m[t_x1] = getSingletonTypes().stringType;
     m[t_x2] = getSingletonTypes().numberType;
 

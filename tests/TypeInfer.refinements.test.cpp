@@ -939,8 +939,6 @@ TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
 
 TEST_CASE_FIXTURE(Fixture, "correctly_lookup_a_shadowed_local_that_which_was_previously_refined")
 {
-    ScopedFastFlag sff{"LuauLValueAsKey", true};
-
     CheckResult result = check(R"(
         local foo: string? = "hi"
         assert(foo)
@@ -955,8 +953,6 @@ TEST_CASE_FIXTURE(Fixture, "correctly_lookup_a_shadowed_local_that_which_was_pre
 
 TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_refined")
 {
-    ScopedFastFlag sff{"LuauLValueAsKey", true};
-
     CheckResult result = check(R"(
         type T = {x: string | number}
         local t: T? = {x = "hi"}
@@ -974,8 +970,6 @@ TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_
 
 TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_refined2")
 {
-    ScopedFastFlag sff{"LuauLValueAsKey", true};
-
     CheckResult result = check(R"(
         type T = { x: { y: number }? }
 
@@ -993,8 +987,6 @@ TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_
 
 TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscript_expr_is_constant_string")
 {
-    ScopedFastFlag sff{"LuauRefiLookupFromIndexExpr", true};
-
     CheckResult result = check(R"(
         type T = { [string]: { prop: number }? }
         local t: T = {}
@@ -1061,27 +1053,62 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
     CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscript_expr_is_constant_string")
+TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
 {
-    ScopedFastFlag sff{"LuauRefiLookupFromIndexExpr", true};
-
     CheckResult result = check(R"(
-        type T = { [string]: { prop: number }? }
-        local t: T = {}
-
-        if t["hello"] then
-            local foo = t["hello"].prop
+        local function len(a: {any})
+            return a and #a or nil
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
+TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
 {
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauDiscriminableUnions", true},
+        {"LuauAssertStripsFalsyTypes", true},
+    };
+
     CheckResult result = check(R"(
-        local function len(a: {any})
-            return a and #a or nil
+        local function is_true(b: true) end
+        local function is_false(b: false) end
+
+        local function f(x: boolean)
+            if x then
+                is_true(x)
+            else
+                is_false(x)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_that_property_is_true_or_false")
+{
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauDiscriminableUnions", true},
+        {"LuauAssertStripsFalsyTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        type Ok<T> = { ok: true, value: T }
+        type Err<E> = { ok: false, error: E }
+        type Result<T, E> = Ok<T> | Err<E>
+
+        local function apply<T, E>(t: Result<T, E>, f: (T) -> (), g: (E) -> ())
+            if t.ok then
+                f(t.value)
+            else
+                g(t.error)
+            end
         end
     )");
 

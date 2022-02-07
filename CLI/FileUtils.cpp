@@ -77,7 +77,7 @@ std::optional<std::string> readFile(const std::string& name)
 std::optional<std::string> readStdin()
 {
     std::string result;
-    char buffer[4096] = { };
+    char buffer[4096] = {};
 
     while (fgets(buffer, sizeof(buffer), stdin) != nullptr)
         result.append(buffer);

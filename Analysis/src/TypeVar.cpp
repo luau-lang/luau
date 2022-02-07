@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauLengthOnCompositeType)
 LUAU_FASTFLAGVARIABLE(LuauMetatableAreEqualRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTypeVarQuestions, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
+LUAU_FASTFLAG(LuauUnionTagMatchFix)
 
 namespace Luau
 {
@@ -288,10 +289,13 @@ std::optional<TypeId> getMetatable(TypeId type)
 
 const TableTypeVar* getTableType(TypeId type)
 {
+    if (FFlag::LuauUnionTagMatchFix)
+        type = follow(type);
+
     if (const TableTypeVar* ttv = get<TableTypeVar>(type))
         return ttv;
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(type))
-        return get<TableTypeVar>(mtv->table);
+        return get<TableTypeVar>(FFlag::LuauUnionTagMatchFix ? follow(mtv->table) : mtv->table);
     else
         return nullptr;
 }
@@ -308,7 +312,7 @@ const std::string* getName(TypeId type)
     {
         if (mtv->syntheticName)
             return &*mtv->syntheticName;
-        type = mtv->table;
+        type = FFlag::LuauUnionTagMatchFix ? follow(mtv->table) : mtv->table;
     }
 
     if (auto ttv = get<TableTypeVar>(type))

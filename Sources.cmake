@@ -167,6 +167,11 @@ target_sources(Luau.VM PRIVATE
     VM/src/lvm.h
 )
 
+target_sources(isocline PRIVATE
+    extern/isocline/include/isocline.h
+    extern/isocline/src/isocline.c
+)
+
 if(TARGET Luau.Repl.CLI)
     # Luau.Repl.CLI Sources
     target_sources(Luau.Repl.CLI PRIVATE
@@ -186,6 +191,13 @@ if(TARGET Luau.Analyze.CLI)
         CLI/FileUtils.h
         CLI/FileUtils.cpp
         CLI/Analyze.cpp)
+endif()
+
+if (TARGET Luau.Ast.CLI)
+    target_sources(Luau.Ast.CLI PRIVATE
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+        CLI/Ast.cpp)
 endif()
 
 if(TARGET Luau.UnitTest)

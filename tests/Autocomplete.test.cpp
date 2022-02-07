@@ -2536,7 +2536,7 @@ TEST_CASE("autocomplete_documentation_symbols")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_ifelse_expressions")
 {
-        check(R"(
+    check(R"(
 local temp = false
 local even = true;
 local a = true
@@ -2551,63 +2551,63 @@ a = if temp then even elseif true then temp e@8
 a = if temp then even elseif true then temp else e@9
         )");
 
-        auto ac = autocomplete('1');
-        CHECK(ac.entryMap.count("temp"));
-        CHECK(ac.entryMap.count("true"));
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("temp"));
+    CHECK(ac.entryMap.count("true"));
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 
-        ac = autocomplete('2');
-        CHECK(ac.entryMap.count("temp") == 0);
-        CHECK(ac.entryMap.count("true") == 0);
-        CHECK(ac.entryMap.count("then"));
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("temp") == 0);
+    CHECK(ac.entryMap.count("true") == 0);
+    CHECK(ac.entryMap.count("then"));
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 
-        ac = autocomplete('3');
-        CHECK(ac.entryMap.count("even"));
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    ac = autocomplete('3');
+    CHECK(ac.entryMap.count("even"));
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 
-        ac = autocomplete('4');
-        CHECK(ac.entryMap.count("even") == 0);
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else"));
-        CHECK(ac.entryMap.count("elseif"));
+    ac = autocomplete('4');
+    CHECK(ac.entryMap.count("even") == 0);
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else"));
+    CHECK(ac.entryMap.count("elseif"));
 
-        ac = autocomplete('5');
-        CHECK(ac.entryMap.count("temp"));
-        CHECK(ac.entryMap.count("true"));
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    ac = autocomplete('5');
+    CHECK(ac.entryMap.count("temp"));
+    CHECK(ac.entryMap.count("true"));
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 
-        ac = autocomplete('6');
-        CHECK(ac.entryMap.count("temp") == 0);
-        CHECK(ac.entryMap.count("true") == 0);
-        CHECK(ac.entryMap.count("then"));
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    ac = autocomplete('6');
+    CHECK(ac.entryMap.count("temp") == 0);
+    CHECK(ac.entryMap.count("true") == 0);
+    CHECK(ac.entryMap.count("then"));
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 
-        ac = autocomplete('7');
-        CHECK(ac.entryMap.count("temp"));
-        CHECK(ac.entryMap.count("true"));
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    ac = autocomplete('7');
+    CHECK(ac.entryMap.count("temp"));
+    CHECK(ac.entryMap.count("true"));
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 
-        ac = autocomplete('8');
-        CHECK(ac.entryMap.count("even") == 0);
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else"));
-        CHECK(ac.entryMap.count("elseif"));
+    ac = autocomplete('8');
+    CHECK(ac.entryMap.count("even") == 0);
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else"));
+    CHECK(ac.entryMap.count("elseif"));
 
-        ac = autocomplete('9');
-        CHECK(ac.entryMap.count("then") == 0);
-        CHECK(ac.entryMap.count("else") == 0);
-        CHECK(ac.entryMap.count("elseif") == 0);
+    ac = autocomplete('9');
+    CHECK(ac.entryMap.count("then") == 0);
+    CHECK(ac.entryMap.count("else") == 0);
+    CHECK(ac.entryMap.count("elseif") == 0);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_explicit_type_pack")

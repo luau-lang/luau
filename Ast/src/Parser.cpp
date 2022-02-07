@@ -10,7 +10,6 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauFixAmbiguousErrorRecoveryInAssign, false)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauParseRecoverTypePackEllipsis, false)
@@ -957,7 +956,7 @@ AstStat* Parser::parseAssignment(AstExpr* initial)
     {
         nextLexeme();
 
-        AstExpr* expr = parsePrimaryExpr(/* asStatement= */ FFlag::LuauFixAmbiguousErrorRecoveryInAssign);
+        AstExpr* expr = parsePrimaryExpr(/* asStatement= */ true);
 
         if (!isExprLValue(expr))
             expr = reportExprError(expr->location, copy({expr}), "Assigned expression must be a variable or a field");

@@ -176,19 +176,6 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
     REQUIRE_EQ("{| [any]: any, x: number, y: number |}", toString(requireType("b")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "normal_conditional_expression_has_refinements")
-{
-    CheckResult result = check(R"(
-        local foo: {x: number}? = nil
-        local bar = foo and foo.x -- TODO: Geez. We are inferring the wrong types here. Should be 'number?'.
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    // Binary and/or return types are straight up wrong. JIRA: CLI-40300
-    CHECK_EQ("boolean | number", toString(requireType("bar")));
-}
-
 // Luau currently doesn't yet know how to allow assignments when the binding was refined.
 TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 {

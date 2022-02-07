@@ -5,7 +5,7 @@ if(EXT_PLATFORM_STRING)
 endif()
 
 cmake_minimum_required(VERSION 3.0)
-project(Luau LANGUAGES CXX)
+project(Luau LANGUAGES CXX C)
 
 option(LUAU_BUILD_CLI "Build CLI" ON)
 option(LUAU_BUILD_TESTS "Build tests" ON)
@@ -16,14 +16,17 @@ add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
 add_library(Luau.Analysis STATIC)
 add_library(Luau.VM STATIC)
+add_library(isocline STATIC)
 
 if(LUAU_BUILD_CLI)
     add_executable(Luau.Repl.CLI)
     add_executable(Luau.Analyze.CLI)
+    add_executable(Luau.Ast.CLI)
 
     # This also adds target `name` on Linux/macOS and `name.exe` on Windows
     set_target_properties(Luau.Repl.CLI PROPERTIES OUTPUT_NAME luau)
     set_target_properties(Luau.Analyze.CLI PROPERTIES OUTPUT_NAME luau-analyze)
+    set_target_properties(Luau.Ast.CLI PROPERTIES OUTPUT_NAME luau-ast)
 endif()
 
 if(LUAU_BUILD_TESTS)
@@ -52,6 +55,8 @@ target_link_libraries(Luau.Analysis PUBLIC Luau.Ast)
 target_compile_features(Luau.VM PRIVATE cxx_std_11)
 target_include_directories(Luau.VM PUBLIC VM/include)
 
+target_include_directories(isocline PUBLIC extern/isocline/include)
+
 set(LUAU_OPTIONS)
 
 if(MSVC)
@@ -75,9 +80,16 @@ if(LUAU_BUILD_WEB)
     list(APPEND LUAU_OPTIONS -fexceptions)
 endif()
 
+set(ISOCLINE_OPTIONS)
+
+if (NOT MSVC)
+    list(APPEND ISOCLINE_OPTIONS -Wno-unused-function)
+endif()
+
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.Analysis PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
+target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})
 
 if (MSVC AND MSVC_VERSION GREATER_EQUAL 1924)
     # disable partial redundancy elimination which regresses interpreter codegen substantially in VS2022:
@@ -88,9 +100,11 @@ endif()
 if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Repl.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})
+    target_compile_options(Luau.Ast.CLI PRIVATE ${LUAU_OPTIONS})
 
-    target_include_directories(Luau.Repl.CLI PRIVATE extern)
-    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.VM)
+    target_include_directories(Luau.Repl.CLI PRIVATE extern extern/isocline/include)
+
+    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.VM isocline)
 
     if(UNIX)
         find_library(LIBPTHREAD pthread)
@@ -100,6 +114,8 @@ if(LUAU_BUILD_CLI)
     endif()
 
     target_link_libraries(Luau.Analyze.CLI PRIVATE Luau.Analysis)
+
+    target_link_libraries(Luau.Ast.CLI PRIVATE Luau.Ast Luau.Analysis)
 endif()
 
 if(LUAU_BUILD_TESTS)
@@ -113,7 +129,7 @@ if(LUAU_BUILD_TESTS)
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)
-    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.VM)
+    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.VM isocline)
     if(UNIX)
         find_library(LIBPTHREAD pthread)
         if (LIBPTHREAD)
