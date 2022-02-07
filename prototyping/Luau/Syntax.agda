@@ -32,3 +32,4 @@ data Expr where
   nil : Expr
   var : Var → Expr
   _$_ : Expr → Expr → Expr
+  function⟨_⟩_end : Var → Block → Expr
