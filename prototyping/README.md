@@ -16,10 +16,10 @@ Install dependencies:
 
 Then compile
 ```
-  agda --compile Main.agda
+  agda --compile PrettyPrinter.agda
 ```
 
 and run!
 ```
-  luau-ast Examples/SmokeTest.lua | ./Main
+  luau-ast Examples/SmokeTest.lua | ./PrettyPrinter
 ```
