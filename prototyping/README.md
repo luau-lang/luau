@@ -21,5 +21,5 @@ Then compile
 
 and run!
 ```
-  echo '[{"AstStatReturn":{"AstExprConstantNil": {}}}]' | ./Main
+  luau-ast Examples/SmokeTest.lua | ./Main
 ```
