@@ -7,6 +7,7 @@ open import Agda.Builtin.String using (String)
 open import FFI.Data.HaskellString using (HaskellString; pack ; unpack)
 
 infixl 1 _>>=_
+infixl 1 _>>_
 
 postulate
   return : ∀ {a} {A : Set a} → A → IO A
@@ -28,3 +29,6 @@ getContents = fmap pack getHContents
 
 putStrLn : String → IO ⊤
 putStrLn txt = putHStrLn (unpack txt)
+
+_>>_ : ∀ {a} {A : Set a} → IO ⊤ → IO A → IO A
+a >> b = a >>= (λ _ → b )
