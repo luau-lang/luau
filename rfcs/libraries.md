@@ -108,7 +108,10 @@ For compatability across platforms, we will automatically map `/` onto `\` on Wi
 
 #### Backwards Compatibility
 
-Possibly not. TBD
+Luau libraries are not compatible with existing Lua libraries. This is because Lua favors the `.` based require syntax instead.
+
+- Libraries are fully compatible with the Roblox engine as string-syntax is unsupported.
+- Compatibility with existing Luau is TBD.
 
 ### Defining a Library
 
