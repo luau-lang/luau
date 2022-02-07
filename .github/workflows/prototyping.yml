@@ -12,7 +12,7 @@ on:
       - 'prototyping/**'
 
 jobs:
-  unix:
+  linux:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
@@ -25,6 +25,9 @@ jobs:
     - name: check examples
       working-directory: prototyping
       run: agda Examples.agda
+    - name: cabal update
+      working-directory: prototyping
+      run: cabal update
     - name: cabal install
       working-directory: prototyping
       run: cabal install --lib aeson scientific vector
