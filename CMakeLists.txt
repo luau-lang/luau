@@ -5,13 +5,20 @@ if(EXT_PLATFORM_STRING)
 endif()
 
 cmake_minimum_required(VERSION 3.0)
-project(Luau LANGUAGES CXX C)
 
 option(LUAU_BUILD_CLI "Build CLI" ON)
 option(LUAU_BUILD_TESTS "Build tests" ON)
 option(LUAU_BUILD_WEB "Build Web module" OFF)
 option(LUAU_WERROR "Warnings as errors" OFF)
+option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 
+if(LUAU_STATIC_CRT)
+    cmake_minimum_required(VERSION 3.15)
+    cmake_policy(SET CMP0091 NEW)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+project(Luau LANGUAGES CXX C)
 add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
 add_library(Luau.Analysis STATIC)
