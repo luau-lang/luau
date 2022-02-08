@@ -1,5 +1,7 @@
 # Prototyping Luau
 
+![prototyping workflow](https://github.com/Roblox/luau/actions/workflows/prototyping.yml/badge.svg)
+
 An experimental prototyping system for the Luau type system. This is
 intended to allow core language features to be tested quickly, without
 having to interact with all the features of production Lua.
