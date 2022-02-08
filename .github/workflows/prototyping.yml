@@ -23,11 +23,13 @@ jobs:
     - name: cabal update
       working-directory: prototyping
       run: cabal update
-    - name: cabal install dependencies
+    - name: cabal install
       working-directory: prototyping
-      run: cabal install --lib aeson scientific vector
-    - name: cabal install agda
-      run: cabal install Agda
+      run: |
+        cabal install --lib aeson
+        cabal install --lib scientific
+        cabal install --lib vector
+        cabal install Agda
     - name: check examples
       working-directory: prototyping
       run: ~/.cabal/bin/agda Examples.agda
