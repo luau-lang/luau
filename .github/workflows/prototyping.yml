@@ -23,7 +23,10 @@ jobs:
     - name: cabal update
       working-directory: prototyping
       run: cabal update
-    - name: install agda
+    - name: cabal install dependencies
+      working-directory: prototyping
+      run: cabal install --lib aeson scientific vector
+    - name: cabal install agda
       run: cabal install Agda
     - name: check examples
       working-directory: prototyping
@@ -32,9 +35,6 @@ jobs:
       run: cmake .
     - name: cmake build luau-ast
       run: cmake --build . --target Luau.Ast.CLI
-    - name: cabal install
-      working-directory: prototyping
-      run: cabal install --lib aeson scientific vector
     - name: build PrettyPrinter
       working-directory: prototyping
       run: ~/.cabal/bin/agda --compile PrettyPrinter.agda
