@@ -23,9 +23,7 @@ jobs:
     - uses: actions/checkout@v1
     - uses: actions/cache@v2
       with:
-        path: |
-          ~/.cabal/store
-          build
+        path: ~/.cabal/store
         key: prototyping-${{ runner.os }}-${{ matrix.agda }}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
