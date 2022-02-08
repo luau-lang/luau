@@ -26,9 +26,9 @@ jobs:
     - name: cabal install
       working-directory: prototyping
       run: |
-        cabal install --lib aeson
         cabal install --lib scientific
         cabal install --lib vector
+        cabal install --lib aeson
         cabal install Agda
     - name: check examples
       working-directory: prototyping
