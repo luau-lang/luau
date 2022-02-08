@@ -17,7 +17,7 @@ ex2 : blockToString(return nil ∙) ≡
 ex2 = refl
 
 ex3 : blockToString(function "f" ⟨ "x" ⟩ return x ∙ end ∙ return f ∙) ≡
-  "function f(x)\n" ++
+  "local function f(x)\n" ++
   "  return x\n" ++
   "end\n" ++
   "return f"
