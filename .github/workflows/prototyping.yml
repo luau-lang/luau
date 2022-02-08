@@ -26,11 +26,9 @@ jobs:
     - name: cabal install
       working-directory: prototyping
       run: |
-        ghc-pkg init package.db
         cabal install --lib scientific --package-env .
         cabal install --lib vector --package-env .
         cabal install --lib aeson --package-env .
-        ghc-pkg list
         cabal install Agda
     - name: check examples
       working-directory: prototyping
@@ -44,7 +42,7 @@ jobs:
       run: cmake --build . --target Luau.Ast.CLI
     - name: run smoketest
       working-directory: prototyping
-      run: ../lua-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
+      run: ./lua-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
     - name: diff smoketest
       working-directory: prototyping
       run: diff Examples/SmokeTest.lua SmokeTestOutput.lua
