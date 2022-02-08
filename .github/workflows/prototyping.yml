@@ -20,7 +20,7 @@ jobs:
         aesonVersion: [2.0.3.0]
         scientificVersion: [0.3.7.0]
         vectorVersion: [0.12.3.1]
-        agdaVersion: [2.5.4, 2.6.0, 2.6.1, 2.6.2, 2.6.2.1]
+        agdaVersion: [2.5.4, 2.6.0, 2.6.1, .6.2.1]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
