@@ -16,24 +16,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
+    - name: install cabal
+      run: sudo apt-get install -y cabal-install
+    - name: cabal update
+      working-directory: prototyping
+      run: cabal update
     - name: install agda
-      run: sudo apt-get install -y agda
+      run: cabal install Agda
+    - name: check examples
+      working-directory: prototyping
+      run: ~/.cabal/bin/agda Examples.agda
     - name: cmake configure
       run: cmake .
     - name: cmake build luau-ast
       run: cmake --build . --target Luau.Ast.CLI
-    - name: check examples
-      working-directory: prototyping
-      run: agda Examples.agda
-    - name: cabal update
-      working-directory: prototyping
-      run: cabal update
     - name: cabal install
       working-directory: prototyping
       run: cabal install --lib aeson scientific vector
     - name: build PrettyPrinter
       working-directory: prototyping
-      run: agda --compile PrettyPrinter.agda
+      run: ~/.cabal/bin/agda --compile PrettyPrinter.agda
     - name: run smoketest
       working-directory: prototyping
       run: ../lua-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
