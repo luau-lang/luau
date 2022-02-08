@@ -17,10 +17,7 @@ jobs:
   linux:
     strategy:
       matrix:
-        aesonVersion: [2.0.3.0]
-        scientificVersion: [0.3.7.0]
-        vectorVersion: [0.12.3.1]
-        agdaVersion: [2.6.1.3, 2.6.2.1]
+        agda: [2.6.1.3, 2.6.2.1]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
@@ -29,7 +26,7 @@ jobs:
         path: |
           ~/.cabal/store
           build
-        key: ${{ runner.os }}-${{ matrix.aesonVersion }}-${{ matrix.scientificVersion }}-${{ matrix.vectorVersion }}-${{ matrix.agdaVersion }}
+        key: prototyping-${{ runner.os }}-${{ matrix.agda }}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
     - name: cabal update
@@ -38,10 +35,10 @@ jobs:
     - name: cabal install
       working-directory: prototyping
       run: |
-        cabal install --lib scientific-${{ matrix.scientificVersion }}  --package-env .
-        cabal install --lib vector-${{ matrix.vectorVersion }} --package-env .
-        cabal install --lib aeson-${{ matrix.aesonVersion }} --package-env .
-        cabal install Agda-${{ matrix.agdaVersion }}
+        cabal install Agda-${{ matrix.agda }}
+        cabal install --lib scientific --package-env .
+        cabal install --lib vector --package-env .
+        cabal install --lib aeson --package-env .
     - name: check examples
       working-directory: prototyping
       run: ~/.cabal/bin/agda Examples.agda
