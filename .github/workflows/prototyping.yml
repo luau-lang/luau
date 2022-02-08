@@ -33,13 +33,13 @@ jobs:
     - name: check examples
       working-directory: prototyping
       run: ~/.cabal/bin/agda Examples.agda
+    - name: build PrettyPrinter
+      working-directory: prototyping
+      run: ~/.cabal/bin/agda --compile --ghc-flag=-v PrettyPrinter.agda
     - name: cmake configure
       run: cmake .
     - name: cmake build luau-ast
       run: cmake --build . --target Luau.Ast.CLI
-    - name: build PrettyPrinter
-      working-directory: prototyping
-      run: ~/.cabal/bin/agda --compile PrettyPrinter.agda
     - name: run smoketest
       working-directory: prototyping
       run: ../lua-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua

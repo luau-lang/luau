@@ -1,6 +1,5 @@
 module FFI.Data.Scientific where
 
-
 {-# FOREIGN GHC import qualified Data.Scientific #-}
 
 postulate Scientific : Set
