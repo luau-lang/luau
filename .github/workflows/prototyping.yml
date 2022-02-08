@@ -15,28 +15,31 @@ on:
 
 jobs:
   linux:
+    strategy:
+      matrix:
+        aesonVersion: [2.0.3]
+        scientificVersion: [0.3.7]
+        vectorVersion: [0.12.3]
+        agdaVersion: [2.6.2]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
+    - uses: actions/cache@v2
+      with:
+        path: ~/.cabal/store
+        key: ${{ runner.os }}-${{ matrix.aesonVersion }}-${{ matrix.scientificVersion }}-${{ matrix.vectorVersion }}-${{ matrix.agdaVersion }}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
     - name: cabal update
       working-directory: prototyping
-      run: |
-        cabal update
-        cabal list --simple-output aeson > aeson.txt
-    - uses: actions/cache@v2
-      with:
-        path: ~/.cabal/store
-        key: ${{ runner.os }}-${{ hashFiles('prototyping/aeson.txt') }}
-        restore-keys: ${{ runner.os }}-
+      run: cabal update
     - name: cabal install
       working-directory: prototyping
       run: |
-        cabal install --lib scientific --package-env .
-        cabal install --lib vector --package-env .
-        cabal install --lib aeson --package-env .
-        cabal install Agda
+        cabal install --lib scientific-${{ matrix.scientificVersion }}  --package-env .
+        cabal install --lib vector-${{ matrix.vectorVersion }} --package-env .
+        cabal install --lib aeson-${{ matrix.aesonVersion }} --package-env .
+        cabal install Agda-${{ matrix.agdaVersion }}
     - name: check examples
       working-directory: prototyping
       run: ~/.cabal/bin/agda Examples.agda
