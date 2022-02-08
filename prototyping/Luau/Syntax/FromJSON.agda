@@ -14,7 +14,7 @@ open import FFI.Data.Vector using (head; tail; null; empty)
 args = fromString "args"
 body = fromString "body"
 func = fromString "func"
-local = fromString "local"
+lokal = fromString "local"
 list = fromString "list"
 name = fromString "name"
 type = fromString "type"
@@ -62,7 +62,7 @@ exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just v
 exprFromObject obj | just (string "AstExprFunction") | just _ | just _ = Left "AstExprFunction args not an array"
 exprFromObject obj | just (string "AstExprFunction") | nothing | _ = Left "AstExprFunction missing args"
 exprFromObject obj | just (string "AstExprFunction") | _ | nothing = Left "AstExprFunction missing body"
-exprFromObject obj | just (string "AstExprLocal") with lookup local obj
+exprFromObject obj | just (string "AstExprLocal") with lookup lokal obj
 exprFromObject obj | just (string "AstExprLocal") | just (string x) = Right (var x)
 exprFromObject obj | just (string "AstExprLocal") | just (_) = Left "AstExprLocal local not a string"
 exprFromObject obj | just (string "AstExprLocal") | nothing = Left "AstExprLocal missing local"
