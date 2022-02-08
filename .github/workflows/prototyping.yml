@@ -22,7 +22,14 @@ jobs:
       run: sudo apt-get install -y cabal-install
     - name: cabal update
       working-directory: prototyping
-      run: cabal update
+      run: |
+        cabal update
+        cabal list --simple-output aeson > aeson.txt
+    - uses: actions/cache@v2
+      with:
+        path: ~/.cabal/store
+        key: ${{ runner.os }}-${{ hashFiles('prototyping/aeson.txt') }}
+        restore-keys: ${{ runner.os }}-
     - name: cabal install
       working-directory: prototyping
       run: |
