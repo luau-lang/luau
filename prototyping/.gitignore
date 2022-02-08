@@ -2,3 +2,5 @@
 *.agdai
 Main
 MAlonzo
+PrettyPrinter
+.ghc.*
