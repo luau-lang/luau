@@ -42,7 +42,7 @@ jobs:
       run: cmake --build . --target Luau.Ast.CLI
     - name: run smoketest
       working-directory: prototyping
-      run: ./lua-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
+      run: ../luau-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
     - name: diff smoketest
       working-directory: prototyping
       run: diff Examples/SmokeTest.lua SmokeTestOutput.lua

@@ -15,12 +15,12 @@ exprToString′ lb (var x) =
 exprToString′ lb (M $ N) =
   (exprToString′ lb M) ++ "(" ++ (exprToString′ lb N) ++ ")"
 exprToString′ lb (function⟨ x ⟩ B end) =
-  "function (" ++ x ++ ")" ++ lb ++
+  "function(" ++ x ++ ")" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 
 statToString′ lb (function f ⟨ x ⟩ B end) =
-  "function " ++ f ++ "(" ++ x ++ ")" ++ lb ++
+  "local function " ++ f ++ "(" ++ x ++ ")" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 statToString′ lb (local x ← M) =
