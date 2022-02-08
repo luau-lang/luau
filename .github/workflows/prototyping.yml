@@ -17,10 +17,10 @@ jobs:
   linux:
     strategy:
       matrix:
-        aesonVersion: [2.0.3]
-        scientificVersion: [0.3.7]
-        vectorVersion: [0.12.3]
-        agdaVersion: [2.6.2]
+        aesonVersion: [2.0.3.0]
+        scientificVersion: [0.3.7.0]
+        vectorVersion: [0.12.3.1]
+        agdaVersion: [2.6.2.1]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
@@ -55,4 +55,4 @@ jobs:
       run: ../luau-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
     - name: diff smoketest
       working-directory: prototyping
-      run: diff Examples/SmokeTest.lua SmokeTestOutput.lua
+      run: diff Examples/SmokeTest.lua Examples/SmokeTestOutput.lua
