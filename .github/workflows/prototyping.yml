@@ -27,17 +27,17 @@ jobs:
       working-directory: prototyping
       run: |
         ghc-pkg init package.db
-        cabal install --lib scientific --package-db package.db
-        cabal install --lib vector --package-db package.db
-        cabal install --lib aeson --package-db package.db
-        ghc-pkg list --package-db package.db
+        cabal install --lib scientific --package-env .
+        cabal install --lib vector --package-env .
+        cabal install --lib aeson --package-env .
+        ghc-pkg list
         cabal install Agda
     - name: check examples
       working-directory: prototyping
       run: ~/.cabal/bin/agda Examples.agda
     - name: build PrettyPrinter
       working-directory: prototyping
-      run: ~/.cabal/bin/agda --compile --ghc-flag=-v --ghc-flag=-package-db --ghc-flag=package.db PrettyPrinter.agda
+      run: ~/.cabal/bin/agda --compile --ghc-flag=-v PrettyPrinter.agda
     - name: cmake configure
       run: cmake .
     - name: cmake build luau-ast
