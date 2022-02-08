@@ -20,13 +20,15 @@ jobs:
         aesonVersion: [2.0.3.0]
         scientificVersion: [0.3.7.0]
         vectorVersion: [0.12.3.1]
-        agdaVersion: [2.5.4.2, 2.6.0.1, 2.6.1.2, 2.6.2.1]
+        agdaVersion: [2.6.1.3, 2.6.2.1]
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
     - uses: actions/cache@v2
       with:
-        path: ~/.cabal/store
+        path: |
+          ~/.cabal/store
+          build
         key: ${{ runner.os }}-${{ matrix.aesonVersion }}-${{ matrix.scientificVersion }}-${{ matrix.vectorVersion }}-${{ matrix.agdaVersion }}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
