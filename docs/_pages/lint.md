@@ -311,3 +311,9 @@ In Lua, there is no first-class ternary operator but it can be emulated via `a a
 -- The and-or expression always evaluates to the second alternative because the first alternative is false; consider using if-then-else expression instead
 local x = flag and false or true
 ```
+
+The code above can be rewritten as follows to avoid the warning and the associated bug:
+
+```lua
+local x = if flag then false else true
+```
