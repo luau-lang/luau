@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Type; Block; Stat ; Expr; nil; _$_; var; function⟨_⟩_end; local_←_; function_⟨_⟩_end; return; _∙; _∙_)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function⟨_⟩_end; local_←_; function_⟨_⟩_end; return; done; _∙_)
 
 open import Agda.Builtin.List using (List; _∷_; [])
 
@@ -117,11 +117,9 @@ blockFromJSON (object obj) | nothing | _ = Left "AstStatBlock missing type"
 blockFromJSON _ = Left "AstBlock not an array or AstStatBlock object"
 
 blockFromArray arr with head arr
-blockFromArray arr | nothing = Left "Block should be a non-empty array"
+blockFromArray arr | nothing = Right done
 blockFromArray arr | just value with statFromJSON value
 blockFromArray arr | just value | Left err = Left err
-blockFromArray arr | just value | Right S with null (tail arr)
-blockFromArray arr | just value | Right S | true = Right (S ∙)
-blockFromArray arr | just value | Right S | false with blockFromArray(tail arr)
-blockFromArray arr | just value | Right S | false | Left err = Left (err)
-blockFromArray arr | just value | Right S | false | Right B  = Right (S ∙ B)
+blockFromArray arr | just value | Right S with blockFromArray(tail arr)
+blockFromArray arr | just value | Right S | Left err = Left (err)
+blockFromArray arr | just value | Right S | Right B  = Right (S ∙ B)
