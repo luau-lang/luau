@@ -1,19 +1,9 @@
 module Luau.Syntax where
 
-open import Agda.Builtin.String using (String)
+open import Luau.Var using (Var)
+open import Luau.Addr using (Addr)
 
 infixr 5 _∙_
-
-data Type : Set where
-  nil : Type
-  _⇒_ : Type → Type → Type
-  none : Type
-  any : Type
-  _∪_ : Type → Type → Type
-  _∩_ : Type → Type → Type
-
-Var : Set
-Var = String
 
 data Block : Set
 data Stat : Set
@@ -21,7 +11,7 @@ data Expr : Set
 
 data Block where
   _∙_ : Stat → Block → Block
-  _∙ : Stat → Block
+  done : Block
 
 data Stat where
   function_⟨_⟩_end : Var → Var → Block → Stat
@@ -31,5 +21,7 @@ data Stat where
 data Expr where
   nil : Expr
   var : Var → Expr
+  addr : Addr → Expr
   _$_ : Expr → Expr → Expr
   function⟨_⟩_end : Var → Block → Expr
+  block_end : Block → Expr
