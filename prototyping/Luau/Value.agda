@@ -7,10 +7,9 @@ open import Luau.Var using (Var)
 data Value : Set where
   nil : Value
   addr : Addr → Value
-  function⟨_⟩_end : Var → Block → Value
 
 val : Value → Expr
 val nil = nil
 val (addr a) = addr a
-val (function⟨ x ⟩ B end) = function⟨ x ⟩ B end
+
 
