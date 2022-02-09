@@ -4,7 +4,7 @@ open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; lookup; function_⟨_⟩_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function⟨_⟩_end; _$_; block_is_end; local_←_; _∙_; done; function_⟨_⟩_end; return)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function⟨_⟩_end; _$_; block_is_end; local_←_; _∙_; done; function_⟨_⟩_end; return; name)
 open import Luau.Value using (addr; val)
 
 data _⊢_⟶ᴮ_⊣_ : Heap → Block → Block → Heap → Set
@@ -61,8 +61,8 @@ data _⊢_⟶ᴮ_⊣_  where
 
   subst : ∀ {H x v B} →
   
-    -------------------------------------------------
-    H ⊢ (local x ← val v ∙ B) ⟶ᴮ (B [ v / x ]ᴮ) ⊣ H
+    ------------------------------------------------------
+    H ⊢ (local x ← val v ∙ B) ⟶ᴮ (B [ v / name x ]ᴮ) ⊣ H
 
   function : ∀ {H H′ a f x B C} →
   

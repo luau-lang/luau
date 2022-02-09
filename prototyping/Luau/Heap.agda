@@ -5,10 +5,10 @@ open import FFI.Data.Maybe using (Maybe; just)
 open import FFI.Data.Vector using (Vector; length; snoc; empty)
 open import Luau.Addr using (Addr)
 open import Luau.Var using (Var)
-open import Luau.Syntax using (Block; Expr; nil; addr; function⟨_⟩_end)
+open import Luau.Syntax using (Block; Expr; VarDec; nil; addr; function⟨_⟩_end)
 
 data HeapValue : Set where
-  function_⟨_⟩_end : Var → Var → Block → HeapValue
+  function_⟨_⟩_end : Var → VarDec → Block → HeapValue
 
 Heap = Vector HeapValue
 

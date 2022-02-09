@@ -1,9 +1,14 @@
 module Luau.Syntax.ToString where
 
-open import Luau.Syntax using (Block; Stat; Expr; nil; var; addr; _$_; function⟨_⟩_end; return; function_⟨_⟩_end ;local_←_; _∙_; done; block_is_end)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; nil; var; addr; _$_; function⟨_⟩_end; return; function_⟨_⟩_end ;local_←_; _∙_; done; block_is_end; typed_∈_; untyped)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
+open import Luau.Type.ToString using (typeToString)
 open import Luau.Var.ToString using (varToString)
+
+varDecToString : VarDec → String
+varDecToString (untyped x) = varToString x
+varDecToString (typed x ∈ T) =  varToString x ++ " : " ++ typeToString T
 
 exprToString′ : String → Expr → String
 statToString′ : String → Stat → String
@@ -18,7 +23,7 @@ exprToString′ lb (var x) =
 exprToString′ lb (M $ N) =
   (exprToString′ lb M) ++ "(" ++ (exprToString′ lb N) ++ ")"
 exprToString′ lb (function⟨ x ⟩ B end) =
-  "function(" ++ x ++ ")" ++ lb ++
+  "function(" ++ varDecToString x ++ ")" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 exprToString′ lb (block b is B end) =
@@ -27,11 +32,11 @@ exprToString′ lb (block b is B end) =
   "end)()"
 
 statToString′ lb (function f ⟨ x ⟩ B end) =
-  "local function " ++ f ++ "(" ++ x ++ ")" ++ lb ++
+  "local function " ++ f ++ "(" ++ varDecToString x ++ ")" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 statToString′ lb (local x ← M) =
-  "local " ++ x ++ " = " ++ (exprToString′ lb M)
+  "local " ++ varDecToString x ++ " = " ++ (exprToString′ lb M)
 statToString′ lb (return M) =
   "return " ++ (exprToString′ lb M)
 

@@ -3,7 +3,7 @@ module Properties.Step where
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; lookup; alloc; ok; function_⟨_⟩_end)
-open import Luau.Syntax using (Block; Expr; nil; var; addr; function⟨_⟩_end; block_is_end; _$_; local_←_; function_⟨_⟩_end; return; done; _∙_)
+open import Luau.Syntax using (Block; Expr; nil; var; addr; function⟨_⟩_end; block_is_end; _$_; local_←_; function_⟨_⟩_end; return; done; _∙_; name)
 open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst)
 open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
 open import Luau.Substitution using (_[_/_]ᴮ)
@@ -49,7 +49,7 @@ stepᴮ H (function f ⟨ x ⟩ C end ∙ B) with alloc H (function f ⟨ x ⟩ 
 stepᴮ H (function f ⟨ x ⟩ C end ∙ B) | ok a H′ p = step H′ (B [ addr a / f ]ᴮ) (function p)
 stepᴮ H (local x ← M ∙ B) with stepᴱ H M
 stepᴮ H (local x ← M ∙ B) | step H′ M′ D = step H′ (local x ← M′ ∙ B) (local D)
-stepᴮ H (local x ← _ ∙ B) | value V refl = step H (B [ V / x ]ᴮ) subst
+stepᴮ H (local x ← _ ∙ B) | value V refl = step H (B [ V / name x ]ᴮ) subst
 stepᴮ H (local x ← M ∙ B) | error E = error (local x E)
 stepᴮ H (return M ∙ B) with stepᴱ H M
 stepᴮ H (return M ∙ B) | step H′ M′ D = step H′ (return M′ ∙ B) (return D)
