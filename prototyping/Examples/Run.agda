@@ -14,5 +14,5 @@ import Agda.Builtin.Equality.Rewrite
 x = var "x"
 id = var "id"
 
-ex1 : (run emp (function "id" ⟨ "x" ⟩ return x ∙ done end ∙ return (id $ nil) ∙ done) ≡ return nil _)
+ex1 : (run (function "id" ⟨ "x" ⟩ return x ∙ done end ∙ return (id $ nil) ∙ done) ≡ return nil _)
 ex1 = refl
