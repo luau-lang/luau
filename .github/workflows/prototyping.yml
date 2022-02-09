@@ -7,10 +7,12 @@ on:
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
+      - 'Analysis/src/JsonEncoder.cpp'
   pull_request:
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
+      - 'Analysis/src/JsonEncoder.cpp'
 
 jobs:
   linux:
