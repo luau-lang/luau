@@ -2,7 +2,6 @@ module Luau.Addr where
 
 open import Agda.Builtin.Bool using (true; false)
 open import Agda.Builtin.Equality using (_≡_)
-open import Agda.Builtin.Int using (Int; primShowInteger; pos)
 open import Agda.Builtin.Nat using (Nat; _==_)
 open import Agda.Builtin.String using (String)
 open import Agda.Builtin.TrustMe using (primTrustMe)
@@ -10,9 +9,6 @@ open import Properties.Dec using (Dec; yes; no; ⊥)
 
 Addr : Set
 Addr = Nat
-
-addrToString : Addr → String
-addrToString a = primShowInteger (pos a)
 
 _≡ᴬ_ : (a b : Addr) → Dec (a ≡ b)
 a ≡ᴬ b with a == b

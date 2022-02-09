@@ -24,4 +24,4 @@ data Expr where
   addr : Addr → Expr
   _$_ : Expr → Expr → Expr
   function⟨_⟩_end : Var → Block → Expr
-  block_end : Block → Expr
+  block_is_end : Var → Block → Expr

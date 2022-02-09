@@ -8,5 +8,6 @@ local function comp(f)
     end
   end
 end
-local id2 = id(id)
+local id2 = comp (id)(id)
 local nil2 = id2(nil)
+return nil2(nil2)

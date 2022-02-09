@@ -9,9 +9,6 @@ open import Properties.Dec using (Dec; yes; no; ⊥)
 Var : Set
 Var = String
 
-varToString : Var → String
-varToString x = x
-
 _≡ⱽ_ : (a b : Var) → Dec (a ≡ b)
 a ≡ⱽ b with primStringEquality a b
 a ≡ⱽ b | false = no p where postulate p : (a ≡ b) → ⊥

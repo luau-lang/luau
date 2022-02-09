@@ -1,9 +1,9 @@
 module Luau.Syntax.ToString where
 
-open import Luau.Syntax using (Block; Stat; Expr; nil; var; addr; _$_; function⟨_⟩_end; return; function_⟨_⟩_end ;local_←_; _∙_; done; block_end)
+open import Luau.Syntax using (Block; Stat; Expr; nil; var; addr; _$_; function⟨_⟩_end; return; function_⟨_⟩_end ;local_←_; _∙_; done; block_is_end)
 open import FFI.Data.String using (String; _++_)
-open import Luau.Addr using (addrToString)
-open import Luau.Var using (varToString)
+open import Luau.Addr.ToString using (addrToString)
+open import Luau.Var.ToString using (varToString)
 
 exprToString′ : String → Expr → String
 statToString′ : String → Stat → String
@@ -21,8 +21,8 @@ exprToString′ lb (function⟨ x ⟩ B end) =
   "function(" ++ x ++ ")" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
-exprToString′ lb (block B end) =
-  "(function()" ++ lb ++
+exprToString′ lb (block b is B end) =
+  "(function " ++ b ++ "()" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end)()"
 

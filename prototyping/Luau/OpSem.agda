@@ -2,9 +2,9 @@ module Luau.OpSem where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just)
-open import Luau.Heap using (Heap; _≡_⊕_↦_; lookup; function⟨_⟩_end)
+open import Luau.Heap using (Heap; _≡_⊕_↦_; lookup; function_⟨_⟩_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function⟨_⟩_end; _$_; block_end; local_←_; _∙_; done; function_⟨_⟩_end; return)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function⟨_⟩_end; _$_; block_is_end; local_←_; _∙_; done; function_⟨_⟩_end; return)
 open import Luau.Value using (addr; val)
 
 data _⊢_⟶ᴮ_⊣_ : Heap → Block → Block → Heap → Set
@@ -19,7 +19,7 @@ data _⊢_⟶ᴱ_⊣_  where
 
   function : ∀ {H H′ a x B} →
 
-    H′ ≡ H ⊕ a ↦ (function⟨ x ⟩ B end) →
+    H′ ≡ H ⊕ a ↦ (function "anon" ⟨ x ⟩ B end) →
     -------------------------------------------
     H ⊢ (function⟨ x ⟩ B end) ⟶ᴱ (addr a) ⊣ H′
 
@@ -29,27 +29,27 @@ data _⊢_⟶ᴱ_⊣_  where
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  beta : ∀ {H M a x B} →
+  beta : ∀ {H M a f x B} →
   
-    (lookup H a) ≡ just(function⟨ x ⟩ B end) →
+    (lookup H a) ≡ just(function f ⟨ x ⟩ B end) →
     -----------------------------------------------------
-    H ⊢ (addr a $ M) ⟶ᴱ (block local x ← M ∙ B end) ⊣ H
+    H ⊢ (addr a $ M) ⟶ᴱ (block f is local x ← M ∙ B end) ⊣ H
 
-  block : ∀ {H H′ B B′} →
+  block : ∀ {H H′ B B′ b} →
  
     H ⊢ B ⟶ᴮ B′ ⊣ H′ →
-    ------------------------------------------
-    H ⊢ (block B end) ⟶ᴱ (block B′ end) ⊣ H′
+    ----------------------------------------------------
+    H ⊢ (block b is B end) ⟶ᴱ (block b is B′ end) ⊣ H′
 
-  return : ∀ {H V B} →
+  return : ∀ {H V B b} →
  
-    ---------------------------------------------------
-    H ⊢ (block return (val V) ∙ B end) ⟶ᴱ (val V) ⊣ H
+    --------------------------------------------------------
+    H ⊢ (block b is return (val V) ∙ B end) ⟶ᴱ (val V) ⊣ H
 
-  done : ∀ {H} →
+  done : ∀ {H b} →
  
     ---------------------------------
-    H ⊢ (block done end) ⟶ᴱ nil ⊣ H
+    H ⊢ (block b is done end) ⟶ᴱ nil ⊣ H
   
 data _⊢_⟶ᴮ_⊣_  where
 
@@ -66,7 +66,7 @@ data _⊢_⟶ᴮ_⊣_  where
 
   function : ∀ {H H′ a f x B C} →
   
-    H′ ≡ H ⊕ a ↦ (function⟨ x ⟩ C end) →
+    H′ ≡ H ⊕ a ↦ (function f ⟨ x ⟩ C end) →
     --------------------------------------------------------------
     H ⊢ (function f ⟨ x ⟩ C end ∙ B) ⟶ᴮ (B [ addr a / f ]ᴮ) ⊣ H′
 
@@ -75,4 +75,18 @@ data _⊢_⟶ᴮ_⊣_  where
     H ⊢ M ⟶ᴱ M′ ⊣ H′ →
     --------------------------------------------
     H ⊢ (return M ∙ B) ⟶ᴮ (return M′ ∙ B) ⊣ H′
+
+data _⊢_⟶*_⊣_ : Heap → Block → Block → Heap → Set where
+
+  refl : ∀ {H B} →
+
+    ----------------
+    H ⊢ B ⟶* B ⊣ H
+    
+  step : ∀ {H H′ H″ B B′ B″} →
+    H ⊢ B ⟶ᴮ B′ ⊣ H′ →
+    H′ ⊢ B′ ⟶* B″ ⊣ H″ →
+    ------------------
+    H ⊢ B ⟶* B″ ⊣ H″
+
 
