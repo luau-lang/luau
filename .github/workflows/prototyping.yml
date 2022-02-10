@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - 'master'
+      - 'prototyping-*'
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
