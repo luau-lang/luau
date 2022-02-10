@@ -19,11 +19,11 @@ data _≡_⊕_↦_ : Heap → Heap → Addr → HeapValue → Set where
     -----------------------------------
     (snoc H val) ≡ H ⊕ (length H) ↦ val
 
-lookup : Heap → Addr → Maybe HeapValue
-lookup = FFI.Data.Vector.lookup
+_[_] : Heap → Addr → Maybe HeapValue
+_[_] = FFI.Data.Vector.lookup
 
-emp : Heap
-emp = empty
+∅ : Heap
+∅ = empty
 
 data AllocResult (H : Heap) (V : HeapValue) : Set where
   ok : ∀ a H′ → (H′ ≡ H ⊕ a ↦ V) → AllocResult H V

@@ -1,0 +1,15 @@
+module Luau.AddrCtxt where
+
+open import Luau.Type using (Type)
+open import Luau.Addr using (Addr)
+open import FFI.Data.Vector using (Vector; empty; lookup)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
+
+AddrCtxt : Set
+AddrCtxt = Vector Type
+
+∅ : AddrCtxt
+∅ = empty
+
+_[_] : AddrCtxt → Addr → Maybe Type
+_[_] = lookup

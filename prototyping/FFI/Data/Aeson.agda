@@ -19,12 +19,22 @@ postulate
   Key : Set
   fromString : String → Key
   toString : Key → String
+  empty : ∀ {A} → KeyMap A
+  singleton : ∀ {A} → Key → A → (KeyMap A)
+  insert : ∀ {A} → Key → A → (KeyMap A) → (KeyMap A)
+  delete : ∀ {A} → Key → (KeyMap A) → (KeyMap A)
+  unionWith : ∀ {A} → (A → A → A) → (KeyMap A) → (KeyMap A) → (KeyMap A)
   lookup : ∀ {A} → Key -> KeyMap A -> Maybe A
 {-# POLARITY KeyMap ++ #-}
 {-# COMPILE GHC KeyMap = type Data.Aeson.KeyMap.KeyMap #-}
 {-# COMPILE GHC Key = type Data.Aeson.Key.Key #-}
 {-# COMPILE GHC fromString = Data.Aeson.Key.fromText #-}
 {-# COMPILE GHC toString = Data.Aeson.Key.toText #-}
+{-# COMPILE GHC empty = \_ -> Data.Aeson.KeyMap.empty #-}
+{-# COMPILE GHC singleton = \_ -> Data.Aeson.KeyMap.singleton #-}
+{-# COMPILE GHC insert = \_ -> Data.Aeson.KeyMap.insert #-}
+{-# COMPILE GHC delete = \_ -> Data.Aeson.KeyMap.delete #-}
+{-# COMPILE GHC unionWith = \_ -> Data.Aeson.KeyMap.unionWith #-}
 {-# COMPILE GHC lookup = \_ -> Data.Aeson.KeyMap.lookup #-}
 
 data Value : Set where

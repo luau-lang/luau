@@ -2,49 +2,98 @@ module Luau.TypeCheck where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function⟨_⟩_end; _$_; block_is_end; local_←_; _∙_; done; function_⟨_⟩_end; return; name)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; var_∈_; function⟨_⟩_end; _$_; block_is_end; local_←_; _∙_; done; function_⟨_⟩_end; return; name)
 open import Luau.Var using (Var)
+open import Luau.Addr using (Addr)
+open import Luau.Heap using (Heap; HeapValue; function_⟨_⟩_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.Value using (addr; val)
-open import Luau.Type using (Type; nil; _⇒_; src; tgt)
-open import FFI.Data.Aeson using (KeyMap; Key)
+open import Luau.Type using (Type; nil; any; _⇒_; src; tgt)
+open import Luau.AddrCtxt using (AddrCtxt) renaming (_[_] to _[_]ᴬ)
+open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
+open import FFI.Data.Vector using (Vector)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 
-Context : Set
-Context = KeyMap Type
+data _▷_⊢ᴮ_∋_∈_⊣_ : AddrCtxt → VarCtxt → Type → Block → Type → VarCtxt → Set
+data _▷_⊢ᴱ_∋_∈_⊣_ : AddrCtxt → VarCtxt → Type → Expr → Type → VarCtxt → Set
 
-∅ : Context
-∅ = {!!}
+data _▷_⊢ᴮ_∋_∈_⊣_ where
 
-_⋒_ : Context → Context → Context
-_⋒_ = {!!}
-
-lookup : Context → Var → Maybe Type
-lookup = {!!}
-
-_↦_ : Var → Type → Context
-_↦_ = {!!}
-
-data _⊢ᴮ_∋_∈_⊣_ : Context → Type → Block → Type → Context → Set
-data _⊢ᴱ_∋_∈_⊣_ : Context → Type → Expr → Type → Context → Set
-
-data _⊢ᴮ_∋_∈_⊣_ where
-
-data _⊢ᴱ_∋_∈_⊣_  where
-
-  nil : ∀ {S Γ} →
+  done : ∀ {Σ S Γ} →
 
     ----------------------
-    Γ ⊢ᴱ S ∋ nil ∈ nil ⊣ ∅
+    Σ ▷ Γ ⊢ᴮ S ∋ done ∈ nil ⊣ ∅
 
-  var : ∀ x {S T Γ} →
+  return : ∀ {Σ M B S T Γ Δ} →
 
-    just T ≡ lookup Γ x →
+    Σ ▷ Γ ⊢ᴱ S ∋ M ∈ T ⊣ Δ →
+    ---------------------------------
+    Σ ▷ Γ ⊢ᴮ S ∋ return M ∙ B ∈ T ⊣ Δ
+
+  local : ∀ {Σ x M B S T U V Γ Δ₁ Δ₂} →
+
+    Σ ▷ Γ ⊢ᴱ T ∋ M ∈ U ⊣ Δ₁ →
+    Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ S ∋ B ∈ V ⊣ Δ₂ →
+    ----------------------------------------------------------
+    Σ ▷ Γ ⊢ᴮ S ∋ local var x ∈ T ← M ∙ B ∈ V ⊣ (Δ₁ ⋒ (Δ₂ ⊝ x))
+
+  function : ∀ {Σ f x B C S T U V Γ Δ₁ Δ₂} →
+
+    Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ any ∋ C ∈ U ⊣ Δ₁ →
+    Σ ▷ (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ S ∋ B ∈ V ⊣ Δ₂ →
+    ---------------------------------------------------------------------------
+    Σ ▷ Γ ⊢ᴮ S ∋ function f ⟨ var x ∈ T ⟩ C end ∙ B ∈ V ⊣ ((Δ₁ ⊝ x) ⋒ (Δ₂ ⊝ f))
+
+data _▷_⊢ᴱ_∋_∈_⊣_  where
+
+  nil : ∀ {Σ S Γ} →
+
+    ----------------------
+    Σ ▷ Γ ⊢ᴱ S ∋ nil ∈ nil ⊣ ∅
+
+  var : ∀ x {Σ S T Γ} →
+
+    just T ≡ Γ [ x ]ⱽ →
     ----------------------------
-    Γ ⊢ᴱ S ∋ var x ∈ T ⊣ (x ↦ T)
+    Σ ▷ Γ ⊢ᴱ S ∋ var x ∈ T ⊣ (x ↦ S)
 
-  app : ∀ {M N S T U Γ Δ₁ Δ₂} →
+  addr : ∀ a {Σ S T Γ} →
 
-    Γ ⊢ᴱ (U ⇒ S) ∋ M ∈ U ⊣ Δ₂ →
-    Γ ⊢ᴱ (src S) ∋ N ∈ U ⊣ Δ₂ →
+    just T ≡ Σ [ a ]ᴬ →
+    ----------------------------
+    Σ ▷ Γ ⊢ᴱ S ∋ addr a ∈ T ⊣ ∅
+
+  app : ∀ {Σ M N S T U Γ Δ₁ Δ₂} →
+
+    Σ ▷ Γ ⊢ᴱ (U ⇒ S) ∋ M ∈ T ⊣ Δ₂ →
+    Σ ▷ Γ ⊢ᴱ (src T) ∋ N ∈ U ⊣ Δ₂ →
     --------------------------------------
-    Γ ⊢ᴱ S ∋ (M $ N) ∈ (tgt T) ⊣ (Δ₁ ⋒ Δ₂)
+    Σ ▷ Γ ⊢ᴱ S ∋ (M $ N) ∈ (tgt T) ⊣ (Δ₁ ⋒ Δ₂)
 
+  function : ∀ {Σ x B S T U Γ Δ} →
+
+    Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ any ∋ B ∈ U ⊣ Δ →
+    --------------------------------------------------------------
+    Σ ▷ Γ ⊢ᴱ S ∋ (function⟨ var x ∈ T ⟩ B end) ∈ (T ⇒ U) ⊣ (Δ ⊝ x)
+
+  block : ∀ {Σ b B S T Γ Δ} →
+
+    Σ ▷ Γ ⊢ᴮ S ∋ B ∈ T ⊣ Δ →
+    ----------------------------------------------------
+    Σ ▷ Γ ⊢ᴱ S ∋ (block b is B end) ∈ T ⊣ Δ
+
+data _▷_∈_ (Σ : AddrCtxt) : (Maybe HeapValue) → (Maybe Type) → Set where
+
+  nothing :
+
+    ---------------------
+    Σ ▷ nothing ∈ nothing
+
+  function : ∀ {f x B T} →
+
+    Σ ▷ ∅ ⊢ᴱ any ∋ (function⟨ x ⟩ B end) ∈ T ⊣ ∅ →
+    ------------------------------------------------
+    Σ ▷ just (function f ⟨ x ⟩ B end) ∈ just T
+
+data _▷_✓ (Σ : AddrCtxt) (H : Heap) : Set where
+
+  defn : (∀ a → Σ ▷ (H [ a ]ᴴ) ∈ (Σ [ a ]ᴬ)) → (Σ ▷ H ✓)

@@ -1,7 +1,7 @@
 module Luau.Run where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
-open import Luau.Heap using (Heap; emp)
+open import Luau.Heap using (Heap; ∅)
 open import Luau.Syntax using (Block; return; _∙_; done)
 open import Luau.OpSem using (_⊢_⟶*_⊣_; refl; step)
 open import Luau.Value using (val)
@@ -24,5 +24,5 @@ run′ H _ | return V refl = return V refl
 run′ H _ | done refl = done refl
 run′ H B | error E = error E refl
 
-run : ∀ B → RunResult emp B
-run = run′ emp
+run : ∀ B → RunResult ∅ B
+run = run′ ∅
