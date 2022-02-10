@@ -2,13 +2,10 @@ module Examples.Syntax where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.String using (_++_)
-open import Luau.Syntax using (var; _$_; return; nil; function_⟨_⟩_end; done; _∙_; untyped)
+open import Luau.Syntax using (var; _$_; return; nil; function_⟨_⟩_end; done; _∙_)
 open import Luau.Syntax.ToString using (exprToString; blockToString)
 
-f = var "f"
-x = var "x"
-
-ex1 : exprToString(f $ x) ≡
+ex1 : exprToString(var "f" $ var "x") ≡
   "f(x)"
 ex1 = refl
 
@@ -16,7 +13,7 @@ ex2 : blockToString(return nil ∙ done) ≡
   "return nil"
 ex2 = refl
 
-ex3 : blockToString(function "f" ⟨ untyped "x" ⟩ return x ∙ done end ∙ return f ∙ done) ≡
+ex3 : blockToString(function "f" ⟨ var "x" ⟩ return (var "x") ∙ done end ∙ return (var "f") ∙ done) ≡
   "local function f(x)\n" ++
   "  return x\n" ++
   "end\n" ++

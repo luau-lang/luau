@@ -7,12 +7,12 @@ open import Luau.Type using (Type)
 infixr 5 _∙_
 
 data VarDec : Set where
-  untyped : Var → VarDec
-  typed_∈_ : Var → Type → VarDec
+  var : Var → VarDec
+  var_∈_ : Var → Type → VarDec
 
 name : VarDec → Var
-name (untyped x) = x
-name (typed x ∈ T) = x
+name (var x) = x
+name (var x ∈ T) = x
 
 data Block : Set
 data Stat : Set
