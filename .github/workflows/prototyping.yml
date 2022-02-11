@@ -1,0 +1,61 @@
+name: prototyping
+
+on:
+  push:
+    branches:
+      - 'master'
+    paths:
+      - '.github/workflows/**'
+      - 'prototyping/**'
+      - 'Analysis/src/JsonEncoder.cpp'
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'prototyping/**'
+      - 'Analysis/src/JsonEncoder.cpp'
+
+jobs:
+  linux:
+    strategy:
+      matrix:
+        agda: [2.6.2.1]
+    name: prototyping
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - uses: actions/cache@v2
+      with:
+        path: ~/.cabal/store
+        key: prototyping-${{ runner.os }}-${{ matrix.agda }}
+    - name: install cabal
+      run: sudo apt-get install -y cabal-install
+    - name: cabal update
+      working-directory: prototyping
+      run: cabal update
+    - name: cabal install
+      working-directory: prototyping
+      run: |
+        cabal install Agda-${{ matrix.agda }}
+        cabal install --lib scientific --package-env .
+        cabal install --lib vector --package-env .
+        cabal install --lib aeson --package-env .
+    - name: check examples
+      working-directory: prototyping
+      run: ~/.cabal/bin/agda Examples.agda
+    - name: build executables
+      working-directory: prototyping
+      run: |
+        ~/.cabal/bin/agda --compile PrettyPrinter.agda
+        ~/.cabal/bin/agda --compile Interpreter.agda
+    - name: cmake configure
+      run: cmake .
+    - name: cmake build luau-ast
+      run: cmake --build . --target Luau.Ast.CLI
+    - name: run smoketest
+      working-directory: prototyping
+      run: |
+        ../luau-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
+        ../luau-ast Examples/SmokeTest.lua | ./Interpreter
+    - name: diff smoketest
+      working-directory: prototyping
+      run: diff Examples/SmokeTest.lua Examples/SmokeTestOutput.lua
