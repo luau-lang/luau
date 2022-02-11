@@ -19,3 +19,9 @@ ex4 = refl
 
 ex5 : typeToString(nil ⇒ ((nil ⇒ nil) ∪ nil)) ≡ "(nil) -> ((nil) -> nil)?"
 ex5 = refl
+
+ex6 : typeToString((nil ⇒ nil) ∪ (nil ⇒ (nil ⇒ nil))) ≡ "((nil) -> nil | (nil) -> (nil) -> nil)"
+ex6 = refl
+
+ex7 : typeToString((nil ⇒ nil) ∪ ((nil ⇒ (nil ⇒ nil)) ∪ nil)) ≡ "((nil) -> nil | (nil) -> (nil) -> nil)?"
+ex7 = refl

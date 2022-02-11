@@ -34,8 +34,10 @@ optional T = (T ∪ nil)
 normalizeOptional : Type → Type
 normalizeOptional (S ∪ T) with normalizeOptional S | normalizeOptional T
 normalizeOptional (S ∪ T) | (S′ ∪ nil) | (T′ ∪ nil) = (S′ ∪ T′) ∪ nil
-normalizeOptional (S ∪ T) | S′ | nil = optional S′
-normalizeOptional (S ∪ T) | nil | T′ = optional T′
-normalizeOptional (S ∪ T) | S′ | T′ = S′ ∪ T′
+normalizeOptional (S ∪ T) | S′         | (T′ ∪ nil) = (S′ ∪ T′) ∪ nil
+normalizeOptional (S ∪ T) | (S′ ∪ nil) | T′         = (S′ ∪ T′) ∪ nil
+normalizeOptional (S ∪ T) | S′         | nil        = optional S′
+normalizeOptional (S ∪ T) | nil        | T′         = optional T′
+normalizeOptional (S ∪ T) | S′         | T′         = S′ ∪ T′
 normalizeOptional T = T
 
