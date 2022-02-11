@@ -5164,4 +5164,151 @@ function x:Destroy(): () end
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types_2")
+{
+    ScopedFastFlag immutableTypes{"LuauImmutableTypes", true};
+
+    fileResolver.source["game/A"] = R"(
+export type Type = { x: { a: number } }
+return {}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+local types = require(game.A)
+type Type = types.Type
+local x: Type = { x = { a = 2 } }
+type Rename = typeof(x.x)
+    )";
+
+    CheckResult result = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types_3")
+{
+    ScopedFastFlag immutableTypes{"LuauImmutableTypes", true};
+
+    fileResolver.source["game/A"] = R"(
+local y = setmetatable({}, {})
+export type Type = { x: typeof(y) }
+return { x = y }
+    )";
+
+    fileResolver.source["game/B"] = R"(
+local types = require(game.A)
+type Type = types.Type
+local x: Type = types
+type Rename = typeof(x.x)
+    )";
+
+    CheckResult result = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexing_on_string_singletons")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauRefactorTypeVarQuestions", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" then
+            local x = a:byte()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 22})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexing_on_union_of_string_singletons")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauRefactorTypeVarQuestions", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" or a == "bye" then
+            local x = a:byte()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 22})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauRefactorTypeVarQuestions", true},
+        {"LuauSingletonTypes", true},
+        {"LuauLengthOnCompositeType", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" then
+            local x = #a
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauRefactorTypeVarQuestions", true},
+        {"LuauSingletonTypes", true},
+        {"LuauLengthOnCompositeType", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" or a == "bye" then
+            local x = #a
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 23})));
+}
+
+/*
+ * When we add new properties to an unsealed table, we should do a level check and promote the property type to be at
+ * the level of the table.
+ */
+TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the_same_TypeLevel_of_that_table")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local T = {}
+
+        local function f(prop)
+            T[1] = {
+                prop = prop,
+            }
+        end
+
+        local function g()
+            local l = T[1].prop
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

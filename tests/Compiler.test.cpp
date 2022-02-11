@@ -605,8 +605,6 @@ RETURN R0 1
 
 TEST_CASE("TableLiteralsIndexConstant")
 {
-    ScopedFastFlag sff("LuauCompileTableIndexOpt", true);
-
     // validate that we use SETTTABLEKS for constant variable keys
     CHECK_EQ("\n" + compileFunction0(R"(
         local a, b = "key", "value"
@@ -2483,8 +2481,6 @@ return
 
 TEST_CASE("DebugLineInfoAssignment")
 {
-    ScopedFastFlag sff("LuauCompileTableIndexOpt", true);
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(

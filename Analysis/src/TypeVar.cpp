@@ -28,6 +28,7 @@ LUAU_FASTFLAGVARIABLE(LuauMetatableAreEqualRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTypeVarQuestions, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAG(LuauUnionTagMatchFix)
+LUAU_FASTFLAG(LuauDiscriminableUnions2)
 
 namespace Luau
 {
@@ -393,7 +394,8 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     if (seen.contains(ty))
         return true;
 
-    if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty))
+    bool isStr = FFlag::LuauDiscriminableUnions2 ? isString(ty) : isPrim(ty, PrimitiveTypeVar::String);
+    if (isStr || get<AnyTypeVar>(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty))
         return true;
 
     if (auto uty = get<UnionTypeVar>(ty))

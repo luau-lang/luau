@@ -273,4 +273,21 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
     state.tryUnify(&metatable, &variant);
 }
 
+TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauUseCommittingTxnLog", true},
+        {"LuauFollowWithCommittingTxnLogInAnyUnification", true},
+    };
+
+    TypePackVar free{FreeTypePack{TypeLevel{}}};
+    TypePackVar target{TypePack{}};
+
+    TypeVar func{FunctionTypeVar{&free, &free}};
+
+    state.tryUnify(&free, &target);
+    // Shouldn't assert or error.
+    state.tryUnify(&func, typeChecker.anyType);
+}
+
 TEST_SUITE_END();

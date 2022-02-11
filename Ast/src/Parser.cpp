@@ -1133,7 +1133,7 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
                 resultNames.push_back({});
 
             resultNames.push_back(AstArgumentName{AstName(lexer.current().name), lexer.current().location});
-            lexer.next();
+            nextLexeme();
 
             expectAndConsume(':');
         }

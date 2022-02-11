@@ -250,6 +250,10 @@ PendingTypePack* TxnLog::queue(TypePackId tp)
 
 PendingType* TxnLog::pending(TypeId ty) const
 {
+    // This function will technically work if `this` is nullptr, but this
+    // indicates a bug, so we explicitly assert.
+    LUAU_ASSERT(static_cast<const void*>(this) != nullptr);
+
     for (const TxnLog* current = this; current; current = current->parent)
     {
         if (auto it = current->typeVarChanges.find(ty); it != current->typeVarChanges.end())
@@ -261,6 +265,10 @@ PendingType* TxnLog::pending(TypeId ty) const
 
 PendingTypePack* TxnLog::pending(TypePackId tp) const
 {
+    // This function will technically work if `this` is nullptr, but this
+    // indicates a bug, so we explicitly assert.
+    LUAU_ASSERT(static_cast<const void*>(this) != nullptr);
+
     for (const TxnLog* current = this; current; current = current->parent)
     {
         if (auto it = current->typePackChanges.find(tp); it != current->typePackChanges.end())

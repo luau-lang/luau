@@ -1098,7 +1098,7 @@ static int luauF_select(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
             int i = int(nvalue(arg0));
 
             // i >= 1 && i <= n
-            if (unsigned(i - 1) <= unsigned(n))
+            if (unsigned(i - 1) < unsigned(n))
             {
                 setobj2s(L, res, L->base - n + (i - 1));
                 return 1;

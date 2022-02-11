@@ -43,6 +43,7 @@ static const char* kWarningNames[] = {
     "DeprecatedApi",
     "TableOperations",
     "DuplicateCondition",
+    "MisleadingAndOr",
 };
 // clang-format on
 
@@ -2040,17 +2041,27 @@ private:
             const Property* prop = lookupClassProp(cty, node->index.value);
 
             if (prop && prop->deprecated)
-            {
-                if (!prop->deprecatedSuggestion.empty())
-                    emitWarning(*context, LintWarning::Code_DeprecatedApi, node->location, "Member '%s.%s' is deprecated, use '%s' instead",
-                        cty->name.c_str(), node->index.value, prop->deprecatedSuggestion.c_str());
-                else
-                    emitWarning(*context, LintWarning::Code_DeprecatedApi, node->location, "Member '%s.%s' is deprecated", cty->name.c_str(),
-                        node->index.value);
-            }
+                report(node->location, *prop, cty->name.c_str(), node->index.value);
+        }
+        else if (const TableTypeVar* tty = get<TableTypeVar>(follow(*ty)))
+        {
+            auto prop = tty->props.find(node->index.value);
+
+            if (prop != tty->props.end() && prop->second.deprecated)
+                report(node->location, prop->second, tty->name ? tty->name->c_str() : nullptr, node->index.value);
         }
 
         return true;
+    }
+
+    void report(const Location& location, const Property& prop, const char* container, const char* field)
+    {
+        std::string suggestion = prop.deprecatedSuggestion.empty() ? "" : format(", use '%s' instead", prop.deprecatedSuggestion.c_str());
+
+        if (container)
+            emitWarning(*context, LintWarning::Code_DeprecatedApi, location, "Member '%s.%s' is deprecated%s", container, field, suggestion.c_str());
+        else
+            emitWarning(*context, LintWarning::Code_DeprecatedApi, location, "Member '%s' is deprecated%s", field, suggestion.c_str());
     }
 };
 
@@ -2257,6 +2268,39 @@ private:
         return false;
     }
 
+    bool visit(AstExprIfElse* expr) override
+    {
+        if (!expr->falseExpr->is<AstExprIfElse>())
+            return true;
+
+        // if..elseif chain detected, we need to unroll it
+        std::vector<AstExpr*> conditions;
+        conditions.reserve(2);
+
+        AstExprIfElse* head = expr;
+        while (head)
+        {
+            head->condition->visit(this);
+            head->trueExpr->visit(this);
+
+            conditions.push_back(head->condition);
+
+            if (head->falseExpr->is<AstExprIfElse>())
+            {
+                head = head->falseExpr->as<AstExprIfElse>();
+                continue;
+            }
+
+            head->falseExpr->visit(this);
+            break;
+        }
+
+        detectDuplicates(conditions);
+
+        // block recursive visits so that we only analyze each chain once
+        return false;
+    }
+
     bool visit(AstExprBinary* expr) override
     {
         if (expr->op != AstExprBinary::And && expr->op != AstExprBinary::Or)
@@ -2418,6 +2462,46 @@ private:
     }
 };
 
+class LintMisleadingAndOr : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintMisleadingAndOr pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (node->op != AstExprBinary::Or)
+            return true;
+
+        AstExprBinary* and_ = node->left->as<AstExprBinary>();
+        if (!and_ || and_->op != AstExprBinary::And)
+            return true;
+
+        const char* alt = nullptr;
+
+        if (and_->right->is<AstExprConstantNil>())
+            alt = "nil";
+        else if (AstExprConstantBool* c = and_->right->as<AstExprConstantBool>(); c && c->value == false)
+            alt = "false";
+
+        if (alt)
+            emitWarning(*context, LintWarning::Code_MisleadingAndOr, node->location,
+                "The and-or expression always evaluates to the second alternative because the first alternative is %s; consider using if-then-else "
+                "expression instead",
+                alt);
+
+        return true;
+    }
+};
+
 static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, const ScopePtr& env)
 {
     ScopePtr current = env;
@@ -2521,6 +2605,9 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
 
     if (context.warningEnabled(LintWarning::Code_DuplicateLocal))
         LintDuplicateLocal::process(context);
+
+    if (context.warningEnabled(LintWarning::Code_MisleadingAndOr))
+        LintMisleadingAndOr::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 

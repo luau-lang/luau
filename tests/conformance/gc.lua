@@ -180,6 +180,11 @@ x,y,z=nil
 collectgarbage()
 assert(next(a) == string.rep('$', 11))
 
+-- shrinking tables reduce their capacity; confirming the shrinking is difficult but we can at least test the surface level behavior
+a = {}; setmetatable(a, {__mode = 'ks'})
+for i=1,lim do a[{}] = i end
+collectgarbage()
+assert(next(a) == nil)
 
 -- testing userdata
 collectgarbage("stop")   -- stop collection
@@ -315,8 +320,6 @@ do
   end
 
   collectgarbage()
-
 end
-
 
 return('OK')
