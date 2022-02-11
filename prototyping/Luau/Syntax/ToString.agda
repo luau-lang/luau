@@ -1,13 +1,22 @@
 module Luau.Syntax.ToString where
 
-open import Luau.Syntax using (Block; Stat; Expr; nil; var; addr; _$_; function⟨_⟩_end; return; function_⟨_⟩_end ;local_←_; _∙_; done; block_is_end)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
+open import Luau.Type.ToString using (typeToString)
 open import Luau.Var.ToString using (varToString)
 
-exprToString′ : String → Expr → String
-statToString′ : String → Stat → String
-blockToString′ : String → Block → String
+varDecToString : ∀ {a} → VarDec a → String
+varDecToString (var x) = varToString x
+varDecToString (var x ∈ T) =  varToString x ++ " : " ++ typeToString T
+
+funDecToString : ∀ {a} → FunDec a → String
+funDecToString (f ⟨ x ⟩∈ T) = varToString f ++ "(" ++ varDecToString x ++ "): " ++ typeToString T
+funDecToString (f ⟨ x ⟩) = varToString f ++ "(" ++ varDecToString x ++ ")"
+
+exprToString′ : ∀ {a} → String → Expr a → String
+statToString′ : ∀ {a} → String → Stat a → String
+blockToString′ : ∀ {a} → String → Block a → String
 
 exprToString′ lb nil =
   "nil"
@@ -17,8 +26,8 @@ exprToString′ lb (var x) =
   varToString(x)
 exprToString′ lb (M $ N) =
   (exprToString′ lb M) ++ "(" ++ (exprToString′ lb N) ++ ")"
-exprToString′ lb (function⟨ x ⟩ B end) =
-  "function(" ++ x ++ ")" ++ lb ++
+exprToString′ lb (function F is B end) =
+  "function " ++ funDecToString F ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 exprToString′ lb (block b is B end) =
@@ -26,12 +35,12 @@ exprToString′ lb (block b is B end) =
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end)()"
 
-statToString′ lb (function f ⟨ x ⟩ B end) =
-  "local function " ++ f ++ "(" ++ x ++ ")" ++ lb ++
+statToString′ lb (function F is B end) =
+  "local function " ++ funDecToString F ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 statToString′ lb (local x ← M) =
-  "local " ++ x ++ " = " ++ (exprToString′ lb M)
+  "local " ++ varDecToString x ++ " = " ++ (exprToString′ lb M)
 statToString′ lb (return M) =
   "return " ++ (exprToString′ lb M)
 
@@ -39,11 +48,11 @@ blockToString′ lb (S ∙ done) = statToString′ lb S
 blockToString′ lb (S ∙ B) = statToString′ lb S ++ lb ++ blockToString′ lb B
 blockToString′ lb (done) = ""
 
-exprToString : Expr → String
+exprToString : ∀ {a} → Expr a → String
 exprToString = exprToString′ "\n"
 
-statToString : Stat → String
+statToString : ∀ {a} → Stat a → String
 statToString = statToString′ "\n"
 
-blockToString : Block → String
+blockToString : ∀ {a} → Block a → String
 blockToString = blockToString′ "\n"

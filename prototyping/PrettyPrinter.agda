@@ -15,7 +15,7 @@ open import Luau.Syntax using (Block)
 open import Luau.Syntax.FromJSON using (blockFromJSON)
 open import Luau.Syntax.ToString using (blockToString)
 
-runBlock : Block → IO ⊤
+runBlock : ∀ {a} → Block a → IO ⊤
 runBlock block = putStrLn (blockToString block)
 
 runJSON : Value → IO ⊤
