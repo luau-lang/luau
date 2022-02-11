@@ -3,7 +3,7 @@ module Properties.Step where
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
-open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; namify)
+open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg)
 open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst)
 open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
 open import Luau.Substitution using (_[_/_]ᴮ)
@@ -42,7 +42,7 @@ stepᴱ H (block b is B end) | step H′ B′ D = step H′ (block b is B′ end
 stepᴱ H (block b is (return _ ∙ B′) end) | return V refl = step H (val V) return
 stepᴱ H (block b is done end) | done refl = step H nil done
 stepᴱ H (block b is B end) | error E = error (block b E)
-stepᴱ H (function F is C end) with alloc H (function (namify F) is C end)
+stepᴱ H (function F is C end) with alloc H (function F is C end)
 stepᴱ H function F is C end | ok a H′ p = step H′ (addr a) (function p)
 
 stepᴮ H (function F is C end ∙ B) with alloc H (function F is C end)

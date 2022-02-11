@@ -1,6 +1,6 @@
 module Luau.Syntax.ToString where
 
-open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; AnonFunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; anon⟨_⟩; anon⟨_⟩∈_)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Type.ToString using (typeToString)
@@ -13,10 +13,6 @@ varDecToString (var x ∈ T) =  varToString x ++ " : " ++ typeToString T
 funDecToString : ∀ {a} → FunDec a → String
 funDecToString (f ⟨ x ⟩∈ T) = varToString f ++ "(" ++ varDecToString x ++ "): " ++ typeToString T
 funDecToString (f ⟨ x ⟩) = varToString f ++ "(" ++ varDecToString x ++ ")"
-
-anonFunDecToString : ∀ {a} → AnonFunDec a → String
-anonFunDecToString (anon⟨ x ⟩∈ T) = "(" ++ varDecToString x ++ "): " ++ typeToString T
-anonFunDecToString anon⟨ x ⟩ =  "(" ++ varDecToString x ++ ")"
 
 exprToString′ : ∀ {a} → String → Expr a → String
 statToString′ : ∀ {a} → String → Stat a → String
@@ -31,7 +27,7 @@ exprToString′ lb (var x) =
 exprToString′ lb (M $ N) =
   (exprToString′ lb M) ++ "(" ++ (exprToString′ lb N) ++ ")"
 exprToString′ lb (function F is B end) =
-  "function " ++ anonFunDecToString F ++ lb ++
+  "function " ++ funDecToString F ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 exprToString′ lb (block b is B end) =

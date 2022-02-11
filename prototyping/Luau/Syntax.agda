@@ -24,10 +24,6 @@ data FunDec : Annotated → Set where
   _⟨_⟩∈_ : ∀ {a} → Var → VarDec a → Type → FunDec a
   _⟨_⟩ : Var → VarDec maybe → FunDec maybe
 
-data AnonFunDec : Annotated → Set where
-  anon⟨_⟩∈_ : ∀ {a} → VarDec a → Type → AnonFunDec a
-  anon⟨_⟩ : VarDec maybe → AnonFunDec maybe
-
 fun : ∀ {a} → FunDec a → Var
 fun (f ⟨ x ⟩∈ T) = f
 fun (f ⟨ x ⟩) = f
@@ -35,10 +31,6 @@ fun (f ⟨ x ⟩) = f
 arg : ∀ {a} → FunDec a → VarDec a
 arg (f ⟨ x ⟩∈ T) = x
 arg (f ⟨ x ⟩) = x
-
-namify : ∀ {a} → AnonFunDec a → FunDec a
-namify (anon⟨ x ⟩∈ T) = anon ⟨ x ⟩∈ T
-namify anon⟨ x ⟩ = anon ⟨ x ⟩
 
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set
@@ -58,6 +50,6 @@ data Expr a where
   var : Var → Expr a
   addr : Addr → Expr a
   _$_ : Expr a → Expr a → Expr a
-  function_is_end : AnonFunDec a → Block a → Expr a
+  function_is_end : FunDec a → Block a → Expr a
   block_is_end : Var → Block a → Expr a
 

@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; anon⟨_⟩; _⟨_⟩; local_←_; return; done; _∙_; maybe)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe)
 
 open import Agda.Builtin.List using (List; _∷_; [])
 
@@ -55,7 +55,7 @@ exprFromObject obj | just (string "AstExprCall") | _ | nothing  = Left ("AstExpr
 exprFromObject obj | just (string "AstExprConstantNil") = Right nil
 exprFromObject obj | just (string "AstExprFunction") with lookup args obj | lookup body obj
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value with head arr | blockFromJSON value
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just (string x) | Right B = Right (function anon⟨ var x ⟩ is B end)
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just (string x) | Right B = Right (function "" ⟨ var x ⟩ is B end)
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just _ | Right B = Left "AstExprFunction args not a string array"
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | nothing | Right B = Left "Unsupported AstExprFunction empty args"
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | _ | Left err = Left err
@@ -89,7 +89,7 @@ statFromObject obj | just(string "AstStatLocal") | just(_) | nothing = Left "Ast
 statFromObject obj | just(string "AstStatLocal") | nothing | _ = Left "AstStatLocal missing vars"
 statFromObject obj | just(string "AstStatLocalFunction") with lookup name obj | lookup func obj
 statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value with exprFromJSON value
-statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Right (function anon⟨ x ⟩ is B end) = Right (function f ⟨ x ⟩ is B end)
+statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Right (function "" ⟨ x ⟩ is B end) = Right (function f ⟨ x ⟩ is B end)
 statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Left err = Left err
 statFromObject obj | just(string "AstStatLocalFunction") | just _ | just _ | Right _ = Left "AstStatLocalFunction func is not an AstExprFunction"
 statFromObject obj | just(string "AstStatLocalFunction") | just _ | just _ =  Left "AstStatLocalFunction name is not a string"
