@@ -262,7 +262,7 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 // Just needs to fully support equality refinement. Which is annoying without type states.
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 {
-    ScopedFastFlag sff{"LuauDiscriminableUnions", true};
+    ScopedFastFlag sff{"LuauDiscriminableUnions2", true};
 
     CheckResult result = check(R"(
         type T = {x: string, y: number} | {x: nil, y: nil}
@@ -614,6 +614,78 @@ local a: Self<Table>
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(toString(requireType("a")), "Table<Table>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
+{
+    ScopedFastFlag sff[]{
+        {"LuauQuantifyInPlace2", true},
+        {"LuauReturnAnyInsteadOfICE", true},
+    };
+
+    // In-place quantification causes these types to have the wrong types but only because of nasty interaction with prototyping.
+    // The type of f is initially () -> free1...
+    // Then the prototype iterator advances, and checks the function expression assigned to g, which has the type () -> free2...
+    // In the body it calls f and returns what f() returns. This binds free2... with free1..., causing f and g to have same types.
+    // We then quantify g, leaving it with the final type <a...>() -> a...
+    // Because free1... and free2... were bound, in combination with in-place quantification, f's return type was also turned into a...
+    // Then the check iterator catches up, and checks the body of f, and attempts to quantify it too.
+    // Alas, one of the requirements for quantification is that a type must contain free types. () -> a... has no free types.
+    // Thus the quantification for f was no-op, which explains why f does not have any type parameters.
+    // Calling f() will attempt to instantiate the function type, which turns generics in type binders into to free types.
+    // However, instantiations only converts generics contained within the type binders of a function, so instantiation was also no-op.
+    // Which means that calling f() simply returned a... rather than an instantiation of it. And since the call site was not in tail position,
+    // picking first element in a... triggers an ICE because calls returning generic packs are unexpected.
+    CheckResult result = check(R"(
+        local function f() end
+
+        local g = function() return f() end
+
+        local x = (f()) -- should error: no return values to assign from the call to f
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // f and g should have the type () -> ()
+    CHECK_EQ("() -> (a...)", toString(requireType("f")));
+    CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
+    CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
+}
+
+TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
+{
+    CheckResult result = check(R"(
+        local function id(x) return x end
+        local n2n: (number) -> number = id
+        local s2s: (string) -> string = id
+    )");
+
+    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
+}
+
+TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
+{
+    ScopedFastFlag sff{"LuauQuantifyInPlace2", true};
+
+    CheckResult result = check(R"(
+        local function f() return end
+        local g = function() return f() end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
+}
+
+TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
+{
+    ScopedFastFlag sff{"LuauQuantifyInPlace2", true};
+
+    CheckResult result = check(R"(
+        --!strict
+        local function f(...) return ... end
+        local g = function(...) return f(...) end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
 TEST_SUITE_END();

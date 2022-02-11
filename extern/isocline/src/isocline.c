@@ -13,7 +13,12 @@
 // $ gcc -c src/isocline.c 
 //-------------------------------------------------------------
 #if !defined(IC_SEPARATE_OBJS)
-# define _CRT_SECURE_NO_WARNINGS  // for msvc
+# ifndef _CRT_NONSTDC_NO_WARNINGS
+#  define _CRT_NONSTDC_NO_WARNINGS // for msvc
+# endif
+# ifndef _CRT_SECURE_NO_WARNINGS
+#  define _CRT_SECURE_NO_WARNINGS  // for msvc
+# endif
 # define _XOPEN_SOURCE   700      // for wcwidth
 # define _DEFAULT_SOURCE          // ensure usleep stays visible with _XOPEN_SOURCE >= 700
 # include "attr.c"

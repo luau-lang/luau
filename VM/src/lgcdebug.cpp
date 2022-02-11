@@ -250,6 +250,8 @@ void luaC_validate(lua_State* L)
 
     if (FFlag::LuauGcPagedSweep)
     {
+        validategco(L, NULL, obj2gco(g->mainthread));
+
         luaM_visitgco(L, L, validategco);
     }
     else
@@ -565,6 +567,8 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
 
     if (FFlag::LuauGcPagedSweep)
     {
+        dumpgco(f, NULL, obj2gco(g->mainthread));
+
         luaM_visitgco(L, f, dumpgco);
     }
     else

@@ -1,4 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Repl.h"
+
 #include "lua.h"
 #include "lualib.h"
 
@@ -38,13 +40,14 @@ enum class CompileFormat
 struct GlobalOptions
 {
     int optimizationLevel = 1;
+    int debugLevel = 1;
 } globalOptions;
 
 static Luau::CompileOptions copts()
 {
     Luau::CompileOptions result = {};
     result.optimizationLevel = globalOptions.optimizationLevel;
-    result.debugLevel = 1;
+    result.debugLevel = globalOptions.debugLevel;
     result.coverageLevel = coverageActive() ? 2 : 0;
 
     return result;
@@ -240,9 +243,8 @@ std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
-static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
+static void completeIndexer(lua_State* L, const std::string& editBuffer, const AddCompletionCallback& addCompletionCallback)
 {
-    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
     std::string_view lookup = editBuffer;
     char lastSep = 0;
 
@@ -276,7 +278,7 @@ static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
                             // Add an opening paren for function calls by default.
                             completion += "(";
                         }
-                        ic_add_completion_ex(cenv, completion.data(), key.data(), nullptr);
+                        addCompletionCallback(completion, std::string(key));
                     }
                 }
                 lua_pop(L, 1);
@@ -295,10 +297,11 @@ static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
             {
                 // Replace the string object with the string class to perform further lookups of string functions
                 // Note: We retrieve the string class from _G to prevent issues if the user assigns to `string`.
+                lua_pop(L, 1); // Pop the string instance
                 lua_getglobal(L, "_G");
                 lua_pushlstring(L, "string", 6);
                 lua_rawget(L, -2);
-                lua_remove(L, -2);
+                lua_remove(L, -2); // Remove the global table
                 LUAU_ASSERT(lua_istable(L, -1));
             }
             else if (!lua_istable(L, -1))
@@ -312,6 +315,26 @@ static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
     lua_pop(L, 1);
 }
 
+void getCompletions(lua_State* L, const std::string& editBuffer, const AddCompletionCallback& addCompletionCallback)
+{
+    // look the value up in current global table first
+    lua_pushvalue(L, LUA_GLOBALSINDEX);
+    completeIndexer(L, editBuffer, addCompletionCallback);
+
+    // and in actual global table after that
+    lua_getglobal(L, "_G");
+    completeIndexer(L, editBuffer, addCompletionCallback);
+}
+
+static void icGetCompletions(ic_completion_env_t* cenv, const char* editBuffer)
+{
+    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
+
+    getCompletions(L, std::string(editBuffer), [cenv](const std::string& completion, const std::string& display) {
+        ic_add_completion_ex(cenv, completion.data(), display.data(), nullptr);
+    });
+}
+
 static bool isMethodOrFunctionChar(const char* s, long len)
 {
     char c = *s;
@@ -320,15 +343,7 @@ static bool isMethodOrFunctionChar(const char* s, long len)
 
 static void completeRepl(ic_completion_env_t* cenv, const char* editBuffer)
 {
-    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
-
-    // look the value up in current global table first
-    lua_pushvalue(L, LUA_GLOBALSINDEX);
-    ic_complete_word(cenv, editBuffer, completeIndexer, isMethodOrFunctionChar);
-
-    // and in actual global table after that
-    lua_getglobal(L, "_G");
-    ic_complete_word(cenv, editBuffer, completeIndexer, isMethodOrFunctionChar);
+    ic_complete_word(cenv, editBuffer, icGetCompletions, isMethodOrFunctionChar);
 }
 
 struct LinenoiseScopedHistory
@@ -372,19 +387,20 @@ static void runReplImpl(lua_State* L)
 
     for (;;)
     {
-        const char* line = ic_readline(buffer.empty() ? "" : ">");
+        const char* prompt = buffer.empty() ? "" : ">";
+        std::unique_ptr<char, void (*)(void*)> line(ic_readline(prompt), free);
         if (!line)
             break;
 
-        if (buffer.empty() && runCode(L, std::string("return ") + line) == std::string())
+        if (buffer.empty() && runCode(L, std::string("return ") + line.get()) == std::string())
         {
-            ic_history_add(line);
+            ic_history_add(line.get());
             continue;
         }
 
         if (!buffer.empty())
             buffer += "\n";
-        buffer += line;
+        buffer += line.get();
 
         std::string error = runCode(L, buffer);
 
@@ -400,7 +416,6 @@ static void runReplImpl(lua_State* L)
 
         ic_history_add(buffer.c_str());
         buffer.clear();
-        free((void*)line);
     }
 }
 
@@ -504,7 +519,7 @@ static bool compileFile(const char* name, CompileFormat format)
 
         if (format == CompileFormat::Text)
         {
-            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source);
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals);
             bcb.setDumpSource(*source);
         }
 
@@ -549,7 +564,8 @@ static void displayHelp(const char* argv0)
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
     printf("  -h, --help: Display this usage message.\n");
     printf("  -i, --interactive: Run an interactive REPL after executing the last script specified.\n");
-    printf("  -O<n>: use compiler optimization level (n=0-2).\n");
+    printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
+    printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
@@ -619,6 +635,16 @@ int replMain(int argc, char** argv)
                 return 1;
             }
             globalOptions.optimizationLevel = level;
+        }
+        else if (strncmp(argv[i], "-g", 2) == 0)
+        {
+            int level = atoi(argv[i] + 2);
+            if (level < 0 || level > 2)
+            {
+                fprintf(stderr, "Error: Debug level must be between 0 and 2 inclusive.\n");
+                return 1;
+            }
+            globalOptions.debugLevel = level;
         }
         else if (strcmp(argv[i], "--profile") == 0)
         {

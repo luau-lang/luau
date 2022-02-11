@@ -86,6 +86,8 @@ struct OwningAutocompleteResult
 };
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback);
+
+// Deprecated, do not use in new work.
 OwningAutocompleteResult autocompleteSource(Frontend& frontend, std::string_view source, Position position, StringCompletionCallback callback);
 
 } // namespace Luau

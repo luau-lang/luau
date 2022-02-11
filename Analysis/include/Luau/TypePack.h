@@ -54,9 +54,6 @@ struct TypePackVar
     bool persistent = false;
 
     // Pointer to the type arena that allocated this type.
-    // Do not depend on the value of this under any circumstances. This is for
-    // debugging purposes only. This is only set in debug builds; it is nullptr
-    // in all other environments.
     TypeArena* owningArena = nullptr;
 };
 

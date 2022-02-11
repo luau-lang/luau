@@ -492,8 +492,6 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag sffw("LuauBytecodeV2Write", true);
-
     runConformance("debug.lua");
 }
 

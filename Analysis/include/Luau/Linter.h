@@ -49,6 +49,7 @@ struct LintWarning
         Code_DeprecatedApi = 22,
         Code_TableOperations = 23,
         Code_DuplicateCondition = 24,
+        Code_MisleadingAndOr = 25,
 
         Code__Count
     };

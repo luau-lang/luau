@@ -609,7 +609,8 @@ static void luau_execute(lua_State* L)
 
                         if (unsigned(ic) < LUA_VECTOR_SIZE && name[1] == '\0')
                         {
-                            setnvalue(ra, rb->value.v[ic]);
+                            const float* v = rb->value.v; // silences ubsan when indexing v[]
+                            setnvalue(ra, v[ic]);
                             VM_NEXT();
                         }
 

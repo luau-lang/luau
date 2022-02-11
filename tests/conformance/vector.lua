@@ -87,9 +87,18 @@ assert(pcall(function() local t = {} rawset(t, vector(0/0, 2, 3), 1) end) == fal
 -- make sure we cover both builtin and C impl
 assert(vector(1, 2, 4) == vector("1", "2", "4"))
 
+-- validate component access (both cases)
+assert(vector(1, 2, 3).x == 1)
+assert(vector(1, 2, 3).X == 1)
+assert(vector(1, 2, 3).y == 2)
+assert(vector(1, 2, 3).Y == 2)
+assert(vector(1, 2, 3).z == 3)
+assert(vector(1, 2, 3).Z == 3)
+
 -- additional checks for 4-component vectors
 if vector_size == 4 then
 	assert(vector(1, 2, 3, 4).w == 4)
+	assert(vector(1, 2, 3, 4).W == 4)
 end
 
 return 'OK'

@@ -193,6 +193,14 @@ if(TARGET Luau.Analyze.CLI)
         CLI/Analyze.cpp)
 endif()
 
+if(TARGET Luau.Ast.CLI)
+    target_sources(Luau.Ast.CLI PRIVATE
+        CLI/Ast.cpp
+        CLI/FileUtils.h
+        CLI/FileUtils.cpp
+    )
+endif()
+
 if(TARGET Luau.UnitTest)
     # Luau.UnitTest Sources
     target_sources(Luau.UnitTest PRIVATE

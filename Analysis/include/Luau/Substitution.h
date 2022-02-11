@@ -93,7 +93,7 @@ struct Tarjan
 
     // This should never be null; ensure you initialize it before calling
     // substitution methods.
-    const TxnLog* log;
+    const TxnLog* log = nullptr;
 
     std::vector<TypeId> edgesTy;
     std::vector<TypePackId> edgesTp;

@@ -595,4 +595,65 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+/*
+ * The two-pass alias definition system starts by ascribing a free TypeVar to each alias.  It then
+ * circles back to fill in the actual type later on.
+ * 
+ * If this free type is unified with something degenerate like `any`, we need to take extra care
+ * to ensure that the alias actually binds to the type that the user expected.
+ */
+TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTwoPassAliasDefinitionFix", true}
+    };
+
+    CheckResult result = check(R"(
+        local function x()
+            local y: FutureType = {}::any
+            return 1
+        end
+        type FutureType = { foo: typeof(x()) }
+        local d: FutureType = { smth = true } -- missing error, 'd' is resolved to 'any'
+    )");
+
+    CHECK_EQ("{| foo: number |}", toString(requireType("d"), {true}));
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauTwoPassAliasDefinitionFix", true},
+
+        // We also force these two flags because this surfaced an unfortunate interaction.
+        {"LuauErrorRecoveryType", true},
+        {"LuauQuantifyInPlace2", true},
+    };
+
+    CheckResult result = check(R"(
+        local B = {}
+        B.bar = 4
+
+        function B:smth1()
+            local self: FutureIntersection = self
+            self.foo = 4
+            return 4
+        end
+
+        function B:smth2()
+            local self: FutureIntersection = self
+            self.bar = 5 -- error, even though we should have B part with bar
+        end
+
+        type A = { foo: typeof(B.smth1({foo=3})) } -- trick toposort into sorting functions before types
+        type B = typeof(B)
+
+        type FutureIntersection = A & B
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
