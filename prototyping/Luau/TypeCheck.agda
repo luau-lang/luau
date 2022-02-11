@@ -2,7 +2,7 @@ module Luau.TypeCheck where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
-open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; var; var_∈_; _⟨_⟩∈_; anon⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name)
+open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; HeapValue; function_is_end) renaming (_[_] to _[_]ᴴ)
@@ -40,7 +40,7 @@ data _▷_⊢ᴮ_∋_∈_⊣_ where
 
     Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ any ∋ C ∈ U ⊣ Δ₁ →
     Σ ▷ (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ S ∋ B ∈ V ⊣ Δ₂ →
-    ---------------------------------------------------------------------------
+    ---------------------------------------------------------------------------------
     Σ ▷ Γ ⊢ᴮ S ∋ function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B ∈ V ⊣ ((Δ₁ ⊝ x) ⋒ (Δ₂ ⊝ f))
 
 data _▷_⊢ᴱ_∋_∈_⊣_  where
@@ -64,16 +64,16 @@ data _▷_⊢ᴱ_∋_∈_⊣_  where
 
   app : ∀ {Σ M N S T U Γ Δ₁ Δ₂} →
 
-    Σ ▷ Γ ⊢ᴱ (U ⇒ S) ∋ M ∈ T ⊣ Δ₂ →
+    Σ ▷ Γ ⊢ᴱ (U ⇒ S) ∋ M ∈ T ⊣ Δ₁ →
     Σ ▷ Γ ⊢ᴱ (src T) ∋ N ∈ U ⊣ Δ₂ →
     --------------------------------------
     Σ ▷ Γ ⊢ᴱ S ∋ (M $ N) ∈ (tgt T) ⊣ (Δ₁ ⋒ Δ₂)
 
-  function : ∀ {Σ x B S T U V Γ Δ} →
+  function : ∀ {Σ f x B S T U V Γ Δ} →
 
     Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ U ∋ B ∈ V ⊣ Δ →
-    ----------------------------------------------------------------------
-    Σ ▷ Γ ⊢ᴱ S ∋ (function anon⟨ var x ∈ T ⟩∈ U is B end) ∈ (T ⇒ U) ⊣ (Δ ⊝ x)
+    -----------------------------------------------------------------------
+    Σ ▷ Γ ⊢ᴱ S ∋ (function f ⟨ var x ∈ T ⟩∈ U is B end) ∈ (T ⇒ U) ⊣ (Δ ⊝ x)
 
   block : ∀ {Σ b B S T Γ Δ} →
 
