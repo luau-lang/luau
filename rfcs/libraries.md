@@ -49,7 +49,7 @@ All relative paths will start with either `./`  or `../`  which denote the direc
 
 Aliases can be used to bind an absolute or relative path to a convenient name that can be required directly. They are always prefixed with `$` to make it obvious they are not the same as a regular path.
 
-Each library has its own map which will be stored in the `.luaurc` file. Since libraries can be embedded inside of one another, any aliases which are not overriden will be inherited from the parent library.
+Each library has its own map which will be stored in a `luauconfig.json` file. Since libraries can be embedded inside of one another, any aliases which are not overriden will be inherited from the parent library.
 
 ```json
 "Aliases": {
@@ -113,11 +113,27 @@ Luau libraries are not compatible with existing Lua libraries. This is because L
 - Libraries are fully compatible with the Roblox engine as string-syntax is unsupported.
 - Compatibility with existing Luau is TBD.
 
+### luauconfig.json
+
+As part of this proposal we will introduce a new `luauconfig.json` file. Initially, this file will only include library configuration data but in the future could be expanded to contain more.
+
+The proposed structure for this file is:
+
+```json
+{
+    "aliases": {
+        "alias": "./path/of/alias"
+    }
+}
+```
+
+Where a field is missing from `luauconfig.json` it will be taken from the parent library (if one exists).
+
 ### Defining a Library
 
-Any directory containing a `.luaurc` file is considered a library.
+Any directory containing a `luauconfig.json` file is considered a library.
 
-Since we don't support `.luaurc` files in the DataModel we will introduce a new `Library` instance which contains the alias map and other properties.
+Since we don't support `.json` files in the DataModel we will introduce a new `Library` instance which contains the alias map and other properties.
 
 ## Drawbacks
 
