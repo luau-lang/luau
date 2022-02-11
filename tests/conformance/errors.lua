@@ -260,8 +260,7 @@ local a,b = loadstring(s)
 assert(not a)
 --assert(string.find(b, "line 2"))
 
--- Test for CLI-28786
--- The xpcall is intentially going to cause an exception
+-- The xpcall is intentionally going to cause an exception
 -- followed by a forced exception in the error handler.
 -- If the secondary handler isn't trapped, it will cause
 -- the unit test to fail. If the xpcall captures the
@@ -280,6 +279,19 @@ print(b)
 coroutine.wrap(function()
   assert(not pcall(debug.getinfo, coroutine.running(), 0, ">"))
 end)()
+
+-- loadstring chunk truncation
+local a,b = loadstring("nope", "@short")
+assert(not a and b:match('[^ ]+') == "short:1:")
+
+local a,b = loadstring("nope", "@" .. string.rep("thisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilities", 10))
+assert(not a and b:match('[^ ]+') == "...wontfitintotheinternalbufferprovidedtovariousdebugfacilitiesthisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilitiesthisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilities:1:")
+
+local a,b = loadstring("nope", "=short")
+assert(not a and b:match('[^ ]+') == "short:1:")
+
+local a,b = loadstring("nope", "=" .. string.rep("thisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilities", 10))
+assert(not a and b:match('[^ ]+') == "thisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilitiesthisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilitiesthisisaverylongstringitssolongthatitwontfitintotheinternalbuffe:1:")
 
 -- arith errors
 function ecall(fn, ...)

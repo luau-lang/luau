@@ -452,7 +452,7 @@ def display(root, title, colors, flip = False):
         .replace("$gradient-start", gradient_start)
         .replace("$gradient-end", gradient_end)
         .replace("$height", str(svgheight))
-        .replace("$status", str(svgheight - 16 + 3))
+        .replace("$status", str((svgheight - 16 + 3 if flip else 3 * 16 - 3)))
         .replace("$flip", str(int(flip)))
     )
 

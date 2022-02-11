@@ -8,9 +8,22 @@
 
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
+struct Completion
+{
+    std::string completion;
+    std::string display;
+
+    bool operator<(Completion const& other) const
+    {
+        return std::tie(completion, display) < std::tie(other.completion, other.display);
+    }
+};
+
+using CompletionSet = std::set<Completion>;
 
 class ReplFixture
 {
@@ -34,6 +47,27 @@ public:
         lua_pop(L, 1);
         return result;
     }
+
+    CompletionSet getCompletionSet(const char* inputPrefix)
+    {
+        CompletionSet result;
+        int top = lua_gettop(L);
+        getCompletions(L, inputPrefix, [&result](const std::string& completion, const std::string& display) {
+            result.insert(Completion{completion, display});
+        });
+        // Ensure that generating completions doesn't change the position of luau's stack top.
+        CHECK(top == lua_gettop(L));
+
+        return result;
+    }
+
+    bool checkCompletion(const CompletionSet& completions, const std::string& prefix, const std::string& expected)
+    {
+        std::string expectedDisplay(expected.substr(0, expected.find_first_of('(')));
+        Completion expectedCompletion{prefix + expected, expectedDisplay};
+        return completions.count(expectedCompletion) == 1;
+    }
+
     lua_State* L;
 
 private:
@@ -112,6 +146,64 @@ TEST_CASE_FIXTURE(ReplFixture, "MultipleArguments")
 {
     runCode(L, "return 3, 'three'");
     CHECK(getCapturedOutput() == "3\t\"three\"");
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("ReplCodeCompletion");
+
+TEST_CASE_FIXTURE(ReplFixture, "CompleteGlobalVariables")
+{
+    runCode(L, R"(
+        myvariable1 = 5
+        myvariable2 = 5
+)");
+    CompletionSet completions = getCompletionSet("myvar");
+
+    std::string prefix = "";
+    CHECK(completions.size() == 2);
+    CHECK(checkCompletion(completions, prefix, "myvariable1"));
+    CHECK(checkCompletion(completions, prefix, "myvariable2"));
+}
+
+TEST_CASE_FIXTURE(ReplFixture, "CompleteTableKeys")
+{
+    runCode(L, R"(
+        t = { color = "red", size = 1, shape = "circle" }
+)");
+    {
+        CompletionSet completions = getCompletionSet("t.");
+
+        std::string prefix = "t.";
+        CHECK(completions.size() == 3);
+        CHECK(checkCompletion(completions, prefix, "color"));
+        CHECK(checkCompletion(completions, prefix, "size"));
+        CHECK(checkCompletion(completions, prefix, "shape"));
+    }
+
+    {
+        CompletionSet completions = getCompletionSet("t.s");
+
+        std::string prefix = "t.";
+        CHECK(completions.size() == 2);
+        CHECK(checkCompletion(completions, prefix, "size"));
+        CHECK(checkCompletion(completions, prefix, "shape"));
+    }
+}
+
+TEST_CASE_FIXTURE(ReplFixture, "StringMethods")
+{
+    runCode(L, R"(
+        s = ""
+)");
+    {
+        CompletionSet completions = getCompletionSet("s:l");
+
+        std::string prefix = "s:";
+        CHECK(completions.size() == 2);
+        CHECK(checkCompletion(completions, prefix, "len("));
+        CHECK(checkCompletion(completions, prefix, "lower("));
+    }
 }
 
 TEST_SUITE_END();

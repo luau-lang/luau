@@ -6,7 +6,7 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauDiscriminableUnions)
+LUAU_FASTFLAG(LuauDiscriminableUnions2)
 LUAU_FASTFLAG(LuauWeakEqConstraint)
 LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
@@ -262,7 +262,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_only_look_up_types_from_global_scope")
         end
     )");
 
-    if (FFlag::LuauDiscriminableUnions)
+    if (FFlag::LuauDiscriminableUnions2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -435,7 +435,7 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 {
     ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
         {"LuauSingletonTypes", true},
     };
 
@@ -485,7 +485,7 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff{"LuauDiscriminableUnions", true};
+    ScopedFastFlag sff{"LuauDiscriminableUnions2", true};
     ScopedFastFlag sff2{"LuauWeakEqConstraint", true};
 
     CheckResult result = check(R"(
@@ -589,7 +589,7 @@ TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
         end
     )");
 
-    if (FFlag::LuauDiscriminableUnions)
+    if (FFlag::LuauDiscriminableUnions2)
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
@@ -1002,7 +1002,7 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
     ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
     };
@@ -1028,7 +1028,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
 {
     ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
     };
@@ -1069,7 +1069,7 @@ TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
     ScopedFastFlag sff[]{
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
         {"LuauAssertStripsFalsyTypes", true},
     };
 
@@ -1094,7 +1094,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_
     ScopedFastFlag sff[]{
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
         {"LuauAssertStripsFalsyTypes", true},
     };
 
@@ -1118,7 +1118,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_
 TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 {
     ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
     };
@@ -1157,7 +1157,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
         end
     )");
 
-    if (FFlag::LuauDiscriminableUnions)
+    if (FFlag::LuauDiscriminableUnions2)
         LUAU_REQUIRE_NO_ERRORS(result);
     else
     {

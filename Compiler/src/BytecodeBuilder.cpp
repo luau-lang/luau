@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Write, false)
-
 namespace Luau
 {
 
@@ -510,7 +508,7 @@ uint32_t BytecodeBuilder::getDebugPC() const
 void BytecodeBuilder::finalize()
 {
     LUAU_ASSERT(bytecode.empty());
-    bytecode = char(FFlag::LuauBytecodeV2Write ? LBC_VERSION_FUTURE : LBC_VERSION);
+    bytecode = char(LBC_VERSION_FUTURE);
 
     writeStringTable(bytecode);
 
@@ -611,9 +609,7 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
         writeVarInt(ss, child);
 
     // debug info
-    if (FFlag::LuauBytecodeV2Write)
-        writeVarInt(ss, func.debuglinedefined);
-
+    writeVarInt(ss, func.debuglinedefined);
     writeVarInt(ss, func.debugname);
 
     bool hasLines = true;

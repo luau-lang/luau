@@ -37,6 +37,7 @@ coroutine.resume(co2, 0 / 0, 42)
 
 assert(debug.traceback(co2) == "debug.lua:31 function halp\n")
 assert(debug.info(co2, 0, "l") == 31)
+assert(debug.info(co2, 0, "f") == halp)
 
 -- info errors
 function qux(...)

@@ -307,8 +307,8 @@ private:
     //
     // We can't use a DenseHashMap here because we need a non-const iterator
     // over the map when we concatenate.
-    std::unordered_map<TypeId, std::unique_ptr<PendingType>> typeVarChanges;
-    std::unordered_map<TypePackId, std::unique_ptr<PendingTypePack>> typePackChanges;
+    std::unordered_map<TypeId, std::unique_ptr<PendingType>, DenseHashPointer> typeVarChanges;
+    std::unordered_map<TypePackId, std::unique_ptr<PendingTypePack>, DenseHashPointer> typePackChanges;
 
     TxnLog* parent = nullptr;
 

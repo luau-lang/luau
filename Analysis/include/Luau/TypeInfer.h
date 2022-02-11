@@ -103,6 +103,11 @@ struct GenericTypeDefinitions
     std::vector<GenericTypePackDefinition> genericPacks;
 };
 
+struct HashBoolNamePair
+{
+    size_t operator()(const std::pair<bool, Name>& pair) const;
+};
+
 // All TypeVars are retained via Environment::typeVars.  All TypeIds
 // within a program are borrowed pointers into this set.
 struct TypeChecker
@@ -411,6 +416,12 @@ public:
 private:
     int checkRecursionCount = 0;
     int recursionCount = 0;
+
+    /**
+     * We use this to avoid doing second-pass analysis of type aliases that are duplicates. We record a pair
+     * (exported, name) to properly deal with the case where the two duplicates do not have the same export status.
+     */
+    DenseHashSet<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
 };
 
 // Unit test hook
