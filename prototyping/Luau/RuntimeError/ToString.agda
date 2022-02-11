@@ -6,8 +6,8 @@ open import Luau.Addr.ToString using (addrToString)
 open import Luau.Var.ToString using (varToString)
 open import Luau.Syntax using (name)
 
-errToStringᴱ : ∀ {H B} → RuntimeErrorᴱ H B → String
-errToStringᴮ : ∀ {H B} → RuntimeErrorᴮ H B → String
+errToStringᴱ : ∀ {a H B} → RuntimeErrorᴱ {a} H B → String
+errToStringᴮ : ∀ {a H B} → RuntimeErrorᴮ {a} H B → String
 
 errToStringᴱ NilIsNotAFunction = "nil is not a function"
 errToStringᴱ (UnboundVariable x) = "variable " ++ varToString x ++ " is unbound"

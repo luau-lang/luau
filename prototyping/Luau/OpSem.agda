@@ -2,13 +2,13 @@ module Luau.OpSem where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just)
-open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_⟨_⟩_end)
+open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function⟨_⟩_end; _$_; block_is_end; local_←_; _∙_; done; function_⟨_⟩_end; return; name)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; namify)
 open import Luau.Value using (addr; val)
 
-data _⊢_⟶ᴮ_⊣_ : Heap → Block → Block → Heap → Set
-data _⊢_⟶ᴱ_⊣_ : Heap → Expr → Expr → Heap → Set
+data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
+data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
 
 data _⊢_⟶ᴱ_⊣_  where
 
@@ -17,11 +17,11 @@ data _⊢_⟶ᴱ_⊣_  where
     -------------------
     H ⊢ nil ⟶ᴱ nil ⊣ H
 
-  function : ∀ {H H′ a x B} →
+  function : ∀ {H H′ a F B} →
 
-    H′ ≡ H ⊕ a ↦ (function "anon" ⟨ x ⟩ B end) →
+    H′ ≡ H ⊕ a ↦ (function (namify F) is B end) →
     -------------------------------------------
-    H ⊢ (function⟨ x ⟩ B end) ⟶ᴱ (addr a) ⊣ H′
+    H ⊢ (function F is B end) ⟶ᴱ (addr a) ⊣ H′
 
   app : ∀ {H H′ M M′ N} →
   
@@ -29,11 +29,11 @@ data _⊢_⟶ᴱ_⊣_  where
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  beta : ∀ {H M a f x B} →
+  beta : ∀ {H M a F B} →
   
-    H [ a ] ≡ just(function f ⟨ x ⟩ B end) →
+    H [ a ] ≡ just(function F is B end) →
     -----------------------------------------------------
-    H ⊢ (addr a $ M) ⟶ᴱ (block f is local x ← M ∙ B end) ⊣ H
+    H ⊢ (addr a $ M) ⟶ᴱ (block (fun F) is local (arg F) ← M ∙ B end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  
@@ -64,11 +64,11 @@ data _⊢_⟶ᴮ_⊣_  where
     ------------------------------------------------------
     H ⊢ (local x ← val v ∙ B) ⟶ᴮ (B [ v / name x ]ᴮ) ⊣ H
 
-  function : ∀ {H H′ a f x B C} →
+  function : ∀ {H H′ a F B C} →
   
-    H′ ≡ H ⊕ a ↦ (function f ⟨ x ⟩ C end) →
+    H′ ≡ H ⊕ a ↦ (function F is C end) →
     --------------------------------------------------------------
-    H ⊢ (function f ⟨ x ⟩ C end ∙ B) ⟶ᴮ (B [ addr a / f ]ᴮ) ⊣ H′
+    H ⊢ (function F is C end ∙ B) ⟶ᴮ (B [ addr a / fun F ]ᴮ) ⊣ H′
 
   return : ∀ {H H′ M M′ B} →
   
@@ -76,7 +76,7 @@ data _⊢_⟶ᴮ_⊣_  where
     --------------------------------------------
     H ⊢ (return M ∙ B) ⟶ᴮ (return M′ ∙ B) ⊣ H′
 
-data _⊢_⟶*_⊣_ : Heap → Block → Block → Heap → Set where
+data _⊢_⟶*_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set where
 
   refl : ∀ {H B} →
 

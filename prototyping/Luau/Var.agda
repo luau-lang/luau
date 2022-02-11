@@ -14,3 +14,5 @@ a ≡ⱽ b with primStringEquality a b
 a ≡ⱽ b | false = no p where postulate p : (a ≡ b) → ⊥
 a ≡ⱽ b | true = yes primTrustMe
 
+anon : Var
+anon = "(anonymous)"

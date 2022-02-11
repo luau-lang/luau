@@ -18,7 +18,7 @@ open import Luau.Run using (run; return; done; error)
 open import Luau.RuntimeError.ToString using (errToStringᴮ)
 open import Luau.Value.ToString using (valueToString)
 
-runBlock : Block → IO ⊤
+runBlock : ∀ {a} → Block a → IO ⊤
 runBlock block with run block
 runBlock block | return V D = putStrLn (valueToString V)
 runBlock block | done D = putStrLn "nil"
