@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function⟨_⟩_end; local_←_; function_⟨_⟩_end; return; done; _∙_)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe)
 
 open import Agda.Builtin.List using (List; _∷_; [])
 
@@ -31,12 +31,12 @@ lookupIn (key ∷ keys) obj with lookup (fromString key) obj
 lookupIn (key ∷ keys) obj | nothing = lookupIn keys obj
 lookupIn (key ∷ keys) obj | just value = (key , value)
 
-exprFromJSON : Value → Either String Expr
-exprFromObject : Object → Either String Expr
-statFromJSON : Value → Either String Stat
-statFromObject : Object → Either String Stat
-blockFromJSON : Value → Either String Block
-blockFromArray : Array → Either String Block
+exprFromJSON : Value → Either String (Expr maybe)
+exprFromObject : Object → Either String (Expr maybe)
+statFromJSON : Value → Either String (Stat maybe)
+statFromObject : Object → Either String (Stat maybe)
+blockFromJSON : Value → Either String (Block maybe)
+blockFromArray : Array → Either String (Block maybe)
 
 exprFromJSON (object obj) = exprFromObject obj
 exprFromJSON val = Left "AstExpr not an object"
@@ -55,7 +55,7 @@ exprFromObject obj | just (string "AstExprCall") | _ | nothing  = Left ("AstExpr
 exprFromObject obj | just (string "AstExprConstantNil") = Right nil
 exprFromObject obj | just (string "AstExprFunction") with lookup args obj | lookup body obj
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value with head arr | blockFromJSON value
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just (string x) | Right B = Right (function⟨ x ⟩ B end)
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just (string x) | Right B = Right (function "" ⟨ var x ⟩ is B end)
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just _ | Right B = Left "AstExprFunction args not a string array"
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | nothing | Right B = Left "Unsupported AstExprFunction empty args"
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | _ | Left err = Left err
@@ -78,7 +78,7 @@ statFromObject obj with lookup type obj
 statFromObject obj | just(string "AstStatLocal") with lookup vars obj | lookup values obj
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) with head(arr1) | head(arr2)
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) with exprFromJSON(value)
-statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) | Right M = Right (local x ← M)
+statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) | Right M = Right (local (var x) ← M)
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) | Left err = Left err
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | nothing = Left "AstStatLocal empty values"
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(_) | _ = Left "AstStatLocal vars not a string array"
@@ -89,7 +89,7 @@ statFromObject obj | just(string "AstStatLocal") | just(_) | nothing = Left "Ast
 statFromObject obj | just(string "AstStatLocal") | nothing | _ = Left "AstStatLocal missing vars"
 statFromObject obj | just(string "AstStatLocalFunction") with lookup name obj | lookup func obj
 statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value with exprFromJSON value
-statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Right (function⟨ x ⟩ B end) = Right (function f ⟨ x ⟩ B end)
+statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Right (function "" ⟨ x ⟩ is B end) = Right (function f ⟨ x ⟩ is B end)
 statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Left err = Left err
 statFromObject obj | just(string "AstStatLocalFunction") | just _ | just _ | Right _ = Left "AstStatLocalFunction func is not an AstExprFunction"
 statFromObject obj | just(string "AstStatLocalFunction") | just _ | just _ =  Left "AstStatLocalFunction name is not a string"
