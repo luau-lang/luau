@@ -11,8 +11,10 @@ varDecToString (var x) = varToString x
 varDecToString (var x ∈ T) =  varToString x ++ " : " ++ typeToString T
 
 funDecToString : ∀ {a} → FunDec a → String
-funDecToString (f ⟨ x ⟩∈ T) = varToString f ++ "(" ++ varDecToString x ++ "): " ++ typeToString T
-funDecToString (f ⟨ x ⟩) = varToString f ++ "(" ++ varDecToString x ++ ")"
+funDecToString ("" ⟨ x ⟩∈ T) = "function(" ++ varDecToString x ++ "): " ++ typeToString T
+funDecToString ("" ⟨ x ⟩) = "function(" ++ varDecToString x ++ ")"
+funDecToString (f ⟨ x ⟩∈ T) = "function " ++ varToString f ++ "(" ++ varDecToString x ++ "): " ++ typeToString T
+funDecToString (f ⟨ x ⟩) = "function " ++ varToString f ++ "(" ++ varDecToString x ++ ")"
 
 exprToString′ : ∀ {a} → String → Expr a → String
 statToString′ : ∀ {a} → String → Stat a → String
@@ -27,16 +29,16 @@ exprToString′ lb (var x) =
 exprToString′ lb (M $ N) =
   (exprToString′ lb M) ++ "(" ++ (exprToString′ lb N) ++ ")"
 exprToString′ lb (function F is B end) =
-  "function " ++ funDecToString F ++ lb ++
+  funDecToString F ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 exprToString′ lb (block b is B end) =
-  "(function " ++ b ++ "()" ++ lb ++
+  "(" ++ b ++ "()" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end)()"
 
 statToString′ lb (function F is B end) =
-  "local function " ++ funDecToString F ++ lb ++
+  "local " ++ funDecToString F ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
 statToString′ lb (local x ← M) =
