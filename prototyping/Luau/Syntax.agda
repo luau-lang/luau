@@ -1,8 +1,7 @@
 module Luau.Syntax where
 
 open import Agda.Builtin.Equality using (_≡_)
-open import Properties.Dec using (⊥)
-open import Luau.Var using (Var; anon)
+open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Type using (Type)
 

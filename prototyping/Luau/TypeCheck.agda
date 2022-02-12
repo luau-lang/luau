@@ -36,12 +36,12 @@ data _▷_⊢ᴮ_∋_∈_⊣_ where
     ----------------------------------------------------------
     Σ ▷ Γ ⊢ᴮ S ∋ local var x ∈ T ← M ∙ B ∈ V ⊣ (Δ₁ ⋒ (Δ₂ ⊝ x))
 
-  function : ∀ {Σ f x B C S T U V Γ Δ₁ Δ₂} →
+  function : ∀ {Σ f x B C S T U V W Γ Δ₁ Δ₂} →
 
-    Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ any ∋ C ∈ U ⊣ Δ₁ →
-    Σ ▷ (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ S ∋ B ∈ V ⊣ Δ₂ →
+    Σ ▷ (Γ ⊕ x ↦ T) ⊢ᴮ U ∋ C ∈ V ⊣ Δ₁ →
+    Σ ▷ (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ S ∋ B ∈ W ⊣ Δ₂ →
     ---------------------------------------------------------------------------------
-    Σ ▷ Γ ⊢ᴮ S ∋ function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B ∈ V ⊣ ((Δ₁ ⊝ x) ⋒ (Δ₂ ⊝ f))
+    Σ ▷ Γ ⊢ᴮ S ∋ function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B ∈ W ⊣ ((Δ₁ ⊝ x) ⋒ (Δ₂ ⊝ f))
 
 data _▷_⊢ᴱ_∋_∈_⊣_  where
 
@@ -52,13 +52,13 @@ data _▷_⊢ᴱ_∋_∈_⊣_  where
 
   var : ∀ x {Σ S T Γ} →
 
-    just T ≡ Γ [ x ]ⱽ →
+    T ≡ Γ [ x ]ⱽ →
     ----------------------------
     Σ ▷ Γ ⊢ᴱ S ∋ var x ∈ T ⊣ (x ↦ S)
 
   addr : ∀ a {Σ S T Γ} →
 
-    just T ≡ Σ [ a ]ᴬ →
+    T ≡ Σ [ a ]ᴬ →
     ----------------------------
     Σ ▷ Γ ⊢ᴱ S ∋ addr a ∈ T ⊣ ∅
 
@@ -81,18 +81,18 @@ data _▷_⊢ᴱ_∋_∈_⊣_  where
     ----------------------------------------------------
     Σ ▷ Γ ⊢ᴱ S ∋ (block b is B end) ∈ T ⊣ Δ
 
-data _▷_∈_ (Σ : AddrCtxt) : Maybe (HeapValue yes) → (Maybe Type) → Set where
+data _▷_∈_ (Σ : AddrCtxt) : Maybe (HeapValue yes) → Type → Set where
 
-  nothing :
+  nothing : ∀ {T} →
 
-    ---------------------
-    Σ ▷ nothing ∈ nothing
+    ---------------
+    Σ ▷ nothing ∈ T
 
   function : ∀ {f x B T U V W} →
 
     Σ ▷ (x ↦ T) ⊢ᴮ U ∋ B ∈ V ⊣ (x ↦ W) →
-    --------------------------------------------------------------
-    Σ ▷ just (function f ⟨ var x ∈ T ⟩∈ U is B end) ∈ just (T ⇒ U)
+    ---------------------------------------------------------
+    Σ ▷ just (function f ⟨ var x ∈ T ⟩∈ U is B end) ∈ (T ⇒ U)
 
 data _▷_✓ (Σ : AddrCtxt) (H : Heap yes) : Set where
 
