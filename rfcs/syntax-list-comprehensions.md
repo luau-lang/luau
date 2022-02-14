@@ -15,6 +15,22 @@ To solve these problems, I propose a `n for-in-do` expression form that is synta
 
 The `n for-in-do` expression must match ``<identifier> for <identifier> in <expr> do``
 
+Example:
+```lua
+-- normal
+local t = {1,2,3,4,5,6,7,8,9}
+local onlyEven = {}
+for i,n in pairs(t) do
+    if n%2 == 0 then 
+      table.insert(onlyEven, n)
+    end
+end
+
+-- list comprehensions
+local t = {1,2,3,4,5,6,7,8,9}
+local onlyEven = {local n for n in t do if n%2 == 0 then n} 
+```
+
 ## Drawbacks
 
 List comprehensions may be misused.
