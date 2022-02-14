@@ -61,10 +61,10 @@ let vector = c![x, for x in 1..10, if x % 2 == 0];
  S <- 2 * x[x ^ 2 > 3]
  ```
 
-### Function syntax
+## Function syntax
 List comprehensions could be implemented as functions with ``table.map`` or ``table.filter`` 
 
-Examples:
+### Examples:
 
 #### Perl
 ```perl
