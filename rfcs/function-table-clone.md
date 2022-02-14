@@ -23,6 +23,8 @@ operation so from the ergonomics perspective it can be expected to be provided b
 - has the same keys and values
 - is not frozen, even if `t` was
 
+The copy is shallow: implementing a deep recursive copy automatically is challenging (for similar reasons why we decided to avoid this in `table.freeze`), and often only certain keys need to be cloned recursively which can be done after the initial clone.
+
 The table can be modified after cloning; as such, a primitive like `Object.assign` could be built on top of this.
 
 `table.clone(t)` is functionally equivalent to the following code, but it's more ergonomic (on the account of being built-in) and significantly faster:
