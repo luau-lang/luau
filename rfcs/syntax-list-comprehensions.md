@@ -14,7 +14,7 @@ When traversing a table to exclude all the odd numbers you'd be creating a large
 To solve these problems, I propose a `n for-in-do` expression form that is syntactically similar to a for statement, but lacks terminating `end`.
 
 The `n for-in-do` expression must match ``<identifier> for <identifier> in <expr> do``.
-A ``if <expr> then`` expression might be required.
+A ``if <expr>`` expression might be required.
 
 Example:
 ```lua
