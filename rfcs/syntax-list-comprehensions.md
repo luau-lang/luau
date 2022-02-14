@@ -62,4 +62,4 @@ let vector = c![x, for x in 1..10, if x % 2 == 0];
  ```
 
 ### Function syntax
-List comprehensions could be implemented as functions like ``table.map`` or ``table.filter`` 
+List comprehensions could be implemented as functions with ``table.map`` or ``table.filter`` 
