@@ -63,3 +63,15 @@ let vector = c![x, for x in 1..10, if x % 2 == 0];
 
 ### Function syntax
 List comprehensions could be implemented as functions with ``table.map`` or ``table.filter`` 
+
+Examples:
+
+#### Perl
+```perl
+my @doubles = map {$_*2} 1..9;
+```
+
+#### Rust
+```rust
+let ns: Vec<_> = (0..100).filter(|x| x * x > 3).map(|x| 2 * x).collect();
+```
