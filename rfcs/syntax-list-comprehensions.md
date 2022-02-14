@@ -7,7 +7,7 @@ Introduce a form of list comprehension using `n for-in-do` syntax.
 List comprehensions would bring several benefits and prevent code smell.
 In Lua you are encouraged to not modify tables during traversal.
 
-When traversing a table to exclude all the odd numbers you'd be creating a large statement to get rid of them
+When traversing a table to exclude all the odd numbers you'd be creating a large statement to get rid of them, with list comprehensions this could be shortened
 
 ## Design
 
