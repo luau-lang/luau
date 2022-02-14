@@ -1,11 +1,13 @@
-module Properties.TypeCheck where
+open import Luau.Type using (Mode)
+
+module Properties.TypeCheck (m : Mode) where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Either using (Either)
-open import Luau.TypeCheck using (_▷_⊢ᴱ_∋_∈_⊣_; _▷_⊢ᴮ_∋_∈_⊣_; nil; var; addr; app; function; block; done; return; local)
+open import Luau.TypeCheck(m) using (_▷_⊢ᴱ_∋_∈_⊣_; _▷_⊢ᴮ_∋_∈_⊣_; nil; var; addr; app; function; block; done; return; local)
 open import Luau.Syntax using (Block; Expr; yes; nil; var; addr; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg)
-open import Luau.Type using (Type; nil; none; _⇒_; src; tgt)
+open import Luau.Type using (Type; nil; top; _⇒_; tgt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _↦_; _⊕_↦_; _⋒_; _⊝_; ⊕-[]) renaming (_[_] to _[_]ⱽ)
 open import Luau.Addr using (Addr)
 open import Luau.Var using (Var; _≡ⱽ_)
@@ -13,6 +15,9 @@ open import Luau.AddrCtxt using (AddrCtxt) renaming (_[_] to _[_]ᴬ)
 open import Properties.Dec using (yes; no)
 open import Properties.Equality using (_≢_; sym; trans; cong)
 open import Properties.Remember using (remember; _,_)
+
+src : Type → Type
+src = Luau.Type.src m
 
 typeOfᴱ : AddrCtxt → VarCtxt → (Expr yes) → Type
 typeOfᴮ : AddrCtxt → VarCtxt → (Block yes) → Type
@@ -51,12 +56,12 @@ typeCheckᴱ Σ Γ S (M $ N) | ok Δ₁ D₁ | ok Δ₂ D₂ = ok (Δ₁ ⋒ Δ�
 typeCheckᴱ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is B end) with typeCheckᴮ Σ (Γ ⊕ x ↦ T) U B
 typeCheckᴱ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is B end) | ok Δ D = ok (Δ ⊝ x) (function D)
 typeCheckᴱ Σ Γ S (block b is B end) with typeCheckᴮ Σ Γ S B
-typeCheckᴱ Σ Γ S block b is B end | ok Δ D = ok Δ (block D)
+typeCheckᴱ Σ Γ S block b is B end | ok Δ D = ok Δ (block b D)
 
 typeCheckᴮ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) with typeCheckᴮ Σ (Γ ⊕ x ↦ T) U C | typeCheckᴮ Σ (Γ ⊕ f ↦ (T ⇒ U)) S B
 typeCheckᴮ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) | ok Δ₁ D₁ | ok Δ₂ D₂ = ok ((Δ₁ ⊝ x) ⋒ (Δ₂ ⊝ f)) (function D₁ D₂)
 typeCheckᴮ Σ Γ S (local var x ∈ T ← M ∙ B) with typeCheckᴱ Σ Γ T M | typeCheckᴮ Σ (Γ ⊕ x ↦ T) S B
 typeCheckᴮ Σ Γ S (local var x ∈ T ← M ∙ B) | ok Δ₁ D₁ | ok Δ₂ D₂ = ok (Δ₁ ⋒ (Δ₂ ⊝ x)) (local D₁ D₂)
-typeCheckᴮ Σ Γ S (return M ∙ B) with typeCheckᴱ Σ Γ S M
-typeCheckᴮ Σ Γ S (return M ∙ B) | ok Δ D = ok Δ (return D)
+typeCheckᴮ Σ Γ S (return M ∙ B) with typeCheckᴱ Σ Γ S M | typeCheckᴮ Σ Γ top B
+typeCheckᴮ Σ Γ S (return M ∙ B) | ok Δ₁ D₁ | ok Σ₂ D₂ = ok Δ₁ (return D₁ D₂)
 typeCheckᴮ Σ Γ S done = ok ∅ done

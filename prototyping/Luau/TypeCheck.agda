@@ -1,4 +1,6 @@
-module Luau.TypeCheck where
+open import Luau.Type using (Mode)
+
+module Luau.TypeCheck (m : Mode) where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
@@ -7,11 +9,14 @@ open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; HeapValue; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.Value using (addr; val)
-open import Luau.Type using (Type; nil; any; _⇒_; src; tgt)
+open import Luau.Type using (Type; Mode; nil; bot; top; _⇒_; tgt)
 open import Luau.AddrCtxt using (AddrCtxt) renaming (_[_] to _[_]ᴬ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
+
+src : Type → Type
+src = Luau.Type.src m
 
 data _▷_⊢ᴮ_∋_∈_⊣_ : AddrCtxt → VarCtxt → Type → Block yes → Type → VarCtxt → Set
 data _▷_⊢ᴱ_∋_∈_⊣_ : AddrCtxt → VarCtxt → Type → Expr yes → Type → VarCtxt → Set
@@ -23,11 +28,12 @@ data _▷_⊢ᴮ_∋_∈_⊣_ where
     ----------------------
     Σ ▷ Γ ⊢ᴮ S ∋ done ∈ nil ⊣ ∅
 
-  return : ∀ {Σ M B S T Γ Δ} →
+  return : ∀ {Σ M B S T U Γ Δ₁ Δ₂} →
 
-    Σ ▷ Γ ⊢ᴱ S ∋ M ∈ T ⊣ Δ →
+    Σ ▷ Γ ⊢ᴱ S ∋ M ∈ T ⊣ Δ₁ →
+    Σ ▷ Γ ⊢ᴮ top ∋ B ∈ U ⊣ Δ₂ →
     ---------------------------------
-    Σ ▷ Γ ⊢ᴮ S ∋ return M ∙ B ∈ T ⊣ Δ
+    Σ ▷ Γ ⊢ᴮ S ∋ return M ∙ B ∈ T ⊣ Δ₁
 
   local : ∀ {Σ x M B S T U V Γ Δ₁ Δ₂} →
 
@@ -75,7 +81,7 @@ data _▷_⊢ᴱ_∋_∈_⊣_  where
     -----------------------------------------------------------------------
     Σ ▷ Γ ⊢ᴱ S ∋ (function f ⟨ var x ∈ T ⟩∈ U is B end) ∈ (T ⇒ U) ⊣ (Δ ⊝ x)
 
-  block : ∀ {Σ b B S T Γ Δ} →
+  block : ∀ b {Σ B S T Γ Δ} →
 
     Σ ▷ Γ ⊢ᴮ S ∋ B ∈ T ⊣ Δ →
     ----------------------------------------------------
@@ -83,10 +89,10 @@ data _▷_⊢ᴱ_∋_∈_⊣_  where
 
 data _▷_∈_ (Σ : AddrCtxt) : Maybe (HeapValue yes) → Type → Set where
 
-  nothing : ∀ {T} →
+  nothing :
 
-    ---------------
-    Σ ▷ nothing ∈ T
+    -----------------
+    Σ ▷ nothing ∈ bot
 
   function : ∀ {f x B T U V W} →
 
@@ -94,6 +100,5 @@ data _▷_∈_ (Σ : AddrCtxt) : Maybe (HeapValue yes) → Type → Set where
     ---------------------------------------------------------
     Σ ▷ just (function f ⟨ var x ∈ T ⟩∈ U is B end) ∈ (T ⇒ U)
 
-data _▷_✓ (Σ : AddrCtxt) (H : Heap yes) : Set where
-
-   defn : (∀ a → Σ ▷ (H [ a ]ᴴ) ∈ (Σ [ a ]ᴬ)) → (Σ ▷ H ✓)
+_▷_✓ : AddrCtxt → Heap yes → Set
+(Σ ▷ H ✓) = (∀ a → Σ ▷ (H [ a ]ᴴ) ∈ (Σ [ a ]ᴬ)) 

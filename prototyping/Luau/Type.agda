@@ -5,24 +5,33 @@ open import FFI.Data.Maybe using (Maybe; just; nothing)
 data Type : Set where
   nil : Type
   _⇒_ : Type → Type → Type
-  none : Type
-  any : Type
+  bot : Type
+  top : Type
   _∪_ : Type → Type → Type
   _∩_ : Type → Type → Type
 
-src : Type → Type
-src nil = none
-src (S ⇒ T) = S
-src none = none
-src any = any
-src (S ∪ T) = (src S) ∪ (src T)
-src (S ∩ T) = (src S) ∩ (src T)
+data Mode : Set where
+  strict : Mode
+  nonstrict : Mode
+
+src : Mode → Type → Type
+src m nil = bot
+src m (S ⇒ T) = S
+-- In nonstrict mode, functions are covaraiant, in strict mode they're contravariant
+src strict    (S ∪ T) = (src strict S) ∩ (src strict T)
+src nonstrict (S ∪ T) = (src nonstrict S) ∪ (src nonstrict T)
+src strict    (S ∩ T) = (src strict S) ∪ (src strict T)
+src nonstrict (S ∩ T) = (src nonstrict S) ∩ (src nonstrict T)
+src strict bot = top
+src nonstrict bot = bot
+src strict top = bot
+src nonstrict top = top
 
 tgt : Type → Type
-tgt nil = none
+tgt nil = bot
 tgt (S ⇒ T) = T
-tgt none = none
-tgt any = any
+tgt bot = bot
+tgt top = top
 tgt (S ∪ T) = (tgt S) ∪ (tgt T)
 tgt (S ∩ T) = (tgt S) ∩ (tgt T)
 

@@ -6,7 +6,7 @@ open import Agda.Builtin.String using (String)
 
 open import FFI.Data.ByteString using (ByteString)
 open import FFI.Data.HaskellString using (HaskellString; pack)
-open import FFI.Data.Maybe using (Maybe; just)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Either using (Either; mapLeft)
 open import FFI.Data.Scientific using (Scientific)
 open import FFI.Data.Vector using (Vector)
@@ -39,6 +39,7 @@ postulate
 {-# COMPILE GHC lookup = \_ -> Data.Aeson.KeyMap.lookup #-}
 
 postulate lookup-insert : ∀ {A} k v (m : KeyMap A) → (lookup k (insert k v m) ≡ just v)
+postulate lookup-empty : ∀ {A} k → (lookup {A} k empty ≡ nothing)
 
 data Value : Set where
   object : KeyMap Value → Value
