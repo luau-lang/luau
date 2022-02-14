@@ -2,15 +2,15 @@
 
 ## Summary
 
-Add `table.clone` that, given a table, produces a copy of that table with the same keys/values/metatable.
+Add `table.clone` function that, given a table, produces a copy of that table with the same keys/values/metatable.
 
 ## Motivation
 
 There are multiple cases today when cloning tables is a useful operation.
 
-When working with tables as data containers, some algorithms may require modifying the table that can't be done in place for some reason.
-When working with tables as objects, it can be useful to obtain an identical copy of the object for further modification, preserving the metatable.
-When working with immutable data structures, any modification needs to clone some parts of the data structure to produce a new version of the object.
+- When working with tables as data containers, some algorithms may require modifying the table that can't be done in place for some reason.
+- When working with tables as objects, it can be useful to obtain an identical copy of the object for further modification, preserving the metatable.
+- When working with immutable data structures, any modification needs to clone some parts of the data structure to produce a new version of the object.
 
 While it's possible to implement this function in user code today, it's impossible to implement it with maximum efficiency; furthermore, cloning is a reasonably fundamental
 operation so from the ergonomics perspective it can be expected to be provided by the standard library.
