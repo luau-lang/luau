@@ -48,8 +48,9 @@ conservative route. We are likely to relax this restriction in the future.
 
 ## Drawbacks
 
-Adding a new function to `table` library theoretically increases complexity. In practice though, we already effectively implement `table.clone` internally for some VM optimizations,
-so exposing this to the users bears no cost.
+Adding a new function to `table` library theoretically increases complexity. In practice though, we already effectively implement `table.clone` internally for some VM optimizations, so exposing this to the users bears no cost.
+
+Assigning a type to this function is a little difficult if we want to enforce the "argument must be a table" constraint. It's likely that we'll need to type this as `table.clone(T): T` for the time being, which is less precise.
 
 ## Alternatives
 
