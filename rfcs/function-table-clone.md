@@ -28,6 +28,7 @@ The table can be modified after cloning; as such, a primitive like `Object.assig
 `table.clone(t)` is functionally equivalent to the following code, but it's more ergonomic (on the account of being built-in) and significantly faster:
 
 ```lua
+assert(type(t) == "table")
 local nt = {}
 for k,v in pairs(t) do
   nt[k] = v
