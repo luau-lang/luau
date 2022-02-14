@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec)
 
 open import Agda.Builtin.List using (List; _∷_; [])
 
@@ -31,12 +31,22 @@ lookupIn (key ∷ keys) obj with lookup (fromString key) obj
 lookupIn (key ∷ keys) obj | nothing = lookupIn keys obj
 lookupIn (key ∷ keys) obj | just value = (key , value)
 
+varDecFromJSON : Value → Either String (VarDec maybe)
+varDecFromObject : Object → Either String (VarDec maybe)
 exprFromJSON : Value → Either String (Expr maybe)
 exprFromObject : Object → Either String (Expr maybe)
 statFromJSON : Value → Either String (Stat maybe)
 statFromObject : Object → Either String (Stat maybe)
 blockFromJSON : Value → Either String (Block maybe)
 blockFromArray : Array → Either String (Block maybe)
+
+varDecFromJSON (object arg) = varDecFromObject arg
+varDecFromJSON val = Left "VarDec not an object"
+
+varDecFromObject obj with lookup name obj
+varDecFromObject obj | just (string name) = Right (var name)
+varDecFromObject obj | just _ = Left "AstLocal name is not a string"
+varDecFromObject obj | nothing = Left "AstLocal missing name"
 
 exprFromJSON (object obj) = exprFromObject obj
 exprFromJSON val = Left "AstExpr not an object"
@@ -54,11 +64,12 @@ exprFromObject obj | just (string "AstExprCall") | nothing | _  = Left ("AstExpr
 exprFromObject obj | just (string "AstExprCall") | _ | nothing  = Left ("AstExprCall missing args")
 exprFromObject obj | just (string "AstExprConstantNil") = Right nil
 exprFromObject obj | just (string "AstExprFunction") with lookup args obj | lookup body obj
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value with head arr | blockFromJSON value
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just (string x) | Right B = Right (function "" ⟨ var x ⟩ is B end)
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | just _ | Right B = Left "AstExprFunction args not a string array"
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | nothing | Right B = Left "Unsupported AstExprFunction empty args"
-exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just value | _ | Left err = Left err
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue with head arr | blockFromJSON blockValue
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | just argValue | Right B with varDecFromJSON argValue
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | just argValue | Right B | Right arg = Right (function "" ⟨ arg ⟩ is B end)
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | just argValue | Right B | Left err = Left err
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | nothing | Right B = Left "Unsupported AstExprFunction empty args"
+exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | _ | Left err = Left err
 exprFromObject obj | just (string "AstExprFunction") | just _ | just _ = Left "AstExprFunction args not an array"
 exprFromObject obj | just (string "AstExprFunction") | nothing | _ = Left "AstExprFunction missing args"
 exprFromObject obj | just (string "AstExprFunction") | _ | nothing = Left "AstExprFunction missing body"
@@ -77,11 +88,11 @@ statFromJSON _ = Left "AstStat not an object"
 statFromObject obj with lookup type obj
 statFromObject obj | just(string "AstStatLocal") with lookup vars obj | lookup values obj
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) with head(arr1) | head(arr2)
-statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) with exprFromJSON(value)
-statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) | Right M = Right (local (var x) ← M)
-statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | just(value) | Left err = Left err
-statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(string x) | nothing = Left "AstStatLocal empty values"
-statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(_) | _ = Left "AstStatLocal vars not a string array"
+statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(x) | just(value) with varDecFromJSON(x) | exprFromJSON(value)
+statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(x) | just(value) | Right x′ | Right M = Right (local x′ ← M)
+statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(x) | just(value) | Left err | _ = Left err
+statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(x) | just(value) | _ | Left err = Left err
+statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | just(x) | nothing = Left "AstStatLocal empty values"
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(array arr2) | nothing | _ = Left "AstStatLocal empty vars"
 statFromObject obj | just(string "AstStatLocal") | just(array arr1) | just(_) = Left "AstStatLocal values not an array"
 statFromObject obj | just(string "AstStatLocal") | just(_) | just(_) = Left "AstStatLocal vars not an array"
