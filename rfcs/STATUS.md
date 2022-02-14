@@ -4,7 +4,8 @@ This document tracks unimplemented RFCs.
 
 [RFC: Deprecate getfenv/setfenv](https://github.com/Roblox/luau/blob/master/rfcs/deprecate-getfenv-setfenv.md)
 
-Status: Implementing this RFC triggers warnings across the board in the apps ecosystem, in particular in testing libraries. Pending code changes / decisions.
+Status: Needs implementation.
+Nodes: Implementing this RFC triggers warnings across the board in the apps ecosystem, in particular in testing libraries. Pending code changes / decisions.
 
 ## Read-only and write-only properties
 
