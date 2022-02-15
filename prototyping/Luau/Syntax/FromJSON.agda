@@ -1,6 +1,7 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec)
+open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
 
@@ -43,10 +44,14 @@ blockFromArray : Array → Either String (Block maybe)
 varDecFromJSON (object arg) = varDecFromObject arg
 varDecFromJSON val = Left "VarDec not an object"
 
-varDecFromObject obj with lookup name obj
-varDecFromObject obj | just (string name) = Right (var name)
-varDecFromObject obj | just _ = Left "AstLocal name is not a string"
-varDecFromObject obj | nothing = Left "AstLocal missing name"
+varDecFromObject obj with lookup name obj | lookup type obj
+varDecFromObject obj | just (string name) | nothing = Right (var name)
+varDecFromObject obj | just (string name) | just Value.null = Right (var name)
+varDecFromObject obj | just (string name) | just tyValue with typeFromJSON tyValue
+varDecFromObject obj | just (string name) | just tyValue | Right ty = Right (var name ∈ ty)
+varDecFromObject obj | just (string name) | just tyValue | Left err = Left err
+varDecFromObject obj | just _ | _ = Left "AstLocal name is not a string"
+varDecFromObject obj | nothing | _ = Left "AstLocal missing name"
 
 exprFromJSON (object obj) = exprFromObject obj
 exprFromJSON val = Left "AstExpr not an object"
