@@ -39,7 +39,7 @@ stepᴱ H (addr a $ N) | value (addr a) refl | (just(function F is B end) , p) =
 stepᴱ H (M $ N) | error E = error (app E)
 stepᴱ H (block b is B end) with stepᴮ H B
 stepᴱ H (block b is B end) | step H′ B′ D = step H′ (block b is B′ end) (block D)
-stepᴱ H (block b is (return _ ∙ B′) end) | return V refl = step H (val V) return
+stepᴱ H (block b is (return _ ∙ B′) end) | return V refl = step H (val V) (return refl)
 stepᴱ H (block b is done end) | done refl = step H nil done
 stepᴱ H (block b is B end) | error E = error (block b E)
 stepᴱ H (function F is C end) with alloc H (function F is C end)

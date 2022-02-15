@@ -34,34 +34,32 @@ typeOfᴮ Σ Γ (local var x ∈ T ← M ∙ B) = typeOfᴮ Σ (Γ ⊕ x ↦ T) 
 typeOfᴮ Σ Γ (return M ∙ B) = typeOfᴱ Σ Γ M
 typeOfᴮ Σ Γ done = nil
 
-data TypeCheckResultᴱ (Σ : AddrCtxt) (Γ : VarCtxt) (S : Type) (M : Expr yes) : Set
-data TypeCheckResultᴮ (Σ : AddrCtxt) (Γ : VarCtxt) (S : Type) (B : Block yes) : Set
+contextOfᴱ : AddrCtxt → VarCtxt → Type → (Expr yes) → VarCtxt
+contextOfᴮ : AddrCtxt → VarCtxt → Type → (Block yes) → VarCtxt
 
-data TypeCheckResultᴱ Σ Γ S M where
+contextOfᴱ Σ Γ S nil = ∅
+contextOfᴱ Σ Γ S (var x) = (x ↦ S)
+contextOfᴱ Σ Γ S (addr a) = ∅
+contextOfᴱ Σ Γ S (M $ N) = (contextOfᴱ Σ Γ (U ⇒ S) M) ⋒ (contextOfᴱ Σ Γ (src T) N) where T = typeOfᴱ Σ Γ M; U = typeOfᴱ Σ Γ N
+contextOfᴱ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is B end) = (contextOfᴮ Σ (Γ ⊕ x ↦ T) U B) ⊝ x
+contextOfᴱ Σ Γ S (block b is B end) = (contextOfᴮ Σ Γ S B)
 
-  ok : ∀ Δ → (Σ ▷ Γ ⊢ᴱ S ∋ M ∈ (typeOfᴱ Σ Γ M) ⊣ Δ) → TypeCheckResultᴱ Σ Γ S M
-  
-data TypeCheckResultᴮ Σ Γ S B where
+contextOfᴮ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) = ((contextOfᴮ Σ (Γ ⊕ x ↦ T) U C) ⊝ x) ⋒ ((contextOfᴮ Σ (Γ ⊕ f ↦ (T ⇒ U)) S B) ⊝ f)
+contextOfᴮ Σ Γ S (local var x ∈ T ← M ∙ B) = (contextOfᴱ Σ Γ T M) ⋒ ((contextOfᴮ Σ (Γ ⊕ x ↦ T)S B) ⊝ x)
+contextOfᴮ Σ Γ S (return M ∙ B) = (contextOfᴱ Σ Γ S M)
+contextOfᴮ Σ Γ S done = ∅
 
-  ok : ∀ Δ → (Σ ▷ Γ ⊢ᴮ S ∋ B ∈ (typeOfᴮ Σ Γ B) ⊣ Δ) → TypeCheckResultᴮ Σ Γ S B
-  
-typeCheckᴱ : ∀ Σ Γ S M → (TypeCheckResultᴱ Σ Γ S M)
-typeCheckᴮ : ∀ Σ Γ S B → (TypeCheckResultᴮ Σ Γ S B)
+typeCheckᴱ : ∀ Σ Γ S M → (Σ ▷ Γ ⊢ᴱ S ∋ M ∈ (typeOfᴱ Σ Γ M) ⊣ (contextOfᴱ Σ Γ S M))
+typeCheckᴮ : ∀ Σ Γ S B → (Σ ▷ Γ ⊢ᴮ S ∋ B ∈ (typeOfᴮ Σ Γ B) ⊣ (contextOfᴮ Σ Γ S B))
 
-typeCheckᴱ Σ Γ S nil = ok ∅ nil
-typeCheckᴱ Σ Γ S (var x) = ok (x ↦ S) (var x refl)
-typeCheckᴱ Σ Γ S (addr a) = ok ∅ (addr a refl)
-typeCheckᴱ Σ Γ S (M $ N) with typeCheckᴱ Σ Γ (typeOfᴱ Σ Γ N ⇒ S) M | typeCheckᴱ Σ Γ (src (typeOfᴱ Σ Γ M)) N
-typeCheckᴱ Σ Γ S (M $ N) | ok Δ₁ D₁ | ok Δ₂ D₂ = ok (Δ₁ ⋒ Δ₂) (app D₁ D₂)
-typeCheckᴱ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is B end) with typeCheckᴮ Σ (Γ ⊕ x ↦ T) U B
-typeCheckᴱ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is B end) | ok Δ D = ok (Δ ⊝ x) (function D)
-typeCheckᴱ Σ Γ S (block b is B end) with typeCheckᴮ Σ Γ S B
-typeCheckᴱ Σ Γ S block b is B end | ok Δ D = ok Δ (block b D)
+typeCheckᴱ Σ Γ S nil = nil
+typeCheckᴱ Σ Γ S (var x) = var x refl
+typeCheckᴱ Σ Γ S (addr a) = addr a refl
+typeCheckᴱ Σ Γ S (M $ N) = app (typeCheckᴱ Σ Γ (typeOfᴱ Σ Γ N ⇒ S) M) (typeCheckᴱ Σ Γ (src (typeOfᴱ Σ Γ M)) N)
+typeCheckᴱ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is B end) = function(typeCheckᴮ Σ (Γ ⊕ x ↦ T) U B)
+typeCheckᴱ Σ Γ S (block b is B end) = block b (typeCheckᴮ Σ Γ S B)
 
-typeCheckᴮ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) with typeCheckᴮ Σ (Γ ⊕ x ↦ T) U C | typeCheckᴮ Σ (Γ ⊕ f ↦ (T ⇒ U)) S B
-typeCheckᴮ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) | ok Δ₁ D₁ | ok Δ₂ D₂ = ok ((Δ₁ ⊝ x) ⋒ (Δ₂ ⊝ f)) (function D₁ D₂)
-typeCheckᴮ Σ Γ S (local var x ∈ T ← M ∙ B) with typeCheckᴱ Σ Γ T M | typeCheckᴮ Σ (Γ ⊕ x ↦ T) S B
-typeCheckᴮ Σ Γ S (local var x ∈ T ← M ∙ B) | ok Δ₁ D₁ | ok Δ₂ D₂ = ok (Δ₁ ⋒ (Δ₂ ⊝ x)) (local D₁ D₂)
-typeCheckᴮ Σ Γ S (return M ∙ B) with typeCheckᴱ Σ Γ S M | typeCheckᴮ Σ Γ top B
-typeCheckᴮ Σ Γ S (return M ∙ B) | ok Δ₁ D₁ | ok Σ₂ D₂ = ok Δ₁ (return D₁ D₂)
-typeCheckᴮ Σ Γ S done = ok ∅ done
+typeCheckᴮ Σ Γ S (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) = function(typeCheckᴮ Σ (Γ ⊕ x ↦ T) U C) (typeCheckᴮ Σ (Γ ⊕ f ↦ (T ⇒ U)) S B)
+typeCheckᴮ Σ Γ S (local var x ∈ T ← M ∙ B) = local (typeCheckᴱ Σ Γ T M) (typeCheckᴮ Σ (Γ ⊕ x ↦ T) S B)
+typeCheckᴮ Σ Γ S (return M ∙ B) = return (typeCheckᴱ Σ Γ S M) (typeCheckᴮ Σ Γ top B)
+typeCheckᴮ Σ Γ S done = done

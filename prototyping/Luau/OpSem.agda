@@ -12,11 +12,6 @@ data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
 
 data _⊢_⟶ᴱ_⊣_  where
 
-  nil : ∀ {H} →
-
-    -------------------
-    H ⊢ nil ⟶ᴱ nil ⊣ H
-
   function : ∀ {H H′ a F B} →
 
     H′ ≡ H ⊕ a ↦ (function F is B end) →
@@ -41,10 +36,11 @@ data _⊢_⟶ᴱ_⊣_  where
     ----------------------------------------------------
     H ⊢ (block b is B end) ⟶ᴱ (block b is B′ end) ⊣ H′
 
-  return : ∀ {H V B b} →
- 
-    --------------------------------------------------------
-    H ⊢ (block b is return (val V) ∙ B end) ⟶ᴱ (val V) ⊣ H
+  return : ∀ {H M V B b} →
+
+    M ≡ val V →
+    --------------------------------------------
+    H ⊢ (block b is return M ∙ B end) ⟶ᴱ M ⊣ H
 
   done : ∀ {H b} →
  

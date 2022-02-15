@@ -27,6 +27,12 @@ data Warningᴱ {Σ Γ S} where
     -----------------
     Warningᴱ(app D₁ D₂)
 
+  app₂ : ∀ {M N T U Δ₁ Δ₂} {D₁ : Σ ▷ Γ ⊢ᴱ (U ⇒ S) ∋ M ∈ T ⊣ Δ₁} {D₂ : Σ ▷ Γ ⊢ᴱ (src T) ∋ N ∈ U ⊣ Δ₂} →
+
+    Warningᴱ D₂ →
+    -----------------
+    Warningᴱ(app D₁ D₂)
+
   block : ∀ b {B T Δ} {D : Σ ▷ Γ ⊢ᴮ S ∋ B ∈ T ⊣ Δ} →
 
     Warningᴮ D →

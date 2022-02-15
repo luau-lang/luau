@@ -5,15 +5,17 @@ module Properties.StrictMode where
 import Agda.Builtin.Equality.Rewrite
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
-open import Luau.Heap using (Heap; HeapValue; function_is_end; alloc; ok) renaming (_[_] to _[_]ᴴ)
-open import Luau.StrictMode using (Warningᴱ; Warningᴮ; bot; app₁; block; return; local₁)
-open import Luau.Syntax using (Expr; yes; var_∈_; _⟨_⟩∈_; _$_; addr; block_is_end; done; return; local_←_; _∙_; fun; arg)
+open import Luau.Heap using (Heap; HeapValue; function_is_end; defn; alloc; ok; next; lookup-next) renaming (_[_] to _[_]ᴴ)
+open import Luau.StrictMode using (Warningᴱ; Warningᴮ; bot; app₁; app₂; block; return; local₁)
+open import Luau.Syntax using (Expr; yes; var_∈_; _⟨_⟩∈_; _$_; addr; nil; block_is_end; done; return; local_←_; _∙_; fun; arg)
 open import Luau.Type using (Type; strict; nil; _⇒_; bot; tgt)
 open import Luau.TypeCheck(strict) using (_▷_⊢ᴮ_∋_∈_⊣_; _▷_⊢ᴱ_∋_∈_⊣_; _▷_∈_; _▷_✓; nil; var; addr; app; function; block; done; return; local; nothing)
 open import Luau.Value using (val; nil; addr)
+open import Luau.AddrCtxt using (AddrCtxt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_; ∅-[]) renaming (_[_] to _[_]ⱽ)
 open import Properties.Remember using (remember; _,_)
 open import Properties.Equality using (cong)
+open import Properties.TypeCheck(strict) using (typeOfᴱ; typeCheckᴱ)
 open import Luau.OpSem using (_⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app; function; beta; return; block; done; local; subst)
 
 {-# REWRITE ∅-[] #-}
@@ -58,7 +60,7 @@ progressᴱ H h (function D) _ with alloc H _
 progressᴱ H h (function D) _ | ok a H′ r = step (function r)
 progressᴱ H h (block b D) q with progressᴮ H h D q
 progressᴱ H h (block b D) q | done refl = step done
-progressᴱ H h (block b D) q | return V refl = step return
+progressᴱ H h (block b D) q | return V refl = step (return refl)
 progressᴱ H h (block b D) q | warning W = warning (block b W)
 progressᴱ H h (block b D) q | step S = step (block S)
 
