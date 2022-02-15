@@ -5,6 +5,7 @@ open import Properties.Dec using (⊥)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Type using (Type)
+open import FFI.Data.Scientific using (Scientific)
 
 infixr 5 _∙_
 
@@ -52,4 +53,4 @@ data Expr a where
   _$_ : Expr a → Expr a → Expr a
   function_is_end : FunDec a → Block a → Expr a
   block_is_end : Var → Block a → Expr a
-
+  number_ : Scientific → Expr a

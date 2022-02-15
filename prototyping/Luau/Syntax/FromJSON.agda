@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec; number_)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
@@ -19,6 +19,7 @@ lokal = fromString "local"
 list = fromString "list"
 name = fromString "name"
 type = fromString "type"
+value = fromString "value"
 values = fromString "values"
 vars = fromString "vars"
 
@@ -83,6 +84,10 @@ exprFromObject obj | just (string "AstExprLocal") | just x with varDecFromJSON x
 exprFromObject obj | just (string "AstExprLocal") | just x | Right x′ = Right (var (Luau.Syntax.name x′))
 exprFromObject obj | just (string "AstExprLocal") | just x | Left err = Left err
 exprFromObject obj | just (string "AstExprLocal") | nothing = Left "AstExprLocal missing local"
+exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
+exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number x)
+exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
+exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
 exprFromObject obj | just (string ty) = Left ("TODO: Unsupported AstExpr " ++ ty)
 exprFromObject obj | just _ = Left "AstExpr type not a string"
 exprFromObject obj | nothing = Left "AstExpr missing type"

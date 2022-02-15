@@ -1,10 +1,11 @@
 module Luau.Value.ToString where
 
 open import Agda.Builtin.String using (String)
-open import Luau.Value using (Value; nil; addr)
+open import FFI.Data.Scientific using (show)
+open import Luau.Value using (Value; nil; addr; number)
 open import Luau.Addr.ToString using (addrToString)
 
 valueToString : Value → String
 valueToString nil = "nil"
 valueToString (addr a) = addrToString a
- 
+valueToString (number x) = show x

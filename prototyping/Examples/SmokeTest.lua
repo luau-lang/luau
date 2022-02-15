@@ -15,4 +15,5 @@ local b : nil = nil
 local c : (nil) -> nil = nil
 local d : (any & nil) = nil
 local e : any? = nil
+local f = 123
 return id2(nil2)
