@@ -25,7 +25,7 @@ operation so from the ergonomics perspective it can be expected to be provided b
 
 The copy is shallow: implementing a deep recursive copy automatically is challenging (for similar reasons why we decided to avoid this in `table.freeze`), and often only certain keys need to be cloned recursively which can be done after the initial clone.
 
-The table can be modified after cloning; as such, a primitive like `Object.assign` could be built on top of this.
+The table can be modified after cloning; as such, functions that compute a slightly modified copy of the table can be easily built on top of `table.clone`.
 
 `table.clone(t)` is functionally equivalent to the following code, but it's more ergonomic (on the account of being built-in) and significantly faster:
 
@@ -45,7 +45,7 @@ limited purely by memory bandwidth. In comparison, the code above can't predict 
 and bears the interpreter overhead (which can be avoided for numeric keys with `table.move` but that doesn't work for the general case of dictionaries).
 
 Out of the abundance of caution, `table.clone` will fail to clone the table if it has a protected metatable. This is motivated by the fact that you can't do this today, so
-there's no new potential vectors to escape various sandboxes. Superficially it seems like it's probably reasonable to allow cloning tables with protected metatables, but
+there are no new potential vectors to escape various sandboxes. Superficially it seems like it's probably reasonable to allow cloning tables with protected metatables, but
 there may be cases where code manufactures tables with unique protected metatables expecting 1-1 relationship and cloning would break that, so for now this RFC proposes a more
 conservative route. We are likely to relax this restriction in the future.
 
@@ -58,7 +58,7 @@ Assigning a type to this function is a little difficult if we want to enforce th
 ## Alternatives
 
 We can implement something similar to `Object.assign` from JavaScript instead, that simultaneously assigns extra keys. However, this won't be fundamentally more efficient than
-assigning the keys afterwards, and can be implemented in user space. Additionally we can later extend `clone` with an extra argument if we so choose, so this proposal is the
+assigning the keys afterwards, and can be implemented in user space. Additionally, we can later extend `clone` with an extra argument if we so choose, so this proposal is the
 minimal viable one.
 
 We can immediately remove the rule wrt protected metatables, as it's not clear that it's actually problematic to be able to clone tables with protected metatables.
