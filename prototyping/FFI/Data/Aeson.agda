@@ -40,6 +40,7 @@ postulate
 
 postulate lookup-insert : ∀ {A} k v (m : KeyMap A) → (lookup k (insert k v m) ≡ just v)
 postulate lookup-empty : ∀ {A} k → (lookup {A} k empty ≡ nothing)
+postulate singleton-insert-empty : ∀ {A} k (v : A) → (singleton k v ≡ insert k v empty)
 
 data Value : Set where
   object : KeyMap Value → Value

@@ -6,6 +6,7 @@ open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg)
 open import Luau.Value using (addr; val)
+open import Luau.Type using (Type)
 
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set

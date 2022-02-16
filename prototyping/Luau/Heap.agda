@@ -5,7 +5,7 @@ open import FFI.Data.Maybe using (Maybe; just)
 open import FFI.Data.Vector using (Vector; length; snoc; empty)
 open import Luau.Addr using (Addr)
 open import Luau.Var using (Var)
-open import Luau.Syntax using (Block; Expr; Annotated; FunDec; nil; addr; function_is_end)
+open import Luau.Syntax using (Block; Expr; Annotated; FunDec; nil; function_is_end)
 
 data HeapValue (a : Annotated) : Set where
   function_is_end : FunDec a → Block a → HeapValue a
