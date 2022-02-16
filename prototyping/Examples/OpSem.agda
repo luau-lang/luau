@@ -6,4 +6,3 @@ open import Luau.Heap using (∅)
 
 ex1 : ∅ ⊢ (local (var "x") ← nil ∙ return (var "x") ∙ done) ⟶ᴮ (return nil ∙ done) ⊣ ∅
 ex1 = subst
-

@@ -9,6 +9,7 @@ open import FFI.Data.Aeson using (Value; Array; Object; object; array; string; f
 open import FFI.Data.Bool using (true; false)
 open import FFI.Data.Either using (Either; Left; Right)
 open import FFI.Data.Maybe using (Maybe; nothing; just)
+open import FFI.Data.Scientific using (toFloat)
 open import FFI.Data.String using (String; _++_)
 open import FFI.Data.Vector using (head; tail; null; empty)
 
@@ -85,7 +86,7 @@ exprFromObject obj | just (string "AstExprLocal") | just x | Right x′ = Right 
 exprFromObject obj | just (string "AstExprLocal") | just x | Left err = Left err
 exprFromObject obj | just (string "AstExprLocal") | nothing = Left "AstExprLocal missing local"
 exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
-exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number x)
+exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number (toFloat x))
 exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
 exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
 exprFromObject obj | just (string ty) = Left ("TODO: Unsupported AstExpr " ++ ty)

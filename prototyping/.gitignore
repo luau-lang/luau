@@ -4,3 +4,5 @@ Main
 MAlonzo
 PrettyPrinter
 .ghc.*
+Interpreter
+Examples

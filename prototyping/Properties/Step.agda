@@ -3,9 +3,9 @@ module Properties.Step where
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
-open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg)
+open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number_)
 open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst)
-open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
+open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; ValueNotCallable; UnboundVariable; SEGV; app; block; local; return)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Luau.Value using (nil; addr; val)
 open import Properties.Remember using (remember; _,_)
@@ -30,9 +30,11 @@ stepᴮ : ∀ {a} H B → StepResultᴮ {a} H B
 stepᴱ H nil = value nil refl
 stepᴱ H (var x) = error (UnboundVariable x)
 stepᴱ H (addr a) = value (addr a) refl
+stepᴱ H (number x) = value (Luau.Value.Value.number x) refl
 stepᴱ H (M $ N) with stepᴱ H M
 stepᴱ H (M $ N) | step H′ M′ D = step H′ (M′ $ N) (app D)
-stepᴱ H (nil $ N) | value nil refl = error NilIsNotAFunction
+stepᴱ H (nil $ N) | value nil refl = error (ValueNotCallable (nil $ N))
+stepᴱ H ((number _) $ N) | value (Luau.Value.Value.number x) refl = error (ValueNotCallable ((number x) $ N))
 stepᴱ H (addr a $ N) | value (addr a) refl with remember (H [ a ])
 stepᴱ H (addr a $ N) | value (addr a) refl | (nothing , p) = error (app (SEGV a p))
 stepᴱ H (addr a $ N) | value (addr a) refl | (just(function F is B end) , p) = step H (block fun F is (local arg F ← N) ∙ B end) (beta p)

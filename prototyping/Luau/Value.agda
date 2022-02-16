@@ -1,6 +1,6 @@
 module Luau.Value where
 
-open import FFI.Data.Scientific using (Scientific)
+open import Agda.Builtin.Float using (Float)
 open import Luau.Addr using (Addr)
 open import Luau.Syntax using (Block; Expr; nil; addr)
 open import Luau.Var using (Var)
@@ -8,7 +8,7 @@ open import Luau.Var using (Var)
 data Value : Set where
   nil : Value
   addr : Addr → Value
-  number : Scientific → Value
+  number : Float → Value
 
 val : ∀ {a} → Value → Expr a
 val nil = nil
