@@ -1,5 +1,7 @@
 # Default type alias type parameters
 
+Status: Implemented
+
 ## Summary
 
 Introduce syntax to provide default type values inside the type alias type parameter list.
