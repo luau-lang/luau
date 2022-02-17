@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.VarCtxt where
 
 open import Agda.Builtin.Equality using (_≡_)
@@ -34,10 +36,3 @@ x ↦ T = singleton (fromString x) T
 
 _⊕_↦_ : VarCtxt → Var → Type → VarCtxt
 Γ ⊕ x ↦ T = insert (fromString x) T Γ
-
--- ⊕-[] : ∀ (Γ : VarCtxt) x T → (((Γ ⊕ x ↦ T) [ x ]) ≡ T)
-⊕-[] = λ (Γ : VarCtxt) x T → cong orBot (lookup-insert (fromString x) T Γ)
-
--- ∅-[] : ∀ x → ∅ [ x ] ≡ bot
-∅-[]  = λ (x : Var) → cong orBot (lookup-empty (fromString x))
-

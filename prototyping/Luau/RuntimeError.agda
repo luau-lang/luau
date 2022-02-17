@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.RuntimeError where
 
 open import Agda.Builtin.Equality using (_≡_)

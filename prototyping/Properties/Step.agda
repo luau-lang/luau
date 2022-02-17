@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Properties.Step where
 
 open import Agda.Builtin.Equality using (_≡_; refl)

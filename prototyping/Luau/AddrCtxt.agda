@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.AddrCtxt where
 
 open import Luau.Type using (Type)

@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.Heap where
 
 open import Agda.Builtin.Equality using (_≡_)
@@ -37,13 +39,3 @@ next = length
 
 allocated : ∀ {a} → Heap a → HeapValue a → Heap a
 allocated = snoc
-
--- next-emp : (length empty ≡ 0)
-next-emp = FFI.Data.Vector.length-empty
-
--- lookup-next : ∀ V H → (lookup (allocated H V) (next H) ≡ just V)
-lookup-next = FFI.Data.Vector.lookup-snoc
-
--- lookup-next-emp : ∀ V → (lookup (allocated emp V) 0 ≡ just V)
-lookup-next-emp = FFI.Data.Vector.lookup-snoc-empty
-

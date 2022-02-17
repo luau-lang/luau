@@ -1,6 +1,9 @@
+{-# OPTIONS --rewriting #-}
+
 module FFI.Data.Aeson where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Equality.Rewrite using ()
 open import Agda.Builtin.Bool using (Bool)
 open import Agda.Builtin.String using (String)
 
@@ -41,6 +44,8 @@ postulate
 postulate lookup-insert : ∀ {A} k v (m : KeyMap A) → (lookup k (insert k v m) ≡ just v)
 postulate lookup-empty : ∀ {A} k → (lookup {A} k empty ≡ nothing)
 postulate singleton-insert-empty : ∀ {A} k (v : A) → (singleton k v ≡ insert k v empty)
+
+{-# REWRITE lookup-insert lookup-empty singleton-insert-empty #-}
 
 data Value : Set where
   object : KeyMap Value → Value

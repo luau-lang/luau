@@ -1,6 +1,9 @@
+{-# OPTIONS --rewriting #-}
+
 module FFI.Data.Vector where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Equality.Rewrite using ()
 open import Agda.Builtin.Int using (Int; pos; negsuc)
 open import Agda.Builtin.Nat using (Nat)
 open import FFI.Data.Bool using (Bool; false; true)
@@ -32,6 +35,8 @@ postulate
 postulate length-empty : ∀ {A} → (length (empty {A}) ≡ 0)
 postulate lookup-snoc : ∀ {A} (x : A) (v : Vector A) → (lookup (snoc v x) (length v) ≡ just x)
 postulate lookup-snoc-empty : ∀ {A} (x : A) → (lookup (snoc empty x) 0 ≡ just x)
+
+{-# REWRITE length-empty lookup-snoc lookup-snoc-empty #-}
 
 head : ∀ {A} → (Vector A) → (Maybe A)
 head vec with null vec

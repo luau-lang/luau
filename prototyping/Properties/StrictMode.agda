@@ -5,57 +5,63 @@ module Properties.StrictMode where
 import Agda.Builtin.Equality.Rewrite
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
-open import Luau.Heap using (Heap; HeapValue; function_is_end; defn; alloc; ok; next; lookup-next) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ)
-open import Luau.StrictMode using (Warningᴱ; Warningᴮ; bot; disagree; addr; app₁; app₂; block; return; local₁)
-open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ)
-open import Luau.Syntax using (Expr; yes; var_∈_; _⟨_⟩∈_; _$_; addr; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg)
+open import Luau.Heap using (Heap; HeapValue; function_is_end; defn; alloc; ok; next) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ)
+open import Luau.StrictMode using (Warningᴱ; Warningᴮ; BadlyTypedFunctionAddress; UnallocatedAddress; app₀; app₁; app₂; block; return; local₀; local₁; local₂; function₀; function₁; function₂)
+open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
+open import Luau.Syntax using (Expr; yes; var; var_∈_; _⟨_⟩∈_; _$_; addr; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg)
 open import Luau.Type using (Type; strict; nil; _⇒_; bot; tgt)
-open import Luau.TypeCheck(strict) using (_⊢ᴮ_∋_∈_⊣_; _⊢ᴱ_∋_∈_⊣_; nil; var; addr; app; function; block; done; return; local)
+open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; nil; var; addr; app; function; block; done; return; local)
 open import Luau.Value using (val; nil; addr)
+open import Luau.Var using (_≡ⱽ_)
 open import Luau.Addr using (_≡ᴬ_)
 open import Luau.AddrCtxt using (AddrCtxt)
-open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_; ∅-[]) renaming (_[_] to _[_]ⱽ)
+open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import Luau.VarCtxt using (VarCtxt; ∅)
 open import Properties.Remember using (remember; _,_)
-open import Properties.Equality using (sym; cong; trans; subst₁)
+open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION)
-open import Properties.TypeCheck(strict) using (typeOfᴴ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ)
+open import Properties.TypeCheck(strict) using (declaredTypeᴴ; typeOfⱽ; typeOfᴴ; typeOfᴱ; typeOfᴮ; typeOfᴱⱽ; typeCheckᴱ; typeCheckᴮ)
 open import Luau.OpSem using (_⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app; function; beta; return; block; done; local; subst)
 
-{-# REWRITE lookup-next #-}
-
 src = Luau.Type.src strict
+
+_≡ᵀ_ : ∀ (T U : Type) → Dec(T ≡ U)
+_≡ᵀ_ = {!!}
 
 data _⊑_ (H : Heap yes) : Heap yes → Set where
   refl : (H ⊑ H)
   snoc : ∀ {H′ H″ a V} → (H ⊑ H′) → (H″ ≡ᴴ H′ ⊕ a ↦ V) → (H ⊑ H″)
 
-warning-⊑ : ∀ {H H′ Γ Δ S T M} {D : Γ ⊢ᴱ S ∋ M ∈ T ⊣ Δ} → (H ⊑ H′) → (Warningᴱ H′ D) → Warningᴱ H D
+warning-⊑ : ∀ {H H′ Γ T M} {D : Γ ⊢ᴱ M ∈ T} → (H ⊑ H′) → (Warningᴱ H′ D) → Warningᴱ H D
 warning-⊑ = {!!}
 
-data TypeOfᴱ-⊑-Result H H′ Γ M : Set where
-  ok : (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M) → TypeOfᴱ-⊑-Result H H′ Γ M
-  warning : (∀ {S} → Warningᴱ H (typeCheckᴱ H Γ S M)) → TypeOfᴱ-⊑-Result H H′ Γ M
+data LookupResult (H : Heap yes) a V : Set where
+  just : (H [ a ]ᴴ ≡ just V) → LookupResult H a V
+  nothing : (H [ a ]ᴴ ≡ nothing) → LookupResult H a V
 
-data TypeOfᴮ-⊑-Result H H′ Γ B : Set where
-  ok : (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B) → TypeOfᴮ-⊑-Result H H′ Γ B
-  warning : (∀ {S} → Warningᴮ H (typeCheckᴮ H Γ S B)) → TypeOfᴮ-⊑-Result H H′ Γ B
+lookup-⊑-just : ∀ {H H′ V} a → (H ⊑ H′) → (H′ [ a ]ᴴ ≡ just V) → LookupResult H a V
+lookup-⊑-just = {!!}
 
-typeOfᴱ-⊑ : ∀ {H H′ Γ M} → (H ⊑ H′) → (TypeOfᴱ-⊑-Result H H′ Γ M)
-typeOfᴱ-⊑ = {!!}
+lookup-⊑-nothing : ∀ {H H′} a → (H ⊑ H′) → (H′ [ a ]ᴴ ≡ nothing) → (H [ a ]ᴴ ≡ nothing)
+lookup-⊑-nothing = {!!}
 
-typeOfᴮ-⊑ : ∀ {H H′ Γ B} → (H ⊑ H′) → (TypeOfᴮ-⊑-Result H H′ Γ B)
-typeOfᴮ-⊑ = {!!}
+data OrWarningᴱ {Γ M T} (H : Heap yes) (D : Γ ⊢ᴱ M ∈ T) A : Set where
+  ok : A → OrWarningᴱ H D A
+  warning : Warningᴱ H D → OrWarningᴱ H D A
 
-blah : ∀ {H H′ Γ S S′ M} →  (H ⊑ H′) → (S ≡ S′) → (Warningᴱ H′ (typeCheckᴱ H′ Γ S′ M)) → (Warningᴱ H (typeCheckᴱ H Γ S M))
-blah = {!!}
-
-bloz : ∀ {H Γ S S′ M} → (S ≡ S′) → (Warningᴱ H (typeCheckᴱ H Γ S′ M)) → (Warningᴱ H (typeCheckᴱ H Γ S M))
-bloz = {!!}
+data OrWarningᴮ {Γ B T} (H : Heap yes) (D : Γ ⊢ᴮ B ∈ T) A : Set where
+  ok : A → OrWarningᴮ H D A
+  warning : Warningᴮ H D → OrWarningᴮ H D A
 
 redn-⊑ : ∀ {H H′ M M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (H ⊑ H′)
 redn-⊑ = {!!}
+
+⊕-overwrite : ∀ {Γ x y T U} → (x ≡ y) → ((Γ ⊕ x ↦ T) ⊕ y ↦ U) ≡ (Γ ⊕ y ↦ U)
+⊕-overwrite = {!!}
+
+⊕-swap : ∀ {Γ x y T U} → (x ≢ y) → ((Γ ⊕ x ↦ T) ⊕ y ↦ U) ≡ ((Γ ⊕ y ↦ U) ⊕ x ↦ T)
+⊕-swap = {!!}
 
 substitutivityᴱ : ∀ {Γ T H M v x} → (T ≡ typeOfᴱ H Γ (val v)) → (typeOfᴱ H (Γ ⊕ x ↦ T) M ≡ typeOfᴱ H Γ (M [ v / x ]ᴱ))
 substitutivityᴮ : ∀ {Γ T H B v x} → (T ≡ typeOfᴱ H Γ (val v)) → (typeOfᴮ H (Γ ⊕ x ↦ T) B ≡ typeOfᴮ H Γ (B [ v / x ]ᴮ))
@@ -63,44 +69,124 @@ substitutivityᴮ : ∀ {Γ T H B v x} → (T ≡ typeOfᴱ H Γ (val v)) → (t
 substitutivityᴱ = {!!}
 substitutivityᴮ = {!!}
 
-preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M′)
-preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
+heap-weakeningᴱ : ∀ {H H′ M Γ} → (H ⊑ H′) → OrWarningᴱ H (typeCheckᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M)
+heap-weakeningᴮ : ∀ {H H′ B Γ} → (H ⊑ H′) → OrWarningᴮ H (typeCheckᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B)
 
-preservationᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) = refl
-preservationᴱ (app s) = cong tgt (preservationᴱ s)
-preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p) = trans (cong tgt (cong typeOfᴴ p)) {!!}
-preservationᴱ (block s) = preservationᴮ s
-preservationᴱ (return p) = refl
-preservationᴱ done = refl
+heap-weakeningᴱ = {!!}
+heap-weakeningᴮ = {!!}
 
-preservationᴮ (local {x = var x ∈ T} {B = B} s) with typeOfᴮ-⊑ {B = B} (redn-⊑ s)
-preservationᴮ (local {x = var x ∈ T} s) | ok p = p
-preservationᴮ (local {x = var x ∈ T} s) | warning W = {!!}
-preservationᴮ (subst {x = var x ∈ T} {B = B}) = substitutivityᴮ {B = B} {!!}
-preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) with typeOfᴮ-⊑ {B = B} (snoc refl defn)
-preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | ok r = trans r (substitutivityᴮ {T = S ⇒ T} {B = B} refl)
-preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | warning W = {!!}
-preservationᴮ (return s) = preservationᴱ s
+preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴱ H (typeCheckᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M′)
+preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴮ H (typeCheckᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
 
-reflectᴱ : ∀ {H H′ M M′ S} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Warningᴱ H′ (typeCheckᴱ H′ ∅ S M′) → Warningᴱ H (typeCheckᴱ H ∅ S M)
-reflectᴮ : ∀ {H H′ B B′ S} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → Warningᴮ H′ (typeCheckᴮ H′ ∅ S B′) → Warningᴮ H (typeCheckᴮ H ∅ S B)
+preservationᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) = ok refl
+preservationᴱ (app s) with preservationᴱ s
+preservationᴱ (app s) | ok p = ok (cong tgt p)
+preservationᴱ (app s) | warning W = warning (app₁ W)
+preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p) = {!!} -- ok (trans (cong tgt (cong typeOfᴴ p)) {!!})
+preservationᴱ (block s) with preservationᴮ s
+preservationᴱ (block s) | ok p = ok p
+preservationᴱ (block {b = b} s) | warning W = warning (block b W)
+preservationᴱ (return p) = ok refl
+preservationᴱ done = ok refl
 
-reflectᴱ s W with redn-⊑ s
-reflectᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) (addr a _ r) | p  = CONTRADICTION (r refl)
-reflectᴱ (app s) (bot x) | p  = {!x!}
-reflectᴱ (app s) (app₁ W) | p with typeOfᴱ-⊑ p
-reflectᴱ (app s) (app₁ W) | p | ok q = app₁ (bloz (cong (λ ∙ → ∙ ⇒ _) q) (reflectᴱ s W))
-reflectᴱ (app s) (app₁ W) | p | warning W′ = app₂ W′
-reflectᴱ (app s) (app₂ W) | p = app₂ (blah p (cong src (preservationᴱ s)) W)
-reflectᴱ (beta s) (bot x₁) | p = {!!}
-reflectᴱ (beta {F = f ⟨ var x ∈ T ⟩∈ U} q) (block _ (disagree x₁)) | p = {!!}
-reflectᴱ (beta {F = f ⟨ var x ∈ T ⟩∈ U} q) (block _ (local₁ W)) | p = app₂ (bloz (cong src (cong typeOfᴴ q)) W)
-reflectᴱ (block s) (bot x₁) | p = {!!}
-reflectᴱ (block s) (block b W) | p = block b (reflectᴮ s W)
-reflectᴱ (return q) W | p  = block _ (return W)
-reflectᴱ done (bot x) | p = {!!}
+preservationᴮ (local {x = var x ∈ T} s) with heap-weakeningᴮ (redn-⊑ s)
+preservationᴮ (local {x = var x ∈ T} s) | ok p = ok p
+preservationᴮ (local {x = var x ∈ T} s) | warning W = warning (local₂ W)
+preservationᴮ (subst {x = var x ∈ T} {B = B}) = ok (substitutivityᴮ {B = B} {!!})
+preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) with heap-weakeningᴮ (snoc refl defn)
+preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | ok r = ok (trans r (substitutivityᴮ {T = S ⇒ T} {B = B} refl))
+preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | warning W = warning (function₂ f W)
+preservationᴮ (return s) with preservationᴱ s
+preservationᴮ (return s) | ok p = ok p
+preservationᴮ (return s) | warning W = warning (return W)
 
-reflectᴮ s = {!!}
+reflect-substitutionᴱ : ∀ {H Γ Γ′ T} M v x → (T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴱ H (typeCheckᴱ H Γ (M [ v / x ]ᴱ)) → Warningᴱ H (typeCheckᴱ H Γ′ M)
+reflect-substitutionᴱ-whenever-yes : ∀ {H Γ Γ′ T} v x y (p : x ≡ y) → (typeOfᴱ H Γ (val v) ≡ T) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever yes p)) → Warningᴱ H (typeCheckᴱ H Γ′ (var y))
+reflect-substitutionᴱ-whenever-no : ∀ {H Γ Γ′ T} v x y (p : x ≢ y) → (typeOfᴱ H Γ (val v) ≡ T) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever no p)) → Warningᴱ H (typeCheckᴱ H Γ′ (var y))
+reflect-substitutionᴮ : ∀ {H Γ Γ′ T} B v x → (T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴮ H (typeCheckᴮ H Γ (B [ v / x ]ᴮ)) → Warningᴮ H (typeCheckᴮ H Γ′ B)
+reflect-substitutionᴮ-unless-yes : ∀ {H Γ Γ′ T} B v x y (r : x ≡ y) → (T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ) → Warningᴮ H (typeCheckᴮ H Γ (B [ v / x ]ᴮunless yes r)) → Warningᴮ H (typeCheckᴮ H Γ′ B)
+
+reflect-substitutionᴱ (var y) v x refl q W with x ≡ⱽ y
+reflect-substitutionᴱ (var y) v x refl q W | yes r = reflect-substitutionᴱ-whenever-yes v x y r (typeOfᴱⱽ v) q W
+reflect-substitutionᴱ (var y) v x refl q W | no r = reflect-substitutionᴱ-whenever-no v x y r (typeOfᴱⱽ v) q W
+reflect-substitutionᴱ (addr a) v x p q (BadlyTypedFunctionAddress a f r W) = BadlyTypedFunctionAddress a f r W
+reflect-substitutionᴱ (addr a) v x p q (UnallocatedAddress a r) = UnallocatedAddress a r
+reflect-substitutionᴱ (M $ N) v x p q (app₀ r) = {!!}
+reflect-substitutionᴱ (M $ N) v x p q (app₁ W) = app₁ (reflect-substitutionᴱ M v x p q W)
+reflect-substitutionᴱ (M $ N) v x p q (app₂ W) = app₂ (reflect-substitutionᴱ N v x p q W)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p q (function₀ f r) = {!!}
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p refl (function₁ f W) with (x ≡ⱽ y)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p refl (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes B v x y r p (⊕-overwrite r) W)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p refl (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ B v x p (⊕-swap r) W)
+reflect-substitutionᴱ (block b is B end) v x p q (block b W) = block b (reflect-substitutionᴮ B v x p q W)
+
+reflect-substitutionᴱ-whenever-no v x y r refl refl ()
+reflect-substitutionᴱ-whenever-yes (addr a) x x refl refl refl (BadlyTypedFunctionAddress a f p W) = {!!}
+reflect-substitutionᴱ-whenever-yes (addr a) x x refl refl refl (UnallocatedAddress a p) = {!!}
+
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p q (function₁ f W) = {!!}
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p q (function₂ f W) = {!!}
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p q (local₀ r) = {!!}
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p q (local₁ W) = local₁ (reflect-substitutionᴱ M v x p q W)
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p q (local₂ W) = {!!}
+reflect-substitutionᴮ (return M ∙ B) v x p q (return W) = return (reflect-substitutionᴱ M v x p q W)
+
+reflect-substitutionᴮ-unless-yes B v x y r p refl W = W
+
+reflect-weakeningᴱ : ∀ {H H′ Γ M} → (H ⊑ H′) → Warningᴱ H′ (typeCheckᴱ H′ Γ M) → Warningᴱ H (typeCheckᴱ H Γ M)
+reflect-weakeningᴮ : ∀ {H H′ Γ B} → (H ⊑ H′) → Warningᴮ H′ (typeCheckᴮ H′ Γ B) → Warningᴮ H (typeCheckᴮ H Γ B)
+
+reflect-weakeningᴱ h (BadlyTypedFunctionAddress a f p W) with lookup-⊑-just a h p
+reflect-weakeningᴱ h (BadlyTypedFunctionAddress a f p W) | just q = BadlyTypedFunctionAddress a f q (reflect-weakeningᴮ h W)
+reflect-weakeningᴱ h (BadlyTypedFunctionAddress a f p W) | nothing q = UnallocatedAddress a q
+reflect-weakeningᴱ h (UnallocatedAddress a p) = UnallocatedAddress a (lookup-⊑-nothing a h p)
+reflect-weakeningᴱ h (app₀ p) with heap-weakeningᴱ h |  heap-weakeningᴱ h
+reflect-weakeningᴱ h (app₀ p) | ok q₁ | ok q₂ = app₀ (λ r → p (trans (cong src (sym q₁)) (trans r q₂)))
+reflect-weakeningᴱ h (app₀ p) | warning W | _ = app₁ W
+reflect-weakeningᴱ h (app₀ p) | _ | warning W = app₂ W
+reflect-weakeningᴱ h (app₁ W) = app₁ (reflect-weakeningᴱ h W)
+reflect-weakeningᴱ h (app₂ W) = app₂ (reflect-weakeningᴱ h W)
+reflect-weakeningᴱ h (function₀ f p) with heap-weakeningᴮ h
+reflect-weakeningᴱ h (function₀ f p) | ok q = function₀ f (λ r → p (trans r q))
+reflect-weakeningᴱ h (function₀ f p) | warning W = function₁ f W
+reflect-weakeningᴱ h (function₁ f W) = function₁ f (reflect-weakeningᴮ h W)
+reflect-weakeningᴱ h (block b W) = block b (reflect-weakeningᴮ h W)
+
+reflect-weakeningᴮ h (return W) = return (reflect-weakeningᴱ h W)
+reflect-weakeningᴮ h (local₀ p) with heap-weakeningᴱ h
+reflect-weakeningᴮ h (local₀ p) | ok q = local₀ (λ r → p (trans r q))
+reflect-weakeningᴮ h (local₀ p) | warning W = local₁ W
+reflect-weakeningᴮ h (local₁ W) = local₁ (reflect-weakeningᴱ h W)
+reflect-weakeningᴮ h (local₂ W) = local₂ (reflect-weakeningᴮ h W)
+reflect-weakeningᴮ h (function₁ f W) = function₁ f (reflect-weakeningᴮ h W)
+reflect-weakeningᴮ h (function₂ f W) = function₂ f (reflect-weakeningᴮ h W)
+
+reflectᴱ : ∀ {H H′ M M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Warningᴱ H′ (typeCheckᴱ H′ ∅ M′) → Warningᴱ H (typeCheckᴱ H ∅ M)
+reflectᴮ : ∀ {H H′ B B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → Warningᴮ H′ (typeCheckᴮ H′ ∅ B′) → Warningᴮ H (typeCheckᴮ H ∅ B)
+
+reflectᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) (BadlyTypedFunctionAddress a f refl W) = function₁ f (reflect-weakeningᴮ (snoc refl defn) W)
+reflectᴱ (app s) (app₀ p) with preservationᴱ s | heap-weakeningᴱ (redn-⊑ s)
+reflectᴱ (app s) (app₀ p) | ok q | ok q′ = app₀ (λ r → p (trans (trans (cong src (sym q)) r) q′))
+reflectᴱ (app s) (app₀ p) | warning W | _ = app₁ W
+reflectᴱ (app s) (app₀ p) | _ | warning W  = app₂ W
+reflectᴱ (app s) (app₁ W) = app₁ (reflectᴱ s W)
+reflectᴱ (app s) (app₂ W) = app₂ (reflect-weakeningᴱ (redn-⊑ s) W)
+reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q) (block f (local₀ p)) = app₀ (λ r → p (trans (sym (cong src (cong declaredTypeᴴ q))) r))
+reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q) (block f (local₁ W)) = app₂ W
+reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q) (block f (local₂ {T = T′} W)) = app₁ (BadlyTypedFunctionAddress a f q W)
+reflectᴱ (block s) (block b W)  = block b (reflectᴮ s W)
+reflectᴱ (return q) W = block _ (return W)
+
+reflectᴮ (local s) (local₀ p) with preservationᴱ s
+reflectᴮ (local s) (local₀ p) | ok q = local₀ (λ r → p (trans r q))
+reflectᴮ (local s) (local₀ p) | warning W = local₁ W
+reflectᴮ (local s) (local₁ W) = local₁ (reflectᴱ s W)
+reflectᴮ (local s) (local₂ W) = local₂ (reflect-weakeningᴮ (redn-⊑ s) W)
+reflectᴮ (subst {H = H} {x = var x ∈ T} {v = v}) W with T ≡ᵀ (typeOfᴱ H ∅ (val v))
+reflectᴮ (subst {x = var x ∈ T} {v = v}) W | yes refl = local₂ (reflect-substitutionᴮ _ v x (typeOfᴱⱽ v) refl W)
+reflectᴮ (subst {x = var x ∈ T} {v = v}) W | no p = local₀ p
+reflectᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) W = function₂ f (reflect-weakeningᴮ (snoc refl defn) (reflect-substitutionᴮ _ _ f refl refl W))
+reflectᴮ (return s) (return W) = return (reflectᴱ s W)
 
 -- reflectᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) (bot ())
 -- reflectᴱ (function defn) (addr a T q) = CONTRADICTION (q refl)
@@ -167,12 +253,6 @@ reflectᴮ s = {!!}
 -- progressᴮ H h (local D₁ D₂) q | step S = step (local S)
 -- progressᴮ H h (function D₁ D₂) q with alloc H _
 -- progressᴮ H h (function D₁ D₂) q | ok a H′ r = step (function r)
-
-import FFI.Data.Aeson
-{-# REWRITE FFI.Data.Aeson.singleton-insert-empty #-}
-
-_≡ᵀ_ : (T U : Type) → Dec (T ≡ U)
-_≡ᵀ_ = {!!}
 
 -- data LookupResult {Σ V S} (D : Σ ▷ V ∈ S) : Set where
 
