@@ -3,4 +3,6 @@
 Main
 MAlonzo
 PrettyPrinter
+Interpreter
+Properties
 .ghc.*
