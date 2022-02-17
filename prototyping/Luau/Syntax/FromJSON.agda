@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec; number_)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec; number)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])

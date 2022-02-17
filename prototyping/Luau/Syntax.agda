@@ -53,4 +53,4 @@ data Expr a where
   _$_ : Expr a → Expr a → Expr a
   function_is_end : FunDec a → Block a → Expr a
   block_is_end : Var → Block a → Expr a
-  number_ : Float → Expr a
+  number : Float → Expr a
