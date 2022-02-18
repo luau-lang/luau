@@ -62,7 +62,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake ../
+        cmake build ../
     - name: cmake build luau-ast
       working-directory: build
       run: |
