@@ -23,12 +23,6 @@ This document tracks unimplemented RFCs.
 
 **Status**: Implemented but depends on new transaction log implementation that is not fully live yet.
 
-## Default type parameters
-
-[RFC: Default type alias type parameters](https://github.com/Roblox/luau/blob/master/rfcs/syntax-default-type-alias-type-parameters.md)
-
-**Status**: Implemented but not fully rolled out yet.
-
 ## Singleton types
 
 [RFC: Singleton types](https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md)
