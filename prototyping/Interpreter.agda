@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Interpreter where
 
 open import Agda.Builtin.IO using (IO)

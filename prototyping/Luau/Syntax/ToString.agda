@@ -30,8 +30,12 @@ exprToString′ lb (function F is B end) =
   "function " ++ funDecToString F ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end"
-exprToString′ lb (block b is B end) =
+exprToString′ lb (block (var b) is B end) =
   "(function " ++ b ++ "()" ++ lb ++
+  "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
+  "end)()"
+exprToString′ lb (block (var b ∈ T) is B end) =
+  "(function " ++ b ++ "(): " ++ typeToString(T) ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end)()"
 

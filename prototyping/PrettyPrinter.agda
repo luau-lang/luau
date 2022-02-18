@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module PrettyPrinter where
 
 open import Agda.Builtin.IO using (IO)

@@ -21,17 +21,25 @@ data _⊢_⟶ᴱ_⊣_  where
     -------------------------------------------
     H ⊢ (function F is B end) ⟶ᴱ (addr a) ⊣ H′
 
-  app : ∀ {H H′ M M′ N} →
+  app₁ : ∀ {H H′ M M′ N} →
   
     H ⊢ M ⟶ᴱ M′ ⊣ H′ →
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  beta : ∀ {H M a F B} →
+  app₂ : ∀ {H H′ M N N′ V} →
+
+    (M ≡ val V) →
+    H ⊢ N ⟶ᴱ N′ ⊣ H′ →
+    -----------------------------
+    H ⊢ (M $ N) ⟶ᴱ (M $ N′) ⊣ H′
+
+  beta : ∀ {H a N F B V} →
   
     H [ a ] ≡ just(function F is B end) →
-    -----------------------------------------------------
-    H ⊢ (addr a $ M) ⟶ᴱ (block (fun F) is local (arg F) ← M ∙ B end) ⊣ H
+    N ≡ val V →
+    -----------------------------------------------------------------------------
+    H ⊢ (addr a $ N) ⟶ᴱ (block (fun F) is (B [ V / name(arg F) ]ᴮ) end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  
@@ -67,7 +75,7 @@ data _⊢_⟶ᴮ_⊣_  where
   
     H′ ≡ H ⊕ a ↦ (function F is C end) →
     --------------------------------------------------------------
-    H ⊢ (function F is C end ∙ B) ⟶ᴮ (B [ addr a / fun F ]ᴮ) ⊣ H′
+    H ⊢ (function F is C end ∙ B) ⟶ᴮ (B [ addr a / name(fun F) ]ᴮ) ⊣ H′
 
   return : ∀ {H H′ M M′ B} →
   

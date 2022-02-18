@@ -15,7 +15,8 @@ data RuntimeErrorᴱ H where
   NilIsNotAFunction : ∀ {V} → RuntimeErrorᴱ H (nil $ val V)
   UnboundVariable : ∀ x → RuntimeErrorᴱ H (var x)
   SEGV : ∀ a → (H [ a ] ≡ nothing) → RuntimeErrorᴱ H (addr a)
-  app : ∀ {M N} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (M $ N)
+  app₁ : ∀ {M N} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (M $ N)
+  app₂ : ∀ {M N} → RuntimeErrorᴱ H N → RuntimeErrorᴱ H (M $ N)
   block : ∀ b {B} → RuntimeErrorᴮ H B → RuntimeErrorᴱ H (block b is B end)
 
 data RuntimeErrorᴮ H where

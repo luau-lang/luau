@@ -21,8 +21,8 @@ open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeOfᴱⱽ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴᴱ; typeCheckᴴᴮ)
-open import Luau.OpSem using (_⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app; function; beta; return; block; done; local; subst; refl; step)
-open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
+open import Luau.OpSem using (_⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; refl; step)
+open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; UnboundVariable; SEGV; app₁; app₂; block; local; return)
 
 src = Luau.Type.src strict
 
@@ -91,10 +91,11 @@ preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → 
 preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴮ H (typeCheckᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
 
 preservationᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) = ok refl
-preservationᴱ (app s) with preservationᴱ s
-preservationᴱ (app s) | ok p = ok (cong tgt p)
-preservationᴱ (app s) | warning W = warning (app₁ W)
-preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p) = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!!})
+preservationᴱ (app₁ s) with preservationᴱ s
+preservationᴱ (app₁ s) | ok p = ok (cong tgt p)
+preservationᴱ (app₁ s) | warning W = warning (app₁ W)
+preservationᴱ (app₂ p s) = ?
+preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p q) = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!!})
 preservationᴱ (block s) with preservationᴮ s
 preservationᴱ (block s) | ok p = ok p
 preservationᴱ (block {b = b} s) | warning W = warning (block b W)
@@ -201,17 +202,16 @@ reflect-weakeningᴼ h (function₁ f W′) = function₁ f (reflect-weakening�
 reflectᴱ : ∀ {H H′ M M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Warningᴱ H′ (typeCheckᴱ H′ ∅ M′) → Warningᴴᴱ H (typeCheckᴴᴱ H ∅ M)
 reflectᴮ : ∀ {H H′ B B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → Warningᴮ H′ (typeCheckᴮ H′ ∅ B′) → Warningᴴᴮ H (typeCheckᴴᴮ H ∅ B)
 
-reflectᴱ (app s) (app₀ p) with preservationᴱ s | heap-weakeningᴱ (redn-⊑ s)
-reflectᴱ (app s) (app₀ p) | ok q | ok q′ = expr (app₀ (λ r → p (trans (trans (cong src (sym q)) r) q′)))
-reflectᴱ (app s) (app₀ p) | warning W | _ = expr (app₁ W)
-reflectᴱ (app s) (app₀ p) | _ | warning W  = expr (app₂ W)
-reflectᴱ (app s) (app₁ W′) with reflectᴱ s W′
-reflectᴱ (app s) (app₁ W′) | heap W = heap W
-reflectᴱ (app s) (app₁ W′) | expr W = expr (app₁ W)
-reflectᴱ (app s) (app₂ W′) = expr (app₂ (reflect-weakeningᴱ (redn-⊑ s) W′))
-reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q) (block f (local₀ p)) = expr (app₀ (λ r → p (trans (cong src (cong orBot (cong typeOfᴹᴼ (sym q)))) r)))
-reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q) (block f (local₁ W)) = expr (app₂ W)
-reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q) (block f (local₂ W)) = heap (addr a q (function₁ f W))
+reflectᴱ (app₁ s) (app₀ p) with preservationᴱ s | heap-weakeningᴱ (redn-⊑ s)
+reflectᴱ (app₁ s) (app₀ p) | ok q | ok q′ = expr (app₀ (λ r → p (trans (trans (cong src (sym q)) r) q′)))
+reflectᴱ (app₁ s) (app₀ p) | warning W | _ = expr (app₁ W)
+reflectᴱ (app₁ s) (app₀ p) | _ | warning W  = expr (app₂ W)
+reflectᴱ (app₁ s) (app₁ W′) with reflectᴱ s W′
+reflectᴱ (app₁ s) (app₁ W′) | heap W = heap W
+reflectᴱ (app₁ s) (app₁ W′) | expr W = expr (app₁ W)
+reflectᴱ (app₁ s) (app₂ W′) = expr (app₂ (reflect-weakeningᴱ (redn-⊑ s) W′))
+reflectᴱ (app₂ p s) W′ = ?
+reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q refl) (block (var f ∈ U) W′) = ? -- expr (app₀ (λ r → p (trans (cong src (cong orBot (cong typeOfᴹᴼ (sym q)))) r)))
 reflectᴱ (block s) (block b W′) with reflectᴮ s W′
 reflectᴱ (block s) (block b W′) | heap W = heap W
 reflectᴱ (block s) (block b W′) | block W = expr (block b W)
@@ -246,10 +246,13 @@ reflectᴴᴱ (function defn) (heap (addr a refl (function₀ f p))) | yes refl 
 reflectᴴᴱ (function defn) (heap (addr a refl (function₀ f p))) | yes refl | warning W = expr (function₁ f W)
 reflectᴴᴱ (function defn) (heap (addr a refl (function₁ f W′))) | yes refl = expr (function₁ f (reflect-weakeningᴮ (snoc refl defn) W′))
 reflectᴴᴱ (function p) (heap (addr b refl W′)) | no r = heap (addr b (lookup-not-allocated p r) (reflect-weakeningᴼ (snoc refl p) W′))
-reflectᴴᴱ (app s) (heap W′) with reflectᴴᴱ s (heap W′)
-reflectᴴᴱ (app s) (heap W′) | heap W = heap W
-reflectᴴᴱ (app s) (heap W′) | expr W = expr (app₁ W)
-reflectᴴᴱ (beta p) (heap W′) = heap W′
+reflectᴴᴱ (app₁ s) (heap W′) with reflectᴴᴱ s (heap W′)
+reflectᴴᴱ (app₁ s) (heap W′) | heap W = heap W
+reflectᴴᴱ (app₁ s) (heap W′) | expr W = expr (app₁ W)
+reflectᴴᴱ (app₂ p s) (heap W′) with reflectᴴᴱ s (heap W′)
+reflectᴴᴱ (app₂ p s) (heap W′) | heap W = heap W
+reflectᴴᴱ (app₂ p s) (heap W′) | expr W = expr (app₂ W)
+reflectᴴᴱ (beta p q) (heap W′) = heap W′
 reflectᴴᴱ (block s) (heap W′) with reflectᴴᴮ s (heap W′)
 reflectᴴᴱ (block s) (heap W′) | heap W = heap W
 reflectᴴᴱ (block s) (heap W′) | block W = expr (block _ W)
@@ -283,7 +286,8 @@ runtimeWarningᴱ (NilIsNotAFunction) | ok p = app₀ p
 runtimeWarningᴱ (NilIsNotAFunction) | warning W = app₂ W
 runtimeWarningᴱ (UnboundVariable x) = UnboundVariable x refl
 runtimeWarningᴱ (SEGV a p) = UnallocatedAddress a p
-runtimeWarningᴱ (app err) = app₁ (runtimeWarningᴱ err)
+runtimeWarningᴱ (app₁ err) = app₁ (runtimeWarningᴱ err)
+runtimeWarningᴱ (app₂ err) = app₂ (runtimeWarningᴱ err)
 runtimeWarningᴱ (block b err) = block b (runtimeWarningᴮ err)
 
 runtimeWarningᴮ (local (var x ∈ T) err) = local₁ (runtimeWarningᴱ err)

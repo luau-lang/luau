@@ -17,7 +17,7 @@ addr a [ v / x ]ᴱ = addr a
 function F is C end [ v / x ]ᴱ = function F is C [ v / x ]ᴮunless (x ≡ⱽ name(arg F)) end
 block b is C end [ v / x ]ᴱ = block b is C [ v / x ]ᴮ end
 
-(function F is C end ∙ B) [ v / x ]ᴮ = function F is (C [ v / x ]ᴮunless (x ≡ⱽ name(arg F))) end ∙ (B [ v / x ]ᴮunless (x ≡ⱽ fun F))
+(function F is C end ∙ B) [ v / x ]ᴮ = function F is (C [ v / x ]ᴮunless (x ≡ⱽ name(arg F))) end ∙ (B [ v / x ]ᴮunless (x ≡ⱽ name(fun F)))
 (local y ← M ∙ B) [ v / x ]ᴮ = local y ← (M [ v / x ]ᴱ) ∙ (B [ v / x ]ᴮunless (x ≡ⱽ name y))
 (return M ∙ B) [ v / x ]ᴮ = return (M [ v / x ]ᴱ) ∙ (B [ v / x ]ᴮ)
 done [ v / x ]ᴮ = done

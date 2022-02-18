@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.Syntax.FromJSON where
 
 open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe)
