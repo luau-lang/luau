@@ -64,9 +64,8 @@ jobs:
         cd build
         cmake build ../
     - name: cmake build luau-ast
-      working-directory: build
       run: |
-        cmake --build ../ --target Luau.Ast.CLI
+        cmake --build ./build --target Luau.Ast.CLI
     - name: run tests
       working-directory: prototyping
       run: |
