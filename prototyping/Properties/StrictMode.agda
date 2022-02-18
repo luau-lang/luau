@@ -66,17 +66,26 @@ redn-⊑ = {!!}
 ⊕-swap : ∀ {Γ x y T U} → (x ≢ y) → ((Γ ⊕ x ↦ T) ⊕ y ↦ U) ≡ ((Γ ⊕ y ↦ U) ⊕ x ↦ T)
 ⊕-swap = {!!}
 
-substitutivityᴱ : ∀ {Γ T H M v x} → (T ≡ typeOfᴱ H Γ (val v)) → (typeOfᴱ H (Γ ⊕ x ↦ T) M ≡ typeOfᴱ H Γ (M [ v / x ]ᴱ))
-substitutivityᴮ : ∀ {Γ T H B v x} → (T ≡ typeOfᴱ H Γ (val v)) → (typeOfᴮ H (Γ ⊕ x ↦ T) B ≡ typeOfᴮ H Γ (B [ v / x ]ᴮ))
-
-substitutivityᴱ = {!!}
-substitutivityᴮ = {!!}
+⊕-lookup : ∀ {Γ x y T} → (x ≢ y) → ((Γ ⊕ x ↦ T) [ y ]ⱽ) ≡ (Γ [ y ]ⱽ)
+⊕-lookup = {!!}
 
 heap-weakeningᴱ : ∀ {H H′ M Γ} → (H ⊑ H′) → OrWarningᴱ H (typeCheckᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M)
 heap-weakeningᴮ : ∀ {H H′ B Γ} → (H ⊑ H′) → OrWarningᴮ H (typeCheckᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B)
 
 heap-weakeningᴱ = {!!}
 heap-weakeningᴮ = {!!}
+
+bot-not-obj : ∀ O → bot ≢ typeOfᴼ O
+bot-not-obj (function f ⟨ var x ∈ T ⟩∈ U is B end) ()
+
+typeOf-val-not-bot : ∀ {H Γ} v → OrWarningᴱ H (typeCheckᴱ H Γ (val v)) (bot ≢ typeOfᴱ H Γ (val v))
+typeOf-val-not-bot = {!!}
+
+substitutivityᴱ : ∀ {Γ T H} M v x → (just T ≡ typeOfⱽ H v) → (typeOfᴱ H (Γ ⊕ x ↦ T) M ≡ typeOfᴱ H Γ (M [ v / x ]ᴱ))
+substitutivityᴮ : ∀ {Γ T H} B v x → (just T ≡ typeOfⱽ H v) → (typeOfᴮ H (Γ ⊕ x ↦ T) B ≡ typeOfᴮ H Γ (B [ v / x ]ᴮ))
+
+substitutivityᴱ = {!!}
+substitutivityᴮ = {!!}
 
 preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴱ H (typeCheckᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M′)
 preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴮ H (typeCheckᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
@@ -85,7 +94,7 @@ preservationᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) = ok refl
 preservationᴱ (app s) with preservationᴱ s
 preservationᴱ (app s) | ok p = ok (cong tgt p)
 preservationᴱ (app s) | warning W = warning (app₁ W)
-preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p) = {!!} -- ok (trans (cong tgt (cong typeOfᴴ p)) {!!})
+preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p) = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!!})
 preservationᴱ (block s) with preservationᴮ s
 preservationᴱ (block s) | ok p = ok p
 preservationᴱ (block {b = b} s) | warning W = warning (block b W)
@@ -95,51 +104,64 @@ preservationᴱ done = ok refl
 preservationᴮ (local {x = var x ∈ T} s) with heap-weakeningᴮ (redn-⊑ s)
 preservationᴮ (local {x = var x ∈ T} s) | ok p = ok p
 preservationᴮ (local {x = var x ∈ T} s) | warning W = warning (local₂ W)
-preservationᴮ (subst {x = var x ∈ T} {B = B}) = ok (substitutivityᴮ {B = B} {!!})
+preservationᴮ {H = H} (subst {v = v}) with remember (typeOfⱽ H v)
+preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just U , p) with T ≡ᵀ U
+preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just T , p) | yes refl = ok (substitutivityᴮ B v x (sym p))
+preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just U , p) | no q = warning (local₀ (λ r → q (trans r (trans (typeOfᴱⱽ v) (cong orBot p)))))
+preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) with typeOf-val-not-bot v
+preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) | ok q = CONTRADICTION (q (sym (trans (typeOfᴱⱽ v) (cong orBot p))))
+preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) | warning W = warning (local₁ W)
 preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) with heap-weakeningᴮ (snoc refl defn)
-preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | ok r = ok (trans r (substitutivityᴮ {T = S ⇒ T} {B = B} refl))
+preservationᴮ (function {a = a} {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | ok r = ok (trans r (substitutivityᴮ {T = S ⇒ T} B (addr a) f refl))
 preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | warning W = warning (function₂ f W)
 preservationᴮ (return s) with preservationᴱ s
 preservationᴮ (return s) | ok p = ok p
 preservationᴮ (return s) | warning W = warning (return W)
 
-reflect-substitutionᴱ : ∀ {H Γ Γ′ T} M v x → (just T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴱ H (typeCheckᴱ H Γ (M [ v / x ]ᴱ)) → Warningᴱ H (typeCheckᴱ H Γ′ M)
-reflect-substitutionᴱ-whenever-yes : ∀ {H Γ Γ′ T} v x y (p : x ≡ y) → (typeOfᴱ H Γ (val v) ≡ T) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever yes p)) → Warningᴱ H (typeCheckᴱ H Γ′ (var y))
-reflect-substitutionᴱ-whenever-no : ∀ {H Γ Γ′ T} v x y (p : x ≢ y) → (typeOfᴱ H Γ (val v) ≡ T) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever no p)) → Warningᴱ H (typeCheckᴱ H Γ′ (var y))
-reflect-substitutionᴮ : ∀ {H Γ Γ′ T} B v x → (just T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴮ H (typeCheckᴮ H Γ (B [ v / x ]ᴮ)) → Warningᴮ H (typeCheckᴮ H Γ′ B)
+reflect-substitutionᴱ : ∀ {H Γ T} M v x → (just T ≡ typeOfⱽ H v) → Warningᴱ H (typeCheckᴱ H Γ (M [ v / x ]ᴱ)) → Warningᴱ H (typeCheckᴱ H (Γ ⊕ x ↦ T) M)
+reflect-substitutionᴱ-whenever-yes : ∀ {H Γ T} v x y (p : x ≡ y) → (just T ≡ typeOfⱽ H v) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever yes p)) → Warningᴱ H (typeCheckᴱ H (Γ ⊕ x ↦ T) (var y))
+reflect-substitutionᴱ-whenever-no : ∀ {H Γ T} v x y (p : x ≢ y) → (just T ≡ typeOfⱽ H v) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever no p)) → Warningᴱ H (typeCheckᴱ H  (Γ ⊕ x ↦ T) (var y))
+reflect-substitutionᴮ : ∀ {H Γ T} B v x → (just T ≡ typeOfⱽ H v) → Warningᴮ H (typeCheckᴮ H Γ (B [ v / x ]ᴮ)) → Warningᴮ H (typeCheckᴮ H (Γ ⊕ x ↦ T) B)
 reflect-substitutionᴮ-unless-yes : ∀ {H Γ Γ′ T} B v x y (r : x ≡ y) → (just T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ) → Warningᴮ H (typeCheckᴮ H Γ (B [ v / x ]ᴮunless yes r)) → Warningᴮ H (typeCheckᴮ H Γ′ B)
+reflect-substitutionᴮ-unless-no : ∀ {H Γ Γ′ T} B v x y (r : x ≢ y) → (just T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ ⊕ x ↦ T) → Warningᴮ H (typeCheckᴮ H Γ (B [ v / x ]ᴮunless no r)) → Warningᴮ H (typeCheckᴮ H Γ′ B)
 
-reflect-substitutionᴱ (var y) v x p q W with x ≡ⱽ y
-reflect-substitutionᴱ (var y) v x p q W | yes r = {!!} -- reflect-substitutionᴱ-whenever-yes v x y r (typeOfᴱⱽ v) p q W
-reflect-substitutionᴱ (var y) v x p q W | no r = {!!} -- reflect-substitutionᴱ-whenever-no v x y r (typeOfᴱⱽ v) p q W
-reflect-substitutionᴱ (addr a) v x p q (UnallocatedAddress a r) = UnallocatedAddress a r
-reflect-substitutionᴱ (M $ N) v x p q (app₀ r) = {!!}
-reflect-substitutionᴱ (M $ N) v x p q (app₁ W) = app₁ (reflect-substitutionᴱ M v x p q W)
-reflect-substitutionᴱ (M $ N) v x p q (app₂ W) = app₂ (reflect-substitutionᴱ N v x p q W)
-reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p q (function₀ f r) = {!!}
-reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p refl (function₁ f W) with (x ≡ⱽ y)
-reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p refl (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes B v x y r p (⊕-overwrite r) W)
-reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p refl (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ B v x p (⊕-swap r) W)
-reflect-substitutionᴱ (block b is B end) v x p q (block b W) = block b (reflect-substitutionᴮ B v x p q W)
+reflect-substitutionᴱ (var y) v x p W with x ≡ⱽ y
+reflect-substitutionᴱ (var y) v x p W | yes r = reflect-substitutionᴱ-whenever-yes v x y r p W
+reflect-substitutionᴱ (var y) v x p W | no r = reflect-substitutionᴱ-whenever-no v x y r p W
+reflect-substitutionᴱ (addr a) v x p (UnallocatedAddress a r) = UnallocatedAddress a r
+reflect-substitutionᴱ (M $ N) v x p (app₀ q) = app₀ (λ s → q (trans (cong src (sym (substitutivityᴱ M v x p))) (trans s (substitutivityᴱ N v x p))))
+reflect-substitutionᴱ (M $ N) v x p (app₁ W) = app₁ (reflect-substitutionᴱ M v x p W)
+reflect-substitutionᴱ (M $ N) v x p (app₂ W) = app₂ (reflect-substitutionᴱ N v x p W)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) with (x ≡ⱽ y)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) | yes r = function₀ f (λ s → q (trans s {!!}))
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) | no r = function₀ f (λ s → q (trans s {!!}))
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ f W) with (x ≡ⱽ y)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes B v x y r p (⊕-overwrite r) W)
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ-unless-no B v x y r p (⊕-swap r) W)
+reflect-substitutionᴱ (block b is B end) v x p (block b W) = block b (reflect-substitutionᴮ B v x p W)
 
-reflect-substitutionᴱ-whenever-no v x y r refl refl (UnboundVariable y p) = UnboundVariable y {!!}
-reflect-substitutionᴱ-whenever-yes (addr a) x x refl refl refl (UnallocatedAddress a p) = {!!}
+reflect-substitutionᴱ-whenever-no v x y p q (UnboundVariable y r) = UnboundVariable y (trans (⊕-lookup p) r)
+reflect-substitutionᴱ-whenever-yes (addr a) x x refl p (UnallocatedAddress a q) with trans p (cong typeOfᴹᴼ q)
+reflect-substitutionᴱ-whenever-yes (addr a) x x refl p (UnallocatedAddress a q) | ()
 
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p q (function₀ f r) = {!!}
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p q (function₁ f W) with (x ≡ⱽ y)
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p refl (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes C v x y r p (⊕-overwrite r) W)
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p refl (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ C v x p (⊕-swap r) W)
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p q (function₂ f W) with (x ≡ⱽ f)
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p refl (function₂ f W)| yes r = function₂ f (reflect-substitutionᴮ-unless-yes B v x f r p (⊕-overwrite r) W)
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p refl (function₂ f W)| no r = function₂ f (reflect-substitutionᴮ B v x p (⊕-swap r) W)
-reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p q (local₀ r) = {!!}
-reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p q (local₁ W) = local₁ (reflect-substitutionᴱ M v x p q W)
-reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p q (local₂ W) with (x ≡ⱽ y)
-reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p refl (local₂ W) | yes r = local₂ (reflect-substitutionᴮ-unless-yes B v x y r p (⊕-overwrite r) W)
-reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p refl (local₂ W) | no r = local₂ (reflect-substitutionᴮ B v x p (⊕-swap r) W)
-reflect-substitutionᴮ (return M ∙ B) v x p q (return W) = return (reflect-substitutionᴱ M v x p q W)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) with (x ≡ⱽ y)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) | yes r = function₀ f (λ s → q (trans s {!substitutivityᴮ C v x!}))
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) | no r = function₀ f (λ s → q (trans s {!substitutivityᴮ C v x!}))
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₁ f W) with (x ≡ⱽ y)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes C v x y r p (⊕-overwrite r) W)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ-unless-no C v x y r p (⊕-swap r) W)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₂ f W) with (x ≡ⱽ f)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₂ f W)| yes r = function₂ f (reflect-substitutionᴮ-unless-yes B v x f r p (⊕-overwrite r) W)
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₂ f W)| no r = function₂ f (reflect-substitutionᴮ-unless-no B v x f r p (⊕-swap r) W)
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p (local₀ q) = local₀ (λ r → q (trans r (substitutivityᴱ M v x p)))
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p (local₁ W) = local₁ (reflect-substitutionᴱ M v x p W)
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p (local₂ W) with (x ≡ⱽ y)
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p (local₂ W) | yes r = local₂ (reflect-substitutionᴮ-unless-yes B v x y r p (⊕-overwrite r) W)
+reflect-substitutionᴮ (local var y ∈ T ← M ∙ B) v x p (local₂ W) | no r = local₂ (reflect-substitutionᴮ-unless-no B v x y r p (⊕-swap r) W)
+reflect-substitutionᴮ (return M ∙ B) v x p (return W) = return (reflect-substitutionᴱ M v x p W)
 
 reflect-substitutionᴮ-unless-yes B v x y r p refl W = W
+reflect-substitutionᴮ-unless-no B v x y r p refl W = reflect-substitutionᴮ B v x p W
 
 reflect-weakeningᴱ : ∀ {H H′ Γ M} → (H ⊑ H′) → Warningᴱ H′ (typeCheckᴱ H′ Γ M) → Warningᴱ H (typeCheckᴱ H Γ M)
 reflect-weakeningᴮ : ∀ {H H′ Γ B} → (H ⊑ H′) → Warningᴮ H′ (typeCheckᴮ H′ Γ B) → Warningᴮ H (typeCheckᴮ H Γ B)
@@ -204,12 +226,12 @@ reflectᴮ (local s) (local₁ W′) | heap W = heap W
 reflectᴮ (local s) (local₁ W′) | expr W = block (local₁ W)
 reflectᴮ (local s) (local₂ W′) = block (local₂ (reflect-weakeningᴮ (redn-⊑ s) W′))
 reflectᴮ (subst {H = H} {x = var x ∈ T} {v = v}) W with just T ≡ᴹᵀ typeOfⱽ H v
-reflectᴮ (subst {H = H} {x = var x ∈ T} {v = v}) W | yes p = block (local₂ (reflect-substitutionᴮ _ v x p refl W))
+reflectᴮ (subst {H = H} {x = var x ∈ T} {v = v}) W | yes p = block (local₂ (reflect-substitutionᴮ _ v x p W))
 reflectᴮ (subst {H = H} {x = var x ∈ T} {v = nil}) W | no p = block (local₀ λ r → p (cong just r))
 reflectᴮ (subst {H = H} {x = var x ∈ T} {v = addr a}) W | no p with remember(H [ a ]ᴴ)
 reflectᴮ (subst {H = H} {x = var x ∈ T} {v = addr a}) W | no p | (nothing , q) = block (local₁ (UnallocatedAddress a q))
 reflectᴮ (subst {H = H} {x = var x ∈ T} {v = addr a}) W | no p | (just O , q) = block (local₀ (λ r → p (trans (cong just (trans r (cong orBot (cong typeOfᴹᴼ q)))) (cong typeOfᴹᴼ (sym q)))))
-reflectᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) W = block (function₂ f (reflect-weakeningᴮ (snoc refl defn) (reflect-substitutionᴮ _ _ f refl refl W)))
+reflectᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) W = block (function₂ f (reflect-weakeningᴮ (snoc refl defn) (reflect-substitutionᴮ _ _ f refl W)))
 reflectᴮ (return s) (return W′) with reflectᴱ s W′
 reflectᴮ (return s) (return W′) | heap W = heap W
 reflectᴮ (return s) (return W′) | expr W = block (return W)
@@ -253,16 +275,12 @@ reflect* : ∀ {H H′ B B′} → (H ⊢ B ⟶* B′ ⊣ H′) → Warningᴴ�
 reflect* refl W = W
 reflect* (step s t) W = reflectᴴᴮ s (reflect* t W)
 
-bot-not-obj : ∀ O → bot ≢ typeOfᴼ O
-bot-not-obj (function f ⟨ var x ∈ T ⟩∈ U is B end) ()
-
 runtimeWarningᴱ : ∀ {H M} → RuntimeErrorᴱ H M → Warningᴱ H (typeCheckᴱ H ∅ M)
 runtimeWarningᴮ : ∀ {H B} → RuntimeErrorᴮ H B → Warningᴮ H (typeCheckᴮ H ∅ B)
 
-runtimeWarningᴱ (NilIsNotAFunction {V = nil}) = (app₀ (λ ()))
-runtimeWarningᴱ {H} (NilIsNotAFunction {addr a}) with remember (H [ a ]ᴴ)
-runtimeWarningᴱ (NilIsNotAFunction {addr a}) | (nothing , p) = app₂ (UnallocatedAddress a p)
-runtimeWarningᴱ (NilIsNotAFunction {addr a}) | (just O , p) = app₀ λ r → bot-not-obj O (trans r (cong orBot (cong typeOfᴹᴼ p)))
+runtimeWarningᴱ (NilIsNotAFunction {V = V}) with typeOf-val-not-bot V
+runtimeWarningᴱ (NilIsNotAFunction) | ok p = app₀ p
+runtimeWarningᴱ (NilIsNotAFunction) | warning W = app₂ W
 runtimeWarningᴱ (UnboundVariable x) = UnboundVariable x refl
 runtimeWarningᴱ (SEGV a p) = UnallocatedAddress a p
 runtimeWarningᴱ (app err) = app₁ (runtimeWarningᴱ err)
