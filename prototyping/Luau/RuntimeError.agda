@@ -5,13 +5,13 @@ open import Luau.Heap using (Heap; _[_])
 open import FFI.Data.Maybe using (just; nothing)
 open import FFI.Data.String using (String)
 open import Luau.Syntax using (Block; Expr; nil; var; addr; block_is_end; _$_; local_←_; return; done; _∙_; number)
+open import Luau.RuntimeType using (RuntimeType; valueType)
 
 data RuntimeErrorᴮ {a} (H : Heap a) : Block a → Set
 data RuntimeErrorᴱ {a} (H : Heap a) : Expr a → Set
 
 data RuntimeErrorᴱ H where
-  NilIsNotAFunction : ∀ {M} → RuntimeErrorᴱ H (nil $ M)
-  NumberIsNotAFunction : ∀ n {M} → RuntimeErrorᴱ H ((number n) $ M)
+  TypeMismatch : ∀ {t} → RuntimeErrorᴱ H (number n)
   UnboundVariable : ∀ x → RuntimeErrorᴱ H (var x)
   SEGV : ∀ a → (H [ a ] ≡ nothing) → RuntimeErrorᴱ H (addr a)
   app : ∀ {M N} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (M $ N)

@@ -1,7 +1,7 @@
 module Luau.Syntax.ToString where
 
 open import Agda.Builtin.Float using (primShowFloat)
-open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number; BinaryOperator; binexp)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Type.ToString using (typeToString)
@@ -16,6 +16,14 @@ funDecToString ("" ⟨ x ⟩∈ T) = "function(" ++ varDecToString x ++ "): " ++
 funDecToString ("" ⟨ x ⟩) = "function(" ++ varDecToString x ++ ")"
 funDecToString (f ⟨ x ⟩∈ T) = "function " ++ varToString f ++ "(" ++ varDecToString x ++ "): " ++ typeToString T
 funDecToString (f ⟨ x ⟩) = "function " ++ varToString f ++ "(" ++ varDecToString x ++ ")"
+
+binOpToString : BinaryOperator → String
+binOpToString BinaryOperator.+ = "+"
+binOpToString BinaryOperator.- = "-"
+binOpToString BinaryOperator.* = "*"
+binOpToString BinaryOperator./ = "/"
+binOpToString BinaryOperator.% = "%"
+binOpToString BinaryOperator.^ = "^"
 
 exprToString′ : ∀ {a} → String → Expr a → String
 statToString′ : ∀ {a} → String → Stat a → String
@@ -38,6 +46,7 @@ exprToString′ lb (block b is B end) =
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end)()"
 exprToString′ lb (number x) = primShowFloat x
+exprToString′ lb (binexp x op y) = exprToString′ lb x ++ " " ++ binOpToString op ++ " " ++ exprToString′ lb y
 
 statToString′ lb (function F is B end) =
   "local " ++ funDecToString F ++ lb ++

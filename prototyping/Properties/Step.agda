@@ -1,10 +1,11 @@
 module Properties.Step where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
+open import Agda.Builtin.Float using (primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
-open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number)
-open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst)
+open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +)
+open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst; binOp; evalBinOp)
 open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; NumberIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Luau.Value using (nil; addr; val; number)
@@ -46,6 +47,8 @@ stepᴱ H (block b is done end) | done refl = step H nil done
 stepᴱ H (block b is B end) | error E = error (block b E)
 stepᴱ H (function F is C end) with alloc H (function F is C end)
 stepᴱ H function F is C end | ok a H′ p = step H′ (addr a) (function p)
+stepᴱ H (binexp x op y) with stepᴱ H x | stepᴱ H y
+stepᴱ H (binexp x op y) | value (number x′) refl | value (number y′) refl = step H (number (evalBinOp x′ op y′)) binOp
 
 stepᴮ H (function F is C end ∙ B) with alloc H (function F is C end)
 stepᴮ H (function F is C end ∙ B) | ok a H′ p = step H′ (B [ addr a / fun F ]ᴮ) (function p)
@@ -58,3 +61,4 @@ stepᴮ H (return M ∙ B) | step H′ M′ D = step H′ (return M′ ∙ B) (r
 stepᴮ H (return _ ∙ B) | value V refl = return V refl
 stepᴮ H (return M ∙ B) | error E = error (return E)
 stepᴮ H done = done refl
+ 

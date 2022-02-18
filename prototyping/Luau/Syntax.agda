@@ -33,6 +33,14 @@ arg : ∀ {a} → FunDec a → VarDec a
 arg (f ⟨ x ⟩∈ T) = x
 arg (f ⟨ x ⟩) = x
 
+data BinaryOperator : Set where
+  + : BinaryOperator
+  - : BinaryOperator
+  * : BinaryOperator
+  / : BinaryOperator
+  % : BinaryOperator
+  ^ : BinaryOperator
+
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set
 data Expr (a : Annotated) : Set
@@ -54,3 +62,4 @@ data Expr a where
   function_is_end : FunDec a → Block a → Expr a
   block_is_end : Var → Block a → Expr a
   number : Float → Expr a
+  binexp : Expr a → BinaryOperator → Expr a → Expr a
