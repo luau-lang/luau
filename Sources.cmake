@@ -8,6 +8,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Location.h
     Ast/include/Luau/ParseOptions.h
     Ast/include/Luau/Parser.h
+    Ast/include/Luau/ParseResult.h
     Ast/include/Luau/StringUtils.h
     Ast/include/Luau/TimeTrace.h
 

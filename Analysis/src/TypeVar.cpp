@@ -23,8 +23,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauLengthOnCompositeType)
-LUAU_FASTFLAGVARIABLE(LuauMetatableAreEqualRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauRefactorTypeVarQuestions, false)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAG(LuauUnionTagMatchFix)
@@ -385,8 +383,6 @@ bool maybeSingleton(TypeId ty)
 
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 {
-    LUAU_ASSERT(FFlag::LuauLengthOnCompositeType);
-
     RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
 
     ty = follow(ty);
@@ -555,7 +551,7 @@ bool areEqual(SeenSet& seen, const TableTypeVar& lhs, const TableTypeVar& rhs)
 
 static bool areEqual(SeenSet& seen, const MetatableTypeVar& lhs, const MetatableTypeVar& rhs)
 {
-    if (FFlag::LuauMetatableAreEqualRecursion && areSeen(seen, &lhs, &rhs))
+    if (areSeen(seen, &lhs, &rhs))
         return true;
 
     return areEqual(seen, *lhs.table, *rhs.table) && areEqual(seen, *lhs.metatable, *rhs.metatable);

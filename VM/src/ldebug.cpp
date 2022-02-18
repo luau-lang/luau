@@ -419,7 +419,7 @@ static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* con
     }
 
     const char* debugname = p->debugname ? getstr(p->debugname) : NULL;
-    int linedefined = luaG_getline(p, 0);
+    int linedefined = getlinedefined(p);
 
     callback(context, debugname, linedefined, depth, buffer, size);
 

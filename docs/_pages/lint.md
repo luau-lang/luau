@@ -317,3 +317,13 @@ The code above can be rewritten as follows to avoid the warning and the associat
 ```lua
 local x = if flag then false else true
 ```
+
+## CommentDirective (26)
+
+Luau uses comments that start from `!` to control certain aspects of analysis, for example setting type checking mode via `--!strict` or disabling individual lints with `--!nolint`. Unknown directives are ignored, for example `--!nostrict` doesn't have any effect on the type checking process as the correct spelling is `--!nonstrict`. This warning flags comment directives that are ignored during processing:
+
+```lua
+--!nostrict
+-- Unknown comment directive 'nostrict'; did you mean 'nonstrict'?"
+```
+```

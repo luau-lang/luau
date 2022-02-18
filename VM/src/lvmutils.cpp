@@ -55,7 +55,7 @@ static void callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1
 {
     ptrdiff_t result = savestack(L, res);
     // using stack room beyond top is technically safe here, but for very complicated reasons:
-    // * The stack guarantees 1 + EXTRA_STACK room beyond stack_last (see luaD_reallocstack) will be allocated
+    // * The stack guarantees EXTRA_STACK room beyond stack_last (see luaD_reallocstack) will be allocated
     // * we cannot move luaD_checkstack above because the arguments are *sometimes* pointers to the lua
     // stack and checkstack may invalidate those pointers
     // * we cannot use savestack/restorestack because the arguments are sometimes on the C++ stack
@@ -76,7 +76,7 @@ static void callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1
 static void callTM(lua_State* L, const TValue* f, const TValue* p1, const TValue* p2, const TValue* p3)
 {
     // using stack room beyond top is technically safe here, but for very complicated reasons:
-    // * The stack guarantees 1 + EXTRA_STACK room beyond stack_last (see luaD_reallocstack) will be allocated
+    // * The stack guarantees EXTRA_STACK room beyond stack_last (see luaD_reallocstack) will be allocated
     // * we cannot move luaD_checkstack above because the arguments are *sometimes* pointers to the lua
     // stack and checkstack may invalidate those pointers
     // * we cannot use savestack/restorestack because the arguments are sometimes on the C++ stack

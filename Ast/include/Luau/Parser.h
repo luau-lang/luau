@@ -4,6 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Lexer.h"
 #include "Luau/ParseOptions.h"
+#include "Luau/ParseResult.h"
 #include "Luau/StringUtils.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Common.h"
@@ -13,37 +14,6 @@
 
 namespace Luau
 {
-
-class ParseError : public std::exception
-{
-public:
-    ParseError(const Location& location, const std::string& message);
-
-    virtual const char* what() const throw();
-
-    const Location& getLocation() const;
-    const std::string& getMessage() const;
-
-    static LUAU_NORETURN void raise(const Location& location, const char* format, ...) LUAU_PRINTF_ATTR(2, 3);
-
-private:
-    Location location;
-    std::string message;
-};
-
-class ParseErrors : public std::exception
-{
-public:
-    ParseErrors(std::vector<ParseError> errors);
-
-    virtual const char* what() const throw();
-
-    const std::vector<ParseError>& getErrors() const;
-
-private:
-    std::vector<ParseError> errors;
-    std::string message;
-};
 
 template<typename T>
 class TempVector
@@ -80,34 +50,17 @@ private:
     size_t size_;
 };
 
-struct Comment
-{
-    Lexeme::Type type; // Comment, BlockComment, or BrokenComment
-    Location location;
-};
-
-struct ParseResult
-{
-    AstStatBlock* root;
-    std::vector<std::string> hotcomments;
-    std::vector<ParseError> errors;
-
-    std::vector<Comment> commentLocations;
-};
-
 class Parser
 {
 public:
     static ParseResult parse(
         const char* buffer, std::size_t bufferSize, AstNameTable& names, Allocator& allocator, ParseOptions options = ParseOptions());
 
-    static constexpr const char* errorName = "%error-id%";
-
 private:
     struct Name;
     struct Binding;
 
-    Parser(const char* buffer, std::size_t bufferSize, AstNameTable& names, Allocator& allocator);
+    Parser(const char* buffer, std::size_t bufferSize, AstNameTable& names, Allocator& allocator, const ParseOptions& options);
 
     bool blockFollow(const Lexeme& l);
 
@@ -330,7 +283,7 @@ private:
     AstTypeError* reportTypeAnnotationError(const Location& location, const AstArray<AstType*>& types, bool isMissing, const char* format, ...)
         LUAU_PRINTF_ATTR(5, 6);
 
-    const Lexeme& nextLexeme();
+    void nextLexeme();
 
     struct Function
     {
@@ -386,6 +339,9 @@ private:
     Allocator& allocator;
 
     std::vector<Comment> commentLocations;
+    std::vector<HotComment> hotcomments;
+
+    bool hotcommentHeader = true;
 
     unsigned int recursionCounter;
 

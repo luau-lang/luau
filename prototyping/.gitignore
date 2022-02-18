@@ -2,7 +2,11 @@
 *.agdai
 Main
 MAlonzo
-PrettyPrinter
-.ghc.*
-Interpreter
 Examples
+PrettyPrinter
+Interpreter
+Properties
+!Tests/Interpreter
+!Tests/PrettyPrinter
+.ghc.*
+test-failures/

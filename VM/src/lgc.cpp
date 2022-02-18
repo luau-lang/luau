@@ -268,7 +268,7 @@ static void traverseclosure(global_State* g, Closure* cl)
 
 static void traversestack(global_State* g, lua_State* l, bool clearstack)
 {
-    markvalue(g, gt(l));
+    markobject(g, l->gt);
     if (l->namecall)
         stringmark(l->namecall);
     for (StkId o = l->stack; o < l->top; o++)
@@ -643,7 +643,7 @@ static void markroot(lua_State* L)
     g->weak = NULL;
     markobject(g, g->mainthread);
     /* make global table be traversed before main stack */
-    markvalue(g, gt(g->mainthread));
+    markobject(g, g->mainthread->gt);
     markvalue(g, registry(L));
     markmt(g);
     g->gcstate = GCSpropagate;

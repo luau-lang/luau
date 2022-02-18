@@ -12,6 +12,8 @@
 #include <math.h>
 #include <limits.h>
 
+LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
+
 namespace Luau
 {
 
@@ -44,6 +46,7 @@ static const char* kWarningNames[] = {
     "TableOperations",
     "DuplicateCondition",
     "MisleadingAndOr",
+    "CommentDirective",
 };
 // clang-format on
 
@@ -732,13 +735,13 @@ private:
 
     bool visit(AstTypeReference* node) override
     {
-        if (!node->hasPrefix)
+        if (!node->prefix)
             return true;
 
-        if (!imports.contains(node->prefix))
+        if (!imports.contains(*node->prefix))
             return true;
 
-        AstLocal* astLocal = imports[node->prefix];
+        AstLocal* astLocal = imports[*node->prefix];
         Local& local = locals[astLocal];
         LUAU_ASSERT(local.import);
         local.used = true;
@@ -2527,13 +2530,108 @@ static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, 
     }
 }
 
+static const char* fuzzyMatch(std::string_view str, const char** array, size_t size)
+{
+    if (FInt::LuauSuggestionDistance == 0)
+        return nullptr;
+
+    size_t bestDistance = FInt::LuauSuggestionDistance;
+    size_t bestMatch = size;
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        size_t ed = editDistance(str, array[i]);
+
+        if (ed <= bestDistance)
+        {
+            bestDistance = ed;
+            bestMatch = i;
+        }
+    }
+
+    return bestMatch < size ? array[bestMatch] : nullptr;
+}
+
+static void lintComments(LintContext& context, const std::vector<HotComment>& hotcomments)
+{
+    bool seenMode = false;
+
+    for (const HotComment& hc : hotcomments)
+    {
+        // We reserve --!<space> for various informational (non-directive) comments
+        if (hc.content.empty() || hc.content[0] == ' ' || hc.content[0] == '\t')
+            continue;
+
+        if (!hc.header)
+        {
+            emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
+                "Comment directive is ignored because it is placed after the first non-comment token");
+        }
+        else
+        {
+            std::string::size_type space = hc.content.find_first_of(" \t");
+            std::string_view first = std::string_view(hc.content).substr(0, space);
+
+            if (first == "nolint")
+            {
+                std::string::size_type notspace = hc.content.find_first_not_of(" \t", space);
+
+                if (space == std::string::npos || notspace == std::string::npos)
+                {
+                    // disables all lints
+                }
+                else if (LintWarning::parseName(hc.content.c_str() + notspace) == LintWarning::Code_Unknown)
+                {
+                    const char* rule = hc.content.c_str() + notspace;
+
+                    // skip Unknown
+                    if (const char* suggestion = fuzzyMatch(rule, kWarningNames + 1, LintWarning::Code__Count - 1))
+                        emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
+                            "nolint directive refers to unknown lint rule '%s'; did you mean '%s'?", rule, suggestion);
+                    else
+                        emitWarning(
+                            context, LintWarning::Code_CommentDirective, hc.location, "nolint directive refers to unknown lint rule '%s'", rule);
+                }
+            }
+            else if (first == "nocheck" || first == "nonstrict" || first == "strict")
+            {
+                if (space != std::string::npos)
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
+                        "Comment directive with the type checking mode has extra symbols at the end of the line");
+                else if (seenMode)
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
+                        "Comment directive with the type checking mode has already been used");
+                else
+                    seenMode = true;
+            }
+            else
+            {
+                static const char* kHotComments[] = {
+                    "nolint",
+                    "nocheck",
+                    "nonstrict",
+                    "strict",
+                };
+
+                if (const char* suggestion = fuzzyMatch(first, kHotComments, std::size(kHotComments)))
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'; did you mean '%s'?",
+                        int(first.size()), first.data(), suggestion);
+                else
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'", int(first.size()),
+                        first.data());
+            }
+        }
+    }
+}
+
 void LintOptions::setDefaults()
 {
     // By default, we enable all warnings
     warningMask = ~0ull;
 }
 
-std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module, const LintOptions& options)
+std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const ScopePtr& env, const Module* module,
+    const std::vector<HotComment>& hotcomments, const LintOptions& options)
 {
     LintContext context;
 
@@ -2609,6 +2707,9 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
     if (context.warningEnabled(LintWarning::Code_MisleadingAndOr))
         LintMisleadingAndOr::process(context);
 
+    if (context.warningEnabled(LintWarning::Code_CommentDirective))
+        lintComments(context, hotcomments);
+
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 
     return context.result;
@@ -2630,23 +2731,30 @@ LintWarning::Code LintWarning::parseName(const char* name)
     return Code_Unknown;
 }
 
-uint64_t LintWarning::parseMask(const std::vector<std::string>& hotcomments)
+uint64_t LintWarning::parseMask(const std::vector<HotComment>& hotcomments)
 {
     uint64_t result = 0;
 
-    for (const std::string& hc : hotcomments)
+    for (const HotComment& hc : hotcomments)
     {
-        if (hc.compare(0, 6, "nolint") != 0)
+        if (!hc.header)
             continue;
 
-        std::string::size_type name = hc.find_first_not_of(" \t", 6);
+        if (hc.content.compare(0, 6, "nolint") != 0)
+            continue;
+
+        std::string::size_type name = hc.content.find_first_not_of(" \t", 6);
 
         // --!nolint disables everything
         if (name == std::string::npos)
             return ~0ull;
 
+        // --!nolint needs to be followed by a whitespace character
+        if (name == 6)
+            continue;
+
         // --!nolint name disables the specific lint
-        LintWarning::Code code = LintWarning::parseName(hc.c_str() + name);
+        LintWarning::Code code = LintWarning::parseName(hc.content.c_str() + name);
 
         if (code != LintWarning::Code_Unknown)
             result |= 1ull << int(code);

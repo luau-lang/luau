@@ -76,6 +76,9 @@ assert(baz(co, 2, "n") == nil)
 assert(baz(math.sqrt, "n") == "sqrt")
 assert(baz(math.sqrt, "f") == math.sqrt) -- yes this is pointless
 
+local t = { foo = function() return 1 end }
+assert(baz(t.foo, "n") == "foo")
+
 -- info multi-arg returns
 function quux(...)
 	return {debug.info(...)}

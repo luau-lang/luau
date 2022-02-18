@@ -1,6 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Parser.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
@@ -2168,8 +2167,6 @@ b()
 
 TEST_CASE_FIXTURE(Fixture, "length_operator_union")
 {
-    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
-
     CheckResult result = check(R"(
 local x: {number} | {string}
 local y = #x
@@ -2180,8 +2177,6 @@ local y = #x
 
 TEST_CASE_FIXTURE(Fixture, "length_operator_intersection")
 {
-    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
-
     CheckResult result = check(R"(
 local x: {number} & {z:string} -- mixed tables are evil
 local y = #x
@@ -2192,8 +2187,6 @@ local y = #x
 
 TEST_CASE_FIXTURE(Fixture, "length_operator_non_table_union")
 {
-    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
-
     CheckResult result = check(R"(
 local x: {number} | any | string
 local y = #x
@@ -2204,14 +2197,46 @@ local y = #x
 
 TEST_CASE_FIXTURE(Fixture, "length_operator_union_errors")
 {
-    ScopedFastFlag luauLengthOnCompositeType{"LuauLengthOnCompositeType", true};
-
     CheckResult result = check(R"(
 local x: {number} | number | string
 local y = #x
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable_index")
+{
+    ScopedFastFlag sff{"LuauTerminateCyclicMetatableIndexLookup", true};
+
+    // t :: t1 where t1 = {metatable {__index: t1, __tostring: (t1) -> string}}
+    CheckResult result = check(R"(
+        local mt = {}
+        local t = setmetatable({}, mt)
+        mt.__index = t
+
+        function mt:__tostring()
+            return t.p
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "give_up_after_one_metatable_index_look_up")
+{
+    CheckResult result = check(R"(
+        local data = { x = 5 }
+        local t1 = setmetatable({}, { __index = data })
+        local t2 = setmetatable({}, t1) -- note: must be t1, not a new table
+
+        local x1 = t1.x -- ok
+        local x2 = t2.x -- nope
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 't2' does not have key 'x'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

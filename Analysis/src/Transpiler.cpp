@@ -933,12 +933,12 @@ struct Printer
 
         writer.symbol(")");
 
-        if (writeTypes && func.hasReturnAnnotation)
+        if (writeTypes && func.returnAnnotation)
         {
             writer.symbol(":");
             writer.space();
 
-            visualizeTypeList(func.returnAnnotation, false);
+            visualizeTypeList(*func.returnAnnotation, false);
         }
 
         visualizeBlock(*func.body);
@@ -989,9 +989,9 @@ struct Printer
         advance(typeAnnotation.location.begin);
         if (const auto& a = typeAnnotation.as<AstTypeReference>())
         {
-            if (a->hasPrefix)
+            if (a->prefix)
             {
-                writer.write(a->prefix.value);
+                writer.write(a->prefix->value);
                 writer.symbol(".");
             }
 
