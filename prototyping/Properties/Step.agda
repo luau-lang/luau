@@ -4,8 +4,8 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
 open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number)
-open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst)
-open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; NumberIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
+open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app₁ ; app₂ ; beta; function; block; return; done; local; subst)
+open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; NumberIsNotAFunction; UnboundVariable; SEGV; app₁; app₂; block; local; return)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Luau.Value using (nil; addr; val; number)
 open import Properties.Remember using (remember; _,_)
@@ -32,13 +32,16 @@ stepᴱ H (var x) = error (UnboundVariable x)
 stepᴱ H (addr a) = value (addr a) refl
 stepᴱ H (number x) = value (number x) refl
 stepᴱ H (M $ N) with stepᴱ H M
-stepᴱ H (M $ N) | step H′ M′ D = step H′ (M′ $ N) (app D)
-stepᴱ H (nil $ N) | value nil refl = error NilIsNotAFunction
-stepᴱ H ((number _) $ N) | value (number x) refl = error (NumberIsNotAFunction x)
-stepᴱ H (addr a $ N) | value (addr a) refl with remember (H [ a ])
-stepᴱ H (addr a $ N) | value (addr a) refl | (nothing , p) = error (app (SEGV a p))
-stepᴱ H (addr a $ N) | value (addr a) refl | (just(function F is B end) , p) = step H (block fun F is (local arg F ← N) ∙ B end) (beta p)
-stepᴱ H (M $ N) | error E = error (app E)
+stepᴱ H (M $ N) | step H′ M′ D = step H′ (M′ $ N) (app₁ D)
+stepᴱ H (_ $ N) | value V refl with stepᴱ H N
+stepᴱ H (_ $ N) | value V refl | step H′ N′ s = step H′ (val V $ N′) (app₂ s)
+stepᴱ H (_ $ _) | value nil refl | value W refl = error NilIsNotAFunction
+stepᴱ H (_ $ _) | value (number n) refl | value W refl = error (NumberIsNotAFunction n)
+stepᴱ H (_ $ _) | value (addr a) refl | value W refl with remember (H [ a ])
+stepᴱ H (_ $ _) | value (addr a) refl | value W refl  | (nothing , p) = error (app₁ (SEGV a p))
+stepᴱ H (_ $ _) | value (addr a) refl | value W refl  | (just(function F is B end) , p) = step H (block fun F is B [ W / name (arg F) ]ᴮ end) (beta p)
+stepᴱ H (M $ N) | value V p | error E = error (app₂ E)
+stepᴱ H (M $ N) | error E = error (app₁ E)
 stepᴱ H (block b is B end) with stepᴮ H B
 stepᴱ H (block b is B end) | step H′ B′ D = step H′ (block b is B′ end) (block D)
 stepᴱ H (block b is (return _ ∙ B′) end) | return V refl = step H (val V) return

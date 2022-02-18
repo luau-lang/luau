@@ -2,7 +2,7 @@ module Luau.RuntimeError.ToString where
 
 open import Agda.Builtin.Float using (primShowFloat)
 open import FFI.Data.String using (String; _++_)
-open import Luau.RuntimeError using (RuntimeErrorᴮ; RuntimeErrorᴱ; local; return; NilIsNotAFunction; NumberIsNotAFunction; UnboundVariable; SEGV; app; block)
+open import Luau.RuntimeError using (RuntimeErrorᴮ; RuntimeErrorᴱ; local; return; NilIsNotAFunction; NumberIsNotAFunction; UnboundVariable; SEGV; app₁; app₂; block)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Syntax.ToString using (exprToString)
 open import Luau.Var.ToString using (varToString)
@@ -15,7 +15,8 @@ errToStringᴱ NilIsNotAFunction = "nil is not a function"
 errToStringᴱ (NumberIsNotAFunction n) = "number " ++ primShowFloat n ++ " is not a function"
 errToStringᴱ (UnboundVariable x) = "variable " ++ varToString x ++ " is unbound"
 errToStringᴱ (SEGV a x) = "address " ++ addrToString a ++ " is unallocated"
-errToStringᴱ (app E) = errToStringᴱ E
+errToStringᴱ (app₁ E) = errToStringᴱ E
+errToStringᴱ (app₂ E) = errToStringᴱ E
 errToStringᴱ (block b E) = errToStringᴮ E ++ "\n  in call of function " ++ varToString b
 
 errToStringᴮ (local x E) = errToStringᴱ E ++ "\n  in definition of " ++ varToString (name x) 
