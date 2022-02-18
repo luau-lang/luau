@@ -8,9 +8,10 @@ open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; var; var_∈_;
 open import Luau.Type using (Type; strict; bot; top; nil; _⇒_; tgt)
 open import Luau.Heap using (Heap; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
-open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; var; addr; app; block; return; local; function)
+open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; ⊢ᴴ_; ⊢ᴼ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; var; addr; app; block; return; local; function)
 open import Properties.Equality using (_≢_)
-open import Properties.TypeCheck(strict) using (typeOfᴴ; typeCheckᴮ)
+open import Properties.TypeCheck(strict) using (typeCheckᴮ)
+open import Properties.Product using (_,_)
 
 src : Type → Type
 src = Luau.Type.src strict
@@ -20,18 +21,17 @@ data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set
 
 data Warningᴱ H {Γ} where
 
-  BadlyTypedFunctionAddress : ∀ a f {x S T U B} →
-
-    (H [ a ]ᴴ ≡ just (function f ⟨ var x ∈ T ⟩∈ U is B end)) →
-    Warningᴮ H (typeCheckᴮ H (x ↦ T) B) →
-    --------------------------------------------------------
-    Warningᴱ H (addr a S)
-
   UnallocatedAddress : ∀ a {T} →
 
     (H [ a ]ᴴ ≡ nothing) →
-    --------------------------------------------------------
+    ---------------------
     Warningᴱ H (addr a T)
+
+  UnboundVariable : ∀ x {T} {p} →
+
+    (Γ [ x ]ⱽ ≡ nothing) →
+    ------------------------
+    Warningᴱ H (var x {T} p)
 
   app₀ : ∀ {M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
 
@@ -95,6 +95,12 @@ data Warningᴮ H {Γ} where
     --------------------
     Warningᴮ H (local D₁ D₂)
 
+  function₀ : ∀ f {x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
+
+    (U ≢ V) →
+    -------------------------------------
+    Warningᴮ H (function f {U = U} D₁ D₂)
+
   function₁ : ∀ f {x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
 
     Warningᴮ H D₁ →
@@ -106,3 +112,54 @@ data Warningᴮ H {Γ} where
     Warningᴮ H D₂ →
     --------------------
     Warningᴮ H (function f D₁ D₂)
+
+data Warningᴼ (H : Heap yes) : ∀ {V} → (⊢ᴼ V) → Set where
+
+  function₀ : ∀ f {x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
+
+    (U ≢ V) →
+    ---------------------------------
+    Warningᴼ H (function f {U = U} D)
+
+  function₁ : ∀ f {x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
+
+    Warningᴮ H D →
+    ---------------------------------
+    Warningᴼ H (function f {U = U} D)
+
+data Warningᴴ H (D : ⊢ᴴ H) : Set where
+
+  addr : ∀ a {O} →
+
+    (p : H [ a ]ᴴ ≡ O) →
+    Warningᴼ H (D a p) →
+    ---------------
+    Warningᴴ H D
+
+data Warningᴴᴱ H {Γ M T} : (Γ ⊢ᴴᴱ H ▷ M ∈ T) → Set where
+
+  heap : ∀ {D₁ : ⊢ᴴ H} {D₂ : Γ ⊢ᴱ M ∈ T} →
+
+    Warningᴴ H D₁ →
+    -----------------
+    Warningᴴᴱ H (D₁ , D₂)
+
+  expr : ∀ {D₁ : ⊢ᴴ H} {D₂ : Γ ⊢ᴱ M ∈ T} →
+
+    Warningᴱ H D₂ →
+    ---------------------
+    Warningᴴᴱ H (D₁ , D₂)
+
+data Warningᴴᴮ H {Γ B T} : (Γ ⊢ᴴᴮ H ▷ B ∈ T) → Set where
+
+  heap : ∀ {D₁ : ⊢ᴴ H} {D₂ : Γ ⊢ᴮ B ∈ T} →
+
+    Warningᴴ H D₁ →
+    -----------------
+    Warningᴴᴮ H (D₁ , D₂)
+
+  block : ∀ {D₁ : ⊢ᴴ H} {D₂ : Γ ⊢ᴮ B ∈ T} →
+
+    Warningᴮ H D₂ →
+    ---------------------
+    Warningᴴᴮ H (D₁ , D₂)

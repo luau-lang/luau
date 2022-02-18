@@ -9,10 +9,6 @@ open import FFI.Data.Aeson using (KeyMap; Key; empty; unionWith; singleton; inse
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Properties.Equality using (cong)
 
-orBot : Maybe Type → Type
-orBot nothing = bot
-orBot (just T) = T
-
 VarCtxt : Set
 VarCtxt = KeyMap Type
 
@@ -25,8 +21,8 @@ _⋒_ = unionWith _∩_
 _⋓_ : VarCtxt → VarCtxt → VarCtxt
 _⋓_ = unionWith _∪_
 
-_[_] : VarCtxt → Var → Type
-_[_] Γ x = orBot (lookup (fromString x) Γ)
+_[_] : VarCtxt → Var → Maybe Type
+_[_] Γ x = lookup (fromString x) Γ
 
 _⊝_ : VarCtxt → Var → VarCtxt
 Γ ⊝ x = delete (fromString x) Γ

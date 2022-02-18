@@ -9,6 +9,7 @@ open import Agda.Builtin.Nat using (Nat)
 open import FFI.Data.Bool using (Bool; false; true)
 open import FFI.Data.HaskellInt using (HaskellInt; haskellIntToInt; intToHaskellInt)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
+open import Properties.Equality using (_≢_)
 
 {-# FOREIGN GHC import qualified Data.Vector #-}
 
@@ -35,6 +36,7 @@ postulate
 postulate length-empty : ∀ {A} → (length (empty {A}) ≡ 0)
 postulate lookup-snoc : ∀ {A} (x : A) (v : Vector A) → (lookup (snoc v x) (length v) ≡ just x)
 postulate lookup-snoc-empty : ∀ {A} (x : A) → (lookup (snoc empty x) 0 ≡ just x)
+postulate lookup-snoc-not : ∀ {A n} (x : A) (v : Vector A) → (n ≢ length v) → (lookup v n ≡ lookup (snoc v x) n)
 
 {-# REWRITE length-empty lookup-snoc lookup-snoc-empty #-}
 
