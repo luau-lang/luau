@@ -371,6 +371,15 @@ do
   st, msg = coroutine.close(co)
   assert(st and msg == nil)
   assert(f() == 42)
+
+  -- closing a coroutine with a large stack
+  co = coroutine.create(function()
+    local function f(depth) return if depth > 0 then f(depth - 1) + depth else 0 end
+    coroutine.yield(f(100))
+  end)
+  assert(coroutine.resume(co))
+  st, msg = coroutine.close(co)
+  assert(st and msg == nil)
 end
 
 return 'OK'

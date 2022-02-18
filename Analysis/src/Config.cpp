@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Config.h"
 
-#include "Luau/Parser.h"
+#include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
 namespace

@@ -158,6 +158,13 @@ struct AstJsonEncoder : public AstVisitor
     {
         writeString(str);
     }
+    void write(std::optional<AstName> name)
+    {
+        if (name)
+            write(*name);
+        else
+            writeRaw("null");
+    }
     void write(AstName name)
     {
         writeString(name.value ? name.value : "");
@@ -327,7 +334,7 @@ struct AstJsonEncoder : public AstVisitor
             if (node->self)
                 PROP(self);
             PROP(args);
-            if (node->hasReturnAnnotation)
+            if (node->returnAnnotation)
                 PROP(returnAnnotation);
             PROP(vararg);
             PROP(varargLocation);
@@ -339,6 +346,14 @@ struct AstJsonEncoder : public AstVisitor
             PROP(debugname);
             PROP(hasEnd);
         });
+    }
+
+    void write(const std::optional<AstTypeList>& typeList)
+    {
+        if (typeList)
+            write(*typeList);
+        else
+            writeRaw("null");
     }
 
     void write(const AstTypeList& typeList)
@@ -544,7 +559,7 @@ struct AstJsonEncoder : public AstVisitor
             PROP(thenbody);
             if (node->elsebody)
                 PROP(elsebody);
-            PROP(hasThen);
+            write("hasThen", node->thenLocation.has_value());
             PROP(hasEnd);
         });
     }
@@ -728,7 +743,7 @@ struct AstJsonEncoder : public AstVisitor
     void write(class AstTypeReference* node)
     {
         writeNode(node, "AstTypeReference", [&]() {
-            if (node->hasPrefix)
+            if (node->prefix)
                 PROP(prefix);
             PROP(name);
             PROP(parameters);

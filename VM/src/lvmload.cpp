@@ -116,12 +116,12 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
             // note: we call getimport with nil propagation which means that accesses to table chains like A.B.C will resolve in nil
             // this is technically not necessary but it reduces the number of exceptions when loading scripts that rely on getfenv/setfenv for global
             // injection
-            luaV_getimport(L, hvalue(gt(L)), self->k, self->id, /* propagatenil= */ true);
+            luaV_getimport(L, L->gt, self->k, self->id, /* propagatenil= */ true);
         }
     };
 
     ResolveImport ri = {k, id};
-    if (hvalue(gt(L))->safeenv)
+    if (L->gt->safeenv)
     {
         // luaD_pcall will make sure that if any C/Lua calls during import resolution fail, the thread state is restored back
         int oldTop = lua_gettop(L);
@@ -171,7 +171,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     L->global->GCthreshold = SIZE_MAX;
 
     // env is 0 for current environment and a stack index otherwise
-    Table* envt = (env == 0) ? hvalue(gt(L)) : hvalue(luaA_toobject(L, env));
+    Table* envt = (env == 0) ? L->gt : hvalue(luaA_toobject(L, env));
 
     TString* source = luaS_new(L, chunkname);
 

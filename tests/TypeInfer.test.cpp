@@ -2,7 +2,6 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
@@ -4654,8 +4653,6 @@ a = setmetatable(a, { __call = function(x) end })
 
 TEST_CASE_FIXTURE(Fixture, "infer_through_group_expr")
 {
-    ScopedFastFlag luauGroupExpectedType{"LuauGroupExpectedType", true};
-
     CheckResult result = check(R"(
 local function f(a: (number, number) -> number) return a(1, 3) end
 f(((function(a, b) return a + b end)))
@@ -4735,21 +4732,14 @@ local a = if false then "a" elseif false then "b" else "c"
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")
 {
-    ScopedFastFlag sff3{"LuauIfElseBranchTypeUnion", true};
+    CheckResult result = check(R"(local a: number? = if true then 42 else nil)");
 
-    {
-        CheckResult result = check(R"(local a: number? = if true then 42 else nil)");
-
-        LUAU_REQUIRE_NO_ERRORS(result);
-        CHECK_EQ(toString(requireType("a"), {true}), "number?");
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("a"), {true}), "number?");
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_1")
 {
-    ScopedFastFlag luauIfElseExpectedType2{"LuauIfElseExpectedType2", true};
-    ScopedFastFlag luauIfElseBranchTypeUnion{"LuauIfElseBranchTypeUnion", true};
-
     CheckResult result = check(R"(
 type X = {number | string}
 local a: X = if true then {"1", 2, 3} else {4, 5, 6}
@@ -4761,9 +4751,6 @@ local a: X = if true then {"1", 2, 3} else {4, 5, 6}
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_2")
 {
-    ScopedFastFlag luauIfElseExpectedType2{"LuauIfElseExpectedType2", true};
-    ScopedFastFlag luauIfElseBranchTypeUnion{"LuauIfElseBranchTypeUnion", true};
-
     CheckResult result = check(R"(
 local a: number? = if true then 1 else nil
 )");
@@ -4773,8 +4760,6 @@ local a: number? = if true then 1 else nil
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_3")
 {
-    ScopedFastFlag luauIfElseExpectedType2{"LuauIfElseExpectedType2", true};
-
     CheckResult result = check(R"(
 local function times<T>(n: any, f: () -> T)
     local result: {T} = {}
@@ -5058,8 +5043,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "recursive_metatable_crash")
 {
-    ScopedFastFlag luauMetatableAreEqualRecursion{"LuauMetatableAreEqualRecursion", true};
-
     CheckResult result = check(R"(
 local function getIt()
     local y
@@ -5076,8 +5059,6 @@ local c = a or b
 
 TEST_CASE_FIXTURE(Fixture, "bound_typepack_promote")
 {
-    ScopedFastFlag luauCommittingTxnLogFreeTpPromote{"LuauCommittingTxnLogFreeTpPromote", true};
-
     // No assertions should trigger
     check(R"(
 local function p()
@@ -5251,7 +5232,6 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
         {"LuauDiscriminableUnions2", true},
         {"LuauRefactorTypeVarQuestions", true},
         {"LuauSingletonTypes", true},
-        {"LuauLengthOnCompositeType", true},
     };
 
     CheckResult result = check(R"(
@@ -5272,7 +5252,6 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
         {"LuauDiscriminableUnions2", true},
         {"LuauRefactorTypeVarQuestions", true},
         {"LuauSingletonTypes", true},
-        {"LuauLengthOnCompositeType", true},
     };
 
     CheckResult result = check(R"(

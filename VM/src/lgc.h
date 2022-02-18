@@ -77,7 +77,7 @@
 
 #define luaC_checkGC(L) \
     { \
-        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK - 1)); \
+        condhardstacktests(luaD_reallocstack(L, L->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK))); \
         if (L->global->totalbytes >= L->global->GCthreshold) \
         { \
             condhardmemtests(luaC_validate(L), 1); \
