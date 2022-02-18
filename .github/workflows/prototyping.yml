@@ -47,9 +47,7 @@ jobs:
       working-directory: prototyping
       run: |
         cabal install Agda-${{ matrix.agda }}
-        cabal install --lib scientific --package-env .
-        cabal install --lib vector --package-env .
-        cabal install --lib aeson --package-env .
+        cabal install --lib scientific vector aeson --package-env .
     - name: check targets
       working-directory: prototyping
       run: |
@@ -63,10 +61,12 @@ jobs:
     - name: cmake configure
       run: |
         mkdir build
-        cmake build
+        cd build
+        cmake ../
     - name: cmake build luau-ast
+      working-directory: build
       run: |
-        cmake --build build/ --target Luau.Ast.CLI
+        cmake --build ../ --target Luau.Ast.CLI
     - name: run tests
       working-directory: prototyping
       run: |
