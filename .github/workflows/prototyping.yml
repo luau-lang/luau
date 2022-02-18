@@ -73,7 +73,7 @@ jobs:
       working-directory: prototyping
       run: |
         mkdir test-failures
-        python tests -l ../build/luau-ast --write-diff-failures --diff-failure-location test-failures/
+        python tests.py -l ../build/luau-ast --write-diff-failures --diff-failure-location test-failures/
     - uses: actions/upload-artifact@v2
       if: failure()
       with:
