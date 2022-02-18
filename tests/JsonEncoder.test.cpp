@@ -46,7 +46,7 @@ TEST_CASE("encode_AstStatBlock")
     AstStatBlock block{Location(), bodyArray};
 
     CHECK_EQ(
-        (R"({"type":"AstStatBlock","location":"0,0 - 0,0","body":[{"type":"AstStatLocal","location":"0,0 - 0,0","vars":["a_local"],"values":[]}]})"),
+        (R"({"type":"AstStatBlock","location":"0,0 - 0,0","body":[{"type":"AstStatLocal","location":"0,0 - 0,0","vars":[{"type":null,"name":"a_local","location":"0,0 - 0,0"}],"values":[]}]})"),
         toJson(&block));
 }
 

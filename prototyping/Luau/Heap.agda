@@ -5,39 +5,40 @@ open import FFI.Data.Maybe using (Maybe; just)
 open import FFI.Data.Vector using (Vector; length; snoc; empty)
 open import Luau.Addr using (Addr)
 open import Luau.Var using (Var)
-open import Luau.Syntax using (Block; Expr; nil; addr; function⟨_⟩_end)
+open import Luau.Syntax using (Block; Expr; Annotated; FunDec; nil; addr; function_is_end)
 
-data HeapValue : Set where
-  function_⟨_⟩_end : Var → Var → Block → HeapValue
+data HeapValue (a : Annotated) : Set where
+  function_is_end : FunDec a → Block a → HeapValue a
 
-Heap = Vector HeapValue
+Heap : Annotated → Set
+Heap a = Vector (HeapValue a)
 
-data _≡_⊕_↦_ : Heap → Heap → Addr → HeapValue → Set where
+data _≡_⊕_↦_ {a} : Heap a → Heap a → Addr → HeapValue a → Set where
 
   defn : ∀ {H val} →
 
     -----------------------------------
     (snoc H val) ≡ H ⊕ (length H) ↦ val
 
-lookup : Heap → Addr → Maybe HeapValue
-lookup = FFI.Data.Vector.lookup
+_[_] : ∀ {a} → Heap a → Addr → Maybe (HeapValue a)
+_[_] = FFI.Data.Vector.lookup
 
-emp : Heap
-emp = empty
+∅ : ∀ {a} → Heap a
+∅ = empty
 
-data AllocResult (H : Heap) (V : HeapValue) : Set where
-  ok : ∀ a H′ → (H′ ≡ H ⊕ a ↦ V) → AllocResult H V
+data AllocResult a (H : Heap a) (V : HeapValue a) : Set where
+  ok : ∀ b H′ → (H′ ≡ H ⊕ b ↦ V) → AllocResult a H V
 
-alloc : ∀ H V → AllocResult H V
+alloc : ∀ {a} H V → AllocResult a H V
 alloc H V = ok (length H) (snoc H V) defn
 
-next : Heap → Addr
+next : ∀ {a} → Heap a → Addr
 next = length
 
-allocated : Heap → HeapValue → Heap
+allocated : ∀ {a} → Heap a → HeapValue a → Heap a
 allocated = snoc
 
--- next-emp : (length empty ≡ 0)
+-- next-emp : (length ∅ ≡ 0)
 next-emp = FFI.Data.Vector.length-empty
 
 -- lookup-next : ∀ V H → (lookup (allocated H V) (next H) ≡ just V)

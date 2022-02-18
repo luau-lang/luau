@@ -4,15 +4,22 @@ on:
   push:
     branches:
       - 'master'
+      - 'prototyping-*'
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
-      - 'Analysis/src/JsonEncoder.cpp'
+      - 'Analysis/**'
+      - 'Ast/**'
+      - 'CLI/Ast.cpp'
+      - 'CLI/FileUtils.*'
   pull_request:
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
-      - 'Analysis/src/JsonEncoder.cpp'
+      - 'Analysis/**'
+      - 'Ast/**'
+      - 'CLI/Ast.cpp'
+      - 'CLI/FileUtils.*'
 
 jobs:
   linux:
