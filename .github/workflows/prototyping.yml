@@ -60,13 +60,13 @@ jobs:
         ~/.cabal/bin/agda --compile PrettyPrinter.agda
         ~/.cabal/bin/agda --compile Interpreter.agda
     - name: cmake configure
-      if: steps.luau-ast-cache.cache-hit != 'true'
+      if: steps.luau-ast-cache.outputs.cache-hit != 'true'
       run: |
-        mkdir build
+        mkdir -p build
         cd build
         cmake build ../
     - name: cmake build luau-ast
-      if: steps.luau-ast-cache.cache-hit != 'true'
+      if: steps.luau-ast-cache.outputs.cache-hit != 'true'
       run: |
         cmake --build ./build --target Luau.Ast.CLI
     - name: run tests
