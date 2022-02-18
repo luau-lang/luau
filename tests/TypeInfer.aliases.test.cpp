@@ -598,15 +598,13 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
 /*
  * The two-pass alias definition system starts by ascribing a free TypeVar to each alias.  It then
  * circles back to fill in the actual type later on.
- * 
+ *
  * If this free type is unified with something degenerate like `any`, we need to take extra care
  * to ensure that the alias actually binds to the type that the user expected.
  */
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauTwoPassAliasDefinitionFix", true}
-    };
+    ScopedFastFlag sff[] = {{"LuauTwoPassAliasDefinitionFix", true}};
 
     CheckResult result = check(R"(
         local function x()

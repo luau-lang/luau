@@ -426,8 +426,6 @@ TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
         {"LuauSingletonTypes", true},
         {"LuauParseSingletonTypes", true},
         {"LuauExpectedTypesOfProperties", true},
-        {"LuauIfElseExpectedType2", true},
-        {"LuauIfElseBranchTypeUnion", true},
     };
 
     CheckResult result = check(R"(

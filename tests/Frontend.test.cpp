@@ -2,7 +2,6 @@
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Frontend.h"
-#include "Luau/Parser.h"
 #include "Luau/RequireTracer.h"
 
 #include "Fixture.h"
@@ -897,8 +896,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearStats")
 
 TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
 {
-    ScopedFastFlag sffs("LuauTypeCheckTwice", true);
-
     fileResolver.source["Module/A"] = R"(
         local a = 1
     )";

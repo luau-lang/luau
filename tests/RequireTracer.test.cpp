@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
 #include "Luau/RequireTracer.h"
+#include "Luau/Parser.h"
 
 #include "Fixture.h"
 

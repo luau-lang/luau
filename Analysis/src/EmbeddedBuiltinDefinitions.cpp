@@ -167,7 +167,7 @@ declare function gcinfo(): number
                 foreach: <K, V>({[K]: V}, (K, V) -> ()) -> (),
                 foreachi: <V>({V}, (number, V) -> ()) -> (),
 
-                move: <V>({V}, number, number, number, {V}?) -> (),
+                move: <V>({V}, number, number, number, {V}?) -> {V},
                 clear: <K, V>({[K]: V}) -> (),
 
                 freeze: <K, V>({[K]: V}) -> {[K]: V},

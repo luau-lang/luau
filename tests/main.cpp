@@ -10,6 +10,9 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <Windows.h> // IsDebuggerPresent
 #endif
 
@@ -52,7 +55,7 @@ static bool debuggerPresent()
 #endif
 }
 
-static int assertionHandler(const char* expr, const char* file, int line, const char* function)
+static int testAssertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     if (debuggerPresent())
         LUAU_DEBUGBREAK();
@@ -218,7 +221,7 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
 
 int main(int argc, char** argv)
 {
-    Luau::assertHandler() = assertionHandler;
+    Luau::assertHandler() = testAssertionHandler;
 
     doctest::registerReporter<BoostLikeReporter>("boost", 0, true);
 

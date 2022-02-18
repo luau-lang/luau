@@ -8,7 +8,6 @@
 #include "Luau/Linter.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/Parser.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"

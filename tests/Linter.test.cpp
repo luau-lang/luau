@@ -1395,12 +1395,10 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
 
     TypeId colorType = typeChecker.globalTypes.addType(TableTypeVar{{}, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed});
 
-    getMutable<TableTypeVar>(colorType)->props = {
-        {"toHSV", {typeChecker.anyType, /* deprecated= */ true, "Color3:ToHSV"} }
-    };
+    getMutable<TableTypeVar>(colorType)->props = {{"toHSV", {typeChecker.anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
 
     addGlobalBinding(typeChecker, "Color3", Binding{colorType, {}});
- 
+
     freeze(typeChecker.globalTypes);
 
     LintResult result = lintTyped(R"(
@@ -1554,8 +1552,46 @@ _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 )");
 
     REQUIRE_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "The and-or expression always evaluates to the second alternative because the first alternative is false; consider using if-then-else expression instead");
-    CHECK_EQ(result.warnings[1].text, "The and-or expression always evaluates to the second alternative because the first alternative is nil; consider using if-then-else expression instead");
+    CHECK_EQ(result.warnings[0].text, "The and-or expression always evaluates to the second alternative because the first alternative is false; "
+                                      "consider using if-then-else expression instead");
+    CHECK_EQ(result.warnings[1].text, "The and-or expression always evaluates to the second alternative because the first alternative is nil; "
+                                      "consider using if-then-else expression instead");
+}
+
+TEST_CASE_FIXTURE(Fixture, "WrongComment")
+{
+    ScopedFastFlag sff("LuauParseAllHotComments", true);
+
+    LintResult result = lint(R"(
+--!strict
+--!struct
+--!nolintGlobal
+--!nolint Global
+--!nolint KnownGlobal
+--!nolint UnknownGlobal
+--! no more lint
+--!strict here
+do end
+--!nolint
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 6);
+    CHECK_EQ(result.warnings[0].text, "Unknown comment directive 'struct'; did you mean 'strict'?");
+    CHECK_EQ(result.warnings[1].text, "Unknown comment directive 'nolintGlobal'");
+    CHECK_EQ(result.warnings[2].text, "nolint directive refers to unknown lint rule 'Global'");
+    CHECK_EQ(result.warnings[3].text, "nolint directive refers to unknown lint rule 'KnownGlobal'; did you mean 'UnknownGlobal'?");
+    CHECK_EQ(result.warnings[4].text, "Comment directive with the type checking mode has extra symbols at the end of the line");
+    CHECK_EQ(result.warnings[5].text, "Comment directive is ignored because it is placed after the first non-comment token");
+}
+
+TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
+{
+    LintResult result = lint(R"(
+--!nolint
+--!struct
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 0); // --!nolint disables WrongComment lint :)
 }
 
 TEST_SUITE_END();

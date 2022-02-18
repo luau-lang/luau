@@ -3,7 +3,6 @@
 
 #include "Luau/Common.h"
 #include "Luau/ModuleResolver.h"
-#include "Luau/Parser.h"
 #include "Luau/Quantify.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
@@ -24,16 +23,12 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAGVARIABLE(LuauEqConstraint, false)
-LUAU_FASTFLAGVARIABLE(LuauGroupExpectedType, false)
 LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as false.
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsDontCacheTypeParams, false)
-LUAU_FASTFLAGVARIABLE(LuauIfElseBranchTypeUnion, false)
-LUAU_FASTFLAGVARIABLE(LuauIfElseExpectedType2, false)
 LUAU_FASTFLAGVARIABLE(LuauImmutableTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauLengthOnCompositeType, false)
 LUAU_FASTFLAGVARIABLE(LuauNoSealedTypeMod, false)
 LUAU_FASTFLAGVARIABLE(LuauQuantifyInPlace2, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
@@ -43,7 +38,6 @@ LUAU_FASTFLAGVARIABLE(LuauTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
-LUAU_FASTFLAGVARIABLE(LuauPerModuleUnificationCache, false)
 LUAU_FASTFLAGVARIABLE(LuauProperTypeLevels, false)
 LUAU_FASTFLAGVARIABLE(LuauAscribeCorrectLevelToInferredProperitesOfFreeTables, false)
 LUAU_FASTFLAG(LuauUnionTagMatchFix)
@@ -293,13 +287,10 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
             GenericError{"Free types leaked into this module's public interface. This is an internal Luau error; please report it."}});
     }
 
-    if (FFlag::LuauPerModuleUnificationCache)
-    {
-        // Clear unifier cache since it's keyed off internal types that get deallocated
-        // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.
-        unifierState.cachedUnify.clear();
-        unifierState.skipCacheForType.clear();
-    }
+    // Clear unifier cache since it's keyed off internal types that get deallocated
+    // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.
+    unifierState.cachedUnify.clear();
+    unifierState.skipCacheForType.clear();
 
     if (FFlag::LuauTwoPassAliasDefinitionFix)
         duplicateTypeAliases.clear();
@@ -509,7 +500,7 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
     {
         if (const auto& typealias = stat->as<AstStatTypeAlias>())
         {
-            if (FFlag::LuauTwoPassAliasDefinitionFix && typealias->name == Parser::errorName)
+            if (FFlag::LuauTwoPassAliasDefinitionFix && typealias->name == kParseNameError)
                 continue;
 
             auto& bindings = typealias->exported ? scope->exportedTypeBindings : scope->privateTypeBindings;
@@ -1193,7 +1184,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
     Name name = typealias.name.value;
 
     // If the alias is missing a name, we can't do anything with it.  Ignore it.
-    if (FFlag::LuauTwoPassAliasDefinitionFix && name == Parser::errorName)
+    if (FFlag::LuauTwoPassAliasDefinitionFix && name == kParseNameError)
         return;
 
     std::optional<TypeFun> binding;
@@ -1222,7 +1213,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
             if (FFlag::LuauProperTypeLevels)
                 aliasScope->level.subLevel = subLevel;
 
-            auto [generics, genericPacks] = createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks, /* useCache = */ true);
+            auto [generics, genericPacks] =
+                createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks, /* useCache = */ true);
 
             TypeId ty = freshType(aliasScope);
             FreeTypeVar* ftv = getMutable<FreeTypeVar>(ty);
@@ -1464,7 +1456,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExpr& 
     ExprResult<TypeId> result;
 
     if (auto a = expr.as<AstExprGroup>())
-        result = checkExpr(scope, *a->expr, FFlag::LuauGroupExpectedType ? expectedType : std::nullopt);
+        result = checkExpr(scope, *a->expr, expectedType);
     else if (expr.is<AstExprConstantNil>())
         result = {nilType};
     else if (const AstExprConstantBool* bexpr = expr.as<AstExprConstantBool>())
@@ -1508,7 +1500,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExpr& 
     else if (auto a = expr.as<AstExprError>())
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprIfElse>())
-        result = checkExpr(scope, *a, FFlag::LuauIfElseExpectedType2 ? expectedType : std::nullopt);
+        result = checkExpr(scope, *a, expectedType);
     else
         ice("Unhandled AstExpr?");
 
@@ -2093,6 +2085,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprUn
         return {numberType};
     }
     case AstExprUnary::Len:
+    {
         tablify(operandType);
 
         operandType = stripFromNilAndReport(operandType, expr.location);
@@ -2100,30 +2093,13 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprUn
         if (get<ErrorTypeVar>(operandType))
             return {errorRecoveryType(scope)};
 
-        if (FFlag::LuauLengthOnCompositeType)
-        {
-            DenseHashSet<TypeId> seen{nullptr};
+        DenseHashSet<TypeId> seen{nullptr};
 
-            if (!hasLength(operandType, seen, &recursionCount))
-                reportError(TypeError{expr.location, NotATable{operandType}});
-        }
-        else
-        {
-            if (get<AnyTypeVar>(operandType))
-                return {numberType}; // Not strictly correct: metatables permit overriding this
-
-            if (auto p = get<PrimitiveTypeVar>(operandType))
-            {
-                if (p->type == PrimitiveTypeVar::String)
-                    return {numberType};
-            }
-
-            if (!getTableType(operandType))
-                reportError(TypeError{expr.location, NotATable{operandType}});
-        }
+        if (!hasLength(operandType, seen, &recursionCount))
+            reportError(TypeError{expr.location, NotATable{operandType}});
 
         return {numberType};
-
+    }
     default:
         ice("Unknown AstExprUnary " + std::to_string(int(expr.op)));
     }
@@ -2618,22 +2594,11 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIf
     resolve(result.predicates, falseScope, false);
     ExprResult<TypeId> falseType = checkExpr(falseScope, *expr.falseExpr, expectedType);
 
-    if (FFlag::LuauIfElseBranchTypeUnion)
-    {
-        if (falseType.type == trueType.type)
-            return {trueType.type};
-
-        std::vector<TypeId> types = reduceUnion({trueType.type, falseType.type});
-        return {types.size() == 1 ? types[0] : addType(UnionTypeVar{std::move(types)})};
-    }
-    else
-    {
-        unify(falseType.type, trueType.type, expr.location);
-
-        // TODO: normalize(UnionTypeVar{{trueType, falseType}})
-        // For now both trueType and falseType must be the same type.
+    if (falseType.type == trueType.type)
         return {trueType.type};
-    }
+
+    std::vector<TypeId> types = reduceUnion({trueType.type, falseType.type});
+    return {types.size() == 1 ? types[0] : addType(UnionTypeVar{std::move(types)})};
 }
 
 TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr)
@@ -2986,8 +2951,8 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
     auto [generics, genericPacks] = createGenericTypes(funScope, std::nullopt, expr, expr.generics, expr.genericPacks);
 
     TypePackId retPack;
-    if (expr.hasReturnAnnotation)
-        retPack = resolveTypePack(funScope, expr.returnAnnotation);
+    if (expr.returnAnnotation)
+        retPack = resolveTypePack(funScope, *expr.returnAnnotation);
     else if (isNonstrictMode())
         retPack = anyTypePack;
     else if (expectedFunctionType)
@@ -3181,7 +3146,7 @@ void TypeChecker::checkFunctionBody(const ScopePtr& scope, TypeId ty, const AstE
             // If we're in nonstrict mode we want to only report this missing return
             // statement if there are type annotations on the function. In strict mode
             // we report it regardless.
-            if (!isNonstrictMode() || function.hasReturnAnnotation)
+            if (!isNonstrictMode() || function.returnAnnotation)
             {
                 reportError(getEndLocation(function), FunctionExitsWithoutReturning{funTy->retType});
             }
@@ -4403,11 +4368,7 @@ TypeId Instantiation::clean(TypeId ty)
 
     // Annoyingly, we have to do this even if there are no generics,
     // to replace any generic tables.
-    replaceGenerics.log = log;
-    replaceGenerics.level = level;
-    replaceGenerics.currentModule = currentModule;
-    replaceGenerics.generics.assign(ftv->generics.begin(), ftv->generics.end());
-    replaceGenerics.genericPacks.assign(ftv->genericPacks.begin(), ftv->genericPacks.end());
+    ReplaceGenerics replaceGenerics{log, arena, level, ftv->generics, ftv->genericPacks};
 
     // TODO: What to do if this returns nullopt?
     // We don't have access to the error-reporting machinery
@@ -4573,16 +4534,11 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
 
     if (FFlag::LuauQuantifyInPlace2)
     {
-        Luau::quantify(currentModule, ty, scope->level);
+        Luau::quantify(ty, scope->level);
         return ty;
     }
 
-    quantification.log = TxnLog::empty();
-    quantification.level = scope->level;
-    quantification.generics.clear();
-    quantification.genericPacks.clear();
-    quantification.currentModule = currentModule;
-
+    Quantification quantification{&currentModule->internalTypes, scope->level};
     std::optional<TypeId> qty = quantification.substitute(ty);
 
     if (!qty.has_value())
@@ -4596,18 +4552,14 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
 
     FunctionTypeVar* qftv = getMutable<FunctionTypeVar>(*qty);
     LUAU_ASSERT(qftv);
-    qftv->generics = quantification.generics;
-    qftv->genericPacks = quantification.genericPacks;
+    qftv->generics = std::move(quantification.generics);
+    qftv->genericPacks = std::move(quantification.genericPacks);
     return *qty;
 }
 
 TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location location, const TxnLog* log)
 {
-    LUAU_ASSERT(log != nullptr);
-
-    instantiation.log = FFlag::LuauUseCommittingTxnLog ? log : TxnLog::empty();
-    instantiation.level = scope->level;
-    instantiation.currentModule = currentModule;
+    Instantiation instantiation{FFlag::LuauUseCommittingTxnLog ? log : TxnLog::empty(), &currentModule->internalTypes, scope->level};
     std::optional<TypeId> instantiated = instantiation.substitute(ty);
     if (instantiated.has_value())
         return *instantiated;
@@ -4620,10 +4572,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
 
 TypeId TypeChecker::anyify(const ScopePtr& scope, TypeId ty, Location location)
 {
-    anyification.log = TxnLog::empty();
-    anyification.anyType = anyType;
-    anyification.anyTypePack = anyTypePack;
-    anyification.currentModule = currentModule;
+    Anyification anyification{&currentModule->internalTypes, anyType, anyTypePack};
     std::optional<TypeId> any = anyification.substitute(ty);
     if (any.has_value())
         return *any;
@@ -4636,10 +4585,7 @@ TypeId TypeChecker::anyify(const ScopePtr& scope, TypeId ty, Location location)
 
 TypePackId TypeChecker::anyify(const ScopePtr& scope, TypePackId ty, Location location)
 {
-    anyification.log = TxnLog::empty();
-    anyification.anyType = anyType;
-    anyification.anyTypePack = anyTypePack;
-    anyification.currentModule = currentModule;
+    Anyification anyification{&currentModule->internalTypes, anyType, anyTypePack};
     std::optional<TypePackId> any = anyification.substitute(ty);
     if (any.has_value())
         return *any;
@@ -4823,7 +4769,8 @@ TypePackId TypeChecker::errorRecoveryTypePack(TypePackId guess)
     return getSingletonTypes().errorRecoveryTypePack(guess);
 }
 
-TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense) {
+TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense)
+{
     return [this, sense](TypeId ty) -> std::optional<TypeId> {
         // any/error/free gets a special pass unconditionally because they can't be decided.
         if (get<AnyTypeVar>(ty) || get<ErrorTypeVar>(ty) || get<FreeTypeVar>(ty))
@@ -4904,8 +4851,8 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
     if (const auto& lit = annotation.as<AstTypeReference>())
     {
         std::optional<TypeFun> tf;
-        if (lit->hasPrefix)
-            tf = scope->lookupImportedType(lit->prefix.value, lit->name.value);
+        if (lit->prefix)
+            tf = scope->lookupImportedType(lit->prefix->value, lit->name.value);
 
         else if (FFlag::DebugLuauMagicTypes && lit->name == "_luau_ice")
             ice("_luau_ice encountered", lit->location);
@@ -4932,12 +4879,12 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
 
         if (!tf)
         {
-            if (lit->name == Parser::errorName)
+            if (lit->name == kParseNameError)
                 return errorRecoveryType(scope);
 
             std::string typeName;
-            if (lit->hasPrefix)
-                typeName = std::string(lit->prefix.value) + ".";
+            if (lit->prefix)
+                typeName = std::string(lit->prefix->value) + ".";
             typeName += lit->name.value;
 
             if (scope->lookupPack(typeName))
@@ -5038,12 +4985,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
             if (notEnoughParameters && hasDefaultParameters)
             {
                 // 'applyTypeFunction' is used to substitute default types that reference previous generic types
-                applyTypeFunction.log = TxnLog::empty();
-                applyTypeFunction.typeArguments.clear();
-                applyTypeFunction.typePackArguments.clear();
-                applyTypeFunction.currentModule = currentModule;
-                applyTypeFunction.level = scope->level;
-                applyTypeFunction.encounteredForwardedType = false;
+                ApplyTypeFunction applyTypeFunction{&currentModule->internalTypes, scope->level};
 
                 for (size_t i = 0; i < typesProvided; ++i)
                     applyTypeFunction.typeArguments[tf->typeParams[i].ty] = typeParams[i];
@@ -5362,18 +5304,14 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     if (tf.typeParams.empty() && tf.typePackParams.empty())
         return tf.type;
 
-    applyTypeFunction.typeArguments.clear();
+    ApplyTypeFunction applyTypeFunction{&currentModule->internalTypes, scope->level};
+
     for (size_t i = 0; i < tf.typeParams.size(); ++i)
         applyTypeFunction.typeArguments[tf.typeParams[i].ty] = typeParams[i];
 
-    applyTypeFunction.typePackArguments.clear();
     for (size_t i = 0; i < tf.typePackParams.size(); ++i)
         applyTypeFunction.typePackArguments[tf.typePackParams[i].tp] = typePackParams[i];
 
-    applyTypeFunction.log = TxnLog::empty();
-    applyTypeFunction.currentModule = currentModule;
-    applyTypeFunction.level = scope->level;
-    applyTypeFunction.encounteredForwardedType = false;
     std::optional<TypeId> maybeInstantiated = applyTypeFunction.substitute(tf.type);
     if (!maybeInstantiated.has_value())
     {

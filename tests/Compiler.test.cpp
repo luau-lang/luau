@@ -10,6 +10,11 @@
 #include <sstream>
 #include <string_view>
 
+namespace Luau
+{
+std::string rep(const std::string& s, size_t n);
+}
+
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id)
@@ -1958,15 +1963,6 @@ SUB R11 R12 R13
 CALL R8 3 -1
 RETURN R8 -1
 )");
-}
-
-static std::string rep(const std::string& s, size_t n)
-{
-    std::string r;
-    r.reserve(s.length() * n);
-    for (size_t i = 0; i < n; ++i)
-        r += s;
-    return r;
 }
 
 TEST_CASE("RecursionParse")

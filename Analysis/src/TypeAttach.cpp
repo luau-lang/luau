@@ -3,7 +3,6 @@
 
 #include "Luau/Error.h"
 #include "Luau/Module.h"
-#include "Luau/Parser.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
 #include "Luau/ToString.h"
@@ -476,12 +475,11 @@ public:
             visitLocal(arg);
         }
 
-        if (!fn->hasReturnAnnotation)
+        if (!fn->returnAnnotation)
         {
             if (auto result = getScope(fn->body->location))
             {
                 TypePackId ret = result->returnType;
-                fn->hasReturnAnnotation = true;
 
                 AstTypePack* variadicAnnotation = nullptr;
                 const auto& [v, tail] = flatten(ret);

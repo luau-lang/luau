@@ -24,6 +24,7 @@ struct TypeChecker;
 struct FileResolver;
 struct ModuleResolver;
 struct ParseResult;
+struct HotComment;
 
 struct LoadDefinitionFileResult
 {
@@ -35,7 +36,7 @@ struct LoadDefinitionFileResult
 LoadDefinitionFileResult loadDefinitionFile(
     TypeChecker& typeChecker, ScopePtr targetScope, std::string_view definition, const std::string& packageName);
 
-std::optional<Mode> parseMode(const std::vector<std::string>& hotcomments);
+std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments);
 
 std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr);
 
