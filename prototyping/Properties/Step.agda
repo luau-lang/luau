@@ -6,7 +6,7 @@ open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
 open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +)
 open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app ; beta; function; block; return; done; local; subst; binOp; evalBinOp)
-open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; NilIsNotAFunction; NumberIsNotAFunction; UnboundVariable; SEGV; app; block; local; return)
+open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; TypeMismatch; UnboundVariable; SEGV; app; block; local; return)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Luau.Value using (nil; addr; val; number)
 open import Properties.Remember using (remember; _,_)
@@ -34,7 +34,7 @@ stepᴱ H (addr a) = value (addr a) refl
 stepᴱ H (number x) = value (number x) refl
 stepᴱ H (M $ N) with stepᴱ H M
 stepᴱ H (M $ N) | step H′ M′ D = step H′ (M′ $ N) (app D)
-stepᴱ H (nil $ N) | value nil refl = error NilIsNotAFunction
+stepᴱ H (nil $ N) | value nil refl = error (TypeMismatch nil (nil $ N))
 stepᴱ H ((number _) $ N) | value (number x) refl = error (NumberIsNotAFunction x)
 stepᴱ H (addr a $ N) | value (addr a) refl with remember (H [ a ])
 stepᴱ H (addr a $ N) | value (addr a) refl | (nothing , p) = error (app (SEGV a p))
