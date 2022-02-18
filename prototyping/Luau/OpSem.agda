@@ -66,10 +66,22 @@ data _⊢_⟶ᴱ_⊣_  where
     ---------------------------------
     H ⊢ (block b is done end) ⟶ᴱ nil ⊣ H
   
-  binOp :
+  binOpEval :
     ∀ {H x op y} →
     --------------------------------------------------------------------------
     H ⊢ (binexp (number x) op (number y)) ⟶ᴱ (number (evalBinOp x op y)) ⊣ H
+  
+  binOp₁ :
+    ∀ {H H′ x x′ op y} →
+    H ⊢ x ⟶ᴱ x′ ⊣ H′ →
+    ---------------------------------------------
+    H ⊢ (binexp x op y) ⟶ᴱ (binexp x′ op y) ⊣ H′
+  
+  binOp₂ :
+    ∀ {H H′ x op y y′} →
+    H ⊢ y ⟶ᴱ y′ ⊣ H′ →
+    ---------------------------------------------
+    H ⊢ (binexp x op y) ⟶ᴱ (binexp x op y′) ⊣ H′
 
   
 data _⊢_⟶ᴮ_⊣_  where
