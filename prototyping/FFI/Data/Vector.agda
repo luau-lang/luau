@@ -34,11 +34,12 @@ postulate
 {-# COMPILE GHC snoc = \_ -> Data.Vector.snoc #-}
 
 postulate length-empty : ∀ {A} → (length (empty {A}) ≡ 0)
+postulate lookup-empty : ∀ {A} n → (lookup (empty {A}) n ≡ nothing)
 postulate lookup-snoc : ∀ {A} (x : A) (v : Vector A) → (lookup (snoc v x) (length v) ≡ just x)
 postulate lookup-snoc-empty : ∀ {A} (x : A) → (lookup (snoc empty x) 0 ≡ just x)
 postulate lookup-snoc-not : ∀ {A n} (x : A) (v : Vector A) → (n ≢ length v) → (lookup v n ≡ lookup (snoc v x) n)
 
-{-# REWRITE length-empty lookup-snoc lookup-snoc-empty #-}
+{-# REWRITE length-empty lookup-snoc lookup-snoc-empty lookup-empty #-}
 
 head : ∀ {A} → (Vector A) → (Maybe A)
 head vec with null vec
