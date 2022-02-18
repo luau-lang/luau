@@ -5,16 +5,18 @@ open import Luau.Heap using (Heap; _[_])
 open import FFI.Data.Maybe using (just; nothing)
 open import FFI.Data.String using (String)
 open import Luau.Syntax using (Block; Expr; nil; var; addr; block_is_end; _$_; local_←_; return; done; _∙_; number)
+open import Luau.Value using (val)
 
 data RuntimeErrorᴮ {a} (H : Heap a) : Block a → Set
 data RuntimeErrorᴱ {a} (H : Heap a) : Expr a → Set
 
 data RuntimeErrorᴱ H where
-  NilIsNotAFunction : ∀ {M} → RuntimeErrorᴱ H (nil $ M)
-  NumberIsNotAFunction : ∀ n {M} → RuntimeErrorᴱ H ((number n) $ M)
+  NilIsNotAFunction : ∀ {V} → RuntimeErrorᴱ H (nil $ val V)
+  NumberIsNotAFunction : ∀ n {V} → RuntimeErrorᴱ H (number n $ val V)
   UnboundVariable : ∀ x → RuntimeErrorᴱ H (var x)
   SEGV : ∀ a → (H [ a ] ≡ nothing) → RuntimeErrorᴱ H (addr a)
-  app : ∀ {M N} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (M $ N)
+  app₁ : ∀ {M N} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (M $ N)
+  app₂ : ∀ {M N} → RuntimeErrorᴱ H N → RuntimeErrorᴱ H (M $ N)
   block : ∀ b {B} → RuntimeErrorᴮ H B → RuntimeErrorᴱ H (block b is B end)
 
 data RuntimeErrorᴮ H where
