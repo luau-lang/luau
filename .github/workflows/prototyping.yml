@@ -37,7 +37,7 @@ jobs:
     - uses: actions/cache@v2
       with:
         path: ./build
-        key: prototyping-${{ runner.os }}-${{ hashFiles("Ast/**", "Analysis/**", "CLI/Ast.cpp", "CLI/FileUtils.*")}}
+        key: prototyping-${{ runner.os }}-${{ hashFiles('Ast/**', 'Analysis/**', 'CLI/Ast.cpp', 'CLI/FileUtils.*')}}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
     - name: cabal update
