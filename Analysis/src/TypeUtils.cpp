@@ -5,6 +5,8 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 
+LUAU_FASTFLAGVARIABLE(LuauTerminateCyclicMetatableIndexLookup, false)
+
 namespace Luau
 {
 
@@ -48,9 +50,19 @@ std::optional<TypeId> findTablePropertyRespectingMeta(ErrorVec& errors, const Sc
     }
 
     std::optional<TypeId> mtIndex = findMetatableEntry(errors, globalScope, ty, "__index", location);
+    int count = 0;
     while (mtIndex)
     {
         TypeId index = follow(*mtIndex);
+
+        if (FFlag::LuauTerminateCyclicMetatableIndexLookup)
+        {
+            if (count >= 100)
+                return std::nullopt;
+
+            ++count;
+        }
+
         if (const auto& itt = getTableType(index))
         {
             const auto& fit = itt->props.find(name);

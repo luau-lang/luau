@@ -4,8 +4,13 @@
 #include "Luau/Common.h"
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <Windows.h>
 #else
 #include <dirent.h>
 #include <fcntl.h>

@@ -6,7 +6,7 @@
 #include "Luau/TypedAllocator.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/Error.h"
-#include "Luau/Parser.h"
+#include "Luau/ParseResult.h"
 
 #include <memory>
 #include <vector>
@@ -37,8 +37,8 @@ struct SourceModule
 
     AstStatBlock* root = nullptr;
     std::optional<Mode> mode;
-    uint64_t ignoreLints = 0;
 
+    std::vector<HotComment> hotcomments;
     std::vector<Comment> commentLocations;
 
     SourceModule()

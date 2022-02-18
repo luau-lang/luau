@@ -9,14 +9,12 @@ namespace Luau
 
 struct Quantifier
 {
-    ModulePtr module;
     TypeLevel level;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
 
-    Quantifier(ModulePtr module, TypeLevel level)
-        : module(module)
-        , level(level)
+    Quantifier(TypeLevel level)
+        : level(level)
     {
     }
 
@@ -76,9 +74,9 @@ struct Quantifier
     }
 };
 
-void quantify(ModulePtr module, TypeId ty, TypeLevel level)
+void quantify(TypeId ty, TypeLevel level)
 {
-    Quantifier q{std::move(module), level};
+    Quantifier q{level};
     DenseHashSet<void*> seen{nullptr};
     visitTypeVarOnce(ty, q, seen);
 

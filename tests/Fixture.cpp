@@ -2,6 +2,7 @@
 #include "Fixture.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/Parser.h"
 #include "Luau/TypeVar.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
@@ -112,7 +113,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
     sourceModule->name = fromString(mainModuleName);
     sourceModule->root = result.root;
     sourceModule->mode = parseMode(result.hotcomments);
-    sourceModule->ignoreLints = LintWarning::parseMask(result.hotcomments);
+    sourceModule->hotcomments = std::move(result.hotcomments);
 
     if (!result.errors.empty())
     {
@@ -157,6 +158,7 @@ CheckResult Fixture::check(const std::string& source)
 LintResult Fixture::lint(const std::string& source, const std::optional<LintOptions>& lintOptions)
 {
     ParseOptions parseOptions;
+    parseOptions.captureComments = true;
     configResolver.defaultConfig.mode = Mode::Nonstrict;
     parse(source, parseOptions);
 

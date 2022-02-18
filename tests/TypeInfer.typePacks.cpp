@@ -1,6 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Parser.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
@@ -930,8 +929,6 @@ type R = { m: F<R> }
 
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")
 {
-    ScopedFastFlag luauUnifyPackTails{"LuauUnifyPackTails", true};
-
     CheckResult result = check(R"(
 local a: () -> (number, ...string)
 local b: () -> (number, ...boolean)

@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Autocomplete.h"
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/Parser.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
@@ -2608,6 +2607,27 @@ a = if temp then even elseif true then temp else e@9
     CHECK(ac.entryMap.count("then") == 0);
     CHECK(ac.entryMap.count("else") == 0);
     CHECK(ac.entryMap.count("elseif") == 0);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_else_regression")
+{
+    ScopedFastFlag FFlagLuauIfElseExprFixCompletionIssue("LuauIfElseExprFixCompletionIssue", true);
+    check(R"(
+local abcdef = 0;
+local temp = false
+local even = true;
+local a
+a = if temp then even else@1
+a = if temp then even else @2
+a = if temp then even else abc@3
+        )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("else") == 0);
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.count("else") == 0);
+    ac = autocomplete('3');
+    CHECK(ac.entryMap.count("abcdef"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_explicit_type_pack")

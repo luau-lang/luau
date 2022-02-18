@@ -39,7 +39,7 @@
 
 // When calling luau_callTM, we usually push the arguments to the top of the stack.
 // This is safe to do for complicated reasons:
-// - stack guarantees 1 + EXTRA_STACK room beyond stack_last (see luaD_reallocstack)
+// - stack guarantees EXTRA_STACK room beyond stack_last (see luaD_reallocstack)
 // - stack reallocation copies values past stack_last
 
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT

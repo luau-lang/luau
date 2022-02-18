@@ -101,11 +101,6 @@ Lexeme::Lexeme(const Location& location, Type type, const char* name)
     LUAU_ASSERT(type == Name || (type >= Reserved_BEGIN && type < Lexeme::Reserved_END));
 }
 
-static bool isComment(const Lexeme& lexeme)
-{
-    return lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment;
-}
-
 static const char* kReserved[] = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or",
     "repeat", "return", "then", "true", "until", "while"};
 
@@ -282,11 +277,6 @@ AstName AstNameTable::get(const char* name) const
     return getWithType(name, strlen(name)).first;
 }
 
-inline bool isSpace(char ch)
-{
-    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
-}
-
 inline bool isAlpha(char ch)
 {
     // use or trick to convert to lower case and unsigned comparison to do range check
@@ -372,7 +362,7 @@ const Lexeme& Lexer::next(bool skipComments)
         prevLocation = lexeme.location;
 
         lexeme = readNext();
-    } while (skipComments && isComment(lexeme));
+    } while (skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment));
 
     return lexeme;
 }

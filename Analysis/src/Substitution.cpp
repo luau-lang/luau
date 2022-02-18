@@ -226,27 +226,11 @@ TarjanResult Tarjan::loop()
     return TarjanResult::Ok;
 }
 
-void Tarjan::clear()
-{
-    typeToIndex.clear();
-    indexToType.clear();
-    packToIndex.clear();
-    indexToPack.clear();
-    lowlink.clear();
-    stack.clear();
-    onStack.clear();
-
-    edgesTy.clear();
-    edgesTp.clear();
-    worklist.clear();
-}
-
 TarjanResult Tarjan::visitRoot(TypeId ty)
 {
     childCount = 0;
     ty = log->follow(ty);
 
-    clear();
     auto [index, fresh] = indexify(ty);
     worklist.push_back({index, -1, -1});
     return loop();
@@ -257,7 +241,6 @@ TarjanResult Tarjan::visitRoot(TypePackId tp)
     childCount = 0;
     tp = log->follow(tp);
 
-    clear();
     auto [index, fresh] = indexify(tp);
     worklist.push_back({index, -1, -1});
     return loop();
@@ -314,21 +297,17 @@ void FindDirty::visitSCC(int index)
 
 TarjanResult FindDirty::findDirty(TypeId ty)
 {
-    dirty.clear();
     return visitRoot(ty);
 }
 
 TarjanResult FindDirty::findDirty(TypePackId tp)
 {
-    dirty.clear();
     return visitRoot(tp);
 }
 
 std::optional<TypeId> Substitution::substitute(TypeId ty)
 {
     ty = log->follow(ty);
-    newTypes.clear();
-    newPacks.clear();
 
     auto result = findDirty(ty);
     if (result != TarjanResult::Ok)
@@ -347,8 +326,6 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
 std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 {
     tp = log->follow(tp);
-    newTypes.clear();
-    newPacks.clear();
 
     auto result = findDirty(tp);
     if (result != TarjanResult::Ok)

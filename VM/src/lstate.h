@@ -5,9 +5,6 @@
 #include "lobject.h"
 #include "ltm.h"
 
-/* table of globals */
-#define gt(L) (&L->l_gt)
-
 /* registry */
 #define registry(L) (&L->global->registry)
 
@@ -177,6 +174,8 @@ typedef struct global_State
     TString* ttname[LUA_T_COUNT];       /* names for basic types */
     TString* tmname[TM_N];             /* array with tag-method names */
 
+    TValue pseudotemp; /* storage for temporary values used in pseudo2addr */
+
     TValue registry; /* registry table, used by lua_ref and LUA_REGISTRYINDEX */
     int registryfree; /* next free slot in registry */
 
@@ -231,8 +230,7 @@ struct lua_State
     int cachedslot;    /* when table operations or INDEX/NEWINDEX is invoked from Luau, what is the expected slot for lookup? */
 
 
-    TValue l_gt;            /* table of globals */
-    TValue env;             /* temporary place for environments */
+    Table* gt;           /* table of globals */
     UpVal* openupval;    /* list of open upvalues in this stack */
     GCObject* gclist;
 

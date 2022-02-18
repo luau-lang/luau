@@ -492,6 +492,8 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
+    ScopedFastFlag luauTableFieldFunctionDebugname{"LuauTableFieldFunctionDebugname", true};
+
     runConformance("debug.lua");
 }
 
@@ -889,6 +891,12 @@ TEST_CASE("Coverage")
 
                         lua_pushstring(L, function);
                         lua_setfield(L, -2, "name");
+
+                        lua_pushinteger(L, linedefined);
+                        lua_setfield(L, -2, "linedefined");
+
+                        lua_pushinteger(L, depth);
+                        lua_setfield(L, -2, "depth");
 
                         for (size_t i = 0; i < size; ++i)
                             if (hits[i] != -1)

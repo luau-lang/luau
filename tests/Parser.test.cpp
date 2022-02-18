@@ -1,6 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
-#include "Luau/TypeInfer.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -300,8 +299,9 @@ TEST_CASE_FIXTURE(Fixture, "functions_can_have_return_annotations")
     AstStatFunction* statFunction = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunction != nullptr);
 
-    CHECK_EQ(statFunction->func->returnAnnotation.types.size, 1);
-    CHECK(statFunction->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunction->func->returnAnnotation.has_value());
+    CHECK_EQ(statFunction->func->returnAnnotation->types.size, 1);
+    CHECK(statFunction->func->returnAnnotation->tailType == nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_can_have_a_function_type_annotation")
@@ -316,9 +316,9 @@ TEST_CASE_FIXTURE(Fixture, "functions_can_have_a_function_type_annotation")
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation.types;
-    REQUIRE(statFunc->func->hasReturnAnnotation);
-    CHECK(statFunc->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunc->func->returnAnnotation.has_value());
+    CHECK(statFunc->func->returnAnnotation->tailType == nullptr);
+    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation->types;
     REQUIRE(retTypes.size == 1);
 
     AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
@@ -337,9 +337,9 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_disambiguate_from_functi
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation.types;
-    REQUIRE(statFunc->func->hasReturnAnnotation);
-    CHECK(statFunc->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunc->func->returnAnnotation.has_value());
+    CHECK(statFunc->func->returnAnnotation->tailType == nullptr);
+    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation->types;
     REQUIRE(retTypes.size == 2);
 
     AstTypeReference* ty0 = retTypes.data[0]->as<AstTypeReference>();
@@ -363,9 +363,9 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_parse_as_function_type_a
     AstStatFunction* statFunc = block->body.data[0]->as<AstStatFunction>();
     REQUIRE(statFunc != nullptr);
 
-    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation.types;
-    REQUIRE(statFunc->func->hasReturnAnnotation);
-    CHECK(statFunc->func->returnAnnotation.tailType == nullptr);
+    REQUIRE(statFunc->func->returnAnnotation.has_value());
+    CHECK(statFunc->func->returnAnnotation->tailType == nullptr);
+    AstArray<AstType*>& retTypes = statFunc->func->returnAnnotation->types;
     REQUIRE(retTypes.size == 1);
 
     AstTypeFunction* funTy = retTypes.data[0]->as<AstTypeFunction>();
@@ -707,10 +707,23 @@ TEST_CASE_FIXTURE(Fixture, "mode_is_unset_if_no_hot_comment")
 
 TEST_CASE_FIXTURE(Fixture, "sense_hot_comment_on_first_line")
 {
-    ParseResult result = parseEx("   --!strict ");
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("   --!strict ", options);
     std::optional<Mode> mode = parseMode(result.hotcomments);
     REQUIRE(bool(mode));
     CHECK_EQ(int(*mode), int(Mode::Strict));
+}
+
+TEST_CASE_FIXTURE(Fixture, "non_header_hot_comments")
+{
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("do end --!strict", options);
+    std::optional<Mode> mode = parseMode(result.hotcomments);
+    REQUIRE(!mode);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stop_if_line_ends_with_hyphen")
@@ -720,7 +733,10 @@ TEST_CASE_FIXTURE(Fixture, "stop_if_line_ends_with_hyphen")
 
 TEST_CASE_FIXTURE(Fixture, "nonstrict_mode")
 {
-    ParseResult result = parseEx("--!nonstrict");
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("--!nonstrict", options);
     CHECK(result.errors.empty());
     std::optional<Mode> mode = parseMode(result.hotcomments);
     REQUIRE(bool(mode));
@@ -729,7 +745,10 @@ TEST_CASE_FIXTURE(Fixture, "nonstrict_mode")
 
 TEST_CASE_FIXTURE(Fixture, "nocheck_mode")
 {
-    ParseResult result = parseEx("--!nocheck");
+    ParseOptions options;
+    options.captureComments = true;
+
+    ParseResult result = parseEx("--!nocheck", options);
     CHECK(result.errors.empty());
     std::optional<Mode> mode = parseMode(result.hotcomments);
     REQUIRE(bool(mode));
@@ -1498,8 +1517,6 @@ return
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_broken_comment")
 {
-    ScopedFastFlag luauStartingBrokenComment{"LuauStartingBrokenComment", true};
-
     const char* expected = "Expected identifier when parsing expression, got unfinished comment";
 
     matchParseError("--[[unfinished work", expected);

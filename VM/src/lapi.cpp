@@ -36,12 +36,9 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
 static Table* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci)  /* no enclosing function? */
-        return hvalue(gt(L)); /* use global table as environment */
+        return L->gt;         /* use global table as environment */
     else
-    {
-        Closure* func = curr_func(L);
-        return func->env;
-    }
+        return curr_func(L)->env;
 }
 
 static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
@@ -53,11 +50,14 @@ static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
         return registry(L);
     case LUA_ENVIRONINDEX:
     {
-        sethvalue(L, &L->env, getcurrenv(L));
-        return &L->env;
+        sethvalue(L, &L->global->pseudotemp, getcurrenv(L));
+        return &L->global->pseudotemp;
     }
     case LUA_GLOBALSINDEX:
-        return gt(L);
+    {
+        sethvalue(L, &L->global->pseudotemp, L->gt);
+        return &L->global->pseudotemp;
+    }
     default:
     {
         Closure* func = curr_func(L);
@@ -236,6 +236,11 @@ void lua_replace(lua_State* L, int idx)
         api_check(L, ttistable(L->top - 1));
         func->env = hvalue(L->top - 1);
         luaC_barrier(L, func, L->top - 1);
+    }
+    else if (idx == LUA_GLOBALSINDEX)
+    {
+        api_check(L, ttistable(L->top - 1));
+        L->gt = hvalue(L->top - 1);
     }
     else
     {
@@ -783,7 +788,7 @@ void lua_getfenv(lua_State* L, int idx)
         sethvalue(L, L->top, clvalue(o)->env);
         break;
     case LUA_TTHREAD:
-        setobj2s(L, L->top, gt(thvalue(o)));
+        sethvalue(L, L->top, thvalue(o)->gt);
         break;
     default:
         setnilvalue(L->top);
@@ -914,7 +919,7 @@ int lua_setfenv(lua_State* L, int idx)
         clvalue(o)->env = hvalue(L->top - 1);
         break;
     case LUA_TTHREAD:
-        sethvalue(L, gt(thvalue(o)), hvalue(L->top - 1));
+        thvalue(o)->gt = hvalue(L->top - 1);
         break;
     default:
         res = 0;

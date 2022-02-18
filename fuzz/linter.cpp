@@ -32,7 +32,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
         Luau::LintOptions lintOptions;
         lintOptions.warningMask = ~0ull;
 
-        Luau::lint(parseResult.root, names, typeck.globalScope, nullptr, lintOptions);
+        Luau::lint(parseResult.root, names, typeck.globalScope, nullptr, {}, lintOptions);
     }
 
     return 0;

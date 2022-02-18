@@ -167,8 +167,7 @@ AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGen
     , genericPacks(genericPacks)
     , self(self)
     , args(args)
-    , hasReturnAnnotation(returnAnnotation.has_value())
-    , returnAnnotation()
+    , returnAnnotation(returnAnnotation)
     , vararg(vararg.has_value())
     , varargLocation(vararg.value_or(Location()))
     , varargAnnotation(varargAnnotation)
@@ -178,8 +177,6 @@ AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGen
     , hasEnd(hasEnd)
     , argLocation(argLocation)
 {
-    if (returnAnnotation.has_value())
-        this->returnAnnotation = *returnAnnotation;
 }
 
 void AstExprFunction::visit(AstVisitor* visitor)
@@ -195,8 +192,8 @@ void AstExprFunction::visit(AstVisitor* visitor)
         if (varargAnnotation)
             varargAnnotation->visit(visitor);
 
-        if (hasReturnAnnotation)
-            visitTypeList(visitor, returnAnnotation);
+        if (returnAnnotation)
+            visitTypeList(visitor, *returnAnnotation);
 
         body->visit(visitor);
     }
@@ -375,21 +372,16 @@ void AstStatBlock::visit(AstVisitor* visitor)
     }
 }
 
-AstStatIf::AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody, bool hasThen,
-    const Location& thenLocation, const std::optional<Location>& elseLocation, bool hasEnd)
+AstStatIf::AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody,
+    const std::optional<Location>& thenLocation, const std::optional<Location>& elseLocation, bool hasEnd)
     : AstStat(ClassIndex(), location)
     , condition(condition)
     , thenbody(thenbody)
     , elsebody(elsebody)
-    , hasThen(hasThen)
     , thenLocation(thenLocation)
+    , elseLocation(elseLocation)
     , hasEnd(hasEnd)
 {
-    if (bool(elseLocation))
-    {
-        hasElse = true;
-        this->elseLocation = *elseLocation;
-    }
 }
 
 void AstStatIf::visit(AstVisitor* visitor)
@@ -492,12 +484,8 @@ AstStatLocal::AstStatLocal(
     : AstStat(ClassIndex(), location)
     , vars(vars)
     , values(values)
+    , equalsSignLocation(equalsSignLocation)
 {
-    if (bool(equalsSignLocation))
-    {
-        hasEqualsSign = true;
-        this->equalsSignLocation = *equalsSignLocation;
-    }
 }
 
 void AstStatLocal::visit(AstVisitor* visitor)
@@ -750,9 +738,8 @@ void AstStatError::visit(AstVisitor* visitor)
 AstTypeReference::AstTypeReference(
     const Location& location, std::optional<AstName> prefix, AstName name, bool hasParameterList, const AstArray<AstTypeOrPack>& parameters)
     : AstType(ClassIndex(), location)
-    , hasPrefix(bool(prefix))
     , hasParameterList(hasParameterList)
-    , prefix(prefix ? *prefix : AstName())
+    , prefix(prefix)
     , name(name)
     , parameters(parameters)
 {

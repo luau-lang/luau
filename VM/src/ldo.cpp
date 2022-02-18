@@ -17,6 +17,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauReduceStackReallocs)
+
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -164,13 +166,14 @@ static void correctstack(lua_State* L, TValue* oldstack)
 void luaD_reallocstack(lua_State* L, int newsize)
 {
     TValue* oldstack = L->stack;
-    int realsize = newsize + 1 + EXTRA_STACK;
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK - 1);
+    int realsize = newsize + (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK);
+    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK));
     luaM_reallocarray(L, L->stack, L->stacksize, realsize, TValue, L->memcat);
+    TValue* newstack = L->stack;
     for (int i = L->stacksize; i < realsize; i++)
-        setnilvalue(L->stack + i); /* erase new segment */
+        setnilvalue(newstack + i); /* erase new segment */
     L->stacksize = realsize;
-    L->stack_last = L->stack + newsize;
+    L->stack_last = newstack + newsize;
     correctstack(L, oldstack);
 }
 
@@ -512,7 +515,7 @@ static void callerrfunc(lua_State* L, void* ud)
 
 static void restore_stack_limit(lua_State* L)
 {
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK - 1);
+    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK));
     if (L->size_ci > LUAI_MAXCALLS)
     { /* there was an overflow? */
         int inuse = cast_int(L->ci - L->base_ci);
