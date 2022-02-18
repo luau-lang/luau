@@ -32,17 +32,23 @@ data _⊢_⟶ᴱ_⊣_  where
     -------------------------------------------
     H ⊢ (function F is B end) ⟶ᴱ (addr a) ⊣ H′
 
-  app : ∀ {H H′ M M′ N} →
+  app₁ : ∀ {H H′ M M′ N} →
   
     H ⊢ M ⟶ᴱ M′ ⊣ H′ →
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  beta : ∀ {H M a F B} →
+  app₂ : ∀ {H H′ V N N′} →
+
+    H ⊢ N ⟶ᴱ N′ ⊣ H′ →
+    -----------------------------
+    H ⊢ (val V $ N) ⟶ᴱ (val V $ N′) ⊣ H′
+
+  beta : ∀ {H a F B V} →
   
     H [ a ] ≡ just(function F is B end) →
-    -----------------------------------------------------
-    H ⊢ (addr a $ M) ⟶ᴱ (block (fun F) is local (arg F) ← M ∙ B end) ⊣ H
+    -----------------------------------------------------------------------------
+    H ⊢ (addr a $ val V) ⟶ᴱ (block (fun F) is (B [ V / name(arg F) ]ᴮ) end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  
