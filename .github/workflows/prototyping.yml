@@ -34,6 +34,10 @@ jobs:
       with:
         path: ~/.cabal/store
         key: prototyping-${{ runner.os }}-${{ matrix.agda }}
+    - uses: actions/cache@v2
+      with:
+        path: ./build
+        key: prototyping-${{ runner.os }}-${{ hashFiles("Ast/**", "Analysis/**", "CLI/Ast.cpp", "CLI/FileUtils.*")}}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
     - name: cabal update
@@ -46,24 +50,28 @@ jobs:
         cabal install --lib scientific --package-env .
         cabal install --lib vector --package-env .
         cabal install --lib aeson --package-env .
-    - name: check examples
+    - name: check targets
       working-directory: prototyping
-      run: ~/.cabal/bin/agda Examples.agda
+      run: |
+        ~/.cabal/bin/agda Examples.agda
+        ~/.cabal/bin/agda Properties.agda
     - name: build executables
       working-directory: prototyping
       run: |
         ~/.cabal/bin/agda --compile PrettyPrinter.agda
         ~/.cabal/bin/agda --compile Interpreter.agda
-        ~/.cabal/bin/agda --compile Properties.agda
     - name: cmake configure
-      run: cmake .
+      run: |
+        mkdir build
+        cmake build
     - name: cmake build luau-ast
-      run: cmake --build . --target Luau.Ast.CLI
+      run: |
+        cmake --build build/ --target Luau.Ast.CLI
     - name: run tests
       working-directory: prototyping
       run: |
         mkdir test-failures
-        python tests -l ../luau-ast --write-diff-failures --diff-failure-location test-failures/
+        python tests -l ../build/luau-ast --write-diff-failures --diff-failure-location test-failures/
     - uses: actions/upload-artifact@v2
       if: failure()
       with:
