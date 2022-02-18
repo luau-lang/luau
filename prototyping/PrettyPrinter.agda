@@ -30,4 +30,3 @@ runString txt | (Right value) = runJSON value
 
 main : IO ⊤
 main = getContents >>= runString
-

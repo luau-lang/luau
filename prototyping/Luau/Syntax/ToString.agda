@@ -1,6 +1,7 @@
 module Luau.Syntax.ToString where
 
-open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_)
+open import Agda.Builtin.Float using (primShowFloat)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Type.ToString using (typeToString)
@@ -36,6 +37,7 @@ exprToString′ lb (block b is B end) =
   "(" ++ b ++ "()" ++ lb ++
   "  " ++ (blockToString′ (lb ++ "  ") B) ++ lb ++
   "end)()"
+exprToString′ lb (number x) = primShowFloat x
 
 statToString′ lb (function F is B end) =
   "local " ++ funDecToString F ++ lb ++
