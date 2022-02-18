@@ -1,6 +1,6 @@
 # Default type alias type parameters
 
-Status: Implemented
+**Status**: Implemented
 
 ## Summary
 
