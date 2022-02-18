@@ -3,4 +3,7 @@
 Main
 MAlonzo
 PrettyPrinter
+Interpreter
+!Tests/Interpreter
+!Tests/PrettyPrinter
 .ghc.*
