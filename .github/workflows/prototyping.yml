@@ -54,15 +54,19 @@ jobs:
       run: |
         ~/.cabal/bin/agda --compile PrettyPrinter.agda
         ~/.cabal/bin/agda --compile Interpreter.agda
+        ~/.cabal/bin/agda --compile Properties.agda
     - name: cmake configure
       run: cmake .
     - name: cmake build luau-ast
       run: cmake --build . --target Luau.Ast.CLI
-    - name: run smoketest
+    - name: run tests
       working-directory: prototyping
       run: |
-        ../luau-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
-        ../luau-ast Examples/SmokeTest.lua | ./Interpreter
-    - name: diff smoketest
-      working-directory: prototyping
-      run: diff Examples/SmokeTest.lua Examples/SmokeTestOutput.lua
+        mkdir test-failures
+        python tests -l ../luau-ast --write-diff-failures --diff-failure-location test-failures/
+    - uses: actions/upload-artifact@v2
+      if: failure()
+      with:
+        name: test failures
+        path: prototyping/test-failures
+        retention-days: 5
