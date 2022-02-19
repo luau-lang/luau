@@ -2,8 +2,6 @@
 
 > Note: this RFC was adapted from an internal proposal that predates RFC process
 
-**Status**: Implemented
-
 ## Summary
 
 Introduce a new kind of type variable, called singleton types. They are just like normal types but has the capability to represent a constant runtime value as a type.

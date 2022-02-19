@@ -23,6 +23,12 @@ This document tracks unimplemented RFCs.
 
 **Status**: Implemented but depends on new transaction log implementation that is not fully live yet.
 
+## Singleton types
+
+[RFC: Singleton types](https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md)
+
+**Status**: Implemented but not fully rolled out yet.
+
 ## Nil-forgiving operator
 
 [RFC: nil-forgiving postfix operator !](https://github.com/Roblox/luau/blob/master/rfcs/syntax-nil-forgiving-operator.md)
