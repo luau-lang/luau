@@ -1,7 +1,7 @@
 module Luau.Syntax.ToString where
 
 open import Agda.Builtin.Float using (primShowFloat)
-open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number; BinaryOperator; binexp)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number; BinaryOperator; +; -; *; /; binexp)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Type.ToString using (typeToString)
@@ -18,12 +18,10 @@ funDecToString (f ⟨ x ⟩∈ T) = "function " ++ varToString f ++ "(" ++ varDe
 funDecToString (f ⟨ x ⟩) = "function " ++ varToString f ++ "(" ++ varDecToString x ++ ")"
 
 binOpToString : BinaryOperator → String
-binOpToString BinaryOperator.+ = "+"
-binOpToString BinaryOperator.- = "-"
-binOpToString BinaryOperator.* = "*"
-binOpToString BinaryOperator./ = "/"
-binOpToString BinaryOperator.% = "%"
-binOpToString BinaryOperator.^ = "^"
+binOpToString + = "+"
+binOpToString - = "-"
+binOpToString * = "*"
+binOpToString / = "/"
 
 exprToString′ : ∀ {a} → String → Expr a → String
 statToString′ : ∀ {a} → String → Stat a → String

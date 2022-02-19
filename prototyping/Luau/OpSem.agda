@@ -5,7 +5,7 @@ open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; prim
 open import FFI.Data.Maybe using (just)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; %; ^; number)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; number)
 open import Luau.Value using (addr; val; number)
 
 evalBinOp : Float → BinaryOperator → Float → Float
@@ -13,8 +13,6 @@ evalBinOp x + y = primFloatPlus x y
 evalBinOp x - y = primFloatMinus x y
 evalBinOp x * y = primFloatTimes x y
 evalBinOp x / y = primFloatDiv x y
-evalBinOp x % y = x -- TODO: Actually implement this
-evalBinOp x ^ y = x -- TODO: Actually implement this
 
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
