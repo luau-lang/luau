@@ -2,13 +2,15 @@
 
 module Luau.Heap where
 
-open import Agda.Builtin.Equality using (_≡_)
-open import FFI.Data.Maybe using (Maybe; just)
+open import Agda.Builtin.Equality using (_≡_; refl)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Vector using (Vector; length; snoc; empty; lookup-snoc-not)
-open import Luau.Addr using (Addr)
+open import Luau.Addr using (Addr; _≡ᴬ_)
 open import Luau.Var using (Var)
 open import Luau.Syntax using (Block; Expr; Annotated; FunDec; nil; function_is_end)
-open import Properties.Equality using (_≢_)
+open import Properties.Equality using (_≢_; trans)
+open import Properties.Remember using (remember; _,_)
+open import Properties.Dec using (yes; no)
 
 -- Heap-allocated objects
 data Object (a : Annotated) : Set where

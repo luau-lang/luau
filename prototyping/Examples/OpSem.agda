@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Examples.OpSem where
 
 open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; subst)

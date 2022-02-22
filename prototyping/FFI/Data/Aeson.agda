@@ -47,6 +47,8 @@ postulate lookup-insert : ∀ {A} k v (m : KeyMap A) → (lookup k (insert k v m
 postulate lookup-empty : ∀ {A} k → (lookup {A} k empty ≡ nothing)
 postulate lookup-insert-not : ∀ {A} j k v (m : KeyMap A) → (j ≢ k) → (lookup k m ≡ lookup k (insert j v m))
 postulate singleton-insert-empty : ∀ {A} k (v : A) → (singleton k v ≡ insert k v empty)
+postulate insert-swap : ∀ {A} j k (v w : A) m → (j ≢ k) → insert j v (insert k w m) ≡ insert k w (insert j v m)
+postulate insert-over : ∀ {A} j k (v w : A) m → (j ≡ k) → insert j v (insert k w m) ≡ insert j v m
 postulate to-from : ∀ k → toString(fromString k) ≡ k
 postulate from-to : ∀ k → fromString(toString k) ≡ k
 
