@@ -14,7 +14,7 @@ open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ
 open import Luau.Value using (val; nil; addr)
 open import Luau.Var using (_≡ⱽ_)
 open import Luau.Addr using (_≡ᴬ_)
-open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
+open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_; ⊕-lookup-miss) renaming (_[_] to _[_]ⱽ)
 open import Luau.VarCtxt using (VarCtxt; ∅)
 open import Properties.Remember using (remember; _,_)
 open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
@@ -90,10 +90,32 @@ typeOf-val-not-bot : ∀ {H Γ} v → OrWarningᴱ H (typeCheckᴱ H Γ (val v))
 typeOf-val-not-bot = {!!}
 
 substitutivityᴱ : ∀ {Γ T H} M v x → (just T ≡ typeOfⱽ H v) → (typeOfᴱ H (Γ ⊕ x ↦ T) M ≡ typeOfᴱ H Γ (M [ v / x ]ᴱ))
+substitutivityᴱ-whenever-yes : ∀ {Γ T H} v x y (p : x ≡ y) → (just T ≡ typeOfⱽ H v) → (typeOfᴱ H (Γ ⊕ x ↦ T) (var y) ≡ typeOfᴱ H Γ (var y [ v / x ]ᴱwhenever (yes p)))
+substitutivityᴱ-whenever-no : ∀ {Γ T H} v x y (p : x ≢ y) → (just T ≡ typeOfⱽ H v) → (typeOfᴱ H (Γ ⊕ x ↦ T) (var y) ≡ typeOfᴱ H Γ (var y [ v / x ]ᴱwhenever (no p)))
 substitutivityᴮ : ∀ {Γ T H} B v x → (just T ≡ typeOfⱽ H v) → (typeOfᴮ H (Γ ⊕ x ↦ T) B ≡ typeOfᴮ H Γ (B [ v / x ]ᴮ))
+substitutivityᴮ-unless-yes : ∀ {Γ Γ′ T H} B v x y (p : x ≡ y) → (just T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ) → (typeOfᴮ H Γ′ B ≡ typeOfᴮ H Γ (B [ v / x ]ᴮunless (yes p)))
+substitutivityᴮ-unless-no : ∀ {Γ Γ′ T H} B v x y (p : x ≢ y) → (just T ≡ typeOfⱽ H v) → (Γ′ ≡ Γ ⊕ x ↦ T) → (typeOfᴮ H Γ′ B ≡ typeOfᴮ H Γ (B [ v / x ]ᴮunless (no p)))
 
-substitutivityᴱ = {!!}
-substitutivityᴮ = {!!}
+substitutivityᴱ nil v x p = refl
+substitutivityᴱ (var y) v x p with x ≡ⱽ y
+substitutivityᴱ (var y) v x p | yes q = substitutivityᴱ-whenever-yes v x y q p
+substitutivityᴱ (var y) v x p | no q = substitutivityᴱ-whenever-no v x y q p
+substitutivityᴱ (addr a) v x p = refl
+substitutivityᴱ (M $ N) v x p = cong tgt (substitutivityᴱ M v x p)
+substitutivityᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p = refl
+substitutivityᴱ (block b is B end) v x p = substitutivityᴮ B v x p
+substitutivityᴱ-whenever-yes v x x refl q = trans (cong orBot q) (sym (typeOfᴱⱽ v))
+substitutivityᴱ-whenever-no v x y p q = cong orBot ( sym (⊕-lookup-miss x y _ _ p))
+substitutivityᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p with x ≡ⱽ f
+substitutivityᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p | yes q = substitutivityᴮ-unless-yes B v x f q p (⊕-overwrite q)
+substitutivityᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p | no q = substitutivityᴮ-unless-no B v x f q p (⊕-swap q)
+substitutivityᴮ (local var y ∈ T ← M ∙ B) v x p with x ≡ⱽ y
+substitutivityᴮ (local var y ∈ T  ← M ∙ B) v x p | yes q = substitutivityᴮ-unless-yes B v x y q p (⊕-overwrite q)
+substitutivityᴮ (local var y ∈ T  ← M ∙ B) v x p | no q =  substitutivityᴮ-unless-no B v x y q p (⊕-swap q)
+substitutivityᴮ (return M ∙ B) v x p = substitutivityᴱ M v x p
+substitutivityᴮ done v x p = refl
+substitutivityᴮ-unless-yes B v x x refl q refl = refl
+substitutivityᴮ-unless-no B v x y p q refl = substitutivityᴮ B v x q
 
 preservationᴱ : ∀ {H H′ M M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴴᴱ H (typeCheckᴴᴱ H ∅ M) (typeOfᴱ H ∅ M ≡ typeOfᴱ H′ ∅ M′)
 preservationᴮ : ∀ {H H′ B B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴴᴮ H (typeCheckᴴᴮ H ∅ B) (typeOfᴮ H ∅ B ≡ typeOfᴮ H′ ∅ B′)
@@ -154,8 +176,8 @@ reflect-substitutionᴱ (M $ N) v x p (app₀ q) = app₀ (λ s → q (trans (co
 reflect-substitutionᴱ (M $ N) v x p (app₁ W) = app₁ (reflect-substitutionᴱ M v x p W)
 reflect-substitutionᴱ (M $ N) v x p (app₂ W) = app₂ (reflect-substitutionᴱ N v x p W)
 reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) with (x ≡ⱽ y)
-reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) | yes r = function₀ f (λ s → q (trans s {!!}))
-reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) | no r = function₀ f (λ s → q (trans s {!!}))
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) | yes r = function₀ f (λ s → q (trans s (substitutivityᴮ-unless-yes B v x y r p (⊕-overwrite r))))
+reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₀ f q) | no r = function₀ f (λ s → q (trans s (substitutivityᴮ-unless-no B v x y r p (⊕-swap r))))
 reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ f W) with (x ≡ⱽ y)
 reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes B v x y r p (⊕-overwrite r) W)
 reflect-substitutionᴱ (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ-unless-no B v x y r p (⊕-swap r) W)
@@ -166,8 +188,8 @@ reflect-substitutionᴱ-whenever-yes (addr a) x x refl p (UnallocatedAddress a q
 reflect-substitutionᴱ-whenever-yes (addr a) x x refl p (UnallocatedAddress a q) | ()
 
 reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) with (x ≡ⱽ y)
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) | yes r = function₀ f (λ s → q (trans s {!substitutivityᴮ C v x!}))
-reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) | no r = function₀ f (λ s → q (trans s {!substitutivityᴮ C v x!}))
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) | yes r = function₀ f (λ s → q (trans s (substitutivityᴮ-unless-yes C v x y r p (⊕-overwrite r))))
+reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₀ f q) | no r = function₀ f (λ s → q (trans s (substitutivityᴮ-unless-no C v x y r p (⊕-swap r))))
 reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₁ f W) with (x ≡ⱽ y)
 reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₁ f W) | yes r = function₁ f (reflect-substitutionᴮ-unless-yes C v x y r p (⊕-overwrite r) W)
 reflect-substitutionᴮ (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p (function₁ f W) | no r = function₁ f (reflect-substitutionᴮ-unless-no C v x y r p (⊕-swap r) W)
@@ -231,8 +253,22 @@ reflectᴱ (app₁ s) (app₁ W′) with reflectᴱ s W′
 reflectᴱ (app₁ s) (app₁ W′) | heap W = heap W
 reflectᴱ (app₁ s) (app₁ W′) | expr W = expr (app₁ W)
 reflectᴱ (app₁ s) (app₂ W′) = expr (app₂ (reflect-weakeningᴱ (redn-⊑ s) W′))
-reflectᴱ (app₂ p s) W′ = {!!}
-reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q refl) (block (var f ∈ U) W′) = {!!} -- expr (app₀ (λ r → p (trans (cong src (cong orBot (cong typeOfᴹᴼ (sym q)))) r)))
+reflectᴱ (app₂ p s) (app₀ p′) with heap-weakeningᴱ (redn-⊑ s) | preservationᴱ s
+reflectᴱ (app₂ p s) (app₀ p′) | ok q | ok q′ = expr (app₀ (λ r → p′ (trans (trans (cong src (sym q)) r) q′)))
+reflectᴱ (app₂ p s) (app₀ p′) | warning W | _ = expr (app₁ W)
+reflectᴱ (app₂ p s) (app₀ p′) | _ | warning (expr W)  = expr (app₂ W)
+reflectᴱ (app₂ p s) (app₀ p′) | _ | warning (heap W)  = heap W
+reflectᴱ (app₂ p s) (app₁ W′) = expr (app₁ (reflect-weakeningᴱ (redn-⊑ s) W′))
+reflectᴱ (app₂ p s) (app₂ W′) with reflectᴱ s W′
+reflectᴱ (app₂ p s) (app₂ W′) | heap W = heap W
+reflectᴱ (app₂ p s) (app₂ W′) | expr W = expr (app₂ W)
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) with remember (typeOfⱽ H V)
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) | (just S , q) with S ≡ᵀ T
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) | (just T , q) | yes refl = heap (addr a p (function₁ f (reflect-substitutionᴮ B V x (sym q) W′)))
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) | (just S , q) | no r = expr (app₀ (λ s → r (trans (cong orBot (sym q)) (trans (sym (typeOfᴱⱽ V)) (trans (sym s) (cong src (cong orBot (cong typeOfᴹᴼ p))))))))
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) | (nothing , q) with typeOf-val-not-bot V
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) | (nothing , q) | ok r = CONTRADICTION (r (trans (cong orBot (sym q)) (sym (typeOfᴱⱽ V))))
+reflectᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} {B = B} {V = V} p refl) (block (var f ∈ U) W′) | (nothing , q) | warning W = expr (app₂ W)
 reflectᴱ (block s) (block b W′) with reflectᴮ s W′
 reflectᴱ (block s) (block b W′) | heap W = heap W
 reflectᴱ (block s) (block b W′) | block W = expr (block b W)

@@ -14,6 +14,8 @@ open import FFI.Data.Either using (Either; mapLeft)
 open import FFI.Data.Scientific using (Scientific)
 open import FFI.Data.Vector using (Vector)
 
+open import Properties.Equality using (_≢_)
+
 {-# FOREIGN GHC import qualified Data.Aeson #-}
 {-# FOREIGN GHC import qualified Data.Aeson.Key #-}
 {-# FOREIGN GHC import qualified Data.Aeson.KeyMap #-}
@@ -43,7 +45,10 @@ postulate
 
 postulate lookup-insert : ∀ {A} k v (m : KeyMap A) → (lookup k (insert k v m) ≡ just v)
 postulate lookup-empty : ∀ {A} k → (lookup {A} k empty ≡ nothing)
+postulate lookup-insert-not : ∀ {A} j k v (m : KeyMap A) → (j ≢ k) → (lookup k m ≡ lookup k (insert j v m))
 postulate singleton-insert-empty : ∀ {A} k (v : A) → (singleton k v ≡ insert k v empty)
+postulate to-from : ∀ k → toString(fromString k) ≡ k
+postulate from-to : ∀ k → fromString(toString k) ≡ k
 
 {-# REWRITE lookup-insert lookup-empty singleton-insert-empty #-}
 
