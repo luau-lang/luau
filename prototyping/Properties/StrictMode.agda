@@ -10,7 +10,7 @@ open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warning�
 open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
 open import Luau.Syntax using (Expr; yes; var; var_∈_; _⟨_⟩∈_; _$_; addr; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg)
 open import Luau.Type using (Type; strict; nil; _⇒_; bot; tgt)
-open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; nil; var; addr; app; function; block; done; return; local; orBot)
+open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orBot)
 open import Luau.Value using (val; nil; addr)
 open import Luau.Var using (_≡ⱽ_)
 open import Luau.Addr using (_≡ᴬ_)
@@ -57,6 +57,14 @@ data OrWarningᴮ {Γ B T} (H : Heap yes) (D : Γ ⊢ᴮ B ∈ T) A : Set where
   ok : A → OrWarningᴮ H D A
   warning : Warningᴮ H D → OrWarningᴮ H D A
 
+data OrWarningᴴᴱ {Γ M T} H (D : Γ ⊢ᴴᴱ H ▷ M ∈ T) A : Set where
+  ok : A → OrWarningᴴᴱ H D A
+  warning : Warningᴴᴱ H D → OrWarningᴴᴱ H D A
+
+data OrWarningᴴᴮ {Γ B T} H (D : Γ ⊢ᴴᴮ H ▷ B ∈ T) A : Set where
+  ok : A → OrWarningᴴᴮ H D A
+  warning : Warningᴴᴮ H D → OrWarningᴴᴮ H D A
+
 redn-⊑ : ∀ {H H′ M M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (H ⊑ H′)
 redn-⊑ = {!!}
 
@@ -87,37 +95,43 @@ substitutivityᴮ : ∀ {Γ T H} B v x → (just T ≡ typeOfⱽ H v) → (typeO
 substitutivityᴱ = {!!}
 substitutivityᴮ = {!!}
 
-preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴱ H (typeCheckᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M′)
-preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴮ H (typeCheckᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
+preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴴᴱ H (typeCheckᴴᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M′)
+preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴴᴮ H (typeCheckᴴᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
 
 preservationᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) = ok refl
 preservationᴱ (app₁ s) with preservationᴱ s
 preservationᴱ (app₁ s) | ok p = ok (cong tgt p)
-preservationᴱ (app₁ s) | warning W = warning (app₁ W)
-preservationᴱ (app₂ p s) = ?
-preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ T} p q) = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!!})
+preservationᴱ (app₁ s) | warning (expr W) = warning (expr (app₁ W))
+preservationᴱ (app₁ s) | warning (heap W) = warning (heap W)
+preservationᴱ (app₂ p s) = {!!}
+preservationᴱ {H = H} {Γ = Γ} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p q) with just S ≡ᴹᵀ typeOfⱽ H V | T ≡ᵀ typeOfᴮ H (Γ ⊕ x ↦ S) B
+preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ _} {B = B} {V = V} p q) | yes r | yes refl  = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) (substitutivityᴮ B V x r))
+preservationᴱ (beta p q) | _ | no r = {!!} -- ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!q!})
+preservationᴱ (beta p q) | no r | _ = {!!} -- ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!q!})
 preservationᴱ (block s) with preservationᴮ s
 preservationᴱ (block s) | ok p = ok p
-preservationᴱ (block {b = b} s) | warning W = warning (block b W)
+preservationᴱ (block {b = b} s) | warning (block W) = warning (expr (block b W))
+preservationᴱ (block {b = b} s) | warning (heap W) = warning (heap W)
 preservationᴱ (return p) = ok refl
 preservationᴱ done = ok refl
 
 preservationᴮ (local {x = var x ∈ T} s) with heap-weakeningᴮ (redn-⊑ s)
 preservationᴮ (local {x = var x ∈ T} s) | ok p = ok p
-preservationᴮ (local {x = var x ∈ T} s) | warning W = warning (local₂ W)
+preservationᴮ (local {x = var x ∈ T} s) | warning W = warning (block (local₂ W))
 preservationᴮ {H = H} (subst {v = v}) with remember (typeOfⱽ H v)
 preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just U , p) with T ≡ᵀ U
 preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just T , p) | yes refl = ok (substitutivityᴮ B v x (sym p))
-preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just U , p) | no q = warning (local₀ (λ r → q (trans r (trans (typeOfᴱⱽ v) (cong orBot p)))))
+preservationᴮ (subst {x = var x ∈ T} {v = v} {B = B}) | (just U , p) | no q = warning (block (local₀ (λ r → q (trans r (trans (typeOfᴱⱽ v) (cong orBot p))))))
 preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) with typeOf-val-not-bot v
 preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) | ok q = CONTRADICTION (q (sym (trans (typeOfᴱⱽ v) (cong orBot p))))
-preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) | warning W = warning (local₁ W)
+preservationᴮ (subst {x = var x ∈ T} {v = v}) | (nothing , p) | warning W = warning (block (local₁ W))
 preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) with heap-weakeningᴮ (snoc refl defn)
 preservationᴮ (function {a = a} {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | ok r = ok (trans r (substitutivityᴮ {T = S ⇒ T} B (addr a) f refl))
-preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | warning W = warning (function₂ f W)
+preservationᴮ (function {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} defn) | warning W = warning (block (function₂ f W))
 preservationᴮ (return s) with preservationᴱ s
 preservationᴮ (return s) | ok p = ok p
-preservationᴮ (return s) | warning W = warning (return W)
+preservationᴮ (return s) | warning (expr W) = warning (block (return W))
+preservationᴮ (return s) | warning (heap W) = warning (heap W)
 
 reflect-substitutionᴱ : ∀ {H Γ T} M v x → (just T ≡ typeOfⱽ H v) → Warningᴱ H (typeCheckᴱ H Γ (M [ v / x ]ᴱ)) → Warningᴱ H (typeCheckᴱ H (Γ ⊕ x ↦ T) M)
 reflect-substitutionᴱ-whenever-yes : ∀ {H Γ T} v x y (p : x ≡ y) → (just T ≡ typeOfⱽ H v) → Warningᴱ H (typeCheckᴱ H Γ (var y [ v / x ]ᴱwhenever yes p)) → Warningᴱ H (typeCheckᴱ H (Γ ⊕ x ↦ T) (var y))
@@ -204,14 +218,15 @@ reflectᴮ : ∀ {H H′ B B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → Warning�
 
 reflectᴱ (app₁ s) (app₀ p) with preservationᴱ s | heap-weakeningᴱ (redn-⊑ s)
 reflectᴱ (app₁ s) (app₀ p) | ok q | ok q′ = expr (app₀ (λ r → p (trans (trans (cong src (sym q)) r) q′)))
-reflectᴱ (app₁ s) (app₀ p) | warning W | _ = expr (app₁ W)
+reflectᴱ (app₁ s) (app₀ p) | warning (expr W) | _ = expr (app₁ W)
+reflectᴱ (app₁ s) (app₀ p) | warning (heap W) | _ = heap W
 reflectᴱ (app₁ s) (app₀ p) | _ | warning W  = expr (app₂ W)
 reflectᴱ (app₁ s) (app₁ W′) with reflectᴱ s W′
 reflectᴱ (app₁ s) (app₁ W′) | heap W = heap W
 reflectᴱ (app₁ s) (app₁ W′) | expr W = expr (app₁ W)
 reflectᴱ (app₁ s) (app₂ W′) = expr (app₂ (reflect-weakeningᴱ (redn-⊑ s) W′))
-reflectᴱ (app₂ p s) W′ = ?
-reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q refl) (block (var f ∈ U) W′) = ? -- expr (app₀ (λ r → p (trans (cong src (cong orBot (cong typeOfᴹᴼ (sym q)))) r)))
+reflectᴱ (app₂ p s) W′ = {!!}
+reflectᴱ (beta {a = a} {F = f ⟨ var x ∈ T ⟩∈ U} q refl) (block (var f ∈ U) W′) = {!!} -- expr (app₀ (λ r → p (trans (cong src (cong orBot (cong typeOfᴹᴼ (sym q)))) r)))
 reflectᴱ (block s) (block b W′) with reflectᴮ s W′
 reflectᴱ (block s) (block b W′) | heap W = heap W
 reflectᴱ (block s) (block b W′) | block W = expr (block b W)
@@ -220,8 +235,9 @@ reflectᴱ (return q) W = expr (block _ (return W))
 
 reflectᴮ (local s) (local₀ p) with preservationᴱ s
 reflectᴮ (local s) (local₀ p) | ok q = block (local₀ (λ r → p (trans r q)))
-reflectᴮ (local s) (local₀ p) | warning W = block (local₁ W)
-reflectᴮ (local s) (local₁ W′) with reflectᴱ s W′ -- local₁ (reflectᴱ s W)
+reflectᴮ (local s) (local₀ p) | warning (expr W) = block (local₁ W)
+reflectᴮ (local s) (local₀ p) | warning (heap W) = heap W
+reflectᴮ (local s) (local₁ W′) with reflectᴱ s W′
 reflectᴮ (local s) (local₁ W′) | heap W = heap W
 reflectᴮ (local s) (local₁ W′) | expr W = block (local₁ W)
 reflectᴮ (local s) (local₂ W′) = block (local₂ (reflect-weakeningᴮ (redn-⊑ s) W′))
