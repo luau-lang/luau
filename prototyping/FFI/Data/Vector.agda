@@ -3,7 +3,7 @@ module FFI.Data.Vector where
 open import Agda.Builtin.Equality using (_≡_)
 open import Agda.Builtin.Int using (Int; pos; negsuc)
 open import Agda.Builtin.Nat using (Nat)
-open import FFI.Data.Bool using (Bool; false; true)
+open import Agda.Builtin.Bool using (Bool; false; true)
 open import FFI.Data.HaskellInt using (HaskellInt; haskellIntToInt; intToHaskellInt)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 
