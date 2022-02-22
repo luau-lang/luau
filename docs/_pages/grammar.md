@@ -68,8 +68,8 @@ SingletonType = STRING | 'true' | 'false'
 
 Type =
     SimpleType ['?'] |
-    SimpleType ['|' Type] |
-    SimpleType ['&' Type]
+    Type ['|' Type] |
+    Type ['&' Type]
 
 GenericTypePackParameter = NAME '...' ['=' (TypePack | VariadicTypePack | GenericTypePack)]
 GenericTypeParameterList = NAME ['=' Type] [',' GenericTypeParameterList] | GenericTypePackParameter {',' GenericTypePackParameter}
