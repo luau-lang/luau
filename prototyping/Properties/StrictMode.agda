@@ -95,19 +95,25 @@ substitutivityᴮ : ∀ {Γ T H} B v x → (just T ≡ typeOfⱽ H v) → (typeO
 substitutivityᴱ = {!!}
 substitutivityᴮ = {!!}
 
-preservationᴱ : ∀ {H H′ M M′ Γ} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴴᴱ H (typeCheckᴴᴱ H Γ M) (typeOfᴱ H Γ M ≡ typeOfᴱ H′ Γ M′)
-preservationᴮ : ∀ {H H′ B B′ Γ} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴴᴮ H (typeCheckᴴᴮ H Γ B) (typeOfᴮ H Γ B ≡ typeOfᴮ H′ Γ B′)
+preservationᴱ : ∀ {H H′ M M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴴᴱ H (typeCheckᴴᴱ H ∅ M) (typeOfᴱ H ∅ M ≡ typeOfᴱ H′ ∅ M′)
+preservationᴮ : ∀ {H H′ B B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴴᴮ H (typeCheckᴴᴮ H ∅ B) (typeOfᴮ H ∅ B ≡ typeOfᴮ H′ ∅ B′)
 
 preservationᴱ (function {F = f ⟨ var x ∈ S ⟩∈ T} defn) = ok refl
 preservationᴱ (app₁ s) with preservationᴱ s
 preservationᴱ (app₁ s) | ok p = ok (cong tgt p)
 preservationᴱ (app₁ s) | warning (expr W) = warning (expr (app₁ W))
 preservationᴱ (app₁ s) | warning (heap W) = warning (heap W)
-preservationᴱ (app₂ p s) = {!!}
-preservationᴱ {H = H} {Γ = Γ} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p q) with just S ≡ᴹᵀ typeOfⱽ H V | T ≡ᵀ typeOfᴮ H (Γ ⊕ x ↦ S) B
-preservationᴱ (beta {F = f ⟨ var x ∈ S ⟩∈ _} {B = B} {V = V} p q) | yes r | yes refl  = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) (substitutivityᴮ B V x r))
-preservationᴱ (beta p q) | _ | no r = {!!} -- ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!q!})
-preservationᴱ (beta p q) | no r | _ = {!!} -- ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!q!})
+preservationᴱ (app₂ p s) with heap-weakeningᴱ (redn-⊑ s)
+preservationᴱ (app₂ p s) | ok q = ok (cong tgt q)
+preservationᴱ (app₂ p s) | warning W  = warning (expr (app₁ W))
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) with remember (typeOfⱽ H V)
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (just U , q) with S ≡ᵀ U | T ≡ᵀ typeOfᴮ H (x ↦ S) B
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (just U , q) | yes refl | yes refl = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) (substitutivityᴮ B V x (sym q)))
+preservationᴱ {H = H} (beta {a = a} {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (just U , q) | yes refl | no r = warning (heap (addr a p (function₀ f r)))
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (just U , q) | no r | _ = warning (expr (app₀ (λ s → r (trans (trans (sym (cong src (cong orBot (cong typeOfᴹᴼ p)))) (trans s (typeOfᴱⱽ V))) (cong orBot q)))))
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (nothing , q) with typeOf-val-not-bot V
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (nothing , q) | ok r = CONTRADICTION (r (sym (trans (typeOfᴱⱽ V) (cong orBot q))))
+preservationᴱ {H = H} (beta {F = f ⟨ var x ∈ S ⟩∈ T} {B = B} {V = V} p refl) | (nothing , q) | warning W = warning (expr (app₂ W))
 preservationᴱ (block s) with preservationᴮ s
 preservationᴱ (block s) | ok p = ok p
 preservationᴱ (block {b = b} s) | warning (block W) = warning (expr (block b W))
