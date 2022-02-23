@@ -55,6 +55,17 @@ When we `quantify` a function, we will _normalize_ each type and convert each `C
 
 When computing lower bounds, we need to have some process by which we reduce types down to a minimal shape and canonicalize them, if only to have a clean way to flush out degenerate unions like `A | A`.
 
+Normalization is about reducing union and intersection types to a minimal, canonicalizable shape.
+
+A normalized union is one where there do not exist two branches on the union where one is a subtype of the other.
+
+A normalized intersection is only a little bit more complicated:
+
+1. Intersections of tables are always combined into a single table.  Coincident properties are merged into intersections of their own.
+    * eg `normalize({x: number, y: string} & {y: number, z: number}) == {x: number, y: string & number, z: number}`
+    * This is recursive.  eg `normalize({x: {y: number}} & {x: {y: string}}) == {x: {y: number & string}}`
+1. If two functions in the intersection have a subtyping relationship, the normalization results only in the super-type-most function. (more on function subtyping later)
+
 ### Function subtyping relationships
 
 If we are going to infer intersections of functions, then we need to be very careful about keeping combinatorics under control.  We therefore need to be very deliberate about what subtyping rules we have for functions of differing arity.  We have some important requirements:
@@ -89,31 +100,37 @@ local part = script.Parent
 local function blink()
     -- ...
 end
-    
+
 part.Touched:Connect(blink)
 ```
 
-The `Touched` event actually passes a single argument: the part that touched the Instance in question.  In this example, it is omitted from the callback handler.
+The `Touched` event actually passes a single argument: the part that touched the `Instance` in question.  In this example, it is omitted from the callback handler.
 
-We therefore want _oversaturation_ of a function to be allowed, but this is a double-edged sword.  Consider the following:
+We therefore want _oversaturation_ of a function to be allowed, but this combines with optional function arguments to create a problem with soundness.  Consider the following:
 
 ```lua
-function double(x)
-    return x * 2
+type Callback = (Instance) -> ()
+
+local cb: Callback
+function register_callback(c: Callback)
+    cb = c
 end
 
-function higher(f: () -> number)
-    return f('five')
+function invoke_callback(i: Instance)
+    cb(i, e)
 end
 
-higher(double)
+---
+
+function f(x: number?)
+end
+
+local g: () -> () = f
+
+register_callback(g)
 ```
 
-The problem we run into is
-
-* If we allow the subtyping rule `(T) -> () <: () -> ()`, then normalizing the type `(T) -> () & () -> ()` will yield `() -> ()`, therefore
-* We have no choice but to permit oversaturation of functions, therefore
-* it is trivial to convert a `(T?) -> ()` into a `() -> ()` and to invoke that with a `U`, breaking soundness.
+The problem we run into is, if we allow the subtyping rule `(T?) -> () <: () -> ()` and also allow oversaturation of a function, it becomes easy to obscure an argument type and pass the wrong type of value to it.
 
 We need a solution here.
 
@@ -125,17 +142,25 @@ So, we propose subtyping rules for type packs:
 
 1. `(T0..TN, A?) <: (T0..TN)` says that optional arguments can be left off by callers for type packs to make optional function arguments work.
 1. `(T0..TN, any) <: (T0..TN)` just to be crystal clear that an argument whose type is `any` is also optional.
-1. The type of any function literal whose arguments have fixed arity always have an implicit unnamed `any...` parameter.  It is safe to oversaturate such a function with any number of extra arguments of any type.
+
+We also introduce some changes to how function definitions and calls work:
+
+1. The type of any function literal whose arguments have fixed arity always have an implicit `any...` parameter.  It is safe to oversaturate such a function with any number of extra arguments of any type.
+1. Function types that are written as fixed-arity remain fixed-arity.  They are not variadic.
 1. When calling a value whose type is a fixed-arity function, we permit it to be oversaturated with any number of `nil` values, and `nil` values _only_.
 
-And the standard subtyping rule for functions
+We could frame rules 2 and rules 3 differently but equivalently: Function types that are written as fixed-arity are treated as though they have an implicit `nil...` parameter.
 
-1. `T -> R <: U -> S` if `U <: T` and `R <: S`
+The standard subtyping rule for functions is unchanged.
+
+`T -> R <: U -> S` if `U <: T` and `R <: S`
 
 Our `map_array` example typechecks because the lambda passed to `map_array` implicitly accepts `any...` in addition to its declared argument.
 
 Our `higher` example does not typecheck because the function argument `f` can only be oversaturated with extra `nil` values.
 
 ## Drawbacks
+
+There is a potential cause for concern that we will be inferring unions of functions in cases where we previously did not.  Unions are known to be potential sources of performance issues.  One possibility is to allow Luau to be less intelligent and have it "give up" and produce less precise types.  This would come at the cost of accuracy and soundness.
 
 ## Alternatives
