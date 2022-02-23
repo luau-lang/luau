@@ -178,11 +178,11 @@ LUA_API int lua_pushthread(lua_State* L);
 /*
 ** get functions (Lua -> stack)
 */
-LUA_API void lua_gettable(lua_State* L, int idx);
-LUA_API void lua_getfield(lua_State* L, int idx, const char* k);
-LUA_API void lua_rawgetfield(lua_State* L, int idx, const char* k);
-LUA_API void lua_rawget(lua_State* L, int idx);
-LUA_API void lua_rawgeti(lua_State* L, int idx, int n);
+LUA_API int lua_gettable(lua_State* L, int idx);
+LUA_API int lua_getfield(lua_State* L, int idx, const char* k);
+LUA_API int lua_rawgetfield(lua_State* L, int idx, const char* k);
+LUA_API int lua_rawget(lua_State* L, int idx);
+LUA_API int lua_rawgeti(lua_State* L, int idx, int n);
 LUA_API void lua_createtable(lua_State* L, int narr, int nrec);
 
 LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
