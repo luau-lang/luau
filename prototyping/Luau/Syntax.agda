@@ -44,6 +44,8 @@ data BinaryOperator : Set where
   ≅ : BinaryOperator
   ≤ : BinaryOperator
   ≥ : BinaryOperator
+  ∧ : BinaryOperator
+  ∨ : BinaryOperator
 
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set

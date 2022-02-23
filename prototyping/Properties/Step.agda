@@ -5,8 +5,8 @@ open import Agda.Builtin.Float using (primFloatPlus; primFloatMinus; primFloatTi
 open import Agda.Builtin.Bool using (true; false)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
-open import Luau.Syntax using (Block; Expr; nil; var; addr; true; false; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +; ≅)
-open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app₁ ; app₂ ; beta; function; block; return; done; local; subst; binOpNumbers; evalNumOp; binOp₁; binOp₂; evalEqOp; evalNeqOp; binOpEquality; binOpInequality)
+open import Luau.Syntax using (Block; Expr; nil; var; addr; true; false; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +; ≅; ∧; ∨)
+open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app₁ ; app₂ ; beta; function; block; return; done; local; subst; binOpNumbers; evalNumOp; binOp₁; binOp₂; evalEqOp; evalNeqOp; binOpEquality; binOpInequality; eval∧; eval∨; binOpAnd; binOpOr)
 open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; TypeMismatch; UnboundVariable; SEGV; app₁; app₂; block; local; return; bin₁; bin₂)
 open import Luau.RuntimeType using (function; number)
 open import Luau.Substitution using (_[_/_]ᴮ)
@@ -60,6 +60,8 @@ stepᴱ H (binexp x op y) | value x′ refl with stepᴱ H y
 -- Have to use explicit form for ≡ here because it's a heavily overloaded symbol
 stepᴱ H (binexp x Luau.Syntax.≡ y) | value x′ refl | value y′ refl = step H (val (evalEqOp x′ y′)) binOpEquality
 stepᴱ H (binexp x ≅ y) | value x′ refl | value y′ refl = step H (val (evalNeqOp x′ y′)) binOpInequality
+stepᴱ H (binexp x ∧ y) | value x′ refl | value y′ refl = step H (val (eval∧ x′ y′)) binOpAnd
+stepᴱ H (binexp x ∨ y) | value x′ refl | value y′ refl = step H (val (eval∨ x′ y′)) binOpOr
 stepᴱ H (binexp x op y) | value (number x′) refl | value (number y′) refl = step H (val (evalNumOp x′ op y′)) binOpNumbers
 stepᴱ H (binexp x op y) | value (number x′) refl | step H′ y′ s = step H′ (binexp (number x′) op y′) (binOp₂ s)
 stepᴱ H (binexp x op y) | value (number x′) refl | error E = error (bin₂ E)

@@ -3,12 +3,12 @@ module Luau.OpSem where
 open import Agda.Builtin.Equality using (_≡_)
 open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv; primFloatEquality; primFloatLess; primFloatInequality)
 open import Agda.Builtin.Bool using (Bool; true; false)
-open import Utility.Bool using (not; _or_)
+open import Utility.Bool using (not; _or_; _and_)
 open import Agda.Builtin.Nat using (_==_)
 open import FFI.Data.Maybe using (just)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ≡; ≅; ≤; ≥; number)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ≡; ≅; ≤; ≥; ∧; ∨; number)
 open import Luau.Value using (addr; val; number; Value; bool)
 open import Luau.RuntimeType using (RuntimeType; valueType)
 
@@ -23,6 +23,8 @@ evalNumOp x ≡ y = bool (primFloatEquality x y)
 evalNumOp x ≅ y = bool (primFloatInequality x y)
 evalNumOp x ≤ y = bool ((primFloatLess x y) or (primFloatEquality x y))
 evalNumOp x ≥ y = bool ((primFloatLess y x) or (primFloatEquality x y))
+evalNumOp x ∧ y = number x
+evalNumOp x ∨ y = number x
 
 evalEqOp : Value → Value → Value
 evalEqOp Value.nil Value.nil = bool true
@@ -39,6 +41,22 @@ evalNeqOp (number x) (number y) = bool (primFloatInequality x y)
 evalNeqOp (bool true) (bool y) = bool (not y)
 evalNeqOp (bool false) (bool y) = bool y
 evalNeqOp _ _ = bool true
+
+coerceToBool : Value → Bool
+coerceToBool Value.nil = false
+coerceToBool (addr x) = true
+coerceToBool (number x) = true
+coerceToBool (bool x) = x
+
+eval∨ : Value → Value → Value
+eval∨ x y with coerceToBool x
+eval∨ x y | false = y
+eval∨ x y | true = x
+
+eval∧ : Value → Value → Value
+eval∧ x y with coerceToBool x
+eval∧ x y | true = y
+eval∧ x y | false = x
 
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
@@ -104,6 +122,16 @@ data _⊢_⟶ᴱ_⊣_  where
     ∀ {H x op y} →
     -----------------------------------------------------------------------
     H ⊢ (binexp (number x) op (number y)) ⟶ᴱ (val (evalNumOp x op y)) ⊣ H
+  
+  binOpOr :
+    ∀ {H x y} →
+    ---------------------------------------------------------------------------
+    H ⊢ (binexp (val x) ∨ (val y)) ⟶ᴱ (val (eval∨ x y)) ⊣ H
+  
+  binOpAnd :
+    ∀ {H x y} →
+    ----------------------------------------------------------------------------
+    H ⊢ (binexp (val x) ∧ (val y)) ⟶ᴱ (val (eval∧ x y)) ⊣ H
   
   binOp₁ :
     ∀ {H H′ x x′ op y} →
