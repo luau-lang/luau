@@ -1,6 +1,6 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec; number; binexp; BinaryOperator; +; -; *; /)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec; number; binexp; BinaryOperator; +; -; *; /; string)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
@@ -103,6 +103,10 @@ exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
 exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number (toFloat x))
 exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
 exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
+exprFromObject obj | just (string "AstExprConstantString") with lookup value obj
+exprFromObject obj | just (string "AstExprConstantString") | just (string x) = Right (string x)
+exprFromObject obj | just (string "AstExprConstantString") | just _ = Left "AstExprConstantString value is not a string"
+exprFromObject obj | just (string "AstExprConstantString") | nothing = Left "AstExprConstantString missing value"
 exprFromObject obj | just (string "AstExprBinary") with lookup op obj | lookup left obj | lookup right obj
 exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r with binOpFromJSON o | exprFromJSON l | exprFromJSON r
 exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r | Right o′ | Right l′ | Right r′ = Right (binexp l′ o′ r′)
