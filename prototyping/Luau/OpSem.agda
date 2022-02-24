@@ -3,6 +3,7 @@ module Luau.OpSem where
 open import Agda.Builtin.Equality using (_≡_)
 open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv; primFloatEquality; primFloatLess; primFloatInequality)
 open import Agda.Builtin.Bool using (Bool; true; false)
+open import Agda.Builtin.String using (primStringEquality)
 open import Utility.Bool using (not; _or_; _and_)
 open import Agda.Builtin.Nat using (_==_)
 open import FFI.Data.Maybe using (just)
@@ -30,6 +31,7 @@ evalEqOp (addr x) (addr y) = bool (x == y)
 evalEqOp (number x) (number y) = bool (primFloatEquality x y)
 evalEqOp (bool true) (bool y) = bool y
 evalEqOp (bool false) (bool y) = bool (not y)
+evalEqOp (string x) (string y) = bool (primStringEquality x y)
 evalEqOp _ _ = bool false
 
 evalNeqOp : Value → Value → Value
@@ -38,6 +40,7 @@ evalNeqOp (addr x) (addr y) = bool (not (x == y))
 evalNeqOp (number x) (number y) = bool (primFloatInequality x y)
 evalNeqOp (bool true) (bool y) = bool (not y)
 evalNeqOp (bool false) (bool y) = bool y
+evalNeqOp (string x) (string y) = bool (not (primStringEquality x y))
 evalNeqOp _ _ = bool true
 
 coerceToBool : Value → Bool
