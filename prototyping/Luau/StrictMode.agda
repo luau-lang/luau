@@ -4,11 +4,11 @@ module Luau.StrictMode where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just; nothing)
-open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name)
-open import Luau.Type using (Type; strict; bot; top; nil; _⇒_; tgt)
+open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; var; binexp; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name)
+open import Luau.Type using (Type; strict; bot; top; nil; number; _⇒_; tgt)
 open import Luau.Heap using (Heap; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
-open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; ⊢ᴴ_; ⊢ᴼ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; var; addr; app; block; return; local; function)
+open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; ⊢ᴴ_; ⊢ᴼ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; var; addr; app; binexp; block; return; local; function)
 open import Properties.Equality using (_≢_)
 open import Properties.TypeCheck(strict) using (typeCheckᴮ)
 open import Properties.Product using (_,_)
@@ -51,6 +51,30 @@ data Warningᴱ H {Γ} where
     -----------------
     Warningᴱ H (app D₁ D₂)
 
+  BinopMismatch₁ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+
+    (T ≢ number) →
+    ------------------------------
+    Warningᴱ H (binexp {op} D₁ D₂)
+
+  BinopMismatch₂ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+
+    (U ≢ number) →
+    ------------------------------
+    Warningᴱ H (binexp {op} D₁ D₂)
+
+  bin₁ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+
+    Warningᴱ H D₁ →    
+    ------------------------------
+    Warningᴱ H (binexp {op} D₁ D₂)
+
+  bin₂ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+
+    Warningᴱ H D₂ →    
+    ------------------------------
+    Warningᴱ H (binexp {op} D₁ D₂)
+    
   function₀ : ∀ {f x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
     (U ≢ V) →

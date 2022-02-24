@@ -64,6 +64,15 @@ mustBeFunction H Γ nil p = CONTRADICTION (p refl)
 mustBeFunction H Γ (addr a) p = refl
 mustBeFunction H Γ (number n) p = CONTRADICTION (p refl)
 
+mustBeNumber : ∀ H Γ v → (number ≡ typeOfᴱ H Γ (val v)) → (number ≡ valueType(v))
+mustBeNumber H Γ nil ()
+mustBeNumber H Γ (addr a) p with remember (H [ a ]ᴴ)
+mustBeNumber H Γ (addr a) p | (just O , q) with trans p (cong orBot (cong typeOfᴹᴼ q))
+mustBeNumber H Γ (addr a) p | (just function f ⟨ var x ∈ T ⟩∈ U is B end , q) | ()
+mustBeNumber H Γ (addr a) p | (nothing , q) with trans p (cong orBot (cong typeOfᴹᴼ q))
+mustBeNumber H Γ (addr a) p | nothing , q | ()
+mustBeNumber H Γ (number n) p = refl
+
 typeCheckᴱ : ∀ H Γ M → (Γ ⊢ᴱ M ∈ (typeOfᴱ H Γ M))
 typeCheckᴮ : ∀ H Γ B → (Γ ⊢ᴮ B ∈ (typeOfᴮ H Γ B))
 

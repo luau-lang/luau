@@ -6,7 +6,7 @@ import Agda.Builtin.Equality.Rewrite
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; Object; function_is_end; defn; alloc; ok; next; lookup-not-allocated) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ; ∅ to ∅ᴴ)
-open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴᴱ; Warningᴴᴮ; UnallocatedAddress; UnboundVariable; app₀; app₁; app₂; block₀; block₁; return; local₀; local₁; local₂; function₀; function₁; function₂; heap; expr; block; addr)
+open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴᴱ; Warningᴴᴮ; UnallocatedAddress; UnboundVariable; app₀; app₁; app₂; BinopMismatch₁; BinopMismatch₂; bin₁; bin₂; block₀; block₁; return; local₀; local₁; local₂; function₀; function₁; function₂; heap; expr; block; addr)
 open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
 open import Luau.Syntax using (Expr; yes; var; var_∈_; _⟨_⟩∈_; _$_; addr; number; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name)
 open import Luau.Type using (Type; strict; nil; _⇒_; bot; tgt; _≡ᵀ_; _≡ᴹᵀ_)
@@ -20,7 +20,7 @@ open import Properties.Remember using (remember; _,_)
 open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION)
-open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeOfᴱⱽ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴᴱ; typeCheckᴴᴮ; mustBeFunction)
+open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeOfᴱⱽ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴᴱ; typeCheckᴴᴮ; mustBeFunction; mustBeNumber)
 open import Luau.OpSem using (_⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₁; binOp₂; binOpEval; refl; step)
 open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinopMismatch₁; BinopMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return)
 
@@ -40,7 +40,7 @@ rednᴱ⊑ (beta O v p q) = refl
 rednᴱ⊑ (block s) = rednᴮ⊑ s
 rednᴱ⊑ (return v) = refl
 rednᴱ⊑ done = refl
-rednᴱ⊑ (binOpEval) = refl
+rednᴱ⊑ (binOpEval m n) = refl
 rednᴱ⊑ (binOp₁ s) = rednᴱ⊑ s
 rednᴱ⊑ (binOp₂ s) = rednᴱ⊑ s
 
@@ -168,7 +168,9 @@ preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v) | no p = 
 preservationᴱ H (block var b ∈ T is done end) (done) with T ≡ᵀ nil
 preservationᴱ H (block var b ∈ T is done end) (done) | yes p = ok p
 preservationᴱ H (block var b ∈ T is done end) (done) | no p = warning (expr (block₀ p))
-preservationᴱ H (binexp M op N) s = {!!}
+preservationᴱ H (binexp M op N) (binOpEval m n) = ok refl
+preservationᴱ H (binexp M op N) (binOp₁ s) = ok refl
+preservationᴱ H (binexp M op N) (binOp₂ s) = ok refl
 
 preservationᴮ H (local var x ∈ T ← M ∙ B) (local s) with heap-weakeningᴮ H B (rednᴱ⊑ s)
 preservationᴮ H (local var x ∈ T ← M ∙ B) (local s) | ok p = ok p
@@ -210,7 +212,10 @@ reflect-substitutionᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (
 reflect-substitutionᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p (function₁ W) | no r = function₁ (reflect-substitutionᴮ-unless-no H B v x y r p (⊕-swap r) W)
 reflect-substitutionᴱ H (block var b ∈ T is B end) v x p (block₀ q) = block₀ (λ r → q (trans r (substitutivityᴮ H B v x p)))
 reflect-substitutionᴱ H (block var b ∈ T is B end) v x p (block₁ W) = block₁ (reflect-substitutionᴮ H B v x p W)
-reflect-substitutionᴱ H (binexp M op N) x v p W = {!!}
+reflect-substitutionᴱ H (binexp M op N) x v p (BinopMismatch₁ q) = BinopMismatch₁ (λ r → q (trans (sym (substitutivityᴱ H M x v p)) r))
+reflect-substitutionᴱ H (binexp M op N) x v p (BinopMismatch₂ q) = BinopMismatch₂ (λ r → q (trans (sym (substitutivityᴱ H N x v p)) r))
+reflect-substitutionᴱ H (binexp M op N) x v p (bin₁ W) = bin₁ (reflect-substitutionᴱ H M x v p W)
+reflect-substitutionᴱ H (binexp M op N) x v p (bin₂ W) = bin₂ (reflect-substitutionᴱ H N x v p W)
 
 reflect-substitutionᴱ-whenever-no H v x y p q (UnboundVariable y r) = UnboundVariable y (trans (sym (⊕-lookup-miss x y _ _ p)) r)
 reflect-substitutionᴱ-whenever-yes H (addr a) x x refl p (UnallocatedAddress q) with trans p (cong typeOfᴹᴼ q)
@@ -246,6 +251,14 @@ reflect-weakeningᴱ H (M $ N) h (app₀ p) | warning W | _ = app₁ W
 reflect-weakeningᴱ H (M $ N) h (app₀ p) | _ | warning W = app₂ W
 reflect-weakeningᴱ H (M $ N) h (app₁ W) = app₁ (reflect-weakeningᴱ H M h W)
 reflect-weakeningᴱ H (M $ N) h (app₂ W) = app₂ (reflect-weakeningᴱ H N h W)
+reflect-weakeningᴱ H (binexp M op N) h (BinopMismatch₁ p) with heap-weakeningᴱ H M h
+reflect-weakeningᴱ H (binexp M op N) h (BinopMismatch₁ p) | ok q = BinopMismatch₁ (λ r → p (trans (sym q) r))
+reflect-weakeningᴱ H (binexp M op N) h (BinopMismatch₁ p) | warning W = bin₁ W
+reflect-weakeningᴱ H (binexp M op N) h (BinopMismatch₂ p) with heap-weakeningᴱ H N h
+reflect-weakeningᴱ H (binexp M op N) h (BinopMismatch₂ p) | ok q = BinopMismatch₂ (λ r → p (trans (sym q) r))
+reflect-weakeningᴱ H (binexp M op N) h (BinopMismatch₂ p) | warning W = bin₂ W
+reflect-weakeningᴱ H (binexp M op N) h (bin₁ W′) = bin₁ (reflect-weakeningᴱ H M h W′)
+reflect-weakeningᴱ H (binexp M op N) h (bin₂ W′) = bin₂ (reflect-weakeningᴱ H N h W′)
 reflect-weakeningᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) h (function₀ p) with heap-weakeningᴮ H B h
 reflect-weakeningᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) h (function₀ p) | ok q = function₀ (λ r → p (trans r q))
 reflect-weakeningᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) h (function₀ p) | warning W = function₁ W
@@ -315,8 +328,30 @@ reflectᴱ H (block var b ∈ T is B end) (block s) (block₀ p) | warning (bloc
 reflectᴱ H (block var b ∈ T is B end) (block s) (block₁ W′) with reflectᴮ H B s W′
 reflectᴱ H (block var b ∈ T is B end) (block s) (block₁ W′) | heap W = heap W
 reflectᴱ H (block var b ∈ T is B end) (block s) (block₁ W′) | block W = expr (block₁ W)
+reflectᴱ H (block var b ∈ T is B end) (return v) W′ = expr (block₁ (return W′))
 reflectᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) (UnallocatedAddress ())
-reflectᴱ H (block var b ∈ T is return M ∙ B end) (return v) W′ = expr (block₁ (return W′))
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₁ p) with preservationᴱ H M s
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₁ p) | ok q = expr (BinopMismatch₁ (λ r → p (trans (sym q) r)))
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₁ p) | warning (heap W) = heap W
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₁ p) | warning (expr W) = expr (bin₁ W)
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₂ p) with heap-weakeningᴱ H N (rednᴱ⊑ s)
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₂ p) | ok q = expr (BinopMismatch₂ (λ r → p (trans (sym q) r)))
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinopMismatch₂ p) | warning W = expr (bin₂ W)
+reflectᴱ H (binexp M op N) (binOp₁ s) (bin₁ W′) with reflectᴱ H M s W′
+reflectᴱ H (binexp M op N) (binOp₁ s) (bin₁ W′) | heap W = heap W
+reflectᴱ H (binexp M op N) (binOp₁ s) (bin₁ W′) | expr W = expr (bin₁ W)
+reflectᴱ H (binexp M op N) (binOp₁ s) (bin₂ W′) = expr (bin₂ (reflect-weakeningᴱ H N (rednᴱ⊑ s) W′))
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₁ p) with heap-weakeningᴱ H M (rednᴱ⊑ s)
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₁ p) | ok q = expr (BinopMismatch₁ (λ r → p (trans (sym q) r)))
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₁ p) | warning W = expr (bin₁ W)
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₂ p) with preservationᴱ H N s
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₂ p) | ok q = expr (BinopMismatch₂ (λ r → p (trans (sym q) r)))
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₂ p) | warning (heap W) = heap W
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinopMismatch₂ p) | warning (expr W) = expr (bin₂ W)
+reflectᴱ H (binexp M op N) (binOp₂ s) (bin₁ W′) = expr (bin₁ (reflect-weakeningᴱ H M (rednᴱ⊑ s) W′))
+reflectᴱ H (binexp M op N) (binOp₂ s) (bin₂ W′) with reflectᴱ H N s W′
+reflectᴱ H (binexp M op N) (binOp₂ s) (bin₂ W′) | heap W = heap W
+reflectᴱ H (binexp M op N) (binOp₂ s) (bin₂ W′) | expr W = expr (bin₂ W)
 
 reflectᴮ H (local var x ∈ T ← M ∙ B) (local s) (local₀ p) with preservationᴱ H M s
 reflectᴮ H (local var x ∈ T ← M ∙ B) (local s) (local₀ p) | ok q = block (local₀ (λ r → p (trans r q)))
@@ -360,7 +395,13 @@ reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) | heap W = he
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) | block W = expr (block₁ W)
 reflectᴴᴱ H (block var b ∈ T is return N ∙ B end) (return v) (heap W′) = heap W′
 reflectᴴᴱ H (block var b ∈ T is done end) done (heap W′) = heap W′
-reflectᴴᴱ H (binexp M op N) s W′ = {!!}
+reflectᴴᴱ H (binexp M op N) (binOpEval m n) (heap W′) = heap W′
+reflectᴴᴱ H (binexp M op N) (binOp₁ s) (heap W′) with reflectᴴᴱ H M s (heap W′)
+reflectᴴᴱ H (binexp M op N) (binOp₁ s) (heap W′) | heap W = heap W
+reflectᴴᴱ H (binexp M op N) (binOp₁ s) (heap W′) | expr W = expr (bin₁ W)
+reflectᴴᴱ H (binexp M op N) (binOp₂ s) (heap W′) with reflectᴴᴱ H N s (heap W′)
+reflectᴴᴱ H (binexp M op N) (binOp₂ s) (heap W′) | heap W = heap W
+reflectᴴᴱ H (binexp M op N) (binOp₂ s) (heap W′) | expr W = expr (bin₂ W)
 
 reflectᴴᴮ H B s (block W′) = reflectᴮ H B s W′
 reflectᴴᴮ H (local var x ∈ T ← M ∙ B) (local s) (heap W′) with reflectᴴᴱ H M s (heap W′)
@@ -392,10 +433,10 @@ runtimeWarningᴱ H (M $ N) (FunctionMismatch v w p) | warning W = app₂ W
 runtimeWarningᴱ H (M $ N) (app₁ err) = app₁ (runtimeWarningᴱ H M err)
 runtimeWarningᴱ H (M $ N) (app₂ err) = app₂ (runtimeWarningᴱ H N err)
 runtimeWarningᴱ H (block var b ∈ T is B end) (block err) = block₁ (runtimeWarningᴮ H B err)
-runtimeWarningᴱ H (binexp M op N) (BinopMismatch₁ v w p) = {!!}
-runtimeWarningᴱ H (binexp M op N) (BinopMismatch₂ v w p) = {!!}
-runtimeWarningᴱ H (binexp M op N) (bin₁ err) = {!bin₁!}
-runtimeWarningᴱ H (binexp M op N) (bin₂ err) = {!!}
+runtimeWarningᴱ H (binexp M op N) (BinopMismatch₁ v w p) = BinopMismatch₁ (λ q → p (mustBeNumber H ∅ v (sym q)))
+runtimeWarningᴱ H (binexp M op N) (BinopMismatch₂ v w p) = BinopMismatch₂ (λ q → p (mustBeNumber H ∅ w (sym q)))
+runtimeWarningᴱ H (binexp M op N) (bin₁ err) = bin₁ (runtimeWarningᴱ H M err)
+runtimeWarningᴱ H (binexp M op N) (bin₂ err) = bin₂ (runtimeWarningᴱ H N err)
 
 runtimeWarningᴮ H (local var x ∈ T ← M ∙ B) (local err) = local₁ (runtimeWarningᴱ H M err)
 runtimeWarningᴮ H (return M ∙ B) (return err) = return (runtimeWarningᴱ H M err)

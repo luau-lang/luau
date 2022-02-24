@@ -57,7 +57,7 @@ stepᴱ H (binexp M op N) with stepᴱ H M
 stepᴱ H (binexp M op N) | value v refl with stepᴱ H N
 stepᴱ H (binexp M op N) | value v refl | step H′ N′ s = step H′ (binexp (val v) op N′) (binOp₂ s)
 stepᴱ H (binexp M op N) | value v refl | error E = error (bin₂ E)
-stepᴱ H (binexp M op N) | value (number m) refl | value (number n) refl = step H (number (evalBinOp m op n)) binOpEval
+stepᴱ H (binexp M op N) | value (number m) refl | value (number n) refl = step H (number (evalBinOp m op n)) (binOpEval m n)
 stepᴱ H (binexp M op N) | value nil refl | value w refl = error (BinopMismatch₁ nil w λ ())
 stepᴱ H (binexp M op N) | value (addr a) refl | value w refl = error (BinopMismatch₁ (addr a) w λ ())
 stepᴱ H (binexp M op N) | value v refl | value nil refl = error (BinopMismatch₂ v nil (λ ()))
