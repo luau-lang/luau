@@ -21,17 +21,17 @@ data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set
 
 data Warningᴱ H {Γ} where
 
-  UnallocatedAddress : ∀ a {T} →
+  UnallocatedAddress : ∀ {a T} →
 
     (H [ a ]ᴴ ≡ nothing) →
     ---------------------
-    Warningᴱ H (addr a T)
+    Warningᴱ H (addr {a} T)
 
   UnboundVariable : ∀ x {T} {p} →
 
     (Γ [ x ]ⱽ ≡ nothing) →
     ------------------------
-    Warningᴱ H (var x {T} p)
+    Warningᴱ H (var {x} {T} p)
 
   app₀ : ∀ {M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
 
@@ -51,29 +51,29 @@ data Warningᴱ H {Γ} where
     -----------------
     Warningᴱ H (app D₁ D₂)
 
-  function₀ : ∀ f {x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
+  function₀ : ∀ {f x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
     (U ≢ V) →
     -------------------------
-    Warningᴱ H (function f {U = U} D)
+    Warningᴱ H (function {f} {U = U} D)
 
-  function₁ : ∀ f {x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
+  function₁ : ∀ {f x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
     Warningᴮ H D →
     -------------------------
-    Warningᴱ H (function f {U = U} D)
+    Warningᴱ H (function {f} {U = U} D)
 
-  block₀ : ∀ b {B T U} {D : Γ ⊢ᴮ B ∈ U} →
+  block₀ : ∀ {b B T U} {D : Γ ⊢ᴮ B ∈ U} →
 
     (T ≢ U) →
     ------------------------------
-    Warningᴱ H (block b {T = T} D)
+    Warningᴱ H (block {b} {T = T} D)
 
-  block₁ : ∀ b {B T U} {D : Γ ⊢ᴮ B ∈ U} →
+  block₁ : ∀ {b B T U} {D : Γ ⊢ᴮ B ∈ U} →
 
     Warningᴮ H D →
     ------------------------------
-    Warningᴱ H (block b {T = T} D)
+    Warningᴱ H (block {b} {T = T} D)
 
 data Warningᴮ H {Γ} where
 
@@ -101,37 +101,37 @@ data Warningᴮ H {Γ} where
     --------------------
     Warningᴮ H (local D₁ D₂)
 
-  function₀ : ∀ f {x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
+  function₀ : ∀ {f x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
 
     (U ≢ V) →
     -------------------------------------
-    Warningᴮ H (function f {U = U} D₁ D₂)
+    Warningᴮ H (function D₁ D₂)
 
-  function₁ : ∀ f {x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
+  function₁ : ∀ {f x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
 
     Warningᴮ H D₁ →
     --------------------
-    Warningᴮ H (function f D₁ D₂)
+    Warningᴮ H (function D₁ D₂)
 
-  function₂ : ∀ f {x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
+  function₂ : ∀ {f x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
 
     Warningᴮ H D₂ →
     --------------------
-    Warningᴮ H (function f D₁ D₂)
+    Warningᴮ H (function D₁ D₂)
 
 data Warningᴼ (H : Heap yes) : ∀ {V} → (⊢ᴼ V) → Set where
 
-  function₀ : ∀ f {x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
+  function₀ : ∀ {f x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
 
     (U ≢ V) →
     ---------------------------------
-    Warningᴼ H (function f {U = U} D)
+    Warningᴼ H (function {f} {U = U} D)
 
-  function₁ : ∀ f {x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
+  function₁ : ∀ {f x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
 
     Warningᴮ H D →
     ---------------------------------
-    Warningᴼ H (function f {U = U} D)
+    Warningᴼ H (function {f} {U = U} D)
 
 data Warningᴴ H (D : ⊢ᴴ H) : Set where
 

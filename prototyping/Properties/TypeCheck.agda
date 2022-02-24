@@ -10,11 +10,13 @@ open import FFI.Data.Either using (Either)
 open import Luau.TypeCheck(m) using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; app; function; block; binexp; done; return; local; nothing; orBot)
 open import Luau.Syntax using (Block; Expr; yes; nil; var; addr; number; binexp; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg)
 open import Luau.Type using (Type; nil; top; bot; number; _⇒_; tgt)
+open import Luau.RuntimeType using (RuntimeType; nil; number; function; valueType)
 open import Luau.VarCtxt using (VarCtxt; ∅; _↦_; _⊕_↦_; _⋒_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import Luau.Addr using (Addr)
 open import Luau.Var using (Var; _≡ⱽ_)
 open import Luau.Value using (Value; nil; addr; number; val)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
+open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.Dec using (yes; no)
 open import Properties.Equality using (_≢_; sym; trans; cong)
 open import Properties.Product using (_×_; _,_)
@@ -57,26 +59,31 @@ typeOfᴱⱽ nil = refl
 typeOfᴱⱽ (addr a) = refl
 typeOfᴱⱽ (number n) = refl
 
+mustBeFunction : ∀ H Γ v → (bot ≢ src (typeOfᴱ H Γ (val v))) → (function ≡ valueType(v))
+mustBeFunction H Γ nil p = CONTRADICTION (p refl)
+mustBeFunction H Γ (addr a) p = refl
+mustBeFunction H Γ (number n) p = CONTRADICTION (p refl)
+
 typeCheckᴱ : ∀ H Γ M → (Γ ⊢ᴱ M ∈ (typeOfᴱ H Γ M))
 typeCheckᴮ : ∀ H Γ B → (Γ ⊢ᴮ B ∈ (typeOfᴮ H Γ B))
 
 typeCheckᴱ H Γ nil = nil
-typeCheckᴱ H Γ (var x) = var x refl
-typeCheckᴱ H Γ (addr a) = addr a (orBot (typeOfᴹᴼ (H [ a ]ᴴ)))
-typeCheckᴱ H Γ (number n) = number n
+typeCheckᴱ H Γ (var x) = var refl
+typeCheckᴱ H Γ (addr a) = addr (orBot (typeOfᴹᴼ (H [ a ]ᴴ)))
+typeCheckᴱ H Γ (number n) = number
 typeCheckᴱ H Γ (M $ N) = app (typeCheckᴱ H Γ M) (typeCheckᴱ H Γ N)
-typeCheckᴱ H Γ (function f ⟨ var x ∈ T ⟩∈ U is B end) = function f (typeCheckᴮ H (Γ ⊕ x ↦ T) B)
-typeCheckᴱ H Γ (block var b ∈ T is B end) = block b (typeCheckᴮ H Γ B)
-typeCheckᴱ H Γ (binexp M op N) = binexp op (typeCheckᴱ H Γ M) (typeCheckᴱ H Γ N)
+typeCheckᴱ H Γ (function f ⟨ var x ∈ T ⟩∈ U is B end) = function (typeCheckᴮ H (Γ ⊕ x ↦ T) B)
+typeCheckᴱ H Γ (block var b ∈ T is B end) = block (typeCheckᴮ H Γ B)
+typeCheckᴱ H Γ (binexp M op N) = binexp (typeCheckᴱ H Γ M) (typeCheckᴱ H Γ N)
 
-typeCheckᴮ H Γ (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) = function f (typeCheckᴮ H (Γ ⊕ x ↦ T) C) (typeCheckᴮ H (Γ ⊕ f ↦ (T ⇒ U)) B)
+typeCheckᴮ H Γ (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) = function (typeCheckᴮ H (Γ ⊕ x ↦ T) C) (typeCheckᴮ H (Γ ⊕ f ↦ (T ⇒ U)) B)
 typeCheckᴮ H Γ (local var x ∈ T ← M ∙ B) = local (typeCheckᴱ H Γ M) (typeCheckᴮ H (Γ ⊕ x ↦ T) B)
 typeCheckᴮ H Γ (return M ∙ B) = return (typeCheckᴱ H Γ M) (typeCheckᴮ H Γ B)
 typeCheckᴮ H Γ done = done
 
 typeCheckᴼ : ∀ H O → (⊢ᴼ O)
 typeCheckᴼ H nothing = nothing
-typeCheckᴼ H (just function f ⟨ var x ∈ T ⟩∈ U is B end) = function f (typeCheckᴮ H (x ↦ T) B)
+typeCheckᴼ H (just function f ⟨ var x ∈ T ⟩∈ U is B end) = function (typeCheckᴮ H (x ↦ T) B)
 
 typeCheckᴴ : ∀ H → (⊢ᴴ H)
 typeCheckᴴ H a {O} p = typeCheckᴼ H (O)

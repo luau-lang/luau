@@ -48,7 +48,7 @@ data _⊢ᴮ_∈_ where
     --------------------------------
     Γ ⊢ᴮ local var x ∈ T ← M ∙ B ∈ V
 
-  function : ∀ f {x B C T U V W Γ} →
+  function : ∀ {f x B C T U V W Γ} →
 
     (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V →
     (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W →
@@ -62,18 +62,18 @@ data _⊢ᴱ_∈_ where
     --------------
     Γ ⊢ᴱ nil ∈ nil
 
-  var : ∀ x {T Γ} →
+  var : ∀ {x T Γ} →
 
     T ≡ orBot(Γ [ x ]ⱽ) →
     ----------------
     Γ ⊢ᴱ (var x) ∈ T
 
-  addr : ∀ a T {Γ} →
+  addr : ∀ {a Γ} T →
 
     -----------------
     Γ ⊢ᴱ (addr a) ∈ T
 
-  number : ∀ n {Γ} →
+  number : ∀ {n Γ} →
 
     ------------------------
     Γ ⊢ᴱ (number n) ∈ number
@@ -85,19 +85,19 @@ data _⊢ᴱ_∈_ where
     ----------------------
     Γ ⊢ᴱ (M $ N) ∈ (tgt T)
 
-  function : ∀ f {x B T U V Γ} →
+  function : ∀ {f x B T U V Γ} →
 
     (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V →
     -----------------------------------------------------
     Γ ⊢ᴱ (function f ⟨ var x ∈ T ⟩∈ U is B end) ∈ (T ⇒ U)
 
-  block : ∀ b {B T U Γ} →
+  block : ∀ {b B T U Γ} →
 
     Γ ⊢ᴮ B ∈ U →
     ------------------------------------
     Γ ⊢ᴱ (block var b ∈ T is B end) ∈ T
 
-  binexp : ∀ op {Γ M N T U} →
+  binexp : ∀ {op Γ M N T U} →
 
     Γ ⊢ᴱ M ∈ T →
     Γ ⊢ᴱ N ∈ U →
@@ -111,7 +111,7 @@ data ⊢ᴼ_ : Maybe(Object yes) → Set where
     ---------
     ⊢ᴼ nothing
 
-  function : ∀ f {x T U V B} →
+  function : ∀ {f x T U V B} →
 
     (x ↦ T) ⊢ᴮ B ∈ V →
     ----------------------------------------------
