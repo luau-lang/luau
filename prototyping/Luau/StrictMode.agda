@@ -27,13 +27,13 @@ data Warningᴱ H {Γ} where
     ---------------------
     Warningᴱ H (addr {a} T)
 
-  UnboundVariable : ∀ x {T} {p} →
+  UnboundVariable : ∀ {x T p} →
 
     (Γ [ x ]ⱽ ≡ nothing) →
     ------------------------
     Warningᴱ H (var {x} {T} p)
 
-  app₀ : ∀ {M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+  FunctionCallMismatch : ∀ {M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
 
     (src T ≢ U) →
     -----------------
@@ -75,7 +75,7 @@ data Warningᴱ H {Γ} where
     ------------------------------
     Warningᴱ H (binexp {op} D₁ D₂)
     
-  function₀ : ∀ {f x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
+  FunctionDefnMismatch : ∀ {f x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
     (U ≢ V) →
     -------------------------
@@ -87,7 +87,7 @@ data Warningᴱ H {Γ} where
     -------------------------
     Warningᴱ H (function {f} {U = U} D)
 
-  block₀ : ∀ {b B T U} {D : Γ ⊢ᴮ B ∈ U} →
+  BlockMismatch : ∀ {b B T U} {D : Γ ⊢ᴮ B ∈ U} →
 
     (T ≢ U) →
     ------------------------------
@@ -107,7 +107,7 @@ data Warningᴮ H {Γ} where
     ------------------
     Warningᴮ H (return D₁ D₂)
 
-  local₀ : ∀ {x M B T U V} {D₁ : Γ ⊢ᴱ M ∈ U} {D₂ : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
+  LocalVarMismatch : ∀ {x M B T U V} {D₁ : Γ ⊢ᴱ M ∈ U} {D₂ : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
     (T ≢ U) →
     --------------------
@@ -125,7 +125,7 @@ data Warningᴮ H {Γ} where
     --------------------
     Warningᴮ H (local D₁ D₂)
 
-  function₀ : ∀ {f x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
+  FunctionDefnMismatch : ∀ {f x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
 
     (U ≢ V) →
     -------------------------------------
@@ -145,7 +145,7 @@ data Warningᴮ H {Γ} where
 
 data Warningᴼ (H : Heap yes) : ∀ {V} → (⊢ᴼ V) → Set where
 
-  function₀ : ∀ {f x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
+  FunctionDefnMismatch : ∀ {f x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
 
     (U ≢ V) →
     ---------------------------------

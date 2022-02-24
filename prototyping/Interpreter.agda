@@ -9,22 +9,33 @@ open import Agda.Builtin.Unit using (⊤)
 open import FFI.IO using (getContents; putStrLn; _>>=_; _>>_)
 open import FFI.Data.Aeson using (Value; eitherDecode)
 open import FFI.Data.Either using (Left; Right)
+open import FFI.Data.Maybe using (just; nothing)
 open import FFI.Data.String using (String; _++_)
 open import FFI.Data.Text.Encoding using (encodeUtf8)
 open import FFI.System.Exit using (exitWith; ExitFailure)
 
-open import Luau.Syntax using (Block)
+open import Luau.StrictMode.ToString using (warningToStringᴮ)
+open import Luau.Syntax using (Block; yes; maybe; isAnnotatedᴮ)
 open import Luau.Syntax.FromJSON using (blockFromJSON)
 open import Luau.Syntax.ToString using (blockToString)
 open import Luau.Run using (run; return; done; error)
 open import Luau.RuntimeError.ToString using (errToStringᴮ)
 open import Luau.Value.ToString using (valueToString)
 
-runBlock : ∀ {a} → Block a → IO ⊤
-runBlock block with run block
-runBlock block | return V D = putStrLn (valueToString V)
-runBlock block | done D = putStrLn "nil"
-runBlock block | error E D = putStrLn (errToStringᴮ _ E)
+open import Properties.StrictMode using (wellTypedProgramsDontGoWrong)
+
+runBlock′ : ∀ a → Block a → IO ⊤
+runBlock′ a block with run block
+runBlock′ a block | return V D = putStrLn (valueToString V)
+runBlock′ a block | done D = putStrLn "nil"
+runBlock′ maybe block | error E D = putStrLn (errToStringᴮ _ E)
+runBlock′ yes block | error E D with wellTypedProgramsDontGoWrong _ block _ D E
+runBlock′ yes block | error E D | W = putStrLn (errToStringᴮ _ E) >> putStrLn (warningToStringᴮ _ W)
+
+runBlock : Block maybe → IO ⊤
+runBlock B with isAnnotatedᴮ B
+runBlock B | nothing = runBlock′ maybe B
+runBlock B | just B′ = runBlock′ yes B′
 
 runJSON : Value → IO ⊤
 runJSON value with blockFromJSON(value)

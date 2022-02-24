@@ -5,6 +5,7 @@ open import Agda.Builtin.Float using (Float)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Type using (Type)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 
 infixr 5 _∙_
 
@@ -60,3 +61,38 @@ data Expr a where
   block_is_end : VarDec a → Block a → Expr a
   number : Float → Expr a
   binexp : Expr a → BinaryOperator → Expr a → Expr a
+
+isAnnotatedᴱ : ∀ {a} → Expr a → Maybe (Expr yes)
+isAnnotatedᴮ : ∀ {a} → Block a → Maybe (Block yes)
+
+isAnnotatedᴱ nil = just nil
+isAnnotatedᴱ (var x) = just (var x)
+isAnnotatedᴱ (addr a) = just (addr a)
+isAnnotatedᴱ (M $ N) with isAnnotatedᴱ M | isAnnotatedᴱ N
+isAnnotatedᴱ (M $ N) | just M′ | just N′ = just (M′ $ N′)
+isAnnotatedᴱ (M $ N) | _ | _ = nothing
+isAnnotatedᴱ (function f ⟨ var x ∈ T ⟩∈ U is B end) with isAnnotatedᴮ B
+isAnnotatedᴱ (function f ⟨ var x ∈ T ⟩∈ U is B end) | just B′ = just (function f ⟨ var x ∈ T ⟩∈ U is B′ end)
+isAnnotatedᴱ (function f ⟨ var x ∈ T ⟩∈ U is B end) | _ = nothing
+isAnnotatedᴱ (function _ is B end) = nothing
+isAnnotatedᴱ (block var b ∈ T is B end) with isAnnotatedᴮ B
+isAnnotatedᴱ (block var b ∈ T is B end) | just B′ = just (block var b ∈ T is B′ end)
+isAnnotatedᴱ (block var b ∈ T is B end) | _ = nothing
+isAnnotatedᴱ (block _ is B end) = nothing
+isAnnotatedᴱ (number n) = just (number n)
+isAnnotatedᴱ (binexp M op N) with isAnnotatedᴱ M | isAnnotatedᴱ N
+isAnnotatedᴱ (binexp M op N) | just M′ | just N′ = just (binexp M′ op N′)
+isAnnotatedᴱ (binexp M op N) | _ | _ = nothing
+
+isAnnotatedᴮ (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) with isAnnotatedᴮ B | isAnnotatedᴮ C
+isAnnotatedᴮ (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) | just B′ | just C′ = just (function f ⟨ var x ∈ T ⟩∈ U is C′ end ∙ B′)
+isAnnotatedᴮ (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) | _ | _ = nothing
+isAnnotatedᴮ (function _ is C end ∙ B) = nothing
+isAnnotatedᴮ (local var x ∈ T ← M ∙ B) with isAnnotatedᴱ M | isAnnotatedᴮ B
+isAnnotatedᴮ (local var x ∈ T ← M ∙ B) | just M′ | just B′ = just (local var x ∈ T ← M′ ∙ B′)
+isAnnotatedᴮ (local var x ∈ T ← M ∙ B) | _ | _ = nothing
+isAnnotatedᴮ (local _ ← M ∙ B) = nothing
+isAnnotatedᴮ (return M ∙ B) with isAnnotatedᴱ M | isAnnotatedᴮ B
+isAnnotatedᴮ (return M ∙ B) | just M′ | just B′ = just (return M′ ∙ B′)
+isAnnotatedᴮ (return M ∙ B) | _ | _ = nothing
+isAnnotatedᴮ done = just done
