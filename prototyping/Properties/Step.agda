@@ -9,7 +9,7 @@ open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
 open import Luau.Syntax using (Block; Expr; nil; var; addr; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +)
 open import Luau.OpSem using (_⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app₁ ; app₂ ; beta; function; block; return; done; local; subst; binOpEval; evalBinOp; binOp₁; binOp₂)
-open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; TypeMismatch; UnboundVariable; SEGV; app₁; app₂; block; local; return; bin₁; bin₂)
+open import Luau.RuntimeError using (RuntimeErrorᴱ; RuntimeErrorᴮ; UnboundVariable; SEGV; app₁; app₂; block; local; return; bin₁; bin₂)
 open import Luau.RuntimeType using (function; number)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Luau.Value using (nil; addr; val; number)
@@ -38,8 +38,8 @@ stepᴱ H (addr a) = value (addr a) refl
 stepᴱ H (number x) = value (number x) refl
 stepᴱ H (M $ N) with stepᴱ H M
 stepᴱ H (M $ N) | step H′ M′ D = step H′ (M′ $ N) (app₁ D)
-stepᴱ H (_ $ N) | value V refl with stepᴱ H N
-stepᴱ H (_ $ N) | value V refl | step H′ N′ s = step H′ (val V $ N′) (app₂ refl s)
+stepᴱ H (_ $ N) | value v refl with stepᴱ H N
+stepᴱ H (_ $ N) | value v refl | step H′ N′ s = step H′ (val v $ N′) (app₂ v s)
 stepᴱ H (_ $ _) | value nil refl | value W refl = {!!} -- error (app₁ (TypeMismatch function nil λ()))
 stepᴱ H (_ $ _) | value (number n) refl | value W refl = {!!} -- error (app₁ (TypeMismatch function (number n) λ()))
 stepᴱ H (_ $ _) | value (addr a) refl | value W refl with remember (H [ a ])

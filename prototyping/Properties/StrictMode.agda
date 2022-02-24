@@ -37,7 +37,7 @@ rednᴮ⊑ : ∀ {H H′ B B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → (H ⊑ H
 rednᴱ⊑ (function a p) = snoc p
 rednᴱ⊑ (app₁ s) = rednᴱ⊑ s
 rednᴱ⊑ (app₂ p s) = rednᴱ⊑ s
-rednᴱ⊑ (beta O v p q r) = refl
+rednᴱ⊑ (beta O v p q) = refl
 rednᴱ⊑ (block s) = rednᴮ⊑ s
 rednᴱ⊑ (return v p) = refl
 rednᴱ⊑ done = refl
@@ -154,14 +154,14 @@ preservationᴱ H (M $ N) (app₁ s) | warning (heap W) = warning (heap W)
 preservationᴱ H (M $ N) (app₂ p s) with heap-weakeningᴱ H M (rednᴱ⊑ s)
 preservationᴱ H (M $ N) (app₂ p s) | ok q = ok (cong tgt q)
 preservationᴱ H (M $ N) (app₂ p s) | warning W  = warning (expr (app₁ W))
-preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) with remember (typeOfⱽ H v)
-preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (just U , q) with S ≡ᵀ U | T ≡ᵀ typeOfᴮ H (x ↦ S) B
-preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (just U , q) | yes refl | yes refl = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!!}) --  (substitutivityᴮ H B v x (sym q)))
-preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (just U , q) | yes refl | no r = warning (heap (addr a p (function₀ f r)))
-preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (just U , q) | no r | _ = warning (expr (app₀ (λ s → r (trans (trans (sym (cong src (cong orBot (cong typeOfᴹᴼ p)))) (trans s (typeOfᴱⱽ v))) (cong orBot q)))))
-preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (nothing , q) with typeOf-val-not-bot v
-preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (nothing , q) | ok r = CONTRADICTION (r (sym (trans (typeOfᴱⱽ v) (cong orBot q))))
-preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl refl p) | (nothing , q) | warning W = warning (expr (app₂ W))
+preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) with remember (typeOfⱽ H v)
+preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) with S ≡ᵀ U | T ≡ᵀ typeOfᴮ H (x ↦ S) B
+preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) | yes refl | yes refl = ok (trans (cong tgt (cong orBot (cong typeOfᴹᴼ p))) {!!}) --  (substitutivityᴮ H B v x (sym q)))
+preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) | yes refl | no r = warning (heap (addr a p (function₀ f r)))
+preservationᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) | no r | _ = warning (expr (app₀ (λ s → r (trans (trans (sym (cong src (cong orBot (cong typeOfᴹᴼ p)))) (trans s (typeOfᴱⱽ v))) (cong orBot q)))))
+preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) with typeOf-val-not-bot v
+preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) | ok r = CONTRADICTION (r (sym (trans (typeOfᴱⱽ v) (cong orBot q))))
+preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) | warning W = warning (expr (app₂ W))
 preservationᴱ H (block var b ∈ T is B end) (block s) = ok refl
 preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v p) = {!!} -- ok refl
 preservationᴱ H (block var b ∈ T is done end) (done) = {!!} -- ok refl
@@ -289,14 +289,14 @@ reflectᴱ H (M $ N) (app₂ p s) (app₁ W′) = expr (app₁ (reflect-weakenin
 reflectᴱ H (M $ N) (app₂ p s) (app₂ W′) with reflectᴱ H N s W′
 reflectᴱ H (M $ N) (app₂ p s) (app₂ W′) | heap W = heap W
 reflectᴱ H (M $ N) (app₂ p s) (app₂ W′) | expr W = expr (app₂ W)
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₀ f W′) = {!!}
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) with remember (typeOfⱽ H v)
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) | (just S , q) with S ≡ᵀ T
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) | (just T , q) | yes refl = heap (addr a p (function₁ f (reflect-substitutionᴮ B v x (sym q) W′)))
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) | (just S , q) | no r = expr (app₀ (λ s → r (trans (cong orBot (sym q)) (trans (sym (typeOfᴱⱽ v)) (trans (sym s) (cong src (cong orBot (cong typeOfᴹᴼ p))))))))
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) | (nothing , q) with typeOf-val-not-bot v
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) | (nothing , q) | ok r = CONTRADICTION (r (trans (cong orBot (sym q)) (sym (typeOfᴱⱽ v))))
-reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl refl p) (block₁ f W′) | (nothing , q) | warning W = expr (app₂ W)
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₀ f W′) = {!!}
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) with remember (typeOfⱽ H v)
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) | (just S , q) with S ≡ᵀ T
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) | (just T , q) | yes refl = heap (addr a p (function₁ f (reflect-substitutionᴮ B v x (sym q) W′)))
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) | (just S , q) | no r = expr (app₀ (λ s → r (trans (cong orBot (sym q)) (trans (sym (typeOfᴱⱽ v)) (trans (sym s) (cong src (cong orBot (cong typeOfᴹᴼ p))))))))
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) | (nothing , q) with typeOf-val-not-bot v
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) | (nothing , q) | ok r = CONTRADICTION (r (trans (cong orBot (sym q)) (sym (typeOfᴱⱽ v))))
+reflectᴱ H (addr a $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (block₁ f W′) | (nothing , q) | warning W = expr (app₂ W)
 reflectᴱ H (block var b ∈ T is B end) (block s) (block₀ b W′) = {!!}
 reflectᴱ H (block var b ∈ T is B end) (block s) (block₁ b W′) with reflectᴮ H B s W′
 reflectᴱ H (block var b ∈ T is B end) (block s) (block₁ b W′) | heap W = heap W
@@ -336,7 +336,7 @@ reflectᴴᴱ H (M $ N) (app₁ s) (heap W′) | expr W = expr (app₁ W)
 reflectᴴᴱ H (M $ N) (app₂ p s) (heap W′) with reflectᴴᴱ H N s (heap W′)
 reflectᴴᴱ H (M $ N) (app₂ p s) (heap W′) | heap W = heap W
 reflectᴴᴱ H (M $ N) (app₂ p s) (heap W′) | expr W = expr (app₂ W)
-reflectᴴᴱ H (M $ N) (beta O v p q r) (heap W′) = heap W′
+reflectᴴᴱ H (M $ N) (beta O v p q) (heap W′) = heap W′
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) with reflectᴴᴮ H B s (heap W′)
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) | heap W = heap W
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) | block W = expr (block₁ b W)

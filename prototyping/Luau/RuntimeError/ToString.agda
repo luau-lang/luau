@@ -5,7 +5,7 @@ module Luau.RuntimeError.ToString where
 
 open import Agda.Builtin.Float using (primShowFloat)
 open import FFI.Data.String using (String; _++_)
-open import Luau.RuntimeError using (RuntimeErrorᴮ; RuntimeErrorᴱ; local; return; TypeMismatch; UnboundVariable; SEGV; app₁; app₂; block; bin₁; bin₂)
+open import Luau.RuntimeError using (RuntimeErrorᴮ; RuntimeErrorᴱ; local; return; UnboundVariable; SEGV; app₁; app₂; block; bin₁; bin₂)
 open import Luau.RuntimeType.ToString using (runtimeTypeToString)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Syntax.ToString using (exprToString)

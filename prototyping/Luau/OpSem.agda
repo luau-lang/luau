@@ -33,20 +33,18 @@ data _⊢_⟶ᴱ_⊣_  where
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  app₂ : ∀ {H H′ M V N N′} →
+  app₂ : ∀ v {H H′ N N′} →
 
-    M ≡ val V →
     H ⊢ N ⟶ᴱ N′ ⊣ H′ →
     -----------------------------
-    H ⊢ (M $ N) ⟶ᴱ (M $ N′) ⊣ H′
+    H ⊢ (val v $ N) ⟶ᴱ (val v $ N′) ⊣ H′
 
-  beta : ∀ O v {H a N F B} →
+  beta : ∀ O v {H a F B} →
 
     (O ≡ function F is B end) →
-    (N ≡ val v) →
     H [ a ] ≡ just(O) →
     -----------------------------------------------------------------------------
-    H ⊢ (addr a $ N) ⟶ᴱ (block (fun F) is (B [ v / name(arg F) ]ᴮ) end) ⊣ H
+    H ⊢ (addr a $ val v) ⟶ᴱ (block (fun F) is (B [ v / name(arg F) ]ᴮ) end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  

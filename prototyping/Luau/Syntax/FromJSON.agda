@@ -136,11 +136,6 @@ statFromObject obj | just(string "AstStatLocal") | just(_) | just(_) = Left "Ast
 statFromObject obj | just(string "AstStatLocal") | just(_) | nothing = Left "AstStatLocal missing values"
 statFromObject obj | just(string "AstStatLocal") | nothing | _ = Left "AstStatLocal missing vars"
 statFromObject obj | just(string "AstStatLocalFunction") with lookup name obj | lookup func obj
-statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value with exprFromJSON value
-statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Right (function "" ⟨ x ⟩ is B end) = Right (function f ⟨ x ⟩ is B end)
-statFromObject obj | just(string "AstStatLocalFunction") | just (string f) | just value | Left err = Left err
-statFromObject obj | just(string "AstStatLocalFunction") | just _ | just _ | Right _ = Left "AstStatLocalFunction func is not an AstExprFunction"
-statFromObject obj | just(string "AstStatLocalFunction") | just _ | just _ =  Left "AstStatLocalFunction name is not a string"
 statFromObject obj | just(string "AstStatLocalFunction") | just fnName | just value with varDecFromJSON fnName | exprFromJSON value
 statFromObject obj | just(string "AstStatLocalFunction") | just fnName | just value | Right fnVar | Right (function "" ⟨ x ⟩ is B end) = Right (function (Luau.Syntax.name fnVar) ⟨ x ⟩ is B end)
 statFromObject obj | just(string "AstStatLocalFunction") | just fnName | just value | Left err | _ = Left err
@@ -176,3 +171,4 @@ blockFromArray arr | just value | Left err = Left err
 blockFromArray arr | just value | Right S with blockFromArray(tail arr)
 blockFromArray arr | just value | Right S | Left err = Left (err)
 blockFromArray arr | just value | Right S | Right B  = Right (S ∙ B)
+   
