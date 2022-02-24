@@ -1,6 +1,7 @@
 module Luau.Syntax where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Float using (Float)
 open import Properties.Dec using (⊥)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
@@ -32,6 +33,18 @@ arg : ∀ {a} → FunDec a → VarDec a
 arg (f ⟨ x ⟩∈ T) = x
 arg (f ⟨ x ⟩) = x
 
+data BinaryOperator : Set where
+  + : BinaryOperator
+  - : BinaryOperator
+  * : BinaryOperator
+  / : BinaryOperator
+  < : BinaryOperator
+  > : BinaryOperator
+  ≡ : BinaryOperator
+  ≅ : BinaryOperator
+  ≤ : BinaryOperator
+  ≥ : BinaryOperator
+
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set
 data Expr (a : Annotated) : Set
@@ -47,9 +60,12 @@ data Stat a where
 
 data Expr a where
   nil : Expr a
+  true : Expr a
+  false : Expr a
   var : Var → Expr a
   addr : Addr → Expr a
   _$_ : Expr a → Expr a → Expr a
   function_is_end : FunDec a → Block a → Expr a
   block_is_end : Var → Block a → Expr a
-
+  number : Float → Expr a
+  binexp : Expr a → BinaryOperator → Expr a → Expr a

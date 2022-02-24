@@ -1,14 +1,15 @@
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; local_←_; return; done; _∙_; maybe; VarDec; number; binexp; BinaryOperator; +; -; *; /; ≡; ≅; <; >; ≤; ≥)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
+open import Agda.Builtin.Bool using (true; false)
 
 open import FFI.Data.Aeson using (Value; Array; Object; object; array; string; fromString; lookup)
-open import FFI.Data.Bool using (true; false)
 open import FFI.Data.Either using (Either; Left; Right)
 open import FFI.Data.Maybe using (Maybe; nothing; just)
+open import FFI.Data.Scientific using (toFloat)
 open import FFI.Data.String using (String; _++_)
 open import FFI.Data.Vector using (head; tail; null; empty)
 
@@ -19,8 +20,12 @@ lokal = fromString "local"
 list = fromString "list"
 name = fromString "name"
 type = fromString "type"
+value = fromString "value"
 values = fromString "values"
 vars = fromString "vars"
+op = fromString "op"
+left = fromString "left"
+right = fromString "right"
 
 data Lookup : Set where
   _,_ : String → Value → Lookup
@@ -32,6 +37,8 @@ lookupIn (key ∷ keys) obj with lookup (fromString key) obj
 lookupIn (key ∷ keys) obj | nothing = lookupIn keys obj
 lookupIn (key ∷ keys) obj | just value = (key , value)
 
+binOpFromJSON : Value → Either String BinaryOperator
+binOpFromString : String → Either String BinaryOperator
 varDecFromJSON : Value → Either String (VarDec maybe)
 varDecFromObject : Object → Either String (VarDec maybe)
 exprFromJSON : Value → Either String (Expr maybe)
@@ -40,6 +47,21 @@ statFromJSON : Value → Either String (Stat maybe)
 statFromObject : Object → Either String (Stat maybe)
 blockFromJSON : Value → Either String (Block maybe)
 blockFromArray : Array → Either String (Block maybe)
+
+binOpFromJSON (string s) = binOpFromString s
+binOpFromJSON val = Left "Binary operator not a string"
+
+binOpFromString "Add" = Right +
+binOpFromString "Sub" = Right -
+binOpFromString "Mul" = Right *
+binOpFromString "Div" = Right /
+binOpFromString "CompareEq" = Right ≡
+binOpFromString "CompareNe" = Right ≅
+binOpFromString "CompareLt" = Right <
+binOpFromString "CompareLe" = Right ≤
+binOpFromString "CompareGt" = Right >
+binOpFromString "CompareGe" = Right ≥
+binOpFromString s = Left ("'" ++ s ++ "' is not a valid operator")
 
 varDecFromJSON (object arg) = varDecFromObject arg
 varDecFromJSON val = Left "VarDec not an object"
@@ -83,6 +105,24 @@ exprFromObject obj | just (string "AstExprLocal") | just x with varDecFromJSON x
 exprFromObject obj | just (string "AstExprLocal") | just x | Right x′ = Right (var (Luau.Syntax.name x′))
 exprFromObject obj | just (string "AstExprLocal") | just x | Left err = Left err
 exprFromObject obj | just (string "AstExprLocal") | nothing = Left "AstExprLocal missing local"
+exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
+exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number (toFloat x))
+exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
+exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
+exprFromObject obj | just (string "AstExprConstantBool") with lookup value obj
+exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool true) = Right Expr.true
+exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool false) = Right Expr.false
+exprFromObject obj | just (string "AstExprConstantBool") | just _ = Left "AstExprConstantBool value is not a bool"
+exprFromObject obj | just (string "AstExprConstantBool") | nothing = Left "AstExprConstantBool missing value"
+exprFromObject obj | just (string "AstExprBinary") with lookup op obj | lookup left obj | lookup right obj
+exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r with binOpFromJSON o | exprFromJSON l | exprFromJSON r
+exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r | Right o′ | Right l′ | Right r′ = Right (binexp l′ o′ r′)
+exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r | Left err | _ | _ = Left err
+exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r | _ | Left err | _ = Left err
+exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r | _ | _ | Left err = Left err
+exprFromObject obj | just (string "AstExprBinary") | nothing | _ | _ = Left "Missing 'op' in AstExprBinary"
+exprFromObject obj | just (string "AstExprBinary") | _ | nothing | _ = Left "Missing 'left' in AstExprBinary"
+exprFromObject obj | just (string "AstExprBinary") | _ | _ | nothing = Left "Missing 'right' in AstExprBinary"
 exprFromObject obj | just (string ty) = Left ("TODO: Unsupported AstExpr " ++ ty)
 exprFromObject obj | just _ = Left "AstExpr type not a string"
 exprFromObject obj | nothing = Left "AstExpr missing type"
@@ -140,3 +180,4 @@ blockFromArray arr | just value | Left err = Left err
 blockFromArray arr | just value | Right S with blockFromArray(tail arr)
 blockFromArray arr | just value | Right S | Left err = Left (err)
 blockFromArray arr | just value | Right S | Right B  = Right (S ∙ B)
+   

@@ -1,11 +1,50 @@
 module Luau.OpSem where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv; primFloatEquality; primFloatLess; primFloatInequality)
+open import Agda.Builtin.Bool using (Bool; true; false)
+open import Utility.Bool using (not; _or_; _and_)
+open import Agda.Builtin.Nat using (_==_)
 open import FFI.Data.Maybe using (just)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg)
-open import Luau.Value using (addr; val)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ≡; ≅; ≤; ≥; number)
+open import Luau.Value using (addr; val; number; Value; bool)
+open import Luau.RuntimeType using (RuntimeType; valueType)
+
+evalNumOp : Float → BinaryOperator → Float → Value
+evalNumOp x + y = number (primFloatPlus x y)
+evalNumOp x - y = number (primFloatMinus x y)
+evalNumOp x * y = number (primFloatTimes x y)
+evalNumOp x / y = number (primFloatDiv x y)
+evalNumOp x < y = bool (primFloatLess x y)
+evalNumOp x > y = bool (primFloatLess y x)
+evalNumOp x ≡ y = bool (primFloatEquality x y)
+evalNumOp x ≅ y = bool (primFloatInequality x y)
+evalNumOp x ≤ y = bool ((primFloatLess x y) or (primFloatEquality x y))
+evalNumOp x ≥ y = bool ((primFloatLess y x) or (primFloatEquality x y))
+
+evalEqOp : Value → Value → Value
+evalEqOp Value.nil Value.nil = bool true
+evalEqOp (addr x) (addr y) = bool (x == y)
+evalEqOp (number x) (number y) = bool (primFloatEquality x y)
+evalEqOp (bool true) (bool y) = bool y
+evalEqOp (bool false) (bool y) = bool (not y)
+evalEqOp _ _ = bool false
+
+evalNeqOp : Value → Value → Value
+evalNeqOp Value.nil Value.nil = bool false
+evalNeqOp (addr x) (addr y) = bool (not (x == y))
+evalNeqOp (number x) (number y) = bool (primFloatInequality x y)
+evalNeqOp (bool true) (bool y) = bool (not y)
+evalNeqOp (bool false) (bool y) = bool y
+evalNeqOp _ _ = bool true
+
+coerceToBool : Value → Bool
+coerceToBool Value.nil = false
+coerceToBool (addr x) = true
+coerceToBool (number x) = true
+coerceToBool (bool x) = x
 
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
@@ -23,17 +62,23 @@ data _⊢_⟶ᴱ_⊣_  where
     -------------------------------------------
     H ⊢ (function F is B end) ⟶ᴱ (addr a) ⊣ H′
 
-  app : ∀ {H H′ M M′ N} →
+  app₁ : ∀ {H H′ M M′ N} →
   
     H ⊢ M ⟶ᴱ M′ ⊣ H′ →
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  beta : ∀ {H M a F B} →
+  app₂ : ∀ {H H′ V N N′} →
+
+    H ⊢ N ⟶ᴱ N′ ⊣ H′ →
+    -----------------------------
+    H ⊢ (val V $ N) ⟶ᴱ (val V $ N′) ⊣ H′
+
+  beta : ∀ {H a F B V} →
   
     H [ a ] ≡ just(function F is B end) →
-    -----------------------------------------------------
-    H ⊢ (addr a $ M) ⟶ᴱ (block (fun F) is local (arg F) ← M ∙ B end) ⊣ H
+    -----------------------------------------------------------------------------
+    H ⊢ (addr a $ val V) ⟶ᴱ (block (fun F) is (B [ V / name(arg F) ]ᴮ) end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  
@@ -50,6 +95,34 @@ data _⊢_⟶ᴱ_⊣_  where
  
     ---------------------------------
     H ⊢ (block b is done end) ⟶ᴱ nil ⊣ H
+  
+  binOpEquality :
+    ∀ {H x y} →
+    ---------------------------------------------------------------------------
+    H ⊢ (binexp (val x) BinaryOperator.≡ (val y)) ⟶ᴱ (val (evalEqOp x y)) ⊣ H
+  
+  binOpInequality :
+    ∀ {H x y} →
+    ----------------------------------------------------------------------------
+    H ⊢ (binexp (val x) BinaryOperator.≅ (val y)) ⟶ᴱ (val (evalNeqOp x y)) ⊣ H
+  
+  binOpNumbers :
+    ∀ {H x op y} →
+    -----------------------------------------------------------------------
+    H ⊢ (binexp (number x) op (number y)) ⟶ᴱ (val (evalNumOp x op y)) ⊣ H
+  
+  binOp₁ :
+    ∀ {H H′ x x′ op y} →
+    H ⊢ x ⟶ᴱ x′ ⊣ H′ →
+    ---------------------------------------------
+    H ⊢ (binexp x op y) ⟶ᴱ (binexp x′ op y) ⊣ H′
+  
+  binOp₂ :
+    ∀ {H H′ x op y y′} →
+    H ⊢ y ⟶ᴱ y′ ⊣ H′ →
+    ---------------------------------------------
+    H ⊢ (binexp x op y) ⟶ᴱ (binexp x op y′) ⊣ H′
+
   
 data _⊢_⟶ᴮ_⊣_  where
 
@@ -88,5 +161,3 @@ data _⊢_⟶*_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set wher
     H′ ⊢ B′ ⟶* B″ ⊣ H″ →
     ------------------
     H ⊢ B ⟶* B″ ⊣ H″
-
-

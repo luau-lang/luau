@@ -7,6 +7,7 @@ data Type : Set where
   _⇒_ : Type → Type → Type
   none : Type
   any : Type
+  number : Type
   _∪_ : Type → Type → Type
   _∩_ : Type → Type → Type
 
@@ -15,6 +16,7 @@ src nil = none
 src (S ⇒ T) = S
 src none = none
 src any = any
+src number = none
 src (S ∪ T) = (src S) ∪ (src T)
 src (S ∩ T) = (src S) ∩ (src T)
 
@@ -23,6 +25,7 @@ tgt nil = none
 tgt (S ⇒ T) = T
 tgt none = none
 tgt any = any
+tgt number = none
 tgt (S ∪ T) = (tgt S) ∪ (tgt T)
 tgt (S ∩ T) = (tgt S) ∩ (tgt T)
 
@@ -40,4 +43,3 @@ normalizeOptional (S ∪ T) | S′         | nil        = optional S′
 normalizeOptional (S ∪ T) | nil        | T′         = optional T′
 normalizeOptional (S ∪ T) | S′         | T′         = S′ ∪ T′
 normalizeOptional T = T
-
