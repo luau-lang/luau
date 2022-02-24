@@ -39,7 +39,7 @@ rednᴱ⊑ (app₁ s) = rednᴱ⊑ s
 rednᴱ⊑ (app₂ p s) = rednᴱ⊑ s
 rednᴱ⊑ (beta O v p q) = refl
 rednᴱ⊑ (block s) = rednᴮ⊑ s
-rednᴱ⊑ (return v p) = refl
+rednᴱ⊑ (return v) = refl
 rednᴱ⊑ done = refl
 rednᴱ⊑ (binOpEval) = refl
 rednᴱ⊑ (binOp₁ s) = rednᴱ⊑ s
@@ -163,7 +163,7 @@ preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B 
 preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) | ok r = CONTRADICTION (r (sym (trans (typeOfᴱⱽ v) (cong orBot q))))
 preservationᴱ H (addr a $ N)  (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) | warning W = warning (expr (app₂ W))
 preservationᴱ H (block var b ∈ T is B end) (block s) = ok refl
-preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v p) = {!!} -- ok refl
+preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v) = {!!} -- ok refl
 preservationᴱ H (block var b ∈ T is done end) (done) = {!!} -- ok refl
 preservationᴱ H (binexp M op N) s = {!!}
 
@@ -340,7 +340,7 @@ reflectᴴᴱ H (M $ N) (beta O v p q) (heap W′) = heap W′
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) with reflectᴴᴮ H B s (heap W′)
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) | heap W = heap W
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) (heap W′) | block W = expr (block₁ b W)
-reflectᴴᴱ H (block var b ∈ T is return N ∙ B end) (return v s) (heap W′) = heap W′
+reflectᴴᴱ H (block var b ∈ T is return N ∙ B end) (return v) (heap W′) = heap W′
 reflectᴴᴱ H (block var b ∈ T is done end) done (heap W′) = heap W′
 reflectᴴᴱ H (binexp M op N) s W′ = {!!}
 

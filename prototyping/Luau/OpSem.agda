@@ -52,11 +52,10 @@ data _⊢_⟶ᴱ_⊣_  where
     ----------------------------------------------------
     H ⊢ (block b is B end) ⟶ᴱ (block b is B′ end) ⊣ H′
 
-  return : ∀ v {H M B b} →
+  return : ∀ v {H B b} →
 
-    (M ≡ val v) →
     --------------------------------------------------------
-    H ⊢ (block b is return M ∙ B end) ⟶ᴱ M ⊣ H
+    H ⊢ (block b is return (val v) ∙ B end) ⟶ᴱ val v ⊣ H
 
   done : ∀ {H b} →
  
