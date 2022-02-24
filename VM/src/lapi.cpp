@@ -36,12 +36,9 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
 static Table* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci)  /* no enclosing function? */
-        return hvalue(gt(L)); /* use global table as environment */
+        return L->gt;         /* use global table as environment */
     else
-    {
-        Closure* func = curr_func(L);
-        return func->env;
-    }
+        return curr_func(L)->env;
 }
 
 static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
@@ -53,11 +50,14 @@ static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
         return registry(L);
     case LUA_ENVIRONINDEX:
     {
-        sethvalue(L, &L->env, getcurrenv(L));
-        return &L->env;
+        sethvalue(L, &L->global->pseudotemp, getcurrenv(L));
+        return &L->global->pseudotemp;
     }
     case LUA_GLOBALSINDEX:
-        return gt(L);
+    {
+        sethvalue(L, &L->global->pseudotemp, L->gt);
+        return &L->global->pseudotemp;
+    }
     default:
     {
         Closure* func = curr_func(L);
@@ -236,6 +236,11 @@ void lua_replace(lua_State* L, int idx)
         api_check(L, ttistable(L->top - 1));
         func->env = hvalue(L->top - 1);
         luaC_barrier(L, func, L->top - 1);
+    }
+    else if (idx == LUA_GLOBALSINDEX)
+    {
+        api_check(L, ttistable(L->top - 1));
+        L->gt = hvalue(L->top - 1);
     }
     else
     {
@@ -654,16 +659,16 @@ int lua_pushthread(lua_State* L)
 ** get functions (Lua -> stack)
 */
 
-void lua_gettable(lua_State* L, int idx)
+int lua_gettable(lua_State* L, int idx)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
     api_checkvalidindex(L, t);
     luaV_gettable(L, t, L->top - 1, L->top - 1);
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_getfield(lua_State* L, int idx, const char* k)
+int lua_getfield(lua_State* L, int idx, const char* k)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
@@ -672,10 +677,10 @@ void lua_getfield(lua_State* L, int idx, const char* k)
     setsvalue(L, &key, luaS_new(L, k));
     luaV_gettable(L, t, &key, L->top);
     api_incr_top(L);
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_rawgetfield(lua_State* L, int idx, const char* k)
+int lua_rawgetfield(lua_State* L, int idx, const char* k)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
@@ -684,26 +689,26 @@ void lua_rawgetfield(lua_State* L, int idx, const char* k)
     setsvalue(L, &key, luaS_new(L, k));
     setobj2s(L, L->top, luaH_getstr(hvalue(t), tsvalue(&key)));
     api_incr_top(L);
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_rawget(lua_State* L, int idx)
+int lua_rawget(lua_State* L, int idx)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     setobj2s(L, L->top - 1, luaH_get(hvalue(t), L->top - 1));
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_rawgeti(lua_State* L, int idx, int n)
+int lua_rawgeti(lua_State* L, int idx, int n)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     setobj2s(L, L->top, luaH_getnum(hvalue(t), n));
     api_incr_top(L);
-    return;
+    return ttype(L->top - 1);
 }
 
 void lua_createtable(lua_State* L, int narray, int nrec)
@@ -783,7 +788,7 @@ void lua_getfenv(lua_State* L, int idx)
         sethvalue(L, L->top, clvalue(o)->env);
         break;
     case LUA_TTHREAD:
-        setobj2s(L, L->top, gt(thvalue(o)));
+        sethvalue(L, L->top, thvalue(o)->gt);
         break;
     default:
         setnilvalue(L->top);
@@ -914,7 +919,7 @@ int lua_setfenv(lua_State* L, int idx)
         clvalue(o)->env = hvalue(L->top - 1);
         break;
     case LUA_TTHREAD:
-        sethvalue(L, gt(thvalue(o)), hvalue(L->top - 1));
+        thvalue(o)->gt = hvalue(L->top - 1);
         break;
     default:
         res = 0;

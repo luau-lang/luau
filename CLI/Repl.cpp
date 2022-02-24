@@ -1,4 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Repl.h"
+
 #include "lua.h"
 #include "lualib.h"
 
@@ -35,16 +37,19 @@ enum class CompileFormat
     Binary
 };
 
+constexpr int MaxTraversalLimit = 50;
+
 struct GlobalOptions
 {
     int optimizationLevel = 1;
+    int debugLevel = 1;
 } globalOptions;
 
 static Luau::CompileOptions copts()
 {
     Luau::CompileOptions result = {};
     result.optimizationLevel = globalOptions.optimizationLevel;
-    result.debugLevel = 1;
+    result.debugLevel = globalOptions.debugLevel;
     result.coverageLevel = coverageActive() ? 2 : 0;
 
     return result;
@@ -240,11 +245,115 @@ std::string runCode(lua_State* L, const std::string& source)
     return std::string();
 }
 
-static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
+// Replaces the top of the lua stack with the metatable __index for the value
+// if it exists.  Returns true iff __index exists.
+static bool tryReplaceTopWithIndex(lua_State* L)
 {
-    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
+    if (luaL_getmetafield(L, -1, "__index"))
+    {
+        // Remove the table leaving __index on the top of stack
+        lua_remove(L, -2);
+        return true;
+    }
+    return false;
+}
+
+
+// This function is similar to lua_gettable, but it avoids calling any
+// lua callback functions (e.g. __index) which might modify the Lua VM state.
+static void safeGetTable(lua_State* L, int tableIndex)
+{
+    lua_pushvalue(L, tableIndex); // Duplicate the table
+
+    // The loop invariant is that the table to search is at -1
+    // and the key is at -2.
+    for (int loopCount = 0;; loopCount++)
+    {
+        lua_pushvalue(L, -2); // Duplicate the key
+        lua_rawget(L, -2);    // Try to find the key
+        if (!lua_isnil(L, -1) || loopCount >= MaxTraversalLimit)
+        {
+            // Either the key has been found, and/or we have reached the max traversal limit
+            break;
+        }
+        else
+        {
+            lua_pop(L, 1); // Pop the nil result
+            if (!luaL_getmetafield(L, -1, "__index"))
+            {
+                lua_pushnil(L);
+                break;
+            }
+            else if (lua_istable(L, -1))
+            {
+                // Replace the current table being searched with __index table
+                lua_replace(L, -2);
+            }
+            else
+            {
+                lua_pop(L, 1); // Pop the value
+                lua_pushnil(L);
+                break;
+            }
+        }
+    }
+
+    lua_remove(L, -2); // Remove the table
+    lua_remove(L, -2); // Remove the original key
+}
+
+// completePartialMatches finds keys that match the specified 'prefix'
+// Note: the table/object to be searched must be on the top of the Lua stack
+static void completePartialMatches(lua_State* L, bool completeOnlyFunctions, const std::string& editBuffer, std::string_view prefix,
+    const AddCompletionCallback& addCompletionCallback)
+{
+    for (int i = 0; i < MaxTraversalLimit && lua_istable(L, -1); i++)
+    {
+        // table, key
+        lua_pushnil(L);
+
+        // Loop over all the keys in the current table
+        while (lua_next(L, -2) != 0)
+        {
+            if (lua_type(L, -2) == LUA_TSTRING)
+            {
+                // table, key, value
+                std::string_view key = lua_tostring(L, -2);
+                int valueType = lua_type(L, -1);
+
+                // If the last separator was a ':' (i.e. a method call) then only functions should be completed.
+                bool requiredValueType = (!completeOnlyFunctions || valueType == LUA_TFUNCTION);
+
+                if (!key.empty() && requiredValueType && Luau::startsWith(key, prefix))
+                {
+                    std::string completedComponent(key.substr(prefix.size()));
+                    std::string completion(editBuffer + completedComponent);
+                    if (valueType == LUA_TFUNCTION)
+                    {
+                        // Add an opening paren for function calls by default.
+                        completion += "(";
+                    }
+                    addCompletionCallback(completion, std::string(key));
+                }
+            }
+            lua_pop(L, 1);
+        }
+
+        // Replace the current table being searched with an __index table if one exists
+        if (!tryReplaceTopWithIndex(L))
+        {
+            break;
+        }
+    }
+}
+
+static void completeIndexer(lua_State* L, const std::string& editBuffer, const AddCompletionCallback& addCompletionCallback)
+{
     std::string_view lookup = editBuffer;
-    char lastSep = 0;
+    bool completeOnlyFunctions = false;
+
+    // Push the global variable table to begin the search
+    lua_pushvalue(L, LUA_GLOBALSINDEX);
 
     for (;;)
     {
@@ -253,63 +362,44 @@ static void completeIndexer(ic_completion_env_t* cenv, const char* editBuffer)
 
         if (sep == std::string_view::npos)
         {
-            // table, key
-            lua_pushnil(L);
-
-            while (lua_next(L, -2) != 0)
-            {
-                if (lua_type(L, -2) == LUA_TSTRING)
-                {
-                    // table, key, value
-                    std::string_view key = lua_tostring(L, -2);
-                    int valueType = lua_type(L, -1);
-
-                    // If the last separator was a ':' (i.e. a method call) then only functions should be completed.
-                    bool requiredValueType = (lastSep != ':' || valueType == LUA_TFUNCTION);
-
-                    if (!key.empty() && requiredValueType && Luau::startsWith(key, prefix))
-                    {
-                        std::string completedComponent(key.substr(prefix.size()));
-                        std::string completion(editBuffer + completedComponent);
-                        if (valueType == LUA_TFUNCTION)
-                        {
-                            // Add an opening paren for function calls by default.
-                            completion += "(";
-                        }
-                        ic_add_completion_ex(cenv, completion.data(), key.data(), nullptr);
-                    }
-                }
-                lua_pop(L, 1);
-            }
-
+            completePartialMatches(L, completeOnlyFunctions, editBuffer, prefix, addCompletionCallback);
             break;
         }
         else
         {
             // find the key in the table
             lua_pushlstring(L, prefix.data(), prefix.size());
-            lua_rawget(L, -2);
+            safeGetTable(L, -2);
             lua_remove(L, -2);
 
-            if (lua_type(L, -1) == LUA_TSTRING)
+            if (lua_istable(L, -1) || tryReplaceTopWithIndex(L))
             {
-                // Replace the string object with the string class to perform further lookups of string functions
-                // Note: We retrieve the string class from _G to prevent issues if the user assigns to `string`.
-                lua_getglobal(L, "_G");
-                lua_pushlstring(L, "string", 6);
-                lua_rawget(L, -2);
-                lua_remove(L, -2);
-                LUAU_ASSERT(lua_istable(L, -1));
+                completeOnlyFunctions = lookup[sep] == ':';
+                lookup.remove_prefix(sep + 1);
             }
-            else if (!lua_istable(L, -1))
+            else
+            {
+                // Unable to search for keys, so stop searching
                 break;
-
-            lastSep = lookup[sep];
-            lookup.remove_prefix(sep + 1);
+            }
         }
     }
 
     lua_pop(L, 1);
+}
+
+void getCompletions(lua_State* L, const std::string& editBuffer, const AddCompletionCallback& addCompletionCallback)
+{
+    completeIndexer(L, editBuffer, addCompletionCallback);
+}
+
+static void icGetCompletions(ic_completion_env_t* cenv, const char* editBuffer)
+{
+    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
+
+    getCompletions(L, std::string(editBuffer), [cenv](const std::string& completion, const std::string& display) {
+        ic_add_completion_ex(cenv, completion.data(), display.data(), nullptr);
+    });
 }
 
 static bool isMethodOrFunctionChar(const char* s, long len)
@@ -320,15 +410,7 @@ static bool isMethodOrFunctionChar(const char* s, long len)
 
 static void completeRepl(ic_completion_env_t* cenv, const char* editBuffer)
 {
-    auto* L = reinterpret_cast<lua_State*>(ic_completion_arg(cenv));
-
-    // look the value up in current global table first
-    lua_pushvalue(L, LUA_GLOBALSINDEX);
-    ic_complete_word(cenv, editBuffer, completeIndexer, isMethodOrFunctionChar);
-
-    // and in actual global table after that
-    lua_getglobal(L, "_G");
-    ic_complete_word(cenv, editBuffer, completeIndexer, isMethodOrFunctionChar);
+    ic_complete_word(cenv, editBuffer, icGetCompletions, isMethodOrFunctionChar);
 }
 
 struct LinenoiseScopedHistory
@@ -350,9 +432,7 @@ struct LinenoiseScopedHistory
             ic_set_history(historyFilepath.c_str(), -1 /* default entries (= 200) */);
     }
 
-    ~LinenoiseScopedHistory()
-    {
-    }
+    ~LinenoiseScopedHistory() {}
 
     std::string historyFilepath;
 };
@@ -372,19 +452,20 @@ static void runReplImpl(lua_State* L)
 
     for (;;)
     {
-        const char* line = ic_readline(buffer.empty() ? "" : ">");
+        const char* prompt = buffer.empty() ? "" : ">";
+        std::unique_ptr<char, void (*)(void*)> line(ic_readline(prompt), free);
         if (!line)
             break;
 
-        if (buffer.empty() && runCode(L, std::string("return ") + line) == std::string())
+        if (buffer.empty() && runCode(L, std::string("return ") + line.get()) == std::string())
         {
-            ic_history_add(line);
+            ic_history_add(line.get());
             continue;
         }
 
         if (!buffer.empty())
             buffer += "\n";
-        buffer += line;
+        buffer += line.get();
 
         std::string error = runCode(L, buffer);
 
@@ -400,7 +481,6 @@ static void runReplImpl(lua_State* L)
 
         ic_history_add(buffer.c_str());
         buffer.clear();
-        free((void*)line);
     }
 }
 
@@ -504,7 +584,7 @@ static bool compileFile(const char* name, CompileFormat format)
 
         if (format == CompileFormat::Text)
         {
-            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source);
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals);
             bcb.setDumpSource(*source);
         }
 
@@ -549,7 +629,8 @@ static void displayHelp(const char* argv0)
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
     printf("  -h, --help: Display this usage message.\n");
     printf("  -i, --interactive: Run an interactive REPL after executing the last script specified.\n");
-    printf("  -O<n>: use compiler optimization level (n=0-2).\n");
+    printf("  -O<n>: compile with optimization level n (default 1, n should be between 0 and 2).\n");
+    printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
@@ -619,6 +700,16 @@ int replMain(int argc, char** argv)
                 return 1;
             }
             globalOptions.optimizationLevel = level;
+        }
+        else if (strncmp(argv[i], "-g", 2) == 0)
+        {
+            int level = atoi(argv[i] + 2);
+            if (level < 0 || level > 2)
+            {
+                fprintf(stderr, "Error: Debug level must be between 0 and 2 inclusive.\n");
+                return 1;
+            }
+            globalOptions.debugLevel = level;
         }
         else if (strcmp(argv[i], "--profile") == 0)
         {

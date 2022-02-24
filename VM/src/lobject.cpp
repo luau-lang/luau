@@ -131,7 +131,7 @@ void luaO_chunkid(char* out, const char* source, size_t bufflen)
     {
         size_t l;
         source++; /* skip the `@' */
-        bufflen -= sizeof(" '...' ");
+        bufflen -= sizeof("...");
         l = strlen(source);
         strcpy(out, "");
         if (l > bufflen)
@@ -144,7 +144,7 @@ void luaO_chunkid(char* out, const char* source, size_t bufflen)
     else
     {                                         /* out = [string "string"] */
         size_t len = strcspn(source, "\n\r"); /* stop at first newline */
-        bufflen -= sizeof(" [string \"...\"] ");
+        bufflen -= sizeof("[string \"...\"]");
         if (len > bufflen)
             len = bufflen;
         strcpy(out, "[string \"");

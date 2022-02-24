@@ -6,7 +6,7 @@ open import Luau.Syntax using (var; _$_; return; nil; function_is_end; local_←
 open import Luau.Syntax.ToString using (exprToString; blockToString)
 
 ex1 : exprToString(function "" ⟨ var "x" ⟩ is return (var "f" $ var "x") ∙ done end) ≡
-  "function (x)\n" ++
+  "function(x)\n" ++
   "  return f(x)\n" ++
   "end"
 ex1 = refl

@@ -104,6 +104,20 @@ if (MSVC AND MSVC_VERSION GREATER_EQUAL 1924)
     set_source_files_properties(VM/src/lvmexecute.cpp PROPERTIES COMPILE_FLAGS /d2ssa-pre-)
 endif()
 
+# embed .natvis inside the library debug information
+if(MSVC)
+    target_link_options(Luau.Ast INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/Ast.natvis)
+    target_link_options(Luau.Analysis INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/Analysis.natvis)
+    target_link_options(Luau.VM INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/VM.natvis)
+endif()
+
+# make .natvis visible inside the solution
+if(MSVC_IDE)
+    target_sources(Luau.Ast PRIVATE tools/natvis/Ast.natvis)
+    target_sources(Luau.Analysis PRIVATE tools/natvis/Analysis.natvis)
+    target_sources(Luau.VM PRIVATE tools/natvis/VM.natvis)
+endif()
+
 if(LUAU_BUILD_CLI)
     target_compile_options(Luau.Repl.CLI PRIVATE ${LUAU_OPTIONS})
     target_compile_options(Luau.Analyze.CLI PRIVATE ${LUAU_OPTIONS})

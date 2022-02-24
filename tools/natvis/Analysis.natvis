@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <Type Name="Luau::AnyTypeVar">
+    <DisplayString>AnyTypeVar</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Variant&lt;*&gt;">
+    <DisplayString Condition="typeId == 0" Optional="true">{{ index=0, value={*($T1*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 1" Optional="true">{{ index=1, value={*($T2*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 2" Optional="true">{{ index=2, value={*($T3*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 3" Optional="true">{{ index=3, value={*($T4*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 4" Optional="true">{{ index=4, value={*($T5*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 5" Optional="true">{{ index=5, value={*($T6*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 6" Optional="true">{{ index=6, value={*($T7*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 7" Optional="true">{{ index=7, value={*($T8*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 8" Optional="true">{{ index=8, value={*($T9*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 9" Optional="true">{{ index=9, value={*($T10*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 10" Optional="true">{{ index=10, value={*($T11*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 11" Optional="true">{{ index=11, value={*($T12*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 12" Optional="true">{{ index=12, value={*($T13*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 13" Optional="true">{{ index=13, value={*($T14*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 14" Optional="true">{{ index=14, value={*($T15*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 15" Optional="true">{{ index=15, value={*($T16*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 16" Optional="true">{{ index=16, value={*($T17*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 17" Optional="true">{{ index=17, value={*($T18*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 18" Optional="true">{{ index=18, value={*($T19*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 19" Optional="true">{{ index=19, value={*($T20*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 20" Optional="true">{{ index=20, value={*($T21*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 21" Optional="true">{{ index=21, value={*($T22*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 22" Optional="true">{{ index=22, value={*($T23*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 23" Optional="true">{{ index=23, value={*($T24*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 24" Optional="true">{{ index=24, value={*($T25*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 25" Optional="true">{{ index=25, value={*($T26*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 26" Optional="true">{{ index=26, value={*($T27*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 27" Optional="true">{{ index=27, value={*($T28*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 28" Optional="true">{{ index=28, value={*($T29*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 29" Optional="true">{{ index=29, value={*($T30*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 30" Optional="true">{{ index=30, value={*($T31*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 31" Optional="true">{{ index=31, value={*($T32*)storage} }}</DisplayString>
+    <Expand>
+      <Item Name="index">typeId</Item>
+      <Item Name="[value]" Condition="typeId == 0" Optional="true">*($T1*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 1" Optional="true">*($T2*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 2" Optional="true">*($T3*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 3" Optional="true">*($T4*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 4" Optional="true">*($T5*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 5" Optional="true">*($T6*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 6" Optional="true">*($T7*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 7" Optional="true">*($T8*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 8" Optional="true">*($T9*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 9" Optional="true">*($T10*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 10" Optional="true">*($T11*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 11" Optional="true">*($T12*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 12" Optional="true">*($T13*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 13" Optional="true">*($T14*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 14" Optional="true">*($T15*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 15" Optional="true">*($T16*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 16" Optional="true">*($T17*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 17" Optional="true">*($T18*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 18" Optional="true">*($T19*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 19" Optional="true">*($T20*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 20" Optional="true">*($T21*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 21" Optional="true">*($T22*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 22" Optional="true">*($T23*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 23" Optional="true">*($T24*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 24" Optional="true">*($T25*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 25" Optional="true">*($T26*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 26" Optional="true">*($T27*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 27" Optional="true">*($T28*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 28" Optional="true">*($T29*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 29" Optional="true">*($T30*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 30" Optional="true">*($T31*)storage</Item>
+      <Item Name="[value]" Condition="typeId == 31" Optional="true">*($T32*)storage</Item>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

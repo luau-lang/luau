@@ -3,19 +3,25 @@
 module Luau.OpSem where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv)
 open import FFI.Data.Maybe using (just)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg)
-open import Luau.Value using (addr; val)
-open import Luau.Type using (Type)
+open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; number)
+open import Luau.Value using (addr; val; number)
+
+evalBinOp : Float → BinaryOperator → Float → Float
+evalBinOp x + y = primFloatPlus x y
+evalBinOp x - y = primFloatMinus x y
+evalBinOp x * y = primFloatTimes x y
+evalBinOp x / y = primFloatDiv x y
 
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
 
 data _⊢_⟶ᴱ_⊣_  where
 
-  function : ∀ {H H′ a F B} →
+  function : ∀ a {H H′ F B} →
 
     H′ ≡ H ⊕ a ↦ (function F is B end) →
     -------------------------------------------
@@ -27,19 +33,20 @@ data _⊢_⟶ᴱ_⊣_  where
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  app₂ : ∀ {H H′ M N N′ V} →
+  app₂ : ∀ {H H′ M V N N′} →
 
-    (M ≡ val V) →
+    M ≡ val V →
     H ⊢ N ⟶ᴱ N′ ⊣ H′ →
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M $ N′) ⊣ H′
 
-  beta : ∀ {H a N F B V} →
-  
-    H [ a ] ≡ just(function F is B end) →
-    N ≡ val V →
+  beta : ∀ O v {H a N F B} →
+
+    (O ≡ function F is B end) →
+    (N ≡ val v) →
+    H [ a ] ≡ just(O) →
     -----------------------------------------------------------------------------
-    H ⊢ (addr a $ N) ⟶ᴱ (block (fun F) is (B [ V / name(arg F) ]ᴮ) end) ⊣ H
+    H ⊢ (addr a $ N) ⟶ᴱ (block (fun F) is (B [ v / name(arg F) ]ᴮ) end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  
@@ -47,10 +54,10 @@ data _⊢_⟶ᴱ_⊣_  where
     ----------------------------------------------------
     H ⊢ (block b is B end) ⟶ᴱ (block b is B′ end) ⊣ H′
 
-  return : ∀ {H M V B b} →
+  return : ∀ v {H M B b} →
 
-    M ≡ val V →
-    --------------------------------------------
+    (M ≡ val v) →
+    --------------------------------------------------------
     H ⊢ (block b is return M ∙ B end) ⟶ᴱ M ⊣ H
 
   done : ∀ {H b} →
@@ -58,6 +65,23 @@ data _⊢_⟶ᴱ_⊣_  where
     ---------------------------------
     H ⊢ (block b is done end) ⟶ᴱ nil ⊣ H
   
+  binOpEval : ∀ {H x op y} →
+
+    --------------------------------------------------------------------------
+    H ⊢ (binexp (number x) op (number y)) ⟶ᴱ (number (evalBinOp x op y)) ⊣ H
+  
+  binOp₁ : ∀ {H H′ x x′ op y} →
+
+    H ⊢ x ⟶ᴱ x′ ⊣ H′ →
+    ---------------------------------------------
+    H ⊢ (binexp x op y) ⟶ᴱ (binexp x′ op y) ⊣ H′
+  
+  binOp₂ : ∀ {H H′ x op y y′} →
+
+    H ⊢ y ⟶ᴱ y′ ⊣ H′ →
+    ---------------------------------------------
+    H ⊢ (binexp x op y) ⟶ᴱ (binexp x op y′) ⊣ H′
+
 data _⊢_⟶ᴮ_⊣_  where
 
   local : ∀ {H H′ x M M′ B} →
@@ -66,12 +90,12 @@ data _⊢_⟶ᴮ_⊣_  where
     -------------------------------------------------
     H ⊢ (local x ← M ∙ B) ⟶ᴮ (local x ← M′ ∙ B) ⊣ H′
 
-  subst : ∀ {H x v B} →
+  subst : ∀ v {H x B} →
   
     ------------------------------------------------------
     H ⊢ (local x ← val v ∙ B) ⟶ᴮ (B [ v / name x ]ᴮ) ⊣ H
 
-  function : ∀ {H H′ a F B C} →
+  function : ∀ a {H H′ F B C} →
   
     H′ ≡ H ⊕ a ↦ (function F is C end) →
     --------------------------------------------------------------
@@ -95,5 +119,3 @@ data _⊢_⟶*_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set wher
     H′ ⊢ B′ ⟶* B″ ⊣ H″ →
     ------------------
     H ⊢ B ⟶* B″ ⊣ H″
-
-

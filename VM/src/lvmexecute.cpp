@@ -39,7 +39,7 @@
 
 // When calling luau_callTM, we usually push the arguments to the top of the stack.
 // This is safe to do for complicated reasons:
-// - stack guarantees 1 + EXTRA_STACK room beyond stack_last (see luaD_reallocstack)
+// - stack guarantees EXTRA_STACK room beyond stack_last (see luaD_reallocstack)
 // - stack reallocation copies values past stack_last
 
 // All external function calls that can cause stack realloc or Lua calls have to be wrapped in VM_PROTECT
@@ -609,7 +609,8 @@ static void luau_execute(lua_State* L)
 
                         if (unsigned(ic) < LUA_VECTOR_SIZE && name[1] == '\0')
                         {
-                            setnvalue(ra, rb->value.v[ic]);
+                            const float* v = rb->value.v; // silences ubsan when indexing v[]
+                            setnvalue(ra, v[ic]);
                             VM_NEXT();
                         }
 

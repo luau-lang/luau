@@ -4,6 +4,7 @@
 #include "Luau/Common.h"
 #include "Luau/Config.h"
 #include "Luau/FileResolver.h"
+#include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
@@ -16,23 +17,25 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
-LUAU_FASTFLAGVARIABLE(LuauTypeCheckTwice, false)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 
 namespace Luau
 {
 
-std::optional<Mode> parseMode(const std::vector<std::string>& hotcomments)
+std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments)
 {
-    for (const std::string& hc : hotcomments)
+    for (const HotComment& hc : hotcomments)
     {
-        if (hc == "nocheck")
+        if (!hc.header)
+            continue;
+
+        if (hc.content == "nocheck")
             return Mode::NoCheck;
 
-        if (hc == "nonstrict")
+        if (hc.content == "nonstrict")
             return Mode::Nonstrict;
 
-        if (hc == "strict")
+        if (hc.content == "strict")
             return Mode::Strict;
     }
 
@@ -607,13 +610,15 @@ std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view sour
 
     SourceModule sourceModule = parse(ModuleName{}, source, config.parseOptions);
 
+    uint64_t ignoreLints = LintWarning::parseMask(sourceModule.hotcomments);
+
     Luau::LintOptions lintOptions = enabledLintWarnings.value_or(config.enabledLint);
-    lintOptions.warningMask &= sourceModule.ignoreLints;
+    lintOptions.warningMask &= ~ignoreLints;
 
     double timestamp = getTimestamp();
 
-    std::vector<LintWarning> warnings =
-        Luau::lint(sourceModule.root, *sourceModule.names.get(), typeChecker.globalScope, nullptr, enabledLintWarnings.value_or(config.enabledLint));
+    std::vector<LintWarning> warnings = Luau::lint(sourceModule.root, *sourceModule.names.get(), typeChecker.globalScope, nullptr,
+        sourceModule.hotcomments, enabledLintWarnings.value_or(config.enabledLint));
 
     stats.timeLint += getTimestamp() - timestamp;
 
@@ -651,8 +656,10 @@ LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOp
 
     const Config& config = configResolver->getConfig(module.name);
 
+    uint64_t ignoreLints = LintWarning::parseMask(module.hotcomments);
+
     LintOptions options = enabledLintWarnings.value_or(config.enabledLint);
-    options.warningMask &= ~module.ignoreLints;
+    options.warningMask &= ~ignoreLints;
 
     Mode mode = module.mode.value_or(config.mode);
     if (mode != Mode::NoCheck)
@@ -671,7 +678,7 @@ LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOp
 
     double timestamp = getTimestamp();
 
-    std::vector<LintWarning> warnings = Luau::lint(module.root, *module.names, environmentScope, modulePtr.get(), options);
+    std::vector<LintWarning> warnings = Luau::lint(module.root, *module.names, environmentScope, modulePtr.get(), module.hotcomments, options);
 
     stats.timeLint += getTimestamp() - timestamp;
 
@@ -839,7 +846,6 @@ SourceModule Frontend::parse(const ModuleName& name, std::string_view src, const
     {
         sourceModule.root = parseResult.root;
         sourceModule.mode = parseMode(parseResult.hotcomments);
-        sourceModule.ignoreLints = LintWarning::parseMask(parseResult.hotcomments);
     }
     else
     {
@@ -848,8 +854,13 @@ SourceModule Frontend::parse(const ModuleName& name, std::string_view src, const
     }
 
     sourceModule.name = name;
+
     if (parseOptions.captureComments)
+    {
         sourceModule.commentLocations = std::move(parseResult.commentLocations);
+        sourceModule.hotcomments = std::move(parseResult.hotcomments);
+    }
+
     return sourceModule;
 }
 

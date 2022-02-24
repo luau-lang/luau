@@ -88,7 +88,7 @@ static void validateclosure(global_State* g, Closure* cl)
 
 static void validatestack(global_State* g, lua_State* l)
 {
-    validateref(g, obj2gco(l), gt(l));
+    validateobjref(g, obj2gco(l), obj2gco(l->gt));
 
     for (CallInfo* ci = l->base_ci; ci <= l->ci; ++ci)
     {
@@ -250,6 +250,8 @@ void luaC_validate(lua_State* L)
 
     if (FFlag::LuauGcPagedSweep)
     {
+        validategco(L, NULL, obj2gco(g->mainthread));
+
         luaM_visitgco(L, L, validategco);
     }
     else
@@ -368,6 +370,7 @@ static void dumpclosure(FILE* f, Closure* cl)
 
     fprintf(f, ",\"env\":");
     dumpref(f, obj2gco(cl->env));
+
     if (cl->isC)
     {
         if (cl->nupvalues)
@@ -409,11 +412,8 @@ static void dumpthread(FILE* f, lua_State* th)
 
     fprintf(f, "{\"type\":\"thread\",\"cat\":%d,\"size\":%d", th->memcat, int(size));
 
-    if (iscollectable(&th->l_gt))
-    {
-        fprintf(f, ",\"env\":");
-        dumpref(f, gcvalue(&th->l_gt));
-    }
+    fprintf(f, ",\"env\":");
+    dumpref(f, obj2gco(th->gt));
 
     Closure* tcl = 0;
     for (CallInfo* ci = th->base_ci; ci <= th->ci; ++ci)
@@ -565,6 +565,8 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
 
     if (FFlag::LuauGcPagedSweep)
     {
+        dumpgco(f, NULL, obj2gco(g->mainthread));
+
         luaM_visitgco(L, f, dumpgco);
     }
     else

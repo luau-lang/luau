@@ -139,6 +139,12 @@ assert(selectmany(1, 10, 20, 30) == "10,20,30")
 assert(selectone(2, 10, 20, 30) == 20)
 assert(selectmany(2, 10, 20, 30) == "20,30")
 
+assert(selectone(3, 10, 20, 30) == 30)
+assert(selectmany(3, 10, 20, 30) == "30")
+
+assert(selectone(4, 10, 20, 30) == nil)
+assert(selectmany(4, 10, 20, 30) == "")
+
 assert(selectone(-2, 10, 20, 30) == 20)
 assert(selectmany(-2, 10, 20, 30) == "20,30")
 

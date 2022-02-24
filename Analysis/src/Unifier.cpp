@@ -14,7 +14,7 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
-LUAU_FASTFLAGVARIABLE(LuauCommittingTxnLogFreeTpPromote, false)
+LUAU_FASTFLAG(LuauImmutableTypes)
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 2000);
 LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
@@ -22,8 +22,8 @@ LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
 LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauProperTypeLevels);
-LUAU_FASTFLAGVARIABLE(LuauUnifyPackTails, false)
 LUAU_FASTFLAGVARIABLE(LuauUnionTagMatchFix, false)
+LUAU_FASTFLAGVARIABLE(LuauFollowWithCommittingTxnLogInAnyUnification, false)
 
 namespace Luau
 {
@@ -32,11 +32,13 @@ struct PromoteTypeLevels
 {
     DEPRECATED_TxnLog& DEPRECATED_log;
     TxnLog& log;
+    const TypeArena* typeArena = nullptr;
     TypeLevel minLevel;
 
-    explicit PromoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, TypeLevel minLevel)
+    explicit PromoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel)
         : DEPRECATED_log(DEPRECATED_log)
         , log(log)
+        , typeArena(typeArena)
         , minLevel(minLevel)
     {
     }
@@ -65,8 +67,12 @@ struct PromoteTypeLevels
     }
 
     template<typename TID, typename T>
-    bool operator()(TID, const T&)
+    bool operator()(TID ty, const T&)
     {
+        // Type levels of types from other modules are already global, so we don't need to promote anything inside
+        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+            return false;
+
         return true;
     }
 
@@ -83,12 +89,20 @@ struct PromoteTypeLevels
 
     bool operator()(TypeId ty, const FunctionTypeVar&)
     {
+        // Type levels of types from other modules are already global, so we don't need to promote anything inside
+        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+            return false;
+
         promote(ty, FFlag::LuauUseCommittingTxnLog ? log.getMutable<FunctionTypeVar>(ty) : getMutable<FunctionTypeVar>(ty));
         return true;
     }
 
     bool operator()(TypeId ty, const TableTypeVar& ttv)
     {
+        // Type levels of types from other modules are already global, so we don't need to promote anything inside
+        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+            return false;
+
         if (ttv.state != TableState::Free && ttv.state != TableState::Generic)
             return true;
 
@@ -100,7 +114,7 @@ struct PromoteTypeLevels
     {
         // Surprise, it's actually a BoundTypePack that hasn't been committed yet.
         // Calling getMutable on this will trigger an assertion.
-        if (FFlag::LuauCommittingTxnLogFreeTpPromote && FFlag::LuauUseCommittingTxnLog && !log.is<FreeTypePack>(tp))
+        if (FFlag::LuauUseCommittingTxnLog && !log.is<FreeTypePack>(tp))
             return true;
 
         promote(tp, FFlag::LuauUseCommittingTxnLog ? log.getMutable<FreeTypePack>(tp) : getMutable<FreeTypePack>(tp));
@@ -108,24 +122,33 @@ struct PromoteTypeLevels
     }
 };
 
-void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, TypeLevel minLevel, TypeId ty)
+void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypeId ty)
 {
-    PromoteTypeLevels ptl{DEPRECATED_log, log, minLevel};
+    // Type levels of types from other modules are already global, so we don't need to promote anything inside
+    if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        return;
+
+    PromoteTypeLevels ptl{DEPRECATED_log, log, typeArena, minLevel};
     DenseHashSet<void*> seen{nullptr};
     visitTypeVarOnce(ty, ptl, seen);
 }
 
-void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, TypeLevel minLevel, TypePackId tp)
+void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypePackId tp)
 {
-    PromoteTypeLevels ptl{DEPRECATED_log, log, minLevel};
+    // Type levels of types from other modules are already global, so we don't need to promote anything inside
+    if (FFlag::LuauImmutableTypes && tp->owningArena != typeArena)
+        return;
+
+    PromoteTypeLevels ptl{DEPRECATED_log, log, typeArena, minLevel};
     DenseHashSet<void*> seen{nullptr};
     visitTypeVarOnce(tp, ptl, seen);
 }
 
 struct SkipCacheForType
 {
-    SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType)
+    SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType, const TypeArena* typeArena)
         : skipCacheForType(skipCacheForType)
+        , typeArena(typeArena)
     {
     }
 
@@ -152,6 +175,10 @@ struct SkipCacheForType
 
     bool operator()(TypeId ty, const TableTypeVar&)
     {
+        // Types from other modules don't contain mutable elements and are ok to cache
+        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+            return false;
+
         TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
 
         if (ttv.boundTo)
@@ -172,6 +199,10 @@ struct SkipCacheForType
     template<typename T>
     bool operator()(TypeId ty, const T& t)
     {
+        // Types from other modules don't contain mutable elements and are ok to cache
+        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+            return false;
+
         const bool* prev = skipCacheForType.find(ty);
 
         if (prev && *prev)
@@ -184,8 +215,12 @@ struct SkipCacheForType
     }
 
     template<typename T>
-    bool operator()(TypePackId, const T&)
+    bool operator()(TypePackId tp, const T&)
     {
+        // Types from other modules don't contain mutable elements and are ok to cache
+        if (FFlag::LuauImmutableTypes && tp->owningArena != typeArena)
+            return false;
+
         return true;
     }
 
@@ -208,6 +243,7 @@ struct SkipCacheForType
     }
 
     const DenseHashMap<TypeId, bool>& skipCacheForType;
+    const TypeArena* typeArena = nullptr;
     bool result = false;
 };
 
@@ -422,13 +458,13 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         {
             if (FFlag::LuauUseCommittingTxnLog)
             {
-                promoteTypeLevels(DEPRECATED_log, log, superLevel, subTy);
+                promoteTypeLevels(DEPRECATED_log, log, types, superLevel, subTy);
                 log.replace(superTy, BoundTypeVar(subTy));
             }
             else
             {
                 if (FFlag::LuauProperTypeLevels)
-                    promoteTypeLevels(DEPRECATED_log, log, superLevel, subTy);
+                    promoteTypeLevels(DEPRECATED_log, log, types, superLevel, subTy);
                 else if (auto subLevel = getMutableLevel(subTy))
                 {
                     if (!subLevel->subsumes(superFree->level))
@@ -466,13 +502,13 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         {
             if (FFlag::LuauUseCommittingTxnLog)
             {
-                promoteTypeLevels(DEPRECATED_log, log, subLevel, superTy);
+                promoteTypeLevels(DEPRECATED_log, log, types, subLevel, superTy);
                 log.replace(subTy, BoundTypeVar(superTy));
             }
             else
             {
                 if (FFlag::LuauProperTypeLevels)
-                    promoteTypeLevels(DEPRECATED_log, log, subLevel, superTy);
+                    promoteTypeLevels(DEPRECATED_log, log, types, subLevel, superTy);
                 else if (auto superLevel = getMutableLevel(superTy))
                 {
                     if (!superLevel->subsumes(subFree->level))
@@ -849,7 +885,7 @@ void Unifier::cacheResult(TypeId subTy, TypeId superTy)
         return;
 
     auto skipCacheFor = [this](TypeId ty) {
-        SkipCacheForType visitor{sharedState.skipCacheForType};
+        SkipCacheForType visitor{sharedState.skipCacheForType, types};
         visitTypeVarOnce(ty, visitor, sharedState.seenAny);
 
         sharedState.skipCacheForType[ty] = visitor.result;
@@ -1204,7 +1240,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 // If both are at the end, we're done
                 if (!superIter.good() && !subIter.good())
                 {
-                    if (FFlag::LuauUnifyPackTails && subTpv->tail && superTpv->tail)
+                    if (subTpv->tail && superTpv->tail)
                     {
                         tryUnify_(*subTpv->tail, *superTpv->tail);
                         break;
@@ -1212,9 +1248,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
                     const bool lFreeTail = superTpv->tail && log.getMutable<FreeTypePack>(log.follow(*superTpv->tail)) != nullptr;
                     const bool rFreeTail = subTpv->tail && log.getMutable<FreeTypePack>(log.follow(*subTpv->tail)) != nullptr;
-                    if (!FFlag::LuauUnifyPackTails && lFreeTail && rFreeTail)
-                        tryUnify_(*subTpv->tail, *superTpv->tail);
-                    else if (lFreeTail)
+                    if (lFreeTail)
                         tryUnify_(emptyTp, *superTpv->tail);
                     else if (rFreeTail)
                         tryUnify_(emptyTp, *subTpv->tail);
@@ -1410,7 +1444,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 // If both are at the end, we're done
                 if (!superIter.good() && !subIter.good())
                 {
-                    if (FFlag::LuauUnifyPackTails && subTpv->tail && superTpv->tail)
+                    if (subTpv->tail && superTpv->tail)
                     {
                         tryUnify_(*subTpv->tail, *superTpv->tail);
                         break;
@@ -1418,9 +1452,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
                     const bool lFreeTail = superTpv->tail && get<FreeTypePack>(follow(*superTpv->tail)) != nullptr;
                     const bool rFreeTail = subTpv->tail && get<FreeTypePack>(follow(*subTpv->tail)) != nullptr;
-                    if (!FFlag::LuauUnifyPackTails && lFreeTail && rFreeTail)
-                        tryUnify_(*subTpv->tail, *superTpv->tail);
-                    else if (lFreeTail)
+                    if (lFreeTail)
                         tryUnify_(emptyTp, *superTpv->tail);
                     else if (rFreeTail)
                         tryUnify_(emptyTp, *subTpv->tail);
@@ -1637,32 +1669,35 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         tryUnify_(subFunction->retType, superFunction->retType);
     }
 
-    if (FFlag::LuauUseCommittingTxnLog)
+    if (!FFlag::LuauImmutableTypes)
     {
-        if (superFunction->definition && !subFunction->definition && !subTy->persistent)
+        if (FFlag::LuauUseCommittingTxnLog)
         {
-            PendingType* newSubTy = log.queue(subTy);
-            FunctionTypeVar* newSubFtv = getMutable<FunctionTypeVar>(newSubTy);
-            LUAU_ASSERT(newSubFtv);
-            newSubFtv->definition = superFunction->definition;
+            if (superFunction->definition && !subFunction->definition && !subTy->persistent)
+            {
+                PendingType* newSubTy = log.queue(subTy);
+                FunctionTypeVar* newSubFtv = getMutable<FunctionTypeVar>(newSubTy);
+                LUAU_ASSERT(newSubFtv);
+                newSubFtv->definition = superFunction->definition;
+            }
+            else if (!superFunction->definition && subFunction->definition && !superTy->persistent)
+            {
+                PendingType* newSuperTy = log.queue(superTy);
+                FunctionTypeVar* newSuperFtv = getMutable<FunctionTypeVar>(newSuperTy);
+                LUAU_ASSERT(newSuperFtv);
+                newSuperFtv->definition = subFunction->definition;
+            }
         }
-        else if (!superFunction->definition && subFunction->definition && !superTy->persistent)
+        else
         {
-            PendingType* newSuperTy = log.queue(superTy);
-            FunctionTypeVar* newSuperFtv = getMutable<FunctionTypeVar>(newSuperTy);
-            LUAU_ASSERT(newSuperFtv);
-            newSuperFtv->definition = subFunction->definition;
-        }
-    }
-    else
-    {
-        if (superFunction->definition && !subFunction->definition && !subTy->persistent)
-        {
-            subFunction->definition = superFunction->definition;
-        }
-        else if (!superFunction->definition && subFunction->definition && !superTy->persistent)
-        {
-            superFunction->definition = subFunction->definition;
+            if (superFunction->definition && !subFunction->definition && !subTy->persistent)
+            {
+                subFunction->definition = superFunction->definition;
+            }
+            else if (!superFunction->definition && subFunction->definition && !superTy->persistent)
+            {
+                superFunction->definition = subFunction->definition;
+            }
         }
     }
 
@@ -2631,7 +2666,7 @@ static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& 
 {
     while (true)
     {
-        a = follow(a);
+        a = FFlag::LuauFollowWithCommittingTxnLogInAnyUnification ? state.log.follow(a) : follow(a);
 
         if (seenTypePacks.find(a))
             break;
@@ -2738,7 +2773,7 @@ void Unifier::tryUnifyVariadics(TypePackId subTp, TypePackId superTp, bool rever
 }
 
 static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHashSet<TypeId>& seen, DenseHashSet<TypePackId>& seenTypePacks,
-    TypeId anyType, TypePackId anyTypePack)
+    const TypeArena* typeArena, TypeId anyType, TypePackId anyTypePack)
 {
     while (!queue.empty())
     {
@@ -2746,8 +2781,14 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
         {
             TypeId ty = state.log.follow(queue.back());
             queue.pop_back();
+
+            // Types from other modules don't have free types
+            if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+                continue;
+
             if (seen.find(ty))
                 continue;
+
             seen.insert(ty);
 
             if (state.log.getMutable<FreeTypeVar>(ty))
@@ -2853,7 +2894,7 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
     sharedState.tempSeenTy.clear();
     sharedState.tempSeenTp.clear();
 
-    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, getSingletonTypes().anyType, anyTP);
+    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, getSingletonTypes().anyType, anyTP);
 }
 
 void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
@@ -2869,7 +2910,7 @@ void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 
     queueTypePack(queue, sharedState.tempSeenTp, *this, subTy, anyTp);
 
-    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, anyTy, anyTp);
+    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, anyTy, anyTp);
 }
 
 std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, Name name)

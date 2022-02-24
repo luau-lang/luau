@@ -8,12 +8,18 @@ on:
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
-      - 'Analysis/src/JsonEncoder.cpp'
+      - 'Analysis/**'
+      - 'Ast/**'
+      - 'CLI/Ast.cpp'
+      - 'CLI/FileUtils.*'
   pull_request:
     paths:
       - '.github/workflows/**'
       - 'prototyping/**'
-      - 'Analysis/src/JsonEncoder.cpp'
+      - 'Analysis/**'
+      - 'Ast/**'
+      - 'CLI/Ast.cpp'
+      - 'CLI/FileUtils.*'
 
 jobs:
   linux:
@@ -28,6 +34,11 @@ jobs:
       with:
         path: ~/.cabal/store
         key: prototyping-${{ runner.os }}-${{ matrix.agda }}
+    - uses: actions/cache@v2
+      id: luau-ast-cache
+      with:
+        path: ./build
+        key: prototyping-${{ runner.os }}-${{ hashFiles('Ast/**', 'Analysis/**', 'CLI/Ast.cpp', 'CLI/FileUtils.*')}}
     - name: install cabal
       run: sudo apt-get install -y cabal-install
     - name: cabal update
@@ -37,22 +48,35 @@ jobs:
       working-directory: prototyping
       run: |
         cabal install Agda-${{ matrix.agda }}
-        cabal install --lib scientific --package-env .
-        cabal install --lib vector --package-env .
-        cabal install --lib aeson --package-env .
-    - name: check examples
+        cabal install --lib scientific vector aeson --package-env .
+    - name: check targets
       working-directory: prototyping
-      run: ~/.cabal/bin/agda Examples.agda
-    - name: build PrettyPrinter
+      run: |
+        ~/.cabal/bin/agda Examples.agda
+        ~/.cabal/bin/agda Properties.agda
+    - name: build executables
       working-directory: prototyping
-      run: ~/.cabal/bin/agda --compile --ghc-flag=-v PrettyPrinter.agda
+      run: |
+        ~/.cabal/bin/agda --compile PrettyPrinter.agda
+        ~/.cabal/bin/agda --compile Interpreter.agda
     - name: cmake configure
-      run: cmake .
+      if: steps.luau-ast-cache.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p build
+        cd build
+        cmake build ../
     - name: cmake build luau-ast
-      run: cmake --build . --target Luau.Ast.CLI
-    - name: run smoketest
+      if: steps.luau-ast-cache.outputs.cache-hit != 'true'
+      run: |
+        cmake --build ./build --target Luau.Ast.CLI
+    - name: run tests
       working-directory: prototyping
-      run: ../luau-ast Examples/SmokeTest.lua | ./PrettyPrinter > Examples/SmokeTestOutput.lua
-    - name: diff smoketest
-      working-directory: prototyping
-      run: diff Examples/SmokeTest.lua Examples/SmokeTestOutput.lua
+      run: |
+        mkdir test-failures
+        python tests.py -l ../build/luau-ast --write-diff-failures --diff-failure-location test-failures/
+    - uses: actions/upload-artifact@v2
+      if: failure()
+      with:
+        name: test failures
+        path: prototyping/test-failures
+        retention-days: 5

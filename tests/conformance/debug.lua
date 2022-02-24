@@ -37,6 +37,7 @@ coroutine.resume(co2, 0 / 0, 42)
 
 assert(debug.traceback(co2) == "debug.lua:31 function halp\n")
 assert(debug.info(co2, 0, "l") == 31)
+assert(debug.info(co2, 0, "f") == halp)
 
 -- info errors
 function qux(...)
@@ -74,6 +75,9 @@ assert(baz(co, 1, "n") == "bar")
 assert(baz(co, 2, "n") == nil)
 assert(baz(math.sqrt, "n") == "sqrt")
 assert(baz(math.sqrt, "f") == math.sqrt) -- yes this is pointless
+
+local t = { foo = function() return 1 end }
+assert(baz(t.foo, "n") == "foo")
 
 -- info multi-arg returns
 function quux(...)

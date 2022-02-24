@@ -13,18 +13,15 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauParseRecoverTypePackEllipsis, false)
-LUAU_FASTFLAGVARIABLE(LuauStartingBrokenComment, false)
+LUAU_FASTFLAGVARIABLE(LuauParseAllHotComments, false)
+LUAU_FASTFLAGVARIABLE(LuauTableFieldFunctionDebugname, false)
 
 namespace Luau
 {
 
-inline bool isSpace(char ch)
-{
-    return ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n' || ch == '\v' || ch == '\f';
-}
-
 static bool isComment(const Lexeme& lexeme)
 {
+    LUAU_ASSERT(!FFlag::LuauParseAllHotComments);
     return lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment;
 }
 
@@ -151,31 +148,37 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
 {
     LUAU_TIMETRACE_SCOPE("Parser::parse", "Parser");
 
-    Parser p(buffer, bufferSize, names, allocator);
+    Parser p(buffer, bufferSize, names, allocator, FFlag::LuauParseAllHotComments ? options : ParseOptions());
 
     try
     {
-        std::vector<std::string> hotcomments;
-
-        while (isComment(p.lexer.current()) || p.lexer.current().type == Lexeme::BrokenComment)
+        if (FFlag::LuauParseAllHotComments)
         {
-            const char* text = p.lexer.current().data;
-            unsigned int length = p.lexer.current().length;
+            AstStatBlock* root = p.parseChunk();
 
-            if (length && text[0] == '!')
+            return ParseResult{root, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations)};
+        }
+        else
+        {
+            std::vector<HotComment> hotcomments;
+
+            while (isComment(p.lexer.current()) || p.lexer.current().type == Lexeme::BrokenComment)
             {
-                unsigned int end = length;
-                while (end > 0 && isSpace(text[end - 1]))
-                    --end;
+                const char* text = p.lexer.current().data;
+                unsigned int length = p.lexer.current().length;
 
-                hotcomments.push_back(std::string(text + 1, text + end));
-            }
+                if (length && text[0] == '!')
+                {
+                    unsigned int end = length;
+                    while (end > 0 && isSpace(text[end - 1]))
+                        --end;
 
-            const Lexeme::Type type = p.lexer.current().type;
-            const Location loc = p.lexer.current().location;
+                    hotcomments.push_back({true, p.lexer.current().location, std::string(text + 1, text + end)});
+                }
 
-            if (FFlag::LuauStartingBrokenComment)
-            {
+                const Lexeme::Type type = p.lexer.current().type;
+                const Location loc = p.lexer.current().location;
+
                 if (options.captureComments)
                     p.commentLocations.push_back(Comment{type, loc});
 
@@ -184,22 +187,15 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
 
                 p.lexer.next();
             }
-            else
-            {
-                p.lexer.next();
 
-                if (options.captureComments)
-                    p.commentLocations.push_back(Comment{type, loc});
-            }
+            p.lexer.setSkipComments(true);
+
+            p.options = options;
+
+            AstStatBlock* root = p.parseChunk();
+
+            return ParseResult{root, hotcomments, p.parseErrors, std::move(p.commentLocations)};
         }
-
-        p.lexer.setSkipComments(true);
-
-        p.options = options;
-
-        AstStatBlock* root = p.parseChunk();
-
-        return ParseResult{root, hotcomments, p.parseErrors, std::move(p.commentLocations)};
     }
     catch (ParseError& err)
     {
@@ -210,8 +206,9 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
     }
 }
 
-Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Allocator& allocator)
-    : lexer(buffer, bufferSize, names)
+Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Allocator& allocator, const ParseOptions& options)
+    : options(options)
+    , lexer(buffer, bufferSize, names)
     , allocator(allocator)
     , recursionCounter(0)
     , endMismatchSuspect(Location(), Lexeme::Eof)
@@ -224,14 +221,20 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
 
     nameSelf = names.addStatic("self");
     nameNumber = names.addStatic("number");
-    nameError = names.addStatic(errorName);
+    nameError = names.addStatic(kParseNameError);
     nameNil = names.getOrAdd("nil"); // nil is a reserved keyword
 
     matchRecoveryStopOnToken.assign(Lexeme::Type::Reserved_END, 0);
     matchRecoveryStopOnToken[Lexeme::Type::Eof] = 1;
 
+    if (FFlag::LuauParseAllHotComments)
+        lexer.setSkipComments(true);
+
     // read first lexeme
     nextLexeme();
+
+    // all hot comments parsed after the first non-comment lexeme are special in that they don't affect type checking / linting mode
+    hotcommentHeader = false;
 }
 
 bool Parser::blockFollow(const Lexeme& l)
@@ -396,7 +399,9 @@ AstStat* Parser::parseIf()
     AstExpr* cond = parseExpr();
 
     Lexeme matchThen = lexer.current();
-    bool hasThen = expectAndConsume(Lexeme::ReservedThen, "if statement");
+    std::optional<Location> thenLocation;
+    if (expectAndConsume(Lexeme::ReservedThen, "if statement"))
+        thenLocation = matchThen.location;
 
     AstStatBlock* thenbody = parseBlock();
 
@@ -434,7 +439,7 @@ AstStat* Parser::parseIf()
         hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchThenElse);
     }
 
-    return allocator.alloc<AstStatIf>(Location(start, end), cond, thenbody, elsebody, hasThen, matchThen.location, elseLocation, hasEnd);
+    return allocator.alloc<AstStatIf>(Location(start, end), cond, thenbody, elsebody, thenLocation, elseLocation, hasEnd);
 }
 
 // while exp do block end
@@ -769,7 +774,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
 {
     // note: `type` token is already parsed for us, so we just need to parse the rest
 
-    auto name = parseNameOpt("type name");
+    std::optional<Name> name = parseNameOpt("type name");
 
     // Use error name if the name is missing
     if (!name)
@@ -925,7 +930,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
 
         return allocator.alloc<AstStatDeclareClass>(Location(classStart, classEnd), className.name, superName, copy(props));
     }
-    else if (auto globalName = parseNameOpt("global variable name"))
+    else if (std::optional<Name> globalName = parseNameOpt("global variable name"))
     {
         expectAndConsume(':', "global variable declaration");
 
@@ -1066,7 +1071,7 @@ void Parser::parseExprList(TempVector<AstExpr*>& result)
 
 Parser::Binding Parser::parseBinding()
 {
-    auto name = parseNameOpt("variable name");
+    std::optional<Name> name = parseNameOpt("variable name");
 
     // Use placeholder if the name is missing
     if (!name)
@@ -1133,7 +1138,7 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
                 resultNames.push_back({});
 
             resultNames.push_back(AstArgumentName{AstName(lexer.current().name), lexer.current().location});
-            lexer.next();
+            nextLexeme();
 
             expectAndConsume(':');
         }
@@ -1325,7 +1330,7 @@ AstType* Parser::parseTableTypeAnnotation()
         }
         else
         {
-            auto name = parseNameOpt("table field");
+            std::optional<Name> name = parseNameOpt("table field");
 
             if (!name)
                 break;
@@ -1422,7 +1427,7 @@ AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<A
         expectAndConsume(Lexeme::SkinnyArrow, "function type");
     }
 
-    const auto [endLocation, returnTypeList] = parseReturnTypeAnnotation();
+    auto [endLocation, returnTypeList] = parseReturnTypeAnnotation();
 
     AstTypeList paramTypes = AstTypeList{params, varargAnnotation};
     return allocator.alloc<AstTypeFunction>(Location(begin.location, endLocation), generics, genericPacks, paramTypes, paramNames, returnTypeList);
@@ -1869,7 +1874,7 @@ AstExpr* Parser::parseExpr(unsigned int limit)
 // NAME
 AstExpr* Parser::parseNameExpr(const char* context)
 {
-    auto name = parseNameOpt(context);
+    std::optional<Name> name = parseNameOpt(context);
 
     if (!name)
         return allocator.alloc<AstExprError>(lexer.current().location, copy<AstExpr*>({}), unsigned(parseErrors.size() - 1));
@@ -2233,6 +2238,12 @@ AstExpr* Parser::parseTableConstructor()
             AstExpr* key = allocator.alloc<AstExprConstantString>(name.location, nameString);
             AstExpr* value = parseExpr();
 
+            if (FFlag::LuauTableFieldFunctionDebugname)
+            {
+                if (AstExprFunction* func = value->as<AstExprFunction>())
+                    func->debugname = name.name;
+            }
+
             items.push_back({AstExprTable::Item::Record, key, value});
         }
         else
@@ -2313,7 +2324,7 @@ std::optional<Parser::Name> Parser::parseNameOpt(const char* context)
 
 Parser::Name Parser::parseName(const char* context)
 {
-    if (auto name = parseNameOpt(context))
+    if (std::optional<Name> name = parseNameOpt(context))
         return *name;
 
     Location location = lexer.current().location;
@@ -2324,7 +2335,7 @@ Parser::Name Parser::parseName(const char* context)
 
 Parser::Name Parser::parseIndexName(const char* context, const Position& previous)
 {
-    if (auto name = parseNameOpt(context))
+    if (std::optional<Name> name = parseNameOpt(context))
         return *name;
 
     // If we have a reserved keyword next at the same line, assume it's an incomplete name
@@ -2379,7 +2390,7 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
 
                     if (shouldParseTypePackAnnotation(lexer))
                     {
-                        auto typePack = parseTypePackAnnotation();
+                        AstTypePack* typePack = parseTypePackAnnotation();
 
                         namePacks.push_back({name, nameLocation, typePack});
                     }
@@ -2451,7 +2462,7 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
         {
             if (shouldParseTypePackAnnotation(lexer))
             {
-                auto typePack = parseTypePackAnnotation();
+                AstTypePack* typePack = parseTypePackAnnotation();
 
                 parameters.push_back({{}, typePack});
             }
@@ -2821,25 +2832,57 @@ AstTypeError* Parser::reportTypeAnnotationError(const Location& location, const 
     return allocator.alloc<AstTypeError>(location, types, isMissing, unsigned(parseErrors.size() - 1));
 }
 
-const Lexeme& Parser::nextLexeme()
+void Parser::nextLexeme()
 {
     if (options.captureComments)
     {
-        while (true)
+        if (FFlag::LuauParseAllHotComments)
         {
-            const Lexeme& lexeme = lexer.next(/*skipComments*/ false);
-            // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
-            // The parser will turn this into a proper syntax error.
-            if (lexeme.type == Lexeme::BrokenComment)
+            Lexeme::Type type = lexer.next(/* skipComments= */ false).type;
+
+            while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
+            {
+                const Lexeme& lexeme = lexer.current();
                 commentLocations.push_back(Comment{lexeme.type, lexeme.location});
-            if (isComment(lexeme))
-                commentLocations.push_back(Comment{lexeme.type, lexeme.location});
-            else
-                return lexeme;
+
+                // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
+                // The parser will turn this into a proper syntax error.
+                if (lexeme.type == Lexeme::BrokenComment)
+                    return;
+
+                // Comments starting with ! are called "hot comments" and contain directives for type checking / linting
+                if (lexeme.type == Lexeme::Comment && lexeme.length && lexeme.data[0] == '!')
+                {
+                    const char* text = lexeme.data;
+
+                    unsigned int end = lexeme.length;
+                    while (end > 0 && isSpace(text[end - 1]))
+                        --end;
+
+                    hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
+                }
+
+                type = lexer.next(/* skipComments= */ false).type;
+            }
+        }
+        else
+        {
+            while (true)
+            {
+                const Lexeme& lexeme = lexer.next(/*skipComments*/ false);
+                // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
+                // The parser will turn this into a proper syntax error.
+                if (lexeme.type == Lexeme::BrokenComment)
+                    commentLocations.push_back(Comment{lexeme.type, lexeme.location});
+                if (isComment(lexeme))
+                    commentLocations.push_back(Comment{lexeme.type, lexeme.location});
+                else
+                    return;
+            }
         }
     }
     else
-        return lexer.next();
+        lexer.next();
 }
 
 } // namespace Luau

@@ -1,5 +1,4 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
@@ -271,6 +270,23 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
     TypeVar variant{UnionTypeVar{{&metatable, typeChecker.numberType}}};
 
     state.tryUnify(&metatable, &variant);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauUseCommittingTxnLog", true},
+        {"LuauFollowWithCommittingTxnLogInAnyUnification", true},
+    };
+
+    TypePackVar free{FreeTypePack{TypeLevel{}}};
+    TypePackVar target{TypePack{}};
+
+    TypeVar func{FunctionTypeVar{&free, &free}};
+
+    state.tryUnify(&free, &target);
+    // Shouldn't assert or error.
+    state.tryUnify(&func, typeChecker.anyType);
 }
 
 TEST_SUITE_END();

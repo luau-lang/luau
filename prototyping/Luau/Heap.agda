@@ -47,4 +47,3 @@ allocated = snoc
 
 lookup-not-allocated : ∀ {a} {H H′ : Heap a} {b c O} → (H′ ≡ H ⊕ b ↦ O) → (c ≢ b) → (H [ c ] ≡ H′ [ c ])
 lookup-not-allocated {H = H} {O = O} defn p = lookup-snoc-not O H p
-

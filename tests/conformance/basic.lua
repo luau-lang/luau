@@ -118,9 +118,7 @@ assert((function() return #_G end)() == 0)
 assert((function() return #{1,2} end)() == 2)
 assert((function() return #'g' end)() == 1)
 
-local ud = newproxy(true)
-getmetatable(ud).__len = function() return 42 end
-assert((function() return #ud end)() == 42)
+assert((function() local ud = newproxy(true) getmetatable(ud).__len = function() return 42 end return #ud end)() == 42)
 
 assert((function() local a = 1 a = -a return a end)() == -1)
 
@@ -325,6 +323,10 @@ assert((function() local t = {6, 9, 7} t[4.5] = 10 return t[4.5] end)() == 10)
 assert((function() local t = {6, 9, 7} t['a'] = 11 return t['a'] end)() == 11)
 assert((function() local t = {6, 9, 7} setmetatable(t, { __newindex = function(t,i,v) rawset(t, i * 10, v) end }) t[1] = 17 t[5] = 1 return concat(t[1],t[5],t[50]) end)() == "17,nil,1")
 
+-- userdata access
+assert((function() local ud = newproxy(true) getmetatable(ud).__index = function(ud,i) return i * 10 end return ud[2] end)() == 20)
+assert((function() local ud = newproxy(true) getmetatable(ud).__index = function() return function(self, i) return i * 10 end end return ud:meow(2) end)() == 20)
+
 -- and/or
 -- rhs is a constant
 assert((function() local a = 1 a = a and 2 return a end)() == 2)
@@ -462,7 +464,7 @@ assert((function() a = {} b = {} mt = { __eq = function(l, r) return #l == #r en
 
 -- metatable ops
 local function vec3t(x, y, z)
-    return setmetatable({ x=x, y=y, z=z}, {
+    return setmetatable({x=x, y=y, z=z}, {
         __add = function(l, r) return vec3t(l.x + r.x, l.y + r.y, l.z + r.z) end,
         __sub = function(l, r) return vec3t(l.x - r.x, l.y - r.y, l.z - r.z) end,
         __mul = function(l, r) return type(r) == "number" and vec3t(l.x * r, l.y * r, l.z * r) or vec3t(l.x * r.x, l.y * r.y, l.z * r.z) end,

@@ -63,11 +63,17 @@ data Warningᴱ H {Γ} where
     -------------------------
     Warningᴱ H (function f {U = U} D)
 
-  block : ∀ b {B T} {D : Γ ⊢ᴮ B ∈ T} →
+  block₀ : ∀ b {B T U} {D : Γ ⊢ᴮ B ∈ U} →
+
+    (T ≢ U) →
+    ------------------------------
+    Warningᴱ H (block b {T = T} D)
+
+  block₁ : ∀ b {B T U} {D : Γ ⊢ᴮ B ∈ U} →
 
     Warningᴮ H D →
-    -----------------
-    Warningᴱ H (block b D)
+    ------------------------------
+    Warningᴱ H (block b {T = T} D)
 
 data Warningᴮ H {Γ} where
 

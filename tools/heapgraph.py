@@ -7,9 +7,19 @@
 # The result of analysis is a .svg file which can be viewed in a browser
 # To generate these dumps, use luaC_dump, ideally preceded by luaC_fullgc
 
+import argparse
 import json
 import sys
 import svg
+
+argumentParser = argparse.ArgumentParser(description='Luau heap snapshot analyzer')
+
+argumentParser.add_argument('--split', dest = 'split', type = str, default = 'none', help = 'Perform additional root split using memory categories', choices = ['none', 'custom', 'all'])
+
+argumentParser.add_argument('snapshot')
+argumentParser.add_argument('snapshotnew', nargs='?')
+
+arguments = argumentParser.parse_args()
 
 class Node(svg.Node):
     def __init__(self):
@@ -30,14 +40,14 @@ class Node(svg.Node):
         return "{} ({:,} bytes, {:.1%}); self: {:,} bytes in {:,} objects".format(self.name, self.width, self.width / root.width, self.size, self.count)
 
 # load files
-if len(sys.argv) == 2:
+if arguments.snapshotnew == None:
     dumpold = None
-    with open(sys.argv[1]) as f:
+    with open(arguments.snapshot) as f:
         dump = json.load(f)
 else:
-    with open(sys.argv[1]) as f:
+    with open(arguments.snapshot) as f:
         dumpold = json.load(f)
-    with open(sys.argv[2]) as f:
+    with open(arguments.snapshotnew) as f:
         dump = json.load(f)
 
 # reachability analysis: how much of the heap is reachable from roots?
@@ -111,12 +121,15 @@ while offset < len(queue):
         if "object" in obj:
             queue.append((obj["object"], node))
 
-def annotateContainedCategories(node):
+def annotateContainedCategories(node, start):
     for obj in node.objects:
+        if obj["cat"] < start:
+            obj["cat"] = 0
+
         node.categories.add(obj["cat"])
 
     for child in node.children.values():
-        annotateContainedCategories(child)
+        annotateContainedCategories(child, start)
 
         for cat in child.categories:
             node.categories.add(cat)
@@ -172,9 +185,11 @@ def splitIntoCategories(root):
 
     return result
 
-# temporarily disabled because it makes FG harder to read, maybe this should be a separate command line option?
-if dump["stats"].get("categories") and False:
-    annotateContainedCategories(root)
+if dump["stats"].get("categories") and arguments.split != 'none':
+    if arguments.split == 'custom':
+        annotateContainedCategories(root, 128)
+    else:
+        annotateContainedCategories(root, 0)
 
     root = splitIntoCategories(root)
 

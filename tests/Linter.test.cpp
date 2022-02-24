@@ -1392,19 +1392,29 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
         {"DataCost", {typeChecker.numberType, /* deprecated= */ true}},
         {"Wait", {typeChecker.anyType, /* deprecated= */ true}},
     };
+
+    TypeId colorType = typeChecker.globalTypes.addType(TableTypeVar{{}, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed});
+
+    getMutable<TableTypeVar>(colorType)->props = {{"toHSV", {typeChecker.anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
+
+    addGlobalBinding(typeChecker, "Color3", Binding{colorType, {}});
+
     freeze(typeChecker.globalTypes);
 
     LintResult result = lintTyped(R"(
 return function (i: Instance)
     i:Wait(1.0)
     print(i.Name)
+    print(Color3.toHSV())
+    print(Color3.doesntexist, i.doesntexist) -- type error, but this verifies we correctly handle non-existent members
     return i.DataCost
 end
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 2);
+    REQUIRE_EQ(result.warnings.size(), 3);
     CHECK_EQ(result.warnings[0].text, "Member 'Instance.Wait' is deprecated");
-    CHECK_EQ(result.warnings[1].text, "Member 'Instance.DataCost' is deprecated");
+    CHECK_EQ(result.warnings[1].text, "Member 'toHSV' is deprecated, use 'Color3:ToHSV' instead");
+    CHECK_EQ(result.warnings[2].text, "Member 'Instance.DataCost' is deprecated");
 }
 
 TEST_CASE_FIXTURE(Fixture, "TableOperations")
@@ -1475,9 +1485,11 @@ _ = (true and true) or true
 _ = (true and false) and (42 and false)
 
 _ = true and true or false -- no warning since this is is a common pattern used as a ternary replacement
+
+_ = if true then 1 elseif true then 2 else 3
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 7);
+    REQUIRE_EQ(result.warnings.size(), 8);
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 4);
     CHECK_EQ(result.warnings[1].text, "Condition has already been checked on column 5");
@@ -1487,6 +1499,7 @@ _ = true and true or false -- no warning since this is is a common pattern used 
     CHECK_EQ(result.warnings[5].text, "Condition has already been checked on column 6");
     CHECK_EQ(result.warnings[6].text, "Condition has already been checked on column 15");
     CHECK_EQ(result.warnings[6].location.begin.line + 1, 19);
+    CHECK_EQ(result.warnings[7].text, "Condition has already been checked on column 8");
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
@@ -1526,6 +1539,59 @@ return foo, moo, a1, a2
     CHECK_EQ(result.warnings[1].text, "Variable 'a1' is never used; prefix with '_' to silence");
     CHECK_EQ(result.warnings[2].text, "Variable 'a1' already defined on column 7");
     CHECK_EQ(result.warnings[3].text, "Function parameter 'self' already defined implicitly");
+}
+
+TEST_CASE_FIXTURE(Fixture, "MisleadingAndOr")
+{
+    LintResult result = lint(R"(
+_ = math.random() < 0.5 and true or 42
+_ = math.random() < 0.5 and false or 42 -- misleading
+_ = math.random() < 0.5 and nil or 42 -- misleading
+_ = math.random() < 0.5 and 0 or 42
+_ = (math.random() < 0.5 and false) or 42 -- currently ignored
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 2);
+    CHECK_EQ(result.warnings[0].text, "The and-or expression always evaluates to the second alternative because the first alternative is false; "
+                                      "consider using if-then-else expression instead");
+    CHECK_EQ(result.warnings[1].text, "The and-or expression always evaluates to the second alternative because the first alternative is nil; "
+                                      "consider using if-then-else expression instead");
+}
+
+TEST_CASE_FIXTURE(Fixture, "WrongComment")
+{
+    ScopedFastFlag sff("LuauParseAllHotComments", true);
+
+    LintResult result = lint(R"(
+--!strict
+--!struct
+--!nolintGlobal
+--!nolint Global
+--!nolint KnownGlobal
+--!nolint UnknownGlobal
+--! no more lint
+--!strict here
+do end
+--!nolint
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 6);
+    CHECK_EQ(result.warnings[0].text, "Unknown comment directive 'struct'; did you mean 'strict'?");
+    CHECK_EQ(result.warnings[1].text, "Unknown comment directive 'nolintGlobal'");
+    CHECK_EQ(result.warnings[2].text, "nolint directive refers to unknown lint rule 'Global'");
+    CHECK_EQ(result.warnings[3].text, "nolint directive refers to unknown lint rule 'KnownGlobal'; did you mean 'UnknownGlobal'?");
+    CHECK_EQ(result.warnings[4].text, "Comment directive with the type checking mode has extra symbols at the end of the line");
+    CHECK_EQ(result.warnings[5].text, "Comment directive is ignored because it is placed after the first non-comment token");
+}
+
+TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
+{
+    LintResult result = lint(R"(
+--!nolint
+--!struct
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 0); // --!nolint disables WrongComment lint :)
 }
 
 TEST_SUITE_END();

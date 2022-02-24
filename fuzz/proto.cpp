@@ -227,7 +227,7 @@ DEFINE_PROTO_FUZZER(const luau::StatBlock& message)
         if (kFuzzLinter)
         {
             Luau::LintOptions lintOptions = {~0u};
-            Luau::lint(parseResult.root, names, sharedEnv.globalScope, module.get(), lintOptions);
+            Luau::lint(parseResult.root, names, sharedEnv.globalScope, module.get(), {}, lintOptions);
         }
     }
 

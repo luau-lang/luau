@@ -492,7 +492,7 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag sffw("LuauBytecodeV2Write", true);
+    ScopedFastFlag luauTableFieldFunctionDebugname{"LuauTableFieldFunctionDebugname", true};
 
     runConformance("debug.lua");
 }
@@ -712,6 +712,47 @@ TEST_CASE("Reference")
     CHECK(dtorhits == 2);
 }
 
+TEST_CASE("ApiTables")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_newtable(L);
+    lua_pushnumber(L, 123.0);
+    lua_setfield(L, -2, "key");
+    lua_pushstring(L, "test");
+    lua_rawseti(L, -2, 5);
+
+    // lua_gettable
+    lua_pushstring(L, "key");
+    CHECK(lua_gettable(L, -2) == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_getfield
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_rawgetfield
+    CHECK(lua_rawgetfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_rawget
+    lua_pushstring(L, "key");
+    CHECK(lua_rawget(L, -2) == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_rawgeti
+    CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    lua_pop(L, 1);
+
+    lua_pop(L, 1);
+}
+
 TEST_CASE("ApiFunctionCalls")
 {
     StateRef globalState = runConformance("apicalls.lua");
@@ -891,6 +932,12 @@ TEST_CASE("Coverage")
 
                         lua_pushstring(L, function);
                         lua_setfield(L, -2, "name");
+
+                        lua_pushinteger(L, linedefined);
+                        lua_setfield(L, -2, "linedefined");
+
+                        lua_pushinteger(L, depth);
+                        lua_setfield(L, -2, "depth");
 
                         for (size_t i = 0; i < size; ++i)
                             if (hits[i] != -1)

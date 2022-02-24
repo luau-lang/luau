@@ -8,6 +8,7 @@ target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Location.h
     Ast/include/Luau/ParseOptions.h
     Ast/include/Luau/Parser.h
+    Ast/include/Luau/ParseResult.h
     Ast/include/Luau/StringUtils.h
     Ast/include/Luau/TimeTrace.h
 
@@ -193,11 +194,12 @@ if(TARGET Luau.Analyze.CLI)
         CLI/Analyze.cpp)
 endif()
 
-if (TARGET Luau.Ast.CLI)
+if(TARGET Luau.Ast.CLI)
     target_sources(Luau.Ast.CLI PRIVATE
+        CLI/Ast.cpp
         CLI/FileUtils.h
         CLI/FileUtils.cpp
-        CLI/Ast.cpp)
+    )
 endif()
 
 if(TARGET Luau.UnitTest)

@@ -9,5 +9,3 @@ import Properties.Remember
 import Properties.Step
 import Properties.StrictMode
 import Properties.TypeCheck
-
-

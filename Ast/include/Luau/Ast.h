@@ -594,8 +594,7 @@ public:
     AstArray<AstGenericTypePack> genericPacks;
     AstLocal* self;
     AstArray<AstLocal*> args;
-    bool hasReturnAnnotation;
-    AstTypeList returnAnnotation;
+    std::optional<AstTypeList> returnAnnotation;
     bool vararg = false;
     Location varargLocation;
     AstTypePack* varargAnnotation;
@@ -740,7 +739,7 @@ class AstStatIf : public AstStat
 public:
     LUAU_RTTI(AstStatIf)
 
-    AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody, bool hasThen, const Location& thenLocation,
+    AstStatIf(const Location& location, AstExpr* condition, AstStatBlock* thenbody, AstStat* elsebody, const std::optional<Location>& thenLocation,
         const std::optional<Location>& elseLocation, bool hasEnd);
 
     void visit(AstVisitor* visitor) override;
@@ -749,12 +748,10 @@ public:
     AstStatBlock* thenbody;
     AstStat* elsebody;
 
-    bool hasThen = false;
-    Location thenLocation;
+    std::optional<Location> thenLocation;
 
     // Active for 'elseif' as well
-    bool hasElse = false;
-    Location elseLocation;
+    std::optional<Location> elseLocation;
 
     bool hasEnd = false;
 };
@@ -849,8 +846,7 @@ public:
     AstArray<AstLocal*> vars;
     AstArray<AstExpr*> values;
 
-    bool hasEqualsSign = false;
-    Location equalsSignLocation;
+    std::optional<Location> equalsSignLocation;
 };
 
 class AstStatFor : public AstStat
@@ -1053,9 +1049,8 @@ public:
 
     void visit(AstVisitor* visitor) override;
 
-    bool hasPrefix;
     bool hasParameterList;
-    AstName prefix;
+    std::optional<AstName> prefix;
     AstName name;
     AstArray<AstTypeOrPack> parameters;
 };

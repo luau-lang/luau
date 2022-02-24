@@ -1,8 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAGVARIABLE(LuauFixTonumberReturnType, false)
-
 namespace Luau
 {
 
@@ -115,6 +113,7 @@ declare function gcinfo(): number
             declare function error<T>(message: T, level: number?)
 
             declare function tostring<T>(value: T): string
+            declare function tonumber<T>(value: T, radix: number?): number?
 
             declare function rawequal<T1, T2>(a: T1, b: T2): boolean
             declare function rawget<K, V>(tab: {[K]: V}, k: K): V
@@ -168,7 +167,7 @@ declare function gcinfo(): number
                 foreach: <K, V>({[K]: V}, (K, V) -> ()) -> (),
                 foreachi: <V>({V}, (number, V) -> ()) -> (),
 
-                move: <V>({V}, number, number, number, {V}?) -> (),
+                move: <V>({V}, number, number, number, {V}?) -> {V},
                 clear: <K, V>({[K]: V}) -> (),
 
                 freeze: <K, V>({[K]: V}) -> {[K]: V},
@@ -200,14 +199,7 @@ declare function gcinfo(): number
 
 std::string getBuiltinDefinitionSource()
 {
-    std::string result = kBuiltinDefinitionLuaSrc;
-
-    if (FFlag::LuauFixTonumberReturnType)
-        result += "declare function tonumber<T>(value: T, radix: number?): number?\n";
-    else
-        result += "declare function tonumber<T>(value: T, radix: number?): number\n";
-
-    return result;
+    return kBuiltinDefinitionLuaSrc;
 }
 
 } // namespace Luau

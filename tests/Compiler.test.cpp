@@ -10,6 +10,11 @@
 #include <sstream>
 #include <string_view>
 
+namespace Luau
+{
+std::string rep(const std::string& s, size_t n);
+}
+
 using namespace Luau;
 
 static std::string compileFunction(const char* source, uint32_t id)
@@ -605,8 +610,6 @@ RETURN R0 1
 
 TEST_CASE("TableLiteralsIndexConstant")
 {
-    ScopedFastFlag sff("LuauCompileTableIndexOpt", true);
-
     // validate that we use SETTTABLEKS for constant variable keys
     CHECK_EQ("\n" + compileFunction0(R"(
         local a, b = "key", "value"
@@ -1962,15 +1965,6 @@ RETURN R8 -1
 )");
 }
 
-static std::string rep(const std::string& s, size_t n)
-{
-    std::string r;
-    r.reserve(s.length() * n);
-    for (size_t i = 0; i < n; ++i)
-        r += s;
-    return r;
-}
-
 TEST_CASE("RecursionParse")
 {
     // The test forcibly pushes the stack limit during compilation; in NoOpt, the stack consumption is much larger so we need to reduce the limit to
@@ -2483,8 +2477,6 @@ return
 
 TEST_CASE("DebugLineInfoAssignment")
 {
-    ScopedFastFlag sff("LuauCompileTableIndexOpt", true);
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(

@@ -1,13 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/BuiltinDefinitions.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
-
-LUAU_FASTFLAG(LuauFixTonumberReturnType)
 
 using namespace Luau;
 
@@ -850,11 +847,8 @@ TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type")
         local b: number = tonumber('asdf')
     )");
 
-    if (FFlag::LuauFixTonumberReturnType)
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
-    }
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type2")
@@ -893,7 +887,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
 {
     ScopedFastFlag sff[]{
         {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
     };
 
     CheckResult result = check(R"(
@@ -910,7 +904,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types_even_from_type_pack_tail_
 {
     ScopedFastFlag sff[]{
         {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
     };
 
     CheckResult result = check(R"(
@@ -927,7 +921,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_returns_false_and_string_iff_it_knows_the_fir
 {
     ScopedFastFlag sff[]{
         {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions", true},
+        {"LuauDiscriminableUnions2", true},
     };
 
     CheckResult result = check(R"(
