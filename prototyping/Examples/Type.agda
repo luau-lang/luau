@@ -1,5 +1,3 @@
-{-# OPTIONS --allow-unsolved-metas #-}
-
 module Examples.Type where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
@@ -26,5 +24,5 @@ ex6 : typeToString((nil ⇒ nil) ∪ (nil ⇒ (nil ⇒ nil))) ≡ "((nil) -> nil
 ex6 = refl
 
 ex7 : typeToString((nil ⇒ nil) ∪ ((nil ⇒ (nil ⇒ nil)) ∪ nil)) ≡ "((nil) -> nil | (nil) -> (nil) -> nil)?"
-ex7 = {!!}
+ex7 = refl
 

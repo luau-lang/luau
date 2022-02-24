@@ -15,12 +15,13 @@ typeToString top = "top"
 typeToString number = "number"
 typeToString (S ∪ T) with normalizeOptional(S ∪ T)
 typeToString (S ∪ T) | ((S′ ⇒ T′) ∪ nil) = "(" ++ typeToString (S′ ⇒ T′) ++ ")?"
-typeToString (S ∪ T) | (S′ ∪ nil) = "(" ++ typeToString S′ ++ "?"
+typeToString (S ∪ T) | (S′ ∪ nil) = typeToString S′ ++ "?"
 typeToString (S ∪ T) | (S′ ∪ T′) = "(" ++ typeToStringᵁ (S ∪ T) ++ ")"
 typeToString (S ∪ T) | T′ = typeToString T′
 typeToString (S ∩ T) = "(" ++ typeToStringᴵ (S ∩ T) ++ ")"
 
 typeToStringᵁ (S ∪ T) = (typeToStringᵁ S) ++ " | " ++ (typeToStringᵁ T)
 typeToStringᵁ T = typeToString T
+
 typeToStringᴵ (S ∩ T) = (typeToStringᴵ S) ++ " & " ++ (typeToStringᴵ T)
 typeToStringᴵ T = typeToString T
