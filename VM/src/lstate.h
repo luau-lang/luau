@@ -142,11 +142,6 @@ typedef struct global_State
     uint8_t gcstate; /* state of garbage collector */
 
 
-    int sweepstrgc;      /* position of sweep in `strt' */
-    // TODO: remove with FFlagLuauGcPagedSweep
-    GCObject* rootgc;    /* list of all collectable objects */
-    // TODO: remove with FFlagLuauGcPagedSweep
-    GCObject** sweepgc;  /* position of sweep in `rootgc' */
     GCObject* gray;      /* list of gray objects */
     GCObject* grayagain; /* list of objects to be traversed atomically */
     GCObject* weak;     /* list of weak tables (to be cleared) */

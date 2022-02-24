@@ -12,7 +12,6 @@ LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauParseTypeAliasDefaults, false)
-LUAU_FASTFLAGVARIABLE(LuauParseRecoverTypePackEllipsis, false)
 LUAU_FASTFLAGVARIABLE(LuauParseAllHotComments, false)
 LUAU_FASTFLAGVARIABLE(LuauTableFieldFunctionDebugname, false)
 
@@ -2372,11 +2371,11 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
         {
             Location nameLocation = lexer.current().location;
             AstName name = parseName().name;
-            if (lexer.current().type == Lexeme::Dot3 || (FFlag::LuauParseRecoverTypePackEllipsis && seenPack))
+            if (lexer.current().type == Lexeme::Dot3 || seenPack)
             {
                 seenPack = true;
 
-                if (FFlag::LuauParseRecoverTypePackEllipsis && lexer.current().type != Lexeme::Dot3)
+                if (lexer.current().type != Lexeme::Dot3)
                     report(lexer.current().location, "Generic types come before generic type packs");
                 else
                     nextLexeme();
@@ -2414,9 +2413,6 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
             }
             else
             {
-                if (!FFlag::LuauParseRecoverTypePackEllipsis && seenPack)
-                    report(lexer.current().location, "Generic types come before generic type packs");
-
                 if (withDefaultValues && lexer.current().type == '=')
                 {
                     seenDefault = true;

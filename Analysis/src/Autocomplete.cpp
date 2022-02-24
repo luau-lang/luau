@@ -236,10 +236,10 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 {
     ty = follow(ty);
 
-    auto canUnify = [&typeArena, &module](TypeId subTy, TypeId superTy) {
+    auto canUnify = [&typeArena](TypeId subTy, TypeId superTy) {
         InternalErrorReporter iceReporter;
         UnifierSharedState unifierState(&iceReporter);
-        Unifier unifier(typeArena, Mode::Strict, module.getModuleScope(), Location(), Variance::Covariant, unifierState);
+        Unifier unifier(typeArena, Mode::Strict, Location(), Variance::Covariant, unifierState);
 
         if (FFlag::LuauAutocompleteAvoidMutation && !FFlag::LuauUseCommittingTxnLog)
         {

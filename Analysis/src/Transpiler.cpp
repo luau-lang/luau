@@ -1153,6 +1153,14 @@ struct Printer
                     writer.symbol(")");
             }
         }
+        else if (const auto& a = typeAnnotation.as<AstTypeSingletonBool>())
+        {
+            writer.keyword(a->value ? "true" : "false");
+        }
+        else if (const auto& a = typeAnnotation.as<AstTypeSingletonString>())
+        {
+            writer.string(std::string_view(a->value.data, a->value.size));
+        }
         else if (typeAnnotation.is<AstTypeError>())
         {
             writer.symbol("%error-type%");

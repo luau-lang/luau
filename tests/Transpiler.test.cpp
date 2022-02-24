@@ -651,4 +651,19 @@ local a: Packed<number>
 
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
+
+TEST_CASE_FIXTURE(Fixture, "transpile_singleton_types")
+{
+    ScopedFastFlag luauParseSingletonTypes{"LuauParseSingletonTypes", true};
+
+    std::string code = R"(
+type t1 = 'hello'
+type t2 = true
+type t3 = ''
+type t4 = false
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_SUITE_END();

@@ -183,13 +183,12 @@
         <Expand>
           <LinkedListItems>
             <HeadPointer>openupval</HeadPointer>
-            <NextPointer>u.l.next</NextPointer>
+            <NextPointer>u.l.threadnext</NextPointer>
             <ValueNode>this</ValueNode>
           </LinkedListItems>
         </Expand>
       </Synthetic>
-      <Item Name="l_gt">l_gt</Item>
-      <Item Name="env">env</Item>
+      <Item Name="globals">gt</Item>
       <Item Name="userdata">userdata</Item>
     </Expand>
   </Type>

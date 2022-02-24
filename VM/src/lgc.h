@@ -13,9 +13,7 @@
 #define GCSpropagate 1
 #define GCSpropagateagain 2
 #define GCSatomic 3
-// TODO: remove with FFlagLuauGcPagedSweep
-#define GCSsweepstring 4
-#define GCSsweep 5
+#define GCSsweep 4
 
 /*
 ** macro to tell when main invariant (white objects cannot point to black
@@ -132,13 +130,13 @@
             luaC_wakethread(L); \
     }
 
-#define luaC_link(L, o, tt) luaC_linkobj(L, cast_to(GCObject*, (o)), tt)
+#define luaC_init(L, o, tt) luaC_initobj(L, cast_to(GCObject*, (o)), tt)
 
 LUAI_FUNC void luaC_freeall(lua_State* L);
 LUAI_FUNC void luaC_step(lua_State* L, bool assist);
 LUAI_FUNC void luaC_fullgc(lua_State* L);
-LUAI_FUNC void luaC_linkobj(lua_State* L, GCObject* o, uint8_t tt);
-LUAI_FUNC void luaC_linkupval(lua_State* L, UpVal* uv);
+LUAI_FUNC void luaC_initobj(lua_State* L, GCObject* o, uint8_t tt);
+LUAI_FUNC void luaC_initupval(lua_State* L, UpVal* uv);
 LUAI_FUNC void luaC_barrierupval(lua_State* L, GCObject* v);
 LUAI_FUNC void luaC_barrierf(lua_State* L, GCObject* o, GCObject* v);
 LUAI_FUNC void luaC_barriertable(lua_State* L, Table* t, GCObject* v);
