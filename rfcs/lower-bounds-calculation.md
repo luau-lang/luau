@@ -30,7 +30,9 @@ end
 
 This function has two `return` statements: One returns `number` and the other `nil`.  Today, Luau flags this as an error.  We ask authors to add a return annotation to make this error go away.
 
-Higher order functions also present a problem.
+We would like to automatically infer `find_first_if : <T>({T}, (T) -> boolean) -> number?`.
+
+Higher order functions also present a similar problem.
 
 ```lua
 function foo(f)
@@ -40,6 +42,8 @@ end
 ```
 
 There is nothing wrong with the implementation of `foo` here, but Luau fails to typecheck it all the same because `f` is used in an inconsistent way.  This too can be worked around by introducing a type annotation for `f`.
+
+We would like to infer `f : <T...>((number) -> T... & (string) -> T...) -> ()`
 
 ## Design
 
@@ -53,15 +57,13 @@ When we `quantify` a function, we will _normalize_ each type and convert each `C
 
 ### Normalization
 
-When computing lower bounds, we need to have some process by which we reduce types down to a minimal shape and canonicalize them, if only to have a clean way to flush out degenerate unions like `A | A`.
+When computing lower bounds, we need to have some process by which we reduce types down to a minimal shape and canonicalize them, if only to have a clean way to flush out degenerate unions like `A | A`.  Normalization is about reducing union and intersection types to a minimal, canonicalizable shape.
 
-Normalization is about reducing union and intersection types to a minimal, canonicalizable shape.
+A normalized union is one where there do not exist two branches on the union where one is a subtype of the other.  It is quite straightforward to implement.
 
-A normalized union is one where there do not exist two branches on the union where one is a subtype of the other.
+A normalized intersection is a little bit more complicated:
 
-A normalized intersection is only a little bit more complicated:
-
-1. Intersections of tables are always combined into a single table.  Coincident properties are merged into intersections of their own.
+1. The tables of an intersection are always combined into a single table.  Coincident properties are merged into intersections of their own.
     * eg `normalize({x: number, y: string} & {y: number, z: number}) == {x: number, y: string & number, z: number}`
     * This is recursive.  eg `normalize({x: {y: number}} & {x: {y: string}}) == {x: {y: number & string}}`
 1. If two functions in the intersection have a subtyping relationship, the normalization results only in the super-type-most function. (more on function subtyping later)
@@ -70,8 +72,8 @@ A normalized intersection is only a little bit more complicated:
 
 If we are going to infer intersections of functions, then we need to be very careful about keeping combinatorics under control.  We therefore need to be very deliberate about what subtyping rules we have for functions of differing arity.  We have some important requirements:
 
-* We'd like some way to canonicalize intersections of functions,
-* optional function arguments are a great feature that we don't want to break, and
+* We'd like some way to canonicalize intersections of functions, and yet
+* optional function arguments are a great feature that we don't want to break
 
 A very important use case for us is the case where the user is providing a callback to some higher-order function, and that function will be invoked with extra arguments that the original customer doesn't actually care about.  For example:
 
@@ -134,7 +136,7 @@ The problem we run into is, if we allow the subtyping rule `(T?) -> () <: () -> 
 
 We need a solution here.
 
-To resolve this, let's first examine the type of `double`.  It is tempting to type `double` as `(number) -> number` and call it a day, but, if we read the definition of the Lua language, we're being somewhat hasty when we do that.  We can pass _as many extra arguments as we want, of any type_ to this function.  We could therefore instead decide to type it as `(number, any...) -> number`.
+To resolve this, let's first examine the type of `double`.  It is tempting to type `double : (number) -> number` and call it a day, but, if we read the definition of the Lua language, we're being somewhat hasty when we do that.  We can pass _as many extra arguments as we want, of any type_ to this function.  All save the first are ignored.  We could therefore instead decide to type `double : (number, any...) -> number`.
 
 So, we propose subtyping rules for type packs:
 
@@ -142,6 +144,8 @@ So, we propose subtyping rules for type packs:
 
 1. `(T0..TN, A?) <: (T0..TN)` says that optional arguments can be left off by callers for type packs to make optional function arguments work.
 1. `(T0..TN, any) <: (T0..TN)` just to be crystal clear that an argument whose type is `any` is also optional.
+
+Notably, there is no subtyping rule `(T0..TN) <: (T0..TN-1)`: without `nil`, there is no subtyping relationship between packs of inequal length.
 
 We also introduce some changes to how function definitions and calls work:
 
@@ -163,4 +167,12 @@ Our `higher` example does not typecheck because the function argument `f` can on
 
 There is a potential cause for concern that we will be inferring unions of functions in cases where we previously did not.  Unions are known to be potential sources of performance issues.  One possibility is to allow Luau to be less intelligent and have it "give up" and produce less precise types.  This would come at the cost of accuracy and soundness.
 
+If we allow functions to be oversaturated, we are going to miss out on opportunities to warn the user about legitimate problems with their program.  I think we will have to work out some kind of special logic to detect when we are oversaturating a function whose exact definition is known and warn on that.
+
+Allowing indirect function calls to be oversaturated with `nil` values only should be safe, but a little bit unfortunate.  As long as we statically know for certain that `nil` is actually a permissible value for that argument position, it should be safe.
+
 ## Alternatives
+
+If we are willing to sacrifice soundness, we could adopt success typing and come up with an inference algorithm that produces less precise type information.
+
+We could also technically choose to do nothing, but this has some unpalatable consequences:  Something I would like to do in the near future is to have the inference algorithm assume the same `self` type for all methods of a table.  This will make inference of common OO patterns dramatically more intuitive and ergonomic, but inference of polymorphic methods requires some kind of lower bounds calculation to work correctly.
