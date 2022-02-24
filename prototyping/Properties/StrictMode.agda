@@ -366,18 +366,18 @@ reflect* H B (step s t) W = reflectᴴᴮ H B s (reflect* _ _ t W)
 runtimeWarningᴱ : ∀ H M → RuntimeErrorᴱ H M → Warningᴱ H (typeCheckᴱ H ∅ M)
 runtimeWarningᴮ : ∀ H B → RuntimeErrorᴮ H B → Warningᴮ H (typeCheckᴮ H ∅ B)
 
-runtimeWarningᴱ H (var x) (UnboundVariable x) = UnboundVariable x refl
-runtimeWarningᴱ H (addr a) (SEGV a p) = UnallocatedAddress a p
-runtimeWarningᴱ H (M $ N) (FunctionMismatch v w p q r) = {!!} -- app₁ (runtimeWarningᴱ H M err)
+runtimeWarningᴱ H (var x) UnboundVariable = UnboundVariable x refl
+runtimeWarningᴱ H (addr a) (SEGV p) = UnallocatedAddress a p
+runtimeWarningᴱ H (M $ N) (FunctionMismatch v w r) = {!!} -- app₁ (runtimeWarningᴱ H M err)
 runtimeWarningᴱ H (M $ N) (app₁ err) = app₁ (runtimeWarningᴱ H M err)
 runtimeWarningᴱ H (M $ N) (app₂ err) = app₂ (runtimeWarningᴱ H N err)
-runtimeWarningᴱ H (block var b ∈ T is B end) (block _ err) = block₁ b (runtimeWarningᴮ H B err)
-runtimeWarningᴱ H (binexp M op N) (BinopMismatch₁ op v w p q r) = {!!}
-runtimeWarningᴱ H (binexp M op N) (BinopMismatch₂ op v w p q r) = {!!}
+runtimeWarningᴱ H (block var b ∈ T is B end) (block err) = block₁ b (runtimeWarningᴮ H B err)
+runtimeWarningᴱ H (binexp M op N) (BinopMismatch₁ v w p) = {!!}
+runtimeWarningᴱ H (binexp M op N) (BinopMismatch₂ v w p) = {!!}
 runtimeWarningᴱ H (binexp M op N) (bin₁ err) = {!!}
 runtimeWarningᴱ H (binexp M op N) (bin₂ err) = {!!}
 
-runtimeWarningᴮ H (local var x ∈ T ← M ∙ B) (local _ err) = local₁ (runtimeWarningᴱ H M err)
+runtimeWarningᴮ H (local var x ∈ T ← M ∙ B) (local err) = local₁ (runtimeWarningᴱ H M err)
 runtimeWarningᴮ H (return M ∙ B) (return err) = return (runtimeWarningᴱ H M err)
 
 wellTypedProgramsDontGoWrong : ∀ H′ B B′ → (∅ᴴ ⊢ B ⟶* B′ ⊣ H′) → (RuntimeErrorᴮ H′ B′) → Warningᴮ ∅ᴴ (typeCheckᴮ ∅ᴴ ∅ B)

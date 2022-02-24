@@ -24,7 +24,7 @@ runBlock : ∀ {a} → Block a → IO ⊤
 runBlock block with run block
 runBlock block | return V D = putStrLn (valueToString V)
 runBlock block | done D = putStrLn "nil"
-runBlock block | error E D = putStrLn (errToStringᴮ E)
+runBlock block | error E D = putStrLn (errToStringᴮ _ E)
 
 runJSON : Value → IO ⊤
 runJSON value with blockFromJSON(value)
