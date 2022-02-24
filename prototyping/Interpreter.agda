@@ -28,14 +28,14 @@ runBlock′ : ∀ a → Block a → IO ⊤
 runBlock′ a block with run block
 runBlock′ a block | return V D = putStrLn (valueToString V)
 runBlock′ a block | done D = putStrLn "nil"
-runBlock′ maybe block | error E D = putStrLn (errToStringᴮ _ E)
+runBlock′ maybe block | error E D = putStrLn ("\nRUNTIME ERROR:\n" ++ errToStringᴮ _ E)
 runBlock′ yes block | error E D with wellTypedProgramsDontGoWrong _ block _ D E
-runBlock′ yes block | error E D | W = putStrLn (errToStringᴮ _ E) >> putStrLn (warningToStringᴮ _ W)
+runBlock′ yes block | error E D | W = putStrLn ("\nRUNTIME ERROR:\n" ++ errToStringᴮ _ E ++ "\n\nTYPE ERROR:\n" ++ warningToStringᴮ _ W)
 
 runBlock : Block maybe → IO ⊤
 runBlock B with isAnnotatedᴮ B
-runBlock B | nothing = runBlock′ maybe B
-runBlock B | just B′ = runBlock′ yes B′
+runBlock B | nothing = putStrLn ("UNANNOTATED PROGRAM:\n" ++ blockToString B) >> runBlock′ maybe B
+runBlock B | just B′ = putStrLn ("ANNOTATED PROGRAM:\n" ++ blockToString B) >> runBlock′ yes B′
 
 runJSON : Value → IO ⊤
 runJSON value with blockFromJSON(value)
