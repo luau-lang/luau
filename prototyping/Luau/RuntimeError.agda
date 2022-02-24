@@ -15,17 +15,17 @@ data RuntimeErrorᴮ {a} (H : Heap a) : Block a → Set
 data RuntimeErrorᴱ {a} (H : Heap a) : Expr a → Set
 
 data RuntimeErrorᴱ H where
-  FunctionMismatch : ∀ v w {M N} → (M ≡ val v) → (N ≡ val w) → (function ≢ valueType v) → RuntimeErrorᴱ H (M $ N)
-  BinopMismatch₁ : ∀ op v w {M N} → (M ≡ val v) → (N ≡ val w) → (number ≢ valueType v) → RuntimeErrorᴱ H (binexp M op N)
-  BinopMismatch₂ : ∀ op v w {M N} → (M ≡ val v) → (N ≡ val w) → (number ≢ valueType w) → RuntimeErrorᴱ H (binexp M op N)
-  UnboundVariable : ∀ x → RuntimeErrorᴱ H (var x)
-  SEGV : ∀ a → (H [ a ] ≡ nothing) → RuntimeErrorᴱ H (addr a)
+  FunctionMismatch : ∀ v w → (function ≢ valueType v) → RuntimeErrorᴱ H (val v $ val w)
+  BinopMismatch₁ : ∀ v w {op} → (number ≢ valueType v) → RuntimeErrorᴱ H (binexp (val v) op (val w))
+  BinopMismatch₂ : ∀ v w {op} → (number ≢ valueType w) → RuntimeErrorᴱ H (binexp (val v) op (val w))
+  UnboundVariable : ∀ {x} → RuntimeErrorᴱ H (var x)
+  SEGV : ∀ {a} → (H [ a ] ≡ nothing) → RuntimeErrorᴱ H (addr a)
   app₁ : ∀ {M N} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (M $ N)
   app₂ : ∀ {M N} → RuntimeErrorᴱ H N → RuntimeErrorᴱ H (M $ N)
-  block : ∀ b {B} → RuntimeErrorᴮ H B → RuntimeErrorᴱ H (block b is B end)
+  block : ∀ {b B} → RuntimeErrorᴮ H B → RuntimeErrorᴱ H (block b is B end)
   bin₁ : ∀ {M N op} → RuntimeErrorᴱ H M → RuntimeErrorᴱ H (binexp M op N)
   bin₂ : ∀ {M N op} → RuntimeErrorᴱ H N → RuntimeErrorᴱ H (binexp M op N)
 
 data RuntimeErrorᴮ H where
-  local : ∀ x {M B} → RuntimeErrorᴱ H M → RuntimeErrorᴮ H (local x ← M ∙ B)
+  local : ∀ {x M B} → RuntimeErrorᴱ H M → RuntimeErrorᴮ H (local x ← M ∙ B)
   return : ∀ {M B} → RuntimeErrorᴱ H M → RuntimeErrorᴮ H (return M ∙ B)
