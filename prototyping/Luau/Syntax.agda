@@ -39,6 +39,12 @@ data BinaryOperator : Set where
   - : BinaryOperator
   * : BinaryOperator
   / : BinaryOperator
+  < : BinaryOperator
+  > : BinaryOperator
+  ≡ : BinaryOperator
+  ≅ : BinaryOperator
+  ≤ : BinaryOperator
+  ≥ : BinaryOperator
 
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set
@@ -55,6 +61,8 @@ data Stat a where
 
 data Expr a where
   nil : Expr a
+  true : Expr a
+  false : Expr a
   var : Var → Expr a
   addr : Addr → Expr a
   _$_ : Expr a → Expr a → Expr a

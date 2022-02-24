@@ -2,7 +2,7 @@ module Luau.Syntax.ToString where
 
 open import Agda.Builtin.Float using (primShowFloat)
 open import Agda.Builtin.String using (primShowString)
-open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number; BinaryOperator; +; -; *; /; binexp; string)
+open import Luau.Syntax using (Block; Stat; Expr; VarDec; FunDec; nil; var; var_∈_; addr; _$_; function_is_end; return; local_←_; _∙_; done; block_is_end; _⟨_⟩; _⟨_⟩∈_; number; BinaryOperator; +; -; *; /; <; >; ≡; ≅; ≤; ≥; binexp; true; false; string)
 open import FFI.Data.String using (String; _++_)
 open import Luau.Addr.ToString using (addrToString)
 open import Luau.Type.ToString using (typeToString)
@@ -23,6 +23,12 @@ binOpToString + = "+"
 binOpToString - = "-"
 binOpToString * = "*"
 binOpToString / = "/"
+binOpToString < = "<"
+binOpToString > = ">"
+binOpToString ≡ = "=="
+binOpToString ≅ = "~="
+binOpToString ≤ = "<="
+binOpToString ≥ = ">="
 
 exprToString′ : ∀ {a} → String → Expr a → String
 statToString′ : ∀ {a} → String → Stat a → String
@@ -47,6 +53,8 @@ exprToString′ lb (block b is B end) =
 exprToString′ lb (number x) = primShowFloat x
 exprToString′ lb (string x) = primShowString x
 exprToString′ lb (binexp x op y) = exprToString′ lb x ++ " " ++ binOpToString op ++ " " ++ exprToString′ lb y
+exprToString′ lb true = "true"
+exprToString′ lb false = "false"
 
 statToString′ lb (function F is B end) =
   "local " ++ funDecToString F ++ lb ++
