@@ -7,11 +7,7 @@
 struct lua_Page;
 union GCObject;
 
-// TODO: remove with FFlagLuauGcPagedSweep and rename luaM_newgco to luaM_new
-#define luaM_new(L, t, size, memcat) cast_to(t*, luaM_new_(L, size, memcat))
 #define luaM_newgco(L, t, size, memcat) cast_to(t*, luaM_newgco_(L, size, memcat))
-// TODO: remove with FFlagLuauGcPagedSweep and rename luaM_freegco to luaM_free
-#define luaM_free(L, p, size, memcat) luaM_free_(L, (p), size, memcat)
 #define luaM_freegco(L, p, size, memcat, page) luaM_freegco_(L, obj2gco(p), size, memcat, page)
 
 #define luaM_arraysize_(n, e) ((cast_to(size_t, (n)) <= SIZE_MAX / (e)) ? (n) * (e) : (luaM_toobig(L), SIZE_MAX))

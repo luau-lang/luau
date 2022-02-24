@@ -712,6 +712,47 @@ TEST_CASE("Reference")
     CHECK(dtorhits == 2);
 }
 
+TEST_CASE("ApiTables")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_newtable(L);
+    lua_pushnumber(L, 123.0);
+    lua_setfield(L, -2, "key");
+    lua_pushstring(L, "test");
+    lua_rawseti(L, -2, 5);
+
+    // lua_gettable
+    lua_pushstring(L, "key");
+    CHECK(lua_gettable(L, -2) == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_getfield
+    CHECK(lua_getfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_rawgetfield
+    CHECK(lua_rawgetfield(L, -1, "key") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_rawget
+    lua_pushstring(L, "key");
+    CHECK(lua_rawget(L, -2) == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 123.0);
+    lua_pop(L, 1);
+
+    // lua_rawgeti
+    CHECK(lua_rawgeti(L, -1, 5) == LUA_TSTRING);
+    CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
+    lua_pop(L, 1);
+
+    lua_pop(L, 1);
+}
+
 TEST_CASE("ApiFunctionCalls")
 {
     StateRef globalState = runConformance("apicalls.lua");
@@ -796,7 +837,7 @@ TEST_CASE("ExceptionObject")
         return ExceptionResult{false, ""};
     };
 
-    auto reallocFunc = [](lua_State* L, void* /*ud*/, void* ptr, size_t /*osize*/, size_t nsize) -> void* {
+    auto reallocFunc = [](void* /*ud*/, void* ptr, size_t /*osize*/, size_t nsize) -> void* {
         if (nsize == 0)
         {
             free(ptr);
@@ -921,6 +962,55 @@ TEST_CASE("StringConversion")
     ScopedFastFlag sff{"LuauSchubfach", true};
 
     runConformance("strconv.lua");
+}
+
+TEST_CASE("GCDump")
+{
+    // internal function, declared in lgc.h - not exposed via lua.h
+    extern void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // push various objects on stack to cover different paths
+    lua_createtable(L, 1, 2);
+    lua_pushstring(L, "value");
+    lua_setfield(L, -2, "key");
+
+    lua_pushinteger(L, 42);
+    lua_rawseti(L, -2, 1000);
+
+    lua_pushinteger(L, 42);
+    lua_rawseti(L, -2, 1);
+
+    lua_pushvalue(L, -1);
+    lua_setmetatable(L, -2);
+
+    lua_newuserdata(L, 42);
+    lua_pushvalue(L, -2);
+    lua_setmetatable(L, -2);
+
+    lua_pushinteger(L, 1);
+    lua_pushcclosure(L, lua_silence, "test", 1);
+
+    lua_State* CL = lua_newthread(L);
+
+    lua_pushstring(CL, "local x x = {} local function f() x[1] = math.abs(42) end function foo() coroutine.yield() end foo() return f");
+    lua_loadstring(CL);
+    lua_resume(CL, nullptr, 0);
+
+#ifdef _WIN32
+    const char* path = "NUL";
+#else
+    const char* path = "/dev/null";
+#endif
+
+    FILE* f = fopen(path, "w");
+    REQUIRE(f);
+
+    luaC_dump(L, f, nullptr);
+
+    fclose(f);
 }
 
 TEST_SUITE_END();

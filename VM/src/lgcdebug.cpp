@@ -13,8 +13,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauGcPagedSweep)
-
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
     LUAU_ASSERT(!isdead(g, t));
@@ -104,8 +102,7 @@ static void validatestack(global_State* g, lua_State* l)
     if (l->namecall)
         validateobjref(g, obj2gco(l), obj2gco(l->namecall));
 
-    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-    for (UpVal* uv = l->openupval; uv; uv = (UpVal*)uv->next)
+    for (UpVal* uv = l->openupval; uv; uv = uv->u.l.threadnext)
     {
         LUAU_ASSERT(uv->tt == LUA_TUPVAL);
         LUAU_ASSERT(uv->v != &uv->u.value);
@@ -141,7 +138,7 @@ static void validateobj(global_State* g, GCObject* o)
     /* dead objects can only occur during sweep */
     if (isdead(g, o))
     {
-        LUAU_ASSERT(g->gcstate == GCSsweepstring || g->gcstate == GCSsweep);
+        LUAU_ASSERT(g->gcstate == GCSsweep);
         return;
     }
 
@@ -180,18 +177,6 @@ static void validateobj(global_State* g, GCObject* o)
     }
 }
 
-static void validatelist(global_State* g, GCObject* o)
-{
-    LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
-
-    while (o)
-    {
-        validateobj(g, o);
-
-        o = o->gch.next;
-    }
-}
-
 static void validategraylist(global_State* g, GCObject* o)
 {
     if (!keepinvariant(g))
@@ -224,8 +209,6 @@ static void validategraylist(global_State* g, GCObject* o)
 
 static bool validategco(void* context, lua_Page* page, GCObject* gco)
 {
-    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
-
     lua_State* L = (lua_State*)context;
     global_State* g = L->global;
 
@@ -248,20 +231,9 @@ void luaC_validate(lua_State* L)
     validategraylist(g, g->gray);
     validategraylist(g, g->grayagain);
 
-    if (FFlag::LuauGcPagedSweep)
-    {
-        validategco(L, NULL, obj2gco(g->mainthread));
+    validategco(L, NULL, obj2gco(g->mainthread));
 
-        luaM_visitgco(L, L, validategco);
-    }
-    else
-    {
-        for (int i = 0; i < g->strt.size; ++i)
-            validatelist(g, (GCObject*)(g->strt.hash[i]));
-
-        validatelist(g, g->rootgc);
-        validatelist(g, (GCObject*)(g->strbufgc));
-    }
+    luaM_visitgco(L, L, validategco);
 
     for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
     {
@@ -521,30 +493,8 @@ static void dumpobj(FILE* f, GCObject* o)
     }
 }
 
-static void dumplist(FILE* f, GCObject* o)
-{
-    LUAU_ASSERT(!FFlag::LuauGcPagedSweep);
-
-    while (o)
-    {
-        dumpref(f, o);
-        fputc(':', f);
-        dumpobj(f, o);
-        fputc(',', f);
-        fputc('\n', f);
-
-        // thread has additional list containing collectable objects that are not present in rootgc
-        if (o->gch.tt == LUA_TTHREAD)
-            dumplist(f, (GCObject*)gco2th(o)->openupval);
-
-        o = o->gch.next;
-    }
-}
-
 static bool dumpgco(void* context, lua_Page* page, GCObject* gco)
 {
-    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
-
     FILE* f = (FILE*)context;
 
     dumpref(f, gco);
@@ -563,19 +513,9 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
 
     fprintf(f, "{\"objects\":{\n");
 
-    if (FFlag::LuauGcPagedSweep)
-    {
-        dumpgco(f, NULL, obj2gco(g->mainthread));
+    dumpgco(f, NULL, obj2gco(g->mainthread));
 
-        luaM_visitgco(L, f, dumpgco);
-    }
-    else
-    {
-        dumplist(f, g->rootgc);
-        dumplist(f, (GCObject*)(g->strbufgc));
-        for (int i = 0; i < g->strt.size; ++i)
-            dumplist(f, (GCObject*)(g->strt.hash[i]));
-    }
+    luaM_visitgco(L, f, dumpgco);
 
     fprintf(f, "\"0\":{\"type\":\"userdata\",\"cat\":0,\"size\":0}\n"); // to avoid issues with trailing ,
     fprintf(f, "},\"roots\":{\n");

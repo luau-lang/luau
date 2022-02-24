@@ -2575,7 +2575,6 @@ do end
 TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
 {
     ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauParseRecoverTypePackEllipsis{"LuauParseRecoverTypePackEllipsis", true};
 
     ParseResult result = tryParse(R"(
 type Y<T..., U = T...> = (T...) -> U...

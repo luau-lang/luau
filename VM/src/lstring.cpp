@@ -7,8 +7,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauGcPagedSweep)
-
 unsigned int luaS_hash(const char* str, size_t len)
 {
     // Note that this hashing algorithm is replicated in BytecodeBuilder.cpp, BytecodeBuilder::getStringHash
@@ -46,8 +44,6 @@ unsigned int luaS_hash(const char* str, size_t len)
 
 void luaS_resize(lua_State* L, int newsize)
 {
-    if (L->global->gcstate == GCSsweepstring)
-        return; /* cannot resize during GC traverse */
     TString** newhash = luaM_newarray(L, newsize, TString*, 0);
     stringtable* tb = &L->global->strt;
     for (int i = 0; i < newsize; i++)
@@ -58,13 +54,11 @@ void luaS_resize(lua_State* L, int newsize)
         TString* p = tb->hash[i];
         while (p)
         { /* for each node in the list */
-            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-            TString* next = (TString*)p->next; /* save next */
+            TString* next = p->next; /* save next */
             unsigned int h = p->hash;
             int h1 = lmod(h, newsize); /* new position */
             LUAU_ASSERT(cast_int(h % newsize) == lmod(h, newsize));
-            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-            p->next = (GCObject*)newhash[h1]; /* chain it */
+            p->next = newhash[h1]; /* chain it */
             newhash[h1] = p;
             p = next;
         }
@@ -91,8 +85,7 @@ static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
     ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, l) : -1;
     tb = &L->global->strt;
     h = lmod(h, tb->size);
-    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the case will not be required
-    ts->next = (GCObject*)tb->hash[h]; /* chain new entry */
+    ts->next = tb->hash[h]; /* chain new entry */
     tb->hash[h] = ts;
     tb->nuse++;
     if (tb->nuse > cast_to(uint32_t, tb->size) && tb->size <= INT_MAX / 2)
@@ -104,20 +97,9 @@ static void linkstrbuf(lua_State* L, TString* ts)
 {
     global_State* g = L->global;
 
-    if (FFlag::LuauGcPagedSweep)
-    {
-        // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-        ts->next = (GCObject*)g->strbufgc;
-        g->strbufgc = ts;
-        ts->marked = luaC_white(g);
-    }
-    else
-    {
-        GCObject* o = obj2gco(ts);
-        o->gch.next = (GCObject*)g->strbufgc;
-        g->strbufgc = gco2ts(o);
-        o->gch.marked = luaC_white(g);
-    }
+    ts->next = g->strbufgc;
+    g->strbufgc = ts;
+    ts->marked = luaC_white(g);
 }
 
 static void unlinkstrbuf(lua_State* L, TString* ts)
@@ -130,14 +112,12 @@ static void unlinkstrbuf(lua_State* L, TString* ts)
     {
         if (curr == ts)
         {
-            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-            *p = (TString*)curr->next;
+            *p = curr->next;
             return;
         }
         else
         {
-            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-            p = (TString**)&curr->next;
+            p = &curr->next;
         }
     }
 
@@ -167,8 +147,7 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
     int bucket = lmod(h, tb->size);
 
     // search if we already have this string in the hash table
-    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-    for (TString* el = tb->hash[bucket]; el != NULL; el = (TString*)el->next)
+    for (TString* el = tb->hash[bucket]; el != NULL; el = el->next)
     {
         if (el->len == ts->len && memcmp(el->data, ts->data, ts->len) == 0)
         {
@@ -187,8 +166,7 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
 
     // Complete string object
     ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1;
-    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-    ts->next = (GCObject*)tb->hash[bucket]; // chain new entry
+    ts->next = tb->hash[bucket]; // chain new entry
     tb->hash[bucket] = ts;
 
     tb->nuse++;
@@ -201,8 +179,7 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
 TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
 {
     unsigned int h = luaS_hash(str, l);
-    // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-    for (TString* el = L->global->strt.hash[lmod(h, L->global->strt.size)]; el != NULL; el = (TString*)el->next)
+    for (TString* el = L->global->strt.hash[lmod(h, L->global->strt.size)]; el != NULL; el = el->next)
     {
         if (el->len == l && (memcmp(str, getstr(el), l) == 0))
         {
@@ -217,8 +194,6 @@ TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
 
 static bool unlinkstr(lua_State* L, TString* ts)
 {
-    LUAU_ASSERT(FFlag::LuauGcPagedSweep);
-
     global_State* g = L->global;
 
     TString** p = &g->strt.hash[lmod(ts->hash, g->strt.size)];
@@ -227,14 +202,12 @@ static bool unlinkstr(lua_State* L, TString* ts)
     {
         if (curr == ts)
         {
-            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-            *p = (TString*)curr->next;
+            *p = curr->next;
             return true;
         }
         else
         {
-            // TODO (FFlagLuauGcPagedSweep): 'next' type will change after removal of the flag and the cast will not be required
-            p = (TString**)&curr->next;
+            p = &curr->next;
         }
     }
 
@@ -243,20 +216,11 @@ static bool unlinkstr(lua_State* L, TString* ts)
 
 void luaS_free(lua_State* L, TString* ts, lua_Page* page)
 {
-    if (FFlag::LuauGcPagedSweep)
-    {
-        // Unchain from the string table
-        if (!unlinkstr(L, ts))
-            unlinkstrbuf(L, ts); // An unlikely scenario when we have a string buffer on our hands
-        else
-            L->global->strt.nuse--;
-
-        luaM_freegco(L, ts, sizestring(ts->len), ts->memcat, page);
-    }
+    // Unchain from the string table
+    if (!unlinkstr(L, ts))
+        unlinkstrbuf(L, ts); // An unlikely scenario when we have a string buffer on our hands
     else
-    {
         L->global->strt.nuse--;
 
-        luaM_free(L, ts, sizestring(ts->len), ts->memcat);
-    }
+    luaM_freegco(L, ts, sizestring(ts->len), ts->memcat, page);
 }

@@ -2752,7 +2752,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
     ScopedFastFlag sffs[] = {
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
-        {"LuauRefactorTypeVarQuestions", true},
     };
 
     check(R"(

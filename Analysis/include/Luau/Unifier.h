@@ -19,11 +19,31 @@ enum Variance
     Invariant
 };
 
+// A substitution which replaces singleton types by their wider types
+struct Widen : Substitution
+{
+    Widen(TypeArena* arena)
+        : Substitution(TxnLog::empty(), arena)
+    {
+    }
+
+    bool isDirty(TypeId ty) override;
+    bool isDirty(TypePackId ty) override;
+    TypeId clean(TypeId ty) override;
+    TypePackId clean(TypePackId ty) override;
+    bool ignoreChildren(TypeId ty) override;
+};
+
+// TODO: Use this more widely.
+struct UnifierOptions
+{
+    bool isFunctionCall = false;
+};
+
 struct Unifier
 {
     TypeArena* const types;
     Mode mode;
-    ScopePtr globalScope; // sigh.  Needed solely to get at string's metatable.
 
     DEPRECATED_TxnLog DEPRECATED_log;
     TxnLog log;
@@ -34,9 +54,9 @@ struct Unifier
 
     UnifierSharedState& sharedState;
 
-    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, UnifierSharedState& sharedState,
+    Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState,
         TxnLog* parentLog = nullptr);
-    Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
+    Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
         Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
@@ -65,7 +85,10 @@ private:
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyIndexer(const TableIndexer& subIndexer, const TableIndexer& superIndexer);
+
+    TypeId widen(TypeId ty);
     TypeId deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen = {});
+
     void cacheResult(TypeId subTy, TypeId superTy);
 
 public:

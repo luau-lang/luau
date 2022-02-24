@@ -659,16 +659,16 @@ int lua_pushthread(lua_State* L)
 ** get functions (Lua -> stack)
 */
 
-void lua_gettable(lua_State* L, int idx)
+int lua_gettable(lua_State* L, int idx)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
     api_checkvalidindex(L, t);
     luaV_gettable(L, t, L->top - 1, L->top - 1);
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_getfield(lua_State* L, int idx, const char* k)
+int lua_getfield(lua_State* L, int idx, const char* k)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
@@ -677,10 +677,10 @@ void lua_getfield(lua_State* L, int idx, const char* k)
     setsvalue(L, &key, luaS_new(L, k));
     luaV_gettable(L, t, &key, L->top);
     api_incr_top(L);
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_rawgetfield(lua_State* L, int idx, const char* k)
+int lua_rawgetfield(lua_State* L, int idx, const char* k)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
@@ -689,26 +689,26 @@ void lua_rawgetfield(lua_State* L, int idx, const char* k)
     setsvalue(L, &key, luaS_new(L, k));
     setobj2s(L, L->top, luaH_getstr(hvalue(t), tsvalue(&key)));
     api_incr_top(L);
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_rawget(lua_State* L, int idx)
+int lua_rawget(lua_State* L, int idx)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     setobj2s(L, L->top - 1, luaH_get(hvalue(t), L->top - 1));
-    return;
+    return ttype(L->top - 1);
 }
 
-void lua_rawgeti(lua_State* L, int idx, int n)
+int lua_rawgeti(lua_State* L, int idx, int n)
 {
     luaC_checkthreadsleep(L);
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     setobj2s(L, L->top, luaH_getnum(hvalue(t), n));
     api_incr_top(L);
-    return;
+    return ttype(L->top - 1);
 }
 
 void lua_createtable(lua_State* L, int narray, int nrec)
