@@ -19,7 +19,7 @@ struct TryUnifyFixture : Fixture
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-    Unifier state{&arena, Mode::Strict, globalScope, Location{}, Variance::Covariant, unifierState};
+    Unifier state{&arena, Mode::Strict, Location{}, Variance::Covariant, unifierState};
 };
 
 TEST_SUITE_BEGIN("TryUnifyTests");
@@ -261,8 +261,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
 {
-    ScopedFastFlag luauUnionTagMatchFix{"LuauUnionTagMatchFix", true};
-
     TypeVar redirect{FreeTypeVar{TypeLevel{}}};
     TypeVar table{TableTypeVar{}};
     TypeVar metatable{MetatableTypeVar{&redirect, &table}};

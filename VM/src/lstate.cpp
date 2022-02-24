@@ -10,7 +10,6 @@
 #include "ldo.h"
 #include "ldebug.h"
 
-LUAU_FASTFLAG(LuauGcPagedSweep)
 LUAU_FASTFLAGVARIABLE(LuauReduceStackReallocs, false)
 
 /*
@@ -90,8 +89,6 @@ static void close_state(lua_State* L)
     global_State* g = L->global;
     luaF_close(L, L->stack); /* close all upvalues for this thread */
     luaC_freeall(L);         /* collect all objects */
-    if (!FFlag::LuauGcPagedSweep)
-        LUAU_ASSERT(g->rootgc == obj2gco(L));
     LUAU_ASSERT(g->strbufgc == NULL);
     LUAU_ASSERT(g->strt.nuse == 0);
     luaM_freearray(L, L->global->strt.hash, L->global->strt.size, TString*, 0);
@@ -99,22 +96,20 @@ static void close_state(lua_State* L)
     for (int i = 0; i < LUA_SIZECLASSES; i++)
     {
         LUAU_ASSERT(g->freepages[i] == NULL);
-        if (FFlag::LuauGcPagedSweep)
-            LUAU_ASSERT(g->freegcopages[i] == NULL);
+        LUAU_ASSERT(g->freegcopages[i] == NULL);
     }
-    if (FFlag::LuauGcPagedSweep)
-        LUAU_ASSERT(g->allgcopages == NULL);
+    LUAU_ASSERT(g->allgcopages == NULL);
     LUAU_ASSERT(g->totalbytes == sizeof(LG));
     LUAU_ASSERT(g->memcatbytes[0] == sizeof(LG));
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)
         LUAU_ASSERT(g->memcatbytes[i] == 0);
-    (*g->frealloc)(L, g->ud, L, sizeof(LG), 0);
+    (*g->frealloc)(g->ud, L, sizeof(LG), 0);
 }
 
 lua_State* luaE_newthread(lua_State* L)
 {
     lua_State* L1 = luaM_newgco(L, lua_State, sizeof(lua_State), L->activememcat);
-    luaC_link(L, L1, LUA_TTHREAD);
+    luaC_init(L, L1, LUA_TTHREAD);
     preinit_state(L1, L->global);
     L1->activememcat = L->activememcat; // inherit the active memory category
     stack_init(L1, L);                  /* init stack */
@@ -184,13 +179,11 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     int i;
     lua_State* L;
     global_State* g;
-    void* l = (*f)(NULL, ud, NULL, 0, sizeof(LG));
+    void* l = (*f)(ud, NULL, 0, sizeof(LG));
     if (l == NULL)
         return NULL;
     L = (lua_State*)l;
     g = &((LG*)L)->g;
-    if (!FFlag::LuauGcPagedSweep)
-        L->next = NULL;
     L->tt = LUA_TTHREAD;
     L->marked = g->currentwhite = bit2mask(WHITE0BIT, FIXEDBIT);
     L->memcat = 0;
@@ -214,11 +207,6 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     setnilvalue(&g->pseudotemp);
     setnilvalue(registry(L));
     g->gcstate = GCSpause;
-    if (!FFlag::LuauGcPagedSweep)
-        g->rootgc = obj2gco(L);
-    g->sweepstrgc = 0;
-    if (!FFlag::LuauGcPagedSweep)
-        g->sweepgc = &g->rootgc;
     g->gray = NULL;
     g->grayagain = NULL;
     g->weak = NULL;
@@ -230,14 +218,10 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     for (i = 0; i < LUA_SIZECLASSES; i++)
     {
         g->freepages[i] = NULL;
-        if (FFlag::LuauGcPagedSweep)
-            g->freegcopages[i] = NULL;
+        g->freegcopages[i] = NULL;
     }
-    if (FFlag::LuauGcPagedSweep)
-    {
-        g->allgcopages = NULL;
-        g->sweepgcopage = NULL;
-    }
+    g->allgcopages = NULL;
+    g->sweepgcopage = NULL;
     for (i = 0; i < LUA_T_COUNT; i++)
         g->mt[i] = NULL;
     for (i = 0; i < LUA_UTAG_LIMIT; i++)

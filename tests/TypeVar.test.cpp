@@ -361,16 +361,12 @@ local b: (T, T, T) -> T
 
 TEST_CASE("isString_on_string_singletons")
 {
-    ScopedFastFlag sff{"LuauRefactorTypeVarQuestions", true};
-
     TypeVar helloString{SingletonTypeVar{StringSingleton{"hello"}}};
     CHECK(isString(&helloString));
 }
 
 TEST_CASE("isString_on_unions_of_various_string_singletons")
 {
-    ScopedFastFlag sff{"LuauRefactorTypeVarQuestions", true};
-
     TypeVar helloString{SingletonTypeVar{StringSingleton{"hello"}}};
     TypeVar byeString{SingletonTypeVar{StringSingleton{"bye"}}};
     TypeVar union_{UnionTypeVar{{&helloString, &byeString}}};
@@ -380,8 +376,6 @@ TEST_CASE("isString_on_unions_of_various_string_singletons")
 
 TEST_CASE("proof_that_isString_uses_all_of")
 {
-    ScopedFastFlag sff{"LuauRefactorTypeVarQuestions", true};
-
     TypeVar helloString{SingletonTypeVar{StringSingleton{"hello"}}};
     TypeVar byeString{SingletonTypeVar{StringSingleton{"bye"}}};
     TypeVar booleanType{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}};
@@ -392,16 +386,12 @@ TEST_CASE("proof_that_isString_uses_all_of")
 
 TEST_CASE("isBoolean_on_boolean_singletons")
 {
-    ScopedFastFlag sff{"LuauRefactorTypeVarQuestions", true};
-
     TypeVar trueBool{SingletonTypeVar{BooleanSingleton{true}}};
     CHECK(isBoolean(&trueBool));
 }
 
 TEST_CASE("isBoolean_on_unions_of_true_or_false_singletons")
 {
-    ScopedFastFlag sff{"LuauRefactorTypeVarQuestions", true};
-
     TypeVar trueBool{SingletonTypeVar{BooleanSingleton{true}}};
     TypeVar falseBool{SingletonTypeVar{BooleanSingleton{false}}};
     TypeVar union_{UnionTypeVar{{&trueBool, &falseBool}}};
@@ -411,8 +401,6 @@ TEST_CASE("isBoolean_on_unions_of_true_or_false_singletons")
 
 TEST_CASE("proof_that_isBoolean_uses_all_of")
 {
-    ScopedFastFlag sff{"LuauRefactorTypeVarQuestions", true};
-
     TypeVar trueBool{SingletonTypeVar{BooleanSingleton{true}}};
     TypeVar falseBool{SingletonTypeVar{BooleanSingleton{false}}};
     TypeVar stringType{PrimitiveTypeVar{PrimitiveTypeVar::String}};

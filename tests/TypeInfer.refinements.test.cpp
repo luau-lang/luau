@@ -1115,6 +1115,22 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersection_table")
+{
+    ScopedFastFlag sff{"LuauDoNotTryToReduce", true};
+
+    CheckResult result = check(R"(
+        type T = {} & {f: ((string) -> string)?}
+        local function f(t: T, x)
+            if t.f then
+                t.f(x)
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 {
     ScopedFastFlag sff[] = {

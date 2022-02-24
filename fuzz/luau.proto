@@ -96,11 +96,13 @@ message ExprIndexExpr {
 }
 
 message ExprFunction {
-	repeated Local args = 1;
-	required bool vararg = 2;
-	required StatBlock body = 3;
-	repeated Type types = 4;
-	repeated Type rettypes = 5;
+	repeated Typename generics = 1;
+	repeated Typename genericpacks = 2;
+	repeated Local args = 3;
+	required bool vararg = 4;
+	required StatBlock body = 5;
+	repeated Type types = 6;
+	repeated Type rettypes = 7;
 }
 
 message TableItem {
@@ -153,7 +155,10 @@ message ExprBinary {
 message ExprIfElse {
 	required Expr cond = 1;
 	required Expr then = 2;
-	required Expr else = 3; 
+	oneof else_oneof {
+		Expr else = 3;
+		ExprIfElse elseif = 4;
+	}
 }
 
 message LValue {
@@ -183,6 +188,7 @@ message Stat {
 		StatFunction function = 14;
 		StatLocalFunction local_function = 15;
 		StatTypeAlias type_alias = 16;
+		StatRequireIntoLocalHelper require_into_local = 17;
 	}
 }
 
@@ -276,9 +282,16 @@ message StatLocalFunction {
 }
 
 message StatTypeAlias {
-	required Typename name = 1;
-	required Type type = 2;
-	repeated Typename generics = 3;
+	required bool export = 1;
+	required Typename name = 2;
+	required Type type = 3;
+	repeated Typename generics = 4;
+	repeated Typename genericpacks = 5;
+}
+
+message StatRequireIntoLocalHelper {
+	required Local var = 1;
+	required int32 modulenum = 2;
 }
 
 message Type {
@@ -292,6 +305,8 @@ message Type {
 		TypeIntersection intersection = 7;
 		TypeClass class = 8;
 		TypeRef ref = 9;
+		TypeBoolean boolean = 10;
+		TypeString string = 11;
 	}
 }
 
@@ -301,7 +316,8 @@ message TypePrimitive {
 
 message TypeLiteral {
 	required Typename name = 1;
-	repeated Typename generics = 2;
+	repeated Type generics = 2;
+	repeated Typename genericpacks = 3;
 }
 
 message TypeTableItem {
@@ -320,8 +336,10 @@ message TypeTable {
 }
 
 message TypeFunction {
-	repeated Type args = 1;
-	repeated Type rets = 2;
+	repeated Typename generics = 1;
+	repeated Typename genericpacks = 2;
+	repeated Type args = 3;
+	repeated Type rets = 4;
 	// TODO: vararg?
 }
 
@@ -346,4 +364,17 @@ message TypeClass {
 message TypeRef {
 	required Local prefix = 1;
 	required Typename index = 2;
+}
+
+message TypeBoolean {
+	required bool val = 1;
+}
+
+message TypeString {
+	required string val = 1;
+}
+
+message ModuleSet {
+	optional StatBlock module = 1;
+	required StatBlock program = 2;
 }

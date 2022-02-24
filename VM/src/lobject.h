@@ -15,7 +15,6 @@ typedef union GCObject GCObject;
 */
 // clang-format off
 #define CommonHeader \
-    GCObject* next; /* TODO: remove with FFlagLuauGcPagedSweep */ \
      uint8_t tt; uint8_t marked; uint8_t memcat
 // clang-format on
 
@@ -233,6 +232,8 @@ typedef struct TString
     int16_t atom;
     // 2 byte padding
 
+    TString* next; // next string in the hash table bucket or the string buffer linked list
+
     unsigned int hash;
     unsigned int len;
 
@@ -327,7 +328,7 @@ typedef struct UpVal
             struct UpVal* next;
 
             /* thread double linked list (when open) */
-            // TODO: when FFlagLuauGcPagedSweep is removed, old outer 'next' value will be placed here
+            struct UpVal* threadnext;
             /* note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State */
             struct UpVal** threadprev;
         } l;
