@@ -1,6 +1,6 @@
 module Luau.RuntimeType where
 
-open import Luau.Value using (Value; nil; addr; number; bool)
+open import Luau.Syntax using (Value; nil; addr; number; bool)
 
 data RuntimeType : Set where
   function : RuntimeType
@@ -10,6 +10,6 @@ data RuntimeType : Set where
 
 valueType : Value → RuntimeType
 valueType nil = nil
-valueType (addr x) = function
-valueType (number x) = number
-valueType (bool _) = boolean
+valueType (addr a) = function
+valueType (number n) = number
+valueType (bool b) = boolean

@@ -1,5 +1,7 @@
 module Properties.Product where
 
+infixr 5 _×_ _,_
+
 record Σ {A : Set} (B : A → Set) : Set where
 
   constructor _,_

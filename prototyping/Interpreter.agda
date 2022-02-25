@@ -17,10 +17,9 @@ open import FFI.System.Exit using (exitWith; ExitFailure)
 open import Luau.StrictMode.ToString using (warningToStringᴮ)
 open import Luau.Syntax using (Block; yes; maybe; isAnnotatedᴮ)
 open import Luau.Syntax.FromJSON using (blockFromJSON)
-open import Luau.Syntax.ToString using (blockToString)
+open import Luau.Syntax.ToString using (blockToString; valueToString)
 open import Luau.Run using (run; return; done; error)
 open import Luau.RuntimeError.ToString using (errToStringᴮ)
-open import Luau.Value.ToString using (valueToString)
 
 open import Properties.StrictMode using (wellTypedProgramsDontGoWrong)
 

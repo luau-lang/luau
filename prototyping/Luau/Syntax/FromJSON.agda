@@ -2,7 +2,7 @@
 
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec; number; binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=)
+open import Luau.Syntax using (Block; Stat ; Expr; _$_; val; nil; bool; number; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec;  binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
@@ -53,7 +53,7 @@ blockFromJSON : Value → Either String (Block maybe)
 blockFromArray : Array → Either String (Block maybe)
 
 binOpFromJSON (string s) = binOpFromString s
-binOpFromJSON val = Left "Binary operator not a string"
+binOpFromJSON _ = Left "Binary operator not a string"
 
 binOpFromString "Add" = Right +
 binOpFromString "Sub" = Right -
@@ -68,7 +68,7 @@ binOpFromString "CompareGe" = Right >=
 binOpFromString s = Left ("'" ++ s ++ "' is not a valid operator")
 
 varDecFromJSON (object arg) = varDecFromObject arg
-varDecFromJSON val = Left "VarDec not an object"
+varDecFromJSON _ = Left "VarDec not an object"
 
 varDecFromObject obj with lookup name obj | lookup type obj
 varDecFromObject obj | just (string name) | nothing = Right (var name)
@@ -80,7 +80,7 @@ varDecFromObject obj | just _ | _ = Left "AstLocal name is not a string"
 varDecFromObject obj | nothing | _ = Left "AstLocal missing name"
 
 exprFromJSON (object obj) = exprFromObject obj
-exprFromJSON val = Left "AstExpr not an object"
+exprFromJSON _ = Left "AstExpr not an object"
 
 exprFromObject obj with lookup type obj
 exprFromObject obj | just (string "AstExprCall") with lookup func obj | lookup args obj
@@ -93,7 +93,7 @@ exprFromObject obj | just (string "AstExprCall") | just value | just (array arr)
 exprFromObject obj | just (string "AstExprCall") | just value | just _ = Left ("AstExprCall args not an array")
 exprFromObject obj | just (string "AstExprCall") | nothing | _  = Left ("AstExprCall missing func")
 exprFromObject obj | just (string "AstExprCall") | _ | nothing  = Left ("AstExprCall missing args")
-exprFromObject obj | just (string "AstExprConstantNil") = Right nil
+exprFromObject obj | just (string "AstExprConstantNil") = Right (val nil)
 exprFromObject obj | just (string "AstExprFunction") with lookup args obj | lookup body obj | lookup returnAnnotation obj
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | rtn with head arr | blockFromJSON blockValue
 exprFromObject obj | just (string "AstExprFunction") | just (array arr) | just blockValue | rtn | just argValue | Right B with varDecFromJSON argValue
@@ -119,12 +119,11 @@ exprFromObject obj | just (string "AstExprLocal") | just x | Right x′ = Right 
 exprFromObject obj | just (string "AstExprLocal") | just x | Left err = Left err
 exprFromObject obj | just (string "AstExprLocal") | nothing = Left "AstExprLocal missing local"
 exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
-exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number (toFloat x))
+exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (val (number (toFloat x)))
 exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
 exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
 exprFromObject obj | just (string "AstExprConstantBool") with lookup value obj
-exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool true) = Right Expr.true
-exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool false) = Right Expr.false
+exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool b) = Right (val (bool b))
 exprFromObject obj | just (string "AstExprConstantBool") | just _ = Left "AstExprConstantBool value is not a bool"
 exprFromObject obj | just (string "AstExprConstantBool") | nothing = Left "AstExprConstantBool missing value"
 exprFromObject obj | just (string "AstExprBinary") with lookup op obj | lookup left obj | lookup right obj

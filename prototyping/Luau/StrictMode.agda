@@ -4,7 +4,7 @@ module Luau.StrictMode where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just; nothing)
-open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; var; binexp; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name)
+open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; var; binexp; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; +; -; *; /; <; >; <=; >=)
 open import Luau.Type using (Type; strict; bot; top; nil; number; _⇒_; tgt)
 open import Luau.Heap using (Heap; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
@@ -15,6 +15,16 @@ open import Properties.Product using (_,_)
 
 src : Type → Type
 src = Luau.Type.src strict
+
+data BinOpWarning : BinaryOperator → Type → Set where
+  + : ∀ {T} → (T ≢ number) → BinOpWarning + T
+  - : ∀ {T} → (T ≢ number) → BinOpWarning - T
+  * : ∀ {T} → (T ≢ number) → BinOpWarning * T
+  / : ∀ {T} → (T ≢ number) → BinOpWarning / T
+  < : ∀ {T} → (T ≢ number) → BinOpWarning < T
+  > : ∀ {T} → (T ≢ number) → BinOpWarning > T
+  <= : ∀ {T} → (T ≢ number) → BinOpWarning <= T
+  >= : ∀ {T} → (T ≢ number) → BinOpWarning >= T
 
 data Warningᴱ (H : Heap yes) {Γ} : ∀ {M T} → (Γ ⊢ᴱ M ∈ T) → Set
 data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set
@@ -51,15 +61,15 @@ data Warningᴱ H {Γ} where
     -----------------
     Warningᴱ H (app D₁ D₂)
 
-  BinopMismatch₁ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+  BinOpMismatch₁ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
 
-    (T ≢ number) →
+    BinOpWarning op T →
     ------------------------------
     Warningᴱ H (binexp {op} D₁ D₂)
 
-  BinopMismatch₂ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
+  BinOpMismatch₂ : ∀ {op M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
 
-    (U ≢ number) →
+    BinOpWarning op U →
     ------------------------------
     Warningᴱ H (binexp {op} D₁ D₂)
 

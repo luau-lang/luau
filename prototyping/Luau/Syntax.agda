@@ -1,6 +1,7 @@
 module Luau.Syntax where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Float using (Float)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
@@ -45,6 +46,12 @@ data BinaryOperator : Set where
   <= : BinaryOperator
   >= : BinaryOperator
 
+data Value : Set where
+  nil : Value
+  addr : Addr → Value
+  number : Float → Value
+  bool : Bool → Value
+
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set
 data Expr (a : Annotated) : Set
@@ -59,25 +66,18 @@ data Stat a where
   return : Expr a → Stat a
 
 data Expr a where
-  nil : Expr a
-  true : Expr a
-  false : Expr a
   var : Var → Expr a
-  addr : Addr → Expr a
+  val : Value → Expr a
   _$_ : Expr a → Expr a → Expr a
   function_is_end : FunDec a → Block a → Expr a
   block_is_end : VarDec a → Block a → Expr a
-  number : Float → Expr a
   binexp : Expr a → BinaryOperator → Expr a → Expr a
 
 isAnnotatedᴱ : ∀ {a} → Expr a → Maybe (Expr yes)
 isAnnotatedᴮ : ∀ {a} → Block a → Maybe (Block yes)
 
-isAnnotatedᴱ nil = just nil
 isAnnotatedᴱ (var x) = just (var x)
-isAnnotatedᴱ (addr a) = just (addr a)
-isAnnotatedᴱ true = just true
-isAnnotatedᴱ false = just false
+isAnnotatedᴱ (val v) = just (val v)
 isAnnotatedᴱ (M $ N) with isAnnotatedᴱ M | isAnnotatedᴱ N
 isAnnotatedᴱ (M $ N) | just M′ | just N′ = just (M′ $ N′)
 isAnnotatedᴱ (M $ N) | _ | _ = nothing
@@ -89,7 +89,6 @@ isAnnotatedᴱ (block var b ∈ T is B end) with isAnnotatedᴮ B
 isAnnotatedᴱ (block var b ∈ T is B end) | just B′ = just (block var b ∈ T is B′ end)
 isAnnotatedᴱ (block var b ∈ T is B end) | _ = nothing
 isAnnotatedᴱ (block _ is B end) = nothing
-isAnnotatedᴱ (number n) = just (number n)
 isAnnotatedᴱ (binexp M op N) with isAnnotatedᴱ M | isAnnotatedᴱ N
 isAnnotatedᴱ (binexp M op N) | just M′ | just N′ = just (binexp M′ op N′)
 isAnnotatedᴱ (binexp M op N) | _ | _ = nothing

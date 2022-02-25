@@ -6,11 +6,10 @@ module Luau.TypeCheck (m : Mode) where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
-open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; number; true; false; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name)
+open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; number; bool; val; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name; +; -; *; /; <; >; ==; ~=; <=; >=)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
-open import Luau.Value using (addr; val)
 open import Luau.Type using (Type; Mode; nil; bot; top; number; boolean; _⇒_; tgt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
@@ -23,6 +22,18 @@ src = Luau.Type.src m
 orBot : Maybe Type → Type
 orBot nothing = bot
 orBot (just T) = T
+
+tgtBinOp : BinaryOperator → Type
+tgtBinOp + = number
+tgtBinOp - = number
+tgtBinOp * = number
+tgtBinOp / = number
+tgtBinOp < = boolean
+tgtBinOp > = boolean
+tgtBinOp == = boolean
+tgtBinOp ~= = boolean
+tgtBinOp <= = boolean
+tgtBinOp >= = boolean
 
 data _⊢ᴮ_∈_ : VarCtxt → Block yes → Type → Set
 data _⊢ᴱ_∈_ : VarCtxt → Expr yes → Type → Set
@@ -59,8 +70,8 @@ data _⊢ᴱ_∈_ where
 
   nil : ∀ {Γ} →
 
-    --------------
-    Γ ⊢ᴱ nil ∈ nil
+    --------------------
+    Γ ⊢ᴱ (val nil) ∈ nil
 
   var : ∀ {x T Γ} →
 
@@ -71,22 +82,17 @@ data _⊢ᴱ_∈_ where
   addr : ∀ {a Γ} T →
 
     -----------------
-    Γ ⊢ᴱ (addr a) ∈ T
+    Γ ⊢ᴱ val(addr a) ∈ T
 
   number : ∀ {n Γ} →
 
-    ------------------------
-    Γ ⊢ᴱ (number n) ∈ number
+    ---------------------------
+    Γ ⊢ᴱ val(number n) ∈ number
 
-  true : ∀ {Γ} →
+  bool : ∀ {b Γ} →
 
-    -------------------
-    Γ ⊢ᴱ true ∈ boolean
-
-  false : ∀ {Γ} →
-
-    -------------------
-    Γ ⊢ᴱ false ∈ boolean
+    --------------------------
+    Γ ⊢ᴱ val(bool b) ∈ boolean
 
   app : ∀ {M N T U Γ} →
 
@@ -111,8 +117,8 @@ data _⊢ᴱ_∈_ where
 
     Γ ⊢ᴱ M ∈ T →
     Γ ⊢ᴱ N ∈ U →
-    ----------------------------
-    Γ ⊢ᴱ (binexp M op N) ∈ number
+    ----------------------------------
+    Γ ⊢ᴱ (binexp M op N) ∈ tgtBinOp op
 
 data ⊢ᴼ_ : Maybe(Object yes) → Set where
 
