@@ -6,12 +6,12 @@ module Luau.TypeCheck (m : Mode) where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
-open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; number; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name)
+open import Luau.Syntax using (Expr; Stat; Block; yes; nil; addr; number; true; false; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.Value using (addr; val)
-open import Luau.Type using (Type; Mode; nil; bot; top; number; _⇒_; tgt)
+open import Luau.Type using (Type; Mode; nil; bot; top; number; boolean; _⇒_; tgt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
@@ -77,6 +77,16 @@ data _⊢ᴱ_∈_ where
 
     ------------------------
     Γ ⊢ᴱ (number n) ∈ number
+
+  true : ∀ {Γ} →
+
+    -------------------
+    Γ ⊢ᴱ true ∈ boolean
+
+  false : ∀ {Γ} →
+
+    -------------------
+    Γ ⊢ᴱ false ∈ boolean
 
   app : ∀ {M N T U Γ} →
 

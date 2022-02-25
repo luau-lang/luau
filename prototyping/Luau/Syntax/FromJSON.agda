@@ -2,13 +2,13 @@
 
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec; number; binexp; BinaryOperator; +; -; *; /)
+open import Luau.Syntax using (Block; Stat ; Expr; nil; _$_; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec; number; binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
+open import Agda.Builtin.Bool using (true; false)
 
 open import FFI.Data.Aeson using (Value; Array; Object; object; array; string; fromString; lookup)
-open import FFI.Data.Bool using (true; false)
 open import FFI.Data.Either using (Either; Left; Right)
 open import FFI.Data.Maybe using (Maybe; nothing; just)
 open import FFI.Data.Scientific using (toFloat)
@@ -59,6 +59,12 @@ binOpFromString "Add" = Right +
 binOpFromString "Sub" = Right -
 binOpFromString "Mul" = Right *
 binOpFromString "Div" = Right /
+binOpFromString "CompareEq" = Right ==
+binOpFromString "CompareNe" = Right ~=
+binOpFromString "CompareLt" = Right <
+binOpFromString "CompareLe" = Right <=
+binOpFromString "CompareGt" = Right >
+binOpFromString "CompareGe" = Right >=
 binOpFromString s = Left ("'" ++ s ++ "' is not a valid operator")
 
 varDecFromJSON (object arg) = varDecFromObject arg
@@ -116,6 +122,11 @@ exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
 exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (number (toFloat x))
 exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
 exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
+exprFromObject obj | just (string "AstExprConstantBool") with lookup value obj
+exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool true) = Right Expr.true
+exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool false) = Right Expr.false
+exprFromObject obj | just (string "AstExprConstantBool") | just _ = Left "AstExprConstantBool value is not a bool"
+exprFromObject obj | just (string "AstExprConstantBool") | nothing = Left "AstExprConstantBool missing value"
 exprFromObject obj | just (string "AstExprBinary") with lookup op obj | lookup left obj | lookup right obj
 exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r with binOpFromJSON o | exprFromJSON l | exprFromJSON r
 exprFromObject obj | just (string "AstExprBinary") | just o | just l | just r | Right o′ | Right l′ | Right r′ = Right (binexp l′ o′ r′)

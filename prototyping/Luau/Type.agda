@@ -11,6 +11,7 @@ data Type : Set where
   _⇒_ : Type → Type → Type
   bot : Type
   top : Type
+  boolean : Type
   number : Type
   _∪_ : Type → Type → Type
   _∩_ : Type → Type → Type
@@ -23,6 +24,7 @@ lhs nil = nil
 lhs bot = bot
 lhs top = top
 lhs number = number
+lhs boolean = boolean
 
 rhs : Type → Type
 rhs (_ ⇒ T) = T
@@ -32,6 +34,7 @@ rhs nil = nil
 rhs bot = bot
 rhs top = top
 rhs number = number
+rhs boolean = boolean
 
 _≡ᵀ_ : ∀ (T U : Type) → Dec(T ≡ U)
 nil ≡ᵀ nil = yes refl
@@ -39,6 +42,7 @@ nil ≡ᵀ (S ⇒ T) = no (λ ())
 nil ≡ᵀ bot = no (λ ())
 nil ≡ᵀ top = no (λ ())
 nil ≡ᵀ number = no (λ ())
+nil ≡ᵀ boolean = no (λ ())
 nil ≡ᵀ (S ∪ T) = no (λ ())
 nil ≡ᵀ (S ∩ T) = no (λ ())
 (S ⇒ T) ≡ᵀ nil = no (λ ())
@@ -49,6 +53,7 @@ nil ≡ᵀ (S ∩ T) = no (λ ())
 (S ⇒ T) ≡ᵀ bot = no (λ ())
 (S ⇒ T) ≡ᵀ top = no (λ ())
 (S ⇒ T) ≡ᵀ number = no (λ ())
+(S ⇒ T) ≡ᵀ boolean = no (λ ())
 (S ⇒ T) ≡ᵀ (U ∪ V) = no (λ ())
 (S ⇒ T) ≡ᵀ (U ∩ V) = no (λ ())
 bot ≡ᵀ nil = no (λ ())
@@ -56,6 +61,7 @@ bot ≡ᵀ (U ⇒ V) = no (λ ())
 bot ≡ᵀ bot = yes refl
 bot ≡ᵀ top = no (λ ())
 bot ≡ᵀ number = no (λ ())
+bot ≡ᵀ boolean = no (λ ())
 bot ≡ᵀ (U ∪ V) = no (λ ())
 bot ≡ᵀ (U ∩ V) = no (λ ())
 top ≡ᵀ nil = no (λ ())
@@ -63,20 +69,31 @@ top ≡ᵀ (U ⇒ V) = no (λ ())
 top ≡ᵀ bot = no (λ ())
 top ≡ᵀ top = yes refl
 top ≡ᵀ number = no (λ ())
+top ≡ᵀ boolean = no (λ ())
 top ≡ᵀ (U ∪ V) = no (λ ())
 top ≡ᵀ (U ∩ V) = no (λ ())
 number ≡ᵀ nil = no (λ ())
-number ≡ᵀ (U ⇒ U₁) = no (λ ())
+number ≡ᵀ (T ⇒ U) = no (λ ())
 number ≡ᵀ bot = no (λ ())
 number ≡ᵀ top = no (λ ())
 number ≡ᵀ number = yes refl
-number ≡ᵀ (U ∪ U₁) = no (λ ())
-number ≡ᵀ (U ∩ U₁) = no (λ ())
+number ≡ᵀ boolean = no (λ ())
+number ≡ᵀ (T ∪ U) = no (λ ())
+number ≡ᵀ (T ∩ U) = no (λ ())
+boolean ≡ᵀ nil = no (λ ())
+boolean ≡ᵀ (T ⇒ U) = no (λ ())
+boolean ≡ᵀ bot = no (λ ())
+boolean ≡ᵀ top = no (λ ())
+boolean ≡ᵀ boolean = yes refl
+boolean ≡ᵀ number = no (λ ())
+boolean ≡ᵀ (T ∪ U) = no (λ ())
+boolean ≡ᵀ (T ∩ U) = no (λ ())
 (S ∪ T) ≡ᵀ nil = no (λ ())
 (S ∪ T) ≡ᵀ (U ⇒ V) = no (λ ())
 (S ∪ T) ≡ᵀ bot = no (λ ())
 (S ∪ T) ≡ᵀ top = no (λ ())
 (S ∪ T) ≡ᵀ number = no (λ ())
+(S ∪ T) ≡ᵀ boolean = no (λ ())
 (S ∪ T) ≡ᵀ (U ∪ V) with (S ≡ᵀ U) | (T ≡ᵀ V) 
 (S ∪ T) ≡ᵀ (S ∪ T) | yes refl | yes refl = yes refl
 (S ∪ T) ≡ᵀ (U ∪ V) | _ | no p = no (λ q → p (cong rhs q))
@@ -87,6 +104,7 @@ number ≡ᵀ (U ∩ U₁) = no (λ ())
 (S ∩ T) ≡ᵀ bot = no (λ ())
 (S ∩ T) ≡ᵀ top = no (λ ())
 (S ∩ T) ≡ᵀ number = no (λ ())
+(S ∩ T) ≡ᵀ boolean = no (λ ())
 (S ∩ T) ≡ᵀ (U ∪ V) = no (λ ())
 (S ∩ T) ≡ᵀ (U ∩ V) with (S ≡ᵀ U) | (T ≡ᵀ V) 
 (S ∩ T) ≡ᵀ (U ∩ V) | yes refl | yes refl = yes refl
@@ -108,6 +126,7 @@ data Mode : Set where
 src : Mode → Type → Type
 src m nil = bot
 src m number = bot
+src m boolean = bot
 src m (S ⇒ T) = S
 -- In nonstrict mode, functions are covaraiant, in strict mode they're contravariant
 src strict    (S ∪ T) = (src strict S) ∩ (src strict T)
@@ -125,6 +144,7 @@ tgt (S ⇒ T) = T
 tgt bot = bot
 tgt top = top
 tgt number = bot
+tgt boolean = bot
 tgt (S ∪ T) = (tgt S) ∪ (tgt T)
 tgt (S ∩ T) = (tgt S) ∩ (tgt T)
 

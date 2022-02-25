@@ -1,6 +1,6 @@
 module Luau.Substitution where
 
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; _⟨_⟩ ; name; fun; arg; number; binexp)
+open import Luau.Syntax using (Expr; Stat; Block; nil; true; false; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; _⟨_⟩ ; name; fun; arg; number; binexp)
 open import Luau.Value using (Value; val)
 open import Luau.Var using (Var; _≡ⱽ_)
 open import Properties.Dec using (Dec; yes; no)
@@ -11,6 +11,8 @@ var_[_/_]ᴱwhenever_ : ∀ {a P} → Var → Value → Var → (Dec P) → Expr
 _[_/_]ᴮunless_ : ∀ {a P} → Block a → Value → Var → (Dec P) → Block a
 
 nil [ v / x ]ᴱ = nil
+true [ v / x ]ᴱ = true
+false [ v / x ]ᴱ = false
 var y [ v / x ]ᴱ = var y [ v / x ]ᴱwhenever (x ≡ⱽ y)
 addr a [ v / x ]ᴱ = addr a
 (number y) [ v / x ]ᴱ = number y
