@@ -1594,4 +1594,17 @@ TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
     REQUIRE_EQ(result.warnings.size(), 0); // --!nolint disables WrongComment lint :)
 }
 
+TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfStatAndExpr")
+{
+    LintResult result = lint(R"(
+if if 1 then 2 else 3 then
+elseif if 1 then 2 else 3 then
+elseif if 0 then 5 else 4 then
+end
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 1);
+    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
+}
+
 TEST_SUITE_END();

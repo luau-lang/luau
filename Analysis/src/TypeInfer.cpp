@@ -29,7 +29,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsDontCacheTypeParams, false)
 LUAU_FASTFLAGVARIABLE(LuauImmutableTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauNoSealedTypeMod, false)
 LUAU_FASTFLAGVARIABLE(LuauQuantifyInPlace2, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
 LUAU_FASTFLAGVARIABLE(LuauSingletonTypes, false)
@@ -38,14 +37,14 @@ LUAU_FASTFLAGVARIABLE(LuauTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
-LUAU_FASTFLAGVARIABLE(LuauProperTypeLevels, false)
 LUAU_FASTFLAGVARIABLE(LuauAscribeCorrectLevelToInferredProperitesOfFreeTables, false)
-LUAU_FASTFLAG(LuauUnionTagMatchFix)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAssertStripsFalsyTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(LuauAnotherTypeLevelFix, false)
+LUAU_FASTFLAG(LuauWidenIfSupertypeIsFree)
+LUAU_FASTFLAGVARIABLE(LuauDoNotTryToReduce, false)
 
 namespace Luau
 {
@@ -1125,7 +1124,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
 
         ty = follow(ty);
 
-        if (tableSelf && (FFlag::LuauNoSealedTypeMod ? tableSelf->state != TableState::Sealed : !selfTy->persistent))
+        if (tableSelf && tableSelf->state != TableState::Sealed)
             tableSelf->props[indexName->index.value] = {ty, /* deprecated */ false, {}, indexName->indexLocation};
 
         const FunctionTypeVar* funTy = get<FunctionTypeVar>(ty);
@@ -1138,7 +1137,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
 
         checkFunctionBody(funScope, ty, *function.func);
 
-        if (tableSelf && (FFlag::LuauNoSealedTypeMod ? tableSelf->state != TableState::Sealed : !selfTy->persistent))
+        if (tableSelf && tableSelf->state != TableState::Sealed)
             tableSelf->props[indexName->index.value] = {
                 follow(quantify(funScope, ty, indexName->indexLocation)), /* deprecated */ false, {}, indexName->indexLocation};
     }
@@ -1210,8 +1209,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         {
             ScopePtr aliasScope = childScope(scope, typealias.location);
             aliasScope->level = scope->level.incr();
-            if (FFlag::LuauProperTypeLevels)
-                aliasScope->level.subLevel = subLevel;
+            aliasScope->level.subLevel = subLevel;
 
             auto [generics, genericPacks] =
                 createGenericTypes(aliasScope, scope->level, typealias, typealias.generics, typealias.genericPacks, /* useCache = */ true);
@@ -1624,7 +1622,7 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprIn
 std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location)
 {
     ErrorVec errors;
-    auto result = Luau::findTablePropertyRespectingMeta(errors, globalScope, lhsType, name, location);
+    auto result = Luau::findTablePropertyRespectingMeta(errors, lhsType, name, location);
     reportErrors(errors);
     return result;
 }
@@ -1632,7 +1630,7 @@ std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsTyp
 std::optional<TypeId> TypeChecker::findMetatableEntry(TypeId type, std::string entry, const Location& location)
 {
     ErrorVec errors;
-    auto result = Luau::findMetatableEntry(errors, globalScope, type, entry, location);
+    auto result = Luau::findMetatableEntry(errors, type, entry, location);
     reportErrors(errors);
     return result;
 }
@@ -1751,13 +1749,23 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
             return std::nullopt;
         }
 
-        // TODO(amccord): Write some logic to correctly handle intersections. CLI-34659
-        std::vector<TypeId> result = reduceUnion(parts);
+        if (FFlag::LuauDoNotTryToReduce)
+        {
+            if (parts.size() == 1)
+                return parts[0];
 
-        if (result.size() == 1)
-            return result[0];
+            return addType(IntersectionTypeVar{std::move(parts)}); // Not at all correct.
+        }
+        else
+        {
+            // TODO(amccord): Write some logic to correctly handle intersections. CLI-34659
+            std::vector<TypeId> result = reduceUnion(parts);
 
-        return addType(IntersectionTypeVar{result});
+            if (result.size() == 1)
+                return result[0];
+
+            return addType(IntersectionTypeVar{result});
+        }
     }
 
     if (addErrors)
@@ -2823,10 +2831,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, TypeLevel level)
 {
     auto freshTy = [&]() {
-        if (FFlag::LuauProperTypeLevels)
-            return freshType(level);
-        else
-            return freshType(scope);
+        return freshType(level);
     };
 
     if (auto globalName = funName.as<AstExprGlobal>())
@@ -3790,7 +3795,14 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
         // has been instantiated, so is a monotype. We can therefore
         // unify it with a monomorphic function.
         TypeId r = addType(FunctionTypeVar(scope->level, argPack, retPack));
-        unify(fn, r, expr.location);
+        if (FFlag::LuauWidenIfSupertypeIsFree)
+        {
+            UnifierOptions options;
+            options.isFunctionCall = true;
+            unify(r, fn, expr.location, options);
+        }
+        else
+            unify(fn, r, expr.location);
         return {{retPack}};
     }
 
@@ -4244,8 +4256,14 @@ TypeId TypeChecker::anyIfNonstrict(TypeId ty) const
 
 bool TypeChecker::unify(TypeId subTy, TypeId superTy, const Location& location)
 {
+    UnifierOptions options;
+    return unify(subTy, superTy, location, options);
+}
+
+bool TypeChecker::unify(TypeId subTy, TypeId superTy, const Location& location, const UnifierOptions& options)
+{
     Unifier state = mkUnifier(location);
-    state.tryUnify(subTy, superTy);
+    state.tryUnify(subTy, superTy, options.isFunctionCall);
 
     if (FFlag::LuauUseCommittingTxnLog)
         state.log.commit();
@@ -4654,7 +4672,7 @@ void TypeChecker::diagnoseMissingTableKey(UnknownProperty* utk, TypeErrorData& d
         }
     };
 
-    if (auto ttv = getTableType(FFlag::LuauUnionTagMatchFix ? utk->table : follow(utk->table)))
+    if (auto ttv = getTableType(utk->table))
         accumulate(ttv->props);
     else if (auto ctv = get<ClassTypeVar>(follow(utk->table)))
     {
@@ -4691,8 +4709,7 @@ ScopePtr TypeChecker::childFunctionScope(const ScopePtr& parent, const Location&
 ScopePtr TypeChecker::childScope(const ScopePtr& parent, const Location& location)
 {
     ScopePtr scope = std::make_shared<Scope>(parent);
-    if (FFlag::LuauProperTypeLevels)
-        scope->level = parent->level;
+    scope->level = parent->level;
     scope->varargPack = parent->varargPack;
 
     currentModule->scopes.push_back(std::make_pair(location, scope));
@@ -4724,7 +4741,7 @@ void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
 
 Unifier TypeChecker::mkUnifier(const Location& location)
 {
-    return Unifier{&currentModule->internalTypes, currentModule->mode, globalScope, location, Variance::Covariant, unifierState};
+    return Unifier{&currentModule->internalTypes, currentModule->mode, location, Variance::Covariant, unifierState};
 }
 
 TypeId TypeChecker::freshType(const ScopePtr& scope)
@@ -5444,7 +5461,7 @@ GenericTypeDefinitions TypeChecker::createGenericTypes(const ScopePtr& scope, st
 
 void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const ScopePtr& scope, TypeIdPredicate predicate)
 {
-    LUAU_ASSERT(FFlag::LuauDiscriminableUnions2);
+    LUAU_ASSERT(FFlag::LuauDiscriminableUnions2 || FFlag::LuauAssertStripsFalsyTypes);
 
     const LValue* target = &lvalue;
     std::optional<LValue> key; // If set, we know we took the base of the lvalue path and should be walking down each option of the base's type.

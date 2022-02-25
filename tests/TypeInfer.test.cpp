@@ -5127,8 +5127,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 
 TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types")
 {
-    ScopedFastFlag noSealedTypeMod{"LuauNoSealedTypeMod", true};
-
     fileResolver.source["game/A"] = R"(
 export type Type = { unrelated: boolean }
 return {}
@@ -5190,7 +5188,6 @@ TEST_CASE_FIXTURE(Fixture, "indexing_on_string_singletons")
 {
     ScopedFastFlag sff[]{
         {"LuauDiscriminableUnions2", true},
-        {"LuauRefactorTypeVarQuestions", true},
         {"LuauSingletonTypes", true},
     };
 
@@ -5210,7 +5207,6 @@ TEST_CASE_FIXTURE(Fixture, "indexing_on_union_of_string_singletons")
 {
     ScopedFastFlag sff[]{
         {"LuauDiscriminableUnions2", true},
-        {"LuauRefactorTypeVarQuestions", true},
         {"LuauSingletonTypes", true},
     };
 
@@ -5230,7 +5226,6 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
 {
     ScopedFastFlag sff[]{
         {"LuauDiscriminableUnions2", true},
-        {"LuauRefactorTypeVarQuestions", true},
         {"LuauSingletonTypes", true},
     };
 
@@ -5250,7 +5245,6 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
 {
     ScopedFastFlag sff[]{
         {"LuauDiscriminableUnions2", true},
-        {"LuauRefactorTypeVarQuestions", true},
         {"LuauSingletonTypes", true},
     };
 

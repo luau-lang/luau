@@ -68,7 +68,7 @@ void luaL_sandboxthread(lua_State* L)
     lua_setsafeenv(L, LUA_GLOBALSINDEX, true);
 }
 
-static void* l_alloc(lua_State* L, void* ud, void* ptr, size_t osize, size_t nsize)
+static void* l_alloc(void* ud, void* ptr, size_t osize, size_t nsize)
 {
     (void)ud;
     (void)osize;

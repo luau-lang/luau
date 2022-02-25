@@ -175,6 +175,8 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_depth")
 {
+    ScopedFastFlag sff{"LuauDoNotTryToReduce", true};
+
     CheckResult result = check(R"(
         type A = {x: {y: {z: {thing: string}}}}
         type B = {x: {y: {z: {thing: string}}}}
@@ -184,7 +186,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.stringType, *requireType("r"));
+    CHECK_EQ("string & string", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
@@ -218,7 +220,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_part_missing_
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_property_of_type_any")
 {
     CheckResult result = check(R"(
-        type A = {x: number}
+        type A = {y: number}
         type B = {x: any}
         local t: A & B
 

@@ -44,7 +44,7 @@ typedef int (*lua_Continuation)(lua_State* L, int status);
 ** prototype for memory-allocation functions
 */
 
-typedef void* (*lua_Alloc)(lua_State* L, void* ud, void* ptr, size_t osize, size_t nsize);
+typedef void* (*lua_Alloc)(void* ud, void* ptr, size_t osize, size_t nsize);
 
 /* non-return type */
 #define l_noret void LUA_NORETURN

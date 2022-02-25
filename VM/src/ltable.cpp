@@ -425,7 +425,7 @@ static void rehash(lua_State* L, Table* t, const TValue* ek)
 Table* luaH_new(lua_State* L, int narray, int nhash)
 {
     Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
-    luaC_link(L, t, LUA_TTABLE);
+    luaC_init(L, t, LUA_TTABLE);
     t->metatable = NULL;
     t->flags = cast_byte(~0);
     t->array = NULL;
@@ -742,7 +742,7 @@ int luaH_getn(Table* t)
 Table* luaH_clone(lua_State* L, Table* tt)
 {
     Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
-    luaC_link(L, t, LUA_TTABLE);
+    luaC_init(L, t, LUA_TTABLE);
     t->metatable = tt->metatable;
     t->flags = tt->flags;
     t->array = NULL;

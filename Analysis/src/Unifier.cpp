@@ -21,9 +21,8 @@ LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
 LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
 LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
-LUAU_FASTFLAG(LuauProperTypeLevels);
-LUAU_FASTFLAGVARIABLE(LuauUnionTagMatchFix, false)
 LUAU_FASTFLAGVARIABLE(LuauFollowWithCommittingTxnLogInAnyUnification, false)
+LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree, false)
 
 namespace Luau
 {
@@ -122,7 +121,7 @@ struct PromoteTypeLevels
     }
 };
 
-void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypeId ty)
+static void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypeId ty)
 {
     // Type levels of types from other modules are already global, so we don't need to promote anything inside
     if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
@@ -133,6 +132,7 @@ void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const Typ
     visitTypeVarOnce(ty, ptl, seen);
 }
 
+// TODO: use this and make it static.
 void promoteTypeLevels(DEPRECATED_TxnLog& DEPRECATED_log, TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypePackId tp)
 {
     // Type levels of types from other modules are already global, so we don't need to promote anything inside
@@ -247,6 +247,48 @@ struct SkipCacheForType
     bool result = false;
 };
 
+bool Widen::isDirty(TypeId ty)
+{
+    return FFlag::LuauUseCommittingTxnLog ? log->is<SingletonTypeVar>(ty) : bool(get<SingletonTypeVar>(ty));
+}
+
+bool Widen::isDirty(TypePackId)
+{
+    return false;
+}
+
+TypeId Widen::clean(TypeId ty)
+{
+    LUAU_ASSERT(isDirty(ty));
+    auto stv = FFlag::LuauUseCommittingTxnLog ? log->getMutable<SingletonTypeVar>(ty) : getMutable<SingletonTypeVar>(ty);
+    LUAU_ASSERT(stv);
+
+    if (get<StringSingleton>(stv))
+        return getSingletonTypes().stringType;
+    else
+    {
+        // If this assert trips, it's likely we now have number singletons.
+        LUAU_ASSERT(get<BooleanSingleton>(stv));
+        return getSingletonTypes().booleanType;
+    }
+}
+
+TypePackId Widen::clean(TypePackId)
+{
+    throw std::runtime_error("Widen attempted to clean a dirty type pack?");
+}
+
+bool Widen::ignoreChildren(TypeId ty)
+{
+    // Sometimes we unify ("hi") -> free1 with (free2) -> free3, so don't ignore functions.
+    // TODO: should we be doing this? we would need to rework how checkCallOverload does the unification.
+    if (FFlag::LuauUseCommittingTxnLog ? log->is<FunctionTypeVar>(ty) : bool(get<FunctionTypeVar>(ty)))
+        return false;
+
+    // We only care about unions.
+    return !(FFlag::LuauUseCommittingTxnLog ? log->is<UnionTypeVar>(ty) : bool(get<UnionTypeVar>(ty)));
+}
+
 static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
 {
     auto isUnificationTooComplex = [](const TypeError& te) {
@@ -263,43 +305,22 @@ static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
 // Used for tagged union matching heuristic, returns first singleton type field
 static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMatchTag(TypeId type)
 {
-    if (FFlag::LuauUnionTagMatchFix)
+    if (auto ttv = getTableType(type))
     {
-        if (auto ttv = getTableType(type))
+        for (auto&& [name, prop] : ttv->props)
         {
-            for (auto&& [name, prop] : ttv->props)
-            {
-                if (auto sing = get<SingletonTypeVar>(follow(prop.type)))
-                    return {{name, sing}};
-            }
-        }
-    }
-    else
-    {
-        type = follow(type);
-
-        if (auto ttv = get<TableTypeVar>(type))
-        {
-            for (auto&& [name, prop] : ttv->props)
-            {
-                if (auto sing = get<SingletonTypeVar>(follow(prop.type)))
-                    return {{name, sing}};
-            }
-        }
-        else if (auto mttv = get<MetatableTypeVar>(type))
-        {
-            return getTableMatchTag(mttv->table);
+            if (auto sing = get<SingletonTypeVar>(follow(prop.type)))
+                return {{name, sing}};
         }
     }
 
     return std::nullopt;
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Location& location, Variance variance, UnifierSharedState& sharedState,
+Unifier::Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState,
     TxnLog* parentLog)
     : types(types)
     , mode(mode)
-    , globalScope(std::move(globalScope))
     , log(parentLog)
     , location(location)
     , variance(variance)
@@ -308,11 +329,10 @@ Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, const Locati
     LUAU_ASSERT(sharedState.iceHandler);
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, ScopePtr globalScope, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
+Unifier::Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
     Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
     : types(types)
     , mode(mode)
-    , globalScope(std::move(globalScope))
     , DEPRECATED_log(sharedSeen)
     , log(parentLog, sharedSeen)
     , location(location)
@@ -435,14 +455,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     }
     else if (superFree)
     {
+        TypeLevel superLevel = superFree->level;
+
         occursCheck(superTy, subTy);
         bool occursFailed = false;
         if (FFlag::LuauUseCommittingTxnLog)
             occursFailed = bool(log.getMutable<ErrorTypeVar>(superTy));
         else
             occursFailed = bool(get<ErrorTypeVar>(superTy));
-
-        TypeLevel superLevel = superFree->level;
 
         // Unification can't change the level of a generic.
         auto subGeneric = FFlag::LuauUseCommittingTxnLog ? log.getMutable<GenericTypeVar>(subTy) : get<GenericTypeVar>(subTy);
@@ -459,20 +479,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             if (FFlag::LuauUseCommittingTxnLog)
             {
                 promoteTypeLevels(DEPRECATED_log, log, types, superLevel, subTy);
-                log.replace(superTy, BoundTypeVar(subTy));
+                log.replace(superTy, BoundTypeVar(widen(subTy)));
             }
             else
             {
-                if (FFlag::LuauProperTypeLevels)
-                    promoteTypeLevels(DEPRECATED_log, log, types, superLevel, subTy);
-                else if (auto subLevel = getMutableLevel(subTy))
-                {
-                    if (!subLevel->subsumes(superFree->level))
-                        *subLevel = superFree->level;
-                }
+                promoteTypeLevels(DEPRECATED_log, log, types, superLevel, subTy);
 
                 DEPRECATED_log(superTy);
-                *asMutable(superTy) = BoundTypeVar(subTy);
+                *asMutable(superTy) = BoundTypeVar(widen(subTy));
             }
         }
 
@@ -507,16 +521,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             }
             else
             {
-                if (FFlag::LuauProperTypeLevels)
-                    promoteTypeLevels(DEPRECATED_log, log, types, subLevel, superTy);
-                else if (auto superLevel = getMutableLevel(superTy))
-                {
-                    if (!superLevel->subsumes(subFree->level))
-                    {
-                        DEPRECATED_log(superTy);
-                        *superLevel = subFree->level;
-                    }
-                }
+                promoteTypeLevels(DEPRECATED_log, log, types, subLevel, superTy);
 
                 DEPRECATED_log(subTy);
                 *asMutable(subTy) = BoundTypeVar(superTy);
@@ -2064,6 +2069,17 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     }
 }
 
+TypeId Unifier::widen(TypeId ty)
+{
+    if (!FFlag::LuauWidenIfSupertypeIsFree)
+        return ty;
+
+    Widen widen{types};
+    std::optional<TypeId> result = widen.substitute(ty);
+    // TODO: what does it mean for substitution to fail to widen?
+    return result.value_or(ty);
+}
+
 TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen)
 {
     ty = follow(ty);
@@ -2915,7 +2931,7 @@ void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 
 std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, Name name)
 {
-    return Luau::findTablePropertyRespectingMeta(errors, globalScope, lhsType, name, location);
+    return Luau::findTablePropertyRespectingMeta(errors, lhsType, name, location);
 }
 
 void Unifier::occursCheck(TypeId needle, TypeId haystack)
@@ -3096,9 +3112,9 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 Unifier Unifier::makeChildUnifier()
 {
     if (FFlag::LuauUseCommittingTxnLog)
-        return Unifier{types, mode, globalScope, log.sharedSeen, location, variance, sharedState, &log};
+        return Unifier{types, mode, log.sharedSeen, location, variance, sharedState, &log};
     else
-        return Unifier{types, mode, globalScope, DEPRECATED_log.sharedSeen, location, variance, sharedState, &log};
+        return Unifier{types, mode, DEPRECATED_log.sharedSeen, location, variance, sharedState, &log};
 }
 
 bool Unifier::isNonstrictMode() const
