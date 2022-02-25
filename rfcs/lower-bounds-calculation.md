@@ -124,44 +124,45 @@ end
 
 ---
 
-function f(x: number?)
+function bad_callback(x: number?)
 end
 
-local g: () -> () = f
+local obscured: () -> () = bad_callback
 
-register_callback(g)
+register_callback(obscured)
+
+function good_callback()
+end
+
+register_callback(good_callback)
 ```
 
 The problem we run into is, if we allow the subtyping rule `(T?) -> () <: () -> ()` and also allow oversaturation of a function, it becomes easy to obscure an argument type and pass the wrong type of value to it.
 
 We need a solution here.
 
-To resolve this, let's first examine the type of `double`.  It is tempting to type `double : (number) -> number` and call it a day, but, if we read the definition of the Lua language, we're being somewhat hasty when we do that.  We can pass _as many extra arguments as we want, of any type_ to this function.  All save the first are ignored.  We could therefore instead decide to type `double : (number, any...) -> number`.
+To resolve this, let's first examine the type of `bad_callback`.  It is tempting to type `bad_callback : (number?) -> number` and call it a day, but, if we read the definition of the Lua language, we're being somewhat hasty when we do that.  We can pass _as many extra arguments as we want, of any type_ to this function.  All save the first are ignored.  We could therefore instead decide to type `bad_callback : (number?, any...) -> number`.  We could also type `good_callback : (any...) -> ()`.
 
-So, we propose subtyping rules for type packs:
+So, we propose some different inference rules for functions:
+
+1. The AST fragment `function(arg0..argN) ... end` is typed `(T0..TN, any...) -> R` where `arg0..argN : T0..TN` and `R` is the inferred return type of the function body.  Function statements are inferred the same way.
+1. Type annotations are unchanged.  `() -> ()` is still a nullary function.
+
+And subtyping rules for type packs:
 
 1. `(T0..TN) <: (U0..UN)` if, for each `T` and `U`, `T <: U`
 
 1. `(T0..TN, A?) <: (T0..TN)` says that optional arguments can be left off by callers for type packs to make optional function arguments work.
 1. `(T0..TN, any) <: (T0..TN)` just to be crystal clear that an argument whose type is `any` is also optional.
-
-Notably, there is no subtyping rule `(T0..TN) <: (T0..TN-1)`: without `nil`, there is no subtyping relationship between packs of inequal length.
-
-We also introduce some changes to how function definitions and calls work:
-
-1. The type of any function literal whose arguments have fixed arity always have an implicit `any...` parameter.  It is safe to oversaturate such a function with any number of extra arguments of any type.
-1. Function types that are written as fixed-arity remain fixed-arity.  They are not variadic.
-1. When calling a value whose type is a fixed-arity function, we permit it to be oversaturated with any number of `nil` values, and `nil` values _only_.
-
-We could frame rules 2 and rules 3 differently but equivalently: Function types that are written as fixed-arity are treated as though they have an implicit `nil...` parameter.
+1. `(T0..TN) <: (T0..TN, nil)` says that it is okay to oversaturate a function with `nil` values.
 
 The standard subtyping rule for functions is unchanged.
 
-`T -> R <: U -> S` if `U <: T` and `R <: S`
+1. `T -> R <: U -> S` if `U <: T` and `R <: S`
 
-Our `map_array` example typechecks because the lambda passed to `map_array` implicitly accepts `any...` in addition to its declared argument.
+Under these constraints, packs of different length only have a subtyping relationship in the presence of `nil` and option types.  It also says that all functions can be oversaturated with `nil`, but, if we have the actual definition, then they can safely be oversaturated with anything.
 
-Our `higher` example does not typecheck because the function argument `f` can only be oversaturated with extra `nil` values.
+Under these subtyping rules, typechecking proceeds the way we need it to: `(Instance) -> () </: () -> ()` and so `obscured` cannot be passed to `register_callback`.  However, `good_callback : (any...) -> ()` and `(any...) -> () <: (Instance) -> ()` and so it is safe to register `good_callback`
 
 ## Drawbacks
 
