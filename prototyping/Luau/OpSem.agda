@@ -22,6 +22,14 @@ evalEqOp (bool true) (bool y) = y
 evalEqOp (bool false) (bool y) = not y
 evalEqOp _ _ = false
 
+evalNeqOp : Value → Value → Bool
+evalNeqOp Value.nil Value.nil = false
+evalNeqOp (addr x) (addr y) = not (x ==ᴬ y)
+evalNeqOp (number x) (number y) = primFloatInequality x y
+evalNeqOp (bool true) (bool y) = not y
+evalNeqOp (bool false) (bool y) = y
+evalNeqOp _ _ = true
+
 data _⟦_⟧_⟶_ : Value → BinaryOperator → Value → Value → Set where
   + : ∀ m n → (number m) ⟦ + ⟧ (number n) ⟶ number (primFloatPlus m n)
   - : ∀ m n → (number m) ⟦ - ⟧ (number n) ⟶ number (primFloatMinus m n)
@@ -32,7 +40,7 @@ data _⟦_⟧_⟶_ : Value → BinaryOperator → Value → Value → Set where
   <= : ∀ m n → (number m) ⟦ <= ⟧ (number n) ⟶ bool ((primFloatLess m n) or (primFloatEquality m n))
   >= : ∀ m n → (number m) ⟦ >= ⟧ (number n) ⟶ bool ((primFloatLess n m) or (primFloatEquality m n))
   == : ∀ v w → v ⟦ == ⟧ w ⟶ bool (evalEqOp v w)
-  ~= : ∀ v w → v ⟦ ~= ⟧ w ⟶ bool (not (evalEqOp v w))
+  ~= : ∀ v w → v ⟦ ~= ⟧ w ⟶ bool (evalNeqOp v w)
   
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
