@@ -10,7 +10,7 @@ open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
-open import Luau.Type using (Type; Mode; nil; bot; top; number; boolean; _⇒_; tgt)
+open import Luau.Type using (Type; Mode; nil; none; number; boolean; _⇒_; tgt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
@@ -19,9 +19,9 @@ open import Properties.Product using (_×_; _,_)
 src : Type → Type
 src = Luau.Type.src m
 
-orBot : Maybe Type → Type
-orBot nothing = bot
-orBot (just T) = T
+orNone : Maybe Type → Type
+orNone nothing = none
+orNone (just T) = T
 
 tgtBinOp : BinaryOperator → Type
 tgtBinOp + = number
@@ -75,7 +75,7 @@ data _⊢ᴱ_∈_ where
 
   var : ∀ {x T Γ} →
 
-    T ≡ orBot(Γ [ x ]ⱽ) →
+    T ≡ orNone(Γ [ x ]ⱽ) →
     ----------------
     Γ ⊢ᴱ (var x) ∈ T
 

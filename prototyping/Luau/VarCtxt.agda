@@ -3,7 +3,7 @@
 module Luau.VarCtxt where
 
 open import Agda.Builtin.Equality using (_≡_)
-open import Luau.Type using (Type; bot; _∪_; _∩_)
+open import Luau.Type using (Type; _∪_; _∩_)
 open import Luau.Var using (Var)
 open import FFI.Data.Aeson using (KeyMap; Key; empty; unionWith; singleton; insert; delete; lookup; toString; fromString; lookup-insert; lookup-insert-not; lookup-empty; to-from; insert-swap; insert-over)
 open import FFI.Data.Maybe using (Maybe; just; nothing)

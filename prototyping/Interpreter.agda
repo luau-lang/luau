@@ -25,8 +25,8 @@ open import Properties.StrictMode using (wellTypedProgramsDontGoWrong)
 
 runBlock′ : ∀ a → Block a → IO ⊤
 runBlock′ a block with run block
-runBlock′ a block | return V D = putStrLn (valueToString V)
-runBlock′ a block | done D = putStrLn "nil"
+runBlock′ a block | return V D = putStrLn ("\nRAN WITH RESULT: " ++ valueToString V)
+runBlock′ a block | done D = putStrLn ("\nRAN")
 runBlock′ maybe block | error E D = putStrLn ("\nRUNTIME ERROR:\n" ++ errToStringᴮ _ E)
 runBlock′ yes block | error E D with wellTypedProgramsDontGoWrong _ block _ D E
 runBlock′ yes block | error E D | W = putStrLn ("\nRUNTIME ERROR:\n" ++ errToStringᴮ _ E ++ "\n\nTYPE ERROR:\n" ++ warningToStringᴮ _ W)
@@ -38,12 +38,12 @@ runBlock B | just B′ = putStrLn ("ANNOTATED PROGRAM:\n" ++ blockToString B) >>
 
 runJSON : Value → IO ⊤
 runJSON value with blockFromJSON(value)
-runJSON value | (Left err) = putStrLn ("Luau error: " ++ err) >> exitWith (ExitFailure (pos 1))
+runJSON value | (Left err) = putStrLn ("LUAU ERROR: " ++ err) >> exitWith (ExitFailure (pos 1))
 runJSON value | (Right block) = runBlock block
 
 runString : String → IO ⊤
 runString txt with eitherDecode (encodeUtf8 txt)
-runString txt | (Left err) = putStrLn ("JSON error: " ++ err) >> exitWith (ExitFailure (pos 1))
+runString txt | (Left err) = putStrLn ("JSON ERROR: " ++ err) >> exitWith (ExitFailure (pos 1))
 runString txt | (Right value) = runJSON value
 
 main : IO ⊤

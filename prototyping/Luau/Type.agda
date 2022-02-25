@@ -9,8 +9,8 @@ open import FFI.Data.Maybe using (Maybe; just; nothing)
 data Type : Set where
   nil : Type
   _⇒_ : Type → Type → Type
-  bot : Type
-  top : Type
+  none : Type
+  any : Type
   boolean : Type
   number : Type
   _∪_ : Type → Type → Type
@@ -21,8 +21,8 @@ lhs (T ⇒ _) = T
 lhs (T ∪ _) = T
 lhs (T ∩ _) = T
 lhs nil = nil
-lhs bot = bot
-lhs top = top
+lhs none = none
+lhs any = any
 lhs number = number
 lhs boolean = boolean
 
@@ -31,16 +31,16 @@ rhs (_ ⇒ T) = T
 rhs (_ ∪ T) = T
 rhs (_ ∩ T) = T
 rhs nil = nil
-rhs bot = bot
-rhs top = top
+rhs none = none
+rhs any = any
 rhs number = number
 rhs boolean = boolean
 
 _≡ᵀ_ : ∀ (T U : Type) → Dec(T ≡ U)
 nil ≡ᵀ nil = yes refl
 nil ≡ᵀ (S ⇒ T) = no (λ ())
-nil ≡ᵀ bot = no (λ ())
-nil ≡ᵀ top = no (λ ())
+nil ≡ᵀ none = no (λ ())
+nil ≡ᵀ any = no (λ ())
 nil ≡ᵀ number = no (λ ())
 nil ≡ᵀ boolean = no (λ ())
 nil ≡ᵀ (S ∪ T) = no (λ ())
@@ -50,48 +50,48 @@ nil ≡ᵀ (S ∩ T) = no (λ ())
 (S ⇒ T) ≡ᵀ (S ⇒ T) | yes refl | yes refl = yes refl
 (S ⇒ T) ≡ᵀ (U ⇒ V) | _ | no p = no (λ q → p (cong rhs q))
 (S ⇒ T) ≡ᵀ (U ⇒ V) | no p | _ = no (λ q → p (cong lhs q))
-(S ⇒ T) ≡ᵀ bot = no (λ ())
-(S ⇒ T) ≡ᵀ top = no (λ ())
+(S ⇒ T) ≡ᵀ none = no (λ ())
+(S ⇒ T) ≡ᵀ any = no (λ ())
 (S ⇒ T) ≡ᵀ number = no (λ ())
 (S ⇒ T) ≡ᵀ boolean = no (λ ())
 (S ⇒ T) ≡ᵀ (U ∪ V) = no (λ ())
 (S ⇒ T) ≡ᵀ (U ∩ V) = no (λ ())
-bot ≡ᵀ nil = no (λ ())
-bot ≡ᵀ (U ⇒ V) = no (λ ())
-bot ≡ᵀ bot = yes refl
-bot ≡ᵀ top = no (λ ())
-bot ≡ᵀ number = no (λ ())
-bot ≡ᵀ boolean = no (λ ())
-bot ≡ᵀ (U ∪ V) = no (λ ())
-bot ≡ᵀ (U ∩ V) = no (λ ())
-top ≡ᵀ nil = no (λ ())
-top ≡ᵀ (U ⇒ V) = no (λ ())
-top ≡ᵀ bot = no (λ ())
-top ≡ᵀ top = yes refl
-top ≡ᵀ number = no (λ ())
-top ≡ᵀ boolean = no (λ ())
-top ≡ᵀ (U ∪ V) = no (λ ())
-top ≡ᵀ (U ∩ V) = no (λ ())
+none ≡ᵀ nil = no (λ ())
+none ≡ᵀ (U ⇒ V) = no (λ ())
+none ≡ᵀ none = yes refl
+none ≡ᵀ any = no (λ ())
+none ≡ᵀ number = no (λ ())
+none ≡ᵀ boolean = no (λ ())
+none ≡ᵀ (U ∪ V) = no (λ ())
+none ≡ᵀ (U ∩ V) = no (λ ())
+any ≡ᵀ nil = no (λ ())
+any ≡ᵀ (U ⇒ V) = no (λ ())
+any ≡ᵀ none = no (λ ())
+any ≡ᵀ any = yes refl
+any ≡ᵀ number = no (λ ())
+any ≡ᵀ boolean = no (λ ())
+any ≡ᵀ (U ∪ V) = no (λ ())
+any ≡ᵀ (U ∩ V) = no (λ ())
 number ≡ᵀ nil = no (λ ())
 number ≡ᵀ (T ⇒ U) = no (λ ())
-number ≡ᵀ bot = no (λ ())
-number ≡ᵀ top = no (λ ())
+number ≡ᵀ none = no (λ ())
+number ≡ᵀ any = no (λ ())
 number ≡ᵀ number = yes refl
 number ≡ᵀ boolean = no (λ ())
 number ≡ᵀ (T ∪ U) = no (λ ())
 number ≡ᵀ (T ∩ U) = no (λ ())
 boolean ≡ᵀ nil = no (λ ())
 boolean ≡ᵀ (T ⇒ U) = no (λ ())
-boolean ≡ᵀ bot = no (λ ())
-boolean ≡ᵀ top = no (λ ())
+boolean ≡ᵀ none = no (λ ())
+boolean ≡ᵀ any = no (λ ())
 boolean ≡ᵀ boolean = yes refl
 boolean ≡ᵀ number = no (λ ())
 boolean ≡ᵀ (T ∪ U) = no (λ ())
 boolean ≡ᵀ (T ∩ U) = no (λ ())
 (S ∪ T) ≡ᵀ nil = no (λ ())
 (S ∪ T) ≡ᵀ (U ⇒ V) = no (λ ())
-(S ∪ T) ≡ᵀ bot = no (λ ())
-(S ∪ T) ≡ᵀ top = no (λ ())
+(S ∪ T) ≡ᵀ none = no (λ ())
+(S ∪ T) ≡ᵀ any = no (λ ())
 (S ∪ T) ≡ᵀ number = no (λ ())
 (S ∪ T) ≡ᵀ boolean = no (λ ())
 (S ∪ T) ≡ᵀ (U ∪ V) with (S ≡ᵀ U) | (T ≡ᵀ V) 
@@ -101,8 +101,8 @@ boolean ≡ᵀ (T ∩ U) = no (λ ())
 (S ∪ T) ≡ᵀ (U ∩ V) = no (λ ())
 (S ∩ T) ≡ᵀ nil = no (λ ())
 (S ∩ T) ≡ᵀ (U ⇒ V) = no (λ ())
-(S ∩ T) ≡ᵀ bot = no (λ ())
-(S ∩ T) ≡ᵀ top = no (λ ())
+(S ∩ T) ≡ᵀ none = no (λ ())
+(S ∩ T) ≡ᵀ any = no (λ ())
 (S ∩ T) ≡ᵀ number = no (λ ())
 (S ∩ T) ≡ᵀ boolean = no (λ ())
 (S ∩ T) ≡ᵀ (U ∪ V) = no (λ ())
@@ -124,27 +124,27 @@ data Mode : Set where
   nonstrict : Mode
 
 src : Mode → Type → Type
-src m nil = bot
-src m number = bot
-src m boolean = bot
+src m nil = none
+src m number = none
+src m boolean = none
 src m (S ⇒ T) = S
 -- In nonstrict mode, functions are covaraiant, in strict mode they're contravariant
 src strict    (S ∪ T) = (src strict S) ∩ (src strict T)
 src nonstrict (S ∪ T) = (src nonstrict S) ∪ (src nonstrict T)
 src strict    (S ∩ T) = (src strict S) ∪ (src strict T)
 src nonstrict (S ∩ T) = (src nonstrict S) ∩ (src nonstrict T)
-src strict bot = top
-src nonstrict bot = bot
-src strict top = bot
-src nonstrict top = top
+src strict none = any
+src nonstrict none = none
+src strict any = none
+src nonstrict any = any
 
 tgt : Type → Type
-tgt nil = bot
+tgt nil = none
 tgt (S ⇒ T) = T
-tgt bot = bot
-tgt top = top
-tgt number = bot
-tgt boolean = bot
+tgt none = none
+tgt any = any
+tgt number = none
+tgt boolean = none
 tgt (S ∪ T) = (tgt S) ∪ (tgt T)
 tgt (S ∩ T) = (tgt S) ∩ (tgt T)
 

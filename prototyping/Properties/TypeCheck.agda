@@ -8,9 +8,9 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Either using (Either)
-open import Luau.TypeCheck(m) using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; app; function; block; binexp; done; return; local; nothing; orBot; tgtBinOp)
+open import Luau.TypeCheck(m) using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; app; function; block; binexp; done; return; local; nothing; orNone; tgtBinOp)
 open import Luau.Syntax using (Block; Expr; Value; BinaryOperator; yes; nil; addr; number; bool; val; var; binexp; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg; +; -; *; /; <; >; ==; ~=; <=; >=)
-open import Luau.Type using (Type; nil; top; bot; number; boolean; _⇒_; tgt)
+open import Luau.Type using (Type; nil; any; none; number; boolean; _⇒_; tgt)
 open import Luau.RuntimeType using (RuntimeType; nil; number; function; valueType)
 open import Luau.VarCtxt using (VarCtxt; ∅; _↦_; _⊕_↦_; _⋒_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import Luau.Addr using (Addr)
@@ -41,8 +41,8 @@ typeOfⱽ H (number n) = just number
 typeOfᴱ : Heap yes → VarCtxt → (Expr yes) → Type
 typeOfᴮ : Heap yes → VarCtxt → (Block yes) → Type
 
-typeOfᴱ H Γ (var x) = orBot(Γ [ x ]ⱽ)
-typeOfᴱ H Γ (val v) = orBot(typeOfⱽ H v)
+typeOfᴱ H Γ (var x) = orNone(Γ [ x ]ⱽ)
+typeOfᴱ H Γ (val v) = orNone(typeOfⱽ H v)
 typeOfᴱ H Γ (M $ N) = tgt(typeOfᴱ H Γ M)
 typeOfᴱ H Γ (function f ⟨ var x ∈ S ⟩∈ T is B end) = S ⇒ T
 typeOfᴱ H Γ (block var b ∈ T is B end) = T
@@ -53,7 +53,7 @@ typeOfᴮ H Γ (local var x ∈ T ← M ∙ B) = typeOfᴮ H (Γ ⊕ x ↦ T) B
 typeOfᴮ H Γ (return M ∙ B) = typeOfᴱ H Γ M
 typeOfᴮ H Γ done = nil
 
-mustBeFunction : ∀ H Γ v → (bot ≢ src (typeOfᴱ H Γ (val v))) → (function ≡ valueType(v))
+mustBeFunction : ∀ H Γ v → (none ≢ src (typeOfᴱ H Γ (val v))) → (function ≡ valueType(v))
 mustBeFunction H Γ nil p = CONTRADICTION (p refl)
 mustBeFunction H Γ (addr a) p = refl
 mustBeFunction H Γ (number n) p = CONTRADICTION (p refl)
@@ -63,9 +63,9 @@ mustBeFunction H Γ (bool false) p = CONTRADICTION (p refl)
 mustBeNumber : ∀ H Γ v → (typeOfᴱ H Γ (val v) ≡ number) → (valueType(v) ≡ number)
 mustBeNumber H Γ nil ()
 mustBeNumber H Γ (addr a) p with remember (H [ a ]ᴴ)
-mustBeNumber H Γ (addr a) p | (just O , q) with trans (cong orBot (cong typeOfᴹᴼ (sym q))) p
+mustBeNumber H Γ (addr a) p | (just O , q) with trans (cong orNone (cong typeOfᴹᴼ (sym q))) p
 mustBeNumber H Γ (addr a) p | (just function f ⟨ var x ∈ T ⟩∈ U is B end , q) | ()
-mustBeNumber H Γ (addr a) p | (nothing , q) with trans (cong orBot (cong typeOfᴹᴼ (sym q))) p
+mustBeNumber H Γ (addr a) p | (nothing , q) with trans (cong orNone (cong typeOfᴹᴼ (sym q))) p
 mustBeNumber H Γ (addr a) p | nothing , q | ()
 mustBeNumber H Γ (number n) p = refl
 mustBeNumber H Γ (bool true) ()
@@ -76,7 +76,7 @@ typeCheckᴮ : ∀ H Γ B → (Γ ⊢ᴮ B ∈ (typeOfᴮ H Γ B))
 
 typeCheckᴱ H Γ (var x) = var refl
 typeCheckᴱ H Γ (val nil) = nil
-typeCheckᴱ H Γ (val (addr a)) = addr (orBot (typeOfᴹᴼ (H [ a ]ᴴ)))
+typeCheckᴱ H Γ (val (addr a)) = addr (orNone (typeOfᴹᴼ (H [ a ]ᴴ)))
 typeCheckᴱ H Γ (val (number n)) = number
 typeCheckᴱ H Γ (val (bool b)) = bool
 typeCheckᴱ H Γ (M $ N) = app (typeCheckᴱ H Γ M) (typeCheckᴱ H Γ N)

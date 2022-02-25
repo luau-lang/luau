@@ -1,7 +1,7 @@
 module Luau.Type.ToString where
 
 open import FFI.Data.String using (String; _++_)
-open import Luau.Type using (Type; nil; _⇒_; bot; top; number; boolean; _∪_; _∩_; normalizeOptional)
+open import Luau.Type using (Type; nil; _⇒_; none; any; number; boolean; _∪_; _∩_; normalizeOptional)
 
 {-# TERMINATING #-}
 typeToString : Type → String
@@ -10,8 +10,8 @@ typeToStringᴵ : Type → String
 
 typeToString nil = "nil"
 typeToString (S ⇒ T) = "(" ++ (typeToString S) ++ ") -> " ++ (typeToString T)
-typeToString bot = "bot"
-typeToString top = "top"
+typeToString none = "none"
+typeToString any = "any"
 typeToString number = "number"
 typeToString boolean = "boolean"
 typeToString (S ∪ T) with normalizeOptional(S ∪ T)
