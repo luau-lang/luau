@@ -65,6 +65,24 @@ declare function getmetatable<MT>(tab: {metatable MT}): MT
 declare function getmetatable(tab: any): nil
 ```
 
+For RFC completeness: just like indexers, it is not legal syntax when the parser context is not a table type annotation. `type Foo = metatable Bar` and `{f: (metatable Bar) -> ()}` and other variants are illegal.
+
+Formally, the grammar change is:
+
+```diff
+  TableIndexer = '[' Type ']' ':' Type
++ TableMetatable = 'metatable' Type
+  TableProp = NAME ':' Type
+- TablePropOrIndexer = TableProp | TableIndexer
+- PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
+- TableType = '{' PropList '}
++ TableEntry = TableProp | TableIndexer | TableMetatable
++ TableEntries = TableEntry {fieldsep TablePropOrIndexer} [fieldsep]
++ TableType = '{' TableEntries '}'
+```
+
+... ignoring that we can't describe in EBNF that some syntax can only show up once but anywhere within a list.
+
 ## Drawbacks
 
 The syntax is unfortunately very identical to properties, where the only difference between them is a single character, `:`. Observe: `{metatable T}` vs `{metatable: T}` where the former is a table with the metatable of type T, and the latter is a table with one property `metatable` of type `T`.
