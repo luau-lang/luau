@@ -77,7 +77,7 @@ Formally, the grammar change is:
 - PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
 - TableType = '{' PropList '}
 + TableEntry = TableProp | TableIndexer | TableMetatable
-+ TableEntries = TableEntry {fieldsep TablePropOrIndexer} [fieldsep]
++ TableEntries = TableEntry {fieldsep TableEntry} [fieldsep]
 + TableType = '{' TableEntries '}'
 ```
 
