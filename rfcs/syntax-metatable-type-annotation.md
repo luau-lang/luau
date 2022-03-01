@@ -119,8 +119,6 @@ A few other alternative designs have been proposed in the past, but ultimately w
 
 ### 1: `setmetatable()`
 
-Example:
-
 ```lua
 type Vec3 = setmetatable({ x: number, y: number, z: number }, { __add: (Vec3, Vec3) -> Vec3 })
 ```
@@ -172,8 +170,6 @@ setmetatable({
 ```
 
 ### 2: `setmetatable<>`
-
-Example:
 
 ```lua
 type Vec3 = setmetatable<{ x: number, y: number, z: number }, { __add: (Vec3, Vec3) -> Vec3 }>
