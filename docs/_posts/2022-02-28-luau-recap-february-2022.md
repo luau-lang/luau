@@ -11,7 +11,7 @@ Luau is our new language that you can read more about at [https://luau-lang.org]
 
 We have introduced a syntax to provide default type values inside the type alias type parameter list.
 
-It is now possible to have type functions where the instantiation can omit some of the parameters.
+It is now possible to have type functions where the instantiation can omit some type arguments.
 
 You can provide concrete types:
 
@@ -33,7 +33,7 @@ local a: EqComp<number> = ... -- (l: number, r: number) -> boolean
 local b: EqComp<number, string> = ... -- (l: number, r: string) -> boolean
 ```
 
-Type pack parameters can also have a default value:
+Type pack parameters can also have a default type pack:
 
 ```lua
 --!strict
@@ -43,7 +43,7 @@ local a: Process<number> = ... -- (number) -> ...string
 local b: Process<number, (boolean, string)> = ... -- (number) -> (boolean, string)
 ```
 
-If all type parameters have a default type value, it is now possible to reference that without providing a type parameter list:
+If all type parameters have a default type, it is now possible to reference that without providing any type arguments:
 
 ```lua
 --!strict
