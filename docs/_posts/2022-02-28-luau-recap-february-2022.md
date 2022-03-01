@@ -138,6 +138,15 @@ local function g(x: number)
 end
 ```
 
+---
+
+We have also introduced a check for misspelled comment directives:
+
+```lua
+--!non-strict
+-- ^ Unknown comment directive 'non-strict'; did you mean 'nonstrict'?
+```
+
 ## Performance improvements
 
 For performance, we have changed how our Garbage Collector collects unreachable memory.  
