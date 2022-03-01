@@ -169,6 +169,10 @@ setmetatable({
 })
 ```
 
+Another issue is the unfortunate wart in syntax with bounded quantification, for example if we want a generic to only range over types that defines a `__add` metamethod: (using invented notation) `<a: setmetatable({}, {__add: (a, a) -> a})>(a) -> a`.
+
+This syntax also exposes an opportunity to write things like `setmetatable(Instance, { ... })` where `Instance` is a class type variable, forcing us to write in more code that produces a type error on nonsensical use of `setmetatable`.
+
 ### 2: `setmetatable<>`
 
 ```lua
@@ -181,7 +185,7 @@ It still does not grant us any syntax to return the metatable of the type, or `n
 
 This option would mean `withmetatable<>` and `getmetatable<>` are the first exported types in Luau's prelude, which is not something that we want to do at this time.
 
-This option has the same issue as `setmetatable()` on formatting.
+This option has the same issue as `setmetatable()` on formatting, unfortunate quirk in syntax with bounded quantification, and requires dealing with edge cases where `T` is not a table.
 
 ### 3: `{ @metatable {} }` (status quo when performing `Luau::toString`)
 
