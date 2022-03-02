@@ -1,66 +1,53 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.OpSem where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv; primFloatEquality; primFloatLess; primFloatInequality)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Utility.Bool using (not; _or_; _and_)
-open import Agda.Builtin.Nat using (_==_)
-open import FFI.Data.Maybe using (just)
+open import Agda.Builtin.Nat using () renaming (_==_ to _==ᴬ_)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Expr; Stat; Block; nil; addr; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ≡; ≅; ≤; ≥; number)
-open import Luau.Value using (addr; val; number; Value; bool)
+open import Luau.Syntax using (Value; Expr; Stat; Block; nil; addr; val; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ==; ~=; <=; >=; number; bool)
 open import Luau.RuntimeType using (RuntimeType; valueType)
+open import Properties.Product using (_×_; _,_)
 
-evalNumOp : Float → BinaryOperator → Float → Value
-evalNumOp x + y = number (primFloatPlus x y)
-evalNumOp x - y = number (primFloatMinus x y)
-evalNumOp x * y = number (primFloatTimes x y)
-evalNumOp x / y = number (primFloatDiv x y)
-evalNumOp x < y = bool (primFloatLess x y)
-evalNumOp x > y = bool (primFloatLess y x)
-evalNumOp x ≡ y = bool (primFloatEquality x y)
-evalNumOp x ≅ y = bool (primFloatInequality x y)
-evalNumOp x ≤ y = bool ((primFloatLess x y) or (primFloatEquality x y))
-evalNumOp x ≥ y = bool ((primFloatLess y x) or (primFloatEquality x y))
+evalEqOp : Value → Value → Bool
+evalEqOp Value.nil Value.nil = true
+evalEqOp (addr x) (addr y) = (x ==ᴬ y)
+evalEqOp (number x) (number y) = primFloatEquality x y
+evalEqOp (bool true) (bool y) = y
+evalEqOp (bool false) (bool y) = not y
+evalEqOp _ _ = false
 
-evalEqOp : Value → Value → Value
-evalEqOp Value.nil Value.nil = bool true
-evalEqOp (addr x) (addr y) = bool (x == y)
-evalEqOp (number x) (number y) = bool (primFloatEquality x y)
-evalEqOp (bool true) (bool y) = bool y
-evalEqOp (bool false) (bool y) = bool (not y)
-evalEqOp _ _ = bool false
+evalNeqOp : Value → Value → Bool
+evalNeqOp (number x) (number y) = primFloatInequality x y
+evalNeqOp x y = not (evalEqOp x y)
 
-evalNeqOp : Value → Value → Value
-evalNeqOp Value.nil Value.nil = bool false
-evalNeqOp (addr x) (addr y) = bool (not (x == y))
-evalNeqOp (number x) (number y) = bool (primFloatInequality x y)
-evalNeqOp (bool true) (bool y) = bool (not y)
-evalNeqOp (bool false) (bool y) = bool y
-evalNeqOp _ _ = bool true
-
-coerceToBool : Value → Bool
-coerceToBool Value.nil = false
-coerceToBool (addr x) = true
-coerceToBool (number x) = true
-coerceToBool (bool x) = x
-
+data _⟦_⟧_⟶_ : Value → BinaryOperator → Value → Value → Set where
+  + : ∀ m n → (number m) ⟦ + ⟧ (number n) ⟶ number (primFloatPlus m n)
+  - : ∀ m n → (number m) ⟦ - ⟧ (number n) ⟶ number (primFloatMinus m n)
+  / : ∀ m n → (number m) ⟦ / ⟧ (number n) ⟶ number (primFloatTimes m n)
+  * : ∀ m n → (number m) ⟦ * ⟧ (number n) ⟶ number (primFloatDiv m n)
+  < : ∀ m n → (number m) ⟦ < ⟧ (number n) ⟶ bool (primFloatLess m n)
+  > : ∀ m n → (number m) ⟦ > ⟧ (number n) ⟶ bool (primFloatLess n m)
+  <= : ∀ m n → (number m) ⟦ <= ⟧ (number n) ⟶ bool ((primFloatLess m n) or (primFloatEquality m n))
+  >= : ∀ m n → (number m) ⟦ >= ⟧ (number n) ⟶ bool ((primFloatLess n m) or (primFloatEquality m n))
+  == : ∀ v w → v ⟦ == ⟧ w ⟶ bool (evalEqOp v w)
+  ~= : ∀ v w → v ⟦ ~= ⟧ w ⟶ bool (evalNeqOp v w)
+  
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set
 
 data _⊢_⟶ᴱ_⊣_  where
 
-  nil : ∀ {H} →
-
-    -------------------
-    H ⊢ nil ⟶ᴱ nil ⊣ H
-
-  function : ∀ {H H′ a F B} →
+  function : ∀ a {H H′ F B} →
 
     H′ ≡ H ⊕ a ↦ (function F is B end) →
     -------------------------------------------
-    H ⊢ (function F is B end) ⟶ᴱ (addr a) ⊣ H′
+    H ⊢ (function F is B end) ⟶ᴱ val(addr a) ⊣ H′
 
   app₁ : ∀ {H H′ M M′ N} →
   
@@ -68,17 +55,18 @@ data _⊢_⟶ᴱ_⊣_  where
     -----------------------------
     H ⊢ (M $ N) ⟶ᴱ (M′ $ N) ⊣ H′
 
-  app₂ : ∀ {H H′ V N N′} →
+  app₂ : ∀ v {H H′ N N′} →
 
     H ⊢ N ⟶ᴱ N′ ⊣ H′ →
     -----------------------------
-    H ⊢ (val V $ N) ⟶ᴱ (val V $ N′) ⊣ H′
+    H ⊢ (val v $ N) ⟶ᴱ (val v $ N′) ⊣ H′
 
-  beta : ∀ {H a F B V} →
-  
-    H [ a ] ≡ just(function F is B end) →
+  beta : ∀ O v {H a F B} →
+
+    (O ≡ function F is B end) →
+    H [ a ] ≡ just(O) →
     -----------------------------------------------------------------------------
-    H ⊢ (addr a $ val V) ⟶ᴱ (block (fun F) is (B [ V / name(arg F) ]ᴮ) end) ⊣ H
+    H ⊢ (val (addr a) $ val v) ⟶ᴱ (block (fun F) is (B [ v / name(arg F) ]ᴮ) end) ⊣ H
 
   block : ∀ {H H′ B B′ b} →
  
@@ -86,44 +74,34 @@ data _⊢_⟶ᴱ_⊣_  where
     ----------------------------------------------------
     H ⊢ (block b is B end) ⟶ᴱ (block b is B′ end) ⊣ H′
 
-  return : ∀ {H V B b} →
- 
+  return : ∀ v {H B b} →
+
     --------------------------------------------------------
-    H ⊢ (block b is return (val V) ∙ B end) ⟶ᴱ (val V) ⊣ H
+    H ⊢ (block b is return (val v) ∙ B end) ⟶ᴱ val v ⊣ H
 
   done : ∀ {H b} →
  
-    ---------------------------------
-    H ⊢ (block b is done end) ⟶ᴱ nil ⊣ H
+    --------------------------------------------
+    H ⊢ (block b is done end) ⟶ᴱ (val nil) ⊣ H
   
-  binOpEquality :
-    ∀ {H x y} →
-    ---------------------------------------------------------------------------
-    H ⊢ (binexp (val x) BinaryOperator.≡ (val y)) ⟶ᴱ (val (evalEqOp x y)) ⊣ H
-  
-  binOpInequality :
-    ∀ {H x y} →
-    ----------------------------------------------------------------------------
-    H ⊢ (binexp (val x) BinaryOperator.≅ (val y)) ⟶ᴱ (val (evalNeqOp x y)) ⊣ H
-  
-  binOpNumbers :
-    ∀ {H x op y} →
-    -----------------------------------------------------------------------
-    H ⊢ (binexp (number x) op (number y)) ⟶ᴱ (val (evalNumOp x op y)) ⊣ H
-  
-  binOp₁ :
-    ∀ {H H′ x x′ op y} →
+  binOp₀ : ∀ {H op v₁ v₂ w} →
+
+    v₁ ⟦ op ⟧ v₂ ⟶ w → 
+    --------------------------------------------------
+    H ⊢ (binexp (val v₁) op (val v₂)) ⟶ᴱ (val w) ⊣ H
+
+  binOp₁ : ∀ {H H′ x x′ op y} →
+
     H ⊢ x ⟶ᴱ x′ ⊣ H′ →
     ---------------------------------------------
     H ⊢ (binexp x op y) ⟶ᴱ (binexp x′ op y) ⊣ H′
   
-  binOp₂ :
-    ∀ {H H′ x op y y′} →
+  binOp₂ : ∀ {H H′ x op y y′} →
+
     H ⊢ y ⟶ᴱ y′ ⊣ H′ →
     ---------------------------------------------
     H ⊢ (binexp x op y) ⟶ᴱ (binexp x op y′) ⊣ H′
 
-  
 data _⊢_⟶ᴮ_⊣_  where
 
   local : ∀ {H H′ x M M′ B} →
@@ -132,16 +110,16 @@ data _⊢_⟶ᴮ_⊣_  where
     -------------------------------------------------
     H ⊢ (local x ← M ∙ B) ⟶ᴮ (local x ← M′ ∙ B) ⊣ H′
 
-  subst : ∀ {H x v B} →
+  subst : ∀ v {H x B} →
   
     ------------------------------------------------------
     H ⊢ (local x ← val v ∙ B) ⟶ᴮ (B [ v / name x ]ᴮ) ⊣ H
 
-  function : ∀ {H H′ a F B C} →
+  function : ∀ a {H H′ F B C} →
   
     H′ ≡ H ⊕ a ↦ (function F is C end) →
     --------------------------------------------------------------
-    H ⊢ (function F is C end ∙ B) ⟶ᴮ (B [ addr a / fun F ]ᴮ) ⊣ H′
+    H ⊢ (function F is C end ∙ B) ⟶ᴮ (B [ addr a / name(fun F) ]ᴮ) ⊣ H′
 
   return : ∀ {H H′ M M′ B} →
   

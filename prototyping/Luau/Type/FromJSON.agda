@@ -1,3 +1,5 @@
+{-# OPTIONS --rewriting #-}
+
 module Luau.Type.FromJSON where
 
 open import Luau.Type using (Type; nil; _⇒_; _∪_; _∩_; any; number)

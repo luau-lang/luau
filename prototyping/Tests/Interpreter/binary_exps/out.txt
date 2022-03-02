@@ -1,1 +1,4 @@
-1.0
+ANNOTATED PROGRAM:
+return 1.0 + 2.0 - 2.0 * 2.0 / 2.0
+
+RAN WITH RESULT: 1.0
