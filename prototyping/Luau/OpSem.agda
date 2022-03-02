@@ -5,13 +5,13 @@ module Luau.OpSem where
 open import Agda.Builtin.Equality using (_≡_)
 open import Agda.Builtin.Float using (Float; primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv; primFloatEquality; primFloatLess; primFloatInequality)
 open import Agda.Builtin.Bool using (Bool; true; false)
-open import Agda.Builtin.String using (primStringEquality)
+open import Agda.Builtin.String using (primStringEquality; primStringAppend)
 open import Utility.Bool using (not; _or_; _and_)
 open import Agda.Builtin.Nat using () renaming (_==_ to _==ᴬ_)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; _≡_⊕_↦_; _[_]; function_is_end)
 open import Luau.Substitution using (_[_/_]ᴮ)
-open import Luau.Syntax using (Value; Expr; Stat; Block; nil; addr; val; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ==; ~=; <=; >=; number; bool)
+open import Luau.Syntax using (Value; Expr; Stat; Block; nil; addr; val; var; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; fun; arg; binexp; BinaryOperator; +; -; *; /; <; >; ==; ~=; <=; >=; ··; number; bool; string)
 open import Luau.RuntimeType using (RuntimeType; valueType)
 open import Properties.Product using (_×_; _,_)
 
@@ -38,6 +38,7 @@ data _⟦_⟧_⟶_ : Value → BinaryOperator → Value → Value → Set where
   >= : ∀ m n → (number m) ⟦ >= ⟧ (number n) ⟶ bool ((primFloatLess n m) or (primFloatEquality m n))
   == : ∀ v w → v ⟦ == ⟧ w ⟶ bool (evalEqOp v w)
   ~= : ∀ v w → v ⟦ ~= ⟧ w ⟶ bool (evalNeqOp v w)
+  ·· : ∀ x y → (string x) ⟦ ·· ⟧ (string y) ⟶ string (primStringAppend x y)
 
 data _⊢_⟶ᴮ_⊣_ {a} : Heap a → Block a → Block a → Heap a → Set
 data _⊢_⟶ᴱ_⊣_ {a} : Heap a → Expr a → Expr a → Heap a → Set

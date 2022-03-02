@@ -5,11 +5,12 @@ module Properties.Step where
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.Float using (primFloatPlus; primFloatMinus; primFloatTimes; primFloatDiv; primFloatEquality; primFloatLess)
 open import Agda.Builtin.Bool using (true; false)
+open import Agda.Builtin.String using (primStringAppend)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Heap using (Heap; _[_]; alloc; ok; function_is_end)
-open import Luau.Syntax using (Block; Expr; nil; var; val; addr; bool; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +; -; *; /; <; >; <=; >=; ==; ~=; string)
-open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app₁ ; app₂ ; beta; function; block; return; done; local; subst; binOp₀; binOp₁; binOp₂; +; -; *; /; <; >; <=; >=; ==; ~=; evalEqOp; evalNeqOp)
-open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; block; local; return; bin₁; bin₂; +; -; *; /; <; >; <=; >=)
+open import Luau.Syntax using (Block; Expr; nil; var; val; addr; bool; function_is_end; block_is_end; _$_; local_←_; return; done; _∙_; name; fun; arg; number; binexp; +; -; *; /; <; >; <=; >=; ==; ~=; ··; string)
+open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶ᴱ_⊣_; _⊢_⟶ᴮ_⊣_; app₁ ; app₂ ; beta; function; block; return; done; local; subst; binOp₀; binOp₁; binOp₂; +; -; *; /; <; >; <=; >=; ==; ~=; ··; evalEqOp; evalNeqOp)
+open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; block; local; return; bin₁; bin₂; +; -; *; /; <; >; <=; >=; ··)
 open import Luau.RuntimeType using (valueType; function; number)
 open import Luau.Substitution using (_[_/_]ᴮ)
 open import Properties.Remember using (remember; _,_)
@@ -97,6 +98,15 @@ binOpStep (string x) < w = error₁ (< (λ ()))
 binOpStep (string x) > w = error₁ (> (λ ()))
 binOpStep (string x) <= w = error₁ (<= (λ ()))
 binOpStep (string x) >= w = error₁ (>= (λ ()))
+binOpStep nil ·· y = error₁ (·· (λ ()))
+binOpStep (addr x) ·· y = error₁ (BinOpError.·· (λ ()))
+binOpStep (number x) ·· y = error₁ (BinOpError.·· (λ ()))
+binOpStep (bool x) ·· y = error₁ (BinOpError.·· (λ ()))
+binOpStep (string x) ·· nil = error₂ (·· (λ ()))
+binOpStep (string x) ·· (addr y) = error₂ (·· (λ ()))
+binOpStep (string x) ·· (number y) = error₂ (·· (λ ()))
+binOpStep (string x) ·· (bool y) = error₂ (·· (λ ()))
+binOpStep (string x) ·· (string y) = step (string (primStringAppend x y)) (·· x y)
 
 data StepResultᴮ {a} (H : Heap a) (B : Block a) : Set
 data StepResultᴱ {a} (H : Heap a) (M : Expr a) : Set
@@ -159,3 +169,4 @@ stepᴮ H (return M ∙ B) | step H′ M′ D = step H′ (return M′ ∙ B) (r
 stepᴮ H (return _ ∙ B) | value V refl = return V refl
 stepᴮ H (return M ∙ B) | error E = error (return E)
 stepᴮ H done = done refl
+ 

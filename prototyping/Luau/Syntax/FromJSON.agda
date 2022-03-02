@@ -2,7 +2,7 @@
 
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; _$_; val; nil; bool; number; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec;  binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=; string)
+open import Luau.Syntax using (Block; Stat ; Expr; _$_; val; nil; bool; number; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec;  binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=; ··; string)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
@@ -65,6 +65,7 @@ binOpFromString "CompareLt" = Right <
 binOpFromString "CompareLe" = Right <=
 binOpFromString "CompareGt" = Right >
 binOpFromString "CompareGe" = Right >=
+binOpFromString "Concat" = Right ··
 binOpFromString s = Left ("'" ++ s ++ "' is not a valid operator")
 
 varDecFromJSON (object arg) = varDecFromObject arg

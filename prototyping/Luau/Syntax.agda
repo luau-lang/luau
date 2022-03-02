@@ -46,6 +46,7 @@ data BinaryOperator : Set where
   ~= : BinaryOperator
   <= : BinaryOperator
   >= : BinaryOperator
+  ·· : BinaryOperator
 
 data Value : Set where
   nil : Value

@@ -6,7 +6,7 @@ module Luau.TypeCheck (m : Mode) where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
-open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; number; bool; string; val; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name; +; -; *; /; <; >; ==; ~=; <=; >=)
+open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; number; bool; string; val; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
@@ -34,6 +34,7 @@ tgtBinOp == = boolean
 tgtBinOp ~= = boolean
 tgtBinOp <= = boolean
 tgtBinOp >= = boolean
+tgtBinOp ·· = string
 
 data _⊢ᴮ_∈_ : VarCtxt → Block yes → Type → Set
 data _⊢ᴱ_∈_ : VarCtxt → Expr yes → Type → Set

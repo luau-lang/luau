@@ -6,8 +6,8 @@ open import Agda.Builtin.Equality using (_≡_)
 open import Luau.Heap using (Heap; _[_])
 open import FFI.Data.Maybe using (just; nothing)
 open import FFI.Data.String using (String)
-open import Luau.Syntax using (BinaryOperator; Block; Expr; nil; var; val; addr; block_is_end; _$_; local_←_; return; done; _∙_; number; binexp; +; -; *; /; <; >; <=; >=)
-open import Luau.RuntimeType using (RuntimeType; valueType; function; number)
+open import Luau.Syntax using (BinaryOperator; Block; Expr; nil; var; val; addr; block_is_end; _$_; local_←_; return; done; _∙_; number; string; binexp; +; -; *; /; <; >; <=; >=; ··)
+open import Luau.RuntimeType using (RuntimeType; valueType; function; number; string)
 open import Properties.Equality using (_≢_)
 
 data BinOpError : BinaryOperator → RuntimeType → Set where
@@ -19,6 +19,7 @@ data BinOpError : BinaryOperator → RuntimeType → Set where
   > : ∀ {t} → (t ≢ number) → BinOpError > t
   <= : ∀ {t} → (t ≢ number) → BinOpError <= t
   >= : ∀ {t} → (t ≢ number) → BinOpError >= t
+  ·· : ∀ {t} → (t ≢ string) → BinOpError ·· t
   
 data RuntimeErrorᴮ {a} (H : Heap a) : Block a → Set
 data RuntimeErrorᴱ {a} (H : Heap a) : Expr a → Set
