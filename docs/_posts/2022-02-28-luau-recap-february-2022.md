@@ -9,7 +9,7 @@ Luau is our new language that you can read more about at [https://luau-lang.org]
 
 ## Default type alias type parameters
 
-We have introduced a syntax to provide default type values inside the type alias type parameter list.
+We have introduced a syntax to provide default type arguments inside the type alias type parameter list.
 
 It is now possible to have type functions where the instantiation can omit some type arguments.
 
