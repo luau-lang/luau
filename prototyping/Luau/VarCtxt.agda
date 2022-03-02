@@ -22,7 +22,7 @@ _⋓_ : VarCtxt → VarCtxt → VarCtxt
 _⋓_ = unionWith _∪_
 
 _[_] : VarCtxt → Var → Maybe Type
-_[_] Γ x = lookup (fromString x) Γ
+Γ [ x ] = lookup (fromString x) Γ
 
 _⊝_ : VarCtxt → Var → VarCtxt
 Γ ⊝ x = delete (fromString x) Γ

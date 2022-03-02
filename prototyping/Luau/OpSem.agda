@@ -23,12 +23,8 @@ evalEqOp (bool false) (bool y) = not y
 evalEqOp _ _ = false
 
 evalNeqOp : Value → Value → Bool
-evalNeqOp Value.nil Value.nil = false
-evalNeqOp (addr x) (addr y) = not (x ==ᴬ y)
 evalNeqOp (number x) (number y) = primFloatInequality x y
-evalNeqOp (bool true) (bool y) = not y
-evalNeqOp (bool false) (bool y) = y
-evalNeqOp _ _ = true
+evalNeqOp x y = not (evalEqOp x y)
 
 data _⟦_⟧_⟶_ : Value → BinaryOperator → Value → Value → Set where
   + : ∀ m n → (number m) ⟦ + ⟧ (number n) ⟶ number (primFloatPlus m n)
