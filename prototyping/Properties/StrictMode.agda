@@ -8,7 +8,7 @@ open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; Object; function_is_end; defn; alloc; ok; next; lookup-not-allocated) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ; ∅ to ∅ᴴ)
 open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴᴱ; Warningᴴᴮ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpWarning; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr; +; -; *; /; <; >; <=; >=)
 open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
-open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
+open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; string; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
 open import Luau.Type using (Type; strict; nil; _⇒_; none; tgt; _≡ᵀ_; _≡ᴹᵀ_)
 open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orNone; tgtBinOp)
 open import Luau.Var using (_≡ⱽ_)
@@ -86,6 +86,7 @@ heap-weakeningᴱ H (val (addr a)) (snoc {a = a} defn) | yes refl = warning (Una
 heap-weakeningᴱ H (val (addr a)) (snoc {a = b} p) | no q = ok (cong orNone (cong typeOfᴹᴼ (lookup-not-allocated p q)))
 heap-weakeningᴱ H (val (number n)) h = ok refl
 heap-weakeningᴱ H (val (bool b)) h = ok refl
+heap-weakeningᴱ H (val (string x)) h = ok refl
 heap-weakeningᴱ H (binexp M op N) h = ok refl
 heap-weakeningᴱ H (M $ N) h with heap-weakeningᴱ H M h
 heap-weakeningᴱ H (M $ N) h | ok p = ok (cong tgt p)
@@ -110,6 +111,7 @@ typeOf-val-not-none : ∀ {H Γ} v → OrWarningᴱ H (typeCheckᴱ H Γ (val v)
 typeOf-val-not-none nil = ok (λ ())
 typeOf-val-not-none (number n) = ok (λ ())
 typeOf-val-not-none (bool b) = ok (λ ())
+typeOf-val-not-none (string x) = ok (λ ())
 typeOf-val-not-none {H = H} (addr a) with remember (H [ a ]ᴴ)
 typeOf-val-not-none {H = H} (addr a) | (just O , p) = ok (λ q → none-not-obj O (trans q (cong orNone (cong typeOfᴹᴼ p))))
 typeOf-val-not-none {H = H} (addr a) | (nothing , p) = warning (UnallocatedAddress p)

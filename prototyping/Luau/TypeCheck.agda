@@ -6,11 +6,11 @@ module Luau.TypeCheck (m : Mode) where
 
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (Maybe; just)
-open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; number; bool; val; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name; +; -; *; /; <; >; ==; ~=; <=; >=)
+open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; number; bool; string; val; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name; +; -; *; /; <; >; ==; ~=; <=; >=)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
-open import Luau.Type using (Type; Mode; nil; none; number; boolean; _⇒_; tgt)
+open import Luau.Type using (Type; Mode; nil; none; number; boolean; string; _⇒_; tgt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
@@ -93,6 +93,11 @@ data _⊢ᴱ_∈_ where
 
     --------------------------
     Γ ⊢ᴱ val(bool b) ∈ boolean
+  
+  string : ∀ {x Γ} →
+
+    ---------------------------
+    Γ ⊢ᴱ val(string x) ∈ string
 
   app : ∀ {M N T U Γ} →
 

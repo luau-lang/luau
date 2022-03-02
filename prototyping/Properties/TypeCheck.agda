@@ -8,9 +8,9 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Either using (Either)
-open import Luau.TypeCheck(m) using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; app; function; block; binexp; done; return; local; nothing; orNone; tgtBinOp)
-open import Luau.Syntax using (Block; Expr; Value; BinaryOperator; yes; nil; addr; number; bool; val; var; binexp; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg; +; -; *; /; <; >; ==; ~=; <=; >=)
-open import Luau.Type using (Type; nil; any; none; number; boolean; _⇒_; tgt)
+open import Luau.TypeCheck(m) using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; string; app; function; block; binexp; done; return; local; nothing; orNone; tgtBinOp)
+open import Luau.Syntax using (Block; Expr; Value; BinaryOperator; yes; nil; addr; number; bool; string; val; var; binexp; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg; +; -; *; /; <; >; ==; ~=; <=; >=)
+open import Luau.Type using (Type; nil; any; none; number; boolean; string; _⇒_; tgt)
 open import Luau.RuntimeType using (RuntimeType; nil; number; function; valueType)
 open import Luau.VarCtxt using (VarCtxt; ∅; _↦_; _⊕_↦_; _⋒_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import Luau.Addr using (Addr)
@@ -37,6 +37,7 @@ typeOfⱽ H nil = just nil
 typeOfⱽ H (bool b) = just boolean
 typeOfⱽ H (addr a) = typeOfᴹᴼ (H [ a ]ᴴ)
 typeOfⱽ H (number n) = just number
+typeOfⱽ H (string x) = just string
 
 typeOfᴱ : Heap yes → VarCtxt → (Expr yes) → Type
 typeOfᴮ : Heap yes → VarCtxt → (Block yes) → Type
@@ -59,6 +60,7 @@ mustBeFunction H Γ (addr a) p = refl
 mustBeFunction H Γ (number n) p = CONTRADICTION (p refl)
 mustBeFunction H Γ (bool true) p = CONTRADICTION (p refl)
 mustBeFunction H Γ (bool false) p = CONTRADICTION (p refl)
+mustBeFunction H Γ (string x) p = CONTRADICTION (p refl)
 
 mustBeNumber : ∀ H Γ v → (typeOfᴱ H Γ (val v) ≡ number) → (valueType(v) ≡ number)
 mustBeNumber H Γ nil ()
@@ -68,8 +70,6 @@ mustBeNumber H Γ (addr a) p | (just function f ⟨ var x ∈ T ⟩∈ U is B en
 mustBeNumber H Γ (addr a) p | (nothing , q) with trans (cong orNone (cong typeOfᴹᴼ (sym q))) p
 mustBeNumber H Γ (addr a) p | nothing , q | ()
 mustBeNumber H Γ (number n) p = refl
-mustBeNumber H Γ (bool true) ()
-mustBeNumber H Γ (bool false) ()
 
 typeCheckᴱ : ∀ H Γ M → (Γ ⊢ᴱ M ∈ (typeOfᴱ H Γ M))
 typeCheckᴮ : ∀ H Γ B → (Γ ⊢ᴮ B ∈ (typeOfᴮ H Γ B))
@@ -79,6 +79,7 @@ typeCheckᴱ H Γ (val nil) = nil
 typeCheckᴱ H Γ (val (addr a)) = addr (orNone (typeOfᴹᴼ (H [ a ]ᴴ)))
 typeCheckᴱ H Γ (val (number n)) = number
 typeCheckᴱ H Γ (val (bool b)) = bool
+typeCheckᴱ H Γ (val (string x)) = string
 typeCheckᴱ H Γ (M $ N) = app (typeCheckᴱ H Γ M) (typeCheckᴱ H Γ N)
 typeCheckᴱ H Γ (function f ⟨ var x ∈ T ⟩∈ U is B end) = function (typeCheckᴮ H (Γ ⊕ x ↦ T) B)
 typeCheckᴱ H Γ (block var b ∈ T is B end) = block (typeCheckᴮ H Γ B)
