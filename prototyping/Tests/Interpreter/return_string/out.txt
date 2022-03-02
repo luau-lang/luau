@@ -1,1 +1,4 @@
-"foo bar"
+ANNOTATED PROGRAM:
+return "foo bar"
+
+RAN WITH RESULT: "foo bar"
