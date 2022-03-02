@@ -13,6 +13,7 @@ data Type : Set where
   any : Type
   boolean : Type
   number : Type
+  string : Type
   _∪_ : Type → Type → Type
   _∩_ : Type → Type → Type
 
@@ -25,6 +26,7 @@ lhs none = none
 lhs any = any
 lhs number = number
 lhs boolean = boolean
+lhs string = string
 
 rhs : Type → Type
 rhs (_ ⇒ T) = T
@@ -35,6 +37,7 @@ rhs none = none
 rhs any = any
 rhs number = number
 rhs boolean = boolean
+rhs string = string
 
 _≡ᵀ_ : ∀ (T U : Type) → Dec(T ≡ U)
 nil ≡ᵀ nil = yes refl
@@ -45,6 +48,14 @@ nil ≡ᵀ number = no (λ ())
 nil ≡ᵀ boolean = no (λ ())
 nil ≡ᵀ (S ∪ T) = no (λ ())
 nil ≡ᵀ (S ∩ T) = no (λ ())
+nil ≡ᵀ string = no (λ ())
+(S ⇒ T) ≡ᵀ string = no (λ ())
+none ≡ᵀ string = no (λ ())
+any ≡ᵀ string = no (λ ())
+boolean ≡ᵀ string = no (λ ())
+number ≡ᵀ string = no (λ ())
+(S ∪ T) ≡ᵀ string = no (λ ())
+(S ∩ T) ≡ᵀ string = no (λ ())
 (S ⇒ T) ≡ᵀ nil = no (λ ())
 (S ⇒ T) ≡ᵀ (U ⇒ V) with (S ≡ᵀ U) | (T ≡ᵀ V) 
 (S ⇒ T) ≡ᵀ (S ⇒ T) | yes refl | yes refl = yes refl
@@ -88,6 +99,15 @@ boolean ≡ᵀ boolean = yes refl
 boolean ≡ᵀ number = no (λ ())
 boolean ≡ᵀ (T ∪ U) = no (λ ())
 boolean ≡ᵀ (T ∩ U) = no (λ ())
+string ≡ᵀ nil = no (λ ())
+string ≡ᵀ (x ⇒ x₁) = no (λ ())
+string ≡ᵀ none = no (λ ())
+string ≡ᵀ any = no (λ ())
+string ≡ᵀ boolean = no (λ ())
+string ≡ᵀ number = no (λ ())
+string ≡ᵀ string = yes refl
+string ≡ᵀ (U ∪ V) = no (λ ())
+string ≡ᵀ (U ∩ V) = no (λ ())
 (S ∪ T) ≡ᵀ nil = no (λ ())
 (S ∪ T) ≡ᵀ (U ⇒ V) = no (λ ())
 (S ∪ T) ≡ᵀ none = no (λ ())
@@ -127,6 +147,7 @@ src : Mode → Type → Type
 src m nil = none
 src m number = none
 src m boolean = none
+src m string = none
 src m (S ⇒ T) = S
 -- In nonstrict mode, functions are covaraiant, in strict mode they're contravariant
 src strict    (S ∪ T) = (src strict S) ∩ (src strict T)
@@ -145,6 +166,7 @@ tgt none = none
 tgt any = any
 tgt number = none
 tgt boolean = none
+tgt string = none
 tgt (S ∪ T) = (tgt S) ∪ (tgt T)
 tgt (S ∩ T) = (tgt S) ∩ (tgt T)
 

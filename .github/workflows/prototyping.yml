@@ -37,8 +37,7 @@ jobs:
     - name: check targets
       working-directory: prototyping
       run: |
-        ~/.cabal/bin/agda Examples.agda
-        ~/.cabal/bin/agda Properties.agda
+        ~/.cabal/bin/agda Everything.agda
     - name: build executables
       working-directory: prototyping
       run: |

@@ -3,6 +3,7 @@ module Luau.Syntax where
 open import Agda.Builtin.Equality using (_≡_)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import Agda.Builtin.Float using (Float)
+open import Agda.Builtin.String using (String)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Type using (Type)
@@ -45,12 +46,14 @@ data BinaryOperator : Set where
   ~= : BinaryOperator
   <= : BinaryOperator
   >= : BinaryOperator
+  ·· : BinaryOperator
 
 data Value : Set where
   nil : Value
   addr : Addr → Value
   number : Float → Value
   bool : Bool → Value
+  string : String → Value
 
 data Block (a : Annotated) : Set
 data Stat (a : Annotated) : Set

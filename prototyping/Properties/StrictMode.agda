@@ -6,9 +6,9 @@ import Agda.Builtin.Equality.Rewrite
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; Object; function_is_end; defn; alloc; ok; next; lookup-not-allocated) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ; ∅ to ∅ᴴ)
-open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴᴱ; Warningᴴᴮ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpWarning; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr; +; -; *; /; <; >; <=; >=)
+open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴᴱ; Warningᴴᴮ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpWarning; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr; +; -; *; /; <; >; <=; >=; ··)
 open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
-open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
+open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; string; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
 open import Luau.Type using (Type; strict; nil; _⇒_; none; tgt; _≡ᵀ_; _≡ᴹᵀ_)
 open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orNone; tgtBinOp)
 open import Luau.Var using (_≡ⱽ_)
@@ -19,9 +19,9 @@ open import Properties.Remember using (remember; _,_)
 open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION)
-open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴᴱ; typeCheckᴴᴮ; mustBeFunction; mustBeNumber)
-open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₀; binOp₁; binOp₂; refl; step; +; -; *; /; <; >; ==; ~=; <=; >=)
-open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return; +; -; *; /; <; >; <=; >=)
+open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴᴱ; typeCheckᴴᴮ; mustBeFunction; mustBeNumber; mustBeString)
+open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₀; binOp₁; binOp₂; refl; step; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
+open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return; +; -; *; /; <; >; <=; >=; ··)
 open import Luau.RuntimeType using (valueType)
 
 src = Luau.Type.src strict
@@ -86,6 +86,7 @@ heap-weakeningᴱ H (val (addr a)) (snoc {a = a} defn) | yes refl = warning (Una
 heap-weakeningᴱ H (val (addr a)) (snoc {a = b} p) | no q = ok (cong orNone (cong typeOfᴹᴼ (lookup-not-allocated p q)))
 heap-weakeningᴱ H (val (number n)) h = ok refl
 heap-weakeningᴱ H (val (bool b)) h = ok refl
+heap-weakeningᴱ H (val (string x)) h = ok refl
 heap-weakeningᴱ H (binexp M op N) h = ok refl
 heap-weakeningᴱ H (M $ N) h with heap-weakeningᴱ H M h
 heap-weakeningᴱ H (M $ N) h | ok p = ok (cong tgt p)
@@ -110,6 +111,7 @@ typeOf-val-not-none : ∀ {H Γ} v → OrWarningᴱ H (typeCheckᴱ H Γ (val v)
 typeOf-val-not-none nil = ok (λ ())
 typeOf-val-not-none (number n) = ok (λ ())
 typeOf-val-not-none (bool b) = ok (λ ())
+typeOf-val-not-none (string x) = ok (λ ())
 typeOf-val-not-none {H = H} (addr a) with remember (H [ a ]ᴴ)
 typeOf-val-not-none {H = H} (addr a) | (just O , p) = ok (λ q → none-not-obj O (trans q (cong orNone (cong typeOfᴹᴼ p))))
 typeOf-val-not-none {H = H} (addr a) | (nothing , p) = warning (UnallocatedAddress p)
@@ -153,6 +155,7 @@ binOpPreservation H (<= m n) = refl
 binOpPreservation H (>= m n) = refl
 binOpPreservation H (== v w) = refl
 binOpPreservation H (~= v w) = refl
+binOpPreservation H (·· v w) = refl
 
 preservationᴱ : ∀ H M {H′ M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → OrWarningᴴᴱ H (typeCheckᴴᴱ H ∅ M) (typeOfᴱ H ∅ M ≡ typeOfᴱ H′ ∅ M′)
 preservationᴮ : ∀ H B {H′ B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → OrWarningᴴᴮ H (typeCheckᴴᴮ H ∅ B) (typeOfᴮ H ∅ B ≡ typeOfᴮ H′ ∅ B′)
@@ -444,6 +447,7 @@ runtimeBinOpWarning H v (< p) = < (λ q → p (mustBeNumber H ∅ v q))
 runtimeBinOpWarning H v (> p) = > (λ q → p (mustBeNumber H ∅ v q))
 runtimeBinOpWarning H v (<= p) = <= (λ q → p (mustBeNumber H ∅ v q))
 runtimeBinOpWarning H v (>= p) = >= (λ q → p (mustBeNumber H ∅ v q))
+runtimeBinOpWarning H v (·· p) = ·· (λ q → p (mustBeString H ∅ v q))
 
 runtimeWarningᴱ : ∀ H M → RuntimeErrorᴱ H M → Warningᴱ H (typeCheckᴱ H ∅ M)
 runtimeWarningᴮ : ∀ H B → RuntimeErrorᴮ H B → Warningᴮ H (typeCheckᴮ H ∅ B)

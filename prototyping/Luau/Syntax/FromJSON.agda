@@ -2,7 +2,7 @@
 
 module Luau.Syntax.FromJSON where
 
-open import Luau.Syntax using (Block; Stat ; Expr; _$_; val; nil; bool; number; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec;  binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=)
+open import Luau.Syntax using (Block; Stat ; Expr; _$_; val; nil; bool; number; var; var_∈_; function_is_end; _⟨_⟩; _⟨_⟩∈_; local_←_; return; done; _∙_; maybe; VarDec;  binexp; BinaryOperator; +; -; *; /; ==; ~=; <; >; <=; >=; ··; string)
 open import Luau.Type.FromJSON using (typeFromJSON)
 
 open import Agda.Builtin.List using (List; _∷_; [])
@@ -65,6 +65,7 @@ binOpFromString "CompareLt" = Right <
 binOpFromString "CompareLe" = Right <=
 binOpFromString "CompareGt" = Right >
 binOpFromString "CompareGe" = Right >=
+binOpFromString "Concat" = Right ··
 binOpFromString s = Left ("'" ++ s ++ "' is not a valid operator")
 
 varDecFromJSON (object arg) = varDecFromObject arg
@@ -122,6 +123,10 @@ exprFromObject obj | just (string "AstExprConstantNumber") with lookup value obj
 exprFromObject obj | just (string "AstExprConstantNumber") | just (FFI.Data.Aeson.Value.number x) = Right (val (number (toFloat x)))
 exprFromObject obj | just (string "AstExprConstantNumber") | just _ = Left "AstExprConstantNumber value is not a number"
 exprFromObject obj | just (string "AstExprConstantNumber") | nothing = Left "AstExprConstantNumber missing value"
+exprFromObject obj | just (string "AstExprConstantString") with lookup value obj
+exprFromObject obj | just (string "AstExprConstantString") | just (string x) = Right (val (string x))
+exprFromObject obj | just (string "AstExprConstantString") | just _ = Left "AstExprConstantString value is not a string"
+exprFromObject obj | just (string "AstExprConstantString") | nothing = Left "AstExprConstantString missing value"
 exprFromObject obj | just (string "AstExprConstantBool") with lookup value obj
 exprFromObject obj | just (string "AstExprConstantBool") | just (FFI.Data.Aeson.Value.bool b) = Right (val (bool b))
 exprFromObject obj | just (string "AstExprConstantBool") | just _ = Left "AstExprConstantBool value is not a bool"
