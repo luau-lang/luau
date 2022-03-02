@@ -439,4 +439,128 @@ local a: Animal = if true then { tag = 'cat', catfood = 'something' } else { tag
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_singleton")
+{
+    ScopedFastFlag sff[]{
+        {"LuauSingletonTypes", true},
+        {"LuauEqConstraint", true},
+        {"LuauDiscriminableUnions2", true},
+        {"LuauWidenIfSupertypeIsFree", true},
+        {"LuauWeakEqConstraint", false},
+    };
+
+    CheckResult result = check(R"(
+        local function foo(f, x)
+            if x == "hi" then
+                f(x)
+                f("foo")
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 18})));
+    // should be <a...>((string) -> a..., string) -> () but needs lower bounds calculation
+    CHECK_EQ("<a, b...>((string) -> (b...), a) -> ()", toString(requireType("foo")));
+}
+
+// TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
+// {
+//     ScopedFastFlag sff[]{
+//         {"LuauParseSingletonTypes", true},
+//         {"LuauSingletonTypes", true},
+//         {"LuauDiscriminableUnions2", true},
+//         {"LuauEqConstraint", true},
+//         {"LuauWidenIfSupertypeIsFree", true},
+//         {"LuauWeakEqConstraint", false},
+//     };
+
+//     CheckResult result = check(R"(
+//         local function foo(f, x): "hello"? -- anyone there?
+//             return if x == "hi"
+//                 then f(x)
+//                 else nil
+//         end
+//     )");
+
+//     LUAU_REQUIRE_NO_ERRORS(result);
+
+//     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
+//     CHECK_EQ(R"(<a, b...>((string) -> ("hello"?, b...), a) -> "hello"?)", toString(requireType("foo")));
+// }
+
+TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
+{
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauWidenIfSupertypeIsFree", true},
+    };
+
+    CheckResult result = check(R"(
+        local foo: "foo" = "foo"
+        local copy = foo
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("string", toString(requireType("copy")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables")
+{
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauDiscriminableUnions2", true},
+        {"LuauWidenIfSupertypeIsFree", true},
+    };
+
+    CheckResult result = check(R"(
+        type Cat = {tag: "Cat", meows: boolean}
+        type Dog = {tag: "Dog", barks: boolean}
+        type Animal = Cat | Dog
+
+        local function f(tag: "Cat" | "Dog"): Animal?
+            if tag == "Cat" then
+                local result = {tag = tag, meows = true}
+                return result
+            elseif tag == "Dog" then
+                local result = {tag = tag, barks = true}
+                return result
+            else
+                return nil
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_insert_with_a_singleton_argument")
+{
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauWidenIfSupertypeIsFree", true},
+    };
+
+    CheckResult result = check(R"(
+        local function foo(t, x)
+            if x == "hi" or x == "bye" then
+                table.insert(t, x)
+            end
+
+            return t
+        end
+
+        local t = foo({}, "hi")
+        table.insert(t, "totally_unrelated_type" :: "totally_unrelated_type")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("{string}", toString(requireType("t")));
+}
+
 TEST_SUITE_END();

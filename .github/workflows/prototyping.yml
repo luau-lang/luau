@@ -1,25 +1,10 @@
 name: prototyping
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'prototyping-*'
-    paths:
-      - '.github/workflows/**'
-      - 'prototyping/**'
-      - 'Analysis/**'
-      - 'Ast/**'
-      - 'CLI/Ast.cpp'
-      - 'CLI/FileUtils.*'
   pull_request:
     paths:
-      - '.github/workflows/**'
+      - '.github/workflows/prototyping.yml'
       - 'prototyping/**'
-      - 'Analysis/**'
-      - 'Ast/**'
-      - 'CLI/Ast.cpp'
-      - 'CLI/FileUtils.*'
 
 jobs:
   linux:

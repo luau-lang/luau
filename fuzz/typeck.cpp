@@ -1,9 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include <string>
-#include "Luau/TypeInfer.h"
+
 #include "Luau/BuiltinDefinitions.h"
-#include "Luau/ModuleResolver.h"
 #include "Luau/Common.h"
+#include "Luau/ModuleResolver.h"
+#include "Luau/Parser.h"
+#include "Luau/TypeInfer.h"
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit)

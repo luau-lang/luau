@@ -2239,4 +2239,22 @@ TEST_CASE_FIXTURE(Fixture, "give_up_after_one_metatable_index_look_up")
     CHECK_EQ("Type 't2' does not have key 'x'", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
+{
+    ScopedFastFlag sff{"LuauDoNotTryToReduce", true};
+
+    CheckResult result = check(R"(
+        type T = {} & {p: number | string}
+        local function f(t: T)
+            return t.p
+        end
+
+        local foo = f({p = "string"})
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("number | string", toString(requireType("foo")));
+}
+
 TEST_SUITE_END();

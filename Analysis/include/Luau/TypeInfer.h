@@ -31,6 +31,7 @@ bool doesCallError(const AstExprCall* call);
 bool hasBreak(AstStat* node);
 const AstStat* getFallthrough(const AstStat* node);
 
+struct UnifierOptions;
 struct Unifier;
 
 // A substitution which replaces generic types in a given set by free types.
@@ -245,6 +246,7 @@ struct TypeChecker
      * Treat any failures as type errors in the final typecheck report.
      */
     bool unify(TypeId subTy, TypeId superTy, const Location& location);
+    bool unify(TypeId subTy, TypeId superTy, const Location& location, const UnifierOptions& options);
     bool unify(TypePackId subTy, TypePackId superTy, const Location& location, CountMismatch::Context ctx = CountMismatch::Context::Arg);
 
     /** Attempt to unify the types.

@@ -56,3 +56,9 @@ This document tracks unimplemented RFCs.
 [RFC: Generalized iteration](https://github.com/Roblox/luau/blob/master/rfcs/generalized-iteration.md)
 
 **Status**: Needs implementation
+
+## table.clone
+
+[RFC: table.clone](https://github.com/Roblox/luau/blob/master/rfcs/function-table-clone.md)
+
+**Status**: Needs implementation

@@ -1,1 +1,7 @@
-nil
+UNANNOTATED PROGRAM:
+local function foo(x)
+  return nil
+end
+return foo(nil)
+
+RAN WITH RESULT: nil

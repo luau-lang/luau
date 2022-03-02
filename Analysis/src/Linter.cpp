@@ -201,6 +201,7 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
 
         return true;
     }
+    CASE(AstExprIfElse) return similar(le->condition, re->condition) && similar(le->trueExpr, re->trueExpr) && similar(le->falseExpr, re->falseExpr);
     else
     {
         LUAU_ASSERT(!"Unknown expression type");
