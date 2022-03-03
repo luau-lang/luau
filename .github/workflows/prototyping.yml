@@ -8,7 +8,7 @@ on:
 
 env:
   AGDA_VERSION: 2.6.2.1
-  INDEX_STATE: '@1646345581'
+  INDEX_STATE: '@1646344160'
 
 jobs:
   linux:
