@@ -6,11 +6,12 @@ on:
       - '.github/workflows/prototyping.yml'
       - 'prototyping/**'
 
+env:
+  AGDA_VERSION: 2.6.2.1
+  INDEX_STATE: '@1646344690'
+
 jobs:
   linux:
-    strategy:
-      matrix:
-        agda: [2.6.2.1]
     name: prototyping
     runs-on: ubuntu-latest
     steps:
@@ -18,7 +19,7 @@ jobs:
     - uses: actions/cache@v2
       with:
         path: ~/.cabal/store
-        key: prototyping-${{ runner.os }}-${{ matrix.agda }}
+        key: prototyping-${{ runner.os }}-${{ env.AGDA_VERSION }}-${{ env.INDEX_STATE }}
     - uses: actions/cache@v2
       id: luau-ast-cache
       with:
@@ -32,8 +33,8 @@ jobs:
     - name: cabal install
       working-directory: prototyping
       run: |
-        cabal install Agda-${{ matrix.agda }}
-        cabal install --lib scientific vector aeson --package-env .
+        cabal install Agda-${{ env.AGDA_VERSION }} --index-state=${{ env.INDEX_STATE }}
+        cabal install --lib scientific vector aeson --package-env . --index-state=${{ env.INDEX_STATE }}
     - name: check targets
       working-directory: prototyping
       run: |
