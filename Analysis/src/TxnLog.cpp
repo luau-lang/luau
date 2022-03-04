@@ -61,22 +61,52 @@ void DEPRECATED_TxnLog::concat(DEPRECATED_TxnLog rhs)
 
 bool DEPRECATED_TxnLog::haveSeen(TypeId lhs, TypeId rhs)
 {
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    const std::pair<TypeId, TypeId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-    return (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair));
+    return haveSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
 }
 
 void DEPRECATED_TxnLog::pushSeen(TypeId lhs, TypeId rhs)
 {
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    const std::pair<TypeId, TypeId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-    sharedSeen->push_back(sortedPair);
+    pushSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
 }
 
 void DEPRECATED_TxnLog::popSeen(TypeId lhs, TypeId rhs)
 {
+    popSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+bool DEPRECATED_TxnLog::haveSeen(TypePackId lhs, TypePackId rhs)
+{
+    return haveSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+void DEPRECATED_TxnLog::pushSeen(TypePackId lhs, TypePackId rhs)
+{
+    pushSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+void DEPRECATED_TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
+{
+    popSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+bool DEPRECATED_TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs)
+{
     LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    const std::pair<TypeId, TypeId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    return (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair));
+}
+
+void DEPRECATED_TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
+{
+    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    sharedSeen->push_back(sortedPair);
+}
+
+void DEPRECATED_TxnLog::popSeen(TypeOrPackId lhs, TypeOrPackId rhs)
+{
+    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     LUAU_ASSERT(sortedPair == sharedSeen->back());
     sharedSeen->pop_back();
 }
@@ -187,9 +217,39 @@ TxnLog TxnLog::inverse()
 
 bool TxnLog::haveSeen(TypeId lhs, TypeId rhs) const
 {
+    return haveSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+void TxnLog::pushSeen(TypeId lhs, TypeId rhs)
+{
+    pushSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+void TxnLog::popSeen(TypeId lhs, TypeId rhs)
+{
+    popSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+bool TxnLog::haveSeen(TypePackId lhs, TypePackId rhs) const
+{
+    return haveSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+void TxnLog::pushSeen(TypePackId lhs, TypePackId rhs)
+{
+    pushSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+void TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
+{
+    popSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
+}
+
+bool TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs) const
+{
     LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
 
-    const std::pair<TypeId, TypeId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
     {
         return true;
@@ -203,19 +263,19 @@ bool TxnLog::haveSeen(TypeId lhs, TypeId rhs) const
     return false;
 }
 
-void TxnLog::pushSeen(TypeId lhs, TypeId rhs)
+void TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
 {
     LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
 
-    const std::pair<TypeId, TypeId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     sharedSeen->push_back(sortedPair);
 }
 
-void TxnLog::popSeen(TypeId lhs, TypeId rhs)
+void TxnLog::popSeen(TypeOrPackId lhs, TypeOrPackId rhs)
 {
     LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
 
-    const std::pair<TypeId, TypeId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     LUAU_ASSERT(sortedPair == sharedSeen->back());
     sharedSeen->pop_back();
 }

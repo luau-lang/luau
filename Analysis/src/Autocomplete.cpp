@@ -16,7 +16,6 @@
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
 LUAU_FASTFLAGVARIABLE(LuauMissingFollowACMetatables, false);
-LUAU_FASTFLAGVARIABLE(PreferToCallFunctionsForIntersects, false);
 LUAU_FASTFLAGVARIABLE(LuauIfElseExprFixCompletionIssue, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -272,55 +271,34 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 
     TypeId expectedType = follow(*typeAtPosition);
 
-    if (FFlag::PreferToCallFunctionsForIntersects)
-    {
-        auto checkFunctionType = [&canUnify, &expectedType](const FunctionTypeVar* ftv) {
-            auto [retHead, retTail] = flatten(ftv->retType);
+    auto checkFunctionType = [&canUnify, &expectedType](const FunctionTypeVar* ftv) {
+        auto [retHead, retTail] = flatten(ftv->retType);
 
-            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
+        if (!retHead.empty() && canUnify(retHead.front(), expectedType))
+            return true;
+
+        // We might only have a variadic tail pack, check if the element is compatible
+        if (retTail)
+        {
+            if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
                 return true;
-
-            // We might only have a variadic tail pack, check if the element is compatible
-            if (retTail)
-            {
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
-                    return true;
-            }
-
-            return false;
-        };
-
-        // We also want to suggest functions that return compatible result
-        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty); ftv && checkFunctionType(ftv))
-        {
-            return TypeCorrectKind::CorrectFunctionResult;
         }
-        else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
-        {
-            for (TypeId id : itv->parts)
-            {
-                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(id); ftv && checkFunctionType(ftv))
-                {
-                    return TypeCorrectKind::CorrectFunctionResult;
-                }
-            }
-        }
-    }
-    else
+
+        return false;
+    };
+
+    // We also want to suggest functions that return compatible result
+    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty); ftv && checkFunctionType(ftv))
     {
-        // We also want to suggest functions that return compatible result
-        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+        return TypeCorrectKind::CorrectFunctionResult;
+    }
+    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+    {
+        for (TypeId id : itv->parts)
         {
-            auto [retHead, retTail] = flatten(ftv->retType);
-
-            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
-                return TypeCorrectKind::CorrectFunctionResult;
-
-            // We might only have a variadic tail pack, check if the element is compatible
-            if (retTail)
+            if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(id); ftv && checkFunctionType(ftv))
             {
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
-                    return TypeCorrectKind::CorrectFunctionResult;
+                return TypeCorrectKind::CorrectFunctionResult;
             }
         }
     }

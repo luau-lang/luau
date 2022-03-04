@@ -2,12 +2,15 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
+#include "lapi.h"
 #include "lstate.h"
 #include "ltable.h"
 #include "lstring.h"
 #include "lgc.h"
 #include "ldebug.h"
 #include "lvm.h"
+
+LUAU_FASTFLAGVARIABLE(LuauTableClone, false)
 
 static int foreachi(lua_State* L)
 {
@@ -507,6 +510,23 @@ static int tisfrozen(lua_State* L)
     return 1;
 }
 
+static int tclone(lua_State* L)
+{
+    if (!FFlag::LuauTableClone)
+        luaG_runerror(L, "table.clone is not available");
+
+    luaL_checktype(L, 1, LUA_TTABLE);
+    luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
+
+    Table* tt = luaH_clone(L, hvalue(L->base));
+
+    TValue v;
+    sethvalue(L, &v, tt);
+    luaA_pushobject(L, &v);
+
+    return 1;
+}
+
 static const luaL_Reg tab_funcs[] = {
     {"concat", tconcat},
     {"foreach", foreach},
@@ -524,6 +544,7 @@ static const luaL_Reg tab_funcs[] = {
     {"clear", tclear},
     {"freeze", tfreeze},
     {"isfrozen", tisfrozen},
+    {"clone", tclone},
     {NULL, NULL},
 };
 

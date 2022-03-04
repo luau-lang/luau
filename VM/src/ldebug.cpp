@@ -168,6 +168,11 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
     return status;
 }
 
+int lua_stackdepth(lua_State* L)
+{
+    return int(L->ci - L->base_ci);
+}
+
 int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
 {
     int status = 0;

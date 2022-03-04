@@ -5,8 +5,6 @@
 #include "Luau/StringUtils.h"
 #include "Luau/Common.h"
 
-LUAU_FASTFLAG(LuauTypeAliasDefaults)
-
 namespace Luau
 {
 
@@ -369,38 +367,24 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(const AstGenericType& genericType)
     {
-        if (FFlag::LuauTypeAliasDefaults)
-        {
-            writeRaw("{");
-            bool c = pushComma();
-            write("name", genericType.name);
-            if (genericType.defaultValue)
-                write("type", genericType.defaultValue);
-            popComma(c);
-            writeRaw("}");
-        }
-        else
-        {
-            write(genericType.name);
-        }
+        writeRaw("{");
+        bool c = pushComma();
+        write("name", genericType.name);
+        if (genericType.defaultValue)
+            write("type", genericType.defaultValue);
+        popComma(c);
+        writeRaw("}");
     }
 
     void write(const AstGenericTypePack& genericTypePack)
     {
-        if (FFlag::LuauTypeAliasDefaults)
-        {
-            writeRaw("{");
-            bool c = pushComma();
-            write("name", genericTypePack.name);
-            if (genericTypePack.defaultValue)
-                write("type", genericTypePack.defaultValue);
-            popComma(c);
-            writeRaw("}");
-        }
-        else
-        {
-            write(genericTypePack.name);
-        }
+        writeRaw("{");
+        bool c = pushComma();
+        write("name", genericTypePack.name);
+        if (genericTypePack.defaultValue)
+            write("type", genericTypePack.defaultValue);
+        popComma(c);
+        writeRaw("}");
     }
 
     void write(AstExprTable::Item::Kind kind)

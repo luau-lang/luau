@@ -241,6 +241,8 @@ TEST_CASE("Math")
 
 TEST_CASE("Table")
 {
+    ScopedFastFlag sff("LuauTableClone", true);
+
     runConformance("nextvar.lua");
 }
 
@@ -465,6 +467,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag sff("LuauTableCloneType", true);
+
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
@@ -959,8 +963,6 @@ TEST_CASE("Coverage")
 
 TEST_CASE("StringConversion")
 {
-    ScopedFastFlag sff{"LuauSchubfach", true};
-
     runConformance("strconv.lua");
 }
 

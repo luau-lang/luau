@@ -298,7 +298,7 @@ struct TableTypeVar
 
     TableTypeVar() = default;
     explicit TableTypeVar(TableState state, TypeLevel level);
-    TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, TableState state = TableState::Unsealed);
+    TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, TableState state);
 
     Props props;
     std::optional<TableIndexer> indexer;
@@ -476,6 +476,9 @@ bool isThread(TypeId ty);
 bool isOptional(TypeId ty);
 bool isTableIntersection(TypeId ty);
 bool isOverloadedFunction(TypeId ty);
+
+// True when string is a subtype of ty
+bool maybeString(TypeId ty);
 
 std::optional<TypeId> getMetatable(TypeId type);
 TableTypeVar* getMutableTableType(TypeId type);

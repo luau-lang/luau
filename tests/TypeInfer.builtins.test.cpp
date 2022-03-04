@@ -934,4 +934,31 @@ TEST_CASE_FIXTURE(Fixture, "assert_returns_false_and_string_iff_it_knows_the_fir
     CHECK_EQ("(nil) -> nil", toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_freeze_is_generic")
+{
+    CheckResult result = check(R"(
+        local t1: {a: number} = {a = 42}
+        local t2: {b: string} = {b = "hello"}
+        local t3: {boolean} = {false, true}
+
+        local tf1 = table.freeze(t1)
+        local tf2 = table.freeze(t2)
+        local tf3 = table.freeze(t3)
+
+        local a = tf1.a
+        local b = tf2.b
+        local c = tf3[2]
+
+        local d = tf1.b
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
+
+    CHECK_EQ("number", toString(requireType("a")));
+    CHECK_EQ("string", toString(requireType("b")));
+    CHECK_EQ("boolean", toString(requireType("c")));
+    CHECK_EQ("*unknown*", toString(requireType("d")));
+}
+
 TEST_SUITE_END();

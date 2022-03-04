@@ -413,29 +413,22 @@ static void completeRepl(ic_completion_env_t* cenv, const char* editBuffer)
     ic_complete_word(cenv, editBuffer, icGetCompletions, isMethodOrFunctionChar);
 }
 
-struct LinenoiseScopedHistory
+static void loadHistory(const char* name)
 {
-    LinenoiseScopedHistory()
+    std::string path;
+
+    if (const char* home = getenv("HOME"))
     {
-        const std::string name(".luau_history");
-
-        if (const char* home = getenv("HOME"))
-        {
-            historyFilepath = joinPaths(home, name);
-        }
-        else if (const char* userProfile = getenv("USERPROFILE"))
-        {
-            historyFilepath = joinPaths(userProfile, name);
-        }
-
-        if (!historyFilepath.empty())
-            ic_set_history(historyFilepath.c_str(), -1 /* default entries (= 200) */);
+        path = joinPaths(home, name);
+    }
+    else if (const char* userProfile = getenv("USERPROFILE"))
+    {
+        path = joinPaths(userProfile, name);
     }
 
-    ~LinenoiseScopedHistory() {}
-
-    std::string historyFilepath;
-};
+    if (!path.empty())
+        ic_set_history(path.c_str(), -1 /* default entries (= 200) */);
+}
 
 static void runReplImpl(lua_State* L)
 {
@@ -447,8 +440,10 @@ static void runReplImpl(lua_State* L)
     // Prevent auto insertion of braces
     ic_enable_brace_insertion(false);
 
+    // Loads history from the given file; isocline automatically saves the history on process exit
+    loadHistory(".luau_history");
+
     std::string buffer;
-    LinenoiseScopedHistory scopedHistory;
 
     for (;;)
     {

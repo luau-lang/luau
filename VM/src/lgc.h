@@ -111,13 +111,6 @@
             luaC_barrierf(L, obj2gco(p), obj2gco(o)); \
     }
 
-// TODO: remove with FFlagLuauGcForwardMetatableBarrier
-#define luaC_objbarriert(L, t, o) \
-    { \
-        if (isblack(obj2gco(t)) && iswhite(obj2gco(o))) \
-            luaC_barriertable(L, t, obj2gco(o)); \
-    }
-
 #define luaC_upvalbarrier(L, uv, tv) \
     { \
         if (iscollectable(tv) && iswhite(gcvalue(tv)) && (!(uv) || ((UpVal*)uv)->v != &((UpVal*)uv)->u.value)) \

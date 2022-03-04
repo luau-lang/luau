@@ -259,7 +259,7 @@ void ic_complete_qword( ic_completion_env_t* cenv, const char* prefix, ic_comple
 /// The `escape_char` is the escaping character, usually `\` but use 0 to not have escape characters.
 /// The `quote_chars` define the quotes, use NULL for the default `"\'\""` quotes.
 /// @see ic_complete_word() which uses the default values for `non_word_chars`, `quote_chars` and `\` for escape characters.
-void ic_complete_qword_ex( ic_completion_env_t* cenv, const char* prefix, ic_completer_fun_t fun, 
+void ic_complete_qword_ex( ic_completion_env_t* cenv, const char* prefix, ic_completer_fun_t* fun,
                                 ic_is_char_class_fun_t* is_word_char, char escape_char, const char* quote_chars );
 
 /// \}

@@ -6,8 +6,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-LUAU_FASTFLAG(LuauSchubfach);
-
 #define LUAI_MAXNUM2STR 48
 
 char* luai_num2str(char* buf, double n);
@@ -16,8 +14,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
 {
     if (Size < 8)
         return 0;
-
-    FFlag::LuauSchubfach.value = true;
 
     double num;
     memcpy(&num, Data, 8);

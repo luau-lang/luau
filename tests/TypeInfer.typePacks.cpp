@@ -622,9 +622,6 @@ type Other = Packed<number, string>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_explicit")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T, U = string> = { a: T, b: U }
 
@@ -654,9 +651,6 @@ local c: Y = { a = "s" }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_self")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T, U = T> = { a: T, b: U }
 
@@ -682,9 +676,6 @@ local a: Y<number>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_chained")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T, U = T, V = U> = { a: T, b: U, c: V }
 
@@ -700,9 +691,6 @@ local b: Y<number, string>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_explicit")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T... = (string, number)> = { a: (T...) -> () }
 local a: Y<>
@@ -715,9 +703,6 @@ local a: Y<>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_ty")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T, U... = ...T> = { a: T, b: (U...) -> T }
 
@@ -731,9 +716,6 @@ local a: Y<number>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_tp")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T..., U... = T...> = { a: (T...) -> U... }
 local a: Y<number, string>
@@ -746,9 +728,6 @@ local a: Y<number, string>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_chained_tp")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T..., U... = T..., V... = U...> = { a: (T...) -> U..., b: (T...) -> V... }
 local a: Y<number, string>
@@ -761,9 +740,6 @@ local a: Y<number, string>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_mixed_self")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T, U = T, V... = ...number, W... = (T, U, V...)> = { a: (T, U, V...) -> W... }
 local a: Y<number>
@@ -782,9 +758,6 @@ local d: Y<number, string, ...boolean, ...() -> ()>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T = T> = { a: T }
 local a: Y = { a = 2 }
@@ -834,9 +807,6 @@ local a: Y<...number>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_export")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     fileResolver.source["Module/Types"] = R"(
 export type A<T, U = string> = { a: T, b: U }
 export type B<T, U = T> = { a: T, b: U }
@@ -882,9 +852,6 @@ local h: Types.H<>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_skip_brackets")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type Y<T... = ...string> = (T...) -> number
 local a: Y
@@ -897,9 +864,6 @@ local a: Y
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_confusing_types")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type A<T, U = T, V... = ...any, W... = V...> = (T, V...) -> (U, W...)
 type B = A<string, (number)>
@@ -914,9 +878,6 @@ type C = A<string, (number), (boolean)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_recursive_type")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
 type F<K = string, V = (K) -> ()> = (K) -> V
 type R = { m: F<R> }

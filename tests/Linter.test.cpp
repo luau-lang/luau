@@ -157,6 +157,113 @@ return bar()
     CHECK_EQ(result.warnings[0].text, "Global 'foo' is only used in the enclosing function 'bar'; consider changing it to local");
 }
 
+TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMultiFx")
+{
+    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    LintResult result = lint(R"(
+function bar()
+    foo = 6
+    return foo
+end
+
+function baz()
+    foo = 6
+    return foo
+end
+
+return bar() + baz()
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 1);
+    CHECK_EQ(result.warnings[0].text, "Global 'foo' is never read before being written. Consider changing it to local");
+}
+
+TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMultiFxWithRead")
+{
+    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    LintResult result = lint(R"(
+function bar()
+    foo = 6
+    return foo
+end
+
+function baz()
+    foo = 6
+    return foo
+end
+
+function read()
+    print(foo)
+end
+
+return bar() + baz() + read()
+)");
+
+    CHECK_EQ(result.warnings.size(), 0);
+}
+
+TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalWithConditional")
+{
+    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    LintResult result = lint(R"(
+function bar()
+    if true then foo = 6 end
+    return foo
+end
+
+function baz()
+    foo = 6
+    return foo
+end
+
+return bar() + baz()
+)");
+
+    CHECK_EQ(result.warnings.size(), 0);
+}
+
+TEST_CASE_FIXTURE(Fixture, "GlobalAsLocal3WithConditionalRead")
+{
+    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    LintResult result = lint(R"(
+function bar()
+    foo = 6
+    return foo
+end
+
+function baz()
+    foo = 6
+    return foo
+end
+
+function read()
+    if false then print(foo) end
+end
+
+return bar() + baz() + read()
+)");
+
+    CHECK_EQ(result.warnings.size(), 0);
+}
+
+TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalInnerRead")
+{
+    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    LintResult result = lint(R"(
+function foo()
+   local f = function() return bar end
+   f()
+   bar = 42
+end
+
+function baz() bar = 0 end
+
+return foo() + baz()
+)");
+
+    CHECK_EQ(result.warnings.size(), 0);
+}
+
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMulti")
 {
     LintResult result = lint(R"(

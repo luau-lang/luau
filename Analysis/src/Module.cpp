@@ -14,7 +14,6 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false) // Remove with FFlagLuauImmutableTypes
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
-LUAU_FASTFLAG(LuauTypeAliasDefaults)
 LUAU_FASTFLAG(LuauImmutableTypes)
 
 namespace Luau
@@ -463,7 +462,7 @@ TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, See
         TypeId ty = clone(param.ty, dest, seenTypes, seenTypePacks, cloneState);
         std::optional<TypeId> defaultValue;
 
-        if (FFlag::LuauTypeAliasDefaults && param.defaultValue)
+        if (param.defaultValue)
             defaultValue = clone(*param.defaultValue, dest, seenTypes, seenTypePacks, cloneState);
 
         result.typeParams.push_back({ty, defaultValue});
@@ -474,7 +473,7 @@ TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, See
         TypePackId tp = clone(param.tp, dest, seenTypes, seenTypePacks, cloneState);
         std::optional<TypePackId> defaultValue;
 
-        if (FFlag::LuauTypeAliasDefaults && param.defaultValue)
+        if (param.defaultValue)
             defaultValue = clone(*param.defaultValue, dest, seenTypes, seenTypePacks, cloneState);
 
         result.typePackParams.push_back({tp, defaultValue});

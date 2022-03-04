@@ -96,8 +96,6 @@ n2 [label="number"];
 
 TEST_CASE_FIXTURE(Fixture, "function")
 {
-    ScopedFastFlag luauQuantifyInPlace2{"LuauQuantifyInPlace2", true};
-
     CheckResult result = check(R"(
 local function f(a, ...: string) return a end
 )");

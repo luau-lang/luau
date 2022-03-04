@@ -56,7 +56,7 @@ struct Unifier
 
     Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState,
         TxnLog* parentLog = nullptr);
-    Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
+    Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen, const Location& location,
         Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
