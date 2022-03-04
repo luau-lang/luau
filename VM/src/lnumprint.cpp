@@ -6,7 +6,6 @@
 #include "lcommon.h"
 
 #include <string.h>
-#include <stdio.h> // TODO: Remove with LuauSchubfach
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -17,8 +16,6 @@
 // https://drive.google.com/file/d/1IEeATSVnEE6TkrHlCYNY2GjaraBjOT4f/edit
 
 // The code uses the notation from the paper for local variables where appropriate, and refers to paper sections/figures/results.
-
-LUAU_FASTFLAGVARIABLE(LuauSchubfach, false)
 
 // 9.8.2. Precomputed table for 128-bit overestimates of powers of 10 (see figure 3 for table bounds)
 // To avoid storing 616 128-bit numbers directly we use a technique inspired by Dragonbox implementation and store 16 consecutive
@@ -275,12 +272,6 @@ inline char* trimzero(char* end)
 
 char* luai_num2str(char* buf, double n)
 {
-    if (!FFlag::LuauSchubfach)
-    {
-        snprintf(buf, LUAI_MAXNUM2STR, LUA_NUMBER_FMT, n);
-        return buf + strlen(buf);
-    }
-
     // IEEE-754
     union
     {

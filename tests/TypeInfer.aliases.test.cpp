@@ -625,9 +625,8 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
     ScopedFastFlag sff[] = {
         {"LuauTwoPassAliasDefinitionFix", true},
 
-        // We also force these two flags because this surfaced an unfortunate interaction.
+        // We also force this flag because it surfaced an unfortunate interaction.
         {"LuauErrorRecoveryType", true},
-        {"LuauQuantifyInPlace2", true},
     };
 
     CheckResult result = check(R"(

@@ -697,4 +697,93 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
+{
+    ScopedFastFlag sffs[] = {
+        { "LuauTableSubtypingVariance2", true },
+        { "LuauUnsealedTableLiteral", true },
+        { "LuauPropertiesGetExpectedType", true },
+        { "LuauRecursiveTypeParameterRestriction", true },
+    };
+
+    CheckResult result = check(R"(
+--!strict
+-- At one point this produced a UAF
+type T<a> = { a: U<a>, b: a }
+type U<a> = { c: T<a>?, d : a }
+local x: T<number> = { a = { c = nil, d = 5 }, b = 37 }
+x.a.c = x
+local y: T<string> = { a = { c = nil, d = 5 }, b = 37 }
+y.a.c = y
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]),
+        R"(Type 'y' could not be converted into 'T<string>'
+caused by:
+  Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
+caused by:
+  Property 'd' is not compatible. Type 'number' could not be converted into 'string')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")
+{
+    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
+
+    CheckResult result = check(R"(
+--!strict
+type Dispatcher = {
+	useMemo: <T...>(create: () -> T...) -> T...
+}
+
+local TheDispatcher: Dispatcher = {
+	useMemo = function<U...>(create: () -> U...): U...
+		return create()
+	end
+}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification2")
+{
+    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
+
+    CheckResult result = check(R"(
+--!strict
+type Dispatcher = {
+	useMemo: <T...>(create: () -> T...) -> T...
+}
+
+local TheDispatcher: Dispatcher = {
+	useMemo = function(create)
+		return create()
+	end
+}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification3")
+{
+    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
+
+    CheckResult result = check(R"(
+--!strict
+type Dispatcher = {
+	useMemo: <S,T...>(arg: S, create: (S) -> T...) -> T...
+}
+
+local TheDispatcher: Dispatcher = {
+	useMemo = function<T,U...>(arg: T, create: (T) -> U...): U...
+		return create(arg)
+	end
+}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

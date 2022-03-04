@@ -24,6 +24,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
+LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
 LUAU_FASTFLAG(LuauDiscriminableUnions2)
 
 namespace Luau
@@ -157,6 +158,7 @@ bool isNumber(TypeId ty)
     return isPrim(ty, PrimitiveTypeVar::Number);
 }
 
+// Returns true when ty is a subtype of string
 bool isString(TypeId ty)
 {
     if (isPrim(ty, PrimitiveTypeVar::String) || get<StringSingleton>(get<SingletonTypeVar>(follow(ty))))
@@ -166,6 +168,27 @@ bool isString(TypeId ty)
         return std::all_of(begin(utv), end(utv), isString);
 
     return false;
+}
+
+// Returns true when ty is a supertype of string
+bool maybeString(TypeId ty)
+{
+    if (FFlag::LuauSubtypingAddOptPropsToUnsealedTables)
+    {
+        ty = follow(ty);
+    
+        if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
+            return true;
+
+        if (auto utv = get<UnionTypeVar>(ty))
+            return std::any_of(begin(utv), end(utv), maybeString);
+
+        return false;
+    }
+    else
+    {
+        return isString(ty);
+    }
 }
 
 bool isThread(TypeId ty)
@@ -684,7 +707,7 @@ TypeId SingletonTypes::makeStringMetatable()
         {"sub", {makeFunction(*arena, stringType, {}, {}, {numberType, optionalNumber}, {}, {stringType})}},
         {"upper", {stringToStringType}},
         {"split", {makeFunction(*arena, stringType, {}, {}, {optionalString}, {},
-                      {arena->addType(TableTypeVar{{}, TableIndexer{numberType, stringType}, TypeLevel{}})})}},
+                      {arena->addType(TableTypeVar{{}, TableIndexer{numberType, stringType}, TypeLevel{}, TableState::Sealed})})}},
         {"pack", {arena->addType(FunctionTypeVar{
                      arena->addTypePack(TypePack{{stringType}, anyTypePack}),
                      oneStringPack,
@@ -761,6 +784,8 @@ void persist(TypeId ty)
         }
         else if (auto ttv = get<TableTypeVar>(t))
         {
+            LUAU_ASSERT(ttv->state != TableState::Free && ttv->state != TableState::Unsealed);
+
             for (const auto& [_name, prop] : ttv->props)
                 queue.push_back(prop.type);
 

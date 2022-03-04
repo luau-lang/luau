@@ -11,8 +11,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauSchubfach)
-
 /* convert a stack index to positive */
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
@@ -480,18 +478,13 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     switch (lua_type(L, idx))
     {
     case LUA_TNUMBER:
-        if (FFlag::LuauSchubfach)
-        {
-            double n = lua_tonumber(L, idx);
-            char s[LUAI_MAXNUM2STR];
-            char* e = luai_num2str(s, n);
-            lua_pushlstring(L, s, e - s);
-        }
-        else
-        {
-            lua_pushstring(L, lua_tostring(L, idx));
-        }
+    {
+        double n = lua_tonumber(L, idx);
+        char s[LUAI_MAXNUM2STR];
+        char* e = luai_num2str(s, n);
+        lua_pushlstring(L, s, e - s);
         break;
+    }
     case LUA_TSTRING:
         lua_pushvalue(L, idx);
         break;
@@ -505,29 +498,18 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     {
         const float* v = lua_tovector(L, idx);
 
-        if (FFlag::LuauSchubfach)
+        char s[LUAI_MAXNUM2STR * LUA_VECTOR_SIZE];
+        char* e = s;
+        for (int i = 0; i < LUA_VECTOR_SIZE; ++i)
         {
-            char s[LUAI_MAXNUM2STR * LUA_VECTOR_SIZE];
-            char* e = s;
-            for (int i = 0; i < LUA_VECTOR_SIZE; ++i)
+            if (i != 0)
             {
-                if (i != 0)
-                {
-                    *e++ = ',';
-                    *e++ = ' ';
-                }
-                e = luai_num2str(e, v[i]);
+                *e++ = ',';
+                *e++ = ' ';
             }
-            lua_pushlstring(L, s, e - s);
+            e = luai_num2str(e, v[i]);
         }
-        else
-        {
-#if LUA_VECTOR_SIZE == 4
-            lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2], v[3]);
-#else
-            lua_pushfstring(L, LUA_NUMBER_FMT ", " LUA_NUMBER_FMT ", " LUA_NUMBER_FMT, v[0], v[1], v[2]);
-#endif
-        }
+        lua_pushlstring(L, s, e - s);
         break;
     }
     default:

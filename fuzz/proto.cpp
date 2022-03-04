@@ -59,7 +59,7 @@ void interrupt(lua_State* L, int gc)
     }
 }
 
-void* allocate(lua_State* L, void* ud, void* ptr, size_t osize, size_t nsize)
+void* allocate(void* ud, void* ptr, size_t osize, size_t nsize)
 {
     if (nsize == 0)
     {

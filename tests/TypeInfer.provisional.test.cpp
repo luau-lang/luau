@@ -8,7 +8,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauEqConstraint)
-LUAU_FASTFLAG(LuauQuantifyInPlace2)
 
 using namespace Luau;
 
@@ -40,16 +39,6 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    const std::string old_expected = R"(
-        function f(a:{fn:()->(free,free...)}): ()
-            if type(a) == 'boolean'then
-                local a1:boolean=a
-            elseif a.fn()then
-                local a2:{fn:()->(free,free...)}=a
-            end
-        end
-    )";
-
     const std::string expected = R"(
         function f(a:{fn:()->(a,b...)}): ()
             if type(a) == 'boolean'then
@@ -60,10 +49,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
         end
     )";
 
-    if (FFlag::LuauQuantifyInPlace2)
-        CHECK_EQ(expected, decorateWithTypes(code));
-    else
-        CHECK_EQ(old_expected, decorateWithTypes(code));
+    CHECK_EQ(expected, decorateWithTypes(code));
 }
 
 TEST_CASE_FIXTURE(Fixture, "xpcall_returns_what_f_returns")
@@ -133,46 +119,6 @@ TEST_CASE_FIXTURE(Fixture, "setmetatable_constrains_free_type_into_free_table")
     REQUIRE(tm);
     CHECK_EQ("{-  -}", toString(tm->wantedType));
     CHECK_EQ("number", toString(tm->givenType));
-}
-
-TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
-{
-    CheckResult result = check(R"(
-        local a: {x: number, y: number, [any]: any} | {y: number}
-
-        function f(t)
-            t.y = 1
-            return t
-        end
-
-        local b = f(a)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    // :(
-    // Should be the same as the type of a
-    REQUIRE_EQ("{| y: number |}", toString(requireType("b")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
-{
-    CheckResult result = check(R"(
-        local a: {y: number} | {x: number, y: number, [any]: any}
-
-        function f(t)
-            t.y = 1
-            return t
-        end
-
-        local b = f(a)
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    // :(
-    // Should be the same as the type of a
-    REQUIRE_EQ("{| [any]: any, x: number, y: number |}", toString(requireType("b")));
 }
 
 // Luau currently doesn't yet know how to allow assignments when the binding was refined.
@@ -557,25 +503,6 @@ TEST_CASE_FIXTURE(Fixture, "bail_early_on_typescript_port_of_Result_type" * doct
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
-{
-    CheckResult result = check(R"(
-        --!strict
-        local function setNumber(t: { p: number? }, x:number) t.p = x end
-        local function getString(t: { p: string? }):string return t.p or "" end
-        -- This shouldn't type-check!
-        local function oh(x:number): string
-          local t: {} = {}
-          setNumber(t, x)
-          return getString(t)
-        end
-        local s: string = oh(37)
-    )");
-
-    // Really this should return an error, but it doesn't
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
 // Should be in TypeInfer.tables.test.cpp
 // It's unsound to instantiate tables containing generic methods,
 // since mutating properties means table properties should be invariant.
@@ -600,25 +527,9 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
-{
-    // Mutability in type function application right now can create strange recursive types
-    // TODO: instantiation right now is problematic, in this example should either leave the Table type alone
-    // or it should rename the type to 'Self' so that the result will be 'Self<Table>'
-    CheckResult result = check(R"(
-type Table = { a: number }
-type Self<T> = T
-local a: Self<Table>
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("a")), "Table<Table>");
-}
-
 TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
 {
     ScopedFastFlag sff[]{
-        {"LuauQuantifyInPlace2", true},
         {"LuauReturnAnyInsteadOfICE", true},
     };
 
@@ -664,8 +575,6 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
 
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 {
-    ScopedFastFlag sff{"LuauQuantifyInPlace2", true};
-
     CheckResult result = check(R"(
         local function f() return end
         local g = function() return f() end
@@ -676,8 +585,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
-    ScopedFastFlag sff{"LuauQuantifyInPlace2", true};
-
     CheckResult result = check(R"(
         --!strict
         local function f(...) return ... end

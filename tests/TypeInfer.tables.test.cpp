@@ -1219,13 +1219,12 @@ TEST_CASE_FIXTURE(Fixture, "passing_compatible_unions_to_a_generic_table_without
 {
     CheckResult result = check(R"(
         type A = {x: number, y: number, [any]: any} | {y: number}
-        local a: A
 
         function f(t)
             t.y = 1
         end
 
-        f(a)
+        f({y = 5} :: A)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -2165,6 +2164,44 @@ b()
     CHECK_EQ(toString(result.errors[0]), R"(Cannot call non-function t1 where t1 = { @metatable { __call: t1 }, {  } })");
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauSubtypingAddOptPropsToUnsealedTables", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function setNumber(t: { p: number? }, x:number) t.p = x end
+        local function getString(t: { p: string? }):string return t.p or "" end
+        -- This shouldn't type-check!
+        local function oh(x:number): string
+          local t: {} = {}
+          setNumber(t, x)
+          return getString(t)
+        end
+        local s: string = oh(37)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "top_table_type")
+{
+    CheckResult result = check(R"(
+        --!strict
+        type Table = { [any] : any }
+        type HasTable = { p: Table? }
+        type HasHasTable = { p: HasTable? }
+        local t : Table = { p = 5 }
+        local u : HasTable = { p = { p = 5 } }
+        local v : HasHasTable = { p = { p = { p = 5 } } }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "length_operator_union")
 {
     CheckResult result = check(R"(
@@ -2255,6 +2292,46 @@ TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number | string", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
+{
+    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter", true};
+
+    CheckResult result = check(R"(
+        local a: {x: number, y: number, [any]: any} | {y: number}
+
+        function f(t)
+            t.y = 1
+            return t
+        end
+
+        local b = f(a)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
+{
+    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter", true};
+
+    CheckResult result = check(R"(
+        local a: {y: number} | {x: number, y: number, [any]: any}
+
+        function f(t)
+            t.y = 1
+            return t
+        end
+
+        local b = f(a)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
 }
 
 TEST_SUITE_END();

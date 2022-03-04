@@ -4044,6 +4044,49 @@ type t0<t32> = any
     CHECK(ttv->instantiatedTypeParams.empty());
 }
 
+TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning_2")
+{
+    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
+
+    CheckResult result = check(R"(
+type X<T> = T
+type K = X<typeof(math)>
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> ty = requireType("math");
+    REQUIRE(ty);
+
+    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    REQUIRE(ttv);
+    CHECK(ttv->instantiatedTypeParams.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning_3")
+{
+    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
+
+    CheckResult result = check(R"(
+type X<T> = T
+local a = {}
+a.x = 4
+local b: X<typeof(a)>
+a.y = 5
+local c: X<typeof(a)>
+c = b
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> ty = requireType("a");
+    REQUIRE(ty);
+
+    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    REQUIRE(ttv);
+    CHECK(ttv->instantiatedTypeParams.empty());
+}
+
 TEST_CASE_FIXTURE(Fixture, "bound_free_table_export_is_ok")
 {
     CheckResult result = check(R"(
@@ -4063,6 +4106,21 @@ end
 return m
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
+{
+    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
+
+    // Mutability in type function application right now can create strange recursive types
+    CheckResult result = check(R"(
+type Table = { a: number }
+type Self<T> = T
+local a: Self<Table>
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("a")), "Table");
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_persistent_typelevel_change")
@@ -5279,6 +5337,19 @@ TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the
         local function g()
             local l = T[1].prop
         end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "global_singleton_types_are_sealed")
+{
+    CheckResult result = check(R"(
+local function f(x: string)
+    local p = x:split('a')
+    p = table.pack(table.unpack(p, 1, #p - 1))
+    return p
+end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

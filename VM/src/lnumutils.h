@@ -55,7 +55,6 @@ LUAU_FASTMATH_END
 #define luai_num2unsigned(i, n) ((i) = (unsigned)(long long)(n))
 #endif
 
-#define LUA_NUMBER_FMT "%.14g" /* TODO: Remove with LuauSchubfach */
 #define LUAI_MAXNUM2STR 48
 
 LUAI_FUNC char* luai_num2str(char* buf, double n);

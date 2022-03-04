@@ -500,8 +500,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
 {
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     CheckResult result = check(R"(
         local function f(a: number, b: string) end
         local function test<T..., U...>(...: T...): U...

@@ -9,6 +9,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauAssertStripsFalsyTypes)
+LUAU_FASTFLAGVARIABLE(LuauTableCloneType, false)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -283,8 +284,16 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     attachMagicFunction(getGlobalBinding(typeChecker, "setmetatable"), magicFunctionSetMetaTable);
     attachMagicFunction(getGlobalBinding(typeChecker, "select"), magicFunctionSelect);
 
-    auto tableLib = getMutable<TableTypeVar>(getGlobalBinding(typeChecker, "table"));
-    attachMagicFunction(tableLib->props["pack"].type, magicFunctionPack);
+    if (TableTypeVar* ttv = getMutable<TableTypeVar>(getGlobalBinding(typeChecker, "table")))
+    {
+        // tabTy is a generic table type which we can't express via declaration syntax yet
+        ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
+
+        if (FFlag::LuauTableCloneType)
+            ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
+
+        attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
+    }
 
     attachMagicFunction(getGlobalBinding(typeChecker, "require"), magicFunctionRequire);
 }

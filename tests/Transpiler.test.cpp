@@ -641,9 +641,6 @@ TEST_CASE_FIXTURE(Fixture, "transpile_to_string")
 
 TEST_CASE_FIXTURE(Fixture, "transpile_type_alias_default_type_parameters")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-    ScopedFastFlag luauTypeAliasDefaults{"LuauTypeAliasDefaults", true};
-
     std::string code = R"(
 type Packed<T = string, U = T, V... = ...boolean, W... = (T, U, V...)> = (T, U, V...)->(W...)
 local a: Packed<number>

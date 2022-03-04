@@ -11,7 +11,6 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauParseTypeAliasDefaults, false)
 LUAU_FASTFLAGVARIABLE(LuauParseAllHotComments, false)
 LUAU_FASTFLAGVARIABLE(LuauTableFieldFunctionDebugname, false)
 
@@ -779,7 +778,7 @@ AstStat* Parser::parseTypeAlias(const Location& start, bool exported)
     if (!name)
         name = Name(nameError, lexer.current().location);
 
-    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ FFlag::LuauParseTypeAliasDefaults);
+    auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ true);
 
     expectAndConsume('=', "type alias");
 

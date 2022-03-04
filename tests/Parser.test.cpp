@@ -1988,8 +1988,6 @@ TEST_CASE_FIXTURE(Fixture, "function_type_matching_parenthesis")
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-
     AstStat* stat = parse(R"(
 type A<T = string> = {}
 type B<T... = ...number> = {}
@@ -2005,8 +2003,6 @@ type G<T... = ...number, U... = (string, number, boolean)> = (U...) -> T...
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-
     matchParseError("type Y<T = number, U> = {}", "Expected default type after type name", Location{{0, 20}, {0, 21}});
     matchParseError("type Y<T... = ...number, U...> = {}", "Expected default type pack after type pack name", Location{{0, 29}, {0, 30}});
     matchParseError("type Y<T... = (string) -> number> = {}", "Expected type pack after '=', got type", Location{{0, 14}, {0, 32}});
@@ -2574,8 +2570,6 @@ do end
 
 TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-
     ParseResult result = tryParse(R"(
 type Y<T..., U = T...> = (T...) -> U...
     )");

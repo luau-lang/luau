@@ -170,7 +170,6 @@ declare function gcinfo(): number
                 move: <V>({V}, number, number, number, {V}?) -> {V},
                 clear: <K, V>({[K]: V}) -> (),
 
-                freeze: <K, V>({[K]: V}) -> {[K]: V},
                 isfrozen: <K, V>({[K]: V}) -> boolean,
             }
 

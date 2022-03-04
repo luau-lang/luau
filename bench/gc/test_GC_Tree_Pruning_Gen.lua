@@ -42,7 +42,7 @@ function test()
 	local tree = { id = 0 }
 	fill_tree(tree, 16)
 
-	for i = 1,1000 do
+	for i = 1,100 do
 		local small_tree = { id = 0 }
 
 		fill_tree(small_tree, 8)
