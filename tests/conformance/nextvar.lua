@@ -512,4 +512,42 @@ do
   assert(#t == 7)
 end
 
+-- test clone
+do
+  local t = {a = 1, b = 2, 3, 4, 5}
+  local tt = table.clone(t)
+
+  assert(#tt == 3)
+  assert(tt.a == 1 and tt.b == 2)
+
+  t.c = 3
+  assert(tt.c == nil)
+
+  t = table.freeze({"test"})
+  tt = table.clone(t)
+  assert(table.isfrozen(t) and not table.isfrozen(tt))
+
+  t = setmetatable({}, {})
+  tt = table.clone(t)
+  assert(getmetatable(t) == getmetatable(tt))
+
+  t = setmetatable({}, {__metatable = "protected"})
+  assert(not pcall(table.clone, t))
+
+  function order(t)
+    local r = ''
+    for k,v in pairs(t) do
+      r ..= tostring(v)
+    end
+    return v
+  end
+
+  t = {a = 1, b = 2, c = 3, d = 4, e = 5, f = 6}
+  tt = table.clone(t)
+  assert(order(t) == order(tt))
+
+  assert(not pcall(table.clone))
+  assert(not pcall(table.clone, 42))
+end
+
 return"OK"

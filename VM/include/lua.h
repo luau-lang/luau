@@ -265,6 +265,8 @@ LUA_API double lua_clock();
 
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(void*));
 
+LUA_API void lua_clonefunction(lua_State* L, int idx);
+
 /*
 ** reference system, can be used to pin objects
 */
@@ -324,6 +326,7 @@ typedef struct lua_Debug lua_Debug; /* activation record */
 /* Functions to be called by the debugger in specific events */
 typedef void (*lua_Hook)(lua_State* L, lua_Debug* ar);
 
+LUA_API int lua_stackdepth(lua_State* L);
 LUA_API int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar);
 LUA_API int lua_getargument(lua_State* L, int level, int n);
 LUA_API const char* lua_getlocal(lua_State* L, int level, int n);

@@ -18,11 +18,13 @@ LUAU_FASTFLAG(LuauImmutableTypes)
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 2000);
 LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
-LUAU_FASTFLAGVARIABLE(LuauTableUnificationEarlyTest, false)
 LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
+LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauFollowWithCommittingTxnLogInAnyUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree, false)
+LUAU_FASTFLAGVARIABLE(LuauDifferentOrderOfUnificationDoesntMatter, false)
+LUAU_FASTFLAGVARIABLE(LuauTxnLogSeesTypePacks2, true)
 
 namespace Luau
 {
@@ -329,7 +331,7 @@ Unifier::Unifier(TypeArena* types, Mode mode, const Location& location, Variance
     LUAU_ASSERT(sharedState.iceHandler);
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeId, TypeId>>* sharedSeen, const Location& location,
+Unifier::Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen, const Location& location,
     Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
     : types(types)
     , mode(mode)
@@ -656,26 +658,85 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
             failed = true;
         }
 
-        if (FFlag::LuauUseCommittingTxnLog)
+        if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter)
         {
-            if (i == count - 1)
-            {
-                log.concat(std::move(innerState.log));
-            }
+            if (!FFlag::LuauUseCommittingTxnLog)
+                innerState.DEPRECATED_log.rollback();
         }
         else
         {
-            if (i != count - 1)
+            if (FFlag::LuauUseCommittingTxnLog)
             {
-                innerState.DEPRECATED_log.rollback();
+                if (i == count - 1)
+                {
+                    log.concat(std::move(innerState.log));
+                }
             }
             else
             {
-                DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
+                if (i != count - 1)
+                {
+                    innerState.DEPRECATED_log.rollback();
+                }
+                else
+                {
+                    DEPRECATED_log.concat(std::move(innerState.DEPRECATED_log));
+                }
             }
-        }
 
-        ++i;
+            ++i;
+        }
+    }
+
+    // even if A | B <: T fails, we want to bind some options of T with A | B iff A | B was a subtype of that option.
+    if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter)
+    {
+        auto tryBind = [this, subTy](TypeId superOption) {
+            superOption = FFlag::LuauUseCommittingTxnLog ? log.follow(superOption) : follow(superOption);
+
+            // just skip if the superOption is not free-ish.
+            auto ttv = log.getMutable<TableTypeVar>(superOption);
+            if (!log.is<FreeTypeVar>(superOption) && (!ttv || ttv->state != TableState::Free))
+                return;
+
+            // Since we have already checked if S <: T, checking it again will not queue up the type for replacement.
+            // So we'll have to do it ourselves. We assume they unified cleanly if they are still in the seen set.
+            if (FFlag::LuauUseCommittingTxnLog)
+            {
+                if (log.haveSeen(subTy, superOption))
+                {
+                    // TODO: would it be nice for TxnLog::replace to do this?
+                    if (log.is<TableTypeVar>(superOption))
+                        log.bindTable(superOption, subTy);
+                    else
+                        log.replace(superOption, *subTy);
+                }
+            }
+            else
+            {
+                if (DEPRECATED_log.haveSeen(subTy, superOption))
+                {
+                    if (auto ttv = getMutable<TableTypeVar>(superOption))
+                    {
+                        DEPRECATED_log(ttv);
+                        ttv->boundTo = subTy;
+                    }
+                    else
+                    {
+                        DEPRECATED_log(superOption);
+                        *asMutable(superOption) = BoundTypeVar(subTy);
+                    }
+                }
+            }
+        };
+
+        if (auto utv = (FFlag::LuauUseCommittingTxnLog ? log.getMutable<UnionTypeVar>(superTy) : get<UnionTypeVar>(superTy)))
+        {
+            for (TypeId ty : utv)
+                tryBind(ty);
+        }
+        else
+            tryBind(superTy);
     }
 
     if (unificationTooComplex)
@@ -1163,6 +1224,9 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         if (superTp == subTp)
             return;
 
+        if (FFlag::LuauTxnLogSeesTypePacks2 && log.haveSeen(superTp, subTp))
+            return;
+
         if (log.getMutable<Unifiable::Free>(superTp))
         {
             occursCheck(superTp, subTp);
@@ -1363,6 +1427,9 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         }
 
         if (superTp == subTp)
+            return;
+
+        if (FFlag::LuauTxnLogSeesTypePacks2 && DEPRECATED_log.haveSeen(superTp, subTp))
             return;
 
         if (get<Unifiable::Free>(superTp))
@@ -1619,6 +1686,17 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
             DEPRECATED_log.pushSeen(superFunction->generics[i], subFunction->generics[i]);
     }
 
+    if (FFlag::LuauTxnLogSeesTypePacks2)
+    {
+        for (size_t i = 0; i < numGenericPacks; i++)
+        {
+            if (FFlag::LuauUseCommittingTxnLog)
+                log.pushSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
+            else
+                DEPRECATED_log.pushSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
+        }
+    }
+
     CountMismatch::Context context = ctx;
 
     if (!isFunctionCall)
@@ -1708,6 +1786,17 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
 
     ctx = context;
 
+    if (FFlag::LuauTxnLogSeesTypePacks2)
+    {
+        for (int i = int(numGenericPacks) - 1; 0 <= i; i--)
+        {
+            if (FFlag::LuauUseCommittingTxnLog)
+                log.popSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
+            else
+                DEPRECATED_log.popSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
+        }
+    }
+
     for (int i = int(numGenerics) - 1; 0 <= i; i--)
     {
         if (FFlag::LuauUseCommittingTxnLog)
@@ -1760,7 +1849,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     std::vector<std::string> extraProperties;
 
     // Optimization: First test that the property sets are compatible without doing any recursive unification
-    if (FFlag::LuauTableUnificationEarlyTest && !subTable->indexer && subTable->state != TableState::Free)
+    if (!subTable->indexer && subTable->state != TableState::Free)
     {
         for (const auto& [propName, superProp] : superTable->props)
         {
@@ -1769,7 +1858,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             bool isAny =
                 FFlag::LuauUseCommittingTxnLog ? log.getMutable<AnyTypeVar>(log.follow(superProp.type)) : get<AnyTypeVar>(follow(superProp.type));
 
-            if (subIter == subTable->props.end() && !isOptional(superProp.type) && !isAny)
+            if (subIter == subTable->props.end() && (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && !isOptional(superProp.type) && !isAny)
                 missingProperties.push_back(propName);
         }
 
@@ -1781,7 +1870,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     }
 
     // And vice versa if we're invariant
-    if (FFlag::LuauTableUnificationEarlyTest && variance == Invariant && !superTable->indexer && superTable->state != TableState::Unsealed &&
+    if (variance == Invariant && !superTable->indexer && superTable->state != TableState::Unsealed &&
         superTable->state != TableState::Free)
     {
         for (const auto& [propName, subProp] : subTable->props)
@@ -1790,7 +1879,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
             bool isAny =
                 FFlag::LuauUseCommittingTxnLog ? log.getMutable<AnyTypeVar>(log.follow(subProp.type)) : get<AnyTypeVar>(follow(subProp.type));
-            if (superIter == superTable->props.end() && !isOptional(subProp.type) && !isAny)
+            if (superIter == superTable->props.end() && (FFlag::LuauSubtypingAddOptPropsToUnsealedTables || (!isOptional(subProp.type) && !isAny)))
                 extraProperties.push_back(propName);
         }
 
@@ -1830,7 +1919,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
                     innerState.DEPRECATED_log.rollback();
             }
         }
-        else if (subTable->indexer && isString(subTable->indexer->indexType))
+        else if (subTable->indexer && maybeString(subTable->indexer->indexType))
         {
             // TODO: read-only indexers don't need invariance
             // TODO: really we should only allow this if prop.type is optional.
@@ -1855,9 +1944,11 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
                     innerState.DEPRECATED_log.rollback();
             }
         }
-        else if (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type)))
-        // TODO: this case is unsound, but without it our test suite fails. CLI-46031
+        else if ((!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type))))
+        // This is sound because unsealed table types are precise, so `{ p : T } <: { p : T, q : U? }`
+        // since if `t : { p : T }` then we are guaranteed that `t.q` is `nil`.
         // TODO: should isOptional(anyType) be true?
+        // TODO: if the supertype is written to, the subtype may no longer be precise (alias analysis?)
         {
         }
         else if (subTable->state == TableState::Free)
@@ -1887,7 +1978,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             // If both lt and rt contain the property, then
             // we're done since we already unified them above
         }
-        else if (superTable->indexer && isString(superTable->indexer->indexType))
+        else if (superTable->indexer && maybeString(superTable->indexer->indexType))
         {
             // TODO: read-only indexers don't need invariance
             // TODO: really we should only allow this if prop.type is optional.
@@ -1936,9 +2027,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         else if (variance == Covariant)
         {
         }
-        else if (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type)))
-        // TODO: this case is unsound, but without it our test suite fails. CLI-46031
-        // TODO: should isOptional(anyType) be true?
+        else if (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables && (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type))))
         {
         }
         else if (superTable->state == TableState::Free)
@@ -2333,7 +2422,7 @@ void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersec
     bool errorReported = false;
 
     // Optimization: First test that the property sets are compatible without doing any recursive unification
-    if (FFlag::LuauTableUnificationEarlyTest && !subTable->indexer)
+    if (!subTable->indexer)
     {
         for (const auto& [propName, superProp] : superTable->props)
         {

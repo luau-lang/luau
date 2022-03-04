@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauQuantifyInPlace2);
-
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
@@ -167,10 +165,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails"
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauQuantifyInPlace2)
-        CHECK_EQ("(number) -> boolean", toString(requireType("f")));
-    else
-        CHECK_EQ("(number) -> (boolean)", toString(requireType("f")));
+    CHECK_EQ("(number) -> boolean", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "variadic_type_pack_unification")

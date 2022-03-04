@@ -77,24 +77,45 @@ typedef struct CallInfo
 
 struct GCCycleStats
 {
+    size_t starttotalsizebytes = 0;
     size_t heapgoalsizebytes = 0;
     size_t heaptriggersizebytes = 0;
 
-    double waittime = 0.0; // time from end of the last cycle to the start of a new one
+    double pausetime = 0.0; // time from end of the last cycle to the start of a new one
 
     double starttimestamp = 0.0;
     double endtimestamp = 0.0;
 
     double marktime = 0.0;
+    double markassisttime = 0.0;
+    double markmaxexplicittime = 0.0;
+    size_t markexplicitsteps = 0;
+    size_t markrequests = 0;
 
     double atomicstarttimestamp = 0.0;
     size_t atomicstarttotalsizebytes = 0;
     double atomictime = 0.0;
 
+    // specific atomic stage parts
+    double atomictimeupval = 0.0;
+    double atomictimeweak = 0.0;
+    double atomictimegray = 0.0;
+    double atomictimeclear = 0.0;
+
     double sweeptime = 0.0;
+    double sweepassisttime = 0.0;
+    double sweepmaxexplicittime = 0.0;
+    size_t sweepexplicitsteps = 0;
+    size_t sweeprequests = 0;
+
+    size_t assistrequests = 0;
+    size_t explicitrequests = 0;
 
     size_t assistwork = 0;
     size_t explicitwork = 0;
+
+    size_t propagatework = 0;
+    size_t propagateagainwork = 0;
 
     size_t endtotalsizebytes = 0;
 };

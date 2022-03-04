@@ -10,8 +10,6 @@
 #include <limits>
 #include <math.h>
 
-LUAU_FASTFLAG(LuauTypeAliasDefaults)
-
 namespace
 {
 bool isIdentifierStartChar(char c)
@@ -796,21 +794,14 @@ struct Printer
                     {
                         comma();
 
-                        if (FFlag::LuauTypeAliasDefaults)
-                        {
-                            writer.advance(o.location.begin);
-                            writer.identifier(o.name.value);
+                        writer.advance(o.location.begin);
+                        writer.identifier(o.name.value);
 
-                            if (o.defaultValue)
-                            {
-                                writer.maybeSpace(o.defaultValue->location.begin, 2);
-                                writer.symbol("=");
-                                visualizeTypeAnnotation(*o.defaultValue);
-                            }
-                        }
-                        else
+                        if (o.defaultValue)
                         {
-                            writer.identifier(o.name.value);
+                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.symbol("=");
+                            visualizeTypeAnnotation(*o.defaultValue);
                         }
                     }
 
@@ -818,23 +809,15 @@ struct Printer
                     {
                         comma();
 
-                        if (FFlag::LuauTypeAliasDefaults)
-                        {
-                            writer.advance(o.location.begin);
-                            writer.identifier(o.name.value);
-                            writer.symbol("...");
+                        writer.advance(o.location.begin);
+                        writer.identifier(o.name.value);
+                        writer.symbol("...");
 
-                            if (o.defaultValue)
-                            {
-                                writer.maybeSpace(o.defaultValue->location.begin, 2);
-                                writer.symbol("=");
-                                visualizeTypePackAnnotation(*o.defaultValue, false);
-                            }
-                        }
-                        else
+                        if (o.defaultValue)
                         {
-                            writer.identifier(o.name.value);
-                            writer.symbol("...");
+                            writer.maybeSpace(o.defaultValue->location.begin, 2);
+                            writer.symbol("=");
+                            visualizeTypePackAnnotation(*o.defaultValue, false);
                         }
                     }
 
@@ -882,18 +865,14 @@ struct Printer
             {
                 comma();
 
-                if (FFlag::LuauTypeAliasDefaults)
-                    writer.advance(o.location.begin);
-
+                writer.advance(o.location.begin);
                 writer.identifier(o.name.value);
             }
             for (const auto& o : func.genericPacks)
             {
                 comma();
 
-                if (FFlag::LuauTypeAliasDefaults)
-                    writer.advance(o.location.begin);
-
+                writer.advance(o.location.begin);
                 writer.identifier(o.name.value);
                 writer.symbol("...");
             }
@@ -1023,18 +1002,14 @@ struct Printer
                 {
                     comma();
 
-                    if (FFlag::LuauTypeAliasDefaults)
-                        writer.advance(o.location.begin);
-
+                    writer.advance(o.location.begin);
                     writer.identifier(o.name.value);
                 }
                 for (const auto& o : a->genericPacks)
                 {
                     comma();
 
-                    if (FFlag::LuauTypeAliasDefaults)
-                        writer.advance(o.location.begin);
-
+                    writer.advance(o.location.begin);
                     writer.identifier(o.name.value);
                     writer.symbol("...");
                 }

@@ -73,24 +73,6 @@ struct Instantiation : Substitution
     TypePackId clean(TypePackId tp) override;
 };
 
-// A substitution which replaces free types by generic types.
-struct Quantification : Substitution
-{
-    Quantification(TypeArena* arena, TypeLevel level)
-        : Substitution(TxnLog::empty(), arena)
-        , level(level)
-    {
-    }
-
-    TypeLevel level;
-    std::vector<TypeId> generics;
-    std::vector<TypePackId> genericPacks;
-    bool isDirty(TypeId ty) override;
-    bool isDirty(TypePackId tp) override;
-    TypeId clean(TypeId ty) override;
-    TypePackId clean(TypePackId tp) override;
-};
-
 // A substitution which replaces free types by any
 struct Anyification : Substitution
 {

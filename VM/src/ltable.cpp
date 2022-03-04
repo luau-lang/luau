@@ -447,7 +447,8 @@ void luaH_free(lua_State* L, Table* t, lua_Page* page)
 {
     if (t->node != dummynode)
         luaM_freearray(L, t->node, sizenode(t), LuaNode, t->memcat);
-    luaM_freearray(L, t->array, t->sizearray, TValue, t->memcat);
+    if (t->array)
+        luaM_freearray(L, t->array, t->sizearray, TValue, t->memcat);
     luaM_freegco(L, t, sizeof(Table), t->memcat, page);
 }
 

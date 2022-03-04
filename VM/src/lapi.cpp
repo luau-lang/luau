@@ -14,7 +14,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauGcForwardMetatableBarrier, false)
+LUAU_FASTFLAG(LuauGcAdditionalStats)
 
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
@@ -876,16 +876,7 @@ int lua_setmetatable(lua_State* L, int objindex)
             luaG_runerror(L, "Attempt to modify a readonly table");
         hvalue(obj)->metatable = mt;
         if (mt)
-        {
-            if (FFlag::LuauGcForwardMetatableBarrier)
-            {
-                luaC_objbarrier(L, hvalue(obj), mt);
-            }
-            else
-            {
-                luaC_objbarriert(L, hvalue(obj), mt);
-            }
-        }
+            luaC_objbarrier(L, hvalue(obj), mt);
         break;
     }
     case LUA_TUSERDATA:
@@ -1069,6 +1060,8 @@ int lua_gc(lua_State* L, int what, int data)
             g->GCthreshold = 0;
 
         bool waspaused = g->gcstate == GCSpause;
+        double startmarktime = g->gcstats.currcycle.marktime;
+        double startsweeptime = g->gcstats.currcycle.sweeptime;
 
         // track how much work the loop will actually perform
         size_t actualwork = 0;
@@ -1083,6 +1076,31 @@ int lua_gc(lua_State* L, int what, int data)
             {            /* end of cycle? */
                 res = 1; /* signal it */
                 break;
+            }
+        }
+
+        if (FFlag::LuauGcAdditionalStats)
+        {
+            // record explicit step statistics
+            GCCycleStats* cyclestats = g->gcstate == GCSpause ? &g->gcstats.lastcycle : &g->gcstats.currcycle;
+
+            double totalmarktime = cyclestats->marktime - startmarktime;
+            double totalsweeptime = cyclestats->sweeptime - startsweeptime;
+
+            if (totalmarktime > 0.0)
+            {
+                cyclestats->markexplicitsteps++;
+
+                if (totalmarktime > cyclestats->markmaxexplicittime)
+                    cyclestats->markmaxexplicittime = totalmarktime;
+            }
+
+            if (totalsweeptime > 0.0)
+            {
+                cyclestats->sweepexplicitsteps++;
+
+                if (totalsweeptime > cyclestats->sweepmaxexplicittime)
+                    cyclestats->sweepmaxexplicittime = totalsweeptime;
             }
         }
 
@@ -1297,6 +1315,18 @@ void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(void*))
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     L->global->udatagc[tag] = dtor;
+}
+
+LUA_API void lua_clonefunction(lua_State* L, int idx)
+{
+    StkId p = index2addr(L, idx);
+    api_check(L, isLfunction(p));
+
+    luaC_checkthreadsleep(L);
+
+    Closure* cl = clvalue(p);
+    Closure* newcl = luaF_newLclosure(L, 0, L->gt, cl->l.p);
+    setclvalue(L, L->top - 1, newcl);
 }
 
 lua_Callbacks* lua_callbacks(lua_State* L)

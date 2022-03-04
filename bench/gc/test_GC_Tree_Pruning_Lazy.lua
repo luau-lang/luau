@@ -46,7 +46,7 @@ function test()
 
     local tree = { id = 0 }
 
-	for i = 1,1000 do
+	for i = 1,100 do
 		fill_tree(tree, 10)
 
 		prune_tree(tree, 0)

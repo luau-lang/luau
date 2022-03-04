@@ -10,8 +10,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauTypeAliasDefaults)
-
 /*
  * Prefix generic typenames with gen-
  * Additionally, free types will be prefixed with free- and suffixed with their level.  eg free-a-4
@@ -288,28 +286,15 @@ struct TypeVarStringifier
             else
                 first = false;
 
-            if (FFlag::LuauTypeAliasDefaults)
-            {
-                bool wrap = !singleTp && get<TypePack>(follow(tp));
+            bool wrap = !singleTp && get<TypePack>(follow(tp));
 
-                if (wrap)
-                    state.emit("(");
+            if (wrap)
+                state.emit("(");
 
-                stringify(tp);
+            stringify(tp);
 
-                if (wrap)
-                    state.emit(")");
-            }
-            else
-            {
-                if (!singleTp)
-                    state.emit("(");
-
-                stringify(tp);
-
-                if (!singleTp)
-                    state.emit(")");
-            }
+            if (wrap)
+                state.emit(")");
         }
 
         if (types.size() || typePacks.size())
@@ -1105,100 +1090,8 @@ std::string toString(const TypePackVar& tp, const ToStringOptions& opts)
     return toString(const_cast<TypePackId>(&tp), std::move(opts));
 }
 
-std::string toStringNamedFunction_DEPRECATED(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
-{
-    std::string s = prefix;
-
-    auto toString_ = [&opts](TypeId ty) -> std::string {
-        ToStringResult res = toStringDetailed(ty, opts);
-        opts.nameMap = std::move(res.nameMap);
-        return res.name;
-    };
-
-    auto toStringPack_ = [&opts](TypePackId ty) -> std::string {
-        ToStringResult res = toStringDetailed(ty, opts);
-        opts.nameMap = std::move(res.nameMap);
-        return res.name;
-    };
-
-    if (!opts.hideNamedFunctionTypeParameters && (!ftv.generics.empty() || !ftv.genericPacks.empty()))
-    {
-        s += "<";
-
-        bool first = true;
-        for (TypeId g : ftv.generics)
-        {
-            if (!first)
-                s += ", ";
-            first = false;
-            s += toString_(g);
-        }
-
-        for (TypePackId gp : ftv.genericPacks)
-        {
-            if (!first)
-                s += ", ";
-            first = false;
-            s += toStringPack_(gp);
-        }
-
-        s += ">";
-    }
-
-    s += "(";
-
-    auto argPackIter = begin(ftv.argTypes);
-    auto argNameIter = ftv.argNames.begin();
-
-    bool first = true;
-    while (argPackIter != end(ftv.argTypes))
-    {
-        if (!first)
-            s += ", ";
-        first = false;
-
-        // We don't currently respect opts.functionTypeArguments. I don't think this function should.
-        if (argNameIter != ftv.argNames.end())
-        {
-            s += (*argNameIter ? (*argNameIter)->name : "_") + ": ";
-            ++argNameIter;
-        }
-        else
-        {
-            s += "_: ";
-        }
-
-        s += toString_(*argPackIter);
-        ++argPackIter;
-    }
-
-    if (argPackIter.tail())
-    {
-        if (auto vtp = get<VariadicTypePack>(*argPackIter.tail()))
-            s += ", ...: " + toString_(vtp->ty);
-        else
-            s += ", ...: " + toStringPack_(*argPackIter.tail());
-    }
-
-    s += "): ";
-
-    size_t retSize = size(ftv.retType);
-    bool hasTail = !finite(ftv.retType);
-    if (retSize == 0 && !hasTail)
-        s += "()";
-    else if ((retSize == 0 && hasTail) || (retSize == 1 && !hasTail))
-        s += toStringPack_(ftv.retType);
-    else
-        s += "(" + toStringPack_(ftv.retType) + ")";
-
-    return s;
-}
-
 std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
 {
-    if (!FFlag::LuauTypeAliasDefaults)
-        return toStringNamedFunction_DEPRECATED(prefix, ftv, opts);
-
     ToStringResult result;
     StringifierState state(opts, result, opts.nameMap);
     TypeVarStringifier tvs{state};

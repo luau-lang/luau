@@ -15,6 +15,7 @@
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
 LUAU_FASTFLAG(LuauUseCommittingTxnLog)
+LUAU_FASTFLAG(LuauTableCloneType)
 
 using namespace Luau;
 
@@ -262,7 +263,7 @@ TEST_CASE_FIXTURE(ACFixture, "get_member_completions")
 
     auto ac = autocomplete('1');
 
-    CHECK_EQ(16, ac.entryMap.size());
+    CHECK_EQ(FFlag::LuauTableCloneType ? 17 : 16, ac.entryMap.size());
     CHECK(ac.entryMap.count("find"));
     CHECK(ac.entryMap.count("pack"));
     CHECK(!ac.entryMap.count("math"));
@@ -2235,7 +2236,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocompleteSource")
 
     auto ac = autocompleteSource(frontend, source, Position{1, 24}, nullCallback).result;
 
-    CHECK_EQ(16, ac.entryMap.size());
+    CHECK_EQ(FFlag::LuauTableCloneType ? 17 : 16, ac.entryMap.size());
     CHECK(ac.entryMap.count("find"));
     CHECK(ac.entryMap.count("pack"));
     CHECK(!ac.entryMap.count("math"));
@@ -2695,8 +2696,6 @@ local r4 = t:bar1(@4)
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_default_type_parameters")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-
     check(R"(
 type A<T = @1> = () -> T
     )");
@@ -2709,8 +2708,6 @@ type A<T = @1> = () -> T
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_default_type_pack_parameters")
 {
-    ScopedFastFlag luauParseTypeAliasDefaults{"LuauParseTypeAliasDefaults", true};
-
     check(R"(
 type A<T... = ...@1> = () -> T
     )");
@@ -2768,7 +2765,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
 TEST_CASE_FIXTURE(ACFixture, "function_in_assignment_has_parentheses_2")
 {
     ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
-    ScopedFastFlag preferToCallFunctionsForIntersects("PreferToCallFunctionsForIntersects", true);
 
     check(R"(
 local bar: ((number) -> number) & (number, number) -> number)

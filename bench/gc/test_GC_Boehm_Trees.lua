@@ -74,4 +74,7 @@ function test()
     end
 end
 
+bench.runs = 6
+bench.extraRuns = 2
+
 bench.runCode(test, "GC: Boehm tree")

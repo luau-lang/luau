@@ -400,10 +400,10 @@ local e = a.z
     CHECK_EQ("Type 'A | B | C | D' does not have key 'z'", toString(result.errors[3]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "unify_sealed_table_union_check")
+TEST_CASE_FIXTURE(Fixture, "unify_unsealed_table_union_check")
 {
     CheckResult result = check(R"(
-local x: { x: number } = { x = 3 }
+local x = { x = 3 }
 type A = number?
 type B = string?
 local y: { x: number, y: A | B }
@@ -413,7 +413,7 @@ y = x
     LUAU_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
-local x: { x: number } = { x = 3 }
+local x = { x = 3 }
 
 local a: number? = 2
 local y = {}
@@ -424,6 +424,31 @@ y = x
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unify_sealed_table_union_check")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauUnsealedTableLiteral", true},
+        {"LuauSubtypingAddOptPropsToUnsealedTables", true},
+    };
+
+    CheckResult result = check(R"(
+ -- the difference between this and unify_unsealed_table_union_check is the type annotation on x
+local t = { x = 3, y = true }
+local x: { x: number } = t
+type A = number?
+type B = string?
+local y: { x: number, y: A | B }
+-- Shouldn't typecheck!
+y = x
+-- If it does, we can convert any type to any other type
+y.y = 5
+local oh : boolean = t.y
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
