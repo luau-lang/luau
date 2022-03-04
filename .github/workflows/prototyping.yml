@@ -1,25 +1,10 @@
 name: prototyping
 
 on:
-  push:
-    branches:
-      - 'master'
-      - 'prototyping-*'
-    paths:
-      - '.github/workflows/**'
-      - 'prototyping/**'
-      - 'Analysis/**'
-      - 'Ast/**'
-      - 'CLI/Ast.cpp'
-      - 'CLI/FileUtils.*'
   pull_request:
     paths:
-      - '.github/workflows/**'
+      - '.github/workflows/prototyping.yml'
       - 'prototyping/**'
-      - 'Analysis/**'
-      - 'Ast/**'
-      - 'CLI/Ast.cpp'
-      - 'CLI/FileUtils.*'
 
 jobs:
   linux:
@@ -52,8 +37,7 @@ jobs:
     - name: check targets
       working-directory: prototyping
       run: |
-        ~/.cabal/bin/agda Examples.agda
-        ~/.cabal/bin/agda Properties.agda
+        ~/.cabal/bin/agda Everything.agda
     - name: build executables
       working-directory: prototyping
       run: |

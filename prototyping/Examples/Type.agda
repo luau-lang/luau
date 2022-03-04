@@ -25,3 +25,4 @@ ex6 = refl
 
 ex7 : typeToString((nil ⇒ nil) ∪ ((nil ⇒ (nil ⇒ nil)) ∪ nil)) ≡ "((nil) -> nil | (nil) -> (nil) -> nil)?"
 ex7 = refl
+

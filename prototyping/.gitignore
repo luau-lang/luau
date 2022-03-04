@@ -2,10 +2,8 @@
 *.agdai
 Main
 MAlonzo
-Examples
 PrettyPrinter
 Interpreter
-Properties
 !Tests/Interpreter
 !Tests/PrettyPrinter
 .ghc.*

@@ -2,7 +2,7 @@ module Examples.Syntax where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.String using (_++_)
-open import Luau.Syntax using (var; _$_; return; nil; function_is_end; local_←_; done; _∙_; _⟨_⟩)
+open import Luau.Syntax using (var; _$_; return; val; nil; function_is_end; local_←_; done; _∙_; _⟨_⟩)
 open import Luau.Syntax.ToString using (exprToString; blockToString)
 
 ex1 : exprToString(function "" ⟨ var "x" ⟩ is return (var "f" $ var "x") ∙ done end) ≡
@@ -11,7 +11,7 @@ ex1 : exprToString(function "" ⟨ var "x" ⟩ is return (var "f" $ var "x") ∙
   "end"
 ex1 = refl
 
-ex2 : blockToString(local var "x" ← nil ∙ return (var "x") ∙ done) ≡
+ex2 : blockToString(local var "x" ← (val nil) ∙ return (var "x") ∙ done) ≡
   "local x = nil\n" ++
   "return x"
 ex2 = refl
