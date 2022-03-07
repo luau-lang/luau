@@ -17,6 +17,7 @@ Many of these revolve around type variables that occur in contravariant position
 A very common thing to write in Luau is a function to try to find something in some data structure.  These functions habitually return the relevant datum when it is successfully found, or `nil` in the case that it cannot.  For instance:
 
 ```lua
+-- A.lua
 function find_first_if(vec, f)
     for i, e in ipairs(vec) do
         if f(e) then
@@ -35,6 +36,7 @@ We would like to automatically infer `find_first_if : <T>({T}, (T) -> boolean) -
 Higher order functions also present a similar problem.
 
 ```lua
+-- B.lua
 function foo(f)
     f(5)
     f("string")
@@ -78,6 +80,7 @@ If we are going to infer intersections of functions, then we need to be very car
 A very important use case for us is the case where the user is providing a callback to some higher-order function, and that function will be invoked with extra arguments that the original customer doesn't actually care about.  For example:
 
 ```lua
+-- C.lua
 function map_array(arr, f)
     local result = {}
     for i, e in ipairs(arr) do
@@ -97,6 +100,7 @@ This use case is very important for Roblox, as we have many APIs that accept cal
 Here is an example straight out of the Roblox developer documentation. ([full example here](https://developer.roblox.com/en-us/api-reference/event/BasePart/Touched))
 
 ```lua
+-- D.lua
 local part = script.Parent
 
 local function blink()
@@ -111,6 +115,7 @@ The `Touched` event actually passes a single argument: the part that touched the
 We therefore want _oversaturation_ of a function to be allowed, but this combines with optional function arguments to create a problem with soundness.  Consider the following:
 
 ```lua
+-- E.lua
 type Callback = (Instance) -> ()
 
 local cb: Callback
@@ -139,9 +144,24 @@ register_callback(good_callback)
 
 The problem we run into is, if we allow the subtyping rule `(T?) -> () <: () -> ()` and also allow oversaturation of a function, it becomes easy to obscure an argument type and pass the wrong type of value to it.
 
+Next, consider the following type alias
+
+```lua
+-- F.lua
+type OldFunctionType = (any, any) -> any
+type NewFunctionType = (any) -> any
+type FunctionType = OldFunctionType & NewFunctionType
+```
+
+If we have a subtyping rule `(T0..TN) <: (T0..TN-1)` to permit the function subtyping relationship `(T0..TN-1) -> R <: (T0..TN) -> R`, then the above type alias normalizes to `(any) -> any`.  In order to call the two-argument variation, we would need to permit oversaturation, which runs afoul of the soundness hole from the previous example.
+
 We need a solution here.
 
-To resolve this, let's first examine the type of `bad_callback`.  It is tempting to type `bad_callback : (number?) -> number` and call it a day, but, if we read the definition of the Lua language, we're being somewhat hasty when we do that.  We can pass _as many extra arguments as we want, of any type_ to this function.  All save the first are ignored.  We could therefore instead decide to type `bad_callback : (number?, any...) -> number`.  We could also type `good_callback : (any...) -> ()`.
+To resolve this, let's reframe things in simpler terms:
+
+If there is never a subtyping relationship between packs of different length, then we don't have any soundness issues, but we find ourselves unable to register `good_callback`.
+
+To resolve _that_, consider that we are in truth being a bit hasty when we say `good_callback : () -> ()`.  We can pass any number of arguments to this function safely.  We could choose to type `good_callback : () -> () & (any) -> () & (any, any) -> () & ...`.  Luau already has syntax for this particular sort of infinite intersection: `good_callback : (any...) -> ()`.
 
 So, we propose some different inference rules for functions:
 
@@ -152,17 +172,33 @@ And subtyping rules for type packs:
 
 1. `(T0..TN) <: (U0..UN)` if, for each `T` and `U`, `T <: U`
 
-1. `(T0..TN, A?) <: (T0..TN)` says that optional arguments can be left off by callers for type packs to make optional function arguments work.
-1. `(T0..TN, any) <: (T0..TN)` just to be crystal clear that an argument whose type is `any` is also optional.
-1. `(T0..TN) <: (T0..TN, nil)` says that it is okay to oversaturate a function with `nil` values.
+1. `A & B <: T` if `T <: A` or `T <: B` is the standard left-side subtyping rule for intersections.  It is unchanged.  We include it here for clarity.
+1. `(U...) ~ () & (U) & (U, U) & (U, U, U) & ...`, therefore
+1. `(U...) <: (T0..TN)` if for each `T`, `T <: U`
+
+Notably, we remove all subtyping rules that mention options.  Functions of different arities are no longer ever considered subtypes of one another.  Optional function arguments are now considered solely a feature of function calls.
 
 The standard subtyping rule for functions is unchanged.
 
 1. `T -> R <: U -> S` if `U <: T` and `R <: S`
 
-Under these constraints, packs of different length only have a subtyping relationship in the presence of `nil` and option types.  It also says that all functions can be oversaturated with `nil`, but, if we have the actual definition, then they can safely be oversaturated with anything.
+Under these rules, functions of different arities can never be converted to one another, but actual functions are known to be safe to oversaturate with anything, and so gain a type that says so.
 
-Under these subtyping rules, typechecking proceeds the way we need it to: `(Instance) -> () </: () -> ()` and so `obscured` cannot be passed to `register_callback`.  However, `good_callback : (any...) -> ()` and `(any...) -> () <: (Instance) -> ()` and so it is safe to register `good_callback`
+Under these subtyping rules, snippets `C.lua` and `D.lua`, check the way we want: literal functions are implicitly safe to oversaturate, so it is fine to cast them as the necessary callback function type.
+
+`E.lua` also typechecks the way we need it to: `(Instance) -> () </: () -> ()` and so `obscured` cannot receive the value `bad_callback`, which prevents it from being passed to `register_callback`.  However, `good_callback : (any...) -> ()` and `(any...) -> () <: (Instance) -> ()` and so it is safe to register `good_callback`.
+
+Snippet `F.lua` is also fixed with this ruleset: There is no subtyping relationship between `(any) -> ()` and `(any, any) -> ()`, so the intersection is not combined under normalization.
+
+This works, but itself creates some small problems that we need to resolve:
+
+First, the type of `...` still needs to be `()` for functions that have been given this implicit `...any` type. (TODO verify what Lua does in this situation)
+
+Secondly, we do not want to silently allow oversaturation of direct calls to a function if we know that the arguments will be ignored.  We need to treat these variadic packs differently when unifying for function calls.
+
+Thirdly, we don't want to display this variadic in the signature if the author doesn't expect to see it.
+
+We solve these issues by adding a property `bool VariadicTypePack::hidden` to the implementation and switching on it in the above scenarios.  The implementation is relatively straightforward for all 3 cases.
 
 ## Drawbacks
 
