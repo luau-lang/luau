@@ -2,7 +2,7 @@
 
 ## Summary
 
-Normalize types, for example removing redundant unions and
+We should normalize types, for example removing redundant unions and
 intersections, to minimize memory usage and make user-visible inferred
 types easier to read.
 
@@ -59,7 +59,9 @@ or `Animal&Cat`.
 
 ## Design
 
-In this section, we outline a number of possible designs. These fall into two broad camps: syntactic subtyping uses rewrite rules on the syntax of types, whereas semantic subtyping uses semantic models of types.
+In this section, we outline some possible designs. These fall into two
+broad camps: syntactic subtyping uses rewrite rules on the syntax of
+types, whereas semantic subtyping uses semantic models of types.
 
 ### Syntactic subtyping
 
@@ -73,6 +75,8 @@ Advantages: easy to implement; fast.
 
 Disadvantage: pointer equality is a very brittle test; it is easy to still get
 types `T|T`, caused by having two clones of `T`.
+
+This is currently what we do.
 
 #### Alternative: check for suptyping before adding to a union/intersection
 
@@ -160,6 +164,10 @@ Tree automata have:
 * transitions of the form `q0 -> f(p1 = q1, ..., pN = qN)` (where `f` is a function symbol, `pI` are distinct property names, and `qI` are states).
 
 (Luau has namned properties rather than positional arguments, but otherwise this is standard).
+
+An automaton accepts a tree if its initial state does. A state `q` accepts a tree `t`
+if there is a transition `q0 -> f(p1 = q1, ..., pN = qN)` where `t` has node label `f`,
+and children `t -p1-> t1`,..., `t -pN-> tN` where each `qI` accepts `tI`.
 
 Draw automata where the transition `q0 -> f(p1 = q1, ..., pN = qN)` as
 ```
