@@ -134,7 +134,7 @@ The idea here is to think of types as sets of values, where intersection and uni
 
 Values can be thought of as trees, for example a table has children given by the properties, so types are sets of trees such as
 ```
-     o         o
+   table     table
     / \       / \
 {  p   q  ,  p   q  , ... }
    ↓   ↓     ↓   ↓
@@ -145,31 +145,84 @@ is the set of trees corresponding to `{ p : boolean , q : number }`.
 
 In semantic subtyping, the subtyping replation is interpreted as subset order.
 
+To make subset inclusion tractable, we can make use of finite state automata.
+
 In the same way that sets of strings are the languages of automata, sets
 of trees are the languages of *tree automata*. Many of the same
 techniques, such as minimization, construction of union and
 intersection, etc, apply to tree automata. The main difference is that
 nondeterministic top-down tree automata are strictly more powerful than derministic ones.
 
-Tree automata are given by rules of the form `q0 -> f(q1, ..., qN)` where
+Tree automata have:
 
- * each `qI` is a state of the automaton, and
- * `f` is a symbol used to label a tree node with `N` children.
+* a set of states `Q`,
+* an initial state `q0`, and
+* transitions of the form `q0 -> f(p1 = q1, ..., pN = qN)` (where `f` is a function symbol, `pI` are distinct property names, and `qI` are states).
 
-for example, the automaton for `{ p : boolean, q : number }` has initial state `q0` and transitions:
+(Luau has namned properties rather than positional arguments, but otherwise this is standard).
+
+Draw automata where the transition `q0 -> f(p1 = q1, ..., pN = qN)` as
 ```
-  q0 -> { p = q1, q = q2 }
-  q1 -> true
-  q1 -> false
-  q2 -> n for any number n
+         ◇
+         |
+         f
+         ↓
+      .--□--.
+      |     |
+     p1 ... pN
+      ↓     ↓
+      ◇     ◇
 ```
 
-Tree automata are closed under union and intersection, in the same way that string automata are.
+For example, the tree automaton for `{ p: boolean, q: number }` is:
+```
+         ◇
+         |
+       table
+         ↓
+      .--□--.
+     /       \
+    p         q
+    ↓         ↓
+    ◇         ◇
+   / \        |
+true false    n
+  ↓   ↓       ↓
+  □   □       □
+```
+
+A relation `R` on states is a simulation whenever
+
+ * if `(q, r) ∈ R` and `q -> f(p1=q1, ..., pM=qM)'` then `r -> f(p1=r1,...,pN=rN)'` and for every `qI`, `(qI, rI) ∈ R`.
+
+A relation is a bisimulation if both it and its inverse are simulations.
+
+[Partition refinement](https://en.wikipedia.org/wiki/Partition_refinement)
+computes bisimulation on NFAs, which coincides with language
+equivalence on DFAs. It can be adapted to compute simulation. We can
+use it to compute a partition of types in the type graph, up to
+semantic equivalence of types.
+
+Once we have a partition, there is a question of which representative
+to pick.  We can read off the minimal type from the partitioned type
+graph, but this has lost any names given to types by type aliases.
+We could use any named type from the partition if there is one, and otherwise
+synthesize a minimal type.
+
+Related work:
+
+* XDuce: original work on types-as-tree-automata
+* CDuce: home of semantic subtyping
+* XML Schema, XPath, JSON Schema...: schema and query languages based on tree automata.
+
+Advantages: Computes minimal types; has a sound foundation.
+
+Disadvantages: complex; the size benefits of minimal types may be overwhelmed by the time to run partitioning.
 
 ## Drawbacks
 
-Why should we *not* do this?
+The cost of computing minimal types may be too much.
 
 ## Alternatives
 
-What other designs have been considered? What is the impact of not doing this?
+This is a draft RFC outlining the alternatives.
