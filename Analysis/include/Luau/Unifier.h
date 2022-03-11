@@ -45,7 +45,6 @@ struct Unifier
     TypeArena* const types;
     Mode mode;
 
-    DEPRECATED_TxnLog DEPRECATED_log;
     TxnLog log;
     ErrorVec errors;
     Location location;

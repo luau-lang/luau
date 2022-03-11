@@ -59,33 +59,6 @@
 #define LUA_IDSIZE 256
 #endif
 
-/*
-@@ LUAI_GCGOAL defines the desired top heap size in relation to the live heap
-@* size at the end of the GC cycle
-** CHANGE it if you want the GC to run faster or slower (higher values
-** mean larger GC pauses which mean slower collection.) You can also change
-** this value dynamically.
-*/
-#ifndef LUAI_GCGOAL
-#define LUAI_GCGOAL 200 /* 200% (allow heap to double compared to live heap size) */
-#endif
-
-/*
-@@ LUAI_GCSTEPMUL / LUAI_GCSTEPSIZE define the default speed of garbage collection
-@* relative to memory allocation.
-** Every LUAI_GCSTEPSIZE KB allocated, incremental collector collects LUAI_GCSTEPSIZE
-** times LUAI_GCSTEPMUL% bytes.
-** CHANGE it if you want to change the granularity of the garbage
-** collection.
-*/
-#ifndef LUAI_GCSTEPMUL
-#define LUAI_GCSTEPMUL 200 /* GC runs 'twice the speed' of memory allocation */
-#endif
-
-#ifndef LUAI_GCSTEPSIZE
-#define LUAI_GCSTEPSIZE 1 /* GC runs every KB of memory allocation */
-#endif
-
 /* LUA_MINSTACK is the guaranteed number of Lua stack slots available to a C function */
 #ifndef LUA_MINSTACK
 #define LUA_MINSTACK 20

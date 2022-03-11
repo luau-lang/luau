@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
-LUAU_FASTFLAG(LuauUseCommittingTxnLog)
 LUAU_FASTFLAG(LuauTableCloneType)
 
 using namespace Luau;
@@ -1912,14 +1911,9 @@ local bar: @1= foo
     CHECK(!ac.entryMap.count("foo"));
 }
 
-// Switch back to TEST_CASE_FIXTURE with regular ACFixture when removing the
-// LuauUseCommittingTxnLog flag.
-TEST_CASE("type_correct_function_no_parenthesis")
+TEST_CASE_FIXTURE(ACFixture, "type_correct_function_no_parenthesis")
 {
-    ScopedFastFlag sff_LuauUseCommittingTxnLog = ScopedFastFlag("LuauUseCommittingTxnLog", true);
-    ACFixture fix;
-
-    fix.check(R"(
+    check(R"(
 local function target(a: (number) -> number) return a(4) end
 local function bar1(a: number) return -a end
 local function bar2(a: string) return a .. 'x' end
@@ -1927,7 +1921,7 @@ local function bar2(a: string) return a .. 'x' end
 return target(b@1
     )");
 
-    auto ac = fix.autocomplete('1');
+    auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.count("bar1"));
     CHECK(ac.entryMap["bar1"].typeCorrect == TypeCorrectKind::Correct);
@@ -1937,8 +1931,6 @@ return target(b@1
 
 TEST_CASE_FIXTURE(ACFixture, "function_in_assignment_has_parentheses")
 {
-    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
-
     check(R"(
 local function bar(a: number) return -a end
 local abc = b@1
@@ -1952,8 +1944,6 @@ local abc = b@1
 
 TEST_CASE_FIXTURE(ACFixture, "function_result_passed_to_function_has_parentheses")
 {
-    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
-
     check(R"(
 local function foo() return 1 end
 local function bar(a: number) return -a end
@@ -1978,14 +1968,9 @@ local fp: @1= f
     CHECK(ac.entryMap.count("({ x: number, y: number }) -> number"));
 }
 
-// Switch back to TEST_CASE_FIXTURE with regular ACFixture when removing the
-// LuauUseCommittingTxnLog flag.
-TEST_CASE("type_correct_keywords")
+TEST_CASE_FIXTURE(ACFixture, "type_correct_keywords")
 {
-    ScopedFastFlag sff_LuauUseCommittingTxnLog = ScopedFastFlag("LuauUseCommittingTxnLog", true);
-    ACFixture fix;
-
-    fix.check(R"(
+    check(R"(
 local function a(x: boolean) end
 local function b(x: number?) end
 local function c(x: (number) -> string) end
@@ -2002,26 +1987,26 @@ local dc = d(f@4)
 local ec = e(f@5)
     )");
 
-    auto ac = fix.autocomplete('1');
+    auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("tru"));
     CHECK(ac.entryMap["tru"].typeCorrect == TypeCorrectKind::None);
     CHECK(ac.entryMap["true"].typeCorrect == TypeCorrectKind::Correct);
     CHECK(ac.entryMap["false"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = fix.autocomplete('2');
+    ac = autocomplete('2');
     CHECK(ac.entryMap.count("ni"));
     CHECK(ac.entryMap["ni"].typeCorrect == TypeCorrectKind::None);
     CHECK(ac.entryMap["nil"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = fix.autocomplete('3');
+    ac = autocomplete('3');
     CHECK(ac.entryMap.count("false"));
     CHECK(ac.entryMap["false"].typeCorrect == TypeCorrectKind::None);
     CHECK(ac.entryMap["function"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = fix.autocomplete('4');
+    ac = autocomplete('4');
     CHECK(ac.entryMap["function"].typeCorrect == TypeCorrectKind::Correct);
 
-    ac = fix.autocomplete('5');
+    ac = autocomplete('5');
     CHECK(ac.entryMap["function"].typeCorrect == TypeCorrectKind::Correct);
 }
 
@@ -2512,23 +2497,21 @@ local t = {
     CHECK(ac.entryMap.count("second"));
 }
 
-TEST_CASE("autocomplete_documentation_symbols")
+TEST_CASE_FIXTURE(Fixture, "autocomplete_documentation_symbols")
 {
-    Fixture fix(FFlag::LuauUseCommittingTxnLog);
-
-    fix.loadDefinition(R"(
+    loadDefinition(R"(
         declare y: {
             x: number,
         }
     )");
 
-    fix.fileResolver.source["Module/A"] = R"(
+    fileResolver.source["Module/A"] = R"(
         local a = y.
     )";
 
-    fix.frontend.check("Module/A");
+    frontend.check("Module/A");
 
-    auto ac = autocomplete(fix.frontend, "Module/A", Position{1, 21}, nullCallback);
+    auto ac = autocomplete(frontend, "Module/A", Position{1, 21}, nullCallback);
 
     REQUIRE(ac.entryMap.count("x"));
     CHECK_EQ(ac.entryMap["x"].documentationSymbol, "@test/global/y.x");
@@ -2646,8 +2629,6 @@ local a: A<(number, s@1>
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_first_function_arg_expected_type")
 {
-    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
-
     check(R"(
 local function foo1() return 1 end
 local function foo2() return "1" end
@@ -2720,7 +2701,6 @@ type A<T... = ...@1> = () -> T
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_oop_implicit_self")
 {
-    ScopedFastFlag flag("LuauMissingFollowACMetatables", true);
     check(R"(
 --!strict
 local Class = {}
@@ -2764,8 +2744,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "function_in_assignment_has_parentheses_2")
 {
-    ScopedFastFlag luauAutocompleteAvoidMutation("LuauAutocompleteAvoidMutation", true);
-
     check(R"(
 local bar: ((number) -> number) & (number, number) -> number)
 local abc = b@1

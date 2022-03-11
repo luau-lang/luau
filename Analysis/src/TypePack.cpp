@@ -5,8 +5,6 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauUseCommittingTxnLog)
-
 namespace Luau
 {
 
@@ -51,16 +49,8 @@ TypePackIterator::TypePackIterator(TypePackId typePack, const TxnLog* log)
 {
     while (tp && tp->head.empty())
     {
-        if (FFlag::LuauUseCommittingTxnLog)
-        {
-            currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
-            tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
-        }
-        else
-        {
-            currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
-            tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
-        }
+        currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
+        tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
     }
 }
 
@@ -71,16 +61,8 @@ TypePackIterator& TypePackIterator::operator++()
     ++currentIndex;
     while (tp && currentIndex >= tp->head.size())
     {
-        if (FFlag::LuauUseCommittingTxnLog)
-        {
-            currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
-            tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
-        }
-        else
-        {
-            currentTypePack = tp->tail ? follow(*tp->tail) : nullptr;
-            tp = currentTypePack ? get<TypePack>(currentTypePack) : nullptr;
-        }
+        currentTypePack = tp->tail ? log->follow(*tp->tail) : nullptr;
+        tp = currentTypePack ? log->getMutable<TypePack>(currentTypePack) : nullptr;
 
         currentIndex = 0;
     }

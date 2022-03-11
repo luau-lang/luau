@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+LUAU_DYNAMIC_FASTFLAG(LuauMorePreciseLuaLTypeName)
+
 static void writestring(const char* s, size_t l)
 {
     fwrite(s, 1, l, stdout);
@@ -186,7 +188,14 @@ static int luaB_gcinfo(lua_State* L)
 static int luaB_type(lua_State* L)
 {
     luaL_checkany(L, 1);
-    lua_pushstring(L, luaL_typename(L, 1));
+    if (DFFlag::LuauMorePreciseLuaLTypeName)
+    {
+        lua_pushstring(L, lua_typename(L, lua_type(L, 1)));
+    }
+    else
+    {
+        lua_pushstring(L, luaL_typename(L, 1));
+    }
     return 1;
 }
 
