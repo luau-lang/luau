@@ -1,0 +1,2 @@
+type synthetic add -x "^Luau::Variant<.+>$" -l LuauVisualize.LuauVariantSyntheticChildrenProvider
+type summary add -x "^Luau::Variant<.+>$" -l LuauVisualize.luau_variant_summary

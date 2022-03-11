@@ -10,6 +10,7 @@
 
 LUAU_FASTFLAG(LuauAssertStripsFalsyTypes)
 LUAU_FASTFLAGVARIABLE(LuauTableCloneType, false)
+LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -376,11 +377,19 @@ static std::optional<ExprResult<TypePackId>> magicFunctionSetMetaTable(
 
             TypeId mtTy = arena.addType(mtv);
 
-            AstExpr* targetExpr = expr.args.data[0];
-            if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
+            if (FFlag::LuauSetMetaTableArgsCheck && expr.args.size < 1)
             {
-                const Name targetName(targetLocal->local->name.value);
-                scope->bindings[targetLocal->local] = Binding{mtTy, expr.location};
+                return ExprResult<TypePackId>{};
+            }
+
+            if (!FFlag::LuauSetMetaTableArgsCheck || !expr.self)
+            {
+                AstExpr* targetExpr = expr.args.data[0];
+                if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
+                {
+                    const Name targetName(targetLocal->local->name.value);
+                    scope->bindings[targetLocal->local] = Binding{mtTy, expr.location};
+                }
             }
 
             return ExprResult<TypePackId>{arena.addTypePack({mtTy})};

@@ -5144,7 +5144,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
-    ScopedFastFlag committingTxnLog{"LuauUseCommittingTxnLog", true};
     ScopedFastFlag subtypingVariance{"LuauTableSubtypingVariance2", true};
 
     CheckResult result = check(R"(
@@ -5353,6 +5352,43 @@ end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_decl_quantify_right_type")
+{
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify", true};
+
+    fileResolver.source["game/isAMagicMock"] = R"(
+--!nonstrict
+return function(value)
+    return false
+end
+    )";
+
+    CheckResult result = check(R"(
+--!nonstrict
+local MagicMock = {}
+MagicMock.is = require(game.isAMagicMock)
+
+function MagicMock.is(value)
+    return false
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite")
+{
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify", true};
+
+    CheckResult result = check(R"(
+function string.len(): number
+    return 1
+end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

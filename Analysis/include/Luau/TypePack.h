@@ -105,7 +105,6 @@ private:
     const TypePack* tp = nullptr;
     size_t currentIndex = 0;
 
-    // Only used if LuauUseCommittingTxnLog is true.
     const TxnLog* log;
 };
 

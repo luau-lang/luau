@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauFixArgumentCountMismatchAmountWithGenericTypes)
+
 TEST_SUITE_BEGIN("GenericsTests");
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
@@ -785,5 +787,48 @@ local TheDispatcher: Dispatcher = {
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
+
+TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_few")
+{
+    CheckResult result = check(R"(
+function test(a: number)
+    return 1
+end
+
+function wrapper<A...>(f: (A...) -> number, ...: A...)
+end
+
+wrapper(test)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
+        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 1 argument, but 1 is specified)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
+{
+    CheckResult result = check(R"(
+function test2(a: number, b: string)
+    return 1
+end
+
+function wrapper<A...>(f: (A...) -> number, ...: A...)
+end
+
+wrapper(test2, 1, "", 3)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
+        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 3 arguments, but 4 are specified)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 1 argument, but 4 are specified)");
+}
+
 
 TEST_SUITE_END();

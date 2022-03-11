@@ -2334,4 +2334,54 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
     REQUIRE_EQ("{| [any]: any, x: number, y: number |} | {| y: number |}", toString(requireType("b")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf1")
+{
+    ScopedFastFlag sff{"LuauTxnLogCheckForInvalidation", true};
+
+    CheckResult result = check(R"(
+-- This example produced a UAF at one point, caused by pointers to table types becoming
+-- invalidated by child unifiers. (Calling log.concat can cause pointers to become invalid.)
+type _Entry = {
+    a: number,
+
+    middle: (self: _Entry) -> (),
+
+    z: number
+}
+
+export type AnyEntry = _Entry
+
+local Entry = {}
+Entry.__index = Entry
+
+function Entry:dispose()
+    self:middle()
+    forgetChildren(self) -- unify free with sealed AnyEntry
+end
+
+function forgetChildren(parent: AnyEntry)
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf2")
+{
+    ScopedFastFlag sff{"LuauTxnLogCheckForInvalidation", true};
+
+    CheckResult result = check(R"(
+-- Another example that UAFd, this time found by fuzzing.
+local _
+do
+_._ *= (_[{n0=_[{[{[_]=_,}]=_,}],}])[_]
+_ = (_.n0)
+end
+_._ *= (_[false])[_]
+_ = (_.cos)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
 TEST_SUITE_END();

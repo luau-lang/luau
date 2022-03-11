@@ -54,6 +54,8 @@ LUALIB_API lua_State* luaL_newstate(void);
 
 LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint);
 
+LUALIB_API const char* luaL_typename(lua_State* L, int idx);
+
 /*
 ** ===============================================================
 ** some useful macros
@@ -65,8 +67,6 @@ LUALIB_API const char* luaL_findtable(lua_State* L, int idx, const char* fname, 
 
 #define luaL_checkstring(L, n) (luaL_checklstring(L, (n), NULL))
 #define luaL_optstring(L, n, d) (luaL_optlstring(L, (n), (d), NULL))
-
-#define luaL_typename(L, i) lua_typename(L, lua_type(L, (i)))
 
 #define luaL_getmetatable(L, n) (lua_getfield(L, LUA_REGISTRYINDEX, (n)))
 
