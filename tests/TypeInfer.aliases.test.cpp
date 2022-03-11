@@ -7,6 +7,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauFixIncorrectLineNumberDuplicateType)
+
 TEST_SUITE_BEGIN("TypeAliases");
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
@@ -239,6 +241,27 @@ TEST_CASE_FIXTURE(Fixture, "export_type_and_type_alias_are_duplicates")
     auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
     REQUIRE(dtd);
     CHECK_EQ(dtd->name, "Foo");
+}
+
+TEST_CASE_FIXTURE(Fixture, "reported_location_is_correct_when_type_alias_are_duplicates")
+{
+    CheckResult result = check(R"(
+        type A = string
+        type B = number
+        type C = string
+        type B = number
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
+    REQUIRE(dtd);
+    CHECK_EQ(dtd->name, "B");
+
+    if (FFlag::LuauFixIncorrectLineNumberDuplicateType)
+        CHECK_EQ(dtd->previousLocation.begin.line + 1, 3);
+    else
+        CHECK_EQ(dtd->previousLocation.begin.line + 1, 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")

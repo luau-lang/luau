@@ -11,6 +11,8 @@
 
 #include <string.h>
 
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauMorePreciseLuaLTypeName, false)
+
 /* convert a stack index to positive */
 #define abs_index(L, i) ((i) > 0 || (i) <= LUA_REGISTRYINDEX ? (i) : lua_gettop(L) + (i) + 1)
 
@@ -331,6 +333,19 @@ const char* luaL_findtable(lua_State* L, int idx, const char* fname, int szhint)
         fname = e + 1;
     } while (*e == '.');
     return NULL;
+}
+
+const char* luaL_typename(lua_State* L, int idx)
+{
+    if (DFFlag::LuauMorePreciseLuaLTypeName)
+    {
+        const TValue* obj = luaA_toobject(L, idx);
+        return luaT_objtypename(L, obj);
+    }
+    else
+    {
+        return lua_typename(L, lua_type(L, idx));
+    }
 }
 
 /*

@@ -7,109 +7,8 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauUseCommittingTxnLog, false)
-
 namespace Luau
 {
-
-void DEPRECATED_TxnLog::operator()(TypeId a)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    typeVarChanges.emplace_back(a, *a);
-}
-
-void DEPRECATED_TxnLog::operator()(TypePackId a)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    typePackChanges.emplace_back(a, *a);
-}
-
-void DEPRECATED_TxnLog::operator()(TableTypeVar* a)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    tableChanges.emplace_back(a, a->boundTo);
-}
-
-void DEPRECATED_TxnLog::rollback()
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    for (auto it = typeVarChanges.rbegin(); it != typeVarChanges.rend(); ++it)
-        std::swap(*asMutable(it->first), it->second);
-
-    for (auto it = typePackChanges.rbegin(); it != typePackChanges.rend(); ++it)
-        std::swap(*asMutable(it->first), it->second);
-
-    for (auto it = tableChanges.rbegin(); it != tableChanges.rend(); ++it)
-        std::swap(it->first->boundTo, it->second);
-
-    LUAU_ASSERT(originalSeenSize <= sharedSeen->size());
-    sharedSeen->resize(originalSeenSize);
-}
-
-void DEPRECATED_TxnLog::concat(DEPRECATED_TxnLog rhs)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    typeVarChanges.insert(typeVarChanges.end(), rhs.typeVarChanges.begin(), rhs.typeVarChanges.end());
-    rhs.typeVarChanges.clear();
-
-    typePackChanges.insert(typePackChanges.end(), rhs.typePackChanges.begin(), rhs.typePackChanges.end());
-    rhs.typePackChanges.clear();
-
-    tableChanges.insert(tableChanges.end(), rhs.tableChanges.begin(), rhs.tableChanges.end());
-    rhs.tableChanges.clear();
-}
-
-bool DEPRECATED_TxnLog::haveSeen(TypeId lhs, TypeId rhs)
-{
-    return haveSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
-}
-
-void DEPRECATED_TxnLog::pushSeen(TypeId lhs, TypeId rhs)
-{
-    pushSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
-}
-
-void DEPRECATED_TxnLog::popSeen(TypeId lhs, TypeId rhs)
-{
-    popSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
-}
-
-bool DEPRECATED_TxnLog::haveSeen(TypePackId lhs, TypePackId rhs)
-{
-    return haveSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
-}
-
-void DEPRECATED_TxnLog::pushSeen(TypePackId lhs, TypePackId rhs)
-{
-    pushSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
-}
-
-void DEPRECATED_TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
-{
-    popSeen((TypeOrPackId)lhs, (TypeOrPackId)rhs);
-}
-
-bool DEPRECATED_TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-    return (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair));
-}
-
-void DEPRECATED_TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-    sharedSeen->push_back(sortedPair);
-}
-
-void DEPRECATED_TxnLog::popSeen(TypeOrPackId lhs, TypeOrPackId rhs)
-{
-    LUAU_ASSERT(!FFlag::LuauUseCommittingTxnLog);
-    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-    LUAU_ASSERT(sortedPair == sharedSeen->back());
-    sharedSeen->pop_back();
-}
 
 const std::string nullPendingResult = "<nullptr>";
 
@@ -170,8 +69,6 @@ const TxnLog* TxnLog::empty()
 
 void TxnLog::concat(TxnLog rhs)
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     for (auto& [ty, rep] : rhs.typeVarChanges)
         typeVarChanges[ty] = std::move(rep);
 
@@ -181,8 +78,6 @@ void TxnLog::concat(TxnLog rhs)
 
 void TxnLog::commit()
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     for (auto& [ty, rep] : typeVarChanges)
         *asMutable(ty) = rep.get()->pending;
 
@@ -194,16 +89,12 @@ void TxnLog::commit()
 
 void TxnLog::clear()
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     typeVarChanges.clear();
     typePackChanges.clear();
 }
 
 TxnLog TxnLog::inverse()
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     TxnLog inversed(sharedSeen);
 
     for (auto& [ty, _rep] : typeVarChanges)
@@ -247,8 +138,6 @@ void TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
 
 bool TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs) const
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
     {
@@ -265,16 +154,12 @@ bool TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs) const
 
 void TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     sharedSeen->push_back(sortedPair);
 }
 
 void TxnLog::popSeen(TypeOrPackId lhs, TypeOrPackId rhs)
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
-
     const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
     LUAU_ASSERT(sortedPair == sharedSeen->back());
     sharedSeen->pop_back();
@@ -282,7 +167,6 @@ void TxnLog::popSeen(TypeOrPackId lhs, TypeOrPackId rhs)
 
 PendingType* TxnLog::queue(TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
     LUAU_ASSERT(!ty->persistent);
 
     // Explicitly don't look in ancestors. If we have discovered something new
@@ -296,7 +180,6 @@ PendingType* TxnLog::queue(TypeId ty)
 
 PendingTypePack* TxnLog::queue(TypePackId tp)
 {
-    LUAU_ASSERT(FFlag::LuauUseCommittingTxnLog);
     LUAU_ASSERT(!tp->persistent);
 
     // Explicitly don't look in ancestors. If we have discovered something new

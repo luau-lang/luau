@@ -9,8 +9,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauUseCommittingTxnLog)
-
 struct TryUnifyFixture : Fixture
 {
     TypeArena arena;
@@ -43,8 +41,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "compatible_functions_are_unified")
     state.tryUnify(&functionTwo, &functionOne);
     CHECK(state.errors.empty());
 
-    if (FFlag::LuauUseCommittingTxnLog)
-        state.log.commit();
+    state.log.commit();
 
     CHECK_EQ(functionOne, functionTwo);
 }
@@ -86,8 +83,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "tables_can_be_unified")
 
     CHECK(state.errors.empty());
 
-    if (FFlag::LuauUseCommittingTxnLog)
-        state.log.commit();
+    state.log.commit();
 
     CHECK_EQ(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 }
@@ -109,9 +105,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
     state.tryUnify(&tableTwo, &tableOne);
 
     CHECK_EQ(1, state.errors.size());
-
-    if (!FFlag::LuauUseCommittingTxnLog)
-        state.DEPRECATED_log.rollback();
 
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 }
@@ -217,34 +210,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unifica
     CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
 }
 
-TEST_CASE("undo_new_prop_on_unsealed_table")
-{
-    ScopedFastFlag flags[] = {
-        {"LuauTableSubtypingVariance2", true},
-        // This test makes no sense with a committing TxnLog.
-        {"LuauUseCommittingTxnLog", false},
-    };
-    // I am not sure how to make this happen in Luau code.
-
-    TryUnifyFixture fix;
-
-    TypeId unsealedTable = fix.arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
-    TypeId sealedTable =
-        fix.arena.addType(TableTypeVar{{{"prop", Property{getSingletonTypes().numberType}}}, std::nullopt, TypeLevel{}, TableState::Sealed});
-
-    const TableTypeVar* ttv = get<TableTypeVar>(unsealedTable);
-    REQUIRE(ttv);
-
-    fix.state.tryUnify(sealedTable, unsealedTable);
-
-    // To be honest, it's really quite spooky here that we're amending an unsealed table in this case.
-    CHECK(!ttv->props.empty());
-
-    fix.state.DEPRECATED_log.rollback();
-
-    CHECK(ttv->props.empty());
-}
-
 TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")
 {
     TypePackId threeNumbers = arena.addTypePack(TypePack{{typeChecker.numberType, typeChecker.numberType, typeChecker.numberType}, std::nullopt});
@@ -267,11 +232,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "recursive_metatable_getmatchtag")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauUseCommittingTxnLog", true},
-        {"LuauFollowWithCommittingTxnLogInAnyUnification", true},
-    };
-
     TypePackVar free{FreeTypePack{TypeLevel{}}};
     TypePackVar target{TypePack{}};
 

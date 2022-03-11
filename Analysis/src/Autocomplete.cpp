@@ -13,9 +13,6 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauUseCommittingTxnLog)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteAvoidMutation, false);
-LUAU_FASTFLAGVARIABLE(LuauMissingFollowACMetatables, false);
 LUAU_FASTFLAGVARIABLE(LuauIfElseExprFixCompletionIssue, false);
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -240,28 +237,9 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         UnifierSharedState unifierState(&iceReporter);
         Unifier unifier(typeArena, Mode::Strict, Location(), Variance::Covariant, unifierState);
 
-        if (FFlag::LuauAutocompleteAvoidMutation && !FFlag::LuauUseCommittingTxnLog)
-        {
-            SeenTypes seenTypes;
-            SeenTypePacks seenTypePacks;
-            CloneState cloneState;
-            superTy = clone(superTy, *typeArena, seenTypes, seenTypePacks, cloneState);
-            subTy = clone(subTy, *typeArena, seenTypes, seenTypePacks, cloneState);
-
-            auto errors = unifier.canUnify(subTy, superTy);
-            return errors.empty();
-        }
-        else
-        {
-            unifier.tryUnify(subTy, superTy);
-
-            bool ok = unifier.errors.empty();
-
-            if (!FFlag::LuauUseCommittingTxnLog)
-                unifier.DEPRECATED_log.rollback();
-
-            return ok;
-        }
+        unifier.tryUnify(subTy, superTy);
+        bool ok = unifier.errors.empty();
+        return ok;
     };
 
     auto typeAtPosition = findExpectedTypeAt(module, node, position);
@@ -403,28 +381,14 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
         auto indexIt = mtable->props.find("__index");
         if (indexIt != mtable->props.end())
         {
-            if (FFlag::LuauMissingFollowACMetatables)
+            TypeId followed = follow(indexIt->second.type);
+            if (get<TableTypeVar>(followed) || get<MetatableTypeVar>(followed))
+                autocompleteProps(module, typeArena, followed, indexType, nodes, result, seen);
+            else if (auto indexFunction = get<FunctionTypeVar>(followed))
             {
-                TypeId followed = follow(indexIt->second.type);
-                if (get<TableTypeVar>(followed) || get<MetatableTypeVar>(followed))
-                    autocompleteProps(module, typeArena, followed, indexType, nodes, result, seen);
-                else if (auto indexFunction = get<FunctionTypeVar>(followed))
-                {
-                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
-                    if (indexFunctionResult)
-                        autocompleteProps(module, typeArena, *indexFunctionResult, indexType, nodes, result, seen);
-                }
-            }
-            else
-            {
-                if (get<TableTypeVar>(indexIt->second.type) || get<MetatableTypeVar>(indexIt->second.type))
-                    autocompleteProps(module, typeArena, indexIt->second.type, indexType, nodes, result, seen);
-                else if (auto indexFunction = get<FunctionTypeVar>(indexIt->second.type))
-                {
-                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
-                    if (indexFunctionResult)
-                        autocompleteProps(module, typeArena, *indexFunctionResult, indexType, nodes, result, seen);
-                }
+                std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
+                if (indexFunctionResult)
+                    autocompleteProps(module, typeArena, *indexFunctionResult, indexType, nodes, result, seen);
             }
         }
     }
