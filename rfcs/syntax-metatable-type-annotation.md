@@ -90,26 +90,40 @@ So formally, the grammar change is:
 
 ... ignoring that we can't describe in EBNF that some syntax can only show up once but anywhere within a list.
 
-## Drawbacks
+Due to similarity with property syntax, this RFC also proposes to reject `metatable` as a property name in the parser. This is a breaking change, so before we can enable the parsing to ascribe metatables, we need a transient lint pass where we flag all the sites that will be broken and to suggest replacing it with `["metatable"]` as soon as possible. Very much like what we did when we changed `=>` to `->`/`:` in the past.
 
-The syntax is unfortunately very identical to properties, where the only difference between them is a single character, `:`. Observe: `{metatable T}` vs `{metatable: T}` where the former is a table with the metatable of type T, and the latter is a table with one property `metatable` of type `T`. This can actually turn out to be very annoying in practice due to muscle memory. We can try to counteract this with a few strategies:
+That means the following as a part of this RFC:
 
-We could choose to produce a lint warning for properties named `metatable`:
+Enabling the transient lint pass, with the new parser for new syntax disabled:
 
 ```lua
 type Foo = {
-    metatable: T, -- lint warning
-    ["metatable"]: T, -- ok
+    metatable: T, -- warning: replace 'metatable' with '["metatable"]'
+    ["metatable"]: T, -- ok, property
+    metatable T, -- syntax error, not enabled yet.
 }
 ```
 
-Or we could choose to reject `metatable` as a property name in the parser, which is a breaking change. If we chose this option, we would create a temporary lint pass similar to what we did for `=>` in the past where we flag all the sites that will be broken and to suggest replacing it with `["metatable"]` as soon as possible.
+Then enabling the new syntax:
 
 ```lua
 type Foo = {
     metatable: T, -- parse error
     ["metatable"]: T, -- ok, property
     metatable T, -- ok, table has metatable
+}
+```
+
+By making it an error syntactically, it means the users does not need to consciously enable a lint pass for this. It also seems reasonable to expect users to, at minimum, have parse errors displayed as they type or save in their favorite text editor.
+
+## Drawbacks
+
+The syntax is unfortunately very identical to properties, where the only difference between them is a single character, `:`. Observe: `{metatable T}` vs `{metatable: T}` where the former is a table with the metatable of type T, and the latter is a table with one property `metatable` of type `T`. This can actually turn out to be very annoying in practice due to muscle memory. This RFC has already proposed a solution, but an alternative solution is to produce a lint warning for properties named `metatable`:
+
+```lua
+type Foo = {
+    metatable: T, -- lint warning
+    ["metatable"]: T, -- ok
 }
 ```
 
@@ -201,7 +215,7 @@ This option may clash with attributes/decorators for one use case, so we don't t
 type Vec3 = { x: number, y: number, z: number, [metatable]: { __add: (Vec3, Vec3) -> Vec3 } }
 ```
 
-This option is ambiguous with indexers. We could still proceed with it, but it means reserving `metatable` when the name is used as a key for indexers.
+This option has the same exact syntax as indexers. While it's possible to implement this, it doesn't seem to solve the issue where one might accidentally forget to type in brackets surrounding `metatable` to ascribe a metatable.
 
 ### 5: `{ metatable = {} }`
 
