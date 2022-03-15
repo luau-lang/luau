@@ -2,7 +2,7 @@
 
 ## Summary
 
-Introduce a new contextual keyword `metatable` to define the type of a metatable for a table.
+Introduce a way to ascribe the type of a metatable for a table via the syntax `{ metatable :: T }`.
 
 ## Motivation
 
@@ -12,7 +12,7 @@ Today, the only way to attach a metatable to a table, one has to write `typeof(s
 
 We already have the concept of metatables in the type inference engine, so this RFC will not get into the subtyping relationship or anything of the sort. The scope of this RFC is specifically to expose syntax to produce a type variable whose table has this metatable, and no more than that.
 
-We want to introduce a new contextual keyword `metatable` where we can write `metatable <type>` inside table type annotations. It can show up anywhere in a table type next to properties or indexers. Just like indexers, only one metatable is permitted per table and it will be enforced at parse time.
+We want to introduce a new contextual keyword `metatable` where we can write `metatable :: <type>` inside table type annotations. It can show up anywhere in a table type next to properties or indexers. Just like indexers, only one metatable is permitted per table and it will be enforced at parse time.
 
 By being able to write that a table has some metatable, we would be able to say that our data type has overloaded some operators. For example, our `Vec3` where the `+` operator takes two `Vec3` and produces a new `Vec3`:
 
@@ -21,7 +21,7 @@ type Vec3 = {
     x: number,
     y: number,
     z: number,
-    metatable {
+    metatable :: {
         __add: (self: Vec3, other: Vec3) -> Vec3
     }
 }
@@ -32,7 +32,7 @@ Furthermore, the metatable syntax can also help with writing the type definition
 ```
 type Person = {
     name: string,
-    metatable PersonImpl,
+    metatable :: PersonImpl,
 }
 
 type PersonImpl = {
@@ -60,25 +60,23 @@ The reason why two type synonyms are required here is because every instance cre
 We would also be able to define the `getmetatable` function without using C++.
 
 ```
-declare function getmetatable<T>(tab: {metatable {__metatable: T}}): T
-declare function getmetatable<MT>(tab: {metatable MT}): MT
+declare function getmetatable<T>(tab: { metatable :: { __metatable: T } }): T
+declare function getmetatable<MT>(tab: { metatable :: MT }): MT
 declare function getmetatable(tab: string): typeof(string) -- to get the global string table
 declare function getmetatable(tab: any): nil
 ```
 
 For RFC completeness:
 
-Just like indexers, it is not legal syntax when the parser context is not a table type annotation. `type Foo = metatable Bar` and `{f: (metatable Bar) -> ()}` and other variants are illegal.
+Just like indexers, it is not legal syntax when the parser context is not a table type annotation. `type Foo = metatable :: Bar` and `{f: (metatable :: Bar) -> ()}` and other variants are illegal.
 
 It is also not legal to ascribe a metatable multiple times in a single table type annotation, just like indexers. 
 
-For compatibility with `{T}` syntax: if `metatable` does not have a type annotation and the table type annotation is completely empty, that is, it is in the form `{T}`, then `metatable` does not require a type annotation to follow. `{metatable}` means `{[number]: metatable}`, whereas `{metatable T}` means the table has no details other than having a metatable of type `T`.
-
-So formally, the grammar change is:
+Formally, the grammar change is:
 
 ```diff
   TableIndexer = '[' Type ']' ':' Type
-+ TableMetatable = 'metatable' Type
++ TableMetatable = 'metatable' '::' Type
   TableProp = NAME ':' Type
 - TablePropOrIndexer = TableProp | TableIndexer
 - PropList = TablePropOrIndexer {fieldsep TablePropOrIndexer} [fieldsep]
@@ -90,48 +88,26 @@ So formally, the grammar change is:
 
 ... ignoring that we can't describe in EBNF that some syntax can only show up once but anywhere within a list.
 
-Due to similarity with property syntax, this RFC also proposes to reject `metatable` as a property name in the parser. This is a breaking change, so before we can enable the parsing to ascribe metatables, we need a transient lint pass where we flag all the sites that will be broken and to suggest replacing it with `["metatable"]` as soon as possible. Very much like what we did when we changed `=>` to `->`/`:` in the past.
-
-That means the following as a part of this RFC:
-
-Enabling the transient lint pass, with the new parser for new syntax disabled:
-
-```lua
-type Foo = {
-    metatable: T, -- warning: replace 'metatable' with '["metatable"]'
-    ["metatable"]: T, -- ok, property
-    metatable T, -- syntax error, not enabled yet.
-}
-```
-
-Then enabling the new syntax:
-
-```lua
-type Foo = {
-    metatable: T, -- parse error
-    ["metatable"]: T, -- ok, property
-    metatable T, -- ok, table has metatable
-}
-```
-
-By making it an error syntactically, it means the users does not need to consciously enable a lint pass for this. It also seems reasonable to expect users to, at minimum, have parse errors displayed as they type or save in their favorite text editor.
-
 ## Drawbacks
 
-The syntax is unfortunately very identical to properties, where the only difference between them is a single character, `:`. Observe: `{metatable T}` vs `{metatable: T}` where the former is a table with the metatable of type T, and the latter is a table with one property `metatable` of type `T`. This can actually turn out to be very annoying in practice due to muscle memory. This RFC has already proposed a solution, but an alternative solution is to produce a lint warning for properties named `metatable`:
-
-```lua
-type Foo = {
-    metatable: T, -- lint warning
-    ["metatable"]: T, -- ok
-}
-```
 
 ## Alternatives
 
 A few other alternative designs have been proposed in the past, but ultimately were decided against for various reasons.
 
-### 1: `setmetatable()`
+### `{metatable T}`
+
+```lua
+type Vec3 = { x: number, y: number, z: number, metatable { __add: (Vec3, Vec3) -> Vec3 } }
+```
+
+This was rejected due to similarity with existing property syntax with only one character difference. This can actually turn out to be very annoying in practice due to muscle memory.
+
+Attempting to try to reconcile this is futile because we do not want to retroactively say that certain property names are "magic," i.e. disallowing `metatable` as a property name unless it is written as `["metatable"]`.
+
+Linting does not help because it might be the case that the linter was turned off for the file. In this case, trying to use the linter is a hint of a bad design anyway.
+
+### `setmetatable()`
 
 ```lua
 type Vec3 = setmetatable({ x: number, y: number, z: number }, { __add: (Vec3, Vec3) -> Vec3 })
@@ -187,7 +163,7 @@ Another issue is the unfortunate wart in syntax with bounded quantification, for
 
 This syntax also exposes an opportunity to write things like `setmetatable(Instance, { ... })` where `Instance` is a class type variable, forcing us to write in more code that produces a type error on nonsensical use of `setmetatable`.
 
-### 2: `setmetatable<>`
+### `setmetatable<>`
 
 ```lua
 type Vec3 = setmetatable<{ x: number, y: number, z: number }, { __add: (Vec3, Vec3) -> Vec3 }>
@@ -201,7 +177,7 @@ This option would mean `withmetatable<>` and `getmetatable<>` are the first expo
 
 This option has the same issue as `setmetatable()` on formatting, unfortunate quirk in syntax with bounded quantification, and requires dealing with edge cases where `T` is not a table.
 
-### 3: `{ @metatable {} }` (status quo when performing `Luau::toString`)
+### `{ @metatable {} }` (status quo when performing `Luau::toString`)
 
 ```lua
 type Vec3 = { x: number, y: number, z: number, @metatable { __add: (Vec3, Vec3) -> Vec3) } }
@@ -209,7 +185,7 @@ type Vec3 = { x: number, y: number, z: number, @metatable { __add: (Vec3, Vec3) 
 
 This option may clash with attributes/decorators for one use case, so we don't think this deserves any further thought.
 
-### 4: `{ [metatable]: T }`
+### `{ [metatable]: T }`/`{ [__metatable]: T }`
 
 ```lua
 type Vec3 = { x: number, y: number, z: number, [metatable]: { __add: (Vec3, Vec3) -> Vec3 } }
@@ -217,7 +193,7 @@ type Vec3 = { x: number, y: number, z: number, [metatable]: { __add: (Vec3, Vec3
 
 This option has the same exact syntax as indexers. While it's possible to implement this, it doesn't seem to solve the issue where one might accidentally forget to type in brackets surrounding `metatable` to ascribe a metatable.
 
-### 5: `{ metatable = {} }`
+### `{ metatable = {} }`
 
 ```lua
 type Vec3 = { x: number, y: number, z: number, metatable = { __add: (Vec3, Vec3) -> Vec3 } }
