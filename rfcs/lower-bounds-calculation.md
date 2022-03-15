@@ -124,7 +124,7 @@ function register_callback(c: Callback)
 end
 
 function invoke_callback(i: Instance)
-    cb(i, e)
+    cb(i)
 end
 
 ---
