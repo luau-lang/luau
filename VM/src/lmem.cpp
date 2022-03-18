@@ -98,7 +98,7 @@
  */
 #if defined(__APPLE__)
 #define ABISWITCH(x64, ms32, gcc32) (sizeof(void*) == 8 ? x64 : gcc32)
-#elif defined(__i386__)
+#elif defined(__i386__) && !defined(_MSC_VER)
 #define ABISWITCH(x64, ms32, gcc32) (gcc32)
 #else
 // Android somehow uses a similar ABI to MSVC, *not* to iOS...

@@ -35,8 +35,8 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
 
 static Table* getcurrenv(lua_State* L)
 {
-    if (L->ci == L->base_ci)  /* no enclosing function? */
-        return L->gt;         /* use global table as environment */
+    if (L->ci == L->base_ci) /* no enclosing function? */
+        return L->gt;        /* use global table as environment */
     else
         return curr_func(L)->env;
 }
@@ -1188,7 +1188,7 @@ void lua_concat(lua_State* L, int n)
 
 void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag)
 {
-    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT || tag == UTAG_PROXY);
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
     Udata* u = luaU_newudata(L, sz, tag);
@@ -1317,7 +1317,7 @@ void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(void*))
     L->global->udatagc[tag] = dtor;
 }
 
-LUA_API void lua_clonefunction(lua_State* L, int idx)
+void lua_clonefunction(lua_State* L, int idx)
 {
     StkId p = index2addr(L, idx);
     api_check(L, isLfunction(p));
@@ -1332,4 +1332,16 @@ LUA_API void lua_clonefunction(lua_State* L, int idx)
 lua_Callbacks* lua_callbacks(lua_State* L)
 {
     return &L->global->cb;
+}
+
+void lua_setmemcat(lua_State* L, int category)
+{
+    api_check(L, unsigned(category) < LUA_MEMORY_CATEGORIES);
+    L->activememcat = uint8_t(category);
+}
+
+size_t lua_totalbytes(lua_State* L, int category)
+{
+    api_check(L, category < LUA_MEMORY_CATEGORIES);
+    return category < 0 ? L->global->totalbytes : L->global->memcatbytes[category];
 }

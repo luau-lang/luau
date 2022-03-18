@@ -871,10 +871,31 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
     ScopedFastFlag sff[]{
         {"LuauAssertStripsFalsyTypes", true},
         {"LuauDiscriminableUnions2", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
     };
 
     CheckResult result = check(R"(
         local function f(x: (number | boolean)?)
+            return assert(x)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types2")
+{
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauAssertStripsFalsyTypes", true},
+        {"LuauDiscriminableUnions2", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(x: (number | boolean)?): number | true
             return assert(x)
         end
     )");
@@ -956,6 +977,45 @@ a:b({})
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(result.errors[0], (TypeError{Location{{2, 0}, {2, 5}}, CountMismatch{2, 0}}));
     CHECK_EQ(result.errors[1], (TypeError{Location{{3, 0}, {3, 5}}, CountMismatch{2, 1}}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
+{
+    CheckResult result = check(R"(
+local function f(a: typeof(f)) end
+)");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Unknown global 'f'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_persistent_typelevel_change")
+{
+    TypeId mathTy = requireType(typeChecker.globalScope, "math");
+    REQUIRE(mathTy);
+    TableTypeVar* ttv = getMutable<TableTypeVar>(mathTy);
+    REQUIRE(ttv);
+    const FunctionTypeVar* ftv = get<FunctionTypeVar>(ttv->props["frexp"].type);
+    REQUIRE(ftv);
+    auto original = ftv->level;
+
+    CheckResult result = check("local a = math.frexp");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(ftv->level.level == original.level);
+    CHECK(ftv->level.subLevel == original.subLevel);
+}
+
+TEST_CASE_FIXTURE(Fixture, "global_singleton_types_are_sealed")
+{
+    CheckResult result = check(R"(
+local function f(x: string)
+    local p = x:split('a')
+    p = table.pack(table.unpack(p, 1, #p - 1))
+    return p
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

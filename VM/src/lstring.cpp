@@ -53,7 +53,7 @@ void luaS_resize(lua_State* L, int newsize)
     {
         TString* p = tb->hash[i];
         while (p)
-        { /* for each node in the list */
+        {                            /* for each node in the list */
             TString* next = p->next; /* save next */
             unsigned int h = p->hash;
             int h1 = lmod(h, newsize); /* new position */

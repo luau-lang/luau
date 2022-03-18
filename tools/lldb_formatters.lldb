@@ -1,0 +1,2 @@
+type synthetic add -x "^Luau::Variant<.+>$" -l lldb_formatters.LuauVariantSyntheticChildrenProvider
+type summary add -x "^Luau::Variant<.+>$" -l lldb_formatters.luau_variant_summary

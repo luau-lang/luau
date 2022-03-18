@@ -172,8 +172,11 @@ LUA_API const char* lua_pushvfstring(lua_State* L, const char* fmt, va_list argp
 LUA_API LUA_PRINTF_ATTR(2, 3) const char* lua_pushfstringL(lua_State* L, const char* fmt, ...);
 LUA_API void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, int nup, lua_Continuation cont);
 LUA_API void lua_pushboolean(lua_State* L, int b);
-LUA_API void lua_pushlightuserdata(lua_State* L, void* p);
 LUA_API int lua_pushthread(lua_State* L);
+
+LUA_API void lua_pushlightuserdata(lua_State* L, void* p);
+LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
+LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 
 /*
 ** get functions (Lua -> stack)
@@ -189,8 +192,6 @@ LUA_API void lua_setreadonly(lua_State* L, int idx, int enabled);
 LUA_API int lua_getreadonly(lua_State* L, int idx);
 LUA_API void lua_setsafeenv(lua_State* L, int idx, int enabled);
 
-LUA_API void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag);
-LUA_API void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*));
 LUA_API int lua_getmetatable(lua_State* L, int objindex);
 LUA_API void lua_getfenv(lua_State* L, int idx);
 
@@ -275,6 +276,14 @@ enum lua_GCOp
 };
 
 LUA_API int lua_gc(lua_State* L, int what, int data);
+
+/*
+** memory statistics
+** all allocated bytes are attributed to the memory category of the running thread (0..LUA_MEMORY_CATEGORIES-1)
+*/
+
+LUA_API void lua_setmemcat(lua_State* L, int category);
+LUA_API size_t lua_totalbytes(lua_State* L, int category);
 
 /*
 ** miscellaneous functions

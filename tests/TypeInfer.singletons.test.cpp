@@ -5,6 +5,8 @@
 #include "doctest.h"
 #include "Luau/BuiltinDefinitions.h"
 
+LUAU_FASTFLAG(BetterDiagnosticCodesInStudio)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -353,7 +355,14 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_alias_or_parens_is_indexer")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Syntax error: Cannot have more than one table indexer", toString(result.errors[0]));
+    if (FFlag::BetterDiagnosticCodesInStudio)
+    {
+        CHECK_EQ("Cannot have more than one table indexer", toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ("Syntax error: Cannot have more than one table indexer", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
@@ -445,7 +454,7 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
         {"LuauSingletonTypes", true},
         {"LuauEqConstraint", true},
         {"LuauDiscriminableUnions2", true},
-        {"LuauWidenIfSupertypeIsFree", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
         {"LuauWeakEqConstraint", false},
     };
 
@@ -472,9 +481,9 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
         {"LuauSingletonTypes", true},
         {"LuauDiscriminableUnions2", true},
         {"LuauEqConstraint", true},
-        {"LuauWidenIfSupertypeIsFree", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
         {"LuauWeakEqConstraint", false},
-        {"LuauDoNotAccidentallyDependOnPointerOrdering", true}
+        {"LuauDoNotAccidentallyDependOnPointerOrdering", true},
     };
 
     CheckResult result = check(R"(
@@ -497,7 +506,7 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
     ScopedFastFlag sff[]{
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
-        {"LuauWidenIfSupertypeIsFree", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
     };
 
     CheckResult result = check(R"(
@@ -515,7 +524,7 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
         {"LuauDiscriminableUnions2", true},
-        {"LuauWidenIfSupertypeIsFree", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
     };
 
     CheckResult result = check(R"(
@@ -544,7 +553,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_with_a_singleton_argument")
     ScopedFastFlag sff[]{
         {"LuauParseSingletonTypes", true},
         {"LuauSingletonTypes", true},
-        {"LuauWidenIfSupertypeIsFree", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
     };
 
     CheckResult result = check(R"(
@@ -563,6 +572,99 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_with_a_singleton_argument")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("{string}", toString(requireType("t")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "functions_are_not_to_be_widened")
+{
+    ScopedFastFlag sff[]{
+        {"LuauParseSingletonTypes", true},
+        {"LuauSingletonTypes", true},
+        {"LuauWidenIfSupertypeIsFree2", true},
+    };
+
+    CheckResult result = check(R"(
+        local function foo(my_enum: "A" | "B") end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"(("A" | "B") -> ())", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexing_on_string_singletons")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" then
+            local x = a:byte()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 22})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "indexing_on_union_of_string_singletons")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" or a == "bye" then
+            local x = a:byte()
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 22})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" then
+            local x = #a
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
+{
+    ScopedFastFlag sff[]{
+        {"LuauDiscriminableUnions2", true},
+        {"LuauSingletonTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        local a: string = "hi"
+        if a == "hi" or a == "bye" then
+            local x = #a
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 23})));
 }
 
 TEST_SUITE_END();

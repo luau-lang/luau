@@ -126,6 +126,8 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 {
+    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
+
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -136,31 +138,25 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
         T:staticmethod()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK(std::any_of(result.errors.begin(), result.errors.end(), [](const TypeError& e) {
-        return get<FunctionDoesNotTakeSelf>(e);
-    }));
-    CHECK(std::any_of(result.errors.begin(), result.errors.end(), [](const TypeError& e) {
-        return get<FunctionRequiresSelf>(e);
-    }));
+    CHECK_EQ("This function does not take self. Did you mean to use a dot instead of a colon?", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 {
+    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
+
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
-        function T:method() end
-        T.method()
+        function T:method(x: number) end
+        T.method(5)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    auto e = get<FunctionRequiresSelf>(result.errors[0]);
-    REQUIRE(e != nullptr);
-
-    REQUIRE_EQ(1, e->requiredExtraNils);
+    CHECK_EQ("This function must be called with self. Did you mean to use a colon instead of a dot?", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_props_are_any")

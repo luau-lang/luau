@@ -1298,4 +1298,22 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
     CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
 }
 
+TEST_CASE_FIXTURE(Fixture, "typeguard_doesnt_leak_to_elseif")
+{
+    const std::string code = R"(
+        function f(a)
+           if type(a) == "boolean" then
+                local a1 = a
+            elseif a.fn() then
+                local a2 = a
+            else
+                local a3 = a
+            end
+        end
+    )";
+    CheckResult result = check(code);
+    LUAU_REQUIRE_NO_ERRORS(result);
+    dumpErrors(result);
+}
+
 TEST_SUITE_END();

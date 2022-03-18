@@ -377,4 +377,32 @@ local b: number = a
     CHECK_EQ(toString(result.errors[0]), R"(Type 'X & Y & Z' could not be converted into 'number'; none of the intersection parts are compatible)");
 }
 
+TEST_CASE_FIXTURE(Fixture, "overload_is_not_a_function")
+{
+    check(R"(
+--!nonstrict
+function _(...):((typeof(not _))&(typeof(not _)))&((typeof(not _))&(typeof(not _)))
+_(...)(setfenv,_,not _,"")[_] = nil
+end
+do end
+_(...)(...,setfenv,_):_G()
+)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_flattenintersection")
+{
+    CheckResult result = check(R"(
+        local l0,l0
+        repeat
+        type t0 = ((any)|((any)&((any)|((any)&((any)|(any))))))&(t0)
+        function _(l0):(t0)&(t0)
+        while nil do
+        end
+        end
+        until _(_)(_)._
+    )");
+
+    CHECK_LE(0, result.errors.size());
+}
+
 TEST_SUITE_END();

@@ -7,6 +7,8 @@
 
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(BetterDiagnosticCodesInStudio, false);
+
 static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
     std::string s = "expects ";
@@ -223,7 +225,14 @@ struct ErrorConverter
 
     std::string operator()(const Luau::SyntaxError& e) const
     {
-        return "Syntax error: " + e.message;
+        if (FFlag::BetterDiagnosticCodesInStudio)
+        {
+            return e.message;
+        }
+        else
+        {
+            return "Syntax error: " + e.message;
+        }
     }
 
     std::string operator()(const Luau::CodeTooComplex&) const

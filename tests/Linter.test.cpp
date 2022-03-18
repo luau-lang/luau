@@ -1667,8 +1667,6 @@ _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 
 TEST_CASE_FIXTURE(Fixture, "WrongComment")
 {
-    ScopedFastFlag sff("LuauParseAllHotComments", true);
-
     LintResult result = lint(R"(
 --!strict
 --!struct
