@@ -496,4 +496,20 @@ caused by:
   None of the union options are compatible. For example: Table type 'a' not compatible with type 'X' because the former is missing field 'x')");
 }
 
+// We had a bug where a cyclic union caused a stack overflow.
+// ex type U = number | U
+TEST_CASE_FIXTURE(Fixture, "dont_allow_cyclic_unions_to_be_inferred")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        function f(a, b)
+            a:g(b or {})
+            a:g(b)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

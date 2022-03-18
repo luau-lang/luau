@@ -14,6 +14,7 @@
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauTrackOwningArena, false) // Remove with FFlagLuauImmutableTypes
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
+LUAU_FASTFLAGVARIABLE(LuauCloneDeclaredGlobals, false)
 LUAU_FASTFLAG(LuauImmutableTypes)
 
 namespace Luau
@@ -535,6 +536,12 @@ bool Module::clonePublicInterface()
     for (TypeId ty : moduleScope->returnType)
         if (get<GenericTypeVar>(follow(ty)))
             *asMutable(ty) = AnyTypeVar{};
+
+    if (FFlag::LuauCloneDeclaredGlobals)
+    {
+        for (auto& [name, ty] : declaredGlobals)
+            ty = clone(ty, interfaceTypes, seenTypes, seenTypePacks, cloneState);
+    }
 
     freeze(internalTypes);
     freeze(interfaceTypes);

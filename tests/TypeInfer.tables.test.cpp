@@ -2384,4 +2384,504 @@ _ = (_.cos)
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cannot_call_tables")
+{
+    CheckResult result = check("local foo = {}    foo()");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(get<CannotCallNonFunction>(result.errors[0]) != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_length")
+{
+    CheckResult result = check(R"(
+        local t = {}
+        local s = #t
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(nullptr != get<TableTypeVar>(requireType("t")));
+    CHECK_EQ(*typeChecker.numberType, *requireType("s"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_indexer")
+{
+    CheckResult result = check("local a = {} a[0] = 7  a[0] = nil");
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "wrong_assign_does_hit_indexer")
+{
+    CheckResult result = check("local a = {} a[0] = 7  a[0] = 't'");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 30}, Position{0, 33}}, TypeMismatch{
+                                                                                          typeChecker.numberType,
+                                                                                          typeChecker.stringType,
+                                                                                      }}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_no_indexer")
+{
+    CheckResult result = check("local a = {a=1, b=2} a['a'] = nil");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 30}, Position{0, 33}}, TypeMismatch{
+                                                                                          typeChecker.numberType,
+                                                                                          typeChecker.nilType,
+                                                                                      }}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "free_rhs_table_can_also_be_bound")
+{
+    check(R"(
+        local o
+        local v = o:i()
+
+        function g(u)
+            v = u
+        end
+
+        o:f(g)
+        o:h()
+        o:h()
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_unifies_into_map")
+{
+    CheckResult result = check(R"(
+        local Instance: any
+        local UDim2: any
+
+        function Create(instanceType)
+            return function(data)
+                local obj = Instance.new(instanceType)
+                for k, v in pairs(data) do
+                    if type(k) == 'number' then
+                        --v.Parent = obj
+                    else
+                        obj[k] = v
+                    end
+                end
+                return obj
+            end
+        end
+
+        local topbarShadow = Create'ImageLabel'{
+            Name = "TopBarShadow";
+            Size = UDim2.new(1, 0, 0, 3);
+            Position = UDim2.new(0, 0, 1, 0);
+            Image = "rbxasset://textures/ui/TopBar/dropshadow.png";
+            BackgroundTransparency = 1;
+            Active = false;
+            Visible = false;
+        };
+
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tables_get_names_from_their_locals")
+{
+    CheckResult result = check(R"(
+        local T = {}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("T", toString(requireType("T")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "generalize_table_argument")
+{
+    CheckResult result = check(R"(
+        function foo(arr)
+            local work = {}
+            for i = 1, #arr do
+                work[i] = arr[i]
+            end
+
+            return arr
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    dumpErrors(result);
+
+    const FunctionTypeVar* fooType = get<FunctionTypeVar>(requireType("foo"));
+    REQUIRE(fooType);
+
+    std::optional<TypeId> fooArg1 = first(fooType->argTypes);
+    REQUIRE(fooArg1);
+
+    const TableTypeVar* fooArg1Table = get<TableTypeVar>(*fooArg1);
+    REQUIRE(fooArg1Table);
+
+    CHECK_EQ(fooArg1Table->state, TableState::Generic);
+}
+
+/*
+ * This test case exposed an oversight in the treatment of free tables.
+ * Free tables, like free TypeVars, need to record the scope depth where they were created so that
+ * we do not erroneously let-generalize them when they are used in a nested lambda.
+ *
+ * For more information about let-generalization, see <http://okmij.org/ftp/ML/generalization.html>
+ *
+ * The important idea here is that the return type of Counter.new is a table with some metatable.
+ * That metatable *must* be the same TypeVar as the type of Counter.  If it is a copy (produced by
+ * the generalization process), then it loses the knowledge that its metatable will have an :incr()
+ * method.
+ */
+TEST_CASE_FIXTURE(Fixture, "dont_quantify_table_that_belongs_to_outer_scope")
+{
+    CheckResult result = check(R"(
+        local Counter = {}
+        Counter.__index = Counter
+
+        function Counter.new()
+            local self = setmetatable({count=0}, Counter)
+            return self
+        end
+
+        function Counter:incr()
+            self.count = 1
+            return self.count
+        end
+
+        local self = Counter.new()
+        print(self:incr())
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    TableTypeVar* counterType = getMutable<TableTypeVar>(requireType("Counter"));
+    REQUIRE(counterType);
+
+    const FunctionTypeVar* newType = get<FunctionTypeVar>(follow(counterType->props["new"].type));
+    REQUIRE(newType);
+
+    std::optional<TypeId> newRetType = *first(newType->retType);
+    REQUIRE(newRetType);
+
+    const MetatableTypeVar* newRet = get<MetatableTypeVar>(follow(*newRetType));
+    REQUIRE(newRet);
+
+    const TableTypeVar* newRetMeta = get<TableTypeVar>(newRet->metatable);
+    REQUIRE(newRetMeta);
+
+    CHECK(newRetMeta->props.count("incr"));
+    CHECK_EQ(follow(newRet->metatable), follow(requireType("Counter")));
+}
+
+// TODO: CLI-39624
+TEST_CASE_FIXTURE(Fixture, "instantiate_tables_at_scope_level")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local Option = {}
+        Option.__index = Option
+        function Option.Is(obj)
+                return (type(obj) == "table" and getmetatable(obj) == Option)
+        end
+        return Option
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferring_crazy_table_should_also_be_quick")
+{
+    CheckResult result = check(R"(
+        --!strict
+        function f(U)
+            U(w:s(an):c()():c():U(s):c():c():U(s):c():U(s):cU()):c():U(s):c():U(s):c():c():U(s):c():U(s):cU()
+        end
+    )");
+
+    ModulePtr module = getMainModule();
+    CHECK_GE(100, module->internalTypes.typeVars.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "MixedPropertiesAndIndexers")
+{
+    CheckResult result = check(R"(
+local x = {}
+x.a = "a"
+x[0] = true
+x.b = 37
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "setmetatable_cant_be_used_to_mutate_global_types")
+{
+    {
+        Fixture fix;
+
+        // inherit env from parent fixture checker
+        fix.typeChecker.globalScope = typeChecker.globalScope;
+
+        fix.check(R"(
+--!nonstrict
+type MT = typeof(setmetatable)
+function wtf(arg: {MT}): typeof(table)
+    arg = wtf(arg)
+end
+)");
+    }
+
+    // validate sharedEnv post-typecheck; valuable for debugging some typeck crashes but slows fuzzing down
+    // note: it's important for typeck to be destroyed at this point!
+    {
+        for (auto& p : typeChecker.globalScope->bindings)
+        {
+            toString(p.second.typeId); // toString walks the entire type, making sure ASAN catches access to destroyed type arenas
+        }
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "evil_table_unification")
+{
+    // this code re-infers the type of _ while processing fields of _, which can cause use-after-free
+    check(R"(
+--!nonstrict
+_ = ...
+_:table(_,string)[_:gsub(_,...,n0)],_,_:gsub(_,string)[""],_:split(_,...,table)._,n0 = nil
+do end
+)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
+{
+    CheckResult result = check("local x = setmetatable({})");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning")
+{
+    CheckResult result = check(R"(
+--!nonstrict
+local l0:any,l61:t0<t32> = _,math
+while _ do
+_()
+end
+function _():t0<t0>
+end
+type t0<t32> = any
+)");
+
+    std::optional<TypeId> ty = requireType("math");
+    REQUIRE(ty);
+
+    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    REQUIRE(ttv);
+    CHECK(ttv->instantiatedTypeParams.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning_2")
+{
+    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
+
+    CheckResult result = check(R"(
+type X<T> = T
+type K = X<typeof(math)>
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> ty = requireType("math");
+    REQUIRE(ty);
+
+    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    REQUIRE(ttv);
+    CHECK(ttv->instantiatedTypeParams.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning_3")
+{
+    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
+
+    CheckResult result = check(R"(
+type X<T> = T
+local a = {}
+a.x = 4
+local b: X<typeof(a)>
+a.y = 5
+local c: X<typeof(a)>
+c = b
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    std::optional<TypeId> ty = requireType("a");
+    REQUIRE(ty);
+
+    const TableTypeVar* ttv = get<TableTypeVar>(*ty);
+    REQUIRE(ttv);
+    CHECK(ttv->instantiatedTypeParams.empty());
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_indexing_error_location")
+{
+    CheckResult result = check(R"(
+local foo = {42}
+local bar: number?
+local baz = foo[bar]
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ(result.errors[0].location, Location{Position{3, 16}, Position{3, 19}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_simple_call")
+{
+    CheckResult result = check(R"(
+local a = setmetatable({ x = 2 }, {
+    __call = function(self)
+        return (self.x :: number) * 2 -- should work without annotation in the future
+    end
+})
+local b = a()
+local c = a(2) -- too many arguments
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "access_index_metamethod_that_returns_variadic")
+{
+    CheckResult result = check(R"(
+        type Foo = {x: string}
+        local t = {}
+        setmetatable(t, {
+            __index = function(x: string): ...Foo
+                return {x = x}
+            end
+        })
+
+        local foo = t.bar
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions o;
+    o.exhaustive = true;
+    CHECK_EQ("{| x: string |}", toString(requireType("foo"), o));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_invalidate_the_properties_iterator_of_free_table_when_rolled_back")
+{
+    fileResolver.source["Module/Backend/Types"] = R"(
+        export type Fiber = {
+            return_: Fiber?
+        }
+        return {}
+    )";
+
+    fileResolver.source["Module/Backend"] = R"(
+        local Types = require(script.Types)
+        type Fiber = Types.Fiber
+        type ReactRenderer = { findFiberByHostInstance: () -> Fiber? }
+
+        local function attach(renderer): ()
+            local function getPrimaryFiber(fiber)
+                local alternate = fiber.alternate
+                return fiber
+            end
+
+            local function getFiberIDForNative()
+                local fiber = renderer.findFiberByHostInstance()
+                fiber = fiber.return_
+                return getPrimaryFiber(fiber)
+            end
+        end
+
+        function culprit(renderer: ReactRenderer): ()
+            attach(renderer)
+        end
+
+        return culprit
+    )";
+
+    CheckResult result = frontend.check("Module/Backend");
+}
+
+TEST_CASE_FIXTURE(Fixture, "checked_prop_too_early")
+{
+    CheckResult result = check(R"(
+        local t: {x: number?}? = {x = nil}
+        local u = t.x and t or 5
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Value of type '{| x: number? |}?' could be nil", toString(result.errors[0]));
+    CHECK_EQ("number | {| x: number? |}", toString(requireType("u")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "accidentally_checked_prop_in_opposite_branch")
+{
+    CheckResult result = check(R"(
+        local t: {x: number?}? = {x = nil}
+        local u = t and t.x == 5 or t.x == 31337
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Value of type '{| x: number? |}?' could be nil", toString(result.errors[0]));
+    CHECK_EQ("boolean", toString(requireType("u")));
+}
+
+/*
+ * We had an issue where part of the type of pairs() was an unsealed table.
+ * This test depends on FFlagDebugLuauFreezeArena to trigger it.
+ */
+TEST_CASE_FIXTURE(Fixture, "pairs_parameters_are_not_unsealed_tables")
+{
+    check(R"(
+        function _(l0:{n0:any})
+            _ = pairs
+        end
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_function_check_use_after_free")
+{
+    CheckResult result = check(R"(
+local t = {}
+
+function t.x(value)
+    for k,v in pairs(t) do end
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+/*
+ * When we add new properties to an unsealed table, we should do a level check and promote the property type to be at
+ * the level of the table.
+ */
+TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the_same_TypeLevel_of_that_table")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local T = {}
+
+        local function f(prop)
+            T[1] = {
+                prop = prop,
+            }
+        end
+
+        local function g()
+            local l = T[1].prop
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

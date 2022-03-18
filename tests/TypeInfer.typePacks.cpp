@@ -895,4 +895,87 @@ caused by:
   Type 'boolean' could not be converted into 'string')");
 }
 
+// TODO: File a Jira about this
+/*
+TEST_CASE_FIXTURE(Fixture, "unifying_vararg_pack_with_fixed_length_pack_produces_fixed_length_pack")
+{
+    CheckResult result = check(R"(
+        function a(x) return 1 end
+        a(...)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    REQUIRE(bool(getMainModule()->getModuleScope()->varargPack));
+
+    TypePackId varargPack = *getMainModule()->getModuleScope()->varargPack;
+
+    auto iter = begin(varargPack);
+    auto endIter = end(varargPack);
+
+    CHECK(iter != endIter);
+    ++iter;
+    CHECK(iter == endIter);
+
+    CHECK(!iter.tail());
+}
+*/
+
+TEST_CASE_FIXTURE(Fixture, "dont_ice_if_a_TypePack_is_an_error")
+{
+    CheckResult result = check(R"(
+        --!strict
+        function f(s)
+            print(s)
+            return f
+        end
+
+        f("foo")("bar")
+    )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "cyclic_type_packs")
+{
+    // this has a risk of creating cyclic type packs, causing infinite loops / OOMs
+    check(R"(
+--!nonstrict
+_ += _(_,...)
+repeat
+_ += _(...)
+until ... + _
+)");
+
+    check(R"(
+--!nonstrict
+_ += _(_(...,...),_(...))
+repeat
+until _
+)");
+}
+
+TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks")
+{
+    CheckResult result = check(R"(
+        type ( ... ) ( ) ;
+        ( ... ) ( - - ... ) ( - ... )
+        type = ( ... ) ;
+        ( ... ) (  ) ( ... ) ;
+        ( ... ) ""
+    )");
+
+    CHECK_LE(0, result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks2")
+{
+    CheckResult result = check(R"(
+        function _(l0:((typeof((pcall)))|((((t0)->())|(typeof(-67108864)))|(any)))|(any),...):(((typeof(0))|(any))|(any),typeof(-67108864),any)
+            xpcall(_,_,_)
+            _(_,_,_)
+        end
+    )");
+
+    CHECK_LE(0, result.errors.size());
+}
+
 TEST_SUITE_END();

@@ -293,4 +293,22 @@ TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_type
     CHECK_EQ(ty->type->documentationSymbol, std::nullopt);
 }
 
+TEST_CASE_FIXTURE(Fixture, "single_class_type_identity_in_global_types")
+{
+    ScopedFastFlag luauCloneDeclaredGlobals{"LuauCloneDeclaredGlobals", true};
+
+    loadDefinition(R"(
+declare class Cls
+end
+
+declare GetCls: () -> (Cls)
+    )");
+
+    CheckResult result = check(R"(
+local s : Cls = GetCls()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

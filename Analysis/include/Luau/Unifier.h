@@ -86,6 +86,8 @@ private:
     void tryUnifyIndexer(const TableIndexer& subIndexer, const TableIndexer& superIndexer);
 
     TypeId widen(TypeId ty);
+    TypePackId widen(TypePackId tp);
+
     TypeId deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen = {});
 
     void cacheResult(TypeId subTy, TypeId superTy);

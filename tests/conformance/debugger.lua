@@ -3,14 +3,14 @@ print "testing debugger" -- note, this file can't run in isolation from C tests
 
 local a = 5
 
-function foo(b)
+function foo(b, ...)
 	print("in foo", b)
 	a = 6
 end
 
 breakpoint(8)
 
-foo(50)
+foo(50, 42)
 
 breakpoint(16) -- next line
 print("here")

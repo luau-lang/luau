@@ -20,11 +20,13 @@ LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
 LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
-LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree, false)
+LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree2, false)
 LUAU_FASTFLAGVARIABLE(LuauDifferentOrderOfUnificationDoesntMatter, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogSeesTypePacks2, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogCheckForInvalidation, false)
+LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogDontRetryForIndexers, false)
+LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 
 namespace Luau
 {
@@ -272,12 +274,6 @@ TypePackId Widen::clean(TypePackId)
 
 bool Widen::ignoreChildren(TypeId ty)
 {
-    // Sometimes we unify ("hi") -> free1 with (free2) -> free3, so don't ignore functions.
-    // TODO: should we be doing this? we would need to rework how checkCallOverload does the unification.
-    if (log->is<FunctionTypeVar>(ty))
-        return false;
-
-    // We only care about unions.
     return !log->is<UnionTypeVar>(ty);
 }
 
@@ -990,7 +986,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         if (!log.getMutable<ErrorTypeVar>(superTp))
         {
-            log.replace(superTp, Unifiable::Bound<TypePackId>(subTp));
+            log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
         }
     }
     else if (log.getMutable<Unifiable::Free>(subTp))
@@ -1107,7 +1103,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 }
 
                 // In nonstrict mode, any also marks an optional argument.
-                else if (superIter.good() && isNonstrictMode() && log.getMutable<AnyTypeVar>(log.follow(*superIter)))
+                else if (!FFlag::LuauAnyInIsOptionalIsOptional && superIter.good() && isNonstrictMode() && log.getMutable<AnyTypeVar>(log.follow(*superIter)))
                 {
                     superIter.advance();
                     continue;
@@ -1280,6 +1276,13 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         tryUnify_(subFunction->retType, superFunction->retType);
     }
 
+    if (FFlag::LuauTxnLogRefreshFunctionPointers)
+    {
+        // Updating the log may have invalidated the function pointers
+        superFunction = log.getMutable<FunctionTypeVar>(superTy);
+        subFunction = log.getMutable<FunctionTypeVar>(subTy);
+    }
+
     if (!FFlag::LuauImmutableTypes)
     {
         if (superFunction->definition && !subFunction->definition && !subTy->persistent)
@@ -1357,10 +1360,18 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         {
             auto subIter = subTable->props.find(propName);
 
-            bool isAny = log.getMutable<AnyTypeVar>(log.follow(superProp.type));
+            if (FFlag::LuauAnyInIsOptionalIsOptional)
+            {
+                if (subIter == subTable->props.end() && (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && !isOptional(superProp.type))
+                    missingProperties.push_back(propName);
+            }
+            else
+            {
+                bool isAny = log.getMutable<AnyTypeVar>(log.follow(superProp.type));
 
-            if (subIter == subTable->props.end() && (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && !isOptional(superProp.type) && !isAny)
-                missingProperties.push_back(propName);
+                if (subIter == subTable->props.end() && (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && !isOptional(superProp.type) && !isAny)
+                    missingProperties.push_back(propName);
+            }
         }
 
         if (!missingProperties.empty())
@@ -1378,9 +1389,17 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         {
             auto superIter = superTable->props.find(propName);
 
-            bool isAny = log.is<AnyTypeVar>(log.follow(subProp.type));
-            if (superIter == superTable->props.end() && (FFlag::LuauSubtypingAddOptPropsToUnsealedTables || (!isOptional(subProp.type) && !isAny)))
-                extraProperties.push_back(propName);
+            if (FFlag::LuauAnyInIsOptionalIsOptional)
+            {
+                if (superIter == superTable->props.end() && (FFlag::LuauSubtypingAddOptPropsToUnsealedTables || !isOptional(subProp.type)))
+                    extraProperties.push_back(propName);
+            }
+            else
+            {
+                bool isAny = log.is<AnyTypeVar>(log.follow(subProp.type));
+                if (superIter == superTable->props.end() && (FFlag::LuauSubtypingAddOptPropsToUnsealedTables || (!isOptional(subProp.type) && !isAny)))
+                    extraProperties.push_back(propName);
+            }
         }
 
         if (!extraProperties.empty())
@@ -1423,6 +1442,12 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
             if (innerState.errors.empty())
                 log.concat(std::move(innerState.log));
+        }
+        else if (FFlag::LuauAnyInIsOptionalIsOptional && (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && isOptional(prop.type))
+        // This is sound because unsealed table types are precise, so `{ p : T } <: { p : T, q : U? }`
+        // since if `t : { p : T }` then we are guaranteed that `t.q` is `nil`.
+        // TODO: if the supertype is written to, the subtype may no longer be precise (alias analysis?)
+        {
         }
         else if ((!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type))))
         // This is sound because unsealed table types are precise, so `{ p : T } <: { p : T, q : U? }`
@@ -1495,6 +1520,9 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             superTable = pendingSuperTtv;
         }
         else if (variance == Covariant)
+        {
+        }
+        else if (FFlag::LuauAnyInIsOptionalIsOptional && !FFlag::LuauSubtypingAddOptPropsToUnsealedTables && isOptional(prop.type))
         {
         }
         else if (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables && (isOptional(prop.type) || get<AnyTypeVar>(follow(prop.type))))
@@ -1618,7 +1646,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
 TypeId Unifier::widen(TypeId ty)
 {
-    if (!FFlag::LuauWidenIfSupertypeIsFree)
+    if (!FFlag::LuauWidenIfSupertypeIsFree2)
         return ty;
 
     Widen widen{types};
@@ -1627,10 +1655,21 @@ TypeId Unifier::widen(TypeId ty)
     return result.value_or(ty);
 }
 
+TypePackId Unifier::widen(TypePackId tp)
+{
+    if (!FFlag::LuauWidenIfSupertypeIsFree2)
+        return tp;
+
+    Widen widen{types};
+    std::optional<TypePackId> result = widen.substitute(tp);
+    // TODO: what does it mean for substitution to fail to widen?
+    return result.value_or(tp);
+}
+
 TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen)
 {
     ty = follow(ty);
-    if (get<AnyTypeVar>(ty))
+    if (!FFlag::LuauAnyInIsOptionalIsOptional && get<AnyTypeVar>(ty))
         return ty;
     else if (isOptional(ty))
         return ty;
@@ -1744,7 +1783,10 @@ void Unifier::tryUnifyFreeTable(TypeId subTy, TypeId superTy)
     {
         if (auto subProp = findTablePropertyRespectingMeta(subTy, freeName))
         {
-            tryUnify_(freeProp.type, *subProp);
+            if (FFlag::LuauWidenIfSupertypeIsFree2)
+                tryUnify_(*subProp, freeProp.type);
+            else
+                tryUnify_(freeProp.type, *subProp);
 
             /*
              * TypeVars are commonly cyclic, so it is entirely possible

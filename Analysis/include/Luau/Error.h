@@ -107,6 +107,7 @@ struct FunctionDoesNotTakeSelf
 
 struct FunctionRequiresSelf
 {
+    // TODO: Delete with LuauAnyInIsOptionalIsOptional
     int requiredExtraNils = 0;
 
     bool operator==(const FunctionRequiresSelf& rhs) const;

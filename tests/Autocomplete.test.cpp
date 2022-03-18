@@ -2755,4 +2755,166 @@ local abc = b@1
     CHECK(ac.entryMap["bar"].parens == ParenthesesRecommendation::CursorInside);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_on_class")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    loadDefinition(R"(
+declare class Foo
+    function one(self): number
+    two: () -> number
+end
+    )");
+
+    {
+        check(R"(
+local t: Foo
+t:@1
+        )");
+
+        auto ac = autocomplete('1');
+
+        REQUIRE(ac.entryMap.count("one"));
+        REQUIRE(ac.entryMap.count("two"));
+        CHECK(!ac.entryMap["one"].wrongIndexType);
+        CHECK(ac.entryMap["two"].wrongIndexType);
+    }
+
+    {
+        check(R"(
+local t: Foo
+t.@1
+        )");
+
+        auto ac = autocomplete('1');
+
+        REQUIRE(ac.entryMap.count("one"));
+        REQUIRE(ac.entryMap.count("two"));
+        CHECK(ac.entryMap["one"].wrongIndexType);
+        CHECK(!ac.entryMap["two"].wrongIndexType);
+    }
+}
+
+TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    check(R"(
+local t = {}
+function t.m() end
+t:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("m"));
+    CHECK(ac.entryMap["m"].wrongIndexType);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_2")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    check(R"(
+local f: (() -> number) & ((number) -> number) = function(x: number?) return 2 end
+local t = {}
+t.f = f
+t:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("f"));
+    CHECK(ac.entryMap["f"].wrongIndexType);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_provisional")
+{
+    check(R"(
+local t = {}
+function t.m(x: typeof(t)) end
+t:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("m"));
+    // We can make changes to mark this as a wrong way to call even though it's compatible
+    CHECK(!ac.entryMap["m"].wrongIndexType);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_prim_self_calls_are_fine")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    check(R"(
+local s = "hello"
+s:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("byte"));
+    CHECK(ac.entryMap["byte"].wrongIndexType == false);
+    REQUIRE(ac.entryMap.count("char"));
+    CHECK(ac.entryMap["char"].wrongIndexType == true);
+    REQUIRE(ac.entryMap.count("sub"));
+    CHECK(ac.entryMap["sub"].wrongIndexType == false);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_prim_non_self_calls_are_avoided")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    check(R"(
+local s = "hello"
+s.@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("byte"));
+    CHECK(ac.entryMap["byte"].wrongIndexType == true);
+    REQUIRE(ac.entryMap.count("char"));
+    CHECK(ac.entryMap["char"].wrongIndexType == false);
+    REQUIRE(ac.entryMap.count("sub"));
+    CHECK(ac.entryMap["sub"].wrongIndexType == true);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_library_non_self_calls_are_fine")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    check(R"(
+string.@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("byte"));
+    CHECK(ac.entryMap["byte"].wrongIndexType == false);
+    REQUIRE(ac.entryMap.count("char"));
+    CHECK(ac.entryMap["char"].wrongIndexType == false);
+    REQUIRE(ac.entryMap.count("sub"));
+    CHECK(ac.entryMap["sub"].wrongIndexType == false);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "string_library_self_calls_are_invalid")
+{
+    ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
+
+    check(R"(
+string:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("byte"));
+    CHECK(ac.entryMap["byte"].wrongIndexType == true);
+    REQUIRE(ac.entryMap.count("char"));
+    CHECK(ac.entryMap["char"].wrongIndexType == true);
+    REQUIRE(ac.entryMap.count("sub"));
+    CHECK(ac.entryMap["sub"].wrongIndexType == true);
+}
+
 TEST_SUITE_END();

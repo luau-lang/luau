@@ -29,22 +29,24 @@ LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsDontCacheTypeParams, false)
 LUAU_FASTFLAGVARIABLE(LuauImmutableTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
+LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix, false)
 LUAU_FASTFLAGVARIABLE(LuauSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauDiscriminableUnions2, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
-LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify, false)
+LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify2, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAssertStripsFalsyTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
-LUAU_FASTFLAG(LuauWidenIfSupertypeIsFree)
+LUAU_FASTFLAG(LuauWidenIfSupertypeIsFree2)
 LUAU_FASTFLAGVARIABLE(LuauDoNotTryToReduce, false)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAccidentallyDependOnPointerOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauFixArgumentCountMismatchAmountWithGenericTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauFixIncorrectLineNumberDuplicateType, false)
+LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 
 namespace Luau
 {
@@ -1099,7 +1101,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
         return;
     }
-    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify)
+    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify2)
     {
         TypeId exprTy = checkExpr(scope, *name->expr).type;
         TableTypeVar* ttv = getMutableTableType(exprTy);
@@ -1111,7 +1113,10 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
                 reportError(TypeError{function.location, OnlyTablesCanHaveMethods{exprTy}});
         }
         else if (ttv->state == TableState::Sealed)
-            reportError(TypeError{function.location, CannotExtendTable{exprTy, CannotExtendTable::Property, name->index.value}});
+        {
+            if (!ttv->indexer || !isPrim(ttv->indexer->indexType, PrimitiveTypeVar::String))
+                reportError(TypeError{function.location, CannotExtendTable{exprTy, CannotExtendTable::Property, name->index.value}});
+        }
 
         ty = follow(ty);
 
@@ -1134,7 +1139,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         if (ttv && ttv->state != TableState::Sealed)
             ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ false, {}, name->indexLocation};
     }
-    else if (FFlag::LuauStatFunctionSimplify)
+    else if (FFlag::LuauStatFunctionSimplify2)
     {
         LUAU_ASSERT(function.name->is<AstExprError>());
 
@@ -1144,7 +1149,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     }
     else if (function.func->self)
     {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify);
+        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify2);
 
         AstExprIndexName* indexName = function.name->as<AstExprIndexName>();
         if (!indexName)
@@ -1183,7 +1188,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     }
     else
     {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify);
+        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify2);
 
         TypeId leftType = checkLValueBinding(scope, *function.name);
 
@@ -1410,6 +1415,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             {
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
+
+                if (FFlag::LuauSelfCallAutocompleteFix)
+                    ftv->hasSelf = true;
             }
         }
 
@@ -1883,19 +1891,27 @@ std::optional<TypeId> TypeChecker::tryStripUnionFromNil(TypeId ty)
 {
     if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
     {
-        bool hasNil = false;
-
-        for (TypeId option : utv)
+        if (FFlag::LuauAnyInIsOptionalIsOptional)
         {
-            if (isNil(option))
-            {
-                hasNil = true;
-                break;
-            }
+            if (!std::any_of(begin(utv), end(utv), isNil))
+                return ty;
         }
+        else
+        {
+            bool hasNil = false;
 
-        if (!hasNil)
-            return ty;
+            for (TypeId option : utv)
+            {
+                if (isNil(option))
+                {
+                    hasNil = true;
+                    break;
+                }
+            }
+
+            if (!hasNil)
+                return ty;
+        }
 
         std::vector<TypeId> result;
 
@@ -1916,12 +1932,32 @@ std::optional<TypeId> TypeChecker::tryStripUnionFromNil(TypeId ty)
 
 TypeId TypeChecker::stripFromNilAndReport(TypeId ty, const Location& location)
 {
-    if (isOptional(ty))
+    if (FFlag::LuauAnyInIsOptionalIsOptional)
     {
-        if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(follow(ty)))
+        ty = follow(ty);
+
+        if (auto utv = get<UnionTypeVar>(ty))
+        {
+            if (!std::any_of(begin(utv), end(utv), isNil))
+                return ty;
+
+        }
+
+        if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(ty))
         {
             reportError(location, OptionalValueAccess{ty});
             return follow(*strippedUnion);
+        }
+    }
+    else
+    {
+        if (isOptional(ty))
+        {
+            if (std::optional<TypeId> strippedUnion = tryStripUnionFromNil(follow(ty)))
+            {
+                reportError(location, OptionalValueAccess{ty});
+                return follow(*strippedUnion);
+            }
         }
     }
 
@@ -2935,9 +2971,25 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
             return errorRecoveryType(scope);
         }
 
-        // Cannot extend sealed table, but we dont report an error here because it will be reported during AstStatFunction check
-        if (lhsType->persistent || ttv->state == TableState::Sealed)
-            return errorRecoveryType(scope);
+        if (FFlag::LuauStatFunctionSimplify2)
+        {
+            if (lhsType->persistent)
+                return errorRecoveryType(scope);
+
+            // Cannot extend sealed table, but we dont report an error here because it will be reported during AstStatFunction check
+            if (ttv->state == TableState::Sealed)
+            {
+                if (ttv->indexer && isPrim(ttv->indexer->indexType, PrimitiveTypeVar::String))
+                    return ttv->indexer->indexResultType;
+                else
+                    return errorRecoveryType(scope);
+            }
+        }
+        else
+        {
+            if (lhsType->persistent || ttv->state == TableState::Sealed)
+                return errorRecoveryType(scope);
+        }
 
         Name name = indexName->index.value;
 
@@ -3393,7 +3445,7 @@ void TypeChecker::checkArgumentList(
                 else if (state.log.getMutable<ErrorTypeVar>(t))
                 {
                 } // ok
-                else if (isNonstrictMode() && state.log.getMutable<AnyTypeVar>(t))
+                else if (!FFlag::LuauAnyInIsOptionalIsOptional && isNonstrictMode() && state.log.getMutable<AnyTypeVar>(t))
                 {
                 } // ok
                 else
@@ -3467,7 +3519,11 @@ void TypeChecker::checkArgumentList(
                 }
 
                 TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, argIter.tail()}});
-                state.tryUnify(varPack, tail);
+                if (FFlag::LuauWidenIfSupertypeIsFree2)
+                    state.tryUnify(varPack, tail);
+                else
+                    state.tryUnify(tail, varPack);
+
                 return;
             }
             else if (state.log.getMutable<FreeTypePack>(tail))
@@ -3542,6 +3598,23 @@ ExprResult<TypePackId> TypeChecker::checkExprPack(const ScopePtr& scope, const A
 
     actualFunctionType = follow(actualFunctionType);
 
+    TypePackId retPack;
+    if (!FFlag::LuauWidenIfSupertypeIsFree2)
+    {
+        retPack = freshTypePack(scope->level);
+    }
+    else
+    {
+        if (auto free = get<FreeTypeVar>(actualFunctionType))
+        {
+            retPack = freshTypePack(free->level);
+            TypePackId freshArgPack = freshTypePack(free->level);
+            *asMutable(actualFunctionType) = FunctionTypeVar(free->level, freshArgPack, retPack);
+        }
+        else
+            retPack = freshTypePack(scope->level);
+    }
+
     // checkExpr will log the pre-instantiated type of the function.
     // That's not nearly as interesting as the instantiated type, which will include details about how
     // generic functions are being instantiated for this particular callsite.
@@ -3549,8 +3622,6 @@ ExprResult<TypePackId> TypeChecker::checkExprPack(const ScopePtr& scope, const A
     currentModule->astTypes[expr.func] = actualFunctionType;
 
     std::vector<TypeId> overloads = flattenIntersection(actualFunctionType);
-
-    TypePackId retPack = freshTypePack(scope->level);
 
     std::vector<std::optional<TypeId>> expectedTypes = getExpectedTypesForCall(overloads, expr.args.size, expr.self);
 
@@ -3682,7 +3753,7 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
         // has been instantiated, so is a monotype. We can therefore
         // unify it with a monomorphic function.
         TypeId r = addType(FunctionTypeVar(scope->level, argPack, retPack));
-        if (FFlag::LuauWidenIfSupertypeIsFree)
+        if (FFlag::LuauWidenIfSupertypeIsFree2)
         {
             UnifierOptions options;
             options.isFunctionCall = true;
@@ -3772,7 +3843,7 @@ std::optional<ExprResult<TypePackId>> TypeChecker::checkCallOverload(const Scope
     {
         state.log.commit();
 
-        if (isNonstrictMode() && !expr.self && expr.func->is<AstExprIndexName>() && ftv->hasSelf)
+        if (!FFlag::LuauAnyInIsOptionalIsOptional && isNonstrictMode() && !expr.self && expr.func->is<AstExprIndexName>() && ftv->hasSelf)
         {
             // If we are running in nonstrict mode, passing fewer arguments than the function is declared to take AND
             // the function is declared with colon notation AND we use dot notation, warn.

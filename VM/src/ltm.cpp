@@ -4,6 +4,7 @@
 
 #include "lstate.h"
 #include "lstring.h"
+#include "ludata.h"
 #include "ltable.h"
 #include "lgc.h"
 
@@ -116,7 +117,7 @@ const TValue* luaT_gettmbyobj(lua_State* L, const TValue* o, TMS event)
 
 const TString* luaT_objtypenamestr(lua_State* L, const TValue* o)
 {
-    if (ttisuserdata(o) && uvalue(o)->tag && uvalue(o)->metatable)
+    if (ttisuserdata(o) && uvalue(o)->tag != UTAG_PROXY && uvalue(o)->metatable)
     {
         const TValue* type = luaH_getstr(uvalue(o)->metatable, L->global->tmname[TM_TYPE]);
 

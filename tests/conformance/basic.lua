@@ -833,6 +833,17 @@ assert((function()
     return sum
 end)() == 105)
 
+-- shrinking array part
+assert((function()
+    local t = table.create(100, 42)
+    for i=1,90 do t[i] = nil end
+    t[101] = 42
+    local sum = 0
+    for _,v in ipairs(t) do sum += v end
+    for _,v in pairs(t) do sum += v end
+    return sum
+end)() == 462)
+
 -- upvalues: recursive capture
 assert((function() local function fact(n) return n < 1 and 1 or n * fact(n-1) end return fact(5) end)() == 120)
 
@@ -880,6 +891,14 @@ end)() == "6,8,10")
 
 -- typeof == type in absence of custom userdata
 assert(concat(typeof(5), typeof(nil), typeof({}), typeof(newproxy())) == "number,nil,table,userdata")
+
+-- type/typeof/newproxy interaction with metatables: __type doesn't work intentionally to avoid spoofing
+assert((function()
+    local ud = newproxy(true)
+    getmetatable(ud).__type = "number"
+
+    return concat(type(ud),typeof(ud))
+end)() == "userdata,userdata")
 
 testgetfenv() -- DONT MOVE THIS LINE
 
