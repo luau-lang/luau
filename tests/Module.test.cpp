@@ -248,10 +248,12 @@ TEST_CASE_FIXTURE(Fixture, "clone_seal_free_tables")
 
 TEST_CASE_FIXTURE(Fixture, "clone_self_property")
 {
+    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
+
     fileResolver.source["Module/A"] = R"(
         --!nonstrict
         local a = {}
-        function a:foo(x)
+        function a:foo(x: number)
             return -x;
         end
         return a;
@@ -267,10 +269,10 @@ TEST_CASE_FIXTURE(Fixture, "clone_self_property")
     )";
 
     result = frontend.check("Module/B");
-    LUAU_REQUIRE_ERRORS(result);
 
-    CHECK_EQ(toString(result.errors[0]), "This function was declared to accept self, but you did not pass enough arguments. Use a colon instead of a "
-                                         "dot or pass 1 extra nil to suppress this warning");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("This function must be called with self. Did you mean to use a colon instead of a dot?", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")

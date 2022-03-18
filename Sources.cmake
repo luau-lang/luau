@@ -232,11 +232,18 @@ if(TARGET Luau.UnitTest)
         tests/Transpiler.test.cpp
         tests/TypeInfer.aliases.test.cpp
         tests/TypeInfer.annotations.test.cpp
+        tests/TypeInfer.anyerror.test.cpp
         tests/TypeInfer.builtins.test.cpp
         tests/TypeInfer.classes.test.cpp
         tests/TypeInfer.definitions.test.cpp
+        tests/TypeInfer.functions.test.cpp
         tests/TypeInfer.generics.test.cpp
         tests/TypeInfer.intersectionTypes.test.cpp
+        tests/TypeInfer.loops.test.cpp
+        tests/TypeInfer.modules.test.cpp
+        tests/TypeInfer.oop.test.cpp
+        tests/TypeInfer.operators.test.cpp
+        tests/TypeInfer.primitives.test.cpp
         tests/TypeInfer.provisional.test.cpp
         tests/TypeInfer.refinements.test.cpp
         tests/TypeInfer.singletons.test.cpp

@@ -26,6 +26,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
 LUAU_FASTFLAG(LuauDiscriminableUnions2)
+LUAU_FASTFLAGVARIABLE(LuauAnyInIsOptionalIsOptional, false)
 
 namespace Luau
 {
@@ -201,11 +202,16 @@ bool isOptional(TypeId ty)
     if (isNil(ty))
         return true;
 
-    auto utv = get<UnionTypeVar>(follow(ty));
+    ty = follow(ty);
+
+    if (FFlag::LuauAnyInIsOptionalIsOptional && get<AnyTypeVar>(ty))
+        return true;
+
+    auto utv = get<UnionTypeVar>(ty);
     if (!utv)
         return false;
 
-    return std::any_of(begin(utv), end(utv), isNil);
+    return std::any_of(begin(utv), end(utv), FFlag::LuauAnyInIsOptionalIsOptional ? isOptional : isNil);
 }
 
 bool isTableIntersection(TypeId ty)

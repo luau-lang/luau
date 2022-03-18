@@ -11,17 +11,10 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauParseAllHotComments, false)
 LUAU_FASTFLAGVARIABLE(LuauTableFieldFunctionDebugname, false)
 
 namespace Luau
 {
-
-static bool isComment(const Lexeme& lexeme)
-{
-    LUAU_ASSERT(!FFlag::LuauParseAllHotComments);
-    return lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment;
-}
 
 ParseError::ParseError(const Location& location, const std::string& message)
     : location(location)
@@ -146,54 +139,13 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
 {
     LUAU_TIMETRACE_SCOPE("Parser::parse", "Parser");
 
-    Parser p(buffer, bufferSize, names, allocator, FFlag::LuauParseAllHotComments ? options : ParseOptions());
+    Parser p(buffer, bufferSize, names, allocator, options);
 
     try
     {
-        if (FFlag::LuauParseAllHotComments)
-        {
-            AstStatBlock* root = p.parseChunk();
+        AstStatBlock* root = p.parseChunk();
 
-            return ParseResult{root, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations)};
-        }
-        else
-        {
-            std::vector<HotComment> hotcomments;
-
-            while (isComment(p.lexer.current()) || p.lexer.current().type == Lexeme::BrokenComment)
-            {
-                const char* text = p.lexer.current().data;
-                unsigned int length = p.lexer.current().length;
-
-                if (length && text[0] == '!')
-                {
-                    unsigned int end = length;
-                    while (end > 0 && isSpace(text[end - 1]))
-                        --end;
-
-                    hotcomments.push_back({true, p.lexer.current().location, std::string(text + 1, text + end)});
-                }
-
-                const Lexeme::Type type = p.lexer.current().type;
-                const Location loc = p.lexer.current().location;
-
-                if (options.captureComments)
-                    p.commentLocations.push_back(Comment{type, loc});
-
-                if (type == Lexeme::BrokenComment)
-                    break;
-
-                p.lexer.next();
-            }
-
-            p.lexer.setSkipComments(true);
-
-            p.options = options;
-
-            AstStatBlock* root = p.parseChunk();
-
-            return ParseResult{root, hotcomments, p.parseErrors, std::move(p.commentLocations)};
-        }
+        return ParseResult{root, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations)};
     }
     catch (ParseError& err)
     {
@@ -225,10 +177,11 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     matchRecoveryStopOnToken.assign(Lexeme::Type::Reserved_END, 0);
     matchRecoveryStopOnToken[Lexeme::Type::Eof] = 1;
 
-    if (FFlag::LuauParseAllHotComments)
-        lexer.setSkipComments(true);
+    // required for lookahead() to work across a comment boundary and for nextLexeme() to work when captureComments is false
+    lexer.setSkipComments(true);
 
-    // read first lexeme
+    // read first lexeme (any hot comments get .header = true)
+    LUAU_ASSERT(hotcommentHeader);
     nextLexeme();
 
     // all hot comments parsed after the first non-comment lexeme are special in that they don't affect type checking / linting mode
@@ -2831,49 +2784,31 @@ void Parser::nextLexeme()
 {
     if (options.captureComments)
     {
-        if (FFlag::LuauParseAllHotComments)
+        Lexeme::Type type = lexer.next(/* skipComments= */ false).type;
+
+        while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
         {
-            Lexeme::Type type = lexer.next(/* skipComments= */ false).type;
+            const Lexeme& lexeme = lexer.current();
+            commentLocations.push_back(Comment{lexeme.type, lexeme.location});
 
-            while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
+            // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
+            // The parser will turn this into a proper syntax error.
+            if (lexeme.type == Lexeme::BrokenComment)
+                return;
+
+            // Comments starting with ! are called "hot comments" and contain directives for type checking / linting
+            if (lexeme.type == Lexeme::Comment && lexeme.length && lexeme.data[0] == '!')
             {
-                const Lexeme& lexeme = lexer.current();
-                commentLocations.push_back(Comment{lexeme.type, lexeme.location});
+                const char* text = lexeme.data;
 
-                // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
-                // The parser will turn this into a proper syntax error.
-                if (lexeme.type == Lexeme::BrokenComment)
-                    return;
+                unsigned int end = lexeme.length;
+                while (end > 0 && isSpace(text[end - 1]))
+                    --end;
 
-                // Comments starting with ! are called "hot comments" and contain directives for type checking / linting
-                if (lexeme.type == Lexeme::Comment && lexeme.length && lexeme.data[0] == '!')
-                {
-                    const char* text = lexeme.data;
-
-                    unsigned int end = lexeme.length;
-                    while (end > 0 && isSpace(text[end - 1]))
-                        --end;
-
-                    hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
-                }
-
-                type = lexer.next(/* skipComments= */ false).type;
+                hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
             }
-        }
-        else
-        {
-            while (true)
-            {
-                const Lexeme& lexeme = lexer.next(/*skipComments*/ false);
-                // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
-                // The parser will turn this into a proper syntax error.
-                if (lexeme.type == Lexeme::BrokenComment)
-                    commentLocations.push_back(Comment{lexeme.type, lexeme.location});
-                if (isComment(lexeme))
-                    commentLocations.push_back(Comment{lexeme.type, lexeme.location});
-                else
-                    return;
-            }
+
+            type = lexer.next(/* skipComments= */ false).type;
         }
     }
     else

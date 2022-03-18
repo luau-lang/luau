@@ -2819,8 +2819,6 @@ RETURN R1 -1
 
 TEST_CASE("FastcallSelect")
 {
-    ScopedFastFlag sff("LuauCompileSelectBuiltin2", true);
-
     // select(_, ...) compiles to a builtin call
     CHECK_EQ("\n" + compileFunction0("return (select('#', ...))"), R"(
 LOADK R1 K0

@@ -569,6 +569,11 @@ TEST_CASE("Debugger")
                 CHECK(lua_tointeger(L, -1) == 50);
                 lua_pop(L, 1);
 
+                int v = lua_getargument(L, 0, 2);
+                REQUIRE(v);
+                CHECK(lua_tointeger(L, -1) == 42);
+                lua_pop(L, 1);
+
                 // test lua_getlocal
                 const char* l = lua_getlocal(L, 0, 1);
                 REQUIRE(l);
@@ -650,31 +655,6 @@ TEST_CASE("SameHash")
     // Also hash should work on unaligned source data even when hashing long strings
     char buf[128] = {};
     CHECK(luaS_hash(buf + 1, 120) == luaS_hash(buf + 2, 120));
-}
-
-TEST_CASE("InlineDtor")
-{
-    static int dtorhits = 0;
-
-    dtorhits = 0;
-
-    {
-        StateRef globalState(luaL_newstate(), lua_close);
-        lua_State* L = globalState.get();
-
-        void* u1 = lua_newuserdatadtor(L, 4, [](void* data) {
-            dtorhits += *(int*)data;
-        });
-
-        void* u2 = lua_newuserdatadtor(L, 1, [](void* data) {
-            dtorhits += *(char*)data;
-        });
-
-        *(int*)u1 = 39;
-        *(char*)u2 = 3;
-    }
-
-    CHECK(dtorhits == 42);
 }
 
 TEST_CASE("Reference")
@@ -969,7 +949,7 @@ TEST_CASE("StringConversion")
 TEST_CASE("GCDump")
 {
     // internal function, declared in lgc.h - not exposed via lua.h
-    extern void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* L, uint8_t memcat));
+    extern void luaC_dump(lua_State * L, void* file, const char* (*categoryName)(lua_State * L, uint8_t memcat));
 
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
@@ -1013,6 +993,116 @@ TEST_CASE("GCDump")
     luaC_dump(L, f, nullptr);
 
     fclose(f);
+}
+
+TEST_CASE("Interrupt")
+{
+    static const int expectedhits[] = {
+        2,
+        9,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        5,
+        6,
+        11,
+    };
+    static int index;
+
+    index = 0;
+
+    runConformance(
+        "interrupt.lua",
+        [](lua_State* L) {
+            auto* cb = lua_callbacks(L);
+
+            // note: for simplicity here we setup the interrupt callback once
+            // however, this carries a noticeable performance cost. in a real application,
+            // it's advised to set interrupt callback on a timer from a different thread,
+            // and set it back to nullptr once the interrupt triggered.
+            cb->interrupt = [](lua_State* L, int gc) {
+                if (gc >= 0)
+                    return;
+
+                CHECK(index < int(std::size(expectedhits)));
+
+                lua_Debug ar = {};
+                lua_getinfo(L, 0, "l", &ar);
+
+                CHECK(ar.currentline == expectedhits[index]);
+
+                index++;
+
+                // check that we can yield inside an interrupt
+                if (index == 5)
+                    lua_yield(L, 0);
+            };
+        },
+        [](lua_State* L) {
+            CHECK(index == 5); // a single yield point
+        });
+
+    CHECK(index == int(std::size(expectedhits)));
+}
+
+TEST_CASE("UserdataApi")
+{
+    static int dtorhits = 0;
+
+    dtorhits = 0;
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    // setup dtor for tag 42 (created later)
+    lua_setuserdatadtor(L, 42, [](void* data) {
+        dtorhits += *(int*)data;
+    });
+
+    // light user data
+    int lud;
+    lua_pushlightuserdata(L, &lud);
+
+    CHECK(lua_touserdata(L, -1) == &lud);
+    CHECK(lua_topointer(L, -1) == &lud);
+
+    // regular user data
+    int* ud1 = (int*)lua_newuserdata(L, 4);
+    *ud1 = 42;
+
+    CHECK(lua_touserdata(L, -1) == ud1);
+    CHECK(lua_topointer(L, -1) == ud1);
+
+    // tagged user data
+    int* ud2 = (int*)lua_newuserdatatagged(L, 4, 42);
+    *ud2 = -4;
+
+    CHECK(lua_touserdatatagged(L, -1, 42) == ud2);
+    CHECK(lua_touserdatatagged(L, -1, 41) == nullptr);
+    CHECK(lua_userdatatag(L, -1) == 42);
+
+    // user data with inline dtor
+    void* ud3 = lua_newuserdatadtor(L, 4, [](void* data) {
+        dtorhits += *(int*)data;
+    });
+
+    void* ud4 = lua_newuserdatadtor(L, 1, [](void* data) {
+        dtorhits += *(char*)data;
+    });
+
+    *(int*)ud3 = 43;
+    *(char*)ud4 = 3;
+
+    globalState.reset();
+
+    CHECK(dtorhits == 42);
 }
 
 TEST_SUITE_END();

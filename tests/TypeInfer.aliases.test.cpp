@@ -676,4 +676,25 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
+{
+    CheckResult result = check(R"(
+        type Tree<T> = { data: T, children: {Tree<T>} }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
+{
+    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
+
+    CheckResult result = check(R"(
+        -- this would be an infinite type if we allowed it
+        type Tree<T> = { data: T, children: {Tree<{T}>} }
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
 TEST_SUITE_END();
