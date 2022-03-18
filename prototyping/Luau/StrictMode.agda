@@ -16,16 +16,22 @@ open import Properties.Product using (_,_)
 src : Type → Type
 src = Luau.Type.src strict
 
+data _<:_ (T U : Type) : Set where
+  temp : (T ≡ U) → (T <: U)
+
+data _≮:_ (T U : Type) : Set where
+  temp : (T ≢ U) → (T ≮: U)
+
 data BinOpWarning : BinaryOperator → Type → Set where
-  + : ∀ {T} → (T ≢ number) → BinOpWarning + T
-  - : ∀ {T} → (T ≢ number) → BinOpWarning - T
-  * : ∀ {T} → (T ≢ number) → BinOpWarning * T
-  / : ∀ {T} → (T ≢ number) → BinOpWarning / T
-  < : ∀ {T} → (T ≢ number) → BinOpWarning < T
-  > : ∀ {T} → (T ≢ number) → BinOpWarning > T
-  <= : ∀ {T} → (T ≢ number) → BinOpWarning <= T
-  >= : ∀ {T} → (T ≢ number) → BinOpWarning >= T
-  ·· : ∀ {T} → (T ≢ string) → BinOpWarning ·· T
+  + : ∀ {T} → (T ≮: number) → BinOpWarning + T
+  - : ∀ {T} → (T ≮: number) → BinOpWarning - T
+  * : ∀ {T} → (T ≮: number) → BinOpWarning * T
+  / : ∀ {T} → (T ≮: number) → BinOpWarning / T
+  < : ∀ {T} → (T ≮: number) → BinOpWarning < T
+  > : ∀ {T} → (T ≮: number) → BinOpWarning > T
+  <= : ∀ {T} → (T ≮: number) → BinOpWarning <= T
+  >= : ∀ {T} → (T ≮: number) → BinOpWarning >= T
+  ·· : ∀ {T} → (T ≮: string) → BinOpWarning ·· T
 
 data Warningᴱ (H : Heap yes) {Γ} : ∀ {M T} → (Γ ⊢ᴱ M ∈ T) → Set
 data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set
@@ -46,7 +52,7 @@ data Warningᴱ H {Γ} where
 
   FunctionCallMismatch : ∀ {M N T U} {D₁ : Γ ⊢ᴱ M ∈ T} {D₂ : Γ ⊢ᴱ N ∈ U} →
 
-    (src T ≢ U) →
+    (U ≮: src T) →
     -----------------
     Warningᴱ H (app D₁ D₂)
   
@@ -88,7 +94,7 @@ data Warningᴱ H {Γ} where
     
   FunctionDefnMismatch : ∀ {f x B T U V} {D : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
-    (U ≢ V) →
+    (V ≮: U) →
     -------------------------
     Warningᴱ H (function {f} {U = U} D)
 
@@ -100,7 +106,7 @@ data Warningᴱ H {Γ} where
 
   BlockMismatch : ∀ {b B T U} {D : Γ ⊢ᴮ B ∈ U} →
 
-    (T ≢ U) →
+    (U ≮: T) →
     ------------------------------
     Warningᴱ H (block {b} {T = T} D)
 
@@ -120,7 +126,7 @@ data Warningᴮ H {Γ} where
 
   LocalVarMismatch : ∀ {x M B T U V} {D₁ : Γ ⊢ᴱ M ∈ U} {D₂ : (Γ ⊕ x ↦ T) ⊢ᴮ B ∈ V} →
 
-    (T ≢ U) →
+    (U ≮: T) →
     --------------------
     Warningᴮ H (local D₁ D₂)
 
@@ -138,7 +144,8 @@ data Warningᴮ H {Γ} where
 
   FunctionDefnMismatch : ∀ {f x B C T U V W} {D₁ : (Γ ⊕ x ↦ T) ⊢ᴮ C ∈ V} {D₂ : (Γ ⊕ f ↦ (T ⇒ U)) ⊢ᴮ B ∈ W} →
 
-    (U ≢ V) →
+    (V ≮: U
+    ) →
     -------------------------------------
     Warningᴮ H (function D₁ D₂)
 
@@ -158,7 +165,7 @@ data Warningᴼ (H : Heap yes) : ∀ {V} → (⊢ᴼ V) → Set where
 
   FunctionDefnMismatch : ∀ {f x B T U V} {D : (x ↦ T) ⊢ᴮ B ∈ V} →
 
-    (U ≢ V) →
+    (V ≮: U) →
     ---------------------------------
     Warningᴼ H (function {f} {U = U} D)
 
