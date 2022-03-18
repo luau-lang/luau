@@ -128,7 +128,7 @@ Returns the type of the object, which is one of `"nil"`, `"boolean"`, `"number"`
 function typeof(obj: any): string
 ```
 
-Returns the type of the object; for userdata objects that have a metatable with the `__type` field *and* are defined by the host with an internal tag, returns the value for that key.
+Returns the type of the object; for userdata objects that have a metatable with the `__type` field *and* are defined by the host (not `newproxy`), returns the value for that key.
 For custom userdata objects, such as ones returned by `newproxy`, this function returns `"userdata"` to make sure host-defined types can not be spoofed.
 
 ```
