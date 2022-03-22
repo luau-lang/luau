@@ -23,6 +23,19 @@ orAny : Maybe Type → Type
 orAny nothing = any
 orAny (just T) = T
 
+srcBinOp : BinaryOperator → Type
+srcBinOp + = number
+srcBinOp - = number
+srcBinOp * = number
+srcBinOp / = number
+srcBinOp < = number
+srcBinOp > = number
+srcBinOp == = any
+srcBinOp ~= = any
+srcBinOp <= = number
+srcBinOp >= = number
+srcBinOp ·· = string
+
 tgtBinOp : BinaryOperator → Type
 tgtBinOp + = number
 tgtBinOp - = number

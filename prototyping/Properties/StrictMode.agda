@@ -7,11 +7,11 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; Object; function_is_end; defn; alloc; ok; next; lookup-not-allocated) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ; ∅ to ∅ᴴ)
-open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpWarning; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr; +; -; *; /; <; >; <=; >=; ··; _<:_; _≮:_)
+open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr; _≮:_; witness; any; none; nil; number; string; boolean; scalar; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_; Tree; Language; ¬Language; Scalar)
 open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
 open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; string; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
-open import Luau.Type using (Type; strict; nil; number; boolean; string; _⇒_; none; any; tgt; _≡ᵀ_; _≡ᴹᵀ_)
-open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orAny; tgtBinOp)
+open import Luau.Type using (Type; strict; nil; number; boolean; string; _⇒_; none; any; _∩_; _∪_; tgt; _≡ᵀ_; _≡ᴹᵀ_)
+open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orAny; srcBinOp; tgtBinOp)
 open import Luau.Var using (_≡ⱽ_)
 open import Luau.Addr using (_≡ᴬ_)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_; ⊕-lookup-miss; ⊕-swap; ⊕-over) renaming (_[_] to _[_]ⱽ)
@@ -23,7 +23,7 @@ open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴ)
 open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₀; binOp₁; binOp₂; refl; step; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
 open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return; +; -; *; /; <; >; <=; >=; ··)
-open import Luau.RuntimeType using (valueType; number; string; function)
+open import Luau.RuntimeType using (RuntimeType; valueType; number; string; boolean; nil; function)
 
 -- Move these! --
 swapLR : ∀ {A B} → Either A B → Either B A
@@ -86,43 +86,85 @@ lookup-⊑-nothing {H} a (snoc defn) p with a ≡ᴬ next H
 lookup-⊑-nothing {H} a (snoc defn) p | yes refl = refl
 lookup-⊑-nothing {H} a (snoc o) p | no q = trans (lookup-not-allocated o q) p
 
--- For the moment subtyping is just syntactic equality, with any as top but this will change!
+dec-language : ∀ T t → Either (¬Language T t) (Language T t)
+dec-language = {!!}
 
-<:-refl : ∀ T → (T <: T)
-<:-refl T = {!!}
-
-<:-any : ∀ T → (T <: any)
-<:-any = {!!}
-
-≮:-antirefl : ∀ T → ¬(T ≮: T)
-≮:-antirefl = {!!}
+≮:-antirefl : ∀ {T} → ¬(T ≮: T)
+≮:-antirefl (witness (scalar s) (scalar s) (scalar-scalar s t p)) = CONTRADICTION (p refl)
+≮:-antirefl (witness (function-ok t) (function-ok p) (function-ok q)) = ≮:-antirefl (witness t p q)
+≮:-antirefl (witness (function-err t) (function-err p) (function-err q)) = ≮:-antirefl (witness t q p)
+≮:-antirefl (witness t (left p) (q₁ , q₂)) = ≮:-antirefl (witness t p q₁)
+≮:-antirefl (witness t (right p) (q₁ , q₂)) = ≮:-antirefl (witness t p q₂)
+≮:-antirefl (witness t (p₁ , p₂) (left q)) = ≮:-antirefl (witness t p₁ q)
+≮:-antirefl (witness t (p₁ , p₂) (right q)) = ≮:-antirefl (witness t p₂ q)
+≮:-antirefl (witness (scalar s) any (scalar-scalar s () t))
+≮:-antirefl (witness (function-ok t) any (scalar-function-ok ()))
+≮:-antirefl (witness (function-err t) any (scalar-function-err ()))
 
 ≮:-antitrans : ∀ {S T U} → (S ≮: U) → Either (S ≮: T) (T ≮: U)
-≮:-antitrans = {!!}
+≮:-antitrans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
 
-<:-trans-≮: : ∀ {S T U} → (S <: T) → (S ≮: U) → (T ≮: U)
-<:-trans-≮: = {!!}
+any-≮: : ∀ {T U} → (T ≮: U) → (any ≮: U)
+any-≮: (witness t p q) = witness t any q
 
-≮:-trans-<: : ∀ {S T U} → (S ≮: U) → (T <: U) → (S ≮: T)
-≮:-trans-<: = {!!}
+none-≮: : ∀ {T U} → (T ≮: U) → (T ≮: none)
+none-≮: (witness t p q) = witness t p none
 
-src-contravariant : ∀ {T U} → (T <: U) → (src U <: src T)
-src-contravariant = {!!}
+skalar = number ∪ (string ∪ (nil ∪ boolean))
 
-tgt-covariant : ∀ {T U} → (T <: U) → (tgt T <: tgt U)
-tgt-covariant = {!!}
+tgt-function-ok : ∀ {T t} → (Language (tgt T) t) → Language T (function-ok t)
+tgt-function-ok {T = nil} (scalar ())
+tgt-function-ok {T = T₁ ⇒ T₂} p = function-ok p
+tgt-function-ok {T = none} (scalar ())
+tgt-function-ok {T = any} p = any
+tgt-function-ok {T = boolean} (scalar ())
+tgt-function-ok {T = number} (scalar ())
+tgt-function-ok {T = string} (scalar ())
+tgt-function-ok {T = T₁ ∪ T₂} (left p) = left (tgt-function-ok p)
+tgt-function-ok {T = T₁ ∪ T₂} (right p) = right (tgt-function-ok p)
+tgt-function-ok {T = T₁ ∩ T₂} (p₁ , p₂) = (tgt-function-ok p₁ , tgt-function-ok p₂)
 
-tgt-≮: : ∀ {T U} → (tgt T ≮: tgt U) → (T ≮: U)
-tgt-≮: = {!!}
+function-ok-tgt : ∀ {T t} → Language T (function-ok t) → (Language (tgt T) t)
+function-ok-tgt (function-ok p) = p
+function-ok-tgt (left p) = left (function-ok-tgt p)
+function-ok-tgt (right p) = right (function-ok-tgt p)
+function-ok-tgt (p₁ , p₂) = (function-ok-tgt p₁ , function-ok-tgt p₂)
+function-ok-tgt any = any
 
-none-tgt-≮: : ∀ {T U} → (T ≮: (none ⇒ U)) → (tgt T ≮: U)
-none-tgt-≮: = {!!}
+skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
+skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
+
+skalar-scalar : ∀ {T} (s : Scalar T) → (Language skalar (scalar s))
+skalar-scalar number = left (scalar number)
+skalar-scalar boolean = right (right (right (scalar boolean)))
+skalar-scalar string = right (left (scalar string))
+skalar-scalar nil = right (right (left (scalar nil)))
+
+tgt-src-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (none ⇒ U)))
+tgt-src-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
+
+src-tgt-≮: : ∀ {T U} → (T ≮: (skalar ∪ (none ⇒ U))) → (tgt T ≮: U)
+src-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-antirefl (witness (scalar s) (skalar-scalar s) q₁))
+src-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
+src-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
 
 src-≮: : ∀ {T U} → (src T ≮: src U) → (U ≮: T)
 src-≮: = {!!}
 
 any-src-≮: : ∀ {T U} → (T ≮: (U ⇒ any)) → (U ≮: src T)
 any-src-≮: = {!!}
+
+function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
+function-≮:-scalar = {!!}
+
+scalar-≮:-function : ∀ {S T U} → (Scalar U) → (U ≮: (S ⇒ T))
+scalar-≮:-function s = witness (scalar s) (scalar s) (function-scalar s)
+
+any-≮:-scalar : ∀ {U} → (Scalar U) → (any ≮: U)
+any-≮:-scalar s = witness (function-ok (scalar s)) any (scalar-function-ok s)
+
+scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
+scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
 
 -- The rest of the proof just depends on those properties
 
@@ -132,47 +174,26 @@ any-src-≮: = {!!}
 ≡-trans-≮: : ∀ {S T U} → (S ≡ T) → (T ≮: U) → (S ≮: U)
 ≡-trans-≮: refl p = p
 
-≡-impl-<: : ∀ {T U} → (T ≡ U) → (T <: U)
-≡-impl-<: {T} refl = <:-refl T
+heap-weakeningᴱ : ∀ Γ H M {H′ U} → (H ⊑ H′) → (typeOfᴱ H′ Γ M ≮: U) → (typeOfᴱ H Γ M ≮: U)
+heap-weakeningᴱ Γ H (var x) h p = p
+heap-weakeningᴱ Γ H (val nil) h p = p
+heap-weakeningᴱ Γ H (val (addr a)) refl p = p
+heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} q) p with a ≡ᴬ b
+heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = a} defn) p | yes refl = any-≮: p
+heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} q) p | no r = ≡-trans-≮: (cong orAny (cong typeOfᴹᴼ (lookup-not-allocated q r))) p
+heap-weakeningᴱ Γ H (val (number x)) h p = p
+heap-weakeningᴱ Γ H (val (bool x)) h p = p
+heap-weakeningᴱ Γ H (val (string x)) h p = p
+heap-weakeningᴱ Γ H (M $ N) h p = src-tgt-≮: (heap-weakeningᴱ Γ H M h (tgt-src-≮: p))
+heap-weakeningᴱ Γ H (function f ⟨ var x ∈ T ⟩∈ U is B end) h p = p
+heap-weakeningᴱ Γ H (block var b ∈ T is B end) h p = p
+heap-weakeningᴱ Γ H (binexp M op N) h p = p
 
-heap-weakeningᴱ : ∀ Γ H M {H′} → (H ⊑ H′) → (typeOfᴱ H′ Γ M <: typeOfᴱ H Γ M)
-heap-weakeningᴮ : ∀ Γ H B {H′} → (H ⊑ H′) → (typeOfᴮ H′ Γ B <: typeOfᴮ H Γ B)
-
-heap-weakeningᴱ Γ H (var x) h = <:-refl (typeOfᴱ H Γ (var x))
-heap-weakeningᴱ Γ H (val nil) h = <:-refl nil
-heap-weakeningᴱ Γ H (val (addr a)) refl = <:-refl (typeOfᴱ H Γ (val (addr a)))
-heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} defn) with a ≡ᴬ b
-heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = a} {O = O} defn) | yes refl = <:-any (typeOfᴼ O)
-heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} p) | no q = ≡-impl-<: (cong orAny (cong typeOfᴹᴼ (sym (lookup-not-allocated p q))))
-heap-weakeningᴱ Γ H (val (number n)) h = <:-refl number
-heap-weakeningᴱ Γ H (val (bool b)) h = <:-refl boolean
-heap-weakeningᴱ Γ H (val (string x)) h = <:-refl string
-heap-weakeningᴱ Γ H (binexp M op N) h = <:-refl (typeOfᴱ H Γ (binexp M op N))
-heap-weakeningᴱ Γ H (M $ N) h = tgt-covariant (heap-weakeningᴱ Γ H M h)
-heap-weakeningᴱ Γ H (function f ⟨ var x ∈ T ⟩∈ U is B end) h = <:-refl (T ⇒ U)
-heap-weakeningᴱ Γ H (block var b ∈ T is B end) h = <:-refl T
-heap-weakeningᴮ Γ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) h = heap-weakeningᴮ (Γ ⊕ f ↦ (T ⇒ U)) H B h
-heap-weakeningᴮ Γ H (local var x ∈ T ← M ∙ B) h = heap-weakeningᴮ (Γ ⊕ x ↦ T) H B h
-heap-weakeningᴮ Γ H (return M ∙ B) h = heap-weakeningᴱ Γ H M h
-heap-weakeningᴮ Γ H (done) h = <:-refl nil
-
-heap-weakening-≮:ᴱ : ∀ Γ H M {H′ U} → (H ⊑ H′) → (typeOfᴱ H′ Γ M ≮: U) → (typeOfᴱ H Γ M ≮: U)
-heap-weakening-≮:ᴱ Γ H M h p = <:-trans-≮: (heap-weakeningᴱ Γ H M h) p
-
-heap-weakening-≮:ᴮ : ∀ Γ H B {H′ U} → (H ⊑ H′) → (typeOfᴮ H′ Γ B ≮: U) → (typeOfᴮ H Γ B ≮: U)
-heap-weakening-≮:ᴮ Γ H B h p = <:-trans-≮: (heap-weakeningᴮ Γ H B h) p
-
--- none-not-obj : ∀ O → none ≢ typeOfᴼ O
--- none-not-obj (function f ⟨ var x ∈ T ⟩∈ U is B end) ()
-
--- typeOf-val-not-none : ∀ {H Γ} v → OrWarningᴱ H (typeCheckᴱ H Γ (val v)) (typeOfᴱ H Γ (val v) ≮: none)
--- typeOf-val-not-none nil = ok {!!}
--- typeOf-val-not-none (number n) = ok {!!}
--- typeOf-val-not-none (bool b) = ok {!!}
--- typeOf-val-not-none (string x) = ok {!!}
--- typeOf-val-not-none {H = H} (addr a) with remember (H [ a ]ᴴ)
--- typeOf-val-not-none {H = H} (addr a) | (just O , p) = ok {!!}
--- typeOf-val-not-none {H = H} (addr a) | (nothing , p) = warning (UnallocatedAddress p)
+heap-weakeningᴮ : ∀ Γ H B {H′ U} → (H ⊑ H′) → (typeOfᴮ H′ Γ B ≮: U) → (typeOfᴮ H Γ B ≮: U)
+heap-weakeningᴮ Γ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) h p = heap-weakeningᴮ (Γ ⊕ f ↦ (T ⇒ U)) H B h p
+heap-weakeningᴮ Γ H (local var x ∈ T ← M ∙ B) h p = heap-weakeningᴮ (Γ ⊕ x ↦ T) H B h p
+heap-weakeningᴮ Γ H (return M ∙ B) h p = heap-weakeningᴱ Γ H M h p
+heap-weakeningᴮ Γ H done h p = p
 
 substitutivityᴱ : ∀ {Γ T U} H M v x → (typeOfᴱ H Γ (M [ v / x ]ᴱ) ≮: U) → Either (typeOfᴱ H (Γ ⊕ x ↦ T) M ≮: U) (typeOfᴱ H ∅ (val v) ≮: T)
 substitutivityᴱ-whenever : ∀ {Γ T U} H v x y (r : Dec(x ≡ y)) → (typeOfᴱ H Γ (var y [ v / x ]ᴱwhenever r) ≮: U) → Either (typeOfᴱ H (Γ ⊕ x ↦ T) (var y) ≮: U) (typeOfᴱ H ∅ (val v) ≮: T)
@@ -184,7 +205,7 @@ substitutivityᴮ-unless-no : ∀ {Γ Γ′ T V} H B v x y (r : x ≢ y) → (Γ
 substitutivityᴱ H (var y) v x p = substitutivityᴱ-whenever H v x y (x ≡ⱽ y) p
 substitutivityᴱ H (val w) v x p = Left p
 substitutivityᴱ H (binexp M op N) v x p = Left p
-substitutivityᴱ H (M $ N) v x p = mapL none-tgt-≮: (substitutivityᴱ H M v x (tgt-≮: p))
+substitutivityᴱ H (M $ N) v x p = mapL src-tgt-≮: (substitutivityᴱ H M v x (tgt-src-≮: p))
 substitutivityᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p = Left p
 substitutivityᴱ H (block var b ∈ T is B end) v x p = Left p
 substitutivityᴱ-whenever H v x x (yes refl) q = swapLR (≮:-antitrans q)
@@ -199,114 +220,35 @@ substitutivityᴮ-unless H B v x y (no p) q = substitutivityᴮ-unless-no H B v 
 substitutivityᴮ-unless-yes H B v x y refl refl p = Left p
 substitutivityᴮ-unless-no H B v x y p refl q = substitutivityᴮ H B v x q
 
--- substitutivityᴱ-src : ∀ {Γ T} H M N v x → (typeOfᴱ H Γ (N [ v / x ]ᴱ) ≮: src(typeOfᴱ H Γ (M [ v / x ]ᴱ))) → Either (typeOfᴱ H (Γ ⊕ x ↦ T) N ≮: src(typeOfᴱ H (Γ ⊕ x ↦ T) M)) (Either (Warningᴱ H (typeCheckᴱ H ∅ (val v))) (typeOfᴱ H ∅ (val v) ≮: T))
--- substitutivityᴱ-src = {!!}
-
-
--- substitutivityᴱ H (var y) v x p with x ≡ⱽ y
--- substitutivityᴱ H (var y) v x p | yes q = substitutivityᴱ-whenever-yes H v x y q p
--- substitutivityᴱ H (var y) v x p | no q = substitutivityᴱ-whenever-no H v x y q p
--- substitutivityᴱ H (val w) v x p = refl
--- substitutivityᴱ H (binexp M op N) v x p = refl
--- substitutivityᴱ H (M $ N) v x p = cong tgt (substitutivityᴱ H M v x p)
--- substitutivityᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p = refl
--- substitutivityᴱ H (block var b ∈ T is B end) v x p = refl
--- substitutivityᴱ-whenever-yes H v x x refl q = cong orAny q
--- substitutivityᴱ-whenever-no H v x y p q = cong orAny ( sym (⊕-lookup-miss x y _ _ p))
--- substitutivityᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p with x ≡ⱽ f
--- substitutivityᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p | yes q = substitutivityᴮ-unless-yes H B v x f q p (⊕-over q)
--- substitutivityᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p | no q = substitutivityᴮ-unless-no H B v x f q p (⊕-swap q)
--- substitutivityᴮ H (local var y ∈ T ← M ∙ B) v x p with x ≡ⱽ y
--- substitutivityᴮ H (local var y ∈ T  ← M ∙ B) v x p | yes q = substitutivityᴮ-unless-yes H B v x y q p (⊕-over q)
--- substitutivityᴮ H (local var y ∈ T  ← M ∙ B) v x p | no q =  substitutivityᴮ-unless-no H B v x y q p (⊕-swap q)
--- substitutivityᴮ H (return M ∙ B) v x p = substitutivityᴱ H M v x p
--- substitutivityᴮ H done v x p = refl
--- substitutivityᴮ-unless-yes H B v x x refl q refl = refl
--- substitutivityᴮ-unless-no H B v x y p q refl = substitutivityᴮ H B v x q
-
--- binOpPreservation : ∀ H {op v w x} → (v ⟦ op ⟧ w ⟶ x) → (tgtBinOp op ≡ typeOfᴱ H ∅ (val x))
--- binOpPreservation H (+ m n) = refl
--- binOpPreservation H (- m n) = refl
--- binOpPreservation H (/ m n) = refl
--- binOpPreservation H (* m n) = refl
--- binOpPreservation H (< m n) = refl
--- binOpPreservation H (> m n) = refl
--- binOpPreservation H (<= m n) = refl
--- binOpPreservation H (>= m n) = refl
--- binOpPreservation H (== v w) = refl
--- binOpPreservation H (~= v w) = refl
--- binOpPreservation H (·· v w) = refl
-
--- <:-BinOpWarning : ∀ op {T U} → (T <: U) → BinOpWarning op T → BinOpWarning op U
--- <:-BinOpWarning = {!!}
-
--- preservationᴱ : ∀ H M {H′ M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Either (typeOfᴱ H′ ∅ M′ <: typeOfᴱ H ∅ M) (Either (Warningᴱ H (typeCheckᴱ H ∅ M)) (Warningᴴ H (typeCheckᴴ H)))
--- preservationᴮ : ∀ H B {H′ B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → Either (typeOfᴮ H′ ∅ B′ <: typeOfᴮ H ∅ B) (Either (Warningᴮ H (typeCheckᴮ H ∅ B)) (Warningᴴ H (typeCheckᴴ H)))
-
--- preservationᴱ = {!!}
--- preservationᴮ = {!!}
-
--- preservationᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) = ok refl
--- preservationᴱ H (M $ N) (app₁ s) with preservationᴱ H M s
--- preservationᴱ H (M $ N) (app₁ s) | ok p = ok (cong tgt p)
--- preservationᴱ H (M $ N) (app₁ s) | warning (expr W) = warning (expr (app₁ W))
--- preservationᴱ H (M $ N) (app₁ s) | warning (heap W) = warning (heap W)
--- preservationᴱ H (M $ N) (app₂ p s) with heap-weakeningᴱ H M (rednᴱ⊑ s)
--- preservationᴱ H (M $ N) (app₂ p s) | ok q = ok (cong tgt q)
--- preservationᴱ H (M $ N) (app₂ p s) | warning W  = warning (expr (app₁ W))
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) with remember (typeOfⱽ H v)
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) with S ≡ᵀ U | T ≡ᵀ typeOfᴮ H (x ↦ S) B
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) | yes refl | yes refl = ok (cong tgt (cong orAny (cong typeOfᴹᴼ p)))
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) | yes refl | no r = warning (heap (addr a p (FunctionDefnMismatch {!!})))
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (just U , q) | no r | _ = warning (expr (FunctionCallMismatch {!!}))
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) with typeOf-val-not-none v
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) | ok r = {!!}
--- preservationᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ S ⟩∈ T is B end) v refl p) | (nothing , q) | warning W = warning (expr (app₂ W))
--- preservationᴱ H (block var b ∈ T is B end) (block s) = ok refl
--- preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v) with T ≡ᵀ typeOfᴱ H ∅ (val v)
--- preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v) | yes p = ok p
--- preservationᴱ H (block var b ∈ T is return M ∙ B end) (return v) | no p = warning (expr (BlockMismatch p))
--- preservationᴱ H (block var b ∈ T is done end) (done) with T ≡ᵀ nil
--- preservationᴱ H (block var b ∈ T is done end) (done) | yes p = ok p
--- preservationᴱ H (block var b ∈ T is done end) (done) | no p = warning (expr (BlockMismatch p))
--- preservationᴱ H (binexp M op N) (binOp₀ s) = ok (binOpPreservation H s)
--- preservationᴱ H (binexp M op N) (binOp₁ s) = ok refl
--- preservationᴱ H (binexp M op N) (binOp₂ s) = ok refl
-
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (local s) with heap-weakeningᴮ H B (rednᴱ⊑ s)
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (local s) | ok p = ok p
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (local s) | warning W = warning (block (local₂ W))
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) with remember (typeOfⱽ H v)
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) | (just U , p) with T ≡ᵀ U
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) | (just T , p) | yes refl = ok (substitutivityᴮ H B v x (sym p))
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) | (just U , p) | no q = warning (block (LocalVarMismatch {!!}))
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) | (nothing , p) with typeOf-val-not-none v
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) | (nothing , p) | ok q = {!!}
--- preservationᴮ H (local var x ∈ T ← M ∙ B) (subst v) | (nothing , p) | warning W = warning (block (local₁ W))
--- preservationᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) with heap-weakeningᴮ H B (snoc defn)
--- preservationᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) | ok r = ok (trans r (substitutivityᴮ _ B (addr a) f refl))
--- preservationᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) | warning W = warning (block (function₂ W))
--- preservationᴮ H (return M ∙ B) (return s) with preservationᴱ H M s
--- preservationᴮ H (return M ∙ B) (return s) | ok p = ok p
--- preservationᴮ H (return M ∙ B) (return s) | warning (expr W) = warning (block (return W))
--- preservationᴮ H (return M ∙ B) (return s) | warning (heap W) = warning (heap W)
+binOpPreservation : ∀ H {op v w x} → (v ⟦ op ⟧ w ⟶ x) → (tgtBinOp op ≡ typeOfᴱ H ∅ (val x))
+binOpPreservation H (+ m n) = refl
+binOpPreservation H (- m n) = refl
+binOpPreservation H (/ m n) = refl
+binOpPreservation H (* m n) = refl
+binOpPreservation H (< m n) = refl
+binOpPreservation H (> m n) = refl
+binOpPreservation H (<= m n) = refl
+binOpPreservation H (>= m n) = refl
+binOpPreservation H (== v w) = refl
+binOpPreservation H (~= v w) = refl
+binOpPreservation H (·· v w) = refl
 
 reflect-subtypingᴱ : ∀ H M {H′ M′ T} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (typeOfᴱ H′ ∅ M′ ≮: T) → Either (typeOfᴱ H ∅ M ≮: T) (Warningᴱ H (typeCheckᴱ H ∅ M))
 reflect-subtypingᴮ : ∀ H B {H′ B′ T} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → (typeOfᴮ H′ ∅ B′ ≮: T) → Either (typeOfᴮ H ∅ B ≮: T) (Warningᴮ H (typeCheckᴮ H ∅ B))
 
-reflect-subtypingᴱ H (M $ N) (app₁ s) p = mapLR none-tgt-≮: app₁ (reflect-subtypingᴱ H M s (tgt-≮: p))
-reflect-subtypingᴱ H (M $ N) (app₂ v s) p = Left (none-tgt-≮: (heap-weakening-≮:ᴱ ∅ H M (rednᴱ⊑ s) (tgt-≮: p)))
+reflect-subtypingᴱ H (M $ N) (app₁ s) p = mapLR src-tgt-≮: app₁ (reflect-subtypingᴱ H M s (tgt-src-≮: p))
+reflect-subtypingᴱ H (M $ N) (app₂ v s) p = Left (src-tgt-≮: (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (tgt-src-≮: p)))
 reflect-subtypingᴱ H (M $ N) (beta (function f ⟨ var y ∈ T ⟩∈ U is B end) v refl q) p = Left (≡-trans-≮: (cong tgt (cong orAny (cong typeOfᴹᴼ q))) p)
 reflect-subtypingᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) p = Left p
 reflect-subtypingᴱ H (block var b ∈ T is B end) (block s) p = Left p
 reflect-subtypingᴱ H (block var b ∈ T is return (val v) ∙ B end) (return v) p = mapR BlockMismatch (swapLR (≮:-antitrans p))
 reflect-subtypingᴱ H (block var b ∈ T is done end) done p = mapR BlockMismatch (swapLR (≮:-antitrans p))
-reflect-subtypingᴱ H (binexp M op N) (binOp₀ s) p = {!!}
+reflect-subtypingᴱ H (binexp M op N) (binOp₀ s) p = Left (≡-trans-≮: (binOpPreservation H s) p)
 reflect-subtypingᴱ H (binexp M op N) (binOp₁ s) p = Left p
 reflect-subtypingᴱ H (binexp M op N) (binOp₂ s) p = Left p
 
-reflect-subtypingᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) p = mapLR (heap-weakening-≮:ᴮ _ _ B (snoc defn)) (CONTRADICTION ∘ (≮:-antirefl (T ⇒ U))) (substitutivityᴮ _ B (addr a) f p)
-reflect-subtypingᴮ H (local var x ∈ T ← M ∙ B) (local s) p = Left (heap-weakening-≮:ᴮ (x ↦ T) H B (rednᴱ⊑ s) p)
+reflect-subtypingᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) p = mapLR (heap-weakeningᴮ _ _ B (snoc defn)) (CONTRADICTION ∘ ≮:-antirefl) (substitutivityᴮ _ B (addr a) f p)
+reflect-subtypingᴮ H (local var x ∈ T ← M ∙ B) (local s) p = Left (heap-weakeningᴮ (x ↦ T) H B (rednᴱ⊑ s) p)
 reflect-subtypingᴮ H (local var x ∈ T ← M ∙ B) (subst v) p = mapR LocalVarMismatch (substitutivityᴮ H B v x p) 
 reflect-subtypingᴮ H (return M ∙ B) (return s) p = mapR return (reflect-subtypingᴱ H M s p)
 
@@ -330,10 +272,10 @@ reflect-substitutionᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x (Fu
 reflect-substitutionᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x (function₁ W) = mapL function₁ (reflect-substitutionᴮ-unless H B v x y (x ≡ⱽ y) W)
 reflect-substitutionᴱ H (block var b ∈ T is B end) v x (BlockMismatch q) =  mapLR BlockMismatch Right (substitutivityᴮ H B v x q)
 reflect-substitutionᴱ H (block var b ∈ T is B end) v x (block₁ W′) = mapL block₁ (reflect-substitutionᴮ H B v x W′)
-reflect-substitutionᴱ H (binexp M op N) x v (BinOpMismatch₁ q) = {!!}
-reflect-substitutionᴱ H (binexp M op N) x v (BinOpMismatch₂ q) = {!!}
-reflect-substitutionᴱ H (binexp M op N) x v (bin₁ W) = mapL bin₁ (reflect-substitutionᴱ H M x v W)
-reflect-substitutionᴱ H (binexp M op N) x v (bin₂ W) = mapL bin₂ (reflect-substitutionᴱ H N x v W)
+reflect-substitutionᴱ H (binexp M op N) v x (BinOpMismatch₁ q) = mapLR BinOpMismatch₁ Right (substitutivityᴱ H M v x q)
+reflect-substitutionᴱ H (binexp M op N) v x (BinOpMismatch₂ q) = mapLR BinOpMismatch₂ Right (substitutivityᴱ H N v x q)
+reflect-substitutionᴱ H (binexp M op N) v x (bin₁ W) = mapL bin₁ (reflect-substitutionᴱ H M v x W)
+reflect-substitutionᴱ H (binexp M op N) v x (bin₂ W) = mapL bin₂ (reflect-substitutionᴱ H N v x W)
 
 reflect-substitutionᴱ-whenever H a x x (yes refl) (UnallocatedAddress p) = Right (Left (UnallocatedAddress p))
 reflect-substitutionᴱ-whenever H v x y (no p) (UnboundVariable q) = Left (UnboundVariable (trans (sym (⊕-lookup-miss x y _ _ p)) q))
@@ -356,37 +298,37 @@ reflect-weakeningᴮ : ∀ Γ H B {H′} → (H ⊑ H′) → Warningᴮ H′ (t
 
 reflect-weakeningᴱ Γ H (var x) h (UnboundVariable p) = (UnboundVariable p)
 reflect-weakeningᴱ Γ H (val (addr a)) h (UnallocatedAddress p) = UnallocatedAddress (lookup-⊑-nothing a h p)
-reflect-weakeningᴱ Γ H (M $ N) h (FunctionCallMismatch p) = FunctionCallMismatch (heap-weakening-≮:ᴱ Γ H N h (any-src-≮: (heap-weakening-≮:ᴱ Γ H M h (src-≮: p))))
+reflect-weakeningᴱ Γ H (M $ N) h (FunctionCallMismatch p) = FunctionCallMismatch (heap-weakeningᴱ Γ H N h (any-src-≮: (heap-weakeningᴱ Γ H M h (src-≮: p))))
 reflect-weakeningᴱ Γ H (M $ N) h (app₁ W) = app₁ (reflect-weakeningᴱ Γ H M h W)
 reflect-weakeningᴱ Γ H (M $ N) h (app₂ W) = app₂ (reflect-weakeningᴱ Γ H N h W)
-reflect-weakeningᴱ Γ H (binexp M op N) h (BinOpMismatch₁ p) = BinOpMismatch₁ {!!} -- (<:-BinOpWarning op (heap-weakeningᴱ Γ H M h) p)
-reflect-weakeningᴱ Γ H (binexp M op N) h (BinOpMismatch₂ p) = BinOpMismatch₂ {!!} -- (<:-BinOpWarning op (heap-weakeningᴱ Γ H N h) p)
+reflect-weakeningᴱ Γ H (binexp M op N) h (BinOpMismatch₁ p) = BinOpMismatch₁ (heap-weakeningᴱ Γ H M h p)
+reflect-weakeningᴱ Γ H (binexp M op N) h (BinOpMismatch₂ p) = BinOpMismatch₂ (heap-weakeningᴱ Γ H N h p)
 reflect-weakeningᴱ Γ H (binexp M op N) h (bin₁ W′) = bin₁ (reflect-weakeningᴱ Γ H M h W′)
 reflect-weakeningᴱ Γ H (binexp M op N) h (bin₂ W′) = bin₂ (reflect-weakeningᴱ Γ H N h W′)
-reflect-weakeningᴱ Γ H (function f ⟨ var y ∈ T ⟩∈ U is B end) h (FunctionDefnMismatch p) = FunctionDefnMismatch {!!} -- (<:-trans-≮: (heap-weakeningᴮ (Γ ⊕ y ↦ T) H B h) p)
+reflect-weakeningᴱ Γ H (function f ⟨ var y ∈ T ⟩∈ U is B end) h (FunctionDefnMismatch p) = FunctionDefnMismatch (heap-weakeningᴮ (Γ ⊕ y ↦ T) H B h p)
 reflect-weakeningᴱ Γ H (function f ⟨ var y ∈ T ⟩∈ U is B end) h (function₁ W) = function₁ (reflect-weakeningᴮ (Γ ⊕ y ↦ T) H B h W)
-reflect-weakeningᴱ Γ H (block var b ∈ T is B end) h (BlockMismatch p) = BlockMismatch {!!} -- (<:-trans-≮: (heap-weakeningᴮ Γ H B h) p)
+reflect-weakeningᴱ Γ H (block var b ∈ T is B end) h (BlockMismatch p) = BlockMismatch (heap-weakeningᴮ Γ H B h p)
 reflect-weakeningᴱ Γ H (block var b ∈ T is B end) h (block₁ W) = block₁ (reflect-weakeningᴮ Γ H B h W)
 
 reflect-weakeningᴮ Γ H (return M ∙ B) h (return W) = return (reflect-weakeningᴱ Γ H M h W)
-reflect-weakeningᴮ Γ H (local var y ∈ T ← M ∙ B) h (LocalVarMismatch p) = LocalVarMismatch (heap-weakening-≮:ᴱ Γ H M h p)
+reflect-weakeningᴮ Γ H (local var y ∈ T ← M ∙ B) h (LocalVarMismatch p) = LocalVarMismatch (heap-weakeningᴱ Γ H M h p)
 reflect-weakeningᴮ Γ H (local var y ∈ T ← M ∙ B) h (local₁ W) = local₁ (reflect-weakeningᴱ Γ H M h W)
 reflect-weakeningᴮ Γ H (local var y ∈ T ← M ∙ B) h (local₂ W) = local₂ (reflect-weakeningᴮ (Γ ⊕ y ↦ T) H B h W)
-reflect-weakeningᴮ Γ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) h (FunctionDefnMismatch p) = FunctionDefnMismatch (heap-weakening-≮:ᴮ (Γ ⊕ x ↦ T) H C h p)
+reflect-weakeningᴮ Γ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) h (FunctionDefnMismatch p) = FunctionDefnMismatch (heap-weakeningᴮ (Γ ⊕ x ↦ T) H C h p)
 reflect-weakeningᴮ Γ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) h (function₁ W) = function₁ (reflect-weakeningᴮ (Γ ⊕ x ↦ T) H C h W)
 reflect-weakeningᴮ Γ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) h (function₂ W) = function₂ (reflect-weakeningᴮ (Γ ⊕ f ↦ (T ⇒ U)) H B h W)
 
 reflect-weakeningᴼ : ∀ H O {H′} → (H ⊑ H′) → Warningᴼ H′ (typeCheckᴼ H′ O) → Warningᴼ H (typeCheckᴼ H O)
-reflect-weakeningᴼ H (just function f ⟨ var x ∈ T ⟩∈ U is B end) h (FunctionDefnMismatch p) = FunctionDefnMismatch (heap-weakening-≮:ᴮ (x ↦ T) H B h p)
+reflect-weakeningᴼ H (just function f ⟨ var x ∈ T ⟩∈ U is B end) h (FunctionDefnMismatch p) = FunctionDefnMismatch (heap-weakeningᴮ (x ↦ T) H B h p)
 reflect-weakeningᴼ H (just function f ⟨ var x ∈ T ⟩∈ U is B end) h (function₁ W) = function₁ (reflect-weakeningᴮ (x ↦ T) H B h W)
 
 reflectᴱ : ∀ H M {H′ M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Warningᴱ H′ (typeCheckᴱ H′ ∅ M′) → Either (Warningᴱ H (typeCheckᴱ H ∅ M)) (Warningᴴ H (typeCheckᴴ H))
 reflectᴮ : ∀ H B {H′ B′} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → Warningᴮ H′ (typeCheckᴮ H′ ∅ B′) → Either (Warningᴮ H (typeCheckᴮ H ∅ B)) (Warningᴴ H (typeCheckᴴ H))
 
-reflectᴱ H (M $ N) (app₁ s) (FunctionCallMismatch p) = cond (Left ∘ FunctionCallMismatch ∘ heap-weakening-≮:ᴱ ∅ H N (rednᴱ⊑ s) ∘ any-src-≮:) (Left ∘ app₁) (reflect-subtypingᴱ H M s (src-≮: p))
+reflectᴱ H (M $ N) (app₁ s) (FunctionCallMismatch p) = cond (Left ∘ FunctionCallMismatch ∘ heap-weakeningᴱ ∅ H N (rednᴱ⊑ s) ∘ any-src-≮:) (Left ∘ app₁) (reflect-subtypingᴱ H M s (src-≮: p))
 reflectᴱ H (M $ N) (app₁ s) (app₁ W′) = mapL app₁ (reflectᴱ H M s W′)
 reflectᴱ H (M $ N) (app₁ s) (app₂ W′) = Left (app₂ (reflect-weakeningᴱ ∅ H N (rednᴱ⊑ s) W′))
-reflectᴱ H (M $ N) (app₂ p s) (FunctionCallMismatch q) = cond (Left ∘ FunctionCallMismatch ∘ any-src-≮: ∘ heap-weakening-≮:ᴱ ∅ H M (rednᴱ⊑ s) ∘ src-≮:) (Left ∘ app₂) (reflect-subtypingᴱ H N s q)
+reflectᴱ H (M $ N) (app₂ p s) (FunctionCallMismatch q) = cond (Left ∘ FunctionCallMismatch ∘ any-src-≮: ∘ heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) ∘ src-≮:) (Left ∘ app₂) (reflect-subtypingᴱ H N s q)
 reflectᴱ H (M $ N) (app₂ p s) (app₁ W′) = Left (app₁ (reflect-weakeningᴱ ∅ H M (rednᴱ⊑ s) W′))
 reflectᴱ H (M $ N) (app₂ p s) (app₂ W′) = mapL app₂ (reflectᴱ H N s W′)
 reflectᴱ H (val (addr a) $ N) (beta (function f ⟨ var x ∈ T ⟩∈ U is B end) v refl p) (BlockMismatch q) with substitutivityᴮ H B v x q 
@@ -401,12 +343,12 @@ reflectᴱ H (block var b ∈ T is B end) (block s) (block₁ W′) = mapL block
 reflectᴱ H (block var b ∈ T is B end) (return v) W′ = Left (block₁ (return W′))
 reflectᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) (UnallocatedAddress ())
 reflectᴱ H (binexp M op N) (binOp₀ ()) (UnallocatedAddress p)
-reflectᴱ H (binexp M op N) (binOp₁ s) (BinOpMismatch₁ p) = Left (BinOpMismatch₁ {!!}) -- (<:-BinOpWarning op (preservationᴱ H M s) p))
-reflectᴱ H (binexp M op N) (binOp₁ s) (BinOpMismatch₂ p) = Left (BinOpMismatch₂ {!!}) -- (<:-BinOpWarning op (heap-weakeningᴱ ∅ H N (rednᴱ⊑ s)) p))
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinOpMismatch₁ p) = Left (cond BinOpMismatch₁ bin₁ (reflect-subtypingᴱ H M s p))
+reflectᴱ H (binexp M op N) (binOp₁ s) (BinOpMismatch₂ p) = Left (BinOpMismatch₂ (heap-weakeningᴱ ∅ H N (rednᴱ⊑ s) p))
 reflectᴱ H (binexp M op N) (binOp₁ s) (bin₁ W′) = mapL bin₁ (reflectᴱ H M s W′)
 reflectᴱ H (binexp M op N) (binOp₁ s) (bin₂ W′) = Left (bin₂ (reflect-weakeningᴱ ∅ H N (rednᴱ⊑ s) W′))
-reflectᴱ H (binexp M op N) (binOp₂ s) (BinOpMismatch₁ p) = Left (BinOpMismatch₁ {!!}) -- (<:-BinOpWarning op (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s)) p))
-reflectᴱ H (binexp M op N) (binOp₂ s) (BinOpMismatch₂ p) = Left (BinOpMismatch₂ {!!}) -- (<:-BinOpWarning op (preservationᴱ H N s) p))
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinOpMismatch₁ p) = Left (BinOpMismatch₁ (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) p))
+reflectᴱ H (binexp M op N) (binOp₂ s) (BinOpMismatch₂ p) = Left (cond BinOpMismatch₂ bin₂ (reflect-subtypingᴱ H N s p))
 reflectᴱ H (binexp M op N) (binOp₂ s) (bin₁ W′) = Left (bin₁ (reflect-weakeningᴱ ∅ H M (rednᴱ⊑ s) W′))
 reflectᴱ H (binexp M op N) (binOp₂ s) (bin₂ W′) = mapL bin₂ (reflectᴱ H N s W′)
 
@@ -417,7 +359,7 @@ reflectᴮ H (local var x ∈ T ← M ∙ B) (subst v) W′ = Left (cond local�
 reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ with reflect-substitutionᴮ _ B (addr a) f W′
 reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Left W = Left (function₂ (reflect-weakeningᴮ (f ↦ (T ⇒ U)) H B (snoc defn) W))
 reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Right (Left (UnallocatedAddress ()))
-reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Right (Right p) = CONTRADICTION (≮:-antirefl (T ⇒ U) p)
+reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Right (Right p) = CONTRADICTION (≮:-antirefl p)
 reflectᴮ H (return M ∙ B) (return s) (return W′) = mapL return (reflectᴱ H M s W′)
 
 reflectᴴᴱ : ∀ H M {H′ M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Warningᴴ H′ (typeCheckᴴ H′) → Either (Warningᴱ H (typeCheckᴱ H ∅ M)) (Warningᴴ H (typeCheckᴴ H))
@@ -427,7 +369,7 @@ reflectᴴᴱ H (M $ N) (app₁ s) W = mapL app₁ (reflectᴴᴱ H M s W)
 reflectᴴᴱ H (M $ N) (app₂ v s) W = mapL app₂ (reflectᴴᴱ H N s W)
 reflectᴴᴱ H (M $ N) (beta O v refl p) W = Right W
 reflectᴴᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a p) (addr b refl W) with b ≡ᴬ a
-reflectᴴᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) (addr b refl (FunctionDefnMismatch p)) | yes refl = Left (FunctionDefnMismatch (heap-weakening-≮:ᴮ (x ↦ T) H B (snoc defn) p))
+reflectᴴᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) (addr b refl (FunctionDefnMismatch p)) | yes refl = Left (FunctionDefnMismatch (heap-weakeningᴮ (x ↦ T) H B (snoc defn) p))
 reflectᴴᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) (addr b refl (function₁ W)) | yes refl = Left (function₁ (reflect-weakeningᴮ (x ↦ T) H B (snoc defn) W))
 reflectᴴᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a p) (addr b refl W) | no q = Right (addr b (lookup-not-allocated p q) (reflect-weakeningᴼ H _ (snoc p) W))
 reflectᴴᴱ H (block var b ∈ T is B end) (block s) W = mapL block₁ (reflectᴴᴮ H B s W)
@@ -438,7 +380,7 @@ reflectᴴᴱ H (binexp M op N) (binOp₁ s) W = mapL bin₁ (reflectᴴᴱ H M 
 reflectᴴᴱ H (binexp M op N) (binOp₂ s) W = mapL bin₂ (reflectᴴᴱ H N s W)
 
 reflectᴴᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a p) (addr b refl W) with b ≡ᴬ a
-reflectᴴᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) (addr b refl (FunctionDefnMismatch p)) | yes refl = Left (FunctionDefnMismatch (heap-weakening-≮:ᴮ (x ↦ T) H C (snoc defn) p))
+reflectᴴᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) (addr b refl (FunctionDefnMismatch p)) | yes refl = Left (FunctionDefnMismatch (heap-weakeningᴮ (x ↦ T) H C (snoc defn) p))
 reflectᴴᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) (addr b refl (function₁ W)) | yes refl = Left (function₁ (reflect-weakeningᴮ (x ↦ T) H C (snoc defn) W))
 reflectᴴᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a p) (addr b refl W) | no q = Right (addr b (lookup-not-allocated p q) (reflect-weakeningᴼ H _ (snoc p) W))
 reflectᴴᴮ H (local var x ∈ T ← M ∙ B) (local s) W = mapL local₁ (reflectᴴᴱ H M s W)
@@ -450,24 +392,40 @@ reflect* H B refl W = W
 reflect* H B (step s t) W = cond (reflectᴮ H B s) (reflectᴴᴮ H B s) (reflect* _ _ t W)
 
 isntNumber : ∀ H v → (valueType v ≢ number) → (typeOfᴱ H ∅ (val v) ≮: number)
-isntNumber = {!!}
+isntNumber H nil p = scalar-≢-impl-≮: nil number (λ ())
+isntNumber H (addr a) p with remember (H [ a ]ᴴ)
+isntNumber H (addr a) p | (just (function f ⟨ var x ∈ T ⟩∈ U is B end) , q) = ≡-trans-≮: (cong orAny (cong typeOfᴹᴼ q)) (function-≮:-scalar number)
+isntNumber H (addr a) p | (nothing , q) = ≡-trans-≮: (cong orAny (cong typeOfᴹᴼ q)) (any-≮:-scalar number)
+isntNumber H (number x) p = CONTRADICTION (p refl)
+isntNumber H (bool x) p = scalar-≢-impl-≮: boolean number (λ ())
+isntNumber H (string x) p = scalar-≢-impl-≮: string number (λ ())
 
 isntString : ∀ H v → (valueType v ≢ string) → (typeOfᴱ H ∅ (val v) ≮: string)
-isntString = {!!}
+isntString H nil p = scalar-≢-impl-≮: nil string (λ ())
+isntString H (addr a) p with remember (H [ a ]ᴴ)
+isntString H (addr a) p | (just (function f ⟨ var x ∈ T ⟩∈ U is B end) , q) = ≡-trans-≮: (cong orAny (cong typeOfᴹᴼ q)) (function-≮:-scalar string)
+isntString H (addr a) p | (nothing , q) = ≡-trans-≮: (cong orAny (cong typeOfᴹᴼ q)) (any-≮:-scalar string)
+isntString H (number x) p = scalar-≢-impl-≮: number string (λ ())
+isntString H (bool x) p = scalar-≢-impl-≮: boolean string (λ ())
+isntString H (string x) p = CONTRADICTION (p refl)
 
 isntFunction : ∀ H v {T U} → (valueType v ≢ function) → (typeOfᴱ H ∅ (val v) ≮: (T ⇒ U))
-isntFunction = {!!}
+isntFunction H nil p = scalar-≮:-function nil
+isntFunction H (addr a) p = CONTRADICTION (p refl)
+isntFunction H (number x) p = scalar-≮:-function number
+isntFunction H (bool x) p = scalar-≮:-function boolean
+isntFunction H (string x) p = scalar-≮:-function string
 
-runtimeBinOpWarning : ∀ H {op} v → BinOpError op (valueType v) → BinOpWarning op (orAny (typeOfⱽ H v))
-runtimeBinOpWarning H v (+ p) = + (isntNumber H v p)
-runtimeBinOpWarning H v (- p) = - (isntNumber H v p)
-runtimeBinOpWarning H v (* p) = * (isntNumber H v p)
-runtimeBinOpWarning H v (/ p) = / (isntNumber H v p)
-runtimeBinOpWarning H v (< p) = < (isntNumber H v p)
-runtimeBinOpWarning H v (> p) = > (isntNumber H v p)
-runtimeBinOpWarning H v (<= p) = <= (isntNumber H v p)
-runtimeBinOpWarning H v (>= p) = >= (isntNumber H v p)
-runtimeBinOpWarning H v (·· p) = ·· (isntString H v p)
+runtimeBinOpWarning : ∀ H {op} v → BinOpError op (valueType v) → (typeOfᴱ H ∅ (val v) ≮: srcBinOp op)
+runtimeBinOpWarning H v (+ p) = isntNumber H v p
+runtimeBinOpWarning H v (- p) = isntNumber H v p
+runtimeBinOpWarning H v (* p) = isntNumber H v p
+runtimeBinOpWarning H v (/ p) = isntNumber H v p
+runtimeBinOpWarning H v (< p) = isntNumber H v p
+runtimeBinOpWarning H v (> p) = isntNumber H v p
+runtimeBinOpWarning H v (<= p) = isntNumber H v p
+runtimeBinOpWarning H v (>= p) = isntNumber H v p
+runtimeBinOpWarning H v (·· p) = isntString H v p
 
 runtimeWarningᴱ : ∀ H M → RuntimeErrorᴱ H M → Warningᴱ H (typeCheckᴱ H ∅ M)
 runtimeWarningᴮ : ∀ H B → RuntimeErrorᴮ H B → Warningᴮ H (typeCheckᴮ H ∅ B)
@@ -487,6 +445,6 @@ runtimeWarningᴮ H (local var x ∈ T ← M ∙ B) (local err) = local₁ (runt
 runtimeWarningᴮ H (return M ∙ B) (return err) = return (runtimeWarningᴱ H M err)
 
 wellTypedProgramsDontGoWrong : ∀ H′ B B′ → (∅ᴴ ⊢ B ⟶* B′ ⊣ H′) → (RuntimeErrorᴮ H′ B′) → Warningᴮ ∅ᴴ (typeCheckᴮ ∅ᴴ ∅ B)
-wellTypedProgramsDontGoWrong H′ B B′ t err with reflect* ∅ᴴ B t {!!}
+wellTypedProgramsDontGoWrong H′ B B′ t err with reflect* ∅ᴴ B t (Left (runtimeWarningᴮ H′ B′ err))
 wellTypedProgramsDontGoWrong H′ B B′ t err | Right (addr a refl ())
 wellTypedProgramsDontGoWrong H′ B B′ t err | Left W = W
