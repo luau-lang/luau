@@ -6,67 +6,16 @@ open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; var; binexp; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; +; -; *; /; <; >; <=; >=; ··)
 open import Luau.Type using (Type; strict; nil; number; string; boolean; none; any; _⇒_; _∪_; _∩_; tgt)
+open import Luau.Subtyping using (_≮:_)
 open import Luau.Heap using (Heap; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; ⊢ᴴ_; ⊢ᴼ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; var; addr; app; binexp; block; return; local; function; srcBinOp)
 open import Properties.Contradiction using (¬)
-open import Properties.Equality using (_≢_)
 open import Properties.TypeCheck(strict) using (typeCheckᴮ)
 open import Properties.Product using (_,_)
 
 src : Type → Type
 src = Luau.Type.src strict
-
-data Scalar : Type → Set where
-
-  number : Scalar number
-  boolean : Scalar boolean
-  string : Scalar string
-  nil : Scalar nil
-
-data Tree : Set where
-
-  scalar : ∀ {T} → Scalar T → Tree
-  function : Tree
-  function-ok : Tree → Tree
-  function-err : Tree → Tree
-  
-data Language : Type → Tree → Set
-data ¬Language : Type → Tree → Set
-
-data Language where
-
-  scalar : ∀ {T} → (s : Scalar T) → Language T (scalar s)
-  function : ∀ {T U} → Language (T ⇒ U) function
-  function-ok : ∀ {T U u} → (Language U u) → Language (T ⇒ U) (function-ok u)
-  function-err : ∀ {T U t} → (¬Language T t) → Language (T ⇒ U) (function-err t)
-  scalar-function-err : ∀ {S t} → (Scalar S) → Language S (function-err t)
-  left : ∀ {T U t} → Language T t → Language (T ∪ U) t
-  right : ∀ {T U u} → Language U u → Language (T ∪ U) u
-  _,_ : ∀ {T U t} → Language T t → Language U t → Language (T ∩ U) t
-  any : ∀ {t} → Language any t
-
-data ¬Language where
-
-  scalar-scalar : ∀ {S T} → (s : Scalar S) → (Scalar T) → (S ≢ T) → ¬Language T (scalar s)
-  scalar-function : ∀ {S} → (Scalar S) → ¬Language S function
-  scalar-function-ok : ∀ {S u} → (Scalar S) → ¬Language S (function-ok u)
-  function-scalar : ∀ {S T U} (s : Scalar S) → ¬Language (T ⇒ U) (scalar s)
-  function-ok : ∀ {T U u} → (¬Language U u) → ¬Language (T ⇒ U) (function-ok u)
-  function-err : ∀ {T U t} → (Language T t) → ¬Language (T ⇒ U) (function-err t)
-  _,_ : ∀ {T U t} → ¬Language T t → ¬Language U t → ¬Language (T ∪ U) t
-  left : ∀ {T U t} → ¬Language T t → ¬Language (T ∩ U) t
-  right : ∀ {T U u} → ¬Language U u → ¬Language (T ∩ U) u
-  none : ∀ {t} → ¬Language none t
-
-data _≮:_ (T U : Type) : Set where
-
-  witness : ∀ t →
-
-    Language T t →
-    ¬Language U t →
-    -----------------
-    T ≮: U
 
 data Warningᴱ (H : Heap yes) {Γ} : ∀ {M T} → (Γ ⊢ᴱ M ∈ T) → Set
 data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set

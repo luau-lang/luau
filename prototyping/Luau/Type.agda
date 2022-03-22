@@ -17,6 +17,13 @@ data Type : Set where
   _∪_ : Type → Type → Type
   _∩_ : Type → Type → Type
 
+data Scalar : Type → Set where
+
+  number : Scalar number
+  boolean : Scalar boolean
+  string : Scalar string
+  nil : Scalar nil
+
 lhs : Type → Type
 lhs (T ⇒ _) = T
 lhs (T ∪ _) = T

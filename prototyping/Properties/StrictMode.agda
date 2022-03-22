@@ -4,11 +4,12 @@ module Properties.StrictMode where
 
 import Agda.Builtin.Equality.Rewrite
 open import Agda.Builtin.Equality using (_≡_; refl)
-open import FFI.Data.Either using (Either; Left; Right)
+open import FFI.Data.Either using (Either; Left; Right; mapL; mapR; mapLR; swapLR; cond)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Heap using (Heap; Object; function_is_end; defn; alloc; ok; next; lookup-not-allocated) renaming (_≡_⊕_↦_ to _≡ᴴ_⊕_↦_; _[_] to _[_]ᴴ; ∅ to ∅ᴴ)
-open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr; _≮:_; witness; any; none; nil; number; string; boolean; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_; Tree; Language; ¬Language; Scalar)
+open import Luau.StrictMode using (Warningᴱ; Warningᴮ; Warningᴼ; Warningᴴ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; app₁; app₂; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; BlockMismatch; block₁; return; LocalVarMismatch; local₁; local₂; FunctionDefnMismatch; function₁; function₂; heap; expr; block; addr)
 open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var_[_/_]ᴱwhenever_)
+open import Luau.Subtyping using (_≮:_; witness; any; none; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_; Tree; Language; ¬Language)
 open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; string; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
 open import Luau.Type using (Type; strict; nil; number; boolean; string; _⇒_; none; any; _∩_; _∪_; tgt; _≡ᵀ_; _≡ᴹᵀ_)
 open import Luau.TypeCheck(strict) using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orAny; srcBinOp; tgtBinOp)
@@ -20,36 +21,12 @@ open import Properties.Remember using (remember; _,_)
 open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
+open import Properties.Functions using (_∘_)
+open import Properties.Subtyping using (any-≮:; ≡-trans-≮:; ≮:-trans-≡; none-tgt-≮:; tgt-none-≮:; src-any-≮:; any-src-≮:; ≮:-antitrans; ≮:-antirefl; scalar-≢-impl-≮:; function-≮:-scalar; scalar-≮:-function; function-≮:-none; any-≮:-scalar; scalar-≮:-none; any-≮:-none)
 open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴ)
 open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₀; binOp₁; binOp₂; refl; step; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
 open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return; +; -; *; /; <; >; <=; >=; ··)
 open import Luau.RuntimeType using (RuntimeType; valueType; number; string; boolean; nil; function)
-
--- Move these! --
-swapLR : ∀ {A B} → Either A B → Either B A
-swapLR (Left x) = Right x
-swapLR (Right x) = Left x
-
-mapL : ∀ {A B C} → (A → B) → Either A C → Either B C
-mapL f (Left x) = Left (f x)
-mapL f (Right x) = Right x
-
-mapR : ∀ {A B C} → (B → C) → Either A B → Either A C
-mapR f (Left x) = Left x
-mapR f (Right x) = Right (f x)
-
-mapLR : ∀ {A B C D} → (A → B) → (C → D) → Either A C → Either B D
-mapLR f g (Left x) = Left (f x)
-mapLR f g (Right x) = Right (g x)
-
-cond : ∀ {A B C : Set} → (A → C) → (B → C) → (Either A B) → C
-cond f g (Left x) = f x
-cond f g (Right x) = g x
-
-infixr 5 _∘_
-_∘_ : ∀ {A B C : Set} → (B → C) → (A → B) → (A → C)
-(f ∘ g) x = f (g x)
---
 
 src = Luau.Type.src strict
 
@@ -86,193 +63,6 @@ lookup-⊑-nothing {H} a (snoc defn) p with a ≡ᴬ next H
 lookup-⊑-nothing {H} a (snoc defn) p | yes refl = refl
 lookup-⊑-nothing {H} a (snoc o) p | no q = trans (lookup-not-allocated o q) p
 
-dec-language : ∀ T t → Either (¬Language T t) (Language T t)
-dec-language nil (scalar number) = Left (scalar-scalar number nil (λ ()))
-dec-language nil (scalar boolean) = Left (scalar-scalar boolean nil (λ ()))
-dec-language nil (scalar string) = Left (scalar-scalar string nil (λ ()))
-dec-language nil (scalar nil) = Right (scalar nil)
-dec-language nil function = Left (scalar-function nil)
-dec-language nil (function-ok t) = Left (scalar-function-ok nil)
-dec-language nil (function-err t) = Right (scalar-function-err nil)
-dec-language boolean (scalar number) = Left (scalar-scalar number boolean (λ ()))
-dec-language boolean (scalar boolean) = Right (scalar boolean)
-dec-language boolean (scalar string) = Left (scalar-scalar string boolean (λ ()))
-dec-language boolean (scalar nil) = Left (scalar-scalar nil boolean (λ ()))
-dec-language boolean function = Left (scalar-function boolean)
-dec-language boolean (function-ok t) = Left (scalar-function-ok boolean)
-dec-language boolean (function-err t) = Right (scalar-function-err boolean)
-dec-language number (scalar number) = Right (scalar number)
-dec-language number (scalar boolean) = Left (scalar-scalar boolean number (λ ()))
-dec-language number (scalar string) = Left (scalar-scalar string number (λ ()))
-dec-language number (scalar nil) = Left (scalar-scalar nil number (λ ()))
-dec-language number function = Left (scalar-function number)
-dec-language number (function-ok t) = Left (scalar-function-ok number)
-dec-language number (function-err t) = Right (scalar-function-err number)
-dec-language string (scalar number) = Left (scalar-scalar number string (λ ()))
-dec-language string (scalar boolean) = Left (scalar-scalar boolean string (λ ()))
-dec-language string (scalar string) = Right (scalar string)
-dec-language string (scalar nil) = Left (scalar-scalar nil string (λ ()))
-dec-language string function = Left (scalar-function string)
-dec-language string (function-ok t) = Left (scalar-function-ok string)
-dec-language string (function-err t) = Right (scalar-function-err string)
-dec-language (T₁ ⇒ T₂) (scalar s) = Left (function-scalar s)
-dec-language (T₁ ⇒ T₂) function = Right function
-dec-language (T₁ ⇒ T₂) (function-ok t) = mapLR function-ok function-ok (dec-language T₂ t)
-dec-language (T₁ ⇒ T₂) (function-err t) = mapLR function-err function-err (swapLR (dec-language T₁ t))
-dec-language none t = Left none
-dec-language any t = Right any
-dec-language (T₁ ∪ T₂) t = cond (λ p → cond (Left ∘ _,_ p) (Right ∘ right) (dec-language T₂ t)) (Right ∘ left) (dec-language T₁ t)
-dec-language (T₁ ∩ T₂) t = cond (Left ∘ left) (λ p → cond (Left ∘ right) (Right ∘ _,_ p) (dec-language T₂ t)) (dec-language T₁ t)
-
-≮:-antirefl : ∀ {T} → ¬(T ≮: T)
-≮:-antirefl (witness (scalar s) (scalar s) (scalar-scalar s t p)) = CONTRADICTION (p refl)
-≮:-antirefl (witness function function (scalar-function ()))
-≮:-antirefl (witness (function-ok t) (function-ok p) (function-ok q)) = ≮:-antirefl (witness t p q)
-≮:-antirefl (witness (function-err t) (function-err p) (function-err q)) = ≮:-antirefl (witness t q p)
-≮:-antirefl (witness t (left p) (q₁ , q₂)) = ≮:-antirefl (witness t p q₁)
-≮:-antirefl (witness t (right p) (q₁ , q₂)) = ≮:-antirefl (witness t p q₂)
-≮:-antirefl (witness t (p₁ , p₂) (left q)) = ≮:-antirefl (witness t p₁ q)
-≮:-antirefl (witness t (p₁ , p₂) (right q)) = ≮:-antirefl (witness t p₂ q)
-≮:-antirefl (witness (scalar s) any (scalar-scalar s () t))
-≮:-antirefl (witness (function-ok t) any (scalar-function-ok ()))
-≮:-antirefl (witness (function-err t) (scalar-function-err number) ())
-≮:-antirefl (witness (function-err t) (scalar-function-err boolean) ())
-≮:-antirefl (witness (function-err t) (scalar-function-err string) ())
-≮:-antirefl (witness (function-err t) (scalar-function-err nil) ())
-
-≮:-antitrans : ∀ {S T U} → (S ≮: U) → Either (S ≮: T) (T ≮: U)
-≮:-antitrans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
-
-any-≮: : ∀ {T U} → (T ≮: U) → (any ≮: U)
-any-≮: (witness t p q) = witness t any q
-
-none-≮: : ∀ {T U} → (T ≮: U) → (T ≮: none)
-none-≮: (witness t p q) = witness t p none
-
-skalar = number ∪ (string ∪ (nil ∪ boolean))
-
-tgt-function-ok : ∀ {T t} → (Language (tgt T) t) → Language T (function-ok t)
-tgt-function-ok {T = nil} (scalar ())
-tgt-function-ok {T = T₁ ⇒ T₂} p = function-ok p
-tgt-function-ok {T = none} (scalar ())
-tgt-function-ok {T = any} p = any
-tgt-function-ok {T = boolean} (scalar ())
-tgt-function-ok {T = number} (scalar ())
-tgt-function-ok {T = string} (scalar ())
-tgt-function-ok {T = T₁ ∪ T₂} (left p) = left (tgt-function-ok p)
-tgt-function-ok {T = T₁ ∪ T₂} (right p) = right (tgt-function-ok p)
-tgt-function-ok {T = T₁ ∩ T₂} (p₁ , p₂) = (tgt-function-ok p₁ , tgt-function-ok p₂)
-
-function-ok-tgt : ∀ {T t} → Language T (function-ok t) → (Language (tgt T) t)
-function-ok-tgt (function-ok p) = p
-function-ok-tgt (left p) = left (function-ok-tgt p)
-function-ok-tgt (right p) = right (function-ok-tgt p)
-function-ok-tgt (p₁ , p₂) = (function-ok-tgt p₁ , function-ok-tgt p₂)
-function-ok-tgt any = any
-
-skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
-skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
-
-skalar-scalar : ∀ {T} (s : Scalar T) → (Language skalar (scalar s))
-skalar-scalar number = left (scalar number)
-skalar-scalar boolean = right (right (right (scalar boolean)))
-skalar-scalar string = right (left (scalar string))
-skalar-scalar nil = right (right (left (scalar nil)))
-
-tgt-src-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (none ⇒ U)))
-tgt-src-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
-
-src-tgt-≮: : ∀ {T U} → (T ≮: (skalar ∪ (none ⇒ U))) → (tgt T ≮: U)
-src-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-antirefl (witness (scalar s) (skalar-scalar s) q₁))
-src-tgt-≮: (witness function p (q₁ , scalar-function ()))
-src-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
-src-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
-
-function-err-src : ∀ {T t} → (¬Language (src T) t) → Language T (function-err t)
-function-err-src {T = nil} none = scalar-function-err nil
-function-err-src {T = T₁ ⇒ T₂} p = function-err p
-function-err-src {T = none} (scalar-scalar number () p)
-function-err-src {T = none} (scalar-function-ok ())
-function-err-src {T = any} none = any
-function-err-src {T = boolean} p = scalar-function-err boolean
-function-err-src {T = number} p = scalar-function-err number
-function-err-src {T = string} p = scalar-function-err string
-function-err-src {T = T₁ ∪ T₂} (left p) = left (function-err-src p)
-function-err-src {T = T₁ ∪ T₂} (right p) = right (function-err-src p)
-function-err-src {T = T₁ ∩ T₂} (p₁ , p₂) = function-err-src p₁ , function-err-src p₂
-
-¬function-err-src : ∀ {T t} → (Language (src T) t) → ¬Language T (function-err t)
-¬function-err-src {T = nil} (scalar ())
-¬function-err-src {T = T₁ ⇒ T₂} p = function-err p
-¬function-err-src {T = none} any = none
-¬function-err-src {T = any} (scalar ())
-¬function-err-src {T = boolean} (scalar ())
-¬function-err-src {T = number} (scalar ())
-¬function-err-src {T = string} (scalar ())
-¬function-err-src {T = T₁ ∪ T₂} (p₁ , p₂) = (¬function-err-src p₁ , ¬function-err-src p₂)
-¬function-err-src {T = T₁ ∩ T₂} (left p) = left (¬function-err-src p)
-¬function-err-src {T = T₁ ∩ T₂} (right p) = right (¬function-err-src p)
-
-src-¬function-err : ∀ {T t} → Language T (function-err t) → (¬Language (src T) t)
-src-¬function-err {T = nil} p = none
-src-¬function-err {T = T₁ ⇒ T₂} (function-err p) = p
-src-¬function-err {T = none} (scalar-function-err ())
-src-¬function-err {T = any} p = none
-src-¬function-err {T = boolean} p = none
-src-¬function-err {T = number} p = none
-src-¬function-err {T = string} p = none
-src-¬function-err {T = T₁ ∪ T₂} (left p) = left (src-¬function-err p)
-src-¬function-err {T = T₁ ∪ T₂} (right p) = right (src-¬function-err p)
-src-¬function-err {T = T₁ ∩ T₂} (p₁ , p₂) = (src-¬function-err p₁ , src-¬function-err p₂)
-
-src-¬scalar : ∀ {S T t} (s : Scalar S) → Language T (scalar s) → (¬Language (src T) t)
-src-¬scalar number (scalar number) = none
-src-¬scalar boolean (scalar boolean) = none
-src-¬scalar string (scalar string) = none
-src-¬scalar nil (scalar nil) = none
-src-¬scalar s (left p) = left (src-¬scalar s p)
-src-¬scalar s (right p) = right (src-¬scalar s p)
-src-¬scalar s (p₁ , p₂) = (src-¬scalar s p₁ , src-¬scalar s p₂)
-src-¬scalar s any = none
-
-src-any-≮: : ∀ {T U} → (T ≮: src U) → (U ≮: (T ⇒ any))
-src-any-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
-
-any-src-≮: : ∀ {S T U} → (U ≮: S) → (T ≮: (U ⇒ any)) → (U ≮: src T)
-any-src-≮: (witness t x x₁) (witness (scalar s) p (function-scalar s)) = witness t x (src-¬scalar s p)
-any-src-≮: r (witness (function-ok (scalar s)) p (function-ok (scalar-scalar s () q)))
-any-src-≮: r (witness (function-ok (function-ok _)) p (function-ok (scalar-function-ok ())))
-any-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
-
-function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
-function-≮:-scalar s = witness function function (scalar-function s)
-
-scalar-≮:-function : ∀ {S T U} → (Scalar U) → (U ≮: (S ⇒ T))
-scalar-≮:-function s = witness (scalar s) (scalar s) (function-scalar s)
-
-any-≮:-scalar : ∀ {U} → (Scalar U) → (any ≮: U)
-any-≮:-scalar s = witness (function-ok (scalar s)) any (scalar-function-ok s)
-
-scalar-≮:-none : ∀ {U} → (Scalar U) → (U ≮: none)
-scalar-≮:-none s = witness (scalar s) (scalar s) none
-
-any-≮:-none : (any ≮: none)
-any-≮:-none = witness (scalar nil) any none
-
-function-≮:-none : ∀ {T U} → ((T ⇒ U) ≮: none)
-function-≮:-none = witness function function none
-
-scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
-scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
-
--- The rest of the proof just depends on those properties
-
-≮:-trans-≡ : ∀ {S T U} → (S ≮: T) → (T ≡ U) → (S ≮: U)
-≮:-trans-≡ p refl = p
-
-≡-trans-≮: : ∀ {S T U} → (S ≡ T) → (T ≮: U) → (S ≮: U)
-≡-trans-≮: refl p = p
-
 heap-weakeningᴱ : ∀ Γ H M {H′ U} → (H ⊑ H′) → (typeOfᴱ H′ Γ M ≮: U) → (typeOfᴱ H Γ M ≮: U)
 heap-weakeningᴱ Γ H (var x) h p = p
 heap-weakeningᴱ Γ H (val nil) h p = p
@@ -283,7 +73,7 @@ heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} q) p | no r = ≡-trans-≮:
 heap-weakeningᴱ Γ H (val (number x)) h p = p
 heap-weakeningᴱ Γ H (val (bool x)) h p = p
 heap-weakeningᴱ Γ H (val (string x)) h p = p
-heap-weakeningᴱ Γ H (M $ N) h p = src-tgt-≮: (heap-weakeningᴱ Γ H M h (tgt-src-≮: p))
+heap-weakeningᴱ Γ H (M $ N) h p = none-tgt-≮: (heap-weakeningᴱ Γ H M h (tgt-none-≮: p))
 heap-weakeningᴱ Γ H (function f ⟨ var x ∈ T ⟩∈ U is B end) h p = p
 heap-weakeningᴱ Γ H (block var b ∈ T is B end) h p = p
 heap-weakeningᴱ Γ H (binexp M op N) h p = p
@@ -304,7 +94,7 @@ substitutivityᴮ-unless-no : ∀ {Γ Γ′ T V} H B v x y (r : x ≢ y) → (Γ
 substitutivityᴱ H (var y) v x p = substitutivityᴱ-whenever H v x y (x ≡ⱽ y) p
 substitutivityᴱ H (val w) v x p = Left p
 substitutivityᴱ H (binexp M op N) v x p = Left p
-substitutivityᴱ H (M $ N) v x p = mapL src-tgt-≮: (substitutivityᴱ H M v x (tgt-src-≮: p))
+substitutivityᴱ H (M $ N) v x p = mapL none-tgt-≮: (substitutivityᴱ H M v x (tgt-none-≮: p))
 substitutivityᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p = Left p
 substitutivityᴱ H (block var b ∈ T is B end) v x p = Left p
 substitutivityᴱ-whenever H v x x (yes refl) q = swapLR (≮:-antitrans q)
@@ -335,8 +125,8 @@ binOpPreservation H (·· v w) = refl
 reflect-subtypingᴱ : ∀ H M {H′ M′ T} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (typeOfᴱ H′ ∅ M′ ≮: T) → Either (typeOfᴱ H ∅ M ≮: T) (Warningᴱ H (typeCheckᴱ H ∅ M))
 reflect-subtypingᴮ : ∀ H B {H′ B′ T} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → (typeOfᴮ H′ ∅ B′ ≮: T) → Either (typeOfᴮ H ∅ B ≮: T) (Warningᴮ H (typeCheckᴮ H ∅ B))
 
-reflect-subtypingᴱ H (M $ N) (app₁ s) p = mapLR src-tgt-≮: app₁ (reflect-subtypingᴱ H M s (tgt-src-≮: p))
-reflect-subtypingᴱ H (M $ N) (app₂ v s) p = Left (src-tgt-≮: (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (tgt-src-≮: p)))
+reflect-subtypingᴱ H (M $ N) (app₁ s) p = mapLR none-tgt-≮: app₁ (reflect-subtypingᴱ H M s (tgt-none-≮: p))
+reflect-subtypingᴱ H (M $ N) (app₂ v s) p = Left (none-tgt-≮: (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (tgt-none-≮: p)))
 reflect-subtypingᴱ H (M $ N) (beta (function f ⟨ var y ∈ T ⟩∈ U is B end) v refl q) p = Left (≡-trans-≮: (cong tgt (cong orAny (cong typeOfᴹᴼ q))) p)
 reflect-subtypingᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) p = Left p
 reflect-subtypingᴱ H (block var b ∈ T is B end) (block s) p = Left p
