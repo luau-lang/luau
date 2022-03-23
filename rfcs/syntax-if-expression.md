@@ -37,12 +37,12 @@ MyComponent.validateProps = t.strictInterface({
 
 Note that `else` is mandatory because it's always better to be explicit. If it weren't mandatory, it opens the possiblity that someone might be writing a chain of if-then-else and forgot to add in the final `else` that _doesn't_ return a `nil` value! Enforcing this syntactically ensures the program does not run. Also, with it being mandatory, it solves many cases where parsing the expression is ambiguous due to the infamous [dangling else](https://en.wikipedia.org/wiki/Dangling_else).
 
-This example will not do what it looks like it's supposed to do! It will _successfully_ parse and be interpreted as to return `h()` if `g()` evaluates to some falsy value, when in actual fact the clear intention is to evaluate `h()` only if `f()` is falsy.
+This example will not do what it looks like it's supposed to do! The if expression will _successfully_ parse and be interpreted as to return `h()` if `g()` evaluates to some falsy value, when in actual fact the clear intention is to evaluate `h()` only if `f()` is falsy.
 
 ```lua
 if f() then
     ...
-    return if g() then x
+    local foo = if g() then x
 else
     h()
     ...
