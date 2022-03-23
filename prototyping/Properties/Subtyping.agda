@@ -4,7 +4,7 @@ module Properties.Subtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
-open import Luau.Subtyping using (_≮:_; Tree; Language; ¬Language; witness; any; none; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
+open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; any; none; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
 open import Luau.Type using (Type; Scalar; strict; nil; number; string; boolean; none; any; _⇒_; _∪_; _∩_; tgt)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Equality using (_≢_)
@@ -51,40 +51,66 @@ dec-language any t = Right any
 dec-language (T₁ ∪ T₂) t = cond (λ p → cond (Left ∘ _,_ p) (Right ∘ right) (dec-language T₂ t)) (Right ∘ left) (dec-language T₁ t)
 dec-language (T₁ ∩ T₂) t = cond (Left ∘ left) (λ p → cond (Left ∘ right) (Right ∘ _,_ p) (dec-language T₂ t)) (dec-language T₁ t)
 
--- ≮: is anti-reflexive
-≮:-antirefl : ∀ {T} → ¬(T ≮: T)
-≮:-antirefl (witness (scalar s) (scalar s) (scalar-scalar s t p)) = CONTRADICTION (p refl)
-≮:-antirefl (witness function function (scalar-function ()))
-≮:-antirefl (witness (function-ok t) (function-ok p) (function-ok q)) = ≮:-antirefl (witness t p q)
-≮:-antirefl (witness (function-err t) (function-err p) (function-err q)) = ≮:-antirefl (witness t q p)
-≮:-antirefl (witness t (left p) (q₁ , q₂)) = ≮:-antirefl (witness t p q₁)
-≮:-antirefl (witness t (right p) (q₁ , q₂)) = ≮:-antirefl (witness t p q₂)
-≮:-antirefl (witness t (p₁ , p₂) (left q)) = ≮:-antirefl (witness t p₁ q)
-≮:-antirefl (witness t (p₁ , p₂) (right q)) = ≮:-antirefl (witness t p₂ q)
-≮:-antirefl (witness (scalar s) any (scalar-scalar s () t))
-≮:-antirefl (witness (function-ok t) any (scalar-function-ok ()))
-≮:-antirefl (witness (function-err t) (scalar-function-err number) ())
-≮:-antirefl (witness (function-err t) (scalar-function-err boolean) ())
-≮:-antirefl (witness (function-err t) (scalar-function-err string) ())
-≮:-antirefl (witness (function-err t) (scalar-function-err nil) ())
+-- ¬Language T is the complement of Language T
+language-comp : ∀ {T} t → ¬Language T t → ¬(Language T t)
+language-comp t (p₁ , p₂) (left q) = language-comp t p₁ q
+language-comp t (p₁ , p₂) (right q) = language-comp t p₂ q
+language-comp t (left p) (q₁ , q₂) = language-comp t p q₁
+language-comp t (right p) (q₁ , q₂) = language-comp t p q₂
+language-comp (scalar s) (scalar-scalar s p₁ p₂) (scalar s) = p₂ refl
+language-comp (scalar s) (function-scalar s) (scalar s) = language-comp function (scalar-function s) function
+language-comp (scalar s) none (scalar ())
+language-comp function (scalar-function ()) function
+language-comp (function-ok t) (scalar-function-ok ()) (function-ok q)
+language-comp (function-ok t) (function-ok p) (function-ok q) = language-comp t p q
+language-comp (function-err t) (function-err p) (function-err q) = language-comp t q p
 
--- ≮: is anti-tramsitive
-≮:-antitrans : ∀ {S T U} → (S ≮: U) → Either (S ≮: T) (T ≮: U)
-≮:-antitrans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
+-- ≮: is the complement of <:
+¬≮:-impl-<: : ∀ {T U} → ¬(T ≮: U) → (T <: U)
+¬≮:-impl-<: {T} {U} p t q with dec-language U t
+¬≮:-impl-<: {T} {U} p t q | Left r = CONTRADICTION (p (witness t q r))
+¬≮:-impl-<: {T} {U} p t q | Right r = r
 
+<:-impl-¬≮: : ∀ {T U} → (T <: U) → ¬(T ≮: U)
+<:-impl-¬≮: p (witness t q r) = language-comp t r (p t q)
+
+-- reflexivity
+≮:-refl : ∀ {T} → ¬(T ≮: T)
+≮:-refl (witness t p q) = language-comp t q p
+
+<:-refl : ∀ {T} → (T <: T)
+<:-refl = ¬≮:-impl-<: ≮:-refl
+
+-- transititivity
 ≮:-trans-≡ : ∀ {S T U} → (S ≮: T) → (T ≡ U) → (S ≮: U)
 ≮:-trans-≡ p refl = p
 
 ≡-trans-≮: : ∀ {S T U} → (S ≡ T) → (T ≮: U) → (S ≮: U)
 ≡-trans-≮: refl p = p
 
-any-≮: : ∀ {T U} → (T ≮: U) → (any ≮: U)
-any-≮: (witness t p q) = witness t any q
+≮:-trans : ∀ {S T U} → (S ≮: U) → Either (S ≮: T) (T ≮: U)
+≮:-trans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
 
-none-≮: : ∀ {T U} → (T ≮: U) → (T ≮: none)
-none-≮: (witness t p q) = witness t p none
+<:-trans : ∀ {S T U} → (S <: T) → (T <: U) → (S <: U)
+<:-trans p q = ¬≮:-impl-<: (cond (<:-impl-¬≮: p) (<:-impl-¬≮: q) ∘ ≮:-trans)
 
+-- Properties of scalars
 skalar = number ∪ (string ∪ (nil ∪ boolean))
+
+function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
+function-≮:-scalar s = witness function function (scalar-function s)
+
+scalar-≮:-function : ∀ {S T U} → (Scalar U) → (U ≮: (S ⇒ T))
+scalar-≮:-function s = witness (scalar s) (scalar s) (function-scalar s)
+
+any-≮:-scalar : ∀ {U} → (Scalar U) → (any ≮: U)
+any-≮:-scalar s = witness (function-ok (scalar s)) any (scalar-function-ok s)
+
+scalar-≮:-none : ∀ {U} → (Scalar U) → (U ≮: none)
+scalar-≮:-none s = witness (scalar s) (scalar s) none
+
+scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
+scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
 
 -- Properties of tgt
 tgt-function-ok : ∀ {T t} → (Language (tgt T) t) → Language T (function-ok t)
@@ -119,7 +145,7 @@ tgt-none-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (none ⇒ U
 tgt-none-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
 
 none-tgt-≮: : ∀ {T U} → (T ≮: (skalar ∪ (none ⇒ U))) → (tgt T ≮: U)
-none-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-antirefl (witness (scalar s) (skalar-scalar s) q₁))
+none-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-refl (witness (scalar s) (skalar-scalar s) q₁))
 none-tgt-≮: (witness function p (q₁ , scalar-function ()))
 none-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
 none-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
@@ -181,23 +207,13 @@ any-src-≮: r (witness (function-ok (scalar s)) p (function-ok (scalar-scalar s
 any-src-≮: r (witness (function-ok (function-ok _)) p (function-ok (scalar-function-ok ())))
 any-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
 
--- Properties of scalars
-function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
-function-≮:-scalar s = witness function function (scalar-function s)
+-- Properties of any and none
+any-≮: : ∀ {T U} → (T ≮: U) → (any ≮: U)
+any-≮: (witness t p q) = witness t any q
 
-scalar-≮:-function : ∀ {S T U} → (Scalar U) → (U ≮: (S ⇒ T))
-scalar-≮:-function s = witness (scalar s) (scalar s) (function-scalar s)
+none-≮: : ∀ {T U} → (T ≮: U) → (T ≮: none)
+none-≮: (witness t p q) = witness t p none
 
-any-≮:-scalar : ∀ {U} → (Scalar U) → (any ≮: U)
-any-≮:-scalar s = witness (function-ok (scalar s)) any (scalar-function-ok s)
-
-scalar-≮:-none : ∀ {U} → (Scalar U) → (U ≮: none)
-scalar-≮:-none s = witness (scalar s) (scalar s) none
-
-scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
-scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
-
--- Properties of none
 any-≮:-none : (any ≮: none)
 any-≮:-none = witness (scalar nil) any none
 

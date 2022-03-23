@@ -22,7 +22,7 @@ open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
-open import Properties.Subtyping using (any-≮:; ≡-trans-≮:; ≮:-trans-≡; none-tgt-≮:; tgt-none-≮:; src-any-≮:; any-src-≮:; ≮:-antitrans; ≮:-antirefl; scalar-≢-impl-≮:; function-≮:-scalar; scalar-≮:-function; function-≮:-none; any-≮:-scalar; scalar-≮:-none; any-≮:-none)
+open import Properties.Subtyping using (any-≮:; ≡-trans-≮:; ≮:-trans-≡; none-tgt-≮:; tgt-none-≮:; src-any-≮:; any-src-≮:; ≮:-trans; ≮:-refl; scalar-≢-impl-≮:; function-≮:-scalar; scalar-≮:-function; function-≮:-none; any-≮:-scalar; scalar-≮:-none; any-≮:-none)
 open import Properties.TypeCheck(strict) using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴ)
 open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₀; binOp₁; binOp₂; refl; step; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
 open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return; +; -; *; /; <; >; <=; >=; ··)
@@ -97,7 +97,7 @@ substitutivityᴱ H (binexp M op N) v x p = Left p
 substitutivityᴱ H (M $ N) v x p = mapL none-tgt-≮: (substitutivityᴱ H M v x (tgt-none-≮: p))
 substitutivityᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p = Left p
 substitutivityᴱ H (block var b ∈ T is B end) v x p = Left p
-substitutivityᴱ-whenever H v x x (yes refl) q = swapLR (≮:-antitrans q)
+substitutivityᴱ-whenever H v x x (yes refl) q = swapLR (≮:-trans q)
 substitutivityᴱ-whenever H v x y (no p) q = Left (≡-trans-≮: (cong orAny (sym (⊕-lookup-miss x y _ _ p))) q)
 
 substitutivityᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) v x p = substitutivityᴮ-unless H B v x f (x ≡ⱽ f) p
@@ -130,13 +130,13 @@ reflect-subtypingᴱ H (M $ N) (app₂ v s) p = Left (none-tgt-≮: (heap-weaken
 reflect-subtypingᴱ H (M $ N) (beta (function f ⟨ var y ∈ T ⟩∈ U is B end) v refl q) p = Left (≡-trans-≮: (cong tgt (cong orAny (cong typeOfᴹᴼ q))) p)
 reflect-subtypingᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) p = Left p
 reflect-subtypingᴱ H (block var b ∈ T is B end) (block s) p = Left p
-reflect-subtypingᴱ H (block var b ∈ T is return (val v) ∙ B end) (return v) p = mapR BlockMismatch (swapLR (≮:-antitrans p))
-reflect-subtypingᴱ H (block var b ∈ T is done end) done p = mapR BlockMismatch (swapLR (≮:-antitrans p))
+reflect-subtypingᴱ H (block var b ∈ T is return (val v) ∙ B end) (return v) p = mapR BlockMismatch (swapLR (≮:-trans p))
+reflect-subtypingᴱ H (block var b ∈ T is done end) done p = mapR BlockMismatch (swapLR (≮:-trans p))
 reflect-subtypingᴱ H (binexp M op N) (binOp₀ s) p = Left (≡-trans-≮: (binOpPreservation H s) p)
 reflect-subtypingᴱ H (binexp M op N) (binOp₁ s) p = Left p
 reflect-subtypingᴱ H (binexp M op N) (binOp₂ s) p = Left p
 
-reflect-subtypingᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) p = mapLR (heap-weakeningᴮ _ _ B (snoc defn)) (CONTRADICTION ∘ ≮:-antirefl) (substitutivityᴮ _ B (addr a) f p)
+reflect-subtypingᴮ H (function f ⟨ var x ∈ T ⟩∈ U is C end ∙ B) (function a defn) p = mapLR (heap-weakeningᴮ _ _ B (snoc defn)) (CONTRADICTION ∘ ≮:-refl) (substitutivityᴮ _ B (addr a) f p)
 reflect-subtypingᴮ H (local var x ∈ T ← M ∙ B) (local s) p = Left (heap-weakeningᴮ (x ↦ T) H B (rednᴱ⊑ s) p)
 reflect-subtypingᴮ H (local var x ∈ T ← M ∙ B) (subst v) p = mapR LocalVarMismatch (substitutivityᴮ H B v x p) 
 reflect-subtypingᴮ H (return M ∙ B) (return s) p = mapR return (reflect-subtypingᴱ H M s p)
@@ -248,7 +248,7 @@ reflectᴮ H (local var x ∈ T ← M ∙ B) (subst v) W′ = Left (cond local�
 reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ with reflect-substitutionᴮ _ B (addr a) f W′
 reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Left W = Left (function₂ (reflect-weakeningᴮ (f ↦ (T ⇒ U)) H B (snoc defn) W))
 reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Right (Left (UnallocatedAddress ()))
-reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Right (Right p) = CONTRADICTION (≮:-antirefl p)
+reflectᴮ H (function f ⟨ var y ∈ T ⟩∈ U is C end ∙ B) (function a defn) W′ | Right (Right p) = CONTRADICTION (≮:-refl p)
 reflectᴮ H (return M ∙ B) (return s) (return W′) = mapL return (reflectᴱ H M s W′)
 
 reflectᴴᴱ : ∀ H M {H′ M′} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → Warningᴴ H′ (typeCheckᴴ H′) → Either (Warningᴱ H (typeCheckᴱ H ∅ M)) (Warningᴴ H (typeCheckᴴ H))
