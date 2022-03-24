@@ -466,6 +466,13 @@ function table.isfrozen(t: table): boolean
 
 Returns `true` iff the input table is frozen.
 
+```
+function table.clone(t: table): table
+```
+
+Returns a copy of the input table that has the same metatable, same keys and values, and is not frozen even if `t` was.
+The copy is shallow: implementing a deep recursive copy automatically is challenging, and often only certain keys need to be cloned recursively which can be done after the initial clone by modifying the resulting table.
+
 ## string library
 
 ```

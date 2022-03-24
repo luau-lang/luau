@@ -1,5 +1,9 @@
 # Sealed table subtyping
 
+**Status**: Implemented
+
+## Summary
+
 In Luau, tables have a state, which can, among others, be "sealed". A sealed table is one that we know the full shape of and cannot have new properties added to it. We would like to introduce subtyping for sealed tables, to allow users to express some subtyping relationships that they currently cannot.
 
 ## Motivation

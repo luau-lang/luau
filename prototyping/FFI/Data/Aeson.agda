@@ -10,7 +10,7 @@ open import Agda.Builtin.String using (String)
 open import FFI.Data.ByteString using (ByteString)
 open import FFI.Data.HaskellString using (HaskellString; pack)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
-open import FFI.Data.Either using (Either; mapLeft)
+open import FFI.Data.Either using (Either; mapL)
 open import FFI.Data.Scientific using (Scientific)
 open import FFI.Data.Vector using (Vector)
 
@@ -73,5 +73,5 @@ postulate
 {-# COMPILE GHC eitherHDecode = Data.Aeson.eitherDecodeStrict #-}
 
 eitherDecode : ByteString → Either String Value
-eitherDecode bytes = mapLeft pack (eitherHDecode bytes)
+eitherDecode bytes = mapL pack (eitherHDecode bytes)
 

@@ -25,7 +25,7 @@ data RuntimeErrorᴮ {a} (H : Heap a) : Block a → Set
 data RuntimeErrorᴱ {a} (H : Heap a) : Expr a → Set
 
 data RuntimeErrorᴱ H where
-  FunctionMismatch : ∀ v w → (function ≢ valueType v) → RuntimeErrorᴱ H (val v $ val w)
+  FunctionMismatch : ∀ v w → (valueType v ≢ function) → RuntimeErrorᴱ H (val v $ val w)
   BinOpMismatch₁ : ∀ v w {op} → (BinOpError op (valueType v)) → RuntimeErrorᴱ H (binexp (val v) op (val w))
   BinOpMismatch₂ : ∀ v w {op} → (BinOpError op (valueType w)) → RuntimeErrorᴱ H (binexp (val v) op (val w))
   UnboundVariable : ∀ {x} → RuntimeErrorᴱ H (var x)

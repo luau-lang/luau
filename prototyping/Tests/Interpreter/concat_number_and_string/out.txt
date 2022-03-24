@@ -9,3 +9,4 @@ value 37.0 is not a string
 
 TYPE ERROR:
 Local variable y has type string but expression has type number
+  because provided type contains v, where v is a number

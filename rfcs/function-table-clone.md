@@ -1,5 +1,7 @@
 # table.clone
 
+**Status**: Implemented
+
 ## Summary
 
 Add `table.clone` function that, given a table, produces a copy of that table with the same keys/values/metatable.
