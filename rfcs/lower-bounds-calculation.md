@@ -168,7 +168,7 @@ So, we propose some different inference rules for functions:
 1. The AST fragment `function(arg0..argN) ... end` is typed `(T0..TN, any...) -> R` where `arg0..argN : T0..TN` and `R` is the inferred return type of the function body.  Function statements are inferred the same way.
 1. Type annotations are unchanged.  `() -> ()` is still a nullary function.
 
-For reference, the subtyping rules for unions are unchanged.  We include them here for clarity.
+For reference, the subtyping rules for unions and functions are unchanged.  We include them here for clarity.
 
 1. `A <: A | B`
 1. `B <: A | B`
