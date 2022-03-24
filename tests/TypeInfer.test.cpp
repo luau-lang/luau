@@ -334,7 +334,7 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 #if defined(LUAU_ENABLE_ASAN)
     int limit = 250;
 #elif defined(_DEBUG) || defined(_NOOPT)
-    int limit = 350;
+    int limit = 300;
 #else
     int limit = 600;
 #endif

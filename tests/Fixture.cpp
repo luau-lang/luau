@@ -133,26 +133,19 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
 
 CheckResult Fixture::check(Mode mode, std::string source)
 {
-    configResolver.defaultConfig.mode = mode;
-    fileResolver.source[mainModuleName] = std::move(source);
-
-    CheckResult result = frontend.check(fromString(mainModuleName));
-
-    configResolver.defaultConfig.mode = Mode::Strict;
-
-    return result;
-}
-
-CheckResult Fixture::check(const std::string& source)
-{
     ModuleName mm = fromString(mainModuleName);
-    configResolver.defaultConfig.mode = Mode::Strict;
+    configResolver.defaultConfig.mode = mode;
     fileResolver.source[mm] = std::move(source);
     frontend.markDirty(mm);
 
     CheckResult result = frontend.check(mm);
 
     return result;
+}
+
+CheckResult Fixture::check(const std::string& source)
+{
+    return check(Mode::Strict, source);
 }
 
 LintResult Fixture::lint(const std::string& source, const std::optional<LintOptions>& lintOptions)

@@ -14,6 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
+LUAU_FASTFLAGVARIABLE(LuauLintNoRobloxBits, false)
 
 namespace Luau
 {
@@ -1135,16 +1136,20 @@ private:
 
     enum TypeKind
     {
-        Kind_Invalid,
+        Kind_Unknown,
         Kind_Primitive, // primitive type supported by VM - boolean/userdata/etc. No differentiation between types of userdata.
-        Kind_Vector,    // For 'vector' but only used when type is used
-        Kind_Userdata,  // custom userdata type - Vector3/etc.
+        Kind_Vector,    // 'vector' but only used when type is used
+        Kind_Userdata,  // custom userdata type
+
+        // TODO: remove these with LuauLintNoRobloxBits
         Kind_Class,     // custom userdata type that reflects Roblox Instance-derived hierarchy - Part/etc.
         Kind_Enum,      // custom userdata type referring to an enum item of enum classes, e.g. Enum.NormalId.Back/Enum.Axis.X/etc.
     };
 
     bool containsPropName(TypeId ty, const std::string& propName)
     {
+        LUAU_ASSERT(!FFlag::LuauLintNoRobloxBits);
+
         if (auto ctv = get<ClassTypeVar>(ty))
             return lookupClassProp(ctv, propName) != nullptr;
 
@@ -1163,13 +1168,23 @@ private:
         if (name == "vector")
             return Kind_Vector;
 
-        if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
-            // Kind_Userdata is probably not 100% precise but is close enough
-            return containsPropName(maybeTy->type, "ClassName") ? Kind_Class : Kind_Userdata;
-        else if (std::optional<TypeFun> maybeTy = context->scope->lookupImportedType("Enum", name))
-            return Kind_Enum;
+        if (FFlag::LuauLintNoRobloxBits)
+        {
+            if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
+                return Kind_Userdata;
 
-        return Kind_Invalid;
+            return Kind_Unknown;
+        }
+        else
+        {
+            if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
+                // Kind_Userdata is probably not 100% precise but is close enough
+                return containsPropName(maybeTy->type, "ClassName") ? Kind_Class : Kind_Userdata;
+            else if (std::optional<TypeFun> maybeTy = context->scope->lookupImportedType("Enum", name))
+                return Kind_Enum;
+
+            return Kind_Unknown;
+        }
     }
 
     void validateType(AstExprConstantString* expr, std::initializer_list<TypeKind> expected, const char* expectedString)
@@ -1177,7 +1192,7 @@ private:
         std::string name(expr->value.data, expr->value.size);
         TypeKind kind = getTypeKind(name);
 
-        if (kind == Kind_Invalid)
+        if (kind == Kind_Unknown)
         {
             emitWarning(*context, LintWarning::Code_UnknownType, expr->location, "Unknown type '%s'", name.c_str());
             return;
@@ -1189,7 +1204,7 @@ private:
                 return;
 
             // as a special case, Instance and EnumItem are both a userdata type (as returned by typeof) and a class type
-            if (ek == Kind_Userdata && (name == "Instance" || name == "EnumItem"))
+            if (!FFlag::LuauLintNoRobloxBits && ek == Kind_Userdata && (name == "Instance" || name == "EnumItem"))
                 return;
         }
 
@@ -1198,12 +1213,18 @@ private:
 
     bool acceptsClassName(AstName method)
     {
+        LUAU_ASSERT(!FFlag::LuauLintNoRobloxBits);
+
         return method.value[0] == 'F' && (method == "FindFirstChildOfClass" || method == "FindFirstChildWhichIsA" ||
                                              method == "FindFirstAncestorOfClass" || method == "FindFirstAncestorWhichIsA");
     }
 
     bool visit(AstExprCall* node) override
     {
+        // TODO: Simply remove the override
+        if (FFlag::LuauLintNoRobloxBits)
+            return true;
+
         if (AstExprIndexName* index = node->func->as<AstExprIndexName>())
         {
             AstExprConstantString* arg0 = node->args.size > 0 ? node->args.data[0]->as<AstExprConstantString>() : NULL;
