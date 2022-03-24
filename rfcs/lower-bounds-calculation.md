@@ -168,19 +168,21 @@ So, we propose some different inference rules for functions:
 1. The AST fragment `function(arg0..argN) ... end` is typed `(T0..TN, any...) -> R` where `arg0..argN : T0..TN` and `R` is the inferred return type of the function body.  Function statements are inferred the same way.
 1. Type annotations are unchanged.  `() -> ()` is still a nullary function.
 
-And subtyping rules for type packs:
+For reference, the subtyping rules for unions are unchanged.  We include them here for clarity.
+
+1. `A <: A | B`
+1. `B <: A | B`
+1. `A | B <: T` if `A <: T` or `B <: T`
+1. `T -> R <: U -> S` if `U <: T` and `R <: S`
+
+We propose new subtyping rules for type packs:
 
 1. `(T0..TN) <: (U0..UN)` if, for each `T` and `U`, `T <: U`
+1. `(U...)` is the same as `() | (U) | (U, U) | (U, U, U) | ...`, therefore
+1. `(T0..TN) <: (U...)` if for each `T`, `T <: U`, therefore
+1. `(U...) -> R <: (T0..TN) -> R` if for each `T`, `T <: U`
 
-1. `A & B <: T` if `T <: A` or `T <: B` is the standard left-side subtyping rule for intersections.  It is unchanged.  We include it here for clarity.
-1. `(U...) ~ () & (U) & (U, U) & (U, U, U) & ...`, therefore
-1. `(U...) <: (T0..TN)` if for each `T`, `T <: U`
-
-Notably, we remove all subtyping rules that mention options.  Functions of different arities are no longer ever considered subtypes of one another.  Optional function arguments are now considered solely a feature of function calls.
-
-The standard subtyping rule for functions is unchanged.
-
-1. `T -> R <: U -> S` if `U <: T` and `R <: S`
+The important difference is that we remove all subtyping rules that mention options.  Functions of different arities are no longer considered subtypes of one another.  Optional function arguments are still allowed, but function as a feature of function calls.
 
 Under these rules, functions of different arities can never be converted to one another, but actual functions are known to be safe to oversaturate with anything, and so gain a type that says so.
 
