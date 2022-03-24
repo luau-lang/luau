@@ -222,20 +222,21 @@ TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
     }
 }
 
-size_t size(TypePackId tp)
+size_t size(TypePackId tp, TxnLog* log)
 {
-    if (auto pack = get<TypePack>(follow(tp)))
-        return size(*pack);
+    tp = log ? log->follow(tp) : follow(tp);
+    if (auto pack = get<TypePack>(tp))
+        return size(*pack, log);
     else
         return 0;
 }
 
-bool finite(TypePackId tp)
+bool finite(TypePackId tp, TxnLog* log)
 {
-    tp = follow(tp);
+    tp = log ? log->follow(tp) : follow(tp);
 
     if (auto pack = get<TypePack>(tp))
-        return pack->tail ? finite(*pack->tail) : true;
+        return pack->tail ? finite(*pack->tail, log) : true;
 
     if (get<VariadicTypePack>(tp))
         return false;
@@ -243,14 +244,14 @@ bool finite(TypePackId tp)
     return true;
 }
 
-size_t size(const TypePack& tp)
+size_t size(const TypePack& tp, TxnLog* log)
 {
     size_t result = tp.head.size();
     if (tp.tail)
     {
-        const TypePack* tail = get<TypePack>(follow(*tp.tail));
+        const TypePack* tail = get<TypePack>(log ? log->follow(*tp.tail) : follow(*tp.tail));
         if (tail)
-            result += size(*tail);
+            result += size(*tail, log);
     }
     return result;
 }

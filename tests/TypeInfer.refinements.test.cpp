@@ -435,7 +435,6 @@ TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 {
     ScopedFastFlag sff[] = {
         {"LuauDiscriminableUnions2", true},
-        {"LuauSingletonTypes", true},
     };
 
     CheckResult result = check(R"(
@@ -1002,8 +1001,6 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
     ScopedFastFlag sff[] = {
         {"LuauDiscriminableUnions2", true},
-        {"LuauParseSingletonTypes", true},
-        {"LuauSingletonTypes", true},
     };
 
     CheckResult result = check(R"(
@@ -1028,8 +1025,6 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
 {
     ScopedFastFlag sff[] = {
         {"LuauDiscriminableUnions2", true},
-        {"LuauParseSingletonTypes", true},
-        {"LuauSingletonTypes", true},
     };
 
     CheckResult result = check(R"(
@@ -1066,8 +1061,6 @@ TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
 TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
 {
     ScopedFastFlag sff[]{
-        {"LuauParseSingletonTypes", true},
-        {"LuauSingletonTypes", true},
         {"LuauDiscriminableUnions2", true},
         {"LuauAssertStripsFalsyTypes", true},
     };
@@ -1091,8 +1084,6 @@ TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
 TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_that_property_is_true_or_false")
 {
     ScopedFastFlag sff[]{
-        {"LuauParseSingletonTypes", true},
-        {"LuauSingletonTypes", true},
         {"LuauDiscriminableUnions2", true},
         {"LuauAssertStripsFalsyTypes", true},
     };
@@ -1134,8 +1125,6 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 {
     ScopedFastFlag sff[] = {
         {"LuauDiscriminableUnions2", true},
-        {"LuauParseSingletonTypes", true},
-        {"LuauSingletonTypes", true},
     };
 
     CheckResult result = check(R"(

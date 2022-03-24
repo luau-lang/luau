@@ -17,8 +17,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauReduceStackReallocs)
-
 /*
 ** {======================================================
 ** Error-recovery functions
@@ -33,6 +31,15 @@ struct lua_jmpbuf
     jmp_buf buf;
 };
 
+/* use POSIX versions of setjmp/longjmp if possible: they don't save/restore signal mask and are therefore faster */
+#if defined(__linux__) || defined(__APPLE__)
+#define LUAU_SETJMP(buf) _setjmp(buf)
+#define LUAU_LONGJMP(buf, code) _longjmp(buf, code)
+#else
+#define LUAU_SETJMP(buf) setjmp(buf)
+#define LUAU_LONGJMP(buf, code) longjmp(buf, code)
+#endif
+
 int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)
 {
     lua_jmpbuf jb;
@@ -40,7 +47,7 @@ int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)
     jb.status = 0;
     L->global->errorjmp = &jb;
 
-    if (setjmp(jb.buf) == 0)
+    if (LUAU_SETJMP(jb.buf) == 0)
         f(L, ud);
 
     L->global->errorjmp = jb.prev;
@@ -52,7 +59,7 @@ l_noret luaD_throw(lua_State* L, int errcode)
     if (lua_jmpbuf* jb = L->global->errorjmp)
     {
         jb->status = errcode;
-        longjmp(jb->buf, 1);
+        LUAU_LONGJMP(jb->buf, 1);
     }
 
     if (L->global->cb.panic)
@@ -165,8 +172,8 @@ static void correctstack(lua_State* L, TValue* oldstack)
 void luaD_reallocstack(lua_State* L, int newsize)
 {
     TValue* oldstack = L->stack;
-    int realsize = newsize + (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK);
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK));
+    int realsize = newsize + EXTRA_STACK;
+    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
     luaM_reallocarray(L, L->stack, L->stacksize, realsize, TValue, L->memcat);
     TValue* newstack = L->stack;
     for (int i = L->stacksize; i < realsize; i++)
@@ -514,7 +521,7 @@ static void callerrfunc(lua_State* L, void* ud)
 
 static void restore_stack_limit(lua_State* L)
 {
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK));
+    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
     if (L->size_ci > LUAI_MAXCALLS)
     { /* there was an overflow? */
         int inuse = cast_int(L->ci - L->base_ci);

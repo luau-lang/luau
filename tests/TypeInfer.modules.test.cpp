@@ -13,6 +13,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauTableSubtypingVariance2)
+
 TEST_SUITE_BEGIN("TypeInferModules");
 
 TEST_CASE_FIXTURE(Fixture, "require")
@@ -268,8 +270,6 @@ function x:Destroy(): () end
 
 TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types_2")
 {
-    ScopedFastFlag immutableTypes{"LuauImmutableTypes", true};
-
     fileResolver.source["game/A"] = R"(
 export type Type = { x: { a: number } }
 return {}
@@ -288,8 +288,6 @@ type Rename = typeof(x.x)
 
 TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types_3")
 {
-    ScopedFastFlag immutableTypes{"LuauImmutableTypes", true};
-
     fileResolver.source["game/A"] = R"(
 local y = setmetatable({}, {})
 export type Type = { x: typeof(y) }
@@ -305,6 +303,85 @@ type Rename = typeof(x.x)
 
     CheckResult result = frontend.check("game/B");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "module_type_conflict")
+{
+    ScopedFastFlag luauTypeMismatchModuleName{"LuauTypeMismatchModuleName", true};
+
+    fileResolver.source["game/A"] = R"(
+export type T = { x: number }
+return {}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+export type T = { x: string }
+return {}
+    )";
+
+    fileResolver.source["game/C"] = R"(
+local A = require(game.A)
+local B = require(game.B)
+local a: A.T = { x = 2 }
+local b: B.T = a
+    )";
+
+    CheckResult result = frontend.check("game/C");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::LuauTableSubtypingVariance2)
+    {
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
+caused by:
+  Property 'x' is not compatible. Type 'number' could not be converted into 'string')");
+    }
+    else
+    {
+        CHECK_EQ(toString(result.errors[0]), "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "module_type_conflict_instantiated")
+{
+    ScopedFastFlag luauTypeMismatchModuleName{"LuauTypeMismatchModuleName", true};
+
+    fileResolver.source["game/A"] = R"(
+export type Wrap<T> = { x: T }
+return {}
+    )";
+
+    fileResolver.source["game/B"] = R"(
+local A = require(game.A)
+export type T = A.Wrap<number>
+return {}
+    )";
+
+    fileResolver.source["game/C"] = R"(
+local A = require(game.A)
+export type T = A.Wrap<string>
+return {}
+    )";
+
+    fileResolver.source["game/D"] = R"(
+local A = require(game.B)
+local B = require(game.C)
+local a: A.T = { x = 2 }
+local b: B.T = a
+    )";
+
+    CheckResult result = frontend.check("game/D");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    if (FFlag::LuauTableSubtypingVariance2)
+    {
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
+caused by:
+  Property 'x' is not compatible. Type 'number' could not be converted into 'string')");
+    }
+    else
+    {
+        CHECK_EQ(toString(result.errors[0]), "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'");
+    }
 }
 
 TEST_SUITE_END();

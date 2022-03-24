@@ -597,6 +597,8 @@ return foo1
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
+    ScopedFastFlag sff("LuauLintNoRobloxBits", true);
+
     unfreeze(typeChecker.globalTypes);
     TableTypeVar::Props instanceProps{
         {"ClassName", {typeChecker.anyType}},
@@ -606,81 +608,26 @@ TEST_CASE_FIXTURE(Fixture, "UnknownType")
     TypeId instanceType = typeChecker.globalTypes.addType(instanceTable);
     TypeFun instanceTypeFun{{}, instanceType};
 
-    ClassTypeVar::Props enumItemProps{
-        {"EnumType", {typeChecker.anyType}},
-    };
-
-    ClassTypeVar enumItemClass{"EnumItem", enumItemProps, std::nullopt, std::nullopt, {}, {}};
-    TypeId enumItemType = typeChecker.globalTypes.addType(enumItemClass);
-    TypeFun enumItemTypeFun{{}, enumItemType};
-
-    ClassTypeVar normalIdClass{"NormalId", {}, enumItemType, std::nullopt, {}, {}};
-    TypeId normalIdType = typeChecker.globalTypes.addType(normalIdClass);
-    TypeFun normalIdTypeFun{{}, normalIdType};
-
-    // Normally this would be defined externally, so hack it in for testing
-    addGlobalBinding(typeChecker, "game", typeChecker.anyType, "@test");
-    addGlobalBinding(typeChecker, "typeof", typeChecker.anyType, "@test");
     typeChecker.globalScope->exportedTypeBindings["Part"] = instanceTypeFun;
-    typeChecker.globalScope->exportedTypeBindings["Workspace"] = instanceTypeFun;
-    typeChecker.globalScope->exportedTypeBindings["RunService"] = instanceTypeFun;
-    typeChecker.globalScope->exportedTypeBindings["Instance"] = instanceTypeFun;
-    typeChecker.globalScope->exportedTypeBindings["ColorSequence"] = TypeFun{{}, typeChecker.anyType};
-    typeChecker.globalScope->exportedTypeBindings["EnumItem"] = enumItemTypeFun;
-    typeChecker.globalScope->importedTypeBindings["Enum"] = {{"NormalId", normalIdTypeFun}};
-    freeze(typeChecker.globalTypes);
 
     LintResult result = lint(R"(
-local _e01 = game:GetService("Foo")
-local _e02 = game:GetService("NormalId")
-local _e03 = game:FindService("table")
-local _e04 = type(game) == "Part"
-local _e05 = type(game) == "NormalId"
-local _e06 = typeof(game) == "Bar"
-local _e07 = typeof(game) == "Part"
-local _e08 = typeof(game) == "vector"
-local _e09 = typeof(game) == "NormalId"
-local _e10 = game:IsA("ColorSequence")
-local _e11 = game:IsA("Enum.NormalId")
-local _e12 = game:FindFirstChildWhichIsA("function")
+local game = ...
+local _e01 = type(game) == "Part"
+local _e02 = typeof(game) == "Bar"
+local _e03 = typeof(game) == "vector"
 
-local _o01 = game:GetService("Workspace")
-local _o02 = game:FindService("RunService")
-local _o03 = type(game) == "number"
-local _o04 = type(game) == "vector"
-local _o05 = typeof(game) == "string"
-local _o06 = typeof(game) == "Instance"
-local _o07 = typeof(game) == "EnumItem"
-local _o08 = game:IsA("Part")
-local _o09 = game:IsA("NormalId")
-local _o10 = game:FindFirstChildWhichIsA("Part")
+local _o01 = type(game) == "number"
+local _o02 = type(game) == "vector"
+local _o03 = typeof(game) == "Part"
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 12);
-    CHECK_EQ(result.warnings[0].location.begin.line, 1);
-    CHECK_EQ(result.warnings[0].text, "Unknown type 'Foo'");
-    CHECK_EQ(result.warnings[1].location.begin.line, 2);
-    CHECK_EQ(result.warnings[1].text, "Unknown type 'NormalId' (expected class type)");
-    CHECK_EQ(result.warnings[2].location.begin.line, 3);
-    CHECK_EQ(result.warnings[2].text, "Unknown type 'table' (expected class type)");
-    CHECK_EQ(result.warnings[3].location.begin.line, 4);
-    CHECK_EQ(result.warnings[3].text, "Unknown type 'Part' (expected primitive type)");
-    CHECK_EQ(result.warnings[4].location.begin.line, 5);
-    CHECK_EQ(result.warnings[4].text, "Unknown type 'NormalId' (expected primitive type)");
-    CHECK_EQ(result.warnings[5].location.begin.line, 6);
-    CHECK_EQ(result.warnings[5].text, "Unknown type 'Bar'");
-    CHECK_EQ(result.warnings[6].location.begin.line, 7);
-    CHECK_EQ(result.warnings[6].text, "Unknown type 'Part' (expected primitive or userdata type)");
-    CHECK_EQ(result.warnings[7].location.begin.line, 8);
-    CHECK_EQ(result.warnings[7].text, "Unknown type 'vector' (expected primitive or userdata type)");
-    CHECK_EQ(result.warnings[8].location.begin.line, 9);
-    CHECK_EQ(result.warnings[8].text, "Unknown type 'NormalId' (expected primitive or userdata type)");
-    CHECK_EQ(result.warnings[9].location.begin.line, 10);
-    CHECK_EQ(result.warnings[9].text, "Unknown type 'ColorSequence' (expected class or enum type)");
-    CHECK_EQ(result.warnings[10].location.begin.line, 11);
-    CHECK_EQ(result.warnings[10].text, "Unknown type 'Enum.NormalId'");
-    CHECK_EQ(result.warnings[11].location.begin.line, 12);
-    CHECK_EQ(result.warnings[11].text, "Unknown type 'function' (expected class type)");
+    REQUIRE_EQ(result.warnings.size(), 3);
+    CHECK_EQ(result.warnings[0].location.begin.line, 2);
+    CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
+    CHECK_EQ(result.warnings[1].location.begin.line, 3);
+    CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
+    CHECK_EQ(result.warnings[2].location.begin.line, 4);
+    CHECK_EQ(result.warnings[2].text, "Unknown type 'vector' (expected primitive or userdata type)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeTable")

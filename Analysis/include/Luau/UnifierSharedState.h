@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/DenseHash.h"
+#include "Luau/Error.h"
 #include "Luau/TypeVar.h"
 #include "Luau/TypePack.h"
 
@@ -42,6 +43,7 @@ struct UnifierSharedState
     DenseHashSet<void*> seenAny{nullptr};
     DenseHashMap<TypeId, bool> skipCacheForType{nullptr};
     DenseHashSet<std::pair<TypeId, TypeId>, TypeIdPairHash> cachedUnify{{nullptr, nullptr}};
+    DenseHashMap<std::pair<TypeId, TypeId>, TypeErrorData, TypeIdPairHash> cachedUnifyError{{nullptr, nullptr}};
 
     DenseHashSet<TypeId> tempSeenTy{nullptr};
     DenseHashSet<TypePackId> tempSeenTp{nullptr};

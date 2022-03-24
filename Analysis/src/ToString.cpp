@@ -16,6 +16,7 @@
  * Fair warning: Setting this will break a lot of Luau unit tests.
  */
 LUAU_FASTFLAGVARIABLE(DebugLuauVerboseTypeNames, false)
+LUAU_FASTFLAGVARIABLE(LuauDocFuncParameters, false)
 
 namespace Luau
 {
@@ -769,6 +770,7 @@ struct TypePackStringifier
             else
                 state.emit(", ");
 
+            // Do not respect opts.namedFunctionOverrideArgNames here
             if (elemIndex < elemNames.size() && elemNames[elemIndex])
             {
                 state.emit(elemNames[elemIndex]->name);
@@ -1090,13 +1092,13 @@ std::string toString(const TypePackVar& tp, const ToStringOptions& opts)
     return toString(const_cast<TypePackId>(&tp), std::move(opts));
 }
 
-std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeVar& ftv, ToStringOptions opts)
+std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, const ToStringOptions& opts)
 {
     ToStringResult result;
     StringifierState state(opts, result, opts.nameMap);
     TypeVarStringifier tvs{state};
 
-    state.emit(prefix);
+    state.emit(funcName);
 
     if (!opts.hideNamedFunctionTypeParameters)
         tvs.stringify(ftv.generics, ftv.genericPacks);
@@ -1104,28 +1106,59 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
     state.emit("(");
 
     auto argPackIter = begin(ftv.argTypes);
-    auto argNameIter = ftv.argNames.begin();
 
     bool first = true;
-    while (argPackIter != end(ftv.argTypes))
+    if (FFlag::LuauDocFuncParameters)
     {
-        if (!first)
-            state.emit(", ");
-        first = false;
-
-        // We don't currently respect opts.functionTypeArguments. I don't think this function should.
-        if (argNameIter != ftv.argNames.end())
+        size_t idx = 0;
+        while (argPackIter != end(ftv.argTypes))
         {
-            state.emit((*argNameIter ? (*argNameIter)->name : "_") + ": ");
-            ++argNameIter;
-        }
-        else
-        {
-            state.emit("_: ");
-        }
+            if (!first)
+                state.emit(", ");
+            first = false;
 
-        tvs.stringify(*argPackIter);
-        ++argPackIter;
+            // We don't respect opts.functionTypeArguments
+            if (idx < opts.namedFunctionOverrideArgNames.size())
+            {
+                state.emit(opts.namedFunctionOverrideArgNames[idx] + ": ");
+            }
+            else if (idx < ftv.argNames.size() && ftv.argNames[idx])
+            {
+                state.emit(ftv.argNames[idx]->name + ": ");
+            }
+            else
+            {
+                state.emit("_: ");
+            }
+            tvs.stringify(*argPackIter);
+
+            ++argPackIter;
+            ++idx;
+        }
+    }
+    else
+    {
+        auto argNameIter = ftv.argNames.begin();
+        while (argPackIter != end(ftv.argTypes))
+        {
+            if (!first)
+                state.emit(", ");
+            first = false;
+
+            // We don't currently respect opts.functionTypeArguments. I don't think this function should.
+            if (argNameIter != ftv.argNames.end())
+            {
+                state.emit((*argNameIter ? (*argNameIter)->name : "_") + ": ");
+                ++argNameIter;
+            }
+            else
+            {
+                state.emit("_: ");
+            }
+
+            tvs.stringify(*argPackIter);
+            ++argPackIter;
+        }
     }
 
     if (argPackIter.tail())
@@ -1134,7 +1167,6 @@ std::string toStringNamedFunction(const std::string& prefix, const FunctionTypeV
             state.emit(", ");
 
         state.emit("...: ");
-
         if (auto vtp = get<VariadicTypePack>(*argPackIter.tail()))
             tvs.stringify(vtp->ty);
         else

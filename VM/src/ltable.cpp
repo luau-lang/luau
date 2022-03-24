@@ -526,8 +526,8 @@ static TValue* newkey(lua_State* L, Table* t, const TValue* key)
         LuaNode* othern;
         LuaNode* n = getfreepos(t); /* get a free place */
         if (n == NULL)
-        {                               /* cannot find a free place? */
-            rehash(L, t, key);          /* grow table */
+        {                      /* cannot find a free place? */
+            rehash(L, t, key); /* grow table */
 
             if (!FFlag::LuauTableRehashRework)
             {

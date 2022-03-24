@@ -11,8 +11,6 @@
 #include "lmem.h"
 #include "ludata.h"
 
-LUAU_FASTFLAGVARIABLE(LuauGcAdditionalStats, false)
-
 #include <string.h>
 
 #define GC_SWEEPMAX 40
@@ -48,7 +46,8 @@ LUAU_FASTFLAGVARIABLE(LuauGcAdditionalStats, false)
             reallymarkobject(g, obj2gco(t)); \
     }
 
-static void recordGcStateTime(global_State* g, int startgcstate, double seconds, bool assist)
+#ifdef LUAI_GCMETRICS
+static void recordGcStateStep(global_State* g, int startgcstate, double seconds, bool assist, size_t work)
 {
     switch (startgcstate)
     {
@@ -56,57 +55,75 @@ static void recordGcStateTime(global_State* g, int startgcstate, double seconds,
         // record root mark time if we have switched to next state
         if (g->gcstate == GCSpropagate)
         {
-            g->gcstats.currcycle.marktime += seconds;
+            g->gcmetrics.currcycle.marktime += seconds;
 
-            if (FFlag::LuauGcAdditionalStats && assist)
-                g->gcstats.currcycle.markassisttime += seconds;
+            if (assist)
+                g->gcmetrics.currcycle.markassisttime += seconds;
         }
         break;
     case GCSpropagate:
     case GCSpropagateagain:
-        g->gcstats.currcycle.marktime += seconds;
+        g->gcmetrics.currcycle.marktime += seconds;
+        g->gcmetrics.currcycle.markrequests += g->gcstepsize;
 
-        if (FFlag::LuauGcAdditionalStats && assist)
-            g->gcstats.currcycle.markassisttime += seconds;
+        if (assist)
+            g->gcmetrics.currcycle.markassisttime += seconds;
         break;
     case GCSatomic:
-        g->gcstats.currcycle.atomictime += seconds;
+        g->gcmetrics.currcycle.atomictime += seconds;
         break;
     case GCSsweep:
-        g->gcstats.currcycle.sweeptime += seconds;
+        g->gcmetrics.currcycle.sweeptime += seconds;
+        g->gcmetrics.currcycle.sweeprequests += g->gcstepsize;
 
-        if (FFlag::LuauGcAdditionalStats && assist)
-            g->gcstats.currcycle.sweepassisttime += seconds;
+        if (assist)
+            g->gcmetrics.currcycle.sweepassisttime += seconds;
         break;
     default:
         LUAU_ASSERT(!"Unexpected GC state");
     }
 
     if (assist)
-        g->gcstats.stepassisttimeacc += seconds;
+    {
+        g->gcmetrics.stepassisttimeacc += seconds;
+        g->gcmetrics.currcycle.assistwork += work;
+        g->gcmetrics.currcycle.assistrequests += g->gcstepsize;
+    }
     else
-        g->gcstats.stepexplicittimeacc += seconds;
+    {
+        g->gcmetrics.stepexplicittimeacc += seconds;
+        g->gcmetrics.currcycle.explicitwork += work;
+        g->gcmetrics.currcycle.explicitrequests += g->gcstepsize;
+    }
 }
 
-static void startGcCycleStats(global_State* g)
+static double recordGcDeltaTime(double& timer)
 {
-    g->gcstats.currcycle.starttimestamp = lua_clock();
-    g->gcstats.currcycle.pausetime = g->gcstats.currcycle.starttimestamp - g->gcstats.lastcycle.endtimestamp;
+    double now = lua_clock();
+    double delta = now - timer;
+    timer = now;
+    return delta;
 }
 
-static void finishGcCycleStats(global_State* g)
+static void startGcCycleMetrics(global_State* g)
 {
-    g->gcstats.currcycle.endtimestamp = lua_clock();
-    g->gcstats.currcycle.endtotalsizebytes = g->totalbytes;
-
-    g->gcstats.completedcycles++;
-    g->gcstats.lastcycle = g->gcstats.currcycle;
-    g->gcstats.currcycle = GCCycleStats();
-
-    g->gcstats.cyclestatsacc.marktime += g->gcstats.lastcycle.marktime;
-    g->gcstats.cyclestatsacc.atomictime += g->gcstats.lastcycle.atomictime;
-    g->gcstats.cyclestatsacc.sweeptime += g->gcstats.lastcycle.sweeptime;
+    g->gcmetrics.currcycle.starttimestamp = lua_clock();
+    g->gcmetrics.currcycle.pausetime = g->gcmetrics.currcycle.starttimestamp - g->gcmetrics.lastcycle.endtimestamp;
 }
+
+static void finishGcCycleMetrics(global_State* g)
+{
+    g->gcmetrics.currcycle.endtimestamp = lua_clock();
+    g->gcmetrics.currcycle.endtotalsizebytes = g->totalbytes;
+
+    g->gcmetrics.completedcycles++;
+    g->gcmetrics.lastcycle = g->gcmetrics.currcycle;
+    g->gcmetrics.currcycle = GCCycleMetrics();
+
+    g->gcmetrics.currcycle.starttotalsizebytes = g->totalbytes;
+    g->gcmetrics.currcycle.heaptriggersizebytes = g->GCthreshold;
+}
+#endif
 
 static void removeentry(LuaNode* n)
 {
@@ -598,20 +615,19 @@ static size_t atomic(lua_State* L)
     LUAU_ASSERT(g->gcstate == GCSatomic);
 
     size_t work = 0;
+
+#ifdef LUAI_GCMETRICS
     double currts = lua_clock();
-    double prevts = currts;
+#endif
 
     /* remark occasional upvalues of (maybe) dead threads */
     work += remarkupvals(g);
     /* traverse objects caught by write barrier and by 'remarkupvals' */
     work += propagateall(g);
 
-    if (FFlag::LuauGcAdditionalStats)
-    {
-        currts = lua_clock();
-        g->gcstats.currcycle.atomictimeupval += currts - prevts;
-        prevts = currts;
-    }
+#ifdef LUAI_GCMETRICS
+    g->gcmetrics.currcycle.atomictimeupval += recordGcDeltaTime(currts);
+#endif
 
     /* remark weak tables */
     g->gray = g->weak;
@@ -621,34 +637,26 @@ static size_t atomic(lua_State* L)
     markmt(g);        /* mark basic metatables (again) */
     work += propagateall(g);
 
-    if (FFlag::LuauGcAdditionalStats)
-    {
-        currts = lua_clock();
-        g->gcstats.currcycle.atomictimeweak += currts - prevts;
-        prevts = currts;
-    }
+#ifdef LUAI_GCMETRICS
+    g->gcmetrics.currcycle.atomictimeweak += recordGcDeltaTime(currts);
+#endif
 
     /* remark gray again */
     g->gray = g->grayagain;
     g->grayagain = NULL;
     work += propagateall(g);
 
-    if (FFlag::LuauGcAdditionalStats)
-    {
-        currts = lua_clock();
-        g->gcstats.currcycle.atomictimegray += currts - prevts;
-        prevts = currts;
-    }
+#ifdef LUAI_GCMETRICS
+    g->gcmetrics.currcycle.atomictimegray += recordGcDeltaTime(currts);
+#endif
 
     /* remove collected objects from weak tables */
     work += cleartable(L, g->weak);
     g->weak = NULL;
 
-    if (FFlag::LuauGcAdditionalStats)
-    {
-        currts = lua_clock();
-        g->gcstats.currcycle.atomictimeclear += currts - prevts;
-    }
+#ifdef LUAI_GCMETRICS
+    g->gcmetrics.currcycle.atomictimeclear += recordGcDeltaTime(currts);
+#endif
 
     /* flip current white */
     g->currentwhite = cast_byte(otherwhite(g));
@@ -742,8 +750,9 @@ static size_t gcstep(lua_State* L, size_t limit)
 
         if (!g->gray)
         {
-            if (FFlag::LuauGcAdditionalStats)
-                g->gcstats.currcycle.propagatework = g->gcstats.currcycle.explicitwork + g->gcstats.currcycle.assistwork;
+#ifdef LUAI_GCMETRICS
+            g->gcmetrics.currcycle.propagatework = g->gcmetrics.currcycle.explicitwork + g->gcmetrics.currcycle.assistwork;
+#endif
 
             // perform one iteration over 'gray again' list
             g->gray = g->grayagain;
@@ -762,9 +771,10 @@ static size_t gcstep(lua_State* L, size_t limit)
 
         if (!g->gray) /* no more `gray' objects */
         {
-            if (FFlag::LuauGcAdditionalStats)
-                g->gcstats.currcycle.propagateagainwork =
-                    g->gcstats.currcycle.explicitwork + g->gcstats.currcycle.assistwork - g->gcstats.currcycle.propagatework;
+#ifdef LUAI_GCMETRICS
+            g->gcmetrics.currcycle.propagateagainwork =
+                g->gcmetrics.currcycle.explicitwork + g->gcmetrics.currcycle.assistwork - g->gcmetrics.currcycle.propagatework;
+#endif
 
             g->gcstate = GCSatomic;
         }
@@ -772,8 +782,13 @@ static size_t gcstep(lua_State* L, size_t limit)
     }
     case GCSatomic:
     {
-        g->gcstats.currcycle.atomicstarttimestamp = lua_clock();
-        g->gcstats.currcycle.atomicstarttotalsizebytes = g->totalbytes;
+#ifdef LUAI_GCMETRICS
+        g->gcmetrics.currcycle.atomicstarttimestamp = lua_clock();
+        g->gcmetrics.currcycle.atomicstarttotalsizebytes = g->totalbytes;
+#endif
+
+        g->gcstats.atomicstarttimestamp = lua_clock();
+        g->gcstats.atomicstarttotalsizebytes = g->totalbytes;
 
         cost = atomic(L); /* finish mark phase */
 
@@ -809,18 +824,20 @@ static size_t gcstep(lua_State* L, size_t limit)
     return cost;
 }
 
-static int64_t getheaptriggererroroffset(GCHeapTriggerStats* triggerstats, GCCycleStats* cyclestats)
+static int64_t getheaptriggererroroffset(global_State* g)
 {
     // adjust for error using Proportional-Integral controller
     // https://en.wikipedia.org/wiki/PID_controller
-    int32_t errorKb = int32_t((cyclestats->atomicstarttotalsizebytes - cyclestats->heapgoalsizebytes) / 1024);
+    int32_t errorKb = int32_t((g->gcstats.atomicstarttotalsizebytes - g->gcstats.heapgoalsizebytes) / 1024);
 
     // we use sliding window for the error integral to avoid error sum 'windup' when the desired target cannot be reached
-    int32_t* slot = &triggerstats->terms[triggerstats->termpos % triggerstats->termcount];
+    const size_t triggertermcount = sizeof(g->gcstats.triggerterms) / sizeof(g->gcstats.triggerterms[0]);
+
+    int32_t* slot = &g->gcstats.triggerterms[g->gcstats.triggertermpos % triggertermcount];
     int32_t prev = *slot;
     *slot = errorKb;
-    triggerstats->integral += errorKb - prev;
-    triggerstats->termpos++;
+    g->gcstats.triggerintegral += errorKb - prev;
+    g->gcstats.triggertermpos++;
 
     // controller tuning
     // https://en.wikipedia.org/wiki/Ziegler%E2%80%93Nichols_method
@@ -832,7 +849,7 @@ static int64_t getheaptriggererroroffset(GCHeapTriggerStats* triggerstats, GCCyc
     const double Ki = 0.54 * Ku / Ti; // integral gain
 
     double proportionalTerm = Kp * errorKb;
-    double integralTerm = Ki * triggerstats->integral;
+    double integralTerm = Ki * g->gcstats.triggerintegral;
 
     double totalTerm = proportionalTerm + integralTerm;
 
@@ -841,23 +858,20 @@ static int64_t getheaptriggererroroffset(GCHeapTriggerStats* triggerstats, GCCyc
 
 static size_t getheaptrigger(global_State* g, size_t heapgoal)
 {
-    GCCycleStats* lastcycle = &g->gcstats.lastcycle;
-    GCCycleStats* currcycle = &g->gcstats.currcycle;
-
     // adjust threshold based on a guess of how many bytes will be allocated between the cycle start and sweep phase
     // our goal is to begin the sweep when used memory has reached the heap goal
     const double durationthreshold = 1e-3;
-    double allocationduration = currcycle->atomicstarttimestamp - lastcycle->endtimestamp;
+    double allocationduration = g->gcstats.atomicstarttimestamp - g->gcstats.endtimestamp;
 
     // avoid measuring intervals smaller than 1ms
     if (allocationduration < durationthreshold)
         return heapgoal;
 
-    double allocationrate = (currcycle->atomicstarttotalsizebytes - lastcycle->endtotalsizebytes) / allocationduration;
-    double markduration = currcycle->atomicstarttimestamp - currcycle->starttimestamp;
+    double allocationrate = (g->gcstats.atomicstarttotalsizebytes - g->gcstats.endtotalsizebytes) / allocationduration;
+    double markduration = g->gcstats.atomicstarttimestamp - g->gcstats.starttimestamp;
 
     int64_t expectedgrowth = int64_t(markduration * allocationrate);
-    int64_t offset = getheaptriggererroroffset(&g->gcstats.triggerstats, currcycle);
+    int64_t offset = getheaptriggererroroffset(g);
     int64_t heaptrigger = heapgoal - (expectedgrowth + offset);
 
     // clamp the trigger between memory use at the end of the cycle and the heap goal
@@ -868,11 +882,6 @@ void luaC_step(lua_State* L, bool assist)
 {
     global_State* g = L->global;
 
-    if (assist)
-        g->gcstats.currcycle.assistrequests += g->gcstepsize;
-    else
-        g->gcstats.currcycle.explicitrequests += g->gcstepsize;
-
     int lim = (g->gcstepsize / 100) * g->gcstepmul; /* how much to work */
     LUAU_ASSERT(g->totalbytes >= g->GCthreshold);
     size_t debt = g->totalbytes - g->GCthreshold;
@@ -881,24 +890,23 @@ void luaC_step(lua_State* L, bool assist)
 
     // at the start of the new cycle
     if (g->gcstate == GCSpause)
-        startGcCycleStats(g);
+        g->gcstats.starttimestamp = lua_clock();
+
+#ifdef LUAI_GCMETRICS
+    if (g->gcstate == GCSpause)
+        startGcCycleMetrics(g);
+
+    double lasttimestamp = lua_clock();
+#endif
 
     int lastgcstate = g->gcstate;
-    double lasttimestamp = lua_clock();
 
     size_t work = gcstep(L, lim);
+    (void)work;
 
-    if (assist)
-        g->gcstats.currcycle.assistwork += work;
-    else
-        g->gcstats.currcycle.explicitwork += work;
-
-    recordGcStateTime(g, lastgcstate, lua_clock() - lasttimestamp, assist);
-
-    if (lastgcstate == GCSpropagate)
-        g->gcstats.currcycle.markrequests += g->gcstepsize;
-    else if (lastgcstate == GCSsweep)
-        g->gcstats.currcycle.sweeprequests += g->gcstepsize;
+#ifdef LUAI_GCMETRICS
+    recordGcStateStep(g, lastgcstate, lua_clock() - lasttimestamp, assist, work);
+#endif
 
     // at the end of the last cycle
     if (g->gcstate == GCSpause)
@@ -909,13 +917,13 @@ void luaC_step(lua_State* L, bool assist)
 
         g->GCthreshold = heaptrigger;
 
-        finishGcCycleStats(g);
+        g->gcstats.heapgoalsizebytes = heapgoal;
+        g->gcstats.endtimestamp = lua_clock();
+        g->gcstats.endtotalsizebytes = g->totalbytes;
 
-        if (FFlag::LuauGcAdditionalStats)
-            g->gcstats.currcycle.starttotalsizebytes = g->totalbytes;
-
-        g->gcstats.currcycle.heapgoalsizebytes = heapgoal;
-        g->gcstats.currcycle.heaptriggersizebytes = heaptrigger;
+#ifdef LUAI_GCMETRICS
+        finishGcCycleMetrics(g);
+#endif
     }
     else
     {
@@ -933,8 +941,10 @@ void luaC_fullgc(lua_State* L)
 {
     global_State* g = L->global;
 
+#ifdef LUAI_GCMETRICS
     if (g->gcstate == GCSpause)
-        startGcCycleStats(g);
+        startGcCycleMetrics(g);
+#endif
 
     if (g->gcstate <= GCSatomic)
     {
@@ -954,11 +964,12 @@ void luaC_fullgc(lua_State* L)
         gcstep(L, SIZE_MAX);
     }
 
-    finishGcCycleStats(g);
+#ifdef LUAI_GCMETRICS
+    finishGcCycleMetrics(g);
+    startGcCycleMetrics(g);
+#endif
 
     /* run a full collection cycle */
-    startGcCycleStats(g);
-
     markroot(L);
     while (g->gcstate != GCSpause)
     {
@@ -980,10 +991,11 @@ void luaC_fullgc(lua_State* L)
     if (g->GCthreshold < g->totalbytes)
         g->GCthreshold = g->totalbytes;
 
-    finishGcCycleStats(g);
+    g->gcstats.heapgoalsizebytes = heapgoalsizebytes;
 
-    g->gcstats.currcycle.heapgoalsizebytes = heapgoalsizebytes;
-    g->gcstats.currcycle.heaptriggersizebytes = g->GCthreshold;
+#ifdef LUAI_GCMETRICS
+    finishGcCycleMetrics(g);
+#endif
 }
 
 void luaC_barrierupval(lua_State* L, GCObject* v)
@@ -1075,21 +1087,21 @@ int64_t luaC_allocationrate(lua_State* L)
 
     if (g->gcstate <= GCSatomic)
     {
-        double duration = lua_clock() - g->gcstats.lastcycle.endtimestamp;
+        double duration = lua_clock() - g->gcstats.endtimestamp;
 
         if (duration < durationthreshold)
             return -1;
 
-        return int64_t((g->totalbytes - g->gcstats.lastcycle.endtotalsizebytes) / duration);
+        return int64_t((g->totalbytes - g->gcstats.endtotalsizebytes) / duration);
     }
 
     // totalbytes is unstable during the sweep, use the rate measured at the end of mark phase
-    double duration = g->gcstats.currcycle.atomicstarttimestamp - g->gcstats.lastcycle.endtimestamp;
+    double duration = g->gcstats.atomicstarttimestamp - g->gcstats.endtimestamp;
 
     if (duration < durationthreshold)
         return -1;
 
-    return int64_t((g->gcstats.currcycle.atomicstarttotalsizebytes - g->gcstats.lastcycle.endtotalsizebytes) / duration);
+    return int64_t((g->gcstats.atomicstarttotalsizebytes - g->gcstats.endtotalsizebytes) / duration);
 }
 
 void luaC_wakethread(lua_State* L)

@@ -887,8 +887,6 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
 TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types2")
 {
     ScopedFastFlag sff[]{
-        {"LuauParseSingletonTypes", true},
-        {"LuauSingletonTypes", true},
         {"LuauAssertStripsFalsyTypes", true},
         {"LuauDiscriminableUnions2", true},
         {"LuauWidenIfSupertypeIsFree2", true},

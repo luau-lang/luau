@@ -296,6 +296,7 @@ return f()
     REQUIRE(acm);
     CHECK_EQ(1, acm->expected);
     CHECK_EQ(0, acm->actual);
+    CHECK_FALSE(acm->isVariadic);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_field_access_error")

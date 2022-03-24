@@ -2078,6 +2078,44 @@ caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
+{
+    ScopedFastFlag luauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
+    ScopedFastFlag luauExtendedIndexerError{"LuauExtendedIndexerError", true};
+
+    CheckResult result = check(R"(
+        type A = { [number]: string }
+        type B = { [string]: string }
+
+        local a: A = { 'a', 'b' }
+        local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property '[indexer key]' is not compatible. Type 'number' could not be converted into 'string')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
+{
+    ScopedFastFlag luauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
+    ScopedFastFlag luauExtendedIndexerError{"LuauExtendedIndexerError", true};
+
+    CheckResult result = check(R"(
+        type A = { [number]: number }
+        type B = { [number]: string }
+
+        local a: A = { 1, 2, 3 }
+        local b: B = a
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property '[indexer value]' is not compatible. Type 'number' could not be converted into 'string')");
+}
+
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
     ScopedFastFlag sffs[]{

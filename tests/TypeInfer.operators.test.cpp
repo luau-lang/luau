@@ -756,4 +756,30 @@ TEST_CASE_FIXTURE(Fixture, "refine_and_or")
     CHECK_EQ("number", toString(requireType("u")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
+{
+    ScopedFastFlag sff{"LuauDecoupleOperatorInferenceFromUnifiedTypeInference", true};
+
+    CheckResult result = check(Mode::Strict, R"(
+        local function f(x, y)
+            return x + y
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Unknown type used in + operation; consider adding a type annotation to 'x'");
+
+    result = check(Mode::Nonstrict, R"(
+        local function f(x, y)
+            return x + y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // When type inference is unified, we could add an assertion that
+    // the strict and nonstrict types are equivalent. This isn't actually
+    // the case right now, though.
+}
+
 TEST_SUITE_END();

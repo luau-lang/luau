@@ -11,7 +11,7 @@
     if ((char*)L->stack_last - (char*)L->top <= (n) * (int)sizeof(TValue)) \
         luaD_growstack(L, n); \
     else \
-        condhardstacktests(luaD_reallocstack(L, L->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK)));
+        condhardstacktests(luaD_reallocstack(L, L->stacksize - EXTRA_STACK));
 
 #define incr_top(L) \
     { \

@@ -14,8 +14,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAG(LuauGcAdditionalStats)
-
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -1060,8 +1058,11 @@ int lua_gc(lua_State* L, int what, int data)
             g->GCthreshold = 0;
 
         bool waspaused = g->gcstate == GCSpause;
-        double startmarktime = g->gcstats.currcycle.marktime;
-        double startsweeptime = g->gcstats.currcycle.sweeptime;
+
+#ifdef LUAI_GCMETRICS
+        double startmarktime = g->gcmetrics.currcycle.marktime;
+        double startsweeptime = g->gcmetrics.currcycle.sweeptime;
+#endif
 
         // track how much work the loop will actually perform
         size_t actualwork = 0;
@@ -1079,30 +1080,29 @@ int lua_gc(lua_State* L, int what, int data)
             }
         }
 
-        if (FFlag::LuauGcAdditionalStats)
+#ifdef LUAI_GCMETRICS
+        // record explicit step statistics
+        GCCycleMetrics* cyclemetrics = g->gcstate == GCSpause ? &g->gcmetrics.lastcycle : &g->gcmetrics.currcycle;
+
+        double totalmarktime = cyclemetrics->marktime - startmarktime;
+        double totalsweeptime = cyclemetrics->sweeptime - startsweeptime;
+
+        if (totalmarktime > 0.0)
         {
-            // record explicit step statistics
-            GCCycleStats* cyclestats = g->gcstate == GCSpause ? &g->gcstats.lastcycle : &g->gcstats.currcycle;
+            cyclemetrics->markexplicitsteps++;
 
-            double totalmarktime = cyclestats->marktime - startmarktime;
-            double totalsweeptime = cyclestats->sweeptime - startsweeptime;
-
-            if (totalmarktime > 0.0)
-            {
-                cyclestats->markexplicitsteps++;
-
-                if (totalmarktime > cyclestats->markmaxexplicittime)
-                    cyclestats->markmaxexplicittime = totalmarktime;
-            }
-
-            if (totalsweeptime > 0.0)
-            {
-                cyclestats->sweepexplicitsteps++;
-
-                if (totalsweeptime > cyclestats->sweepmaxexplicittime)
-                    cyclestats->sweepmaxexplicittime = totalsweeptime;
-            }
+            if (totalmarktime > cyclemetrics->markmaxexplicittime)
+                cyclemetrics->markmaxexplicittime = totalmarktime;
         }
+
+        if (totalsweeptime > 0.0)
+        {
+            cyclemetrics->sweepexplicitsteps++;
+
+            if (totalsweeptime > cyclemetrics->sweepmaxexplicittime)
+                cyclemetrics->sweepmaxexplicittime = totalsweeptime;
+        }
+#endif
 
         // if cycle hasn't finished, advance threshold forward for the amount of extra work performed
         if (g->gcstate != GCSpause)

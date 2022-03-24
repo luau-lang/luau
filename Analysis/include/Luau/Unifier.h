@@ -90,7 +90,9 @@ private:
 
     TypeId deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen = {});
 
-    void cacheResult(TypeId subTy, TypeId superTy);
+    bool canCacheResult(TypeId subTy, TypeId superTy);
+    void cacheResult(TypeId subTy, TypeId superTy, size_t prevErrorCount);
+    void cacheResult_DEPRECATED(TypeId subTy, TypeId superTy);
 
 public:
     void tryUnify(TypePackId subTy, TypePackId superTy, bool isFunctionCall = false);

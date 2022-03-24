@@ -488,6 +488,9 @@ const TableTypeVar* getTableType(TypeId type);
 // Returns nullptr if the type has no name.
 const std::string* getName(TypeId type);
 
+// Returns name of the module where type was defined if type has that information
+std::optional<ModuleName> getDefinitionModuleName(TypeId type);
+
 // Checks whether a union contains all types of another union.
 bool isSubset(const UnionTypeVar& super, const UnionTypeVar& sub);
 
