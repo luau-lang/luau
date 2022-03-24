@@ -29,14 +29,6 @@ This document tracks unimplemented RFCs.
 
 **Status**: Implemented but not fully rolled out yet.
 
-## Nil-forgiving operator
-
-[RFC: nil-forgiving postfix operator !](https://github.com/Roblox/luau/blob/master/rfcs/syntax-nil-forgiving-operator.md)
-
-**Status**: Needs implementation.
-
-**Notes**: Do we need to reevaluate the necessity given `assert` and improved refinements?
-
 ## Safe navigation operator
 
 [RFC: Safe navigation postfix operator (?)](https://github.com/Roblox/luau/blob/master/rfcs/syntax-safe-navigation-operator.md)
@@ -54,11 +46,5 @@ This document tracks unimplemented RFCs.
 ## Generalized iteration
 
 [RFC: Generalized iteration](https://github.com/Roblox/luau/blob/master/rfcs/generalized-iteration.md)
-
-**Status**: Needs implementation
-
-## table.clone
-
-[RFC: table.clone](https://github.com/Roblox/luau/blob/master/rfcs/function-table-clone.md)
 
 **Status**: Needs implementation
