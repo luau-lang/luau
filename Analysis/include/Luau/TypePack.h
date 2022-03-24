@@ -119,9 +119,9 @@ bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 TypePackId follow(TypePackId tp);
 TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper);
 
-size_t size(TypePackId tp);
-bool finite(TypePackId tp);
-size_t size(const TypePack& tp);
+size_t size(TypePackId tp, TxnLog* log = nullptr);
+bool finite(TypePackId tp, TxnLog* log = nullptr);
+size_t size(const TypePack& tp, TxnLog* log = nullptr);
 std::optional<TypeId> first(TypePackId tp);
 
 TypePackVar* asMutable(TypePackId tp);

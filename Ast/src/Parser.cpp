@@ -10,8 +10,6 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauParseSingletonTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauTableFieldFunctionDebugname, false)
 
 namespace Luau
 {
@@ -1233,8 +1231,7 @@ AstType* Parser::parseTableTypeAnnotation()
 
     while (lexer.current().type != '}')
     {
-        if (FFlag::LuauParseSingletonTypes && lexer.current().type == '[' &&
-            (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
+        if (lexer.current().type == '[' && (lexer.lookahead().type == Lexeme::RawString || lexer.lookahead().type == Lexeme::QuotedString))
         {
             const Lexeme begin = lexer.current();
             nextLexeme(); // [
@@ -1500,17 +1497,17 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
         nextLexeme();
         return {allocator.alloc<AstTypeReference>(begin, std::nullopt, nameNil), {}};
     }
-    else if (FFlag::LuauParseSingletonTypes && lexer.current().type == Lexeme::ReservedTrue)
+    else if (lexer.current().type == Lexeme::ReservedTrue)
     {
         nextLexeme();
         return {allocator.alloc<AstTypeSingletonBool>(begin, true)};
     }
-    else if (FFlag::LuauParseSingletonTypes && lexer.current().type == Lexeme::ReservedFalse)
+    else if (lexer.current().type == Lexeme::ReservedFalse)
     {
         nextLexeme();
         return {allocator.alloc<AstTypeSingletonBool>(begin, false)};
     }
-    else if (FFlag::LuauParseSingletonTypes && (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString))
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
     {
         if (std::optional<AstArray<char>> value = parseCharArray())
         {
@@ -1520,7 +1517,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
         else
             return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
     }
-    else if (FFlag::LuauParseSingletonTypes && lexer.current().type == Lexeme::BrokenString)
+    else if (lexer.current().type == Lexeme::BrokenString)
     {
         Location location = lexer.current().location;
         nextLexeme();
@@ -2189,11 +2186,8 @@ AstExpr* Parser::parseTableConstructor()
             AstExpr* key = allocator.alloc<AstExprConstantString>(name.location, nameString);
             AstExpr* value = parseExpr();
 
-            if (FFlag::LuauTableFieldFunctionDebugname)
-            {
-                if (AstExprFunction* func = value->as<AstExprFunction>())
-                    func->debugname = name.name;
-            }
+            if (AstExprFunction* func = value->as<AstExprFunction>())
+                func->debugname = name.name;
 
             items.push_back({AstExprTable::Item::Record, key, value});
         }

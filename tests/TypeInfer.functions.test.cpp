@@ -1335,4 +1335,80 @@ caused by:
         toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
+{
+    ScopedFastFlag sff{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
+    CheckResult result = check(R"(
+    function test(a: number, b: string, ...)
+    end
+
+    test(1)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto err = result.errors[0];
+    auto acm = get<CountMismatch>(err);
+    REQUIRE(acm);
+
+    CHECK_EQ(2, acm->expected);
+    CHECK_EQ(1, acm->actual);
+    CHECK_EQ(CountMismatch::Context::Arg, acm->context);
+    CHECK(acm->isVariadic);
+}
+
+TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic")
+{
+    ScopedFastFlag sff1{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
+    ScopedFastFlag sff2{"LuauFixArgumentCountMismatchAmountWithGenericTypes", true};
+    CheckResult result = check(R"(
+function test(a: number, b: string, ...)
+    return 1
+end
+
+function wrapper<A...>(f: (A...) -> number, ...: A...)
+end
+
+wrapper(test)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto err = result.errors[0];
+    auto acm = get<CountMismatch>(err);
+    REQUIRE(acm);
+
+    CHECK_EQ(3, acm->expected);
+    CHECK_EQ(1, acm->actual);
+    CHECK_EQ(CountMismatch::Context::Arg, acm->context);
+    CHECK(acm->isVariadic);
+}
+
+TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic2")
+{
+    ScopedFastFlag sff1{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
+    ScopedFastFlag sff2{"LuauFixArgumentCountMismatchAmountWithGenericTypes", true};
+    CheckResult result = check(R"(
+function test(a: number, b: string, ...)
+    return 1
+end
+
+function wrapper<A...>(f: (A...) -> number, ...: A...)
+end
+
+pcall(wrapper, test)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto err = result.errors[0];
+    auto acm = get<CountMismatch>(err);
+    REQUIRE(acm);
+
+    CHECK_EQ(4, acm->expected);
+    CHECK_EQ(2, acm->actual);
+    CHECK_EQ(CountMismatch::Context::Arg, acm->context);
+    CHECK(acm->isVariadic);
+}
+
 TEST_SUITE_END();

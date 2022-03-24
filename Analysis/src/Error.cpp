@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAGVARIABLE(BetterDiagnosticCodesInStudio, false);
+LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleName, false);
 
 static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
@@ -53,7 +54,32 @@ struct ErrorConverter
 {
     std::string operator()(const Luau::TypeMismatch& tm) const
     {
-        std::string result = "Type '" + Luau::toString(tm.givenType) + "' could not be converted into '" + Luau::toString(tm.wantedType) + "'";
+        std::string givenTypeName = Luau::toString(tm.givenType);
+        std::string wantedTypeName = Luau::toString(tm.wantedType);
+
+        std::string result;
+
+        if (FFlag::LuauTypeMismatchModuleName)
+        {
+            if (givenTypeName == wantedTypeName)
+            {
+                if (auto givenDefinitionModule = getDefinitionModuleName(tm.givenType))
+                {
+                    if (auto wantedDefinitionModule = getDefinitionModuleName(tm.wantedType))
+                    {
+                        result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" + wantedTypeName +
+                                 "' from '" + *wantedDefinitionModule + "'";
+                    }
+                }
+            }
+
+            if (result.empty())
+                result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
+        }
+        else
+        {
+            result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
+        }
 
         if (tm.error)
         {
@@ -147,7 +173,7 @@ struct ErrorConverter
             return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " + std::to_string(e.actual) +
                    " are required here";
         case CountMismatch::Arg:
-            return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual);
+            return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual, /*argPrefix*/ nullptr, e.isVariadic);
         }
 
         LUAU_ASSERT(!"Unknown context");

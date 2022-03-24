@@ -496,8 +496,6 @@ TEST_CASE("DateTime")
 
 TEST_CASE("Debug")
 {
-    ScopedFastFlag luauTableFieldFunctionDebugname{"LuauTableFieldFunctionDebugname", true};
-
     runConformance("debug.lua");
 }
 

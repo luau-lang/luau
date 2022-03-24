@@ -75,10 +75,26 @@ typedef struct CallInfo
 #define f_isLua(ci) (!ci_func(ci)->isC)
 #define isLua(ci) (ttisfunction((ci)->func) && f_isLua(ci))
 
-struct GCCycleStats
+struct GCStats
+{
+    // data for proportional-integral controller of heap trigger value
+    int32_t triggerterms[32] = {0};
+    uint32_t triggertermpos = 0;
+    int32_t triggerintegral = 0;
+
+    size_t atomicstarttotalsizebytes = 0;
+    size_t endtotalsizebytes = 0;
+    size_t heapgoalsizebytes = 0;
+
+    double starttimestamp = 0;
+    double atomicstarttimestamp = 0;
+    double endtimestamp = 0;
+};
+
+#ifdef LUAI_GCMETRICS
+struct GCCycleMetrics
 {
     size_t starttotalsizebytes = 0;
-    size_t heapgoalsizebytes = 0;
     size_t heaptriggersizebytes = 0;
 
     double pausetime = 0.0; // time from end of the last cycle to the start of a new one
@@ -120,16 +136,7 @@ struct GCCycleStats
     size_t endtotalsizebytes = 0;
 };
 
-// data for proportional-integral controller of heap trigger value
-struct GCHeapTriggerStats
-{
-    static const unsigned termcount = 32;
-    int32_t terms[termcount] = {0};
-    uint32_t termpos = 0;
-    int32_t integral = 0;
-};
-
-struct GCStats
+struct GCMetrics
 {
     double stepexplicittimeacc = 0.0;
     double stepassisttimeacc = 0.0;
@@ -137,14 +144,10 @@ struct GCStats
     // when cycle is completed, last cycle values are updated
     uint64_t completedcycles = 0;
 
-    GCCycleStats lastcycle;
-    GCCycleStats currcycle;
-
-    // only step count and their time is accumulated
-    GCCycleStats cyclestatsacc;
-
-    GCHeapTriggerStats triggerstats;
+    GCCycleMetrics lastcycle;
+    GCCycleMetrics currcycle;
 };
+#endif
 
 /*
 ** `global state', shared by all threads of this state
@@ -206,6 +209,9 @@ typedef struct global_State
 
     GCStats gcstats;
 
+#ifdef LUAI_GCMETRICS
+    GCMetrics gcmetrics;
+#endif
 } global_State;
 // clang-format on
 

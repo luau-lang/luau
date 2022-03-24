@@ -14,10 +14,9 @@
 
 LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
-LUAU_FASTFLAG(LuauImmutableTypes)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 2000);
+LUAU_FASTFLAGVARIABLE(LuauExtendedIndexerError, false);
 LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
-LUAU_FASTFLAG(LuauSingletonTypes)
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree2, false)
@@ -26,6 +25,7 @@ LUAU_FASTFLAGVARIABLE(LuauTxnLogSeesTypePacks2, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogCheckForInvalidation, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogDontRetryForIndexers, false)
+LUAU_FASTFLAGVARIABLE(LuauUnifierCacheErrors, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 
 namespace Luau
@@ -63,7 +63,7 @@ struct PromoteTypeLevels
     bool operator()(TID ty, const T&)
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
-        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        if (ty->owningArena != typeArena)
             return false;
 
         return true;
@@ -83,7 +83,7 @@ struct PromoteTypeLevels
     bool operator()(TypeId ty, const FunctionTypeVar&)
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
-        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        if (ty->owningArena != typeArena)
             return false;
 
         promote(ty, log.getMutable<FunctionTypeVar>(ty));
@@ -93,7 +93,7 @@ struct PromoteTypeLevels
     bool operator()(TypeId ty, const TableTypeVar& ttv)
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
-        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        if (ty->owningArena != typeArena)
             return false;
 
         if (ttv.state != TableState::Free && ttv.state != TableState::Generic)
@@ -118,7 +118,7 @@ struct PromoteTypeLevels
 static void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypeId ty)
 {
     // Type levels of types from other modules are already global, so we don't need to promote anything inside
-    if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+    if (ty->owningArena != typeArena)
         return;
 
     PromoteTypeLevels ptl{log, typeArena, minLevel};
@@ -130,7 +130,7 @@ static void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel
 void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypePackId tp)
 {
     // Type levels of types from other modules are already global, so we don't need to promote anything inside
-    if (FFlag::LuauImmutableTypes && tp->owningArena != typeArena)
+    if (tp->owningArena != typeArena)
         return;
 
     PromoteTypeLevels ptl{log, typeArena, minLevel};
@@ -170,7 +170,7 @@ struct SkipCacheForType
     bool operator()(TypeId ty, const TableTypeVar&)
     {
         // Types from other modules don't contain mutable elements and are ok to cache
-        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        if (ty->owningArena != typeArena)
             return false;
 
         TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
@@ -194,7 +194,7 @@ struct SkipCacheForType
     bool operator()(TypeId ty, const T& t)
     {
         // Types from other modules don't contain mutable elements and are ok to cache
-        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        if (ty->owningArena != typeArena)
             return false;
 
         const bool* prev = skipCacheForType.find(ty);
@@ -212,7 +212,7 @@ struct SkipCacheForType
     bool operator()(TypePackId tp, const T&)
     {
         // Types from other modules don't contain mutable elements and are ok to cache
-        if (FFlag::LuauImmutableTypes && tp->owningArena != typeArena)
+        if (tp->owningArena != typeArena)
             return false;
 
         return true;
@@ -445,12 +445,33 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     if (get<ErrorTypeVar>(subTy) || get<AnyTypeVar>(subTy))
         return tryUnifyWithAny(superTy, subTy);
 
-    bool cacheEnabled = !isFunctionCall && !isIntersection;
+    bool cacheEnabled;
     auto& cache = sharedState.cachedUnify;
 
     // What if the types are immutable and we proved their relation before
-    if (cacheEnabled && cache.contains({superTy, subTy}) && (variance == Covariant || cache.contains({subTy, superTy})))
-        return;
+    if (FFlag::LuauUnifierCacheErrors)
+    {
+        cacheEnabled = !isFunctionCall && !isIntersection && variance == Invariant;
+
+        if (cacheEnabled)
+        {
+            if (cache.contains({subTy, superTy}))
+                return;
+
+            if (auto error = sharedState.cachedUnifyError.find({subTy, superTy}))
+            {
+                reportError(TypeError{location, *error});
+                return;
+            }
+        }
+    }
+    else
+    {
+        cacheEnabled = !isFunctionCall && !isIntersection;
+
+        if (cacheEnabled && cache.contains({superTy, subTy}) && (variance == Covariant || cache.contains({subTy, superTy})))
+            return;
+    }
 
     // If we have seen this pair of types before, we are currently recursing into cyclic types.
     // Here, we assume that the types unify.  If they do not, we will find out as we roll back
@@ -460,6 +481,8 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         return;
 
     log.pushSeen(superTy, subTy);
+
+    size_t errorCount = errors.size();
 
     if (const UnionTypeVar* uv = log.getMutable<UnionTypeVar>(subTy))
     {
@@ -480,8 +503,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<PrimitiveTypeVar>(superTy) && log.getMutable<PrimitiveTypeVar>(subTy))
         tryUnifyPrimitives(subTy, superTy);
 
-    else if (FFlag::LuauSingletonTypes && (log.getMutable<PrimitiveTypeVar>(superTy) || log.getMutable<SingletonTypeVar>(superTy)) &&
-             log.getMutable<SingletonTypeVar>(subTy))
+    else if ((log.getMutable<PrimitiveTypeVar>(superTy) || log.getMutable<SingletonTypeVar>(superTy)) && log.getMutable<SingletonTypeVar>(subTy))
         tryUnifySingletons(subTy, superTy);
 
     else if (log.getMutable<FunctionTypeVar>(superTy) && log.getMutable<FunctionTypeVar>(subTy))
@@ -491,8 +513,11 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     {
         tryUnifyTables(subTy, superTy, isIntersection);
 
-        if (cacheEnabled && errors.empty())
-            cacheResult(subTy, superTy);
+        if (!FFlag::LuauUnifierCacheErrors)
+        {
+            if (cacheEnabled && errors.empty())
+                cacheResult_DEPRECATED(subTy, superTy);
+        }
     }
 
     // tryUnifyWithMetatable assumes its first argument is a MetatableTypeVar. The check is otherwise symmetrical.
@@ -511,6 +536,9 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     else
         reportError(TypeError{location, TypeMismatch{superTy, subTy}});
+
+    if (FFlag::LuauUnifierCacheErrors && cacheEnabled)
+        cacheResult(subTy, superTy, errorCount);
 
     log.popSeen(superTy, subTy);
 }
@@ -646,10 +674,21 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         {
             TypeId type = uv->options[i];
 
-            if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
+            if (FFlag::LuauUnifierCacheErrors)
             {
-                startIndex = i;
-                break;
+                if (cache.contains({subTy, type}))
+                {
+                    startIndex = i;
+                    break;
+                }
+            }
+            else
+            {
+                if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
+                {
+                    startIndex = i;
+                    break;
+                }
             }
         }
     }
@@ -737,10 +776,21 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeV
         {
             TypeId type = uv->parts[i];
 
-            if (cache.contains({superTy, type}) && (variance == Covariant || cache.contains({type, superTy})))
+            if (FFlag::LuauUnifierCacheErrors)
             {
-                startIndex = i;
-                break;
+                if (cache.contains({type, superTy}))
+                {
+                    startIndex = i;
+                    break;
+                }
+            }
+            else
+            {
+                if (cache.contains({superTy, type}) && (variance == Covariant || cache.contains({type, superTy})))
+                {
+                    startIndex = i;
+                    break;
+                }
             }
         }
     }
@@ -771,17 +821,17 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeV
     }
 }
 
-void Unifier::cacheResult(TypeId subTy, TypeId superTy)
+bool Unifier::canCacheResult(TypeId subTy, TypeId superTy)
 {
     bool* superTyInfo = sharedState.skipCacheForType.find(superTy);
 
     if (superTyInfo && *superTyInfo)
-        return;
+        return false;
 
     bool* subTyInfo = sharedState.skipCacheForType.find(subTy);
 
     if (subTyInfo && *subTyInfo)
-        return;
+        return false;
 
     auto skipCacheFor = [this](TypeId ty) {
         SkipCacheForType visitor{sharedState.skipCacheForType, types};
@@ -793,9 +843,33 @@ void Unifier::cacheResult(TypeId subTy, TypeId superTy)
     };
 
     if (!superTyInfo && skipCacheFor(superTy))
-        return;
+        return false;
 
     if (!subTyInfo && skipCacheFor(subTy))
+        return false;
+
+    return true;
+}
+
+void Unifier::cacheResult(TypeId subTy, TypeId superTy, size_t prevErrorCount)
+{
+    if (errors.size() == prevErrorCount)
+    {
+        if (canCacheResult(subTy, superTy))
+            sharedState.cachedUnify.insert({subTy, superTy});
+    }
+    else if (errors.size() == prevErrorCount + 1)
+    {
+        if (canCacheResult(subTy, superTy))
+            sharedState.cachedUnifyError[{subTy, superTy}] = errors.back().data;
+    }
+}
+
+void Unifier::cacheResult_DEPRECATED(TypeId subTy, TypeId superTy)
+{
+    LUAU_ASSERT(!FFlag::LuauUnifierCacheErrors);
+
+    if (!canCacheResult(subTy, superTy))
         return;
 
     sharedState.cachedUnify.insert({superTy, subTy});
@@ -1283,24 +1357,6 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         subFunction = log.getMutable<FunctionTypeVar>(subTy);
     }
 
-    if (!FFlag::LuauImmutableTypes)
-    {
-        if (superFunction->definition && !subFunction->definition && !subTy->persistent)
-        {
-            PendingType* newSubTy = log.queue(subTy);
-            FunctionTypeVar* newSubFtv = getMutable<FunctionTypeVar>(newSubTy);
-            LUAU_ASSERT(newSubFtv);
-            newSubFtv->definition = superFunction->definition;
-        }
-        else if (!superFunction->definition && subFunction->definition && !superTy->persistent)
-        {
-            PendingType* newSuperTy = log.queue(superTy);
-            FunctionTypeVar* newSuperFtv = getMutable<FunctionTypeVar>(newSuperTy);
-            LUAU_ASSERT(newSuperFtv);
-            newSuperFtv->definition = subFunction->definition;
-        }
-    }
-
     ctx = context;
 
     if (FFlag::LuauTxnLogSeesTypePacks2)
@@ -1563,8 +1619,25 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         variance = Invariant;
 
         Unifier innerState = makeChildUnifier();
-        innerState.tryUnifyIndexer(*subTable->indexer, *superTable->indexer);
-        checkChildUnifierTypeMismatch(innerState.errors, superTy, subTy);
+
+        if (FFlag::LuauExtendedIndexerError)
+        {
+            innerState.tryUnify_(subTable->indexer->indexType, superTable->indexer->indexType);
+
+            bool reported = !innerState.errors.empty();
+
+            checkChildUnifierTypeMismatch(innerState.errors, "[indexer key]", superTy, subTy);
+
+            innerState.tryUnify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+
+            if (!reported)
+                checkChildUnifierTypeMismatch(innerState.errors, "[indexer value]", superTy, subTy);
+        }
+        else
+        {
+            innerState.tryUnifyIndexer(*subTable->indexer, *superTable->indexer);
+            checkChildUnifierTypeMismatch(innerState.errors, superTy, subTy);
+        }
 
         if (innerState.errors.empty())
             log.concat(std::move(innerState.log));
@@ -1771,6 +1844,7 @@ void Unifier::DEPRECATED_tryUnifyTables(TypeId subTy, TypeId superTy, bool isInt
 
 void Unifier::tryUnifyFreeTable(TypeId subTy, TypeId superTy)
 {
+    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
     TableTypeVar* freeTable = log.getMutable<TableTypeVar>(superTy);
     TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
 
@@ -1840,6 +1914,7 @@ void Unifier::tryUnifyFreeTable(TypeId subTy, TypeId superTy)
 
 void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersection)
 {
+    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
     TableTypeVar* superTable = log.getMutable<TableTypeVar>(superTy);
     TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
 
@@ -2120,6 +2195,8 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
 
 void Unifier::tryUnifyIndexer(const TableIndexer& subIndexer, const TableIndexer& superIndexer)
 {
+    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2 || !FFlag::LuauExtendedIndexerError);
+
     tryUnify_(subIndexer.indexType, superIndexer.indexType);
     tryUnify_(subIndexer.indexResultType, superIndexer.indexResultType);
 }
@@ -2211,7 +2288,7 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
         queue.pop_back();
 
         // Types from other modules don't have free types
-        if (FFlag::LuauImmutableTypes && ty->owningArena != typeArena)
+        if (ty->owningArena != typeArena)
             continue;
 
         if (seen.find(ty))

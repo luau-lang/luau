@@ -27,10 +27,8 @@ LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as fals
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsDontCacheTypeParams, false)
-LUAU_FASTFLAGVARIABLE(LuauImmutableTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix, false)
-LUAU_FASTFLAGVARIABLE(LuauSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauDiscriminableUnions2, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
@@ -38,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
 LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify2, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
+LUAU_FASTFLAG(LuauTypeMismatchModuleName)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAssertStripsFalsyTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
@@ -47,6 +46,8 @@ LUAU_FASTFLAGVARIABLE(LuauDoNotAccidentallyDependOnPointerOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauFixArgumentCountMismatchAmountWithGenericTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauFixIncorrectLineNumberDuplicateType, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
+LUAU_FASTFLAGVARIABLE(LuauDecoupleOperatorInferenceFromUnifiedTypeInference, false)
+LUAU_FASTFLAGVARIABLE(LuauArgCountMismatchSaysAtLeastWhenVariadic, false)
 
 namespace Luau
 {
@@ -291,6 +292,7 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
     // Clear unifier cache since it's keyed off internal types that get deallocated
     // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.
     unifierState.cachedUnify.clear();
+    unifierState.cachedUnifyError.clear();
     unifierState.skipCacheForType.clear();
 
     if (FFlag::LuauTwoPassAliasDefinitionFix)
@@ -1303,7 +1305,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         {
             // If the table is already named and we want to rename the type function, we have to bind new alias to a copy
             // Additionally, we can't modify types that come from other modules
-            if (ttv->name || (FFlag::LuauImmutableTypes && follow(ty)->owningArena != &currentModule->internalTypes))
+            if (ttv->name || follow(ty)->owningArena != &currentModule->internalTypes)
             {
                 bool sameTys = std::equal(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(), binding->typeParams.begin(),
                     binding->typeParams.end(), [](auto&& itp, auto&& tp) {
@@ -1315,7 +1317,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
                     });
 
                 // Copy can be skipped if this is an identical alias
-                if ((FFlag::LuauImmutableTypes && !ttv->name) || ttv->name != name || !sameTys || !sameTps)
+                if (!ttv->name || ttv->name != name || !sameTys || !sameTps)
                 {
                     // This is a shallow clone, original recursive links to self are not updated
                     TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
@@ -1349,7 +1351,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         else if (auto mtv = getMutable<MetatableTypeVar>(follow(ty)))
         {
             // We can't modify types that come from other modules
-            if (!FFlag::LuauImmutableTypes || follow(ty)->owningArena == &currentModule->internalTypes)
+            if (follow(ty)->owningArena == &currentModule->internalTypes)
                 mtv->syntheticName = name;
         }
 
@@ -1512,14 +1514,14 @@ ExprResult<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExpr& 
         result = {nilType};
     else if (const AstExprConstantBool* bexpr = expr.as<AstExprConstantBool>())
     {
-        if (FFlag::LuauSingletonTypes && (forceSingleton || (expectedType && maybeSingleton(*expectedType))))
+        if (forceSingleton || (expectedType && maybeSingleton(*expectedType)))
             result = {singletonType(bexpr->value)};
         else
             result = {booleanType};
     }
     else if (const AstExprConstantString* sexpr = expr.as<AstExprConstantString>())
     {
-        if (FFlag::LuauSingletonTypes && (forceSingleton || (expectedType && maybeSingleton(*expectedType))))
+        if (forceSingleton || (expectedType && maybeSingleton(*expectedType)))
             result = {singletonType(std::string(sexpr->value.data, sexpr->value.size))};
         else
             result = {stringType};
@@ -2490,12 +2492,24 @@ TypeId TypeChecker::checkBinaryOperation(
     lhsType = follow(lhsType);
     rhsType = follow(rhsType);
 
-    if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
+    if (FFlag::LuauDecoupleOperatorInferenceFromUnifiedTypeInference)
     {
-        auto name = getIdentifierOfBaseVar(expr.left);
-        reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
-        if (!FFlag::LuauErrorRecoveryType)
-            return errorRecoveryType(scope);
+        if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
+        {
+            auto name = getIdentifierOfBaseVar(expr.left);
+            reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
+            // We will fall-through to the `return anyType` check below.
+        }
+    }
+    else
+    {
+        if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
+        {
+            auto name = getIdentifierOfBaseVar(expr.left);
+            reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
+            if (!FFlag::LuauErrorRecoveryType)
+                return errorRecoveryType(scope);
+        }
     }
 
     // If we know nothing at all about the lhs type, we can usually say nothing about the result.
@@ -3452,7 +3466,8 @@ void TypeChecker::checkArgumentList(
                 {
                     if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
                         minParams = getMinParameterCount(&state.log, paramPack);
-                    state.reportError(TypeError{state.location, CountMismatch{minParams, paramIndex}});
+                    bool isVariadic = FFlag::LuauArgCountMismatchSaysAtLeastWhenVariadic && !finite(paramPack, &state.log);
+                    state.reportError(TypeError{state.location, CountMismatch{minParams, paramIndex, CountMismatch::Context::Arg, isVariadic}});
                     return;
                 }
                 ++paramIter;
@@ -4163,13 +4178,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         return errorRecoveryType(scope);
     }
 
-    if (FFlag::LuauImmutableTypes)
-        return *moduleType;
-
-    SeenTypes seenTypes;
-    SeenTypePacks seenTypePacks;
-    CloneState cloneState;
-    return clone(*moduleType, currentModule->internalTypes, seenTypes, seenTypePacks, cloneState);
+    return *moduleType;
 }
 
 void TypeChecker::tablify(TypeId type)
@@ -4941,10 +4950,19 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         if (const auto& indexer = table->indexer)
             tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
 
-        return addType(TableTypeVar{
-            props, tableIndexer, scope->level,
-            TableState::Sealed // FIXME: probably want a way to annotate other kinds of tables maybe
-        });
+        if (FFlag::LuauTypeMismatchModuleName)
+        {
+            TableTypeVar ttv{props, tableIndexer, scope->level, TableState::Sealed};
+            ttv.definitionModuleName = currentModuleName;
+            return addType(std::move(ttv));
+        }
+        else
+        {
+            return addType(TableTypeVar{
+                props, tableIndexer, scope->level,
+                TableState::Sealed // FIXME: probably want a way to annotate other kinds of tables maybe
+            });
+        }
     }
     else if (const auto& func = annotation.as<AstTypeFunction>())
     {
@@ -5206,6 +5224,9 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     {
         ttv->instantiatedTypeParams = typeParams;
         ttv->instantiatedTypePackParams = typePackParams;
+
+        if (FFlag::LuauTypeMismatchModuleName)
+            ttv->definitionModuleName = currentModuleName;
     }
 
     return instantiated;

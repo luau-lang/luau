@@ -10,8 +10,6 @@
 #include "ldo.h"
 #include "ldebug.h"
 
-LUAU_FASTFLAGVARIABLE(LuauReduceStackReallocs, false)
-
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -35,7 +33,7 @@ static void stack_init(lua_State* L1, lua_State* L)
     for (int i = 0; i < BASIC_STACK_SIZE + EXTRA_STACK; i++)
         setnilvalue(stack + i); /* erase new stack */
     L1->top = stack;
-    L1->stack_last = stack + (L1->stacksize - (FFlag::LuauReduceStackReallocs ? EXTRA_STACK : 1 + EXTRA_STACK));
+    L1->stack_last = stack + (L1->stacksize - EXTRA_STACK);
     /* initialize first ci */
     L1->ci->func = L1->top;
     setnilvalue(L1->top++); /* `function' entry for this `ci' */
@@ -141,30 +139,16 @@ void lua_resetthread(lua_State* L)
     ci->top = ci->base + LUA_MINSTACK;
     setnilvalue(ci->func);
     L->ci = ci;
-    if (FFlag::LuauReduceStackReallocs)
-    {
-        if (L->size_ci != BASIC_CI_SIZE)
-            luaD_reallocCI(L, BASIC_CI_SIZE);
-    }
-    else
-    {
+    if (L->size_ci != BASIC_CI_SIZE)
         luaD_reallocCI(L, BASIC_CI_SIZE);
-    }
     /* clear thread state */
     L->status = LUA_OK;
     L->base = L->ci->base;
     L->top = L->ci->base;
     L->nCcalls = L->baseCcalls = 0;
     /* clear thread stack */
-    if (FFlag::LuauReduceStackReallocs)
-    {
-        if (L->stacksize != BASIC_STACK_SIZE + EXTRA_STACK)
-            luaD_reallocstack(L, BASIC_STACK_SIZE);
-    }
-    else
-    {
+    if (L->stacksize != BASIC_STACK_SIZE + EXTRA_STACK)
         luaD_reallocstack(L, BASIC_STACK_SIZE);
-    }
     for (int i = 0; i < L->stacksize; i++)
         setnilvalue(L->stack + i);
 }
@@ -233,6 +217,10 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
 
     g->cb = lua_Callbacks();
     g->gcstats = GCStats();
+
+#ifdef LUAI_GCMETRICS
+    g->gcmetrics = GCMetrics();
+#endif
 
     if (luaD_rawrunprotected(L, f_luaopen, NULL) != 0)
     {

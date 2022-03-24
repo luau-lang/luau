@@ -96,6 +96,7 @@ struct CountMismatch
     size_t expected;
     size_t actual;
     Context context = Arg;
+    bool isVariadic = false;
 
     bool operator==(const CountMismatch& rhs) const;
 };

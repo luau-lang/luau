@@ -290,6 +290,24 @@ const std::string* getName(TypeId type)
     return nullptr;
 }
 
+std::optional<ModuleName> getDefinitionModuleName(TypeId type)
+{
+    type = follow(type);
+
+    if (auto ttv = get<TableTypeVar>(type))
+    {
+        if (!ttv->definitionModuleName.empty())
+            return ttv->definitionModuleName;
+    }
+    else if (auto ftv = get<FunctionTypeVar>(type))
+    {
+        if (ftv->definition)
+            return ftv->definition->definitionModuleName;
+    }
+
+    return std::nullopt;
+}
+
 bool isSubset(const UnionTypeVar& super, const UnionTypeVar& sub)
 {
     std::unordered_set<TypeId> superTypes;
