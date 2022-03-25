@@ -282,3 +282,30 @@ not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ t₂ S₂s₂ �
   r (function-ok t) (function-ok T₁t) with dec-language T₂ t
   r (function-ok t) (function-ok T₁t) | Left ¬T₂t = CONTRADICTION (p Q q (s₂ , t) (Right T₁t) (S₂s₂ ,  language-comp t ¬T₂t))
   r (function-ok t) (function-ok T₁t) | Right T₂t = function-ok T₂t
+
+-- A counterexample when the argument type is empty.
+
+set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language none) ⊗ Comp(Language number)) → Q ⊆ Comp((Language none) ⊗ Comp(Language string)))
+set-theoretic-counterexample-one Q q ((scalar s) , u) Qtu (scalar () , p)
+set-theoretic-counterexample-one Q q ((function-err t) , u) Qtu (scalar-function-err () , p)
+
+set-theoretic-counterexample-two : (none ⇒ number) ≮: (none ⇒ string)
+set-theoretic-counterexample-two = witness
+  (function-ok (scalar number)) (function-ok (scalar number))
+  (function-ok (scalar-scalar number string (λ ())))
+
+-- At some point we may deal with overloaded function resolution, which should fix this problem...
+-- The reason why this is connected to overloaded functions is that currently we have that the type of
+-- f(x) is (tgt T) where f:T. Really we should have the type depend on the type of x, that is use (tgt T U),
+-- where U is the type of x. In particular (tgt (S => T) (U & V)) should be the same as (tgt ((S&U) => T) V)
+-- and tgt(none => T) should be any. For example
+--
+-- tgt((number => string) & (string => bool))(number)
+-- is tgt(number => string)(number) & tgt(string => bool)(number)
+-- is tgt(number => string)(number) & tgt(string => bool)(number&any)
+-- is tgt(number => string)(number) & tgt(string&number => bool)(any)
+-- is tgt(number => string)(number) & tgt(none => bool)(any)
+-- is string & any
+-- is string
+--
+-- there's some discussion of this in the Gentle Introduction paper.
