@@ -265,7 +265,7 @@ not-quite-set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
   (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂))) →
   (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂))
 
-not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ t₂ S₂s₂ ¬T₂t₂ p = {!!} where
+not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ t₂ S₂s₂ ¬T₂t₂ p = r where
 
   Q : (Tree × Tree) → Set
   Q (t , u) = Either (¬Language S₁ t) (Language T₁ u)
