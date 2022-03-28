@@ -1,24 +1,16 @@
-# Add primitive function and table types
+# Feature name
 
 ## Summary
 
-Add types for "real" functions and tables.
+One paragraph explanation of the feature.
 
 ## Motivation
 
-Some APIs require "real" functions and tables, not just things that
-"look functiony" (e.g. tables with a `__call__` metamethod) or "look
-tabley" (e.g. instances of classes). This RFC adds types for those.
+Why are we doing this? What use cases does it support? What is the expected outcome?
 
 ## Design
 
-Add:
-
-* a type `table`, inhabited by Luau tables (but not class instances), and
-* a type `function`, inhabited by Luau functions (but not class methods or
-tables with metamethods).
-
-
+This is the bulk of the proposal. Explain the design in enough detail for somebody familiar with the language to understand, and include examples of how the feature is used.
 
 ## Drawbacks
 
