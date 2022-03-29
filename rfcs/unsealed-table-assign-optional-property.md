@@ -1,5 +1,7 @@
 # Unsealed table assignment creates an optional property
 
+**Status**: Implemented
+
 ## Summary
 
 In Luau, tables have a state, which can, among others, be "unsealed".
