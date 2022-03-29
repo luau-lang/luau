@@ -17,14 +17,7 @@ This document tracks unimplemented RFCs.
 
 ## Sealed/unsealed typing changes
 
-[RFC: Unsealed table literals](https://github.com/Roblox/luau/blob/master/rfcs/unsealed-table-literals.md) |
 [RFC: Only strip optional properties from unsealed tables during subtyping](https://github.com/Roblox/luau/blob/master/rfcs/unsealed-table-subtyping-strips-optional-properties.md)
-
-**Status**: Implemented but not fully rolled out yet.
-
-## Singleton types
-
-[RFC: Singleton types](https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md)
 
 **Status**: Implemented but not fully rolled out yet.
 

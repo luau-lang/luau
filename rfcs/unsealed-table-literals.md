@@ -1,5 +1,7 @@
 # Unsealed table literals
 
+**Status**: Implemented
+
 ## Summary
 
 Currently the only way to create an unsealed table is as an empty table literal `{}`.
