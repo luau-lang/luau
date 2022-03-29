@@ -194,7 +194,7 @@ Snippet `F.lua` is also fixed with this ruleset: There is no subtyping relations
 
 This works, but itself creates some small problems that we need to resolve:
 
-First, the type of `...` still needs to be `()` for functions that have been given this implicit `...any` type. (TODO verify what Lua does in this situation)
+First, the `...` symbol still needs to be unavailable for functions that have been given this implicit `...any` type.  This is actually taken care of in the Luau parser, so no code change is required.
 
 Secondly, we do not want to silently allow oversaturation of direct calls to a function if we know that the arguments will be ignored.  We need to treat these variadic packs differently when unifying for function calls.
 
