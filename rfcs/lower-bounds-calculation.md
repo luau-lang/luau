@@ -45,7 +45,7 @@ end
 
 There is nothing wrong with the implementation of `foo` here, but Luau fails to typecheck it all the same because `f` is used in an inconsistent way.  This too can be worked around by introducing a type annotation for `f`.
 
-We would like to infer `f : <T...>((number) -> T... & (string) -> T...) -> ()`
+The fact that the return type of `f` is never used confounds things a little, but for now it would be a big improvement if we inferred `f : <T...>((number | string) -> T...) -> ()`.
 
 ## Design
 
