@@ -1,5 +1,7 @@
 # Safe navigation postfix operator (?)
 
+**Note**: We have unresolved issues with interaction between this feature and Roblox instance hierarchy. This may affect the viability of this proposal.
+
 ## Summary
 
 Introduce syntax to navigate through `nil` values, or short-circuit with `nil` if it was encountered.
