@@ -77,7 +77,7 @@ end
 
 Previously examples like this did not typecheck but now they do!
 
-This language is called *width subtyping* (it allows tables to get *wider*, that is have more properties).
+This language feature is called *width subtyping* (it allows tables to get *wider*, that is to have more properties).
 
 The RFC for width subtyping is https://github.com/Roblox/luau/blob/master/rfcs/sealed-table-subtyping.md
 
@@ -94,7 +94,7 @@ The RFC for width subtyping is https://github.com/Roblox/luau/blob/master/rfcs/s
 
 ## API improvements
 
- * Add support for `table.clone`.
+ * Implement `table.clone` which takes a table and returns a new table that has the same keys/values/metatable. The cloning is shallow - if some keys refer to tables that need to be cloned, that can be done manually by modifying the resulting table.
 
 ## Debugger improvements
 
