@@ -508,7 +508,7 @@ uint32_t BytecodeBuilder::getDebugPC() const
 void BytecodeBuilder::finalize()
 {
     LUAU_ASSERT(bytecode.empty());
-    bytecode = char(LBC_VERSION_FUTURE);
+    bytecode = char(LBC_VERSION);
 
     writeStringTable(bytecode);
 

@@ -2,17 +2,26 @@
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 
 /*
-** Implementation of tables (aka arrays, objects, or hash tables).
-** Tables keep its elements in two parts: an array part and a hash part.
-** Non-negative integer keys are all candidates to be kept in the array
-** part. The actual size of the array is the largest `n' such that at
-** least half the slots between 0 and n are in use.
-** Hash uses a mix of chained scatter table with Brent's variation.
-** A main invariant of these tables is that, if an element is not
-** in its main position (i.e. the `original' position that its hash gives
-** to it), then the colliding element is in its own main position.
-** Hence even when the load factor reaches 100%, performance remains good.
-*/
+ * Implementation of tables (aka arrays, objects, or hash tables).
+ *
+ * Tables keep the elements in two parts: an array part and a hash part.
+ * Integer keys >=1 are all candidates to be kept in the array part. The actual size of the array is the
+ * largest n such that at least half the slots between 0 and n are in use.
+ * Hash uses a mix of chained scatter table with Brent's variation.
+ *
+ * A main invariant of these tables is that, if an element is not in its main position (i.e. the original
+ * position that its hash gives to it), then the colliding element is in its own main position.
+ * Hence even when the load factor reaches 100%, performance remains good.
+ *
+ * Table keys can be arbitrary values unless they contain NaN. Keys are hashed and compared using raw equality,
+ * so even if the key is a userdata with an overridden __eq, it's not used during hash lookups.
+ *
+ * Each table has a "boundary", defined as the index k where t[k] ~= nil and t[k+1] == nil. The boundary can be
+ * computed using a binary search and can be adjusted when the table is modified; crucially, Luau enforces an
+ * invariant where the boundary must be in the array part - this enforces a consistent iteration order through the
+ * prefix of the table when using pairs(), and allows to implement algorithms that access elements in 1..#t range
+ * more efficiently.
+ */
 
 #include "ltable.h"
 
@@ -25,6 +34,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauTableRehashRework, false)
+LUAU_FASTFLAGVARIABLE(LuauTableNewBoundary, false)
 
 // max size of both array and hash part is 2^MAXBITS
 #define MAXBITS 26
@@ -460,7 +470,20 @@ static void rehash(lua_State* L, Table* t, const TValue* ek)
     totaluse++;
     /* compute new size for array part */
     int na = computesizes(nums, &nasize);
+    /* enforce the boundary invariant; for performance, only do hash lookups if we must */
+    if (FFlag::LuauTableNewBoundary)
+    {
+        bool tbound = t->node != dummynode || nasize < t->sizearray;
+        int ekindex = ttisnumber(ek) ? arrayindex(nvalue(ek)) : -1;
+        /* move the array size up until the boundary is guaranteed to be inside the array part */
+        while (nasize + 1 == ekindex || (tbound && !ttisnil(luaH_getnum(t, nasize + 1))))
+        {
+            nasize++;
+            na++;
+        }
+    }
     /* resize the table to new computed sizes */
+    LUAU_ASSERT(na <= totaluse);
     resize(L, t, nasize, totaluse - na);
 }
 
@@ -520,10 +543,18 @@ static LuaNode* getfreepos(Table* t)
 */
 static TValue* newkey(lua_State* L, Table* t, const TValue* key)
 {
+    /* enforce boundary invariant */
+    if (FFlag::LuauTableNewBoundary && ttisnumber(key) && nvalue(key) == t->sizearray + 1)
+    {
+        rehash(L, t, key); /* grow table */
+
+        // after rehash, numeric keys might be located in the new array part, but won't be found in the node part
+        return arrayornewkey(L, t, key);
+    }
+
     LuaNode* mp = mainposition(t, key);
     if (!ttisnil(gval(mp)) || mp == dummynode)
     {
-        LuaNode* othern;
         LuaNode* n = getfreepos(t); /* get a free place */
         if (n == NULL)
         {                      /* cannot find a free place? */
@@ -542,7 +573,7 @@ static TValue* newkey(lua_State* L, Table* t, const TValue* key)
         LUAU_ASSERT(n != dummynode);
         TValue mk;
         getnodekey(L, &mk, mp);
-        othern = mainposition(t, &mk);
+        LuaNode* othern = mainposition(t, &mk);
         if (othern != mp)
         { /* is colliding node out of its main position? */
             /* yes; move colliding node into free position */
@@ -704,6 +735,7 @@ TValue* luaH_setstr(lua_State* L, Table* t, TString* key)
 
 static LUAU_NOINLINE int unbound_search(Table* t, unsigned int j)
 {
+    LUAU_ASSERT(!FFlag::LuauTableNewBoundary);
     unsigned int i = j; /* i is zero or a present index */
     j++;
     /* find `i' and `j' such that i is present and j is not */
@@ -787,6 +819,12 @@ int luaH_getn(Table* t)
         int boundary = !ttisnil(base) + int(base - t->array);
         maybesetaboundary(t, boundary);
         return boundary;
+    }
+    else if (FFlag::LuauTableNewBoundary)
+    {
+        /* validate boundary invariant */
+        LUAU_ASSERT(t->node == dummynode || ttisnil(luaH_getnum(t, j + 1)));
+        return j;
     }
     /* else must find a boundary in hash part */
     else if (t->node == dummynode) /* hash part is empty? */

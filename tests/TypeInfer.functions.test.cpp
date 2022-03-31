@@ -1270,7 +1270,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "function_decl_quantify_right_type")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify2", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
 
     fileResolver.source["game/isAMagicMock"] = R"(
 --!nonstrict
@@ -1294,7 +1294,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify2", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
 
     CheckResult result = check(R"(
 function string.len(): number
@@ -1302,7 +1302,40 @@ function string.len(): number
 end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // if 'string' library property was replaced with an internal module type, it will be freed and the next check will crash
+    frontend.clear();
+
+    result = check(R"(
+print(string.len('hello'))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite_2")
+{
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
+    ScopedFastFlag inferStatFunction{"LuauInferStatFunction", true};
+
+    CheckResult result = check(R"(
+local t: { f: ((x: number) -> number)? } = {}
+
+function t.f(x)
+    print(x + 5)
+    return x .. "asd"
+end
+
+t.f = function(x)
+    print(x + 5)
+    return x .. "asd"
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'string' could not be converted into 'number')");
+    CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
 }
 
 TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
@@ -1319,7 +1352,7 @@ TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "function_statement_sealed_table_assignment_through_indexer")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify2", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
 
     CheckResult result = check(R"(
 local t: {[string]: () -> number} = {}

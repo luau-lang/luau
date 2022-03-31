@@ -11,8 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-LUAU_DYNAMIC_FASTFLAG(LuauMorePreciseLuaLTypeName)
-
 static void writestring(const char* s, size_t l)
 {
     fwrite(s, 1, l, stdout);
@@ -189,31 +187,16 @@ static int luaB_gcinfo(lua_State* L)
 static int luaB_type(lua_State* L)
 {
     luaL_checkany(L, 1);
-    if (DFFlag::LuauMorePreciseLuaLTypeName)
-    {
-        /* resulting name doesn't differentiate between userdata types */
-        lua_pushstring(L, lua_typename(L, lua_type(L, 1)));
-    }
-    else
-    {
-        lua_pushstring(L, luaL_typename(L, 1));
-    }
+    /* resulting name doesn't differentiate between userdata types */
+    lua_pushstring(L, lua_typename(L, lua_type(L, 1)));
     return 1;
 }
 
 static int luaB_typeof(lua_State* L)
 {
     luaL_checkany(L, 1);
-    if (DFFlag::LuauMorePreciseLuaLTypeName)
-    {
-        /* resulting name returns __type if specified unless the input is a newproxy-created userdata */
-        lua_pushstring(L, luaL_typename(L, 1));
-    }
-    else
-    {
-        const TValue* obj = luaA_toobject(L, 1);
-        lua_pushstring(L, luaT_objtypename(L, obj));
-    }
+    /* resulting name returns __type if specified unless the input is a newproxy-created userdata */
+    lua_pushstring(L, luaL_typename(L, 1));
     return 1;
 }
 
