@@ -380,7 +380,7 @@ local account: Account = Account.new("Alexander", 500)
 
 ## Tagged unions
 
-Tagged unions are just unions types! In particular, they're union types of tables where they have at least _some_ common properties but the structure of the tables are different enough. Here's one example:
+Tagged unions are just union types! In particular, they're union types of tables where they have at least _some_ common properties but the structure of the tables are different enough. Here's one example:
 
 ```lua
 type Result<T, E> = { type: "ok", value: T } | { type: "err", error: E }
