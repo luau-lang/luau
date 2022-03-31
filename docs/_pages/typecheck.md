@@ -137,6 +137,15 @@ local t = {x = 1} -- {x: number}
 t.y = 2           -- not ok
 ```
 
+Sealed tables support *width subtyping*, which allows a table with more properties to be used as a table with fewer
+
+```lua
+type Point1D = { x : number }
+type Point2D = { x : number, y : number }
+local p : Point2D = { x = 5, y = 37 }
+local q : Point1D = p -- ok because Point2D has more properties than Point1D
+```
+
 ### Generic tables
 
 This typically occurs when the symbol does not have any annotated types or were not inferred anything concrete. In this case, when you index on a parameter, you're requesting that there is a table with a matching interface.
