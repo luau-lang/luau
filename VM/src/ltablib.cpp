@@ -10,7 +10,9 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauTableClone, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauTableMoveTelemetry2, false)
+
+void (*lua_table_move_telemetry)(lua_State* L, int f, int e, int t, int nf, int nt);
 
 static int foreachi(lua_State* L)
 {
@@ -196,6 +198,29 @@ static int tmove(lua_State* L)
     int t = luaL_checkinteger(L, 4);
     int tt = !lua_isnoneornil(L, 5) ? 5 : 1; /* destination table */
     luaL_checktype(L, tt, LUA_TTABLE);
+
+    void (*telemetrycb)(lua_State* L, int f, int e, int t, int nf, int nt) = lua_table_move_telemetry;
+
+    if (DFFlag::LuauTableMoveTelemetry2 && telemetrycb)
+    {
+        int nf = lua_objlen(L, 1);
+        int nt = lua_objlen(L, tt);
+
+        bool report = false;
+
+        // source index range must be in bounds in source table unless the table is empty (permits 1..#t moves)
+        if (!(f == 1 || (f >= 1 && f <= nf)))
+            report = true;
+        if (!(e == nf || (e >= 1 && e <= nf)))
+            report = true;
+
+        // destination index must be in bounds in dest table or be exactly at the first empty element (permits concats)
+        if (!(t == nt + 1 || (t >= 1 && t <= nt)))
+            report = true;
+
+        if (report)
+            telemetrycb(L, f, e, t, nf, nt);
+    }
 
     if (e >= f)
     { /* otherwise, nothing to move */
@@ -512,9 +537,6 @@ static int tisfrozen(lua_State* L)
 
 static int tclone(lua_State* L)
 {
-    if (!FFlag::LuauTableClone)
-        luaG_runerror(L, "table.clone is not available");
-
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
 

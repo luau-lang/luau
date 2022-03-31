@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBytecodeV2Force, false)
-
 // TODO: RAII deallocation doesn't work for longjmp builds if a memory error happens
 template<typename T>
 struct TempBuffer
@@ -156,12 +154,11 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
         return 1;
     }
 
-    if (FFlag::LuauBytecodeV2Force ? (version != LBC_VERSION_FUTURE) : (version != LBC_VERSION && version != LBC_VERSION_FUTURE))
+    if (version != LBC_VERSION)
     {
         char chunkid[LUA_IDSIZE];
         luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
-        lua_pushfstring(L, "%s: bytecode version mismatch (expected %d, got %d)", chunkid,
-            FFlag::LuauBytecodeV2Force ? LBC_VERSION_FUTURE : LBC_VERSION, version);
+        lua_pushfstring(L, "%s: bytecode version mismatch (expected %d, got %d)", chunkid, LBC_VERSION, version);
         return 1;
     }
 
@@ -292,11 +289,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             p->p[j] = protos[fid];
         }
 
-        if (FFlag::LuauBytecodeV2Force || version == LBC_VERSION_FUTURE)
-            p->linedefined = readVarInt(data, size, offset);
-        else
-            p->linedefined = -1;
-
+        p->linedefined = readVarInt(data, size, offset);
         p->debugname = readString(strings, data, size, offset);
 
         uint8_t lineinfo = read<uint8_t>(data, size, offset);
