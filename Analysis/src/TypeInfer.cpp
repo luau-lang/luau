@@ -27,6 +27,7 @@ LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as fals
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursiveTypeParameterRestriction, false)
 LUAU_FASTFLAGVARIABLE(LuauGenericFunctionsDontCacheTypeParams, false)
+LUAU_FASTFLAGVARIABLE(LuauInferStatFunction, false)
 LUAU_FASTFLAGVARIABLE(LuauSealExports, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix, false)
 LUAU_FASTFLAGVARIABLE(LuauDiscriminableUnions2, false)
@@ -34,7 +35,7 @@ LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
-LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify2, false)
+LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify3, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAG(LuauTypeMismatchModuleName)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
@@ -463,7 +464,18 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         }
         else if (auto fun = (*protoIter)->as<AstStatFunction>())
         {
-            auto pair = checkFunctionSignature(scope, subLevel, *fun->func, fun->name->location, std::nullopt);
+            std::optional<TypeId> expectedType;
+
+            if (FFlag::LuauInferStatFunction && !fun->func->self)
+            {
+                if (auto name = fun->name->as<AstExprIndexName>())
+                {
+                    TypeId exprTy = checkExpr(scope, *name->expr).type;
+                    expectedType = getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, false);
+                }
+            }
+
+            auto pair = checkFunctionSignature(scope, subLevel, *fun->func, fun->name->location, expectedType);
             auto [funTy, funScope] = pair;
 
             functionDecls[*protoIter] = pair;
@@ -1103,7 +1115,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
         return;
     }
-    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify2)
+    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify3)
     {
         TypeId exprTy = checkExpr(scope, *name->expr).type;
         TableTypeVar* ttv = getMutableTableType(exprTy);
@@ -1116,7 +1128,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         }
         else if (ttv->state == TableState::Sealed)
         {
-            if (!ttv->indexer || !isPrim(ttv->indexer->indexType, PrimitiveTypeVar::String))
+            if (!getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, false))
                 reportError(TypeError{function.location, CannotExtendTable{exprTy, CannotExtendTable::Property, name->index.value}});
         }
 
@@ -1141,7 +1153,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         if (ttv && ttv->state != TableState::Sealed)
             ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ false, {}, name->indexLocation};
     }
-    else if (FFlag::LuauStatFunctionSimplify2)
+    else if (FFlag::LuauStatFunctionSimplify3)
     {
         LUAU_ASSERT(function.name->is<AstExprError>());
 
@@ -1151,7 +1163,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     }
     else if (function.func->self)
     {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify2);
+        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify3);
 
         AstExprIndexName* indexName = function.name->as<AstExprIndexName>();
         if (!indexName)
@@ -1190,7 +1202,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     }
     else
     {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify2);
+        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify3);
 
         TypeId leftType = checkLValueBinding(scope, *function.name);
 
@@ -2985,7 +2997,7 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
             return errorRecoveryType(scope);
         }
 
-        if (FFlag::LuauStatFunctionSimplify2)
+        if (FFlag::LuauStatFunctionSimplify3)
         {
             if (lhsType->persistent)
                 return errorRecoveryType(scope);

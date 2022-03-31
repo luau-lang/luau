@@ -246,10 +246,9 @@ ThreadContext& getThreadContext()
     return context;
 }
 
-std::pair<uint16_t, Luau::TimeTrace::ThreadContext&> createScopeData(const char* name, const char* category)
+uint16_t createScopeData(const char* name, const char* category)
 {
-    uint16_t token = createToken(Luau::TimeTrace::getGlobalContext(), name, category);
-    return {token, Luau::TimeTrace::getThreadContext()};
+    return createToken(Luau::TimeTrace::getGlobalContext(), name, category);
 }
 } // namespace TimeTrace
 } // namespace Luau

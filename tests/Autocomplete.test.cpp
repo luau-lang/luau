@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
-LUAU_FASTFLAG(LuauTableCloneType)
 
 using namespace Luau;
 
@@ -262,7 +261,7 @@ TEST_CASE_FIXTURE(ACFixture, "get_member_completions")
 
     auto ac = autocomplete('1');
 
-    CHECK_EQ(FFlag::LuauTableCloneType ? 17 : 16, ac.entryMap.size());
+    CHECK_EQ(17, ac.entryMap.size());
     CHECK(ac.entryMap.count("find"));
     CHECK(ac.entryMap.count("pack"));
     CHECK(!ac.entryMap.count("math"));
@@ -2221,7 +2220,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocompleteSource")
 
     auto ac = autocompleteSource(frontend, source, Position{1, 24}, nullCallback).result;
 
-    CHECK_EQ(FFlag::LuauTableCloneType ? 17 : 16, ac.entryMap.size());
+    CHECK_EQ(17, ac.entryMap.size());
     CHECK(ac.entryMap.count("find"));
     CHECK(ac.entryMap.count("pack"));
     CHECK(!ac.entryMap.count("math"));

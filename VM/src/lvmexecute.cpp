@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauTableNewBoundary)
+
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -2266,9 +2268,9 @@ static void luau_execute(lua_State* L)
                             VM_NEXT();
                         }
                     }
-                    else if (h->lsizenode == 0 && ttisnil(gval(h->node)))
+                    else if (FFlag::LuauTableNewBoundary || (h->lsizenode == 0 && ttisnil(gval(h->node))))
                     {
-                        // hash part is empty: fallthrough to exit
+                        // fallthrough to exit
                         VM_NEXT();
                     }
                     else

@@ -550,4 +550,35 @@ do
   assert(not pcall(table.clone, 42))
 end
 
+-- test boundary invariant maintenance during rehash
+do
+  local arr = table.create(5, 42)
+
+  arr[1] = nil
+  arr.a = 'a' -- trigger rehash
+
+  assert(#arr == 5) -- technically 0 is also valid, but it happens to be 5 because array capacity is 5
+end
+
+-- test boundary invariant maintenance when replacing hash keys
+do
+  local arr = {}
+  arr.a = 'a'
+  arr.a = nil
+  arr[1] = 1 -- should rehash and resize array part, otherwise # won't find the boundary in array part
+
+  assert(#arr == 1)
+end
+
+-- test boundary invariant maintenance when table is filled from the end
+do
+  local arr = {}
+  for i=5,2,-1 do
+    arr[i] = i
+    assert(#arr == 0)
+  end
+  arr[1] = 1
+  assert(#arr == 5)
+end
+
 return"OK"

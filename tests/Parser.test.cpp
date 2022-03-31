@@ -1604,6 +1604,20 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_of_functions_unions_and_intersections")
     CHECK_EQ((Position{3, 42}), block->body.data[2]->location.end);
 }
 
+TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
+{
+    ScopedFastFlag luauParseLocationIgnoreCommentSkip{"LuauParseLocationIgnoreCommentSkip", true};
+
+    AstStatBlock* block = parse(R"(
+        type F = number
+        --comment
+        print('hello')
+    )");
+
+    REQUIRE_EQ(2, block->body.size);
+    CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_error_loop_control")
 {
     matchParseError("break", "break statement must be inside a loop");

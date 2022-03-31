@@ -12,8 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauBytecodeV2Force)
-
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -91,16 +89,6 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     return name;
 }
 
-static int getlinedefined(Proto* p)
-{
-    if (FFlag::LuauBytecodeV2Force)
-        return p->linedefined;
-    else if (p->linedefined >= 0)
-        return p->linedefined;
-    else
-        return luaG_getline(p, 0);
-}
-
 static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
 {
     int status = 1;
@@ -120,7 +108,7 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
             {
                 ar->source = getstr(f->l.p->source);
                 ar->what = "Lua";
-                ar->linedefined = getlinedefined(f->l.p);
+                ar->linedefined = f->l.p->linedefined;
             }
             luaO_chunkid(ar->short_src, ar->source, LUA_IDSIZE);
             break;
@@ -133,7 +121,7 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
             }
             else
             {
-                ar->currentline = f->isC ? -1 : getlinedefined(f->l.p);
+                ar->currentline = f->isC ? -1 : f->l.p->linedefined;
             }
 
             break;
@@ -424,7 +412,7 @@ static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* con
     }
 
     const char* debugname = p->debugname ? getstr(p->debugname) : NULL;
-    int linedefined = getlinedefined(p);
+    int linedefined = p->linedefined;
 
     callback(context, debugname, linedefined, depth, buffer, size);
 
