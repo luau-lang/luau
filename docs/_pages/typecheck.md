@@ -31,20 +31,6 @@ foo = 1
 
 However, given the second snippet in strict mode, the type checker would be able to infer `number` for `foo`.
 
-## Unknown symbols
-
-Consider how often you're likely to assign a new value to a local variable. What if you accidentally misspelled it? Oops, it's now assigned globally and your local variable is still using the old value.
-
-```lua
-local someLocal = 1
-
-soeLocal = 2 -- the bug
-
-print(someLocal)
-```
-
-Because of this, Luau type checker currently emits an error in strict mode; use local variables instead.
-
 ## Structural type system
 
 Luau's type system is structural by default, which is to say that we inspect the shape of two tables to see if they are similar enough. This was the obvious choice because Lua 5.1 is inherently structural.
@@ -267,6 +253,23 @@ Note: it's impossible to create an intersection type of some primitive types, e.
 
 Note: Luau still does not support user-defined overloaded functions. Some of Roblox and Lua 5.1 functions have different function signature, so inherently requires overloaded functions.
 
+## Singleton types (aka literal types)
+
+Luau's type system also supports singleton types, which means it's a type that represents one single value at runtime. At this time, both string and booleans are representable in types.
+
+> We do not currently support numbers as types. For now, this is intentional.
+
+```lua
+local foo: "Foo" = "Foo" -- ok
+local bar: "Bar" = foo   -- not ok
+local baz: string = foo  -- ok
+
+local t: true = true -- ok
+local f: false = false -- ok
+```
+
+This happens all the time, especially through [type refinements](#type-refinements) and is also incredibly useful when you want to enforce program invariants in the type system! See [tagged unions](#tagged-unions) for more information.
+
 ## Variadic types
 
 Luau permits assigning a type to the `...` variadic symbol like any other parameter:
@@ -375,22 +378,40 @@ local account: Account = Account.new("Alexander", 500)
              --^^^^^^^ not ok, 'Account' does not exist
 ```
 
+## Tagged unions
+
+Tagged unions are just union types! In particular, they're union types of tables where they have at least _some_ common properties but the structure of the tables are different enough. Here's one example:
+
+```lua
+type Result<T, E> = { type: "ok", value: T } | { type: "err", error: E }
+```
+
+This `Result<T, E>` type can be discriminated by using type refinements on the property `type`, like so:
+
+```lua
+if result.type == "ok" then
+    -- result is known to be { type: "ok", value: T }
+    -- and attempting to index for error here will fail
+    print(result.value)
+elseif result.type == "err" then
+    -- result is known to be { type: "err", error: E }
+    -- and attempting to index for value here will fail
+    print(result.error)
+end
+```
+
+Which works out because `value: T` exists only when `type` is in actual fact `"ok"`, and `error: E` exists only when `type` is in actual fact `"err"`.
+
 ## Type refinements
 
-When we check the type of a value, what we're doing is we're refining the type, hence "type refinement." Currently, the support for this is somewhat basic.
+When we check the type of any lvalue (a global, a local, or a property), what we're doing is we're refining the type, hence "type refinement." The support for this is arbitrarily complex, so go crazy!
 
-Using `type` comparison:
-```lua
-local stringOrNumber: string | number = "foo"
+Here are all the ways you can refine:
+1. Truthy test: `if x then` will refine `x` to be truthy.
+2. Type guards: `if type(x) == "number" then` will refine `x` to be `number`.
+3. Equality: `x == "hello"` will refine `x` to be a singleton type `"hello"`.
 
-if type(x) == "string" then
-    local onlyString: string = stringOrNumber -- ok
-    local onlyNumber: number = stringOrNumber -- not ok
-end
-
-local onlyString: string = stringOrNumber -- not ok
-local onlyNumber: number = stringOrNumber -- not ok
-```
+And they can be composed with many of `and`/`or`/`not`. `not`, just like `~=`, will flip the resulting refinements, that is `not x` will refine `x` to be falsy.
 
 Using truthy test:
 ```lua
@@ -398,10 +419,55 @@ local maybeString: string? = nil
 
 if maybeString then
     local onlyString: string = maybeString -- ok
+    local onlyNil: nil = maybeString       -- not ok
+end
+
+if not maybeString then
+    local onlyString: string = maybeString -- not ok
+    local onlyNil: nil = maybeString       -- ok
 end
 ```
 
-And using `assert` will work with the above type guards:
+Using `type` test:
+```lua
+local stringOrNumber: string | number = "foo"
+
+if type(stringOrNumber) == "string" then
+    local onlyString: string = stringOrNumber -- ok
+    local onlyNumber: number = stringOrNumber -- not ok
+end
+
+if type(stringOrNumber) ~= "string" then
+    local onlyString: string = stringOrNumber -- not ok
+    local onlyNumber: number = stringOrNumber -- ok
+end
+```
+
+Using equality test:
+```lua
+local myString: string = f()
+
+if myString == "hello" then
+    local hello: "hello" = myString -- ok because it is absolutely "hello"!
+    local copy: string = myString   -- ok
+end
+```
+
+And as said earlier, we can compose as many of `and`/`or`/`not` as we wish with these refinements:
+```lua
+local function f(x: any, y: any)
+    if (x == "hello" or x == "bye") and type(y) == "string" then
+        -- x is of type "hello" | "bye"
+        -- y is of type string
+    end
+
+    if not (x ~= "hi") then
+        -- x is of type "hi"
+    end
+end
+```
+
+`assert` can also be used to refine in all the same ways:
 ```lua
 local stringOrNumber: string | number = "foo"
 
@@ -411,7 +477,7 @@ local onlyString: string = stringOrNumber -- ok
 local onlyNumber: number = stringOrNumber -- not ok
 ```
 
-## Typecasts
+## Type casts
 
 Expressions may be typecast using `::`.  Typecasting is useful for specifying the type of an expression when the automatically inferred type is too generic.
 
