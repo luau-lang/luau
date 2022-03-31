@@ -9,6 +9,7 @@ open import Luau.Type using (Type; Scalar; strict; nil; number; string; boolean;
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
+open import Properties.Product using (_×_; _,_)
 
 src = Luau.Type.src strict
 
@@ -219,3 +220,92 @@ any-≮:-none = witness (scalar nil) any none
 
 function-≮:-none : ∀ {T U} → ((T ⇒ U) ≮: none)
 function-≮:-none = witness function function none
+
+-- A Gentle Introduction To Semantic Subtyping (https://www.cduce.org/papers/gentle.pdf)
+-- defines a "set-theoretic" model (sec 2.5)
+-- Unfortunately we don't quite have this property, due to uninhabited types,
+-- for example (none -> T) is equivalent to (none -> U)
+-- when types are interpreted as sets of syntactic values.
+
+_⊆_ : ∀ {A : Set} → (A → Set) → (A → Set) → Set
+(P ⊆ Q) = ∀ a → (P a) → (Q a)
+
+_⊗_ : ∀ {A B : Set} → (A → Set) → (B → Set) → ((A × B) → Set)
+(P ⊗ Q) (a , b) = (P a) × (Q b)
+
+Comp : ∀ {A : Set} → (A → Set) → (A → Set)
+Comp P a = ¬(P a)
+
+set-theoretic-if : ∀ {S₁ T₁ S₂ T₂} →
+
+  -- This is the "if" part of being a set-theoretic model
+  (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂)) →
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂)))
+
+set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , u) Qtu (S₂t , ¬T₂u) = q (t , u) Qtu (S₁t , ¬T₁u) where
+
+  S₁t : Language S₁ t
+  S₁t with dec-language S₁ t
+  S₁t | Left ¬S₁t with p (function-err t) (function-err ¬S₁t)
+  S₁t | Left ¬S₁t | function-err ¬S₂t = CONTRADICTION (language-comp t ¬S₂t S₂t)
+  S₁t | Right r = r
+
+  ¬T₁u : ¬(Language T₁ u)
+  ¬T₁u T₁u with p (function-ok u) (function-ok T₁u)
+  ¬T₁u T₁u | function-ok T₂u = ¬T₂u T₂u
+
+not-quite-set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
+
+  -- We don't quite have that this is a set-theoretic model
+  -- it's only true when Language T₁ and ¬Language T₂ t₂ are inhabited
+  -- in particular it's not true when T₁ is none, or T₂ is any.
+  ∀ s₂ t₂ → Language S₂ s₂ → ¬Language T₂ t₂ →
+
+  -- This is the "only if" part of being a set-theoretic model
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂))) →
+  (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂))
+
+not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ t₂ S₂s₂ ¬T₂t₂ p = r where
+
+  Q : (Tree × Tree) → Set
+  Q (t , u) = Either (¬Language S₁ t) (Language T₁ u)
+
+  q : Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁))
+  q (t , u) (Left ¬S₁t) (S₁t , ¬T₁u) = language-comp t ¬S₁t S₁t
+  q (t , u) (Right T₂u) (S₁t , ¬T₁u) = ¬T₁u T₂u
+
+  r : Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂)
+  r function function = function
+  r (function-err t) (function-err ¬S₁t) with dec-language S₂ t
+  r (function-err t) (function-err ¬S₁t) | Left ¬S₂t = function-err ¬S₂t
+  r (function-err t) (function-err ¬S₁t) | Right S₂t = CONTRADICTION (p Q q (t , t₂) (Left ¬S₁t) (S₂t , language-comp t₂ ¬T₂t₂))
+  r (function-ok t) (function-ok T₁t) with dec-language T₂ t
+  r (function-ok t) (function-ok T₁t) | Left ¬T₂t = CONTRADICTION (p Q q (s₂ , t) (Right T₁t) (S₂s₂ ,  language-comp t ¬T₂t))
+  r (function-ok t) (function-ok T₁t) | Right T₂t = function-ok T₂t
+
+-- A counterexample when the argument type is empty.
+
+set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language none) ⊗ Comp(Language number)) → Q ⊆ Comp((Language none) ⊗ Comp(Language string)))
+set-theoretic-counterexample-one Q q ((scalar s) , u) Qtu (scalar () , p)
+set-theoretic-counterexample-one Q q ((function-err t) , u) Qtu (scalar-function-err () , p)
+
+set-theoretic-counterexample-two : (none ⇒ number) ≮: (none ⇒ string)
+set-theoretic-counterexample-two = witness
+  (function-ok (scalar number)) (function-ok (scalar number))
+  (function-ok (scalar-scalar number string (λ ())))
+
+-- At some point we may deal with overloaded function resolution, which should fix this problem...
+-- The reason why this is connected to overloaded functions is that currently we have that the type of
+-- f(x) is (tgt T) where f:T. Really we should have the type depend on the type of x, that is use (tgt T U),
+-- where U is the type of x. In particular (tgt (S => T) (U & V)) should be the same as (tgt ((S&U) => T) V)
+-- and tgt(none => T) should be any. For example
+--
+-- tgt((number => string) & (string => bool))(number)
+-- is tgt(number => string)(number) & tgt(string => bool)(number)
+-- is tgt(number => string)(number) & tgt(string => bool)(number&any)
+-- is tgt(number => string)(number) & tgt(string&number => bool)(any)
+-- is tgt(number => string)(number) & tgt(none => bool)(any)
+-- is string & any
+-- is string
+--
+-- there's some discussion of this in the Gentle Introduction paper.
