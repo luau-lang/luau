@@ -39,7 +39,7 @@ local result: Result<number, string> = ...
 if result.type == "ok" then
     -- result :: Ok<number>
     print(result.value)
-else
+elseif result.type == "error" then
     -- result :: Err<string>
     error(result.error)
 end
