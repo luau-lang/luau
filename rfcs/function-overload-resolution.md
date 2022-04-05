@@ -150,3 +150,7 @@ We could normalize all types to have the same return type, by equating `(S1 -> T
 ```
 
 which is not in `(string | number) -> never`.
+
+The Roblox API does have some overloaded functions where the return
+type depends on the argument type, for wexample `CFrame.__mul` has
+type `(CFrame -> CFrame) & (Vector3 -> Vector3)`.
