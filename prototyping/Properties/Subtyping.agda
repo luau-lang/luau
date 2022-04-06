@@ -4,9 +4,10 @@ module Properties.Subtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
-open import Properties.Contradiction using (CONTRADICTION; ¬)
+open import Properties.Contradiction using (CONTRADICTION; ¬; ⊥)
 open import Properties.DecSubtyping using (language-comp; dec-language; function-err-src; ¬function-err-src; src-¬function-err)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
@@ -115,13 +116,21 @@ _⊗_ : ∀ {A B : Set} → (A → Set) → (B → Set) → ((A × B) → Set)
 Comp : ∀ {A : Set} → (A → Set) → (A → Set)
 Comp P a = ¬(P a)
 
+Lift : ∀ {A : Set} → (A → Set) → (Maybe A → Set)
+Lift P nothing = ⊥
+Lift P (just a) = P a
+
 set-theoretic-if : ∀ {S₁ T₁ S₂ T₂} →
 
   -- This is the "if" part of being a set-theoretic model
+  -- though it uses the definition from Frisch's thesis
+  -- rather than from the Gentle Introduction. The difference
+  -- being the presence of Lift, (written D_Ω in Defn 4.2 of
+  -- https://www.cduce.org/papers/frisch_phd.pdf).
   (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂)) →
-  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂)))
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁))) → Q ⊆ Comp((Language S₂) ⊗ Comp(Lift(Language T₂))))
 
-set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , u) Qtu (S₂t , ¬T₂u) = q (t , u) Qtu (S₁t , ¬T₁u) where
+set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , just u) Qtu (S₂t , ¬T₂u) = q (t , just u) Qtu (S₁t , ¬T₁u) where
 
   S₁t : Language S₁ t
   S₁t with dec-language S₁ t
@@ -134,29 +143,41 @@ set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , u) Qtu (S₂t , ¬T₂u)
   ¬T₁u T₁u | function-ok₁ ¬S₂t = CONTRADICTION (language-comp t ¬S₂t S₂t)
   ¬T₁u T₁u | function-ok₂ T₂u = ¬T₂u T₂u
 
+set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , nothing) Qt- (S₂t , _) = q (t , nothing) Qt- (S₁t , λ ()) where
+
+  S₁t : Language S₁ t
+  S₁t with dec-language S₁ t
+  S₁t | Left ¬S₁t with p (function-err t) (function-err ¬S₁t)
+  S₁t | Left ¬S₁t | function-err ¬S₂t = CONTRADICTION (language-comp t ¬S₂t S₂t)
+  S₁t | Right r = r
+
 set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
 
   -- This is the "only if" part of being a set-theoretic model
-  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂))) →
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁))) → Q ⊆ Comp((Language S₂) ⊗ Comp(Lift(Language T₂)))) →
   (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂))
 
 set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} p = r where
 
-  Q : (Tree × Tree) → Set
-  Q (t , u) = Either (¬Language S₁ t) (Language T₁ u)
+  Q : (Tree × Maybe Tree) → Set
+  Q (t , just u) = Either (¬Language S₁ t) (Language T₁ u)
+  Q (t , nothing) = ¬Language S₁ t
 
-  q : Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁))
-  q (t , u) (Left ¬S₁t) (S₁t , ¬T₁u) = language-comp t ¬S₁t S₁t
-  q (t , u) (Right T₂u) (S₁t , ¬T₁u) = ¬T₁u T₂u
+  q : Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁)))
+  q (t , just u) (Left ¬S₁t) (S₁t , ¬T₁u) = language-comp t ¬S₁t S₁t
+  q (t , just u) (Right T₂u) (S₁t , ¬T₁u) = ¬T₁u T₂u
+  q (t , nothing) ¬S₁t (S₁t , _) = language-comp t ¬S₁t S₁t
 
   r : Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂)
   r function function = function
-  r (function-err t) (function-err ¬S₁t) with dec-language S₂ t
-  r (function-err t) (function-err ¬S₁t) | Left ¬S₂t = function-err ¬S₂t
-  r (function-err t) (function-err ¬S₁t) | Right S₂t = {!!} -- CONTRADICTION (p Q q (t , t₂) (Left ¬S₁t) (S₂t , language-comp t₂ ¬T₂t₂))
+  r (function-err s) (function-err ¬S₁s) with dec-language S₂ s
+  r (function-err s) (function-err ¬S₁s) | Left ¬S₂s = function-err ¬S₂s
+  r (function-err s) (function-err ¬S₁s) | Right S₂s = CONTRADICTION (p Q q (s , nothing) ¬S₁s (S₂s , λ ()))
   r (function-ok s t) (function-ok₁ ¬S₁s) with dec-language S₂ s
   r (function-ok s t) (function-ok₁ ¬S₁s) | Left ¬S₂s = function-ok₁ ¬S₂s
-  r (function-ok s t) (function-ok₁ ¬S₁s) | Right S₂s = {!!} -- CONTRADICTION (p Q q (s , t₂) (Left ¬S₁s) (S₂s , language-comp t₂ ¬T₂t₂))
+  r (function-ok s t) (function-ok₁ ¬S₁s) | Right S₂s = CONTRADICTION (p Q q (s , nothing) ¬S₁s (S₂s , λ ()))
   r (function-ok s t) (function-ok₂ T₁t) with dec-language T₂ t
-  r (function-ok s t) (function-ok₂ T₁t) | Left ¬T₂t = {!!} -- CONTRADICTION (p Q q (s₂ , t) (Right T₁t) (S₂s₂ ,  language-comp t ¬T₂t))
+  r (function-ok s t) (function-ok₂ T₁t) | Left ¬T₂t with dec-language S₂ s
+  r (function-ok s t) (function-ok₂ T₁t) | Left ¬T₂t | Left ¬S₂s = function-ok₁ ¬S₂s
+  r (function-ok s t) (function-ok₂ T₁t) | Left ¬T₂t | Right S₂s = CONTRADICTION (p Q q (s , just t) (Right T₁t) (S₂s , language-comp t ¬T₂t))
   r (function-ok s t) (function-ok₂ T₁t) | Right T₂t = function-ok₂ T₂t
