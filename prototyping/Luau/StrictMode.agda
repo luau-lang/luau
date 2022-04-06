@@ -5,7 +5,7 @@ module Luau.StrictMode where
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; var; binexp; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; +; -; *; /; <; >; <=; >=; ··)
-open import Luau.Type using (Type; strict; nil; number; string; boolean; none; any; _⇒_; _∪_; _∩_; tgt)
+open import Luau.Type using (Type; strict; nil; number; string; boolean; _⇒_; _∪_; _∩_; tgt)
 open import Luau.Subtyping using (_≮:_)
 open import Luau.Heap using (Heap; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)

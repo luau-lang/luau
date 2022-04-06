@@ -1,6 +1,6 @@
 {-# OPTIONS --rewriting #-}
 
-open import Luau.Type using (Type; Scalar; nil; number; string; boolean; none; any; _⇒_; _∪_; _∩_)
+open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 open import Properties.Equality using (_≢_)
 
 module Luau.Subtyping where
@@ -29,7 +29,7 @@ data Language where
   left : ∀ {T U t} → Language T t → Language (T ∪ U) t
   right : ∀ {T U u} → Language U u → Language (T ∪ U) u
   _,_ : ∀ {T U t} → Language T t → Language U t → Language (T ∩ U) t
-  any : ∀ {t} → Language any t
+  unknown : ∀ {t} → Language unknown t
 
 data ¬Language where
 
@@ -42,7 +42,7 @@ data ¬Language where
   _,_ : ∀ {T U t} → ¬Language T t → ¬Language U t → ¬Language (T ∪ U) t
   left : ∀ {T U t} → ¬Language T t → ¬Language (T ∩ U) t
   right : ∀ {T U u} → ¬Language U u → ¬Language (T ∩ U) u
-  none : ∀ {t} → ¬Language none t
+  never : ∀ {t} → ¬Language never t
 
 -- Subtyping as language inclusion
 
