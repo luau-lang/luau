@@ -138,6 +138,15 @@ In this proposal, the type of `f(x)` can depend on the type of `x`, which may ca
 
 There may be other devils in the details.
 
+Saturation on something like the type of `Instance.new` would be horrible
+
+```lua
+  ( ("Part") -> Part
+  & ("Folder") -> Folder
+  & ("Humanoid") -> Humanoid
+  & ... )
+```
+
 ## Alternatives
 
 We could try applying fixes to the current algorithm, and live with constraint order mattering.
