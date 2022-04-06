@@ -63,19 +63,28 @@ The algorithm for function overload resolution is now trivial: the type of `f(x)
 
 The extra work is now in type normalization, which removes uses of `src` and `tgt` during quantification.
 
-First, we normalize `F & function`, resulting in a type `(S1 -> T1) & ... & (SN -> TN)`. During normalization, we *saturate* the type:
+First, we normalize `F & function`, resulting in a type `(S1 -> T1) & ... & (SN -> TN)`. During normalization, we ensure the type is *unambiguous* (defn 2.2 of https://www.irif.fr/~gc/papers/covcon-again.pdf):
 
- * for any `(Si -> Ti)` and `(Sj -> Tj)` in the saturation, `((Si|Sj) -> (Ti|Tj))` is in the saturation, and
- * for any `(Si -> Ti)` and `(Sj -> Tj)` in the saturation, `((Si&Sj) -> (Ti&Tj))` is in the saturation.
+ * for any `i` and `j`, either `Si & Sj` is empty, or there is a unique least `Sk` such that `Si & Sj <: Sk`
+
+*specialization sound* (defn 2.3 of https://www.irif.fr/~gc/papers/covcon-again.pdf)
+
+ * for any `i` and `j`, if `Si <: Sj` then `Ti <: Tj`.
+
+and *union-saturated*
+
+ * for any `i` and `j`, there is an `Sk` such that `Si|Sj <: Sk` and `Tk <: Ti|Tj`
+
+(union-saturation means the definition of `tgt` is the same as the algorithm in 4.4.3 of https://www.irif.fr/~gc/papers/covcon-again.pdf)
 
 Then:
 
 * `src F` is (S1 | ... | SN)`
-* `tgt F(X)` is the most precise `Ti` such that `X <: Si`.
+* `tgt F(X)` is the least `Ti` such that `X <: Si`.
 
-If saturated types are ordered by subtyping order, this is the same as the current algorithm for function overload resolution.
+If normalized types are ordered by subtyping order, this is the same as the current algorithm for function overload resolution.
 
-For example saturating `(number? -> string?) & (string? -> number?)` gives `(nil -> nil) & (number? -> string?) & (string? -> number?) & ((number | string)? -> (number | string)?)` so:
+For example normalizing `(number? -> string?) & (string? -> number?)` gives `(nil -> nil) & (number? -> string?) & (string? -> number?) & ((number | string)? -> (number | string)?)` so:
 
 ```
   src((number? -> string?) & (string? -> number?))                    is  (number | string)?
@@ -83,8 +92,6 @@ For example saturating `(number? -> string?) & (string? -> number?)` gives `(nil
   tgt((number? -> string?) & (string? -> number?)) (number | string)  is  (number | string)?
   tgt((number? -> string?) & (string? -> number?)) (nil)              is  nil
 ```
-
-(This is a variant of the algorithm given in https://www.irif.fr/~gc/papers/covcon-again.pdf)
 
 The real thing would need scaled up to type packs and generic functions.
 
