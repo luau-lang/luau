@@ -2922,4 +2922,19 @@ TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
+{
+    ScopedFastFlag sff{"LuauCheckImplicitNumbericKeys", true};
+
+    CheckResult result = check(R"(
+        local t: { [string]: number } = { 5, 6, 7 }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+
+    CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
+    CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
+    CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[2]));
+}
+
 TEST_SUITE_END();

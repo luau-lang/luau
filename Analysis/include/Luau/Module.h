@@ -29,8 +29,8 @@ struct SourceModule
     std::optional<std::string> environmentName;
     bool cyclic = false;
 
-    std::unique_ptr<Allocator> allocator;
-    std::unique_ptr<AstNameTable> names;
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<AstNameTable> names;
     std::vector<ParseError> parseErrors;
 
     AstStatBlock* root = nullptr;
@@ -47,6 +47,12 @@ struct SourceModule
 };
 
 bool isWithinComment(const SourceModule& sourceModule, Position pos);
+
+struct RequireCycle
+{
+    Location location;
+    std::vector<ModuleName> path; // one of the paths for a require() to go all the way back to the originating module
+};
 
 struct TypeArena
 {
@@ -77,26 +83,16 @@ struct TypeArena
 void freeze(TypeArena& arena);
 void unfreeze(TypeArena& arena);
 
-// Only exposed so they can be unit tested.
-using SeenTypes = std::unordered_map<TypeId, TypeId>;
-using SeenTypePacks = std::unordered_map<TypePackId, TypePackId>;
-
-struct CloneState
-{
-    int recursionCount = 0;
-    bool encounteredFreeType = false;
-};
-
-TypePackId clone(TypePackId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState);
-TypeId clone(TypeId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState);
-TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState);
-
 struct Module
 {
     ~Module();
 
     TypeArena interfaceTypes;
     TypeArena internalTypes;
+
+    // Scopes and AST types refer to parse data, so we need to keep that alive
+    std::shared_ptr<Allocator> allocator;
+    std::shared_ptr<AstNameTable> names;
 
     std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
 
@@ -109,6 +105,7 @@ struct Module
     ErrorVec errors;
     Mode mode;
     SourceCode::Type type;
+    bool timeout = false;
 
     ScopePtr getModuleScope() const;
 

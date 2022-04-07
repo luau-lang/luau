@@ -91,7 +91,7 @@ struct TestConfigResolver : ConfigResolver
 
 struct Fixture
 {
-    explicit Fixture(bool freeze = true);
+    explicit Fixture(bool freeze = true, bool prepareAutocomplete = false);
     ~Fixture();
 
     // Throws Luau::ParseErrors if the parse fails.

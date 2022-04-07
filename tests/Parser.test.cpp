@@ -2022,6 +2022,15 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
     matchParseError("type Y<T... = (string) -> number> = {}", "Expected type pack after '=', got type", Location{{0, 14}, {0, 32}});
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_type_pack_errors")
+{
+    ScopedFastFlag luauParseRecoverUnexpectedPack{"LuauParseRecoverUnexpectedPack", true};
+
+    matchParseError("type Y<T...> = {a: T..., b: number}", "Unexpected '...' after type name; type pack is not allowed in this context",
+        Location{{0, 20}, {0, 23}});
+    matchParseError("type Y<T...> = {a: (number | string)...", "Unexpected '...' after type annotation", Location{{0, 36}, {0, 39}});
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 {
     {
@@ -2588,6 +2597,18 @@ TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
 type Y<T..., U = T...> = (T...) -> U...
     )");
     CHECK_EQ(1, result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "recover_unexpected_type_pack")
+{
+    ScopedFastFlag luauParseRecoverUnexpectedPack{"LuauParseRecoverUnexpectedPack", true};
+
+    ParseResult result = tryParse(R"(
+type X<T...> = { a: T..., b: number }
+type Y<T> = { a: T..., b: number }
+type Z<T> = { a: string | T..., b: number }
+    )");
+    REQUIRE_EQ(3, result.errors.size());
 }
 
 TEST_SUITE_END();

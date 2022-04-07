@@ -9,14 +9,21 @@
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
+namespace Luau
+{
+namespace TimeTrace
+{
+double getClock();
+uint32_t getClockMicroseconds();
+} // namespace TimeTrace
+} // namespace Luau
+
 #if defined(LUAU_ENABLE_TIME_TRACE)
 
 namespace Luau
 {
 namespace TimeTrace
 {
-uint32_t getClockMicroseconds();
-
 struct Token
 {
     const char* name;

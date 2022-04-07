@@ -1074,6 +1074,39 @@ RETURN R1 1
 )");
 }
 
+TEST_CASE("AndOrFoldLeft")
+{
+    // constant folding and/or expression is possible even if just the left hand is constant
+    CHECK_EQ("\n" + compileFunction0("local a = false if a and b then b() end"), R"(
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if a or b then b() end"), R"(
+GETIMPORT R0 1
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    // however, if right hand side is constant we can't constant fold the entire expression
+    // (note that we don't need to evaluate the right hand side, but we do need a branch)
+    CHECK_EQ("\n" + compileFunction0("local a = false if b and a then b() end"), R"(
+GETIMPORT R0 1
+JUMPIFNOT R0 +4
+RETURN R0 0
+GETIMPORT R0 1
+CALL R0 0 0
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0("local a = true if b or a then b() end"), R"(
+GETIMPORT R0 1
+JUMPIF R0 +0
+GETIMPORT R0 1
+CALL R0 0 0
+RETURN R0 0
+)");
+}
+
 TEST_CASE("AndOrChainCodegen")
 {
     const char* source = R"(

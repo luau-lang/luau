@@ -7,6 +7,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(LuauTxnLogPreserveOwner, false)
+
 namespace Luau
 {
 
@@ -78,11 +80,32 @@ void TxnLog::concat(TxnLog rhs)
 
 void TxnLog::commit()
 {
-    for (auto& [ty, rep] : typeVarChanges)
-        *asMutable(ty) = rep.get()->pending;
+    if (FFlag::LuauTxnLogPreserveOwner)
+    {
+        for (auto& [ty, rep] : typeVarChanges)
+        {
+            TypeArena* owningArena = ty->owningArena;
+            TypeVar* mtv = asMutable(ty);
+            *mtv = rep.get()->pending;
+            mtv->owningArena = owningArena;
+        }
 
-    for (auto& [tp, rep] : typePackChanges)
-        *asMutable(tp) = rep.get()->pending;
+        for (auto& [tp, rep] : typePackChanges)
+        {
+            TypeArena* owningArena = tp->owningArena;
+            TypePackVar* mpv = asMutable(tp);
+            *mpv = rep.get()->pending;
+            mpv->owningArena = owningArena;
+        }
+    }
+    else
+    {
+        for (auto& [ty, rep] : typeVarChanges)
+            *asMutable(ty) = rep.get()->pending;
+
+        for (auto& [tp, rep] : typePackChanges)
+            *asMutable(tp) = rep.get()->pending;
+    }
 
     clear();
 }

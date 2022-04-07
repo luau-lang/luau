@@ -47,6 +47,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Autocomplete.h
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Config.h
+    Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
@@ -85,6 +86,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Autocomplete.cpp
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Config.cpp
+    Analysis/src/Clone.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
     Analysis/src/IostreamHelpers.cpp

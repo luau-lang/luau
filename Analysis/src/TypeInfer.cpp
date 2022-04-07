@@ -22,6 +22,9 @@ LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 500)
 LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
+LUAU_FASTFLAG(LuauSeparateTypechecks)
+LUAU_FASTFLAG(LuauAutocompleteSingletonTypes)
+LUAU_FASTFLAGVARIABLE(LuauCyclicModuleTypeSurface, false)
 LUAU_FASTFLAGVARIABLE(LuauEqConstraint, false)
 LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
@@ -35,7 +38,7 @@ LUAU_FASTFLAGVARIABLE(LuauExpectedTypesOfProperties, false)
 LUAU_FASTFLAGVARIABLE(LuauErrorRecoveryType, false)
 LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
-LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify3, false)
+LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify4, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAG(LuauTypeMismatchModuleName)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
@@ -46,12 +49,18 @@ LUAU_FASTFLAGVARIABLE(LuauDoNotTryToReduce, false)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAccidentallyDependOnPointerOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauFixArgumentCountMismatchAmountWithGenericTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauFixIncorrectLineNumberDuplicateType, false)
+LUAU_FASTFLAGVARIABLE(LuauCheckImplicitNumbericKeys, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 LUAU_FASTFLAGVARIABLE(LuauDecoupleOperatorInferenceFromUnifiedTypeInference, false)
 LUAU_FASTFLAGVARIABLE(LuauArgCountMismatchSaysAtLeastWhenVariadic, false)
 
 namespace Luau
 {
+
+const char* TimeLimitError::what() const throw()
+{
+    return "Typeinfer failed to complete in allotted time";
+}
 
 static bool typeCouldHaveMetatable(TypeId ty)
 {
@@ -251,6 +260,12 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
     currentModule.reset(new Module());
     currentModule->type = module.type;
 
+    if (FFlag::LuauSeparateTypechecks)
+    {
+        currentModule->allocator = module.allocator;
+        currentModule->names = module.names;
+    }
+
     iceHandler->moduleName = module.name;
 
     ScopePtr parentScope = environmentScope.value_or(globalScope);
@@ -271,7 +286,21 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
     if (prepareModuleScope)
         prepareModuleScope(module.name, currentModule->getModuleScope());
 
-    checkBlock(moduleScope, *module.root);
+    if (FFlag::LuauSeparateTypechecks)
+    {
+        try
+        {
+            checkBlock(moduleScope, *module.root);
+        }
+        catch (const TimeLimitError&)
+        {
+            currentModule->timeout = true;
+        }
+    }
+    else
+    {
+        checkBlock(moduleScope, *module.root);
+    }
 
     if (get<FreeTypePack>(follow(moduleScope->returnType)))
         moduleScope->returnType = addTypePack(TypePack{{}, std::nullopt});
@@ -366,6 +395,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
     }
     else
         ice("Unknown AstStat");
+
+    if (FFlag::LuauSeparateTypechecks && finishTime && TimeTrace::getClock() > *finishTime)
+        throw TimeLimitError();
 }
 
 // This particular overload is for do...end. If you need to not increase the scope level, use checkBlock directly.
@@ -1115,21 +1147,17 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
         return;
     }
-    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify3)
+    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify4)
     {
         TypeId exprTy = checkExpr(scope, *name->expr).type;
         TableTypeVar* ttv = getMutableTableType(exprTy);
-        if (!ttv)
+
+        if (!getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, false))
         {
-            if (isTableIntersection(exprTy))
+            if (ttv || isTableIntersection(exprTy))
                 reportError(TypeError{function.location, CannotExtendTable{exprTy, CannotExtendTable::Property, name->index.value}});
-            else if (!get<ErrorTypeVar>(exprTy) && !get<AnyTypeVar>(exprTy))
+            else
                 reportError(TypeError{function.location, OnlyTablesCanHaveMethods{exprTy}});
-        }
-        else if (ttv->state == TableState::Sealed)
-        {
-            if (!getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, false))
-                reportError(TypeError{function.location, CannotExtendTable{exprTy, CannotExtendTable::Property, name->index.value}});
         }
 
         ty = follow(ty);
@@ -1153,7 +1181,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         if (ttv && ttv->state != TableState::Sealed)
             ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ false, {}, name->indexLocation};
     }
-    else if (FFlag::LuauStatFunctionSimplify3)
+    else if (FFlag::LuauStatFunctionSimplify4)
     {
         LUAU_ASSERT(function.name->is<AstExprError>());
 
@@ -1163,7 +1191,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     }
     else if (function.func->self)
     {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify3);
+        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify4);
 
         AstExprIndexName* indexName = function.name->as<AstExprIndexName>();
         if (!indexName)
@@ -1202,7 +1230,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
     }
     else
     {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify3);
+        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify4);
 
         TypeId leftType = checkLValueBinding(scope, *function.name);
 
@@ -2030,7 +2058,11 @@ TypeId TypeChecker::checkExprTable(
                 indexer = expectedTable->indexer;
 
             if (indexer)
+            {
+                if (FFlag::LuauCheckImplicitNumbericKeys)
+                    unify(numberType, indexer->indexType, value->location);
                 unify(valueType, indexer->indexResultType, value->location);
+            }
             else
                 indexer = TableIndexer{numberType, anyIfNonstrict(valueType)};
         }
@@ -2984,35 +3016,33 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
     else if (auto indexName = funName.as<AstExprIndexName>())
     {
         TypeId lhsType = checkExpr(scope, *indexName->expr).type;
-        if (get<ErrorTypeVar>(lhsType) || get<AnyTypeVar>(lhsType))
+
+        if (!FFlag::LuauStatFunctionSimplify4 && (get<ErrorTypeVar>(lhsType) || get<AnyTypeVar>(lhsType)))
             return lhsType;
 
         TableTypeVar* ttv = getMutableTableType(lhsType);
-        if (!ttv)
+
+        if (FFlag::LuauStatFunctionSimplify4)
         {
-            if (!FFlag::LuauErrorRecoveryType && !isTableIntersection(lhsType))
-                // This error now gets reported when we check the function body.
-                reportError(TypeError{funName.location, OnlyTablesCanHaveMethods{lhsType}});
-
-            return errorRecoveryType(scope);
-        }
-
-        if (FFlag::LuauStatFunctionSimplify3)
-        {
-            if (lhsType->persistent)
-                return errorRecoveryType(scope);
-
-            // Cannot extend sealed table, but we dont report an error here because it will be reported during AstStatFunction check
-            if (ttv->state == TableState::Sealed)
+            if (!ttv || ttv->state == TableState::Sealed)
             {
-                if (ttv->indexer && isPrim(ttv->indexer->indexType, PrimitiveTypeVar::String))
-                    return ttv->indexer->indexResultType;
-                else
-                    return errorRecoveryType(scope);
+                if (auto ty = getIndexTypeFromType(scope, lhsType, indexName->index.value, indexName->indexLocation, false))
+                    return *ty;
+
+                return errorRecoveryType(scope);
             }
         }
         else
         {
+            if (!ttv)
+            {
+                if (!FFlag::LuauErrorRecoveryType && !isTableIntersection(lhsType))
+                    // This error now gets reported when we check the function body.
+                    reportError(TypeError{funName.location, OnlyTablesCanHaveMethods{lhsType}});
+
+                return errorRecoveryType(scope);
+            }
+
             if (lhsType->persistent || ttv->state == TableState::Sealed)
                 return errorRecoveryType(scope);
         }
@@ -3020,7 +3050,12 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
         Name name = indexName->index.value;
 
         if (ttv->props.count(name))
-            return errorRecoveryType(scope);
+        {
+            if (FFlag::LuauStatFunctionSimplify4)
+                return ttv->props[name].type;
+            else
+                return errorRecoveryType(scope);
+        }
 
         Property& property = ttv->props[name];
 
@@ -4155,6 +4190,20 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         return anyType;
     }
 
+    // Types of requires that transitively refer to current module have to be replaced with 'any'
+    std::string humanReadableName;
+
+    if (FFlag::LuauCyclicModuleTypeSurface)
+    {
+        humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
+
+        for (const auto& [location, path] : requireCycles)
+        {
+            if (!path.empty() && path.front() == humanReadableName)
+                return anyType;
+        }
+    }
+
     ModulePtr module = resolver->getModule(moduleInfo.name);
     if (!module)
     {
@@ -4163,8 +4212,15 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         // we will already have reported the error.
         if (!resolver->moduleExists(moduleInfo.name) && !moduleInfo.optional)
         {
-            std::string reportedModulePath = resolver->getHumanReadableModuleName(moduleInfo.name);
-            reportError(TypeError{location, UnknownRequire{reportedModulePath}});
+            if (FFlag::LuauCyclicModuleTypeSurface)
+            {
+                reportError(TypeError{location, UnknownRequire{humanReadableName}});
+            }
+            else
+            {
+                std::string reportedModulePath = resolver->getHumanReadableModuleName(moduleInfo.name);
+                reportError(TypeError{location, UnknownRequire{reportedModulePath}});
+            }
         }
 
         return errorRecoveryType(scope);
@@ -4172,8 +4228,15 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
 
     if (module->type != SourceCode::Module)
     {
-        std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
-        reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
+        if (FFlag::LuauCyclicModuleTypeSurface)
+        {
+            reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
+        }
+        else
+        {
+            std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
+            reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
+        }
         return errorRecoveryType(scope);
     }
 
@@ -4185,8 +4248,15 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
     std::optional<TypeId> moduleType = first(modulePack);
     if (!moduleType)
     {
-        std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
-        reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
+        if (FFlag::LuauCyclicModuleTypeSurface)
+        {
+            reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
+        }
+        else
+        {
+            std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
+            reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
+        }
         return errorRecoveryType(scope);
     }
 
@@ -4629,7 +4699,9 @@ TypeId TypeChecker::freshType(TypeLevel level)
 
 TypeId TypeChecker::singletonType(bool value)
 {
-    // TODO: cache singleton types
+    if (FFlag::LuauAutocompleteSingletonTypes)
+        return value ? getSingletonTypes().trueType : getSingletonTypes().falseType;
+
     return currentModule->internalTypes.addType(TypeVar(SingletonTypeVar(BooleanSingleton{value})));
 }
 

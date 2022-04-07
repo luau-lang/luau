@@ -83,7 +83,7 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
     return std::nullopt;
 }
 
-Fixture::Fixture(bool freeze)
+Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
     , frontend(&fileResolver, &configResolver, {/* retainFullTypeGraphs= */ true})
     , typeChecker(frontend.typeChecker)
@@ -93,8 +93,11 @@ Fixture::Fixture(bool freeze)
     configResolver.defaultConfig.parseOptions.captureComments = true;
 
     registerBuiltinTypes(frontend.typeChecker);
+    if (prepareAutocomplete)
+        registerBuiltinTypes(frontend.typeCheckerForAutocomplete);
     registerTestTypes();
     Luau::freeze(frontend.typeChecker.globalTypes);
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 
     Luau::setPrintLine([](auto s) {});
 }
