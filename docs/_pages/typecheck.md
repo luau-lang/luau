@@ -392,18 +392,20 @@ local account: Account = Account.new("Alexander", 500)
 Tagged unions are just union types! In particular, they're union types of tables where they have at least _some_ common properties but the structure of the tables are different enough. Here's one example:
 
 ```lua
-type Result<T, E> = { type: "ok", value: T } | { type: "err", error: E }
+type Ok<T> = { type: "ok", value: T }
+type Err<E> = { type: "err", error: E }
+type Result<T, E> = Ok<T> | Err<E>
 ```
 
 This `Result<T, E>` type can be discriminated by using type refinements on the property `type`, like so:
 
 ```lua
 if result.type == "ok" then
-    -- result is known to be { type: "ok", value: T }
+    -- result is known to be Ok<T>
     -- and attempting to index for error here will fail
     print(result.value)
 elseif result.type == "err" then
-    -- result is known to be { type: "err", error: E }
+    -- result is known to be Err<E>
     -- and attempting to index for value here will fail
     print(result.error)
 end
