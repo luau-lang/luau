@@ -75,6 +75,12 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-impl-¬≮: : ∀ {T U} → (T <: U) → ¬(T ≮: U)
 <:-impl-¬≮: p (witness t q r) = language-comp t r (p t q)
 
+-- if T <: U then ¬Language U ⊆ ¬Language T
+<:-impl-⊇ : ∀ {T U} → (T <: U) → ∀ t → ¬Language U t → ¬Language T t
+<:-impl-⊇ {T} p t ¬Ut with dec-language T t
+<:-impl-⊇ p t ¬Ut | Left ¬Tt = ¬Tt
+<:-impl-⊇ p t ¬Ut | Right Tt = CONTRADICTION (language-comp t ¬Ut (p t Tt))
+
 -- reflexivity
 ≮:-refl : ∀ {T} → ¬(T ≮: T)
 ≮:-refl (witness t p q) = language-comp t q p
@@ -133,6 +139,20 @@ function-ok-tgt (right p) = right (function-ok-tgt p)
 function-ok-tgt (p₁ , p₂) = (function-ok-tgt p₁ , function-ok-tgt p₂)
 function-ok-tgt any = any
 
+tgt-¬function-ok : ∀ {T t} → (¬Language (tgt T) t) → ¬Language T (function-ok t)
+tgt-¬function-ok {T = nil} p = scalar-function-ok nil
+tgt-¬function-ok {T = T₁ ⇒ T₂} p = function-ok p
+tgt-¬function-ok {T = none} p = none
+tgt-¬function-ok {T = any} (scalar-scalar s () p)
+tgt-¬function-ok {T = any} (scalar-function ())
+tgt-¬function-ok {T = any} (scalar-function-ok ())
+tgt-¬function-ok {T = boolean} p = scalar-function-ok boolean
+tgt-¬function-ok {T = number} p = scalar-function-ok number
+tgt-¬function-ok {T = string} p = scalar-function-ok string
+tgt-¬function-ok {T = T₁ ∪ T₂} (p₁ , p₂) = (tgt-¬function-ok p₁ , tgt-¬function-ok p₂)
+tgt-¬function-ok {T = T₁ ∩ T₂} (left p) = left (tgt-¬function-ok p)
+tgt-¬function-ok {T = T₁ ∩ T₂} (right p) = right (tgt-¬function-ok p)
+
 skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
 skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
 
@@ -150,6 +170,9 @@ none-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-refl (w
 none-tgt-≮: (witness function p (q₁ , scalar-function ()))
 none-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
 none-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
+
+tgt-≮: : ∀ {T U} → (tgt T ≮: tgt U) → (T ≮: U)
+tgt-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (tgt-¬function-ok q)
 
 -- Properties of src
 function-err-src : ∀ {T t} → (¬Language (src T) t) → Language T (function-err t)
@@ -208,6 +231,9 @@ any-src-≮: r (witness (function-ok (scalar s)) p (function-ok (scalar-scalar s
 any-src-≮: r (witness (function-ok (function-ok _)) p (function-ok (scalar-function-ok ())))
 any-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
 
+src-≮: : ∀ {T U} → (src T ≮: src U) → (U ≮: T)
+src-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
+
 -- Properties of any and none
 any-≮: : ∀ {T U} → (T ≮: U) → (any ≮: U)
 any-≮: (witness t p q) = witness t any q
@@ -220,6 +246,56 @@ any-≮:-none = witness (scalar nil) any none
 
 function-≮:-none : ∀ {T U} → ((T ⇒ U) ≮: none)
 function-≮:-none = witness function function none
+
+-- Subtyping is decidable
+-- Honest, this terminates (because src T and tgt T decrease the depth of the type)
+
+{-# TERMINATING #-}
+dec-subtyping : ∀ T U → Either (T ≮: U) (T <: U)
+dec-subtyping T U = result where
+
+  P : Tree → Set
+  P t = Either (¬Language T t) (Language U t)
+
+  Q : Tree → Set
+  Q t = Either (T ≮: U) (P t)
+
+  decQ : ∀ t → Q t
+  decQ t with dec-language T t | dec-language U t
+  decQ t | Left ¬Tt | _ = Right (Left ¬Tt)
+  decQ t | Right Tt | Left ¬Ut = Left (witness t Tt ¬Ut)
+  decQ t | Right _ | Right Ut = Right (Right Ut)
+
+  lemma : P(scalar number) → P(scalar boolean) → P(scalar nil) → P(scalar string) → P(function) → (src U <: src T) → (tgt T <: tgt U) → (T <: U)
+  lemma (Left ¬Tt) boolP nilP stringP funP srcy tgty (scalar number) Tt = CONTRADICTION (language-comp (scalar number) ¬Tt Tt)
+  lemma (Right Ut) boolP nilP stringP funP srcy tgty (scalar number) Tt = Ut
+  lemma numP (Left ¬Tt) nilP stringP funP srcy tgty (scalar boolean) Tt = CONTRADICTION (language-comp (scalar boolean) ¬Tt Tt)
+  lemma numP (Right Ut) nilP stringP funP srcy tgty (scalar boolean) Tt = Ut
+  lemma numP boolP (Left ¬Tt) stringP funP srcy tgty (scalar nil) Tt = CONTRADICTION (language-comp (scalar nil) ¬Tt Tt)
+  lemma numP boolP (Right Ut) stringP funP srcy tgty (scalar nil) Tt = Ut
+  lemma numP boolP nilP (Left ¬Tt) funP srcy tgty (scalar string) Tt = CONTRADICTION (language-comp (scalar string) ¬Tt Tt)
+  lemma numP boolP nilP (Right Ut) funP srcy tgty (scalar string) Tt = Ut
+  lemma numP boolP nilP stringP (Left ¬Tt) srcy tgty function Tt = CONTRADICTION (language-comp function ¬Tt Tt)
+  lemma numP boolP nilP stringP (Right Ut) srcy tgty function Tt = Ut
+  lemma numP boolP nilP stringP funP srcy tgty (function-ok t) Tt = tgt-function-ok (tgty t (function-ok-tgt Tt))
+  lemma numP boolP nilP stringP funP srcy tgty (function-err t) Tt = function-err-src (<:-impl-⊇ srcy t (src-¬function-err Tt))
+
+  result : Either (T ≮: U) (T <: U)
+  result with decQ (scalar number)
+  result | Left r = Left r
+  result | Right numP with decQ (scalar boolean)
+  result | Right numP | Left r = Left r
+  result | Right numP | Right boolP with decQ (scalar nil)
+  result | Right numP | Right boolP | Left r = Left r
+  result | Right numP | Right boolP | Right nilP with decQ (scalar string)
+  result | Right numP | Right boolP | Right nilP | Left r = Left r
+  result | Right numP | Right boolP | Right nilP | Right strP with decQ (function)
+  result | Right numP | Right boolP | Right nilP | Right strP | Left r = Left r
+  result | Right numP | Right boolP | Right nilP | Right strP | Right funP with dec-subtyping (src U) (src T)
+  result | Right numP | Right boolP | Right nilP | Right strP | Right funP | Left r = Left (src-≮: r)
+  result | Right numP | Right boolP | Right nilP | Right strP | Right funP | Right srcy with dec-subtyping (tgt T) (tgt U)
+  result | Right numP | Right boolP | Right nilP | Right strP | Right funP | Right srcy | Left r = Left (tgt-≮: r)
+  result | Right numP | Right boolP | Right nilP | Right strP | Right funP | Right srcy | Right tgty = Right (lemma numP boolP nilP strP funP srcy tgty)
 
 -- A Gentle Introduction To Semantic Subtyping (https://www.cduce.org/papers/gentle.pdf)
 -- defines a "set-theoretic" model (sec 2.5)
