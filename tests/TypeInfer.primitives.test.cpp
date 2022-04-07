@@ -95,6 +95,8 @@ end
 )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
+    CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
 }
 
 TEST_SUITE_END();

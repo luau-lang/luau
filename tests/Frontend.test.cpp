@@ -384,6 +384,70 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_error_paths")
     CHECK_EQ(ce2->cycle[1], "game/Gui/Modules/A");
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
+{
+    ScopedFastFlag luauCyclicModuleTypeSurface{"LuauCyclicModuleTypeSurface", true};
+
+    fileResolver.source["game/A"] = R"(
+        return {hello = 2}
+    )";
+
+    CheckResult result = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    fileResolver.source["game/A"] = R"(
+        local me = require(game.A)
+        return {hello = 2}
+    )";
+    frontend.markDirty("game/A");
+
+    result = frontend.check("game/A");
+    LUAU_REQUIRE_ERRORS(result);
+
+    auto ty = requireType("game/A", "me");
+    CHECK_EQ(toString(ty), "any");
+}
+
+TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
+{
+    ScopedFastFlag luauCyclicModuleTypeSurface{"LuauCyclicModuleTypeSurface", true};
+
+    fileResolver.source["game/A"] = R"(
+        return {mod_a = 2}
+    )";
+
+    CheckResult result = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    fileResolver.source["game/B"] = R"(
+        local me = require(game.A)
+        return {mod_b = 4}
+    )";
+
+    result = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    fileResolver.source["game/A"] = R"(
+        local me = require(game.B)
+        return {mod_a_prime = 3}
+    )";
+
+    frontend.markDirty("game/A");
+    frontend.markDirty("game/B");
+
+    result = frontend.check("game/A");
+    LUAU_REQUIRE_ERRORS(result);
+
+    TypeId tyA = requireType("game/A", "me");
+    CHECK_EQ(toString(tyA), "any");
+
+    result = frontend.check("game/B");
+    LUAU_REQUIRE_ERRORS(result);
+
+    TypeId tyB = requireType("game/B", "me");
+    CHECK_EQ(toString(tyB), "any");
+}
+
 TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
 {
     fileResolver.source["Modules/A"] = R"(
