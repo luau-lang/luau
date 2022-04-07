@@ -311,6 +311,8 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
+
     CheckResult result = check(R"(
     type X = { x: (number) -> number }
     type Y = { y: (string) -> string }
@@ -326,10 +328,39 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     function xy:w(a:number) return a * 10 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
-    CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
-    CHECK_EQ(toString(result.errors[1]), "Cannot add property 'y' to table 'X & Y'");
-    CHECK_EQ(toString(result.errors[2]), "Cannot add property 'w' to table 'X & Y'");
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(string, number) -> string' could not be converted into '(string) -> string'
+caused by:
+  Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
+    CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
+    CHECK_EQ(toString(result.errors[2]), "Type 'number' could not be converted into 'string'");
+    CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
+{
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
+
+    // After normalization, previous 'table_intersection_write_sealed_indirect' is identical to this one
+    CheckResult result = check(R"(
+    type XY = { x: (number) -> number, y: (string) -> string }
+
+    local xy : XY = {
+        x = function(a: number) return -a end,
+        y = function(a: string) return a .. "b" end
+    }
+    function xy.z(a:number) return a * 10 end
+    function xy:y(a:number) return a * 10 end
+    function xy:w(a:number) return a * 10 end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(string, number) -> string' could not be converted into '(string) -> string'
+caused by:
+  Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
+    CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'XY'");
+    CHECK_EQ(toString(result.errors[2]), "Type 'number' could not be converted into 'string'");
+    CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'XY'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_setmetatable")
