@@ -11,6 +11,9 @@ jobs:
     strategy:
       matrix:
         agda: [2.6.2.1]
+        scientific: [0.3.7.0]
+        vector: [0.12.3.1]
+        aeson: [2.0.3.0]
     name: prototyping
     runs-on: ubuntu-latest
     steps:
@@ -33,7 +36,7 @@ jobs:
       working-directory: prototyping
       run: |
         cabal install Agda-${{ matrix.agda }}
-        cabal install --lib scientific vector aeson --package-env .
+        cabal install --lib scientific-${{ matrix.scientific }} vector-${{ matrix.vector }} aeson-${{ matrix.aeson }} --package-env .
     - name: check targets
       working-directory: prototyping
       run: |
