@@ -10,8 +10,8 @@ jobs:
   linux:
     strategy:
       matrix:
-        agda: [2.6.2.1]
-        hackage: [2022-01-31T23:42:28Z]
+        agda: ['2.6.2.1']
+        hackage: ['2022-01-31T23:42:28Z']
     name: prototyping
     runs-on: ubuntu-latest
     steps:
