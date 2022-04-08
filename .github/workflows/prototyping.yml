@@ -37,7 +37,7 @@ jobs:
       working-directory: prototyping
       run: |
         cabal install Agda-${{ matrix.agda }}
-        cabal install --lib bytestring-{{ matrix.bytestring }} scientific-${{ matrix.scientific }} vector-${{ matrix.vector }} aeson-${{ matrix.aeson }} --package-env .
+        cabal install --lib bytestring-${{ matrix.bytestring }} scientific-${{ matrix.scientific }} vector-${{ matrix.vector }} aeson-${{ matrix.aeson }} --package-env .
     - name: check targets
       working-directory: prototyping
       run: |
