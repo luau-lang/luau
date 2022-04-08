@@ -403,35 +403,26 @@ struct AstJsonEncoder : public AstVisitor
     void write(const AstExprTable::Item& item)
     {
         writeRaw("{");
-        bool comma = pushComma();
+        bool c = pushComma();
         write("kind", item.kind);
         switch (item.kind)
         {
         case AstExprTable::Item::List:
-            write(item.value);
+            write("value", item.value);
             break;
         default:
-            write(item.key);
-            writeRaw(",");
-            write(item.value);
+            write("key", item.key);
+            write("value", item.value);
             break;
         }
-        popComma(comma);
+        popComma(c);
         writeRaw("}");
     }
 
     void write(class AstExprTable* node)
     {
         writeNode(node, "AstExprTable", [&]() {
-            bool comma = false;
-            for (const auto& prop : node->items)
-            {
-                if (comma)
-                    writeRaw(",");
-                else
-                    comma = true;
-                write(prop);
-            }
+            PROP(items);
         });
     }
 
