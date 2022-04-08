@@ -11,7 +11,8 @@ jobs:
     strategy:
       matrix:
         agda: [2.6.2.1]
-        hackage: ["2022-01-31T23:42:28Z"]
+        hackageDate: ["2022-01-31"]
+        hackageTime: ["23:42:28Z"]
     name: prototyping
     runs-on: ubuntu-latest
     steps:
@@ -19,7 +20,7 @@ jobs:
     - uses: actions/cache@v2
       with:
         path: ~/.cabal/store
-        key: "prototyping-${{ runner.os }}-${{ matrix.agda }}-${{ matrix.hackage }}"
+        key: "prototyping-${{ runner.os }}-${{ matrix.agda }}-${{ matrix.hackageDate }}-${{ matrix.hackageTime }}"
     - uses: actions/cache@v2
       id: luau-ast-cache
       with:
@@ -29,7 +30,7 @@ jobs:
       run: sudo apt-get install -y cabal-install
     - name: cabal update
       working-directory: prototyping
-      run: cabal v2-update "hackage.haskell.org,${{ matrix.hackage }}"
+      run: cabal v2-update "hackage.haskell.org,${{ matrix.hackageDate }}T${{ matrix.hackageTime }}Z"
     - name: cabal install
       working-directory: prototyping
       run: |
