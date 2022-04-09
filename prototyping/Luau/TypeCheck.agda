@@ -10,7 +10,7 @@ open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
-open import Luau.Type using (Type; Mode; nil; any; number; boolean; string; _⇒_; tgt)
+open import Luau.Type using (Type; Mode; nil; unknown; number; boolean; string; _⇒_; tgt)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
@@ -19,9 +19,9 @@ open import Properties.Product using (_×_; _,_)
 src : Type → Type
 src = Luau.Type.src m
 
-orAny : Maybe Type → Type
-orAny nothing = any
-orAny (just T) = T
+orUnknown : Maybe Type → Type
+orUnknown nothing = unknown
+orUnknown (just T) = T
 
 srcBinOp : BinaryOperator → Type
 srcBinOp + = number
@@ -30,8 +30,8 @@ srcBinOp * = number
 srcBinOp / = number
 srcBinOp < = number
 srcBinOp > = number
-srcBinOp == = any
-srcBinOp ~= = any
+srcBinOp == = unknown
+srcBinOp ~= = unknown
 srcBinOp <= = number
 srcBinOp >= = number
 srcBinOp ·· = string
@@ -89,7 +89,7 @@ data _⊢ᴱ_∈_ where
 
   var : ∀ {x T Γ} →
 
-    T ≡ orAny(Γ [ x ]ⱽ) →
+    T ≡ orUnknown(Γ [ x ]ⱽ) →
     ----------------
     Γ ⊢ᴱ (var x) ∈ T
 
