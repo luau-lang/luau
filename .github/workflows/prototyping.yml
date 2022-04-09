@@ -35,7 +35,7 @@ jobs:
       working-directory: prototyping
       run: |
         cabal install Agda-${{ matrix.agda }}
-        cabal install --lib scientific vector aeson text bytestring-0.11.3.0 --package-env .
+        cabal install --allow-newer --lib scientific vector aeson text bytestring-0.11.3.0 --package-env .
     - name: check targets
       working-directory: prototyping
       run: |
