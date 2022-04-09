@@ -10,9 +10,9 @@ jobs:
   linux:
     strategy:
       matrix:
-        agda: [2.6.2.1]
-        hackageDate: ["2022-01-31"]
-        hackageTime: ["23:42:28"]
+        agda: [2.6.2.2]
+        hackageDate: ["2022-04-07"]
+        hackageTime: ["23:06:28Z"]
     name: prototyping
     runs-on: ubuntu-latest
     steps:
@@ -34,7 +34,7 @@ jobs:
     - name: cabal install
       working-directory: prototyping
       run: |
-        cabal install --allow-newer --lib scientific vector aeson text bytestring-0.11.3.0 --package-env .
+        cabal install --lib scientific vector aeson --package-env .
         cabal install --allow-newer Agda-${{ matrix.agda }}
     - name: check targets
       working-directory: prototyping
