@@ -12,7 +12,7 @@ jobs:
       matrix:
         agda: [2.6.2.2]
         hackageDate: ["2022-04-07"]
-        hackageTime: ["23:06:28Z"]
+        hackageTime: ["23:06:28"]
     name: prototyping
     runs-on: ubuntu-latest
     steps:
