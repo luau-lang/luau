@@ -14,10 +14,10 @@ For example, the function:
 
 ```lua
   function succ(x)
-    if type(x) == "function"
+    if type(x) == "function" then
       return x() + 1
     else
-      assert(type(x) == number)
+      assert(type(x) == "number")
       return x + 1
     end
   end
