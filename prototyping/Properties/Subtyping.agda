@@ -142,10 +142,10 @@ function-ok-tgt unknown = unknown
 tgt-¬function-ok : ∀ {T t} → (¬Language (tgt T) t) → ¬Language T (function-ok t)
 tgt-¬function-ok {T = nil} p = scalar-function-ok nil
 tgt-¬function-ok {T = T₁ ⇒ T₂} p = function-ok p
-tgt-¬function-ok {T = none} p = none
-tgt-¬function-ok {T = any} (scalar-scalar s () p)
-tgt-¬function-ok {T = any} (scalar-function ())
-tgt-¬function-ok {T = any} (scalar-function-ok ())
+tgt-¬function-ok {T = never} p = never
+tgt-¬function-ok {T = unknown} (scalar-scalar s () p)
+tgt-¬function-ok {T = unknown} (scalar-function ())
+tgt-¬function-ok {T = unknown} (scalar-function-ok ())
 tgt-¬function-ok {T = boolean} p = scalar-function-ok boolean
 tgt-¬function-ok {T = number} p = scalar-function-ok number
 tgt-¬function-ok {T = string} p = scalar-function-ok string
