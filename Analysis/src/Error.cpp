@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Error.h"
 
+#include "Luau/Clone.h"
 #include "Luau/Module.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"

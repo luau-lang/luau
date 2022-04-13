@@ -290,7 +290,8 @@ struct ConstantVisitor : AstVisitor
             Constant la = analyze(expr->left);
             Constant ra = analyze(expr->right);
 
-            if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
+            // note: ra doesn't need to be constant to fold and/or
+            if (la.type != Constant::Type_Unknown)
                 foldBinary(result, expr->op, la, ra);
         }
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())

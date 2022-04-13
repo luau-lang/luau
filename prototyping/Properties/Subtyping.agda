@@ -4,8 +4,8 @@ module Properties.Subtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
-open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; any; none; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
-open import Luau.Type using (Type; Scalar; strict; nil; number; string; boolean; none; any; _⇒_; _∪_; _∩_; tgt)
+open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
+open import Luau.Type using (Type; Scalar; strict; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; tgt)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
@@ -47,8 +47,8 @@ dec-language (T₁ ⇒ T₂) (scalar s) = Left (function-scalar s)
 dec-language (T₁ ⇒ T₂) function = Right function
 dec-language (T₁ ⇒ T₂) (function-ok t) = mapLR function-ok function-ok (dec-language T₂ t)
 dec-language (T₁ ⇒ T₂) (function-err t) = mapLR function-err function-err (swapLR (dec-language T₁ t))
-dec-language none t = Left none
-dec-language any t = Right any
+dec-language never t = Left never
+dec-language unknown t = Right unknown
 dec-language (T₁ ∪ T₂) t = cond (λ p → cond (Left ∘ _,_ p) (Right ∘ right) (dec-language T₂ t)) (Right ∘ left) (dec-language T₁ t)
 dec-language (T₁ ∩ T₂) t = cond (Left ∘ left) (λ p → cond (Left ∘ right) (Right ∘ _,_ p) (dec-language T₂ t)) (dec-language T₁ t)
 
@@ -60,7 +60,7 @@ language-comp t (left p) (q₁ , q₂) = language-comp t p q₁
 language-comp t (right p) (q₁ , q₂) = language-comp t p q₂
 language-comp (scalar s) (scalar-scalar s p₁ p₂) (scalar s) = p₂ refl
 language-comp (scalar s) (function-scalar s) (scalar s) = language-comp function (scalar-function s) function
-language-comp (scalar s) none (scalar ())
+language-comp (scalar s) never (scalar ())
 language-comp function (scalar-function ()) function
 language-comp (function-ok t) (scalar-function-ok ()) (function-ok q)
 language-comp (function-ok t) (function-ok p) (function-ok q) = language-comp t p q
@@ -110,11 +110,11 @@ function-≮:-scalar s = witness function function (scalar-function s)
 scalar-≮:-function : ∀ {S T U} → (Scalar U) → (U ≮: (S ⇒ T))
 scalar-≮:-function s = witness (scalar s) (scalar s) (function-scalar s)
 
-any-≮:-scalar : ∀ {U} → (Scalar U) → (any ≮: U)
-any-≮:-scalar s = witness (function-ok (scalar s)) any (scalar-function-ok s)
+unknown-≮:-scalar : ∀ {U} → (Scalar U) → (unknown ≮: U)
+unknown-≮:-scalar s = witness (function-ok (scalar s)) unknown (scalar-function-ok s)
 
-scalar-≮:-none : ∀ {U} → (Scalar U) → (U ≮: none)
-scalar-≮:-none s = witness (scalar s) (scalar s) none
+scalar-≮:-never : ∀ {U} → (Scalar U) → (U ≮: never)
+scalar-≮:-never s = witness (scalar s) (scalar s) never
 
 scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
 scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
@@ -123,8 +123,8 @@ scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-s
 tgt-function-ok : ∀ {T t} → (Language (tgt T) t) → Language T (function-ok t)
 tgt-function-ok {T = nil} (scalar ())
 tgt-function-ok {T = T₁ ⇒ T₂} p = function-ok p
-tgt-function-ok {T = none} (scalar ())
-tgt-function-ok {T = any} p = any
+tgt-function-ok {T = never} (scalar ())
+tgt-function-ok {T = unknown} p = unknown
 tgt-function-ok {T = boolean} (scalar ())
 tgt-function-ok {T = number} (scalar ())
 tgt-function-ok {T = string} (scalar ())
@@ -137,7 +137,7 @@ function-ok-tgt (function-ok p) = p
 function-ok-tgt (left p) = left (function-ok-tgt p)
 function-ok-tgt (right p) = right (function-ok-tgt p)
 function-ok-tgt (p₁ , p₂) = (function-ok-tgt p₁ , function-ok-tgt p₂)
-function-ok-tgt any = any
+function-ok-tgt unknown = unknown
 
 tgt-¬function-ok : ∀ {T t} → (¬Language (tgt T) t) → ¬Language T (function-ok t)
 tgt-¬function-ok {T = nil} p = scalar-function-ok nil
@@ -162,25 +162,25 @@ skalar-scalar boolean = right (right (right (scalar boolean)))
 skalar-scalar string = right (left (scalar string))
 skalar-scalar nil = right (right (left (scalar nil)))
 
-tgt-none-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (none ⇒ U)))
-tgt-none-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
+tgt-never-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (never ⇒ U)))
+tgt-never-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
 
-none-tgt-≮: : ∀ {T U} → (T ≮: (skalar ∪ (none ⇒ U))) → (tgt T ≮: U)
-none-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-refl (witness (scalar s) (skalar-scalar s) q₁))
-none-tgt-≮: (witness function p (q₁ , scalar-function ()))
-none-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
-none-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
+never-tgt-≮: : ∀ {T U} → (T ≮: (skalar ∪ (never ⇒ U))) → (tgt T ≮: U)
+never-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-refl (witness (scalar s) (skalar-scalar s) q₁))
+never-tgt-≮: (witness function p (q₁ , scalar-function ()))
+never-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
+never-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
 
 tgt-≮: : ∀ {T U} → (tgt T ≮: tgt U) → (T ≮: U)
 tgt-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (tgt-¬function-ok q)
 
 -- Properties of src
 function-err-src : ∀ {T t} → (¬Language (src T) t) → Language T (function-err t)
-function-err-src {T = nil} none = scalar-function-err nil
+function-err-src {T = nil} never = scalar-function-err nil
 function-err-src {T = T₁ ⇒ T₂} p = function-err p
-function-err-src {T = none} (scalar-scalar number () p)
-function-err-src {T = none} (scalar-function-ok ())
-function-err-src {T = any} none = any
+function-err-src {T = never} (scalar-scalar number () p)
+function-err-src {T = never} (scalar-function-ok ())
+function-err-src {T = unknown} never = unknown
 function-err-src {T = boolean} p = scalar-function-err boolean
 function-err-src {T = number} p = scalar-function-err number
 function-err-src {T = string} p = scalar-function-err string
@@ -191,8 +191,8 @@ function-err-src {T = T₁ ∩ T₂} (p₁ , p₂) = function-err-src p₁ , fun
 ¬function-err-src : ∀ {T t} → (Language (src T) t) → ¬Language T (function-err t)
 ¬function-err-src {T = nil} (scalar ())
 ¬function-err-src {T = T₁ ⇒ T₂} p = function-err p
-¬function-err-src {T = none} any = none
-¬function-err-src {T = any} (scalar ())
+¬function-err-src {T = never} unknown = never
+¬function-err-src {T = unknown} (scalar ())
 ¬function-err-src {T = boolean} (scalar ())
 ¬function-err-src {T = number} (scalar ())
 ¬function-err-src {T = string} (scalar ())
@@ -201,51 +201,51 @@ function-err-src {T = T₁ ∩ T₂} (p₁ , p₂) = function-err-src p₁ , fun
 ¬function-err-src {T = T₁ ∩ T₂} (right p) = right (¬function-err-src p)
 
 src-¬function-err : ∀ {T t} → Language T (function-err t) → (¬Language (src T) t)
-src-¬function-err {T = nil} p = none
+src-¬function-err {T = nil} p = never
 src-¬function-err {T = T₁ ⇒ T₂} (function-err p) = p
-src-¬function-err {T = none} (scalar-function-err ())
-src-¬function-err {T = any} p = none
-src-¬function-err {T = boolean} p = none
-src-¬function-err {T = number} p = none
-src-¬function-err {T = string} p = none
+src-¬function-err {T = never} (scalar-function-err ())
+src-¬function-err {T = unknown} p = never
+src-¬function-err {T = boolean} p = never
+src-¬function-err {T = number} p = never
+src-¬function-err {T = string} p = never
 src-¬function-err {T = T₁ ∪ T₂} (left p) = left (src-¬function-err p)
 src-¬function-err {T = T₁ ∪ T₂} (right p) = right (src-¬function-err p)
 src-¬function-err {T = T₁ ∩ T₂} (p₁ , p₂) = (src-¬function-err p₁ , src-¬function-err p₂)
 
 src-¬scalar : ∀ {S T t} (s : Scalar S) → Language T (scalar s) → (¬Language (src T) t)
-src-¬scalar number (scalar number) = none
-src-¬scalar boolean (scalar boolean) = none
-src-¬scalar string (scalar string) = none
-src-¬scalar nil (scalar nil) = none
+src-¬scalar number (scalar number) = never
+src-¬scalar boolean (scalar boolean) = never
+src-¬scalar string (scalar string) = never
+src-¬scalar nil (scalar nil) = never
 src-¬scalar s (left p) = left (src-¬scalar s p)
 src-¬scalar s (right p) = right (src-¬scalar s p)
 src-¬scalar s (p₁ , p₂) = (src-¬scalar s p₁ , src-¬scalar s p₂)
-src-¬scalar s any = none
+src-¬scalar s unknown = never
 
-src-any-≮: : ∀ {T U} → (T ≮: src U) → (U ≮: (T ⇒ any))
-src-any-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
+src-unknown-≮: : ∀ {T U} → (T ≮: src U) → (U ≮: (T ⇒ unknown))
+src-unknown-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
 
-any-src-≮: : ∀ {S T U} → (U ≮: S) → (T ≮: (U ⇒ any)) → (U ≮: src T)
-any-src-≮: (witness t x x₁) (witness (scalar s) p (function-scalar s)) = witness t x (src-¬scalar s p)
-any-src-≮: r (witness (function-ok (scalar s)) p (function-ok (scalar-scalar s () q)))
-any-src-≮: r (witness (function-ok (function-ok _)) p (function-ok (scalar-function-ok ())))
-any-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
+unknown-src-≮: : ∀ {S T U} → (U ≮: S) → (T ≮: (U ⇒ unknown)) → (U ≮: src T)
+unknown-src-≮: (witness t x x₁) (witness (scalar s) p (function-scalar s)) = witness t x (src-¬scalar s p)
+unknown-src-≮: r (witness (function-ok (scalar s)) p (function-ok (scalar-scalar s () q)))
+unknown-src-≮: r (witness (function-ok (function-ok _)) p (function-ok (scalar-function-ok ())))
+unknown-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
 
 src-≮: : ∀ {T U} → (src T ≮: src U) → (U ≮: T)
 src-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
 
--- Properties of any and none
-any-≮: : ∀ {T U} → (T ≮: U) → (any ≮: U)
-any-≮: (witness t p q) = witness t any q
+-- Properties of unknown and never
+unknown-≮: : ∀ {T U} → (T ≮: U) → (unknown ≮: U)
+unknown-≮: (witness t p q) = witness t unknown q
 
-none-≮: : ∀ {T U} → (T ≮: U) → (T ≮: none)
-none-≮: (witness t p q) = witness t p none
+never-≮: : ∀ {T U} → (T ≮: U) → (T ≮: never)
+never-≮: (witness t p q) = witness t p never
 
-any-≮:-none : (any ≮: none)
-any-≮:-none = witness (scalar nil) any none
+unknown-≮:-never : (unknown ≮: never)
+unknown-≮:-never = witness (scalar nil) unknown never
 
-function-≮:-none : ∀ {T U} → ((T ⇒ U) ≮: none)
-function-≮:-none = witness function function none
+function-≮:-never : ∀ {T U} → ((T ⇒ U) ≮: never)
+function-≮:-never = witness function function never
 
 -- Subtyping is decidable
 -- Honest, this terminates (because src T and tgt T decrease the depth of the type)
@@ -300,7 +300,7 @@ dec-subtyping T U = result where
 -- A Gentle Introduction To Semantic Subtyping (https://www.cduce.org/papers/gentle.pdf)
 -- defines a "set-theoretic" model (sec 2.5)
 -- Unfortunately we don't quite have this property, due to uninhabited types,
--- for example (none -> T) is equivalent to (none -> U)
+-- for example (never -> T) is equivalent to (never -> U)
 -- when types are interpreted as sets of syntactic values.
 
 _⊆_ : ∀ {A : Set} → (A → Set) → (A → Set) → Set
@@ -334,7 +334,7 @@ not-quite-set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
 
   -- We don't quite have that this is a set-theoretic model
   -- it's only true when Language T₁ and ¬Language T₂ t₂ are inhabited
-  -- in particular it's not true when T₁ is none, or T₂ is any.
+  -- in particular it's not true when T₁ is never, or T₂ is unknown.
   ∀ s₂ t₂ → Language S₂ s₂ → ¬Language T₂ t₂ →
 
   -- This is the "only if" part of being a set-theoretic model
@@ -361,11 +361,11 @@ not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ t₂ S₂s₂ �
 
 -- A counterexample when the argument type is empty.
 
-set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language none) ⊗ Comp(Language number)) → Q ⊆ Comp((Language none) ⊗ Comp(Language string)))
+set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language never) ⊗ Comp(Language number)) → Q ⊆ Comp((Language never) ⊗ Comp(Language string)))
 set-theoretic-counterexample-one Q q ((scalar s) , u) Qtu (scalar () , p)
 set-theoretic-counterexample-one Q q ((function-err t) , u) Qtu (scalar-function-err () , p)
 
-set-theoretic-counterexample-two : (none ⇒ number) ≮: (none ⇒ string)
+set-theoretic-counterexample-two : (never ⇒ number) ≮: (never ⇒ string)
 set-theoretic-counterexample-two = witness
   (function-ok (scalar number)) (function-ok (scalar number))
   (function-ok (scalar-scalar number string (λ ())))
@@ -374,14 +374,14 @@ set-theoretic-counterexample-two = witness
 -- The reason why this is connected to overloaded functions is that currently we have that the type of
 -- f(x) is (tgt T) where f:T. Really we should have the type depend on the type of x, that is use (tgt T U),
 -- where U is the type of x. In particular (tgt (S => T) (U & V)) should be the same as (tgt ((S&U) => T) V)
--- and tgt(none => T) should be any. For example
+-- and tgt(never => T) should be unknown. For example
 --
 -- tgt((number => string) & (string => bool))(number)
 -- is tgt(number => string)(number) & tgt(string => bool)(number)
--- is tgt(number => string)(number) & tgt(string => bool)(number&any)
--- is tgt(number => string)(number) & tgt(string&number => bool)(any)
--- is tgt(number => string)(number) & tgt(none => bool)(any)
--- is string & any
+-- is tgt(number => string)(number) & tgt(string => bool)(number&unknown)
+-- is tgt(number => string)(number) & tgt(string&number => bool)(unknown)
+-- is tgt(number => string)(number) & tgt(never => bool)(unknown)
+-- is string & unknown
 -- is string
 --
 -- there's some discussion of this in the Gentle Introduction paper.

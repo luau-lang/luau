@@ -201,7 +201,7 @@ static int tmove(lua_State* L)
 
     void (*telemetrycb)(lua_State* L, int f, int e, int t, int nf, int nt) = lua_table_move_telemetry;
 
-    if (DFFlag::LuauTableMoveTelemetry2 && telemetrycb)
+    if (DFFlag::LuauTableMoveTelemetry2 && telemetrycb && e >= f)
     {
         int nf = lua_objlen(L, 1);
         int nt = lua_objlen(L, tt);

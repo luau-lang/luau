@@ -513,4 +513,29 @@ TEST_CASE_FIXTURE(Fixture, "dont_allow_cyclic_unions_to_be_inferred")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_union_write_indirect")
+{
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
+
+    CheckResult result = check(R"(
+        type A = { x: number, y: (number) -> string } | { z: number, y: (number) -> string }
+
+        local a:A = nil
+
+        function a.y(x)
+            return tostring(x * 2)
+        end
+
+        function a.y(x: string): number
+            return tonumber(x) or 0
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    // NOTE: union normalization will improve this message
+    CHECK_EQ(toString(result.errors[0]),
+        R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
+}
+
+
 TEST_SUITE_END();

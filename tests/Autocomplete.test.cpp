@@ -14,6 +14,7 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
+LUAU_FASTFLAG(LuauSeparateTypechecks)
 
 using namespace Luau;
 
@@ -25,6 +26,11 @@ static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::op
 template<class BaseType>
 struct ACFixtureImpl : BaseType
 {
+    ACFixtureImpl()
+        : Fixture(true, true)
+    {
+    }
+
     AutocompleteResult autocomplete(unsigned row, unsigned column)
     {
         return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
@@ -72,7 +78,25 @@ struct ACFixtureImpl : BaseType
         }
         LUAU_ASSERT("Digit expected after @ symbol" && prevChar != '@');
 
-        return Fixture::check(filteredSource);
+        return BaseType::check(filteredSource);
+    }
+
+    LoadDefinitionFileResult loadDefinition(const std::string& source)
+    {
+        if (FFlag::LuauSeparateTypechecks)
+        {
+            TypeChecker& typeChecker = this->frontend.typeCheckerForAutocomplete;
+            unfreeze(typeChecker.globalTypes);
+            LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
+            freeze(typeChecker.globalTypes);
+
+            REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
+            return result;
+        }
+        else
+        {
+            return BaseType::loadDefinition(source);
+        }
     }
 
     const Position& getPosition(char marker) const
@@ -2496,7 +2520,7 @@ local t = {
     CHECK(ac.entryMap.count("second"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "autocomplete_documentation_symbols")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_documentation_symbols")
 {
     loadDefinition(R"(
         declare y: {
@@ -2504,13 +2528,11 @@ TEST_CASE_FIXTURE(Fixture, "autocomplete_documentation_symbols")
         }
     )");
 
-    fileResolver.source["Module/A"] = R"(
-        local a = y.
-    )";
+    check(R"(
+        local a = y.@1
+    )");
 
-    frontend.check("Module/A");
-
-    auto ac = autocomplete(frontend, "Module/A", Position{1, 21}, nullCallback);
+    auto ac = autocomplete('1');
 
     REQUIRE(ac.entryMap.count("x"));
     CHECK_EQ(ac.entryMap["x"].documentationSymbol, "@test/global/y.x");
@@ -2734,6 +2756,107 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
     auto ac = autocomplete('1');
 
     CHECK(ac.entryMap.count("format"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
+{
+    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
+    ScopedFastFlag luauExpectedTypesOfProperties{"LuauExpectedTypesOfProperties", true};
+
+    check(R"(
+        type tag = "cat" | "dog"
+        local function f(a: tag) end
+        f("@1")
+        f(@2)
+        local x: tag = "@3"
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("cat"));
+    CHECK(ac.entryMap.count("dog"));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("\"cat\""));
+    CHECK(ac.entryMap.count("\"dog\""));
+
+    ac = autocomplete('3');
+
+    CHECK(ac.entryMap.count("cat"));
+    CHECK(ac.entryMap.count("dog"));
+
+    check(R"(
+        type tagged = {tag:"cat", fieldx:number} | {tag:"dog", fieldy:number}
+        local x: tagged = {tag="@4"}
+    )");
+
+    ac = autocomplete('4');
+
+    CHECK(ac.entryMap.count("cat"));
+    CHECK(ac.entryMap.count("dog"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")
+{
+    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
+
+    check(R"(
+        type tagged = {tag:"cat", fieldx:number} | {tag:"dog", fieldy:number}
+        local x: tagged = {tag="cat", fieldx=2}
+        if x.tag == "@1" or "@2" ~= x.tag then end
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("cat"));
+    CHECK(ac.entryMap.count("dog"));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("cat"));
+    CHECK(ac.entryMap.count("dog"));
+
+    // CLI-48823: assignment to x.tag should also autocomplete, but union l-values are not supported yet
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_boolean_singleton")
+{
+    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
+
+    check(R"(
+local function f(x: true) end
+f(@1)
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("true"));
+    CHECK(ac.entryMap["true"].typeCorrect == TypeCorrectKind::Correct);
+    REQUIRE(ac.entryMap.count("false"));
+    CHECK(ac.entryMap["false"].typeCorrect == TypeCorrectKind::None);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_escape")
+{
+    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
+
+    check(R"(
+        type tag = "strange\t\"cat\"" | 'nice\t"dog"'
+        local function f(x: tag) end
+        f(@1)
+        f("@2")
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("\"strange\\t\\\"cat\\\"\""));
+    CHECK(ac.entryMap.count("\"nice\\t\\\"dog\\\"\""));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("strange\\t\\\"cat\\\""));
+    CHECK(ac.entryMap.count("nice\\t\\\"dog\\\""));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "function_in_assignment_has_parentheses_2")

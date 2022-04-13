@@ -1270,7 +1270,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "function_decl_quantify_right_type")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
 
     fileResolver.source["game/isAMagicMock"] = R"(
 --!nonstrict
@@ -1294,7 +1294,7 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
 
     CheckResult result = check(R"(
 function string.len(): number
@@ -1316,7 +1316,7 @@ print(string.len('hello'))
 
 TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite_2")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
     ScopedFastFlag inferStatFunction{"LuauInferStatFunction", true};
 
     CheckResult result = check(R"(
@@ -1324,17 +1324,44 @@ local t: { f: ((x: number) -> number)? } = {}
 
 function t.f(x)
     print(x + 5)
-    return x .. "asd"
+    return x .. "asd" -- 1st error: we know that return type is a number, not a string
 end
 
 t.f = function(x)
     print(x + 5)
-    return x .. "asd"
+    return x .. "asd" -- 2nd error: we know that return type is a number, not a string
 end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'string' could not be converted into 'number')");
+    CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_unsealed_overwrite")
+{
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
+    ScopedFastFlag inferStatFunction{"LuauInferStatFunction", true};
+
+    CheckResult result = check(R"(
+local t = { f = nil :: ((x: number) -> number)? }
+
+function t.f(x: string): string -- 1st error: new function value type is incompatible
+    return x .. "asd"
+end
+
+t.f = function(x)
+    print(x + 5)
+    return x .. "asd" -- 2nd error: we know that return type is a number, not a string
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(string) -> string' could not be converted into '((number) -> number)?'
+caused by:
+  None of the union options are compatible. For example: Type '(string) -> string' could not be converted into '(number) -> number'
+caused by:
+  Argument #1 type is not compatible. Type 'number' could not be converted into 'string')");
     CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
 }
 
@@ -1352,7 +1379,7 @@ TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "function_statement_sealed_table_assignment_through_indexer")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify3", true};
+    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
 
     CheckResult result = check(R"(
 local t: {[string]: () -> number} = {}

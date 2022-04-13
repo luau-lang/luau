@@ -12,6 +12,8 @@
 #include <vector>
 #include <optional>
 
+LUAU_FASTFLAG(LuauSeparateTypechecks)
+
 namespace Luau
 {
 
@@ -55,10 +57,19 @@ std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleNa
 
 struct SourceNode
 {
+    bool isDirty(bool forAutocomplete) const
+    {
+        if (FFlag::LuauSeparateTypechecks)
+            return forAutocomplete ? dirtyAutocomplete : dirty;
+        else
+            return dirty;
+    }
+
     ModuleName name;
     std::unordered_set<ModuleName> requires;
     std::vector<std::pair<ModuleName, Location>> requireLocations;
     bool dirty = true;
+    bool dirtyAutocomplete = true;
 };
 
 struct FrontendOptions
@@ -71,12 +82,16 @@ struct FrontendOptions
 
     // When true, we run typechecking twice, once in the regular mode, and once in strict mode
     // in order to get more precise type information (e.g. for autocomplete).
-    bool typecheckTwice = false;
+    bool typecheckTwice_DEPRECATED = false;
+
+    // Run typechecking only in mode required for autocomplete (strict mode in order to get more precise type information)
+    bool forAutocomplete = false;
 };
 
 struct CheckResult
 {
     std::vector<TypeError> errors;
+    std::vector<ModuleName> timeoutHits;
 };
 
 struct FrontendModuleResolver : ModuleResolver
@@ -123,7 +138,7 @@ struct Frontend
     CheckResult check(const SourceModule& module); // OLD.  TODO KILL
     LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
-    bool isDirty(const ModuleName& name) const;
+    bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
     void markDirty(const ModuleName& name, std::vector<ModuleName>* markedDirty = nullptr);
 
     /** Borrow a pointer into the SourceModule cache.
@@ -147,10 +162,10 @@ struct Frontend
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
 private:
-    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name);
+    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name, bool forAutocomplete);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 
-    bool parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root);
+    bool parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root, bool forAutocomplete);
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 

@@ -513,6 +513,8 @@ struct SingletonTypes
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
+    const TypeId trueType;
+    const TypeId falseType;
     const TypeId anyType;
     const TypeId optionalNumberType;
 

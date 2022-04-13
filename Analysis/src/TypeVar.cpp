@@ -652,6 +652,8 @@ static TypeVar numberType_{PrimitiveTypeVar{PrimitiveTypeVar::Number}, /*persist
 static TypeVar stringType_{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true};
 static TypeVar booleanType_{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true};
 static TypeVar threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true};
+static TypeVar trueType_{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true};
+static TypeVar falseType_{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true};
 static TypeVar anyType_{AnyTypeVar{}};
 static TypeVar errorType_{ErrorTypeVar{}};
 static TypeVar optionalNumberType_{UnionTypeVar{{&numberType_, &nilType_}}};
@@ -665,6 +667,8 @@ SingletonTypes::SingletonTypes()
     , stringType(&stringType_)
     , booleanType(&booleanType_)
     , threadType(&threadType_)
+    , trueType(&trueType_)
+    , falseType(&falseType_)
     , anyType(&anyType_)
     , optionalNumberType(&optionalNumberType_)
     , anyTypePack(&anyTypePack_)
