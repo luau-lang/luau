@@ -146,25 +146,16 @@ just T ≡ᴹᵀ just U with T ≡ᵀ U
 (just T ≡ᴹᵀ just T) | yes refl = yes refl
 (just T ≡ᴹᵀ just U) | no p = no (λ q → p (just-inv q))
 
-data Mode : Set where
-  strict : Mode
-  nonstrict : Mode
-
-src : Mode → Type → Type
-src m nil = never
-src m number = never
-src m boolean = never
-src m string = never
-src m (S ⇒ T) = S
--- In nonstrict mode, functions are covaraiant, in strict mode they're contravariant
-src strict    (S ∪ T) = (src strict S) ∩ (src strict T)
-src nonstrict (S ∪ T) = (src nonstrict S) ∪ (src nonstrict T)
-src strict    (S ∩ T) = (src strict S) ∪ (src strict T)
-src nonstrict (S ∩ T) = (src nonstrict S) ∩ (src nonstrict T)
-src strict never = unknown
-src nonstrict never = never
-src strict unknown = never
-src nonstrict unknown = unknown
+src : Type → Type
+src nil = never
+src number = never
+src boolean = never
+src string = never
+src (S ⇒ T) = S
+src (S ∪ T) = (src S) ∩ (src T)
+src (S ∩ T) = (src S) ∪ (src T)
+src never = unknown
+src unknown = never
 
 tgt : Type → Type
 tgt nil = never
