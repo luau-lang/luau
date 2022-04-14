@@ -636,6 +636,10 @@ TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_over
 // Once fixed, move this to Normalize.test.cpp
 TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_tables")
 {
+#if defined(_DEBUG) || defined(_NOOPT)
+    ScopedFastInt sfi("LuauNormalizeIterationLimit", 500);
+#endif
+
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
     };
