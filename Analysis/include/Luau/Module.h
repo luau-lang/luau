@@ -113,7 +113,7 @@ struct Module
     // This helps us to force TypeVar ownership into a DAG rather than a DCG.
     // Returns true if there were any free types encountered in the public interface. This
     // indicates a bug in the type checker that we want to surface.
-    bool clonePublicInterface();
+    bool clonePublicInterface(InternalErrorReporter& ice);
 };
 
 } // namespace Luau

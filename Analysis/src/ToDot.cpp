@@ -237,6 +237,15 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNodeLabel(ty);
         finishNode();
     }
+    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
+    {
+        formatAppend(result, "ConstrainedTypeVar %d", index);
+        finishNodeLabel(ty);
+        finishNode();
+
+        for (TypeId part : ctv->parts)
+            visitChild(part, index);
+    }
     else if (get<ErrorTypeVar>(ty))
     {
         formatAppend(result, "ErrorTypeVar %d", index);
@@ -257,6 +266,28 @@ void StateDot::visitChildren(TypeId ty, int index)
 
         if (ctv->metatable)
             visitChild(*ctv->metatable, index, "[metatable]");
+    }
+    else if (const SingletonTypeVar* stv = get<SingletonTypeVar>(ty))
+    {
+        std::string res;
+
+        if (const StringSingleton* ss = get<StringSingleton>(stv))
+        {
+            // Don't put in quotes anywhere. If it's outside of the call to escape,
+            // then it's invalid syntax. If it's inside, then escaping is super noisy.
+            res = "string: " + escape(ss->value);
+        }
+        else if (const BooleanSingleton* bs = get<BooleanSingleton>(stv))
+        {
+            res = "boolean: ";
+            res += bs->value ? "true" : "false";
+        }
+        else
+            LUAU_ASSERT(!"unknown singleton type");
+
+        formatAppend(result, "SingletonTypeVar %s", res.c_str());
+        finishNodeLabel(ty);
+        finishNode();
     }
     else
     {

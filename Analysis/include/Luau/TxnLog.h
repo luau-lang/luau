@@ -7,7 +7,7 @@
 #include "Luau/TypeVar.h"
 #include "Luau/TypePack.h"
 
-LUAU_FASTFLAG(LuauShareTxnSeen);
+LUAU_FASTFLAG(LuauTypecheckOptPass)
 
 namespace Luau
 {
@@ -64,13 +64,17 @@ T* getMutable(PendingTypePack* pending)
 struct TxnLog
 {
     TxnLog()
-        : ownedSeen()
+        : typeVarChanges(nullptr)
+        , typePackChanges(nullptr)
+        , ownedSeen()
         , sharedSeen(&ownedSeen)
     {
     }
 
     explicit TxnLog(TxnLog* parent)
-        : parent(parent)
+        : typeVarChanges(nullptr)
+        , typePackChanges(nullptr)
+        , parent(parent)
     {
         if (parent)
         {
@@ -83,14 +87,19 @@ struct TxnLog
     }
 
     explicit TxnLog(std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen)
-        : sharedSeen(sharedSeen)
+        : typeVarChanges(nullptr)
+        , typePackChanges(nullptr)
+        , sharedSeen(sharedSeen)
     {
     }
 
     TxnLog(TxnLog* parent, std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen)
-        : parent(parent)
+        : typeVarChanges(nullptr)
+        , typePackChanges(nullptr)
+        , parent(parent)
         , sharedSeen(sharedSeen)
     {
+        LUAU_ASSERT(!FFlag::LuauTypecheckOptPass);
     }
 
     TxnLog(const TxnLog&) = delete;
@@ -243,6 +252,12 @@ struct TxnLog
         return Luau::getMutable<T>(ty);
     }
 
+    template<typename T, typename TID>
+    const T* get(TID ty) const
+    {
+        return this->getMutable<T>(ty);
+    }
+
     // Returns whether a given type or type pack is a given state, respecting the
     // log's pending state.
     //
@@ -263,11 +278,8 @@ private:
     // unique_ptr is used to give us stable pointers across insertions into the
     // map. Otherwise, it would be really easy to accidentally invalidate the
     // pointers returned from queue/pending.
-    //
-    // We can't use a DenseHashMap here because we need a non-const iterator
-    // over the map when we concatenate.
-    std::unordered_map<TypeId, std::unique_ptr<PendingType>, DenseHashPointer> typeVarChanges;
-    std::unordered_map<TypePackId, std::unique_ptr<PendingTypePack>, DenseHashPointer> typePackChanges;
+    DenseHashMap<TypeId, std::unique_ptr<PendingType>> typeVarChanges;
+    DenseHashMap<TypePackId, std::unique_ptr<PendingTypePack>> typePackChanges;
 
     TxnLog* parent = nullptr;
 

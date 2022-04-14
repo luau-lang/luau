@@ -14,7 +14,6 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
-LUAU_FASTFLAGVARIABLE(LuauLintNoRobloxBits, false)
 
 namespace Luau
 {
@@ -1140,24 +1139,7 @@ private:
         Kind_Primitive, // primitive type supported by VM - boolean/userdata/etc. No differentiation between types of userdata.
         Kind_Vector,    // 'vector' but only used when type is used
         Kind_Userdata,  // custom userdata type
-
-        // TODO: remove these with LuauLintNoRobloxBits
-        Kind_Class,     // custom userdata type that reflects Roblox Instance-derived hierarchy - Part/etc.
-        Kind_Enum,      // custom userdata type referring to an enum item of enum classes, e.g. Enum.NormalId.Back/Enum.Axis.X/etc.
     };
-
-    bool containsPropName(TypeId ty, const std::string& propName)
-    {
-        LUAU_ASSERT(!FFlag::LuauLintNoRobloxBits);
-
-        if (auto ctv = get<ClassTypeVar>(ty))
-            return lookupClassProp(ctv, propName) != nullptr;
-
-        if (auto ttv = get<TableTypeVar>(ty))
-            return ttv->props.find(propName) != ttv->props.end();
-
-        return false;
-    }
 
     TypeKind getTypeKind(const std::string& name)
     {
@@ -1168,23 +1150,10 @@ private:
         if (name == "vector")
             return Kind_Vector;
 
-        if (FFlag::LuauLintNoRobloxBits)
-        {
-            if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
-                return Kind_Userdata;
+        if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
+            return Kind_Userdata;
 
-            return Kind_Unknown;
-        }
-        else
-        {
-            if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
-                // Kind_Userdata is probably not 100% precise but is close enough
-                return containsPropName(maybeTy->type, "ClassName") ? Kind_Class : Kind_Userdata;
-            else if (std::optional<TypeFun> maybeTy = context->scope->lookupImportedType("Enum", name))
-                return Kind_Enum;
-
-            return Kind_Unknown;
-        }
+        return Kind_Unknown;
     }
 
     void validateType(AstExprConstantString* expr, std::initializer_list<TypeKind> expected, const char* expectedString)
@@ -1202,65 +1171,9 @@ private:
         {
             if (kind == ek)
                 return;
-
-            // as a special case, Instance and EnumItem are both a userdata type (as returned by typeof) and a class type
-            if (!FFlag::LuauLintNoRobloxBits && ek == Kind_Userdata && (name == "Instance" || name == "EnumItem"))
-                return;
         }
 
         emitWarning(*context, LintWarning::Code_UnknownType, expr->location, "Unknown type '%s' (expected %s)", name.c_str(), expectedString);
-    }
-
-    bool acceptsClassName(AstName method)
-    {
-        LUAU_ASSERT(!FFlag::LuauLintNoRobloxBits);
-
-        return method.value[0] == 'F' && (method == "FindFirstChildOfClass" || method == "FindFirstChildWhichIsA" ||
-                                             method == "FindFirstAncestorOfClass" || method == "FindFirstAncestorWhichIsA");
-    }
-
-    bool visit(AstExprCall* node) override
-    {
-        // TODO: Simply remove the override
-        if (FFlag::LuauLintNoRobloxBits)
-            return true;
-
-        if (AstExprIndexName* index = node->func->as<AstExprIndexName>())
-        {
-            AstExprConstantString* arg0 = node->args.size > 0 ? node->args.data[0]->as<AstExprConstantString>() : NULL;
-
-            if (arg0)
-            {
-                if (node->self && index->index == "IsA" && node->args.size == 1)
-                {
-                    validateType(arg0, {Kind_Class, Kind_Enum}, "class or enum type");
-                }
-                else if (node->self && (index->index == "GetService" || index->index == "FindService") && node->args.size == 1)
-                {
-                    AstExprGlobal* g = index->expr->as<AstExprGlobal>();
-
-                    if (g && (g->name == "game" || g->name == "Game"))
-                    {
-                        validateType(arg0, {Kind_Class}, "class type");
-                    }
-                }
-                else if (node->self && acceptsClassName(index->index) && node->args.size == 1)
-                {
-                    validateType(arg0, {Kind_Class}, "class type");
-                }
-                else if (!node->self && index->index == "new" && node->args.size <= 2)
-                {
-                    AstExprGlobal* g = index->expr->as<AstExprGlobal>();
-
-                    if (g && g->name == "Instance")
-                    {
-                        validateType(arg0, {Kind_Class}, "class type");
-                    }
-                }
-            }
-        }
-
-        return true;
     }
 
     bool visit(AstExprBinary* node) override

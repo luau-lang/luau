@@ -151,8 +151,12 @@ static ParenthesesRecommendation getParenRecommendationForFunc(const FunctionTyp
 
     auto idxExpr = nodes.back()->as<AstExprIndexName>();
     bool hasImplicitSelf = idxExpr && idxExpr->op == ':';
-    auto args = Luau::flatten(func->argTypes);
-    bool noArgFunction = (args.first.empty() || (hasImplicitSelf && args.first.size() == 1)) && !args.second.has_value();
+    auto [argTypes, argVariadicPack] = Luau::flatten(func->argTypes);
+
+    if (argVariadicPack.has_value() && isVariadic(*argVariadicPack))
+        return ParenthesesRecommendation::CursorInside;
+
+    bool noArgFunction = argTypes.empty() || (hasImplicitSelf && argTypes.size() == 1);
     return noArgFunction ? ParenthesesRecommendation::CursorAfter : ParenthesesRecommendation::CursorInside;
 }
 

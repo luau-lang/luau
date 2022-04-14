@@ -1386,8 +1386,8 @@ struct Compiler
 
         const Constant* cv = constants.find(expr->index);
 
-        if (cv && cv->type == Constant::Type_Number && double(int(cv->valueNumber)) == cv->valueNumber && cv->valueNumber >= 1 &&
-            cv->valueNumber <= 256)
+        if (cv && cv->type == Constant::Type_Number && cv->valueNumber >= 1 && cv->valueNumber <= 256 &&
+            double(int(cv->valueNumber)) == cv->valueNumber)
         {
             uint8_t rt = compileExprAuto(expr->expr, rs);
             uint8_t i = uint8_t(int(cv->valueNumber) - 1);

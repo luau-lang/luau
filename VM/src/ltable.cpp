@@ -34,7 +34,7 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauTableRehashRework, false)
-LUAU_FASTFLAGVARIABLE(LuauTableNewBoundary, false)
+LUAU_FASTFLAGVARIABLE(LuauTableNewBoundary2, false)
 
 // max size of both array and hash part is 2^MAXBITS
 #define MAXBITS 26
@@ -390,6 +390,8 @@ static void resize(lua_State* L, Table* t, int nasize, int nhsize)
         setarrayvector(L, t, nasize);
     /* create new hash part with appropriate size */
     setnodevector(L, t, nhsize);
+    /* used for the migration check at the end */
+    LuaNode* nnew = t->node;
     if (nasize < oldasize)
     { /* array part must shrink? */
         t->sizearray = nasize;
@@ -413,6 +415,8 @@ static void resize(lua_State* L, Table* t, int nasize, int nhsize)
         /* shrink array */
         luaM_reallocarray(L, t->array, oldasize, nasize, TValue, t->memcat);
     }
+    /* used for the migration check at the end */
+    TValue* anew = t->array;
     /* re-insert elements from hash part */
     if (FFlag::LuauTableRehashRework)
     {
@@ -441,14 +445,30 @@ static void resize(lua_State* L, Table* t, int nasize, int nhsize)
         }
     }
 
+    /* make sure we haven't recursively rehashed during element migration */
+    LUAU_ASSERT(nnew == t->node);
+    LUAU_ASSERT(anew == t->array);
+
     if (nold != dummynode)
         luaM_freearray(L, nold, twoto(oldhsize), LuaNode, t->memcat); /* free old array */
+}
+
+static int adjustasize(Table* t, int size, const TValue* ek)
+{
+    LUAU_ASSERT(FFlag::LuauTableNewBoundary2);
+    bool tbound = t->node != dummynode || size < t->sizearray;
+    int ekindex = ek && ttisnumber(ek) ? arrayindex(nvalue(ek)) : -1;
+    /* move the array size up until the boundary is guaranteed to be inside the array part */
+    while (size + 1 == ekindex || (tbound && !ttisnil(luaH_getnum(t, size + 1))))
+        size++;
+    return size;
 }
 
 void luaH_resizearray(lua_State* L, Table* t, int nasize)
 {
     int nsize = (t->node == dummynode) ? 0 : sizenode(t);
-    resize(L, t, nasize, nsize);
+    int asize = FFlag::LuauTableNewBoundary2 ? adjustasize(t, nasize, NULL) : nasize;
+    resize(L, t, asize, nsize);
 }
 
 void luaH_resizehash(lua_State* L, Table* t, int nhsize)
@@ -470,21 +490,12 @@ static void rehash(lua_State* L, Table* t, const TValue* ek)
     totaluse++;
     /* compute new size for array part */
     int na = computesizes(nums, &nasize);
+    int nh = totaluse - na;
     /* enforce the boundary invariant; for performance, only do hash lookups if we must */
-    if (FFlag::LuauTableNewBoundary)
-    {
-        bool tbound = t->node != dummynode || nasize < t->sizearray;
-        int ekindex = ttisnumber(ek) ? arrayindex(nvalue(ek)) : -1;
-        /* move the array size up until the boundary is guaranteed to be inside the array part */
-        while (nasize + 1 == ekindex || (tbound && !ttisnil(luaH_getnum(t, nasize + 1))))
-        {
-            nasize++;
-            na++;
-        }
-    }
+    if (FFlag::LuauTableNewBoundary2)
+        nasize = adjustasize(t, nasize, ek);
     /* resize the table to new computed sizes */
-    LUAU_ASSERT(na <= totaluse);
-    resize(L, t, nasize, totaluse - na);
+    resize(L, t, nasize, nh);
 }
 
 /*
@@ -544,7 +555,7 @@ static LuaNode* getfreepos(Table* t)
 static TValue* newkey(lua_State* L, Table* t, const TValue* key)
 {
     /* enforce boundary invariant */
-    if (FFlag::LuauTableNewBoundary && ttisnumber(key) && nvalue(key) == t->sizearray + 1)
+    if (FFlag::LuauTableNewBoundary2 && ttisnumber(key) && nvalue(key) == t->sizearray + 1)
     {
         rehash(L, t, key); /* grow table */
 
@@ -735,7 +746,7 @@ TValue* luaH_setstr(lua_State* L, Table* t, TString* key)
 
 static LUAU_NOINLINE int unbound_search(Table* t, unsigned int j)
 {
-    LUAU_ASSERT(!FFlag::LuauTableNewBoundary);
+    LUAU_ASSERT(!FFlag::LuauTableNewBoundary2);
     unsigned int i = j; /* i is zero or a present index */
     j++;
     /* find `i' and `j' such that i is present and j is not */
@@ -820,7 +831,7 @@ int luaH_getn(Table* t)
         maybesetaboundary(t, boundary);
         return boundary;
     }
-    else if (FFlag::LuauTableNewBoundary)
+    else if (FFlag::LuauTableNewBoundary2)
     {
         /* validate boundary invariant */
         LUAU_ASSERT(t->node == dummynode || ttisnil(luaH_getnum(t, j + 1)));

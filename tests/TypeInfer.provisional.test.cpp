@@ -8,6 +8,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 using namespace Luau;
 
@@ -527,6 +528,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+// FIXME: Move this test to another source file when removing FFlag::LuauLowerBoundsCalculation
 TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
 {
     ScopedFastFlag sff[]{
@@ -556,10 +558,19 @@ TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // f and g should have the type () -> ()
-    CHECK_EQ("() -> (a...)", toString(requireType("f")));
-    CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
-    CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
+    if (FFlag::LuauLowerBoundsCalculation)
+    {
+        CHECK_EQ("() -> ()", toString(requireType("f")));
+        CHECK_EQ("() -> ()", toString(requireType("g")));
+        CHECK_EQ("nil", toString(requireType("x")));
+    }
+    else
+    {
+        // f and g should have the type () -> ()
+        CHECK_EQ("() -> (a...)", toString(requireType("f")));
+        CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
+        CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
@@ -575,6 +586,10 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
 
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", false},
+    };
+
     CheckResult result = check(R"(
         local function f() return end
         local g = function() return f() end
@@ -585,6 +600,10 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", false},
+    };
+
     CheckResult result = check(R"(
         --!strict
         local function f(...) return ... end
@@ -592,6 +611,114 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
     )");
 
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
+}
+
+TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_overloaded_higher_order_functions")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo(f)
+            f(5, 'a')
+            f('b', 6)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // We incorrectly infer that the argument to foo could be called with (number, number) or (string, string)
+    // even though that is strictly more permissive than the actual source text shows.
+    CHECK("<a...>((number | string, number | string) -> (a...)) -> ()" == toString(requireType("foo")));
+}
+
+// Once fixed, move this to Normalize.test.cpp
+TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_tables")
+{
+#if defined(_DEBUG) || defined(_NOOPT)
+    ScopedFastInt sfi("LuauNormalizeIterationLimit", 500);
+#endif
+
+    ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
+    // This exposes a bug where the type of y is mutated.
+    CheckResult result = check(R"(
+        function strange(x, y)
+            x.x = y
+            y.x = x
+
+            type R = {x: typeof(x)} & {x: typeof(y)}
+            local r: R
+
+            return r
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(nullptr != get<NormalizationTooComplex>(result.errors[0]));
+}
+
+// Belongs in TypeInfer.builtins.test.cpp.
+TEST_CASE_FIXTURE(Fixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
+{
+    CheckResult result = check(R"(
+        local function f(): () end
+        local ok, res = pcall(f)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    // LUAU_REQUIRE_NO_ERRORS(result);
+    // CHECK_EQ("boolean", toString(requireType("ok")));
+    // CHECK_EQ("any", toString(requireType("res")));
+}
+
+// Belongs in TypeInfer.builtins.test.cpp.
+TEST_CASE_FIXTURE(Fixture, "choose_the_right_overload_for_pcall")
+{
+    CheckResult result = check(R"(
+        local function f(): number
+            if math.random() > 0.5 then
+                return 5
+            else
+                error("something")
+            end
+        end
+
+        local ok, res = pcall(f)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("boolean", toString(requireType("ok")));
+    CHECK_EQ("number", toString(requireType("res")));
+    // CHECK_EQ("any", toString(requireType("res")));
+}
+
+// Belongs in TypeInfer.builtins.test.cpp.
+TEST_CASE_FIXTURE(Fixture, "function_returns_many_things_but_first_of_it_is_forgotten")
+{
+    CheckResult result = check(R"(
+        local function f(): (number, string, boolean)
+            if math.random() > 0.5 then
+                return 5, "hello", true
+            else
+                error("something")
+            end
+        end
+
+        local ok, res, s, b = pcall(f)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("boolean", toString(requireType("ok")));
+    CHECK_EQ("number", toString(requireType("res")));
+    // CHECK_EQ("any", toString(requireType("res")));
+    CHECK_EQ("string", toString(requireType("s")));
+    CHECK_EQ("boolean", toString(requireType("b")));
 }
 
 TEST_SUITE_END();

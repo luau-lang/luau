@@ -753,4 +753,14 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_on_cyclic_intersection_typevar")
     REQUIRE(ocf);
 }
 
+TEST_CASE_FIXTURE(Fixture, "instantiation_clone_has_to_follow")
+{
+    CheckResult result = check(R"(
+        export type t8<t8> = (t0)&(<t0...>((true)|(any))->"")
+        export type t0<t0> = ({})&({_:{[any]:number},})
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
 TEST_SUITE_END();
