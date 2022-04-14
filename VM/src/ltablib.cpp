@@ -199,7 +199,7 @@ static int tmove(lua_State* L)
     int tt = !lua_isnoneornil(L, 5) ? 5 : 1; /* destination table */
     luaL_checktype(L, tt, LUA_TTABLE);
 
-    void (*telemetrycb)(lua_State* L, int f, int e, int t, int nf, int nt) = lua_table_move_telemetry;
+    void (*telemetrycb)(lua_State * L, int f, int e, int t, int nf, int nt) = lua_table_move_telemetry;
 
     if (DFFlag::LuauTableMoveTelemetry2 && telemetrycb && e >= f)
     {

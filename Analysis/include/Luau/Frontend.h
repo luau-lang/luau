@@ -70,6 +70,7 @@ struct SourceNode
     std::vector<std::pair<ModuleName, Location>> requireLocations;
     bool dirty = true;
     bool dirtyAutocomplete = true;
+    double autocompleteLimitsMult = 1.0;
 };
 
 struct FrontendOptions

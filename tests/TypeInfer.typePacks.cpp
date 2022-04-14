@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("TypePackTests");
 
 TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
@@ -27,8 +29,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
     const auto& [returns, tail] = flatten(takeTwoType->retType);
 
     CHECK_EQ(2, returns.size());
-    CHECK_EQ(typeChecker.numberType, returns[0]);
-    CHECK_EQ(typeChecker.numberType, returns[1]);
+    CHECK_EQ(typeChecker.numberType, follow(returns[0]));
+    CHECK_EQ(typeChecker.numberType, follow(returns[1]));
 
     CHECK(!tail);
 }
@@ -74,9 +76,9 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
     const auto& [rets, tail] = flatten(takeOneMoreType->retType);
 
     REQUIRE_EQ(3, rets.size());
-    CHECK_EQ(typeChecker.numberType, rets[0]);
-    CHECK_EQ(typeChecker.numberType, rets[1]);
-    CHECK_EQ(typeChecker.numberType, rets[2]);
+    CHECK_EQ(typeChecker.numberType, follow(rets[0]));
+    CHECK_EQ(typeChecker.numberType, follow(rets[1]));
+    CHECK_EQ(typeChecker.numberType, follow(rets[2]));
 
     CHECK(!tail);
 }
@@ -91,26 +93,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const FunctionTypeVar* applyType = get<FunctionTypeVar>(requireType("apply"));
-    REQUIRE(applyType != nullptr);
-
-    std::vector<TypeId> applyArgs = flatten(applyType->argTypes).first;
-    REQUIRE_EQ(3, applyArgs.size());
-
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(applyArgs[0]));
-    REQUIRE(fType != nullptr);
-
-    const FunctionTypeVar* gType = get<FunctionTypeVar>(follow(applyArgs[1]));
-    REQUIRE(gType != nullptr);
-
-    std::vector<TypeId> gArgs = flatten(gType->argTypes).first;
-    REQUIRE_EQ(1, gArgs.size());
-
-    // function(function(t1, T2...): (t3, T4...), function(t5): (t1, T2...), t5): (t3, T4...)
-
-    REQUIRE_EQ(*gArgs[0], *applyArgs[2]);
-    REQUIRE_EQ(toString(fType->argTypes), toString(gType->retType));
-    REQUIRE_EQ(toString(fType->retType), toString(applyType->retType));
+    CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")
@@ -328,7 +311,10 @@ local c: Packed<string, number, boolean>
     auto ttvA = get<TableTypeVar>(requireType("a"));
     REQUIRE(ttvA);
     CHECK_EQ(toString(requireType("a")), "Packed<number>");
-    CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
+    else
+        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");

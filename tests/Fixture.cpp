@@ -231,7 +231,7 @@ ModulePtr Fixture::getMainModule()
 
 SourceModule* Fixture::getMainSourceModule()
 {
-    return frontend.getSourceModule(fromString("MainModule"));
+    return frontend.getSourceModule(fromString(mainModuleName));
 }
 
 std::optional<PrimitiveTypeVar::Type> Fixture::getPrimitiveType(TypeId ty)
@@ -259,7 +259,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
 TypeId Fixture::requireType(const std::string& name)
 {
     std::optional<TypeId> ty = getType(name);
-    REQUIRE(bool(ty));
+    REQUIRE_MESSAGE(bool(ty), "Unable to requireType \"" << name << "\"");
     return follow(*ty);
 }
 

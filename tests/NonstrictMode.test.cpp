@@ -275,4 +275,38 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
     REQUIRE_EQ("any", toString(getMainModule()->getModuleScope()->returnType));
 }
 
+TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        function foo(): (boolean, string?)
+            if true then
+                return true, "hello"
+            else
+                return false
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        function foo(): boolean
+            if true then
+                return true, "hello"
+            else
+                return false
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

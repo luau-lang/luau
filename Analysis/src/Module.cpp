@@ -1,8 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Module.h"
 
-#include "Luau/Common.h"
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
+#include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
@@ -14,6 +15,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
 LUAU_FASTFLAGVARIABLE(LuauCloneDeclaredGlobals, false)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 namespace Luau
 {
@@ -143,32 +145,51 @@ Module::~Module()
     unfreeze(internalTypes);
 }
 
-bool Module::clonePublicInterface()
+bool Module::clonePublicInterface(InternalErrorReporter& ice)
 {
     LUAU_ASSERT(interfaceTypes.typeVars.empty());
     LUAU_ASSERT(interfaceTypes.typePacks.empty());
 
-    SeenTypes seenTypes;
-    SeenTypePacks seenTypePacks;
     CloneState cloneState;
 
     ScopePtr moduleScope = getModuleScope();
 
-    moduleScope->returnType = clone(moduleScope->returnType, interfaceTypes, seenTypes, seenTypePacks, cloneState);
+    moduleScope->returnType = clone(moduleScope->returnType, interfaceTypes, cloneState);
     if (moduleScope->varargPack)
-        moduleScope->varargPack = clone(*moduleScope->varargPack, interfaceTypes, seenTypes, seenTypePacks, cloneState);
+        moduleScope->varargPack = clone(*moduleScope->varargPack, interfaceTypes, cloneState);
+
+    if (FFlag::LuauLowerBoundsCalculation)
+    {
+        normalize(moduleScope->returnType, interfaceTypes, ice);
+        if (moduleScope->varargPack)
+            normalize(*moduleScope->varargPack, interfaceTypes, ice);
+    }
 
     for (auto& [name, tf] : moduleScope->exportedTypeBindings)
-        tf = clone(tf, interfaceTypes, seenTypes, seenTypePacks, cloneState);
+    {
+        tf = clone(tf, interfaceTypes, cloneState);
+        if (FFlag::LuauLowerBoundsCalculation)
+            normalize(tf.type, interfaceTypes, ice);
+    }
 
     for (TypeId ty : moduleScope->returnType)
+    {
         if (get<GenericTypeVar>(follow(ty)))
-            *asMutable(ty) = AnyTypeVar{};
+        {
+            auto t = asMutable(ty);
+            t->ty = AnyTypeVar{};
+            t->normal = true;
+        }
+    }
 
     if (FFlag::LuauCloneDeclaredGlobals)
     {
         for (auto& [name, ty] : declaredGlobals)
-            ty = clone(ty, interfaceTypes, seenTypes, seenTypePacks, cloneState);
+        {
+            ty = clone(ty, interfaceTypes, cloneState);
+            if (FFlag::LuauLowerBoundsCalculation)
+                normalize(ty, interfaceTypes, ice);
+        }
     }
 
     freeze(internalTypes);

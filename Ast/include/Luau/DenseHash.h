@@ -32,6 +32,7 @@ class DenseHashTable
 {
 public:
     class const_iterator;
+    class iterator;
 
     DenseHashTable(const Key& empty_key, size_t buckets = 0)
         : count(0)
@@ -43,7 +44,7 @@ public:
         // don't move this to initializer list! this works around an MSVC codegen issue on AMD CPUs:
         // https://developercommunity.visualstudio.com/t/stdvector-constructor-from-size-t-is-25-times-slow/1546547
         if (buckets)
-            data.resize(buckets, ItemInterface::create(empty_key));
+            resize_data<Item>(buckets);
     }
 
     void clear()
@@ -125,7 +126,7 @@ public:
         if (data.empty() && data.capacity() >= newsize)
         {
             LUAU_ASSERT(count == 0);
-            data.resize(newsize, ItemInterface::create(empty_key));
+            resize_data<Item>(newsize);
             return;
         }
 
@@ -167,6 +168,21 @@ public:
     const_iterator end() const
     {
         return const_iterator(this, data.size());
+    }
+
+    iterator begin()
+    {
+        size_t start = 0;
+
+        while (start < data.size() && eq(ItemInterface::getKey(data[start]), empty_key))
+            start++;
+
+        return iterator(this, start);
+    }
+
+    iterator end()
+    {
+        return iterator(this, data.size());
     }
 
     size_t size() const
@@ -233,7 +249,82 @@ public:
         size_t index;
     };
 
+    class iterator
+    {
+    public:
+        iterator()
+            : set(0)
+            , index(0)
+        {
+        }
+
+        iterator(DenseHashTable<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set, size_t index)
+            : set(set)
+            , index(index)
+        {
+        }
+
+        MutableItem& operator*() const
+        {
+            return *reinterpret_cast<MutableItem*>(&set->data[index]);
+        }
+
+        MutableItem* operator->() const
+        {
+            return reinterpret_cast<MutableItem*>(&set->data[index]);
+        }
+
+        bool operator==(const iterator& other) const
+        {
+            return set == other.set && index == other.index;
+        }
+
+        bool operator!=(const iterator& other) const
+        {
+            return set != other.set || index != other.index;
+        }
+
+        iterator& operator++()
+        {
+            size_t size = set->data.size();
+
+            do
+            {
+                index++;
+            } while (index < size && set->eq(ItemInterface::getKey(set->data[index]), set->empty_key));
+
+            return *this;
+        }
+
+        iterator operator++(int)
+        {
+            iterator res = *this;
+            ++*this;
+            return res;
+        }
+
+    private:
+        DenseHashTable<Key, Item, MutableItem, ItemInterface, Hash, Eq>* set;
+        size_t index;
+    };
+
 private:
+    template<typename T>
+    void resize_data(size_t count, typename std::enable_if_t<std::is_copy_assignable_v<T>>* dummy = nullptr)
+    {
+        data.resize(count, ItemInterface::create(empty_key));
+    }
+
+    template<typename T>
+    void resize_data(size_t count, typename std::enable_if_t<!std::is_copy_assignable_v<T>>* dummy = nullptr)
+    {
+        size_t size = data.size();
+        data.resize(count);
+
+        for (size_t i = size; i < count; i++)
+            data[i].first = empty_key;
+    }
+
     std::vector<Item> data;
     size_t count;
     Key empty_key;
@@ -290,6 +381,7 @@ class DenseHashSet
 
 public:
     typedef typename Impl::const_iterator const_iterator;
+    typedef typename Impl::iterator iterator;
 
     DenseHashSet(const Key& empty_key, size_t buckets = 0)
         : impl(empty_key, buckets)
@@ -336,6 +428,16 @@ public:
     {
         return impl.end();
     }
+
+    iterator begin()
+    {
+        return impl.begin();
+    }
+
+    iterator end()
+    {
+        return impl.end();
+    }
 };
 
 // This is a faster alternative of unordered_map, but it does not implement the same interface (i.e. it does not support erasing and has
@@ -348,6 +450,7 @@ class DenseHashMap
 
 public:
     typedef typename Impl::const_iterator const_iterator;
+    typedef typename Impl::iterator iterator;
 
     DenseHashMap(const Key& empty_key, size_t buckets = 0)
         : impl(empty_key, buckets)
@@ -401,7 +504,18 @@ public:
     {
         return impl.begin();
     }
+
     const_iterator end() const
+    {
+        return impl.end();
+    }
+
+    iterator begin()
+    {
+        return impl.begin();
+    }
+
+    iterator end()
     {
         return impl.end();
     }

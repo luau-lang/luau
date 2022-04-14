@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("IntersectionTypes");
 
 TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
@@ -306,7 +308,10 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table '{| x: number, y: number |}'");
+    else
+        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
@@ -314,27 +319,34 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
 
     CheckResult result = check(R"(
-    type X = { x: (number) -> number }
-    type Y = { y: (string) -> string }
+        type X = { x: (number) -> number }
+        type Y = { y: (string) -> string }
 
-    type XY = X & Y
+        type XY = X & Y
 
-    local xy : XY = {
-        x = function(a: number) return -a end,
-        y = function(a: string) return a .. "b" end
-    }
-    function xy.z(a:number) return a * 10 end
-    function xy:y(a:number) return a * 10 end
-    function xy:w(a:number) return a * 10 end
+        local xy : XY = {
+            x = function(a: number) return -a end,
+            y = function(a: string) return a .. "b" end
+        }
+        function xy.z(a:number) return a * 10 end
+        function xy:y(a:number) return a * 10 end
+        function xy:w(a:number) return a * 10 end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(string, number) -> string' could not be converted into '(string) -> string'
 caused by:
   Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
-    CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table '{| x: (number) -> number, y: (string) -> string |}'");
+    else
+        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
     CHECK_EQ(toString(result.errors[2]), "Type 'number' could not be converted into 'string'");
-    CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
+
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table '{| x: (number) -> number, y: (string) -> string |}'");
+    else
+        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
@@ -375,6 +387,8 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_setmetatable")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_part")
 {
+    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", false}};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -393,6 +407,8 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
+    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", false}};
+
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
@@ -427,8 +443,8 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_flattenintersection")
         repeat
         type t0 = ((any)|((any)&((any)|((any)&((any)|(any))))))&(t0)
         function _(l0):(t0)&(t0)
-        while nil do
-        end
+            while nil do
+            end
         end
         until _(_)(_)._
     )");

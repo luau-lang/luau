@@ -13,6 +13,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
 TEST_CASE_FIXTURE(Fixture, "tc_function")
@@ -98,7 +100,7 @@ TEST_CASE_FIXTURE(Fixture, "vararg_function_is_quantified")
             end
 
             return result
-         end
+        end
 
         return T
     )");
@@ -274,6 +276,10 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         function f(g)
             return f(f)
@@ -281,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("t1 where t1 = (t1) -> ()", toString(requireType("f")));
+    CHECK_EQ("t1 where t1 = <a...>(t1) -> (a...)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "another_higher_order_function")
@@ -481,10 +487,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
 
-    TypeId xType = argVec[1];
+    TypeId xType = follow(argVec[1]);
 
     CHECK_EQ(1, fArgs.size());
-    CHECK_EQ(xType, fArgs[0]);
+    CHECK_EQ(xType, follow(fArgs[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
@@ -1043,13 +1049,16 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    // Return type doesn't inference 'nil'
-    result = check(R"(
-function f(a: (number) -> nil) return a(4) end
-f(function(x) print(x) end)
-    )");
+    if (!FFlag::LuauLowerBoundsCalculation)
+    {
+        // Return type doesn't inference 'nil'
+        result = check(R"(
+            function f(a: (number) -> nil) return a(4) end
+            f(function(x) print(x) end)
+        )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
@@ -1142,13 +1151,16 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    // Return type doesn't inference 'nil'
-    result = check(R"(
-function f(a: (number) -> nil) return a(4) end
-f(function(x) print(x) end)
-    )");
+    if (!FFlag::LuauLowerBoundsCalculation)
+    {
+        // Return type doesn't inference 'nil'
+        result = check(R"(
+            function f(a: (number) -> nil) return a(4) end
+            f(function(x) print(x) end)
+        )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments_outside_call")
@@ -1338,6 +1350,126 @@ end
     CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
 }
 
+TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types")
+{
+    const ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo(a: boolean, b: number)
+            if a then
+                return nil
+            else
+                return b
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(boolean, number) -> number?", toString(requireType("foo")));
+
+    // TODO: Test multiple returns
+    // Think of various cases where typepacks need to grow.  maybe consult other tests
+    // Basic normalization of ConstrainedTypeVars during quantification
+}
+
+TEST_CASE_FIXTURE(Fixture, "inconsistent_higher_order_function")
+{
+    const ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo(f)
+            f(5)
+            f("six")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<a...>((number | string) -> (a...)) -> ()", toString(requireType("foo")));
+}
+
+
+/* The bug here is that we are using the same level 2.0 for both the body of resolveDispatcher and the
+ * lambda useCallback.
+ *
+ * I think what we want to do is, at each scope level, never reuse the same sublevel.
+ *
+ * We also adjust checkBlock to consider the syntax `local x = function() ... end` to be sortable
+ * in the same way as `local function x() ... end`.  This causes the function `resolveDispatcher` to be
+ * checked before the lambda.
+ */
+TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local function resolveDispatcher()
+            return (nil :: any) :: {useCallback: (any) -> any}
+        end
+
+        local useCallback = function(deps: any)
+            return resolveDispatcher().useCallback(deps)
+        end
+    )");
+
+    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
+    // You get a TypeMismatch error where both types stringify the same.
+
+    CHECK(result.errors.empty());
+    if (!result.errors.empty())
+    {
+        for (const auto& e : result.errors)
+            printf("%s: %s\n", toString(e.location).c_str(), toString(e).c_str());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time2")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        local function resolveDispatcher()
+            return (nil :: any) :: {useContext: (number?) -> any}
+        end
+
+        local useContext
+        useContext = function(unstable_observedBits: number?)
+            resolveDispatcher().useContext(unstable_observedBits)
+        end
+    )");
+
+    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
+    // You get a TypeMismatch error where both types stringify the same.
+
+    CHECK(result.errors.empty());
+    if (!result.errors.empty())
+    {
+        for (const auto& e : result.errors)
+            printf("%s %s: %s\n", e.moduleName.c_str(), toString(e.location).c_str(), toString(e).c_str());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time3")
+{
+    CheckResult result = check(R"(
+        local foo
+
+        foo():bar(function()
+            return foo()
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_unsealed_overwrite")
 {
     ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
@@ -1469,6 +1601,19 @@ pcall(wrapper, test)
     CHECK_EQ(2, acm->actual);
     CHECK_EQ(CountMismatch::Context::Arg, acm->context);
     CHECK(acm->isVariadic);
+}
+
+TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
+{
+    CheckResult result = check(R"(
+        function f()
+            return 5, f()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(nullptr != get<OccursCheckFailed>(result.errors[0]));
 }
 
 TEST_SUITE_END();

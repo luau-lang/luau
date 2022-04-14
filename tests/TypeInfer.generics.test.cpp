@@ -230,8 +230,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
 
     CHECK_EQ(idFun->generics.size(), 1);
     CHECK_EQ(idFun->genericPacks.size(), 0);
-    CHECK_EQ(args[0], idFun->generics[0]);
-    CHECK_EQ(rets[0], idFun->generics[0]);
+    CHECK_EQ(follow(args[0]), follow(idFun->generics[0]));
+    CHECK_EQ(follow(rets[0]), follow(idFun->generics[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
@@ -253,8 +253,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
 
     CHECK_EQ(idFun->generics.size(), 1);
     CHECK_EQ(idFun->genericPacks.size(), 0);
-    CHECK_EQ(args[0], idFun->generics[0]);
-    CHECK_EQ(rets[0], idFun->generics[0]);
+    CHECK_EQ(follow(args[0]), follow(idFun->generics[0]));
+    CHECK_EQ(follow(rets[0]), follow(idFun->generics[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
@@ -705,10 +705,10 @@ end
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
     ScopedFastFlag sffs[] = {
-        { "LuauTableSubtypingVariance2", true },
-        { "LuauUnsealedTableLiteral", true },
-        { "LuauPropertiesGetExpectedType", true },
-        { "LuauRecursiveTypeParameterRestriction", true },
+        {"LuauTableSubtypingVariance2", true},
+        {"LuauUnsealedTableLiteral", true},
+        {"LuauPropertiesGetExpectedType", true},
+        {"LuauRecursiveTypeParameterRestriction", true},
     };
 
     CheckResult result = check(R"(
@@ -843,6 +843,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
+    CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
     CHECK_EQ(*typeChecker.nilType, *requireType("b"));
 }
@@ -1037,25 +1038,39 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument")
     ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
 
     CheckResult result = check(R"(
-local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
-return sum(2, 3, function(a, b) return a + b end)
+        local function sum<a>(x: a, y: a, f: (a, a) -> a)
+            return f(x, y)
+        end
+        return sum(2, 3, function(a, b) return a + b end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
-local function map<a, b>(arr: {a}, f: (a) -> b) local r = {} for i,v in ipairs(arr) do table.insert(r, f(v)) end return r end
-local a = {1, 2, 3}
-local r = map(a, function(a) return a + a > 100 end)
+        local function map<a, b>(arr: {a}, f: (a) -> b)
+            local r = {}
+            for i,v in ipairs(arr) do
+                table.insert(r, f(v))
+            end
+            return r
+        end
+        local a = {1, 2, 3}
+        local r = map(a, function(a) return a + a > 100 end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
     REQUIRE_EQ("{boolean}", toString(requireType("r")));
 
     check(R"(
-local function foldl<a, b>(arr: {a}, init: b, f: (b, a) -> b) local r = init for i,v in ipairs(arr) do r = f(r, v) end return r end
-local a = {1, 2, 3}
-local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
+        local function foldl<a, b>(arr: {a}, init: b, f: (b, a) -> b)
+            local r = init
+            for i,v in ipairs(arr) do
+                r = f(r, v)
+            end
+            return r
+        end
+        local a = {1, 2, 3}
+        local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1065,25 +1080,19 @@ local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} e
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
 {
     CheckResult result = check(R"(
-local function g1<T>(a: T, f: (T) -> T) return f(a) end
-local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
+        local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
-local g12: typeof(g1) & typeof(g2)
-
-g12(1, function(x) return x + x end)
-g12(1, 2, function(x, y) return x + y end)
+        g12(1, function(x) return x + x end)
+        g12(1, 2, function(x, y) return x + y end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
-local function g1<T>(a: T, f: (T) -> T) return f(a) end
-local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
+        local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
-local g12: typeof(g1) & typeof(g2)
-
-g12({x=1}, function(x) return {x=-x.x} end)
-g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
+        g12({x=1}, function(x) return {x=-x.x} end)
+        g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1121,12 +1130,12 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
     CheckResult result = check(R"(
-type A = { x: number }
-local a: A = { x = 1 }
-local b = a
-type B = typeof(b)
-type X<T> = T
-local c: X<B>
+        type A = { x: number }
+        local a: A = { x = 1 }
+        local b = a
+        type B = typeof(b)
+        type X<T> = T
+        local c: X<B>
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

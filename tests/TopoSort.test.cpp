@@ -340,26 +340,28 @@ TEST_CASE_FIXTURE(Fixture, "nested_type_annotations_depends_on_later_typealiases
 
 TEST_CASE_FIXTURE(Fixture, "return_comes_last")
 {
-    CheckResult result = check(R"(
-export type Module = { bar: (number) -> boolean, foo: () -> string }
+    AstStatBlock* program = parse(R"(
+        local module = {}
 
-return function() : Module
-    local module = {}
+        local function confuseCompiler() return module.foo() end
 
-    local function confuseCompiler() return module.foo() end
-    
-    module.foo = function() return "" end
+        module.foo = function() return "" end
 
-    function module.bar(x:number)
-        confuseCompiler()
-        return true
-    end
-    
-    return module
-end
+        function module.bar(x:number)
+            confuseCompiler()
+            return true
+        end
+
+        return module
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    auto sorted = toposort(*program);
+
+    CHECK_EQ(sorted[0], program->body.data[0]);
+    CHECK_EQ(sorted[2], program->body.data[1]);
+    CHECK_EQ(sorted[1], program->body.data[2]);
+    CHECK_EQ(sorted[3], program->body.data[3]);
+    CHECK_EQ(sorted[4], program->body.data[4]);
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_comes_last")

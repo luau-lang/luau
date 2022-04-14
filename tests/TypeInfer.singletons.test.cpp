@@ -5,8 +5,6 @@
 #include "doctest.h"
 #include "Luau/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(BetterDiagnosticCodesInStudio)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeSingletons");
@@ -261,14 +259,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_alias_or_parens_is_indexer")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::BetterDiagnosticCodesInStudio)
-    {
-        CHECK_EQ("Cannot have more than one table indexer", toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ("Syntax error: Cannot have more than one table indexer", toString(result.errors[0]));
-    }
+    CHECK_EQ("Cannot have more than one table indexer", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")

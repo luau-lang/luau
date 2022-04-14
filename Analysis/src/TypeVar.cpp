@@ -177,7 +177,7 @@ bool maybeString(TypeId ty)
     if (FFlag::LuauSubtypingAddOptPropsToUnsealedTables)
     {
         ty = follow(ty);
-    
+
         if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
             return true;
 
@@ -366,7 +366,7 @@ bool maybeSingleton(TypeId ty)
 
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 {
-    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit, "hasLength");
 
     ty = follow(ty);
 
@@ -654,9 +654,9 @@ static TypeVar booleanType_{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persi
 static TypeVar threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true};
 static TypeVar trueType_{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true};
 static TypeVar falseType_{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true};
-static TypeVar anyType_{AnyTypeVar{}};
-static TypeVar errorType_{ErrorTypeVar{}};
-static TypeVar optionalNumberType_{UnionTypeVar{{&numberType_, &nilType_}}};
+static TypeVar anyType_{AnyTypeVar{}, /*persistent*/ true};
+static TypeVar errorType_{ErrorTypeVar{}, /*persistent*/ true};
+static TypeVar optionalNumberType_{UnionTypeVar{{&numberType_, &nilType_}}, /*persistent*/ true};
 
 static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, true};
 static TypePackVar errorTypePack_{Unifiable::Error{}};
@@ -698,7 +698,7 @@ TypeId SingletonTypes::makeStringMetatable()
 {
     const TypeId optionalNumber = arena->addType(UnionTypeVar{{nilType, numberType}});
     const TypeId optionalString = arena->addType(UnionTypeVar{{nilType, stringType}});
-    const TypeId optionalBoolean = arena->addType(UnionTypeVar{{nilType, &booleanType_}});
+    const TypeId optionalBoolean = arena->addType(UnionTypeVar{{nilType, booleanType}});
 
     const TypePackId oneStringPack = arena->addTypePack({stringType});
     const TypePackId anyTypePack = arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, true});
@@ -802,6 +802,7 @@ void persist(TypeId ty)
             continue;
 
         asMutable(t)->persistent = true;
+        asMutable(t)->normal = true; // all persistent types are assumed to be normal
 
         if (auto btv = get<BoundTypeVar>(t))
             queue.push_back(btv->boundTo);
@@ -836,6 +837,11 @@ void persist(TypeId ty)
         else if (auto itv = get<IntersectionTypeVar>(t))
         {
             for (TypeId opt : itv->parts)
+                queue.push_back(opt);
+        }
+        else if (auto ctv = get<ConstrainedTypeVar>(t))
+        {
+            for (TypeId opt : ctv->parts)
                 queue.push_back(opt);
         }
         else if (auto mtv = get<MetatableTypeVar>(t))
@@ -897,6 +903,16 @@ const TypeLevel* getLevel(TypeId ty)
 TypeLevel* getMutableLevel(TypeId ty)
 {
     return const_cast<TypeLevel*>(getLevel(ty));
+}
+
+std::optional<TypeLevel> getLevel(TypePackId tp)
+{
+    tp = follow(tp);
+
+    if (auto ftv = get<Unifiable::Free>(tp))
+        return ftv->level;
+    else
+        return std::nullopt;
 }
 
 const Property* lookupClassProp(const ClassTypeVar* cls, const Name& name)

@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
+
 TEST_SUITE_BEGIN("ToString");
 
 TEST_CASE_FIXTURE(Fixture, "primitive")

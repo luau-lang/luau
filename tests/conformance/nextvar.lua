@@ -581,4 +581,19 @@ do
   assert(#arr == 5)
 end
 
+-- test boundary invariant maintenance when table is filled using SETLIST opcode
+do
+  local arr = {[2]=2,1}
+  assert(#arr == 2)
+end
+
+-- test boundary invariant maintenance when table is filled using table.move
+do
+  local t1 = {1, 2, 3, 4, 5}
+  local t2 = {[6] = 6}
+
+  table.move(t1, 1, 5, 1, t2)
+  assert(#t2 == 6)
+end
+
 return"OK"
