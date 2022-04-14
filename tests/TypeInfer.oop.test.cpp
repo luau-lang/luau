@@ -199,16 +199,16 @@ end
 TEST_CASE_FIXTURE(Fixture, "nonstrict_self_mismatch_tail")
 {
     CheckResult result = check(R"(
---!nonstrict
-local f = {}
-function f:foo(a: number, b: number) end
+        --!nonstrict
+        local f = {}
+        function f:foo(a: number, b: number) end
 
-function bar(...)
-    f.foo(f, 1, ...)
-end
+        function bar(...)
+            f.foo(f, 1, ...)
+        end
 
-bar(2)
-)");
+        bar(2)
+    )");
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 

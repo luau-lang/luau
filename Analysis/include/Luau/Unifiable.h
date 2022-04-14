@@ -56,6 +56,14 @@ struct TypeLevel
     }
 };
 
+inline TypeLevel max(const TypeLevel& a, const TypeLevel& b)
+{
+    if (a.subsumes(b))
+        return b;
+    else
+        return a;
+}
+
 inline TypeLevel min(const TypeLevel& a, const TypeLevel& b)
 {
     if (a.subsumes(b))
@@ -64,7 +72,9 @@ inline TypeLevel min(const TypeLevel& a, const TypeLevel& b)
         return b;
 }
 
-namespace Unifiable
+} // namespace Luau
+
+namespace Luau::Unifiable
 {
 
 using Name = std::string;
@@ -125,7 +135,6 @@ private:
 };
 
 template<typename Id, typename... Value>
-using Variant = Variant<Free, Bound<Id>, Generic, Error, Value...>;
+using Variant = Luau::Variant<Free, Bound<Id>, Generic, Error, Value...>;
 
-} // namespace Unifiable
-} // namespace Luau
+} // namespace Luau::Unifiable

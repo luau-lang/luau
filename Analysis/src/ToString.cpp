@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <stdexcept>
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+
 /*
  * Prefix generic typenames with gen-
  * Additionally, free types will be prefixed with free- and suffixed with their level.  eg free-a-4
@@ -33,8 +35,8 @@ struct FindCyclicTypes
     bool exhaustive = false;
     std::unordered_set<TypeId> visited;
     std::unordered_set<TypePackId> visitedPacks;
-    std::unordered_set<TypeId> cycles;
-    std::unordered_set<TypePackId> cycleTPs;
+    std::set<TypeId> cycles;
+    std::set<TypePackId> cycleTPs;
 
     void cycle(TypeId ty)
     {
@@ -86,7 +88,7 @@ struct FindCyclicTypes
 };
 
 template<typename TID>
-void findCyclicTypes(std::unordered_set<TypeId>& cycles, std::unordered_set<TypePackId>& cycleTPs, TID ty, bool exhaustive)
+void findCyclicTypes(std::set<TypeId>& cycles, std::set<TypePackId>& cycleTPs, TID ty, bool exhaustive)
 {
     FindCyclicTypes fct;
     fct.exhaustive = exhaustive;
@@ -124,6 +126,7 @@ struct StringifierState
     std::unordered_map<TypePackId, std::string> cycleTpNames;
     std::unordered_set<void*> seen;
     std::unordered_set<std::string> usedNames;
+    size_t indentation = 0;
 
     bool exhaustive;
 
@@ -215,6 +218,34 @@ struct StringifierState
             return;
 
         result.name += s;
+    }
+
+    void indent()
+    {
+        indentation += 4;
+    }
+
+    void dedent()
+    {
+        indentation -= 4;
+    }
+
+    void newline()
+    {
+        if (!opts.useLineBreaks)
+            return emit(" ");
+
+        emit("\n");
+        emitIndentation();
+    }
+
+private:
+    void emitIndentation()
+    {
+        if (!opts.indent)
+            return;
+
+        emit(std::string(indentation, ' '));
     }
 };
 
@@ -321,7 +352,7 @@ struct TypeVarStringifier
         stringify(btv.boundTo);
     }
 
-    void operator()(TypeId ty, const Unifiable::Generic& gtv)
+    void operator()(TypeId ty, const GenericTypeVar& gtv)
     {
         if (gtv.explicitName)
         {
@@ -330,6 +361,26 @@ struct TypeVarStringifier
         }
         else
             state.emit(state.getName(ty));
+    }
+
+    void operator()(TypeId, const ConstrainedTypeVar& ctv)
+    {
+        state.result.invalid = true;
+
+        state.emit("[[");
+
+        bool first = true;
+        for (TypeId ty : ctv.parts)
+        {
+            if (first)
+                first = false;
+            else
+                state.emit("|");
+
+            stringify(ty);
+        }
+
+        state.emit("]]");
     }
 
     void operator()(TypeId, const PrimitiveTypeVar& ptv)
@@ -415,10 +466,25 @@ struct TypeVarStringifier
         state.emit(") -> ");
 
         bool plural = true;
-        if (auto retPack = get<TypePack>(follow(ftv.retType)))
+
+        if (FFlag::LuauLowerBoundsCalculation)
         {
-            if (retPack->head.size() == 1 && !retPack->tail)
-                plural = false;
+            auto retBegin = begin(ftv.retType);
+            auto retEnd = end(ftv.retType);
+            if (retBegin != retEnd)
+            {
+                ++retBegin;
+                if (retBegin == retEnd && !retBegin.tail())
+                    plural = false;
+            }
+        }
+        else
+        {
+            if (auto retPack = get<TypePack>(follow(ftv.retType)))
+            {
+                if (retPack->head.size() == 1 && !retPack->tail)
+                    plural = false;
+            }
         }
 
         if (plural)
@@ -511,6 +577,7 @@ struct TypeVarStringifier
         }
 
         state.emit(openbrace);
+        state.indent();
 
         bool comma = false;
         if (ttv.indexer)
@@ -527,7 +594,10 @@ struct TypeVarStringifier
         for (const auto& [name, prop] : ttv.props)
         {
             if (comma)
-                state.emit(state.opts.useLineBreaks ? ",\n" : ", ");
+            {
+                state.emit(",");
+                state.newline();
+            }
 
             size_t length = state.result.name.length() - oldLength;
 
@@ -553,6 +623,7 @@ struct TypeVarStringifier
             ++index;
         }
 
+        state.dedent();
         state.emit(closedbrace);
 
         state.unsee(&ttv);
@@ -563,7 +634,8 @@ struct TypeVarStringifier
         state.result.invalid = true;
         state.emit("{ @metatable ");
         stringify(mtv.metatable);
-        state.emit(state.opts.useLineBreaks ? ",\n" : ", ");
+        state.emit(",");
+        state.newline();
         stringify(mtv.table);
         state.emit(" }");
     }
@@ -784,13 +856,16 @@ struct TypePackStringifier
 
         if (tp.tail && !isEmpty(*tp.tail))
         {
-            const auto& tail = *tp.tail;
-            if (first)
-                first = false;
-            else
-                state.emit(", ");
+            TypePackId tail = follow(*tp.tail);
+            if (auto vtp = get<VariadicTypePack>(tail); !vtp || (!FFlag::DebugLuauVerboseTypeNames && !vtp->hidden))
+            {
+                if (first)
+                    first = false;
+                else
+                    state.emit(", ");
 
-            stringify(tail);
+                stringify(tail);
+            }
         }
 
         state.unsee(&tp);
@@ -805,6 +880,8 @@ struct TypePackStringifier
     void operator()(TypePackId, const VariadicTypePack& pack)
     {
         state.emit("...");
+        if (FFlag::DebugLuauVerboseTypeNames && pack.hidden)
+            state.emit("<hidden>");
         stringify(pack.ty);
     }
 
@@ -858,15 +935,12 @@ void TypeVarStringifier::stringify(TypePackId tpid, const std::vector<std::optio
     tps.stringify(tpid);
 }
 
-static void assignCycleNames(const std::unordered_set<TypeId>& cycles, const std::unordered_set<TypePackId>& cycleTPs,
+static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<TypePackId>& cycleTPs,
     std::unordered_map<TypeId, std::string>& cycleNames, std::unordered_map<TypePackId, std::string>& cycleTpNames, bool exhaustive)
 {
     int nextIndex = 1;
 
-    std::vector<TypeId> sortedCycles{cycles.begin(), cycles.end()};
-    std::sort(sortedCycles.begin(), sortedCycles.end(), std::less<TypeId>{});
-
-    for (TypeId cycleTy : sortedCycles)
+    for (TypeId cycleTy : cycles)
     {
         std::string name;
 
@@ -888,10 +962,7 @@ static void assignCycleNames(const std::unordered_set<TypeId>& cycles, const std
         cycleNames[cycleTy] = std::move(name);
     }
 
-    std::vector<TypePackId> sortedCycleTps{cycleTPs.begin(), cycleTPs.end()};
-    std::sort(sortedCycleTps.begin(), sortedCycleTps.end(), std::less<TypePackId>());
-
-    for (TypePackId tp : sortedCycleTps)
+    for (TypePackId tp : cycleTPs)
     {
         std::string name = "tp" + std::to_string(nextIndex);
         ++nextIndex;
@@ -913,8 +984,8 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
     StringifierState state{opts, result, opts.nameMap};
 
-    std::unordered_set<TypeId> cycles;
-    std::unordered_set<TypePackId> cycleTPs;
+    std::set<TypeId> cycles;
+    std::set<TypePackId> cycleTPs;
 
     findCyclicTypes(cycles, cycleTPs, ty, opts.exhaustive);
 
@@ -1016,8 +1087,8 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
     ToStringResult result;
     StringifierState state{opts, result, opts.nameMap};
 
-    std::unordered_set<TypeId> cycles;
-    std::unordered_set<TypePackId> cycleTPs;
+    std::set<TypeId> cycles;
+    std::set<TypePackId> cycleTPs;
 
     findCyclicTypes(cycles, cycleTPs, tp, opts.exhaustive);
 
@@ -1058,7 +1129,7 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
         state.emit(name);
         state.emit(" = ");
         Luau::visit(
-            [&tvs, cycleTy = cycleTy](auto&& t) {
+            [&tvs, cycleTy = cycleTy](auto t) {
                 return tvs(cycleTy, t);
             },
             cycleTy->ty);
@@ -1163,14 +1234,18 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
 
     if (argPackIter.tail())
     {
-        if (!first)
-            state.emit(", ");
+        if (auto vtp = get<VariadicTypePack>(*argPackIter.tail()); !vtp || !vtp->hidden)
+        {
+            if (!first)
+                state.emit(", ");
 
-        state.emit("...: ");
-        if (auto vtp = get<VariadicTypePack>(*argPackIter.tail()))
-            tvs.stringify(vtp->ty);
-        else
-            tvs.stringify(*argPackIter.tail());
+            state.emit("...: ");
+
+            if (vtp)
+                tvs.stringify(vtp->ty);
+            else
+                tvs.stringify(*argPackIter.tail());
+        }
     }
 
     state.emit("): ");
@@ -1202,6 +1277,24 @@ std::string dump(TypeId ty)
 
 std::string dump(TypePackId ty)
 {
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    opts.functionTypeArguments = true;
+    std::string s = toString(ty, opts);
+    printf("%s\n", s.c_str());
+    return s;
+}
+
+std::string dump(const ScopePtr& scope, const char* name)
+{
+    auto binding = scope->linearSearchForBinding(name);
+    if (!binding)
+    {
+        printf("No binding %s\n", name);
+        return {};
+    }
+
+    TypeId ty = binding->typeId;
     ToStringOptions opts;
     opts.exhaustive = true;
     opts.functionTypeArguments = true;

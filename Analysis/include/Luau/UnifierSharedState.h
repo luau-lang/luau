@@ -28,7 +28,9 @@ struct TypeIdPairHash
 struct UnifierCounters
 {
     int recursionCount = 0;
+    int recursionLimit = 0;
     int iterationCount = 0;
+    int iterationLimit = 0;
 };
 
 struct UnifierSharedState

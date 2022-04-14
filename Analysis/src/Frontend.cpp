@@ -11,16 +11,18 @@
 #include "Luau/TimeTrace.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
-#include "Luau/Common.h"
 
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
 
+LUAU_FASTINT(LuauTypeInferIterationLimit)
+LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauCyclicModuleTypeSurface)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauSeparateTypechecks, false)
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 0)
 
 namespace Luau
@@ -97,13 +99,11 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, checkedModule};
 
-    SeenTypes seenTypes;
-    SeenTypePacks seenTypePacks;
     CloneState cloneState;
 
     for (const auto& [name, ty] : checkedModule->declaredGlobals)
     {
-        TypeId globalTy = clone(ty, typeChecker.globalTypes, seenTypes, seenTypePacks, cloneState);
+        TypeId globalTy = clone(ty, typeChecker.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/global/" + name;
         generateDocumentationSymbols(globalTy, documentationSymbol);
         targetScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
@@ -113,7 +113,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
 
     for (const auto& [name, ty] : checkedModule->getModuleScope()->exportedTypeBindings)
     {
-        TypeFun globalTy = clone(ty, typeChecker.globalTypes, seenTypes, seenTypePacks, cloneState);
+        TypeFun globalTy = clone(ty, typeChecker.globalTypes, cloneState);
         std::string documentationSymbol = packageName + "/globaltype/" + name;
         generateDocumentationSymbols(globalTy.type, documentationSymbol);
         targetScope->exportedTypeBindings[name] = globalTy;
@@ -440,13 +440,42 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             else
                 typeCheckerForAutocomplete.finishTime = std::nullopt;
 
+            if (FFlag::LuauAutocompleteDynamicLimits)
+            {
+                // TODO: This is a dirty ad hoc solution for autocomplete timeouts
+                // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
+                // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
+                if (FInt::LuauTarjanChildLimit > 0)
+                    typeCheckerForAutocomplete.instantiationChildLimit =
+                        std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+                else
+                    typeCheckerForAutocomplete.instantiationChildLimit = std::nullopt;
+
+                if (FInt::LuauTypeInferIterationLimit > 0)
+                    typeCheckerForAutocomplete.unifierIterationLimit =
+                        std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+                else
+                    typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
+            }
+
             ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict);
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
 
+            double duration = getTimestamp() - timestamp;
+
             if (moduleForAutocomplete->timeout)
+            {
                 checkResult.timeoutHits.push_back(moduleName);
 
-            stats.timeCheck += getTimestamp() - timestamp;
+                if (FFlag::LuauAutocompleteDynamicLimits)
+                    sourceNode.autocompleteLimitsMult = sourceNode.autocompleteLimitsMult / 2.0;
+            }
+            else if (FFlag::LuauAutocompleteDynamicLimits && duration < autocompleteTimeLimit / 2.0)
+            {
+                sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
+            }
+
+            stats.timeCheck += duration;
             stats.filesStrict += 1;
 
             sourceNode.dirtyAutocomplete = false;

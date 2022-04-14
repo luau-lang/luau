@@ -13,6 +13,7 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
 LUAU_FASTFLAG(LuauEqConstraint)
 
@@ -177,7 +178,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_case")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    dumpErrors(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_ice_when_failing_the_occurs_check")
@@ -293,7 +293,7 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
 
 // In these tests, a successful parse is required, so we need the parser to return the AST and then we can test the recursion depth limit in type
 // checker. We also want it to somewhat match up with production values, so we push up the parser recursion limit a little bit instead.
-TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_limit")
+TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
 {
 #if defined(LUAU_ENABLE_ASAN)
     int limit = 250;
@@ -302,12 +302,14 @@ TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_limit")
 #else
     int limit = 600;
 #endif
-    ScopedFastInt luauRecursionLimit{"LuauRecursionLimit", limit + 100};
-    ScopedFastInt luauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", limit - 100};
-    ScopedFastInt luauCheckRecursionLimit{"LuauCheckRecursionLimit", 0};
 
-    CHECK_NOTHROW(check("print('Hello!')"));
-    CHECK_THROWS_AS(check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end"), std::runtime_error);
+    ScopedFastFlag sff{"LuauTableUseCounterInstead", true};
+    ScopedFastInt sfi{"LuauCheckRecursionLimit", limit};
+
+    CheckResult result = check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
@@ -721,9 +723,9 @@ TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
         local l0
         do end
         while _ do
-        function _:_()
-        _ += _(_._(_:n0(xpcall,_)))
-        end
+            function _:_()
+                _ += _(_._(_:n0(xpcall,_)))
+            end
         end
     )");
 
@@ -973,6 +975,50 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
             ]]
             foo(self)
         end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
+{
+    ScopedFastInt sfi("LuauTypeInferRecursionLimit", 2);
+    ScopedFastFlag sff{"LuauRecursionLimitException", true};
+
+    CheckResult result = check(R"(
+        function complex()
+          function _(l0:t0): (any, ()->())
+              return 0,_
+          end
+          type t0 = t0 | {}
+          _(nil)
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
+{
+    ScopedFastFlag substituteFollowNewTypes{"LuauSubstituteFollowNewTypes", true};
+
+    CheckResult result = check(R"(
+        local obj = {}
+
+        function obj:Method()
+            self.fieldA = function(object)
+                if object.a then
+                    self.arr[object] = true
+                elseif object.b then
+                    self.fieldB[object] = object:Connect(function(arg)
+                        self.arr[arg] = nil
+                    end)
+                end
+            end
+        end
+
+        return obj
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

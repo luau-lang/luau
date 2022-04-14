@@ -94,6 +94,16 @@ public:
         }
     }
 
+    AstType* operator()(const ConstrainedTypeVar& ctv)
+    {
+        AstArray<AstType*> types;
+        types.size = ctv.parts.size();
+        types.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * ctv.parts.size()));
+        for (size_t i = 0; i < ctv.parts.size(); ++i)
+            types.data[i] = Luau::visit(*this, ctv.parts[i]->ty);
+        return allocator->alloc<AstTypeIntersection>(Location(), types);
+    }
+
     AstType* operator()(const SingletonTypeVar& stv)
     {
         if (const BooleanSingleton* bs = get<BooleanSingleton>(&stv))
@@ -364,6 +374,9 @@ public:
 
     AstTypePack* operator()(const VariadicTypePack& vtp) const
     {
+        if (vtp.hidden)
+            return nullptr;
+
         return allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*typeVisitor, vtp.ty->ty));
     }
 

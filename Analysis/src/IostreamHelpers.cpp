@@ -184,6 +184,8 @@ static void errorToString(std::ostream& stream, const T& err)
     }
     else if constexpr (std::is_same_v<T, TypesAreUnrelated>)
         stream << "TypesAreUnrelated { left = '" + toString(err.left) + "', right = '" + toString(err.right) + "' }";
+    else if constexpr (std::is_same_v<T, NormalizationTooComplex>)
+        stream << "NormalizationTooComplex { }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

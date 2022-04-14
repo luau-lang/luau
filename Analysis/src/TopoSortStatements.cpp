@@ -215,6 +215,7 @@ struct ArcCollector : public AstVisitor
         }
     }
 
+    // Adds a dependency from the current node to the named node.
     void add(const Identifier& name)
     {
         Node** it = map.find(name);

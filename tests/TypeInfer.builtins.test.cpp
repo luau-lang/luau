@@ -8,6 +8,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("BuiltinTests");
 
 TEST_CASE_FIXTURE(Fixture, "math_things_are_defined")
@@ -557,9 +559,9 @@ TEST_CASE_FIXTURE(Fixture, "xpcall")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    REQUIRE_EQ("boolean", toString(requireType("a")));
-    REQUIRE_EQ("number", toString(requireType("b")));
-    REQUIRE_EQ("boolean", toString(requireType("c")));
+    CHECK_EQ("boolean", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
+    CHECK_EQ("boolean", toString(requireType("c")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "see_thru_select")
@@ -881,7 +883,10 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
+    else
+        CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types2")

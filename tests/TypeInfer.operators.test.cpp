@@ -91,7 +91,8 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable")
     const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("add"));
 
     std::optional<TypeId> retType = first(functionType->retType);
-    CHECK_EQ(std::optional<TypeId>(typeChecker.numberType), retType);
+    REQUIRE(retType.has_value());
+    CHECK_EQ(typeChecker.numberType, follow(*retType));
     CHECK_EQ(requireType("n"), typeChecker.numberType);
     CHECK_EQ(requireType("s"), typeChecker.stringType);
 }

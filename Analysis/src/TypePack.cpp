@@ -104,7 +104,7 @@ TypePackIterator begin(TypePackId tp)
     return TypePackIterator{tp};
 }
 
-TypePackIterator begin(TypePackId tp, TxnLog* log)
+TypePackIterator begin(TypePackId tp, const TxnLog* log)
 {
     return TypePackIterator{tp, log};
 }
@@ -256,7 +256,7 @@ size_t size(const TypePack& tp, TxnLog* log)
     return result;
 }
 
-std::optional<TypeId> first(TypePackId tp)
+std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics)
 {
     auto it = begin(tp);
     auto endIter = end(tp);
@@ -266,7 +266,7 @@ std::optional<TypeId> first(TypePackId tp)
 
     if (auto tail = it.tail())
     {
-        if (auto vtp = get<VariadicTypePack>(*tail))
+        if (auto vtp = get<VariadicTypePack>(*tail); vtp && (!vtp->hidden || !ignoreHiddenVariadics))
             return vtp->ty;
     }
 
@@ -297,6 +297,46 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp)
     }
 
     return {res, iter.tail()};
+}
+
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const TxnLog& log)
+{
+    tp = log.follow(tp);
+
+    std::vector<TypeId> flattened;
+    std::optional<TypePackId> tail = std::nullopt;
+
+    TypePackIterator it(tp, &log);
+
+    for (; it != end(tp); ++it)
+    {
+        flattened.push_back(*it);
+    }
+
+    tail = it.tail();
+
+    return {flattened, tail};
+}
+
+bool isVariadic(TypePackId tp)
+{
+    return isVariadic(tp, *TxnLog::empty());
+}
+
+bool isVariadic(TypePackId tp, const TxnLog& log)
+{
+    std::optional<TypePackId> tail = flatten(tp, log).second;
+
+    if (!tail)
+        return false;
+
+    if (log.get<GenericTypePack>(*tail))
+        return true;
+
+    if (auto vtp = log.get<VariadicTypePack>(*tail); vtp && !vtp->hidden)
+        return true;
+
+    return false;
 }
 
 TypePackVar* asMutable(TypePackId tp)
