@@ -12,7 +12,7 @@ open import Luau.Substitution using (_[_/_]ᴮ; _[_/_]ᴱ; _[_/_]ᴮunless_; var
 open import Luau.Subtyping using (_≮:_; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_; Tree; Language; ¬Language)
 open import Luau.Syntax using (Expr; yes; var; val; var_∈_; _⟨_⟩∈_; _$_; addr; number; bool; string; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name; ==; ~=)
 open import Luau.Type using (Type; nil; number; boolean; string; _⇒_; never; unknown; _∩_; _∪_; src; tgt; _≡ᵀ_; _≡ᴹᵀ_)
-open import Luau.TypeCheck using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orUnknown; srcBinOp; tgtBinOp)
+open import Luau.TypeCheck using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; _⊢ᴴᴮ_▷_∈_; _⊢ᴴᴱ_▷_∈_; nil; var; addr; app; function; block; done; return; local; orUnknown; srcBinOp; tgtBinOp; resolve)
 open import Luau.Var using (_≡ⱽ_)
 open import Luau.Addr using (_≡ᴬ_)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_; ⊕-lookup-miss; ⊕-swap; ⊕-over) renaming (_[_] to _[_]ⱽ)
@@ -22,11 +22,28 @@ open import Properties.Equality using (_≢_; sym; cong; trans; subst₁)
 open import Properties.Dec using (Dec; yes; no)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
+open import Properties.DecSubtyping using (dec-subtyping)
 open import Properties.Subtyping using (unknown-≮:; ≡-trans-≮:; ≮:-trans-≡; never-tgt-≮:; tgt-never-≮:; src-unknown-≮:; unknown-src-≮:; ≮:-trans; ≮:-refl; scalar-≢-impl-≮:; function-≮:-scalar; scalar-≮:-function; function-≮:-never; unknown-≮:-scalar; scalar-≮:-never; unknown-≮:-never)
 open import Properties.TypeCheck using (typeOfᴼ; typeOfᴹᴼ; typeOfⱽ; typeOfᴱ; typeOfᴮ; typeCheckᴱ; typeCheckᴮ; typeCheckᴼ; typeCheckᴴ)
 open import Luau.OpSem using (_⟦_⟧_⟶_; _⊢_⟶*_⊣_; _⊢_⟶ᴮ_⊣_; _⊢_⟶ᴱ_⊣_; app₁; app₂; function; beta; return; block; done; local; subst; binOp₀; binOp₁; binOp₂; refl; step; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
 open import Luau.RuntimeError using (BinOpError; RuntimeErrorᴱ; RuntimeErrorᴮ; FunctionMismatch; BinOpMismatch₁; BinOpMismatch₂; UnboundVariable; SEGV; app₁; app₂; bin₁; bin₂; block; local; return; +; -; *; /; <; >; <=; >=; ··)
 open import Luau.RuntimeType using (RuntimeType; valueType; number; string; boolean; nil; function)
+
+-- PROVE THESE
+
+postulate
+  resolve⁻¹ : Type → Type → Type
+  resolve-≮:-⇒ : ∀ {F V U} → (resolve F V ≮: U) → (F ≮: (V ⇒ U))
+  ⇒-≮:-resolve : ∀ {F V U} → (F ≮: (V ⇒ U)) → (resolve F V ≮: U)
+  ⇒-≮:-resolve⁻¹ : ∀ {F V U} → (F ≮: (V ⇒ U)) → (V ≮: resolve⁻¹ F U)
+  resolve⁻¹-≮:-⇒ : ∀ {F V U} → (V ≮: resolve⁻¹ F U) → (F ≮: (V ⇒ U))
+
+resolve-⇒-≮: : ∀ {S T U V} → (T ≮: U) → resolve (S ⇒ T) V ≮: U
+resolve-⇒-≮: {S = S} {V = V} p with dec-subtyping V S
+resolve-⇒-≮: p | Left q = unknown-≮: p
+resolve-⇒-≮: p | Right q = p
+
+--
 
 data _⊑_ (H : Heap yes) : Heap yes → Set where
   refl : (H ⊑ H)
@@ -71,7 +88,7 @@ heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} q) p | no r = ≡-trans-≮:
 heap-weakeningᴱ Γ H (val (number x)) h p = p
 heap-weakeningᴱ Γ H (val (bool x)) h p = p
 heap-weakeningᴱ Γ H (val (string x)) h p = p
-heap-weakeningᴱ Γ H (M $ N) h p = never-tgt-≮: (heap-weakeningᴱ Γ H M h (tgt-never-≮: p))
+heap-weakeningᴱ Γ H (M $ N) h p = ⇒-≮:-resolve (resolve⁻¹-≮:-⇒ (heap-weakeningᴱ Γ H N h (⇒-≮:-resolve⁻¹ (heap-weakeningᴱ Γ H M h (resolve-≮:-⇒ p)))))
 heap-weakeningᴱ Γ H (function f ⟨ var x ∈ T ⟩∈ U is B end) h p = p
 heap-weakeningᴱ Γ H (block var b ∈ T is B end) h p = p
 heap-weakeningᴱ Γ H (binexp M op N) h p = p
@@ -92,7 +109,11 @@ substitutivityᴮ-unless-no : ∀ {Γ Γ′ T V} H B v x y (r : x ≢ y) → (Γ
 substitutivityᴱ H (var y) v x p = substitutivityᴱ-whenever H v x y (x ≡ⱽ y) p
 substitutivityᴱ H (val w) v x p = Left p
 substitutivityᴱ H (binexp M op N) v x p = Left p
-substitutivityᴱ H (M $ N) v x p = mapL never-tgt-≮: (substitutivityᴱ H M v x (tgt-never-≮: p))
+substitutivityᴱ H (M $ N) v x p with substitutivityᴱ H M v x (resolve-≮:-⇒ p) 
+substitutivityᴱ H (M $ N) v x p | Left q with substitutivityᴱ H N v x (⇒-≮:-resolve⁻¹ q)
+substitutivityᴱ H (M $ N) v x p | Left q | Left r = Left (⇒-≮:-resolve (resolve⁻¹-≮:-⇒ r))
+substitutivityᴱ H (M $ N) v x p | Left q | Right r = Right r
+substitutivityᴱ H (M $ N) v x p | Right q = Right q
 substitutivityᴱ H (function f ⟨ var y ∈ T ⟩∈ U is B end) v x p = Left p
 substitutivityᴱ H (block var b ∈ T is B end) v x p = Left p
 substitutivityᴱ-whenever H v x x (yes refl) q = swapLR (≮:-trans q)
@@ -123,9 +144,13 @@ binOpPreservation H (·· v w) = refl
 reflect-subtypingᴱ : ∀ H M {H′ M′ T} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (typeOfᴱ H′ ∅ M′ ≮: T) → Either (typeOfᴱ H ∅ M ≮: T) (Warningᴱ H (typeCheckᴱ H ∅ M))
 reflect-subtypingᴮ : ∀ H B {H′ B′ T} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → (typeOfᴮ H′ ∅ B′ ≮: T) → Either (typeOfᴮ H ∅ B ≮: T) (Warningᴮ H (typeCheckᴮ H ∅ B))
 
-reflect-subtypingᴱ H (M $ N) (app₁ s) p = mapLR never-tgt-≮: app₁ (reflect-subtypingᴱ H M s (tgt-never-≮: p))
-reflect-subtypingᴱ H (M $ N) (app₂ v s) p = Left (never-tgt-≮: (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (tgt-never-≮: p)))
-reflect-subtypingᴱ H (M $ N) (beta (function f ⟨ var y ∈ T ⟩∈ U is B end) v refl q) p = Left (≡-trans-≮: (cong tgt (cong orUnknown (cong typeOfᴹᴼ q))) p)
+reflect-subtypingᴱ H (M $ N) (app₁ s) p with reflect-subtypingᴱ H M s (resolve-≮:-⇒ p)
+reflect-subtypingᴱ H (M $ N) (app₁ s) p | Left q = Left (⇒-≮:-resolve (resolve⁻¹-≮:-⇒ (heap-weakeningᴱ ∅ H N (rednᴱ⊑ s) (⇒-≮:-resolve⁻¹ q))))
+reflect-subtypingᴱ H (M $ N) (app₁ s) p | Right W = Right (app₁ W)
+reflect-subtypingᴱ H (M $ N) (app₂ v s) p with reflect-subtypingᴱ H N s (⇒-≮:-resolve⁻¹ (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (resolve-≮:-⇒ p)))
+reflect-subtypingᴱ H (M $ N) (app₂ v s) p | Left q = Left (⇒-≮:-resolve (resolve⁻¹-≮:-⇒ q))
+reflect-subtypingᴱ H (M $ N) (app₂ v s) p | Right W = Right (app₂ W)
+reflect-subtypingᴱ H (M $ N) {T = T} (beta (function f ⟨ var y ∈ S ⟩∈ U is B end) v refl q) p = Left (≡-trans-≮: (cong (λ F → resolve F (typeOfᴱ H ∅ N)) (cong orUnknown (cong typeOfᴹᴼ q))) (resolve-⇒-≮: p))
 reflect-subtypingᴱ H (function f ⟨ var x ∈ T ⟩∈ U is B end) (function a defn) p = Left p
 reflect-subtypingᴱ H (block var b ∈ T is B end) (block s) p = Left p
 reflect-subtypingᴱ H (block var b ∈ T is return (val v) ∙ B end) (return v) p = mapR BlockMismatch (swapLR (≮:-trans p))
