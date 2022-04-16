@@ -5,13 +5,11 @@ module Properties.Subtyping where
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
-open import Luau.Type using (Type; Scalar; strict; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; tgt)
+open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
 open import Properties.Product using (_×_; _,_)
-
-src = Luau.Type.src strict
 
 -- Language membership is decidable
 dec-language : ∀ T t → Either (¬Language T t) (Language T t)
