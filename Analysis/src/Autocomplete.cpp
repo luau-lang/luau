@@ -15,6 +15,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauIfElseExprFixCompletionIssue, false);
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonTypes, false);
+LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteClassSecurityLevel, false);
 LUAU_FASTFLAG(LuauSelfCallAutocompleteFix)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -462,7 +463,8 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
         containingClass = containingClass.value_or(cls);
         fillProps(cls->props);
         if (cls->parent)
-            autocompleteProps(module, typeArena, rootTy, *cls->parent, indexType, nodes, result, seen, cls);
+            autocompleteProps(module, typeArena, rootTy, *cls->parent, indexType, nodes, result, seen,
+                FFlag::LuauFixAutocompleteClassSecurityLevel ? containingClass : cls);
     }
     else if (auto tbl = get<TableTypeVar>(ty))
         fillProps(tbl->props);

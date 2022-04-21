@@ -17,7 +17,6 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
-LUAU_FASTFLAGVARIABLE(LuauExtendedIndexerError, false);
 LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
@@ -28,7 +27,6 @@ LUAU_FASTFLAGVARIABLE(LuauTxnLogSeesTypePacks2, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogCheckForInvalidation, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogDontRetryForIndexers, false)
-LUAU_FASTFLAGVARIABLE(LuauUnifierCacheErrors, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
 
@@ -474,32 +472,21 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     if (get<ErrorTypeVar>(subTy))
         return tryUnifyWithAny(superTy, subTy);
 
-    bool cacheEnabled;
     auto& cache = sharedState.cachedUnify;
 
     // What if the types are immutable and we proved their relation before
-    if (FFlag::LuauUnifierCacheErrors)
+    bool cacheEnabled = !isFunctionCall && !isIntersection && variance == Invariant;
+
+    if (cacheEnabled)
     {
-        cacheEnabled = !isFunctionCall && !isIntersection && variance == Invariant;
-
-        if (cacheEnabled)
-        {
-            if (cache.contains({subTy, superTy}))
-                return;
-
-            if (auto error = sharedState.cachedUnifyError.find({subTy, superTy}))
-            {
-                reportError(TypeError{location, *error});
-                return;
-            }
-        }
-    }
-    else
-    {
-        cacheEnabled = !isFunctionCall && !isIntersection;
-
-        if (cacheEnabled && cache.contains({superTy, subTy}) && (variance == Covariant || cache.contains({subTy, superTy})))
+        if (cache.contains({subTy, superTy}))
             return;
+
+        if (auto error = sharedState.cachedUnifyError.find({subTy, superTy}))
+        {
+            reportError(TypeError{location, *error});
+            return;
+        }
     }
 
     // If we have seen this pair of types before, we are currently recursing into cyclic types.
@@ -543,12 +530,6 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<TableTypeVar>(superTy) && log.getMutable<TableTypeVar>(subTy))
     {
         tryUnifyTables(subTy, superTy, isIntersection);
-
-        if (!FFlag::LuauUnifierCacheErrors)
-        {
-            if (cacheEnabled && errors.empty())
-                cacheResult_DEPRECATED(subTy, superTy);
-        }
     }
 
     // tryUnifyWithMetatable assumes its first argument is a MetatableTypeVar. The check is otherwise symmetrical.
@@ -568,7 +549,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else
         reportError(TypeError{location, TypeMismatch{superTy, subTy}});
 
-    if (FFlag::LuauUnifierCacheErrors && cacheEnabled)
+    if (cacheEnabled)
         cacheResult(subTy, superTy, errorCount);
 
     log.popSeen(superTy, subTy);
@@ -705,21 +686,10 @@ void Unifier::tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTyp
         {
             TypeId type = uv->options[i];
 
-            if (FFlag::LuauUnifierCacheErrors)
+            if (cache.contains({subTy, type}))
             {
-                if (cache.contains({subTy, type}))
-                {
-                    startIndex = i;
-                    break;
-                }
-            }
-            else
-            {
-                if (cache.contains({type, subTy}) && (variance == Covariant || cache.contains({subTy, type})))
-                {
-                    startIndex = i;
-                    break;
-                }
+                startIndex = i;
+                break;
             }
         }
     }
@@ -807,21 +777,10 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeV
         {
             TypeId type = uv->parts[i];
 
-            if (FFlag::LuauUnifierCacheErrors)
+            if (cache.contains({type, superTy}))
             {
-                if (cache.contains({type, superTy}))
-                {
-                    startIndex = i;
-                    break;
-                }
-            }
-            else
-            {
-                if (cache.contains({superTy, type}) && (variance == Covariant || cache.contains({type, superTy})))
-                {
-                    startIndex = i;
-                    break;
-                }
+                startIndex = i;
+                break;
             }
         }
     }
@@ -894,19 +853,6 @@ void Unifier::cacheResult(TypeId subTy, TypeId superTy, size_t prevErrorCount)
         if (canCacheResult(subTy, superTy))
             sharedState.cachedUnifyError[{subTy, superTy}] = errors.back().data;
     }
-}
-
-void Unifier::cacheResult_DEPRECATED(TypeId subTy, TypeId superTy)
-{
-    LUAU_ASSERT(!FFlag::LuauUnifierCacheErrors);
-
-    if (!canCacheResult(subTy, superTy))
-        return;
-
-    sharedState.cachedUnify.insert({superTy, subTy});
-
-    if (variance == Invariant)
-        sharedState.cachedUnify.insert({subTy, superTy});
 }
 
 struct WeirdIter
@@ -1650,24 +1596,16 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 
         Unifier innerState = makeChildUnifier();
 
-        if (FFlag::LuauExtendedIndexerError)
-        {
-            innerState.tryUnify_(subTable->indexer->indexType, superTable->indexer->indexType);
+        innerState.tryUnify_(subTable->indexer->indexType, superTable->indexer->indexType);
 
-            bool reported = !innerState.errors.empty();
+        bool reported = !innerState.errors.empty();
 
-            checkChildUnifierTypeMismatch(innerState.errors, "[indexer key]", superTy, subTy);
+        checkChildUnifierTypeMismatch(innerState.errors, "[indexer key]", superTy, subTy);
 
-            innerState.tryUnify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
+        innerState.tryUnify_(subTable->indexer->indexResultType, superTable->indexer->indexResultType);
 
-            if (!reported)
-                checkChildUnifierTypeMismatch(innerState.errors, "[indexer value]", superTy, subTy);
-        }
-        else
-        {
-            innerState.tryUnifyIndexer(*subTable->indexer, *superTable->indexer);
-            checkChildUnifierTypeMismatch(innerState.errors, superTy, subTy);
-        }
+        if (!reported)
+            checkChildUnifierTypeMismatch(innerState.errors, "[indexer value]", superTy, subTy);
 
         if (innerState.errors.empty())
             log.concat(std::move(innerState.log));
@@ -2225,7 +2163,7 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
 
 void Unifier::tryUnifyIndexer(const TableIndexer& subIndexer, const TableIndexer& superIndexer)
 {
-    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2 || !FFlag::LuauExtendedIndexerError);
+    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
 
     tryUnify_(subIndexer.indexType, superIndexer.indexType);
     tryUnify_(subIndexer.indexResultType, superIndexer.indexResultType);

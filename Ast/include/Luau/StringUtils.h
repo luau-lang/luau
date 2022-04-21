@@ -19,6 +19,7 @@ std::string format(const char* fmt, ...) LUAU_PRINTF_ATTR(1, 2);
 std::string vformat(const char* fmt, va_list args);
 
 void formatAppend(std::string& str, const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
+void vformatAppend(std::string& ret, const char* fmt, va_list args);
 
 std::string join(const std::vector<std::string_view>& segments, std::string_view delimiter);
 std::string join(const std::vector<std::string>& segments, std::string_view delimiter);

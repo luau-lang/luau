@@ -1436,7 +1436,7 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
 {
     unfreeze(typeChecker.globalTypes);
-    TypeId instanceType = typeChecker.globalTypes.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, {}});
+    TypeId instanceType = typeChecker.globalTypes.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
     persist(instanceType);
     typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 

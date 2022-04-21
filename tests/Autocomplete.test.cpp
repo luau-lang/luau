@@ -3034,4 +3034,40 @@ string:@1
     CHECK(ac.entryMap["sub"].wrongIndexType == true);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "source_module_preservation_and_invalidation")
+{
+    check(R"(
+local a = { x = 2, y = 4 }
+a.@1
+    )");
+
+    frontend.clear();
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("x"));
+    CHECK(ac.entryMap.count("y"));
+
+    frontend.check("MainModule", {});
+
+    ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("x"));
+    CHECK(ac.entryMap.count("y"));
+
+    frontend.markDirty("MainModule", nullptr);
+
+    ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("x"));
+    CHECK(ac.entryMap.count("y"));
+
+    frontend.check("MainModule", {});
+
+    ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("x"));
+    CHECK(ac.entryMap.count("y"));
+}
+
 TEST_SUITE_END();

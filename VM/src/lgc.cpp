@@ -13,9 +13,10 @@
 
 #include <string.h>
 
-#define GC_SWEEPMAX 40
-#define GC_SWEEPCOST 10
-#define GC_SWEEPPAGESTEPCOST 4
+LUAU_FASTFLAGVARIABLE(LuauGcWorkTrackFix, false)
+LUAU_FASTFLAGVARIABLE(LuauGcSweepCostFix, false)
+
+#define GC_SWEEPPAGESTEPCOST (FFlag::LuauGcSweepCostFix ? 16 : 4)
 
 #define GC_INTERRUPT(state) \
     { \
@@ -64,7 +65,7 @@ static void recordGcStateStep(global_State* g, int startgcstate, double seconds,
     case GCSpropagate:
     case GCSpropagateagain:
         g->gcmetrics.currcycle.marktime += seconds;
-        g->gcmetrics.currcycle.markrequests += g->gcstepsize;
+        g->gcmetrics.currcycle.markwork += work;
 
         if (assist)
             g->gcmetrics.currcycle.markassisttime += seconds;
@@ -74,7 +75,7 @@ static void recordGcStateStep(global_State* g, int startgcstate, double seconds,
         break;
     case GCSsweep:
         g->gcmetrics.currcycle.sweeptime += seconds;
-        g->gcmetrics.currcycle.sweeprequests += g->gcstepsize;
+        g->gcmetrics.currcycle.sweepwork += work;
 
         if (assist)
             g->gcmetrics.currcycle.sweepassisttime += seconds;
@@ -87,13 +88,11 @@ static void recordGcStateStep(global_State* g, int startgcstate, double seconds,
     {
         g->gcmetrics.stepassisttimeacc += seconds;
         g->gcmetrics.currcycle.assistwork += work;
-        g->gcmetrics.currcycle.assistrequests += g->gcstepsize;
     }
     else
     {
         g->gcmetrics.stepexplicittimeacc += seconds;
         g->gcmetrics.currcycle.explicitwork += work;
-        g->gcmetrics.currcycle.explicitrequests += g->gcstepsize;
     }
 }
 
@@ -878,11 +877,11 @@ static size_t getheaptrigger(global_State* g, size_t heapgoal)
     return heaptrigger < int64_t(g->totalbytes) ? g->totalbytes : (heaptrigger > int64_t(heapgoal) ? heapgoal : size_t(heaptrigger));
 }
 
-void luaC_step(lua_State* L, bool assist)
+size_t luaC_step(lua_State* L, bool assist)
 {
     global_State* g = L->global;
 
-    int lim = (g->gcstepsize / 100) * g->gcstepmul; /* how much to work */
+    int lim = FFlag::LuauGcWorkTrackFix ? g->gcstepsize * g->gcstepmul / 100 : (g->gcstepsize / 100) * g->gcstepmul; /* how much to work */
     LUAU_ASSERT(g->totalbytes >= g->GCthreshold);
     size_t debt = g->totalbytes - g->GCthreshold;
 
@@ -902,11 +901,12 @@ void luaC_step(lua_State* L, bool assist)
     int lastgcstate = g->gcstate;
 
     size_t work = gcstep(L, lim);
-    (void)work;
 
 #ifdef LUAI_GCMETRICS
     recordGcStateStep(g, lastgcstate, lua_clock() - lasttimestamp, assist, work);
 #endif
+
+    size_t actualstepsize = work * 100 / g->gcstepmul;
 
     // at the end of the last cycle
     if (g->gcstate == GCSpause)
@@ -927,14 +927,16 @@ void luaC_step(lua_State* L, bool assist)
     }
     else
     {
-        g->GCthreshold = g->totalbytes + g->gcstepsize;
+        g->GCthreshold = g->totalbytes + (FFlag::LuauGcWorkTrackFix ? actualstepsize : g->gcstepsize);
 
         // compensate if GC is "behind schedule" (has some debt to pay)
-        if (g->GCthreshold > debt)
+        if (FFlag::LuauGcWorkTrackFix ? g->GCthreshold >= debt : g->GCthreshold > debt)
             g->GCthreshold -= debt;
     }
 
     GC_INTERRUPT(lastgcstate);
+
+    return actualstepsize;
 }
 
 void luaC_fullgc(lua_State* L)

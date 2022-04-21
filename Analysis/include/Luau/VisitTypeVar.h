@@ -52,7 +52,7 @@ inline void unsee(std::unordered_set<void*>& seen, const void* tv)
 
 inline void unsee(DenseHashSet<void*>& seen, const void* tv)
 {
-    // When DenseHashSet is used for 'visitOnce', where don't forget visited elements
+    // When DenseHashSet is used for 'visitTypeVarOnce', where don't forget visited elements
 }
 
 template<typename F, typename Set>

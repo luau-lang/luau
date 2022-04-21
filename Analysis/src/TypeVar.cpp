@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
 LUAU_FASTFLAG(LuauDiscriminableUnions2)
 LUAU_FASTFLAGVARIABLE(LuauAnyInIsOptionalIsOptional, false)
+LUAU_FASTFLAGVARIABLE(LuauClassDefinitionModuleInError, false)
 
 namespace Luau
 {
@@ -303,6 +304,11 @@ std::optional<ModuleName> getDefinitionModuleName(TypeId type)
     {
         if (ftv->definition)
             return ftv->definition->definitionModuleName;
+    }
+    else if (auto ctv = get<ClassTypeVar>(type); ctv && FFlag::LuauClassDefinitionModuleInError)
+    {
+        if (!ctv->definitionModuleName.empty())
+            return ctv->definitionModuleName;
     }
 
     return std::nullopt;

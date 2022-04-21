@@ -17,11 +17,13 @@ std::string rep(const std::string& s, size_t n);
 
 using namespace Luau;
 
-static std::string compileFunction(const char* source, uint32_t id)
+static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1)
 {
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, source);
+    Luau::CompileOptions options;
+    options.optimizationLevel = optimizationLevel;
+    Luau::compileOrThrow(bcb, source, options);
 
     return bcb.dumpFunction(id);
 }
@@ -2689,6 +2691,27 @@ local 8: reg 3, start pc 34 line 21, end pc 34 line 21
 )");
 }
 
+TEST_CASE("DebugRemarks")
+{
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Remarks);
+
+    uint32_t fid = bcb.beginFunction(0);
+
+    bcb.addDebugRemark("test remark #%d", 42);
+    bcb.emitABC(LOP_RETURN, 0, 1, 0);
+
+    bcb.endFunction(0, 0);
+
+    bcb.setMainFunction(fid);
+    bcb.finalize();
+
+    CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
+REMARK test remark #42
+RETURN R0 0
+)");
+}
+
 TEST_CASE("AssignmentConflict")
 {
     // assignments are left to right
@@ -4073,6 +4096,338 @@ MULK R4 R0 K0
 MODK R5 R0 K0
 POWK R6 R0 K0
 RETURN R1 6
+)");
+}
+
+TEST_CASE("LoopUnrollBasic")
+{
+    // forward loops
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=1,2 do
+    t[i] = i
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 2
+LOADN R1 1
+SETTABLEN R1 R0 1
+LOADN R1 2
+SETTABLEN R1 R0 2
+RETURN R0 1
+)");
+
+    // backward loops
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=2,1,-1 do
+    t[i] = i
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 0
+LOADN R1 2
+SETTABLEN R1 R0 2
+LOADN R1 1
+SETTABLEN R1 R0 1
+RETURN R0 1
+)");
+
+    // loops with step that doesn't divide to-from
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=1,4,2 do
+    t[i] = i
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 0
+LOADN R1 1
+SETTABLEN R1 R0 1
+LOADN R1 3
+SETTABLEN R1 R0 3
+RETURN R0 1
+)");
+}
+
+TEST_CASE("LoopUnrollUnsupported")
+{
+    // can't unroll loops with non-constant bounds
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=x,y,z do
+end
+)",
+                        0, 2),
+        R"(
+GETIMPORT R2 1
+GETIMPORT R0 3
+GETIMPORT R1 5
+FORNPREP R0 +1
+FORNLOOP R0 -1
+RETURN R0 0
+)");
+
+    // can't unroll loops with bounds where we can't compute trip count
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=2,1 do
+end
+)",
+                        0, 2),
+        R"(
+LOADN R2 2
+LOADN R0 1
+LOADN R1 1
+FORNPREP R0 +1
+FORNLOOP R0 -1
+RETURN R0 0
+)");
+
+    // can't unroll loops with bounds that might be imprecise (non-integer)
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=1,2,0.1 do
+end
+)",
+                        0, 2),
+        R"(
+LOADN R2 1
+LOADN R0 2
+LOADK R1 K0
+FORNPREP R0 +1
+FORNLOOP R0 -1
+RETURN R0 0
+)");
+
+    // can't unroll loops if the bounds are too large, as it might overflow trip count math
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=4294967295,4294967296 do
+end
+)",
+                        0, 2),
+        R"(
+LOADK R2 K0
+LOADK R0 K1
+LOADN R1 1
+FORNPREP R0 +1
+FORNLOOP R0 -1
+RETURN R0 0
+)");
+
+    // can't unroll loops if the body has loop control flow or nested loops
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=1,1 do
+    for j=1,1 do
+        if i == 1 then
+            continue
+        else
+            break
+        end
+    end
+end
+)",
+                        0, 2),
+        R"(
+LOADN R2 1
+LOADN R0 1
+LOADN R1 1
+FORNPREP R0 +11
+LOADN R5 1
+LOADN R3 1
+LOADN R4 1
+FORNPREP R3 +6
+JUMPIFNOTEQK R2 K0 +5
+JUMP +2
+JUMP +1
+JUMP +1
+FORNLOOP R3 -6
+FORNLOOP R0 -11
+RETURN R0 0
+)");
+
+    // can't unroll loops if the body has functions that refer to loop variables
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=1,1 do
+    local x = function() return i end
+end
+)",
+                        1, 2),
+        R"(
+LOADN R2 1
+LOADN R0 1
+LOADN R1 1
+FORNPREP R0 +3
+NEWCLOSURE R3 P0
+CAPTURE VAL R2
+FORNLOOP R0 -3
+RETURN R0 0
+)");
+}
+
+TEST_CASE("LoopUnrollCost")
+{
+    ScopedFastInt sfis[] = {
+        {"LuauCompileLoopUnrollThreshold", 25},
+        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+    };
+
+    // loops with short body
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=1,10 do
+    t[i] = i
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 10
+LOADN R1 1
+SETTABLEN R1 R0 1
+LOADN R1 2
+SETTABLEN R1 R0 2
+LOADN R1 3
+SETTABLEN R1 R0 3
+LOADN R1 4
+SETTABLEN R1 R0 4
+LOADN R1 5
+SETTABLEN R1 R0 5
+LOADN R1 6
+SETTABLEN R1 R0 6
+LOADN R1 7
+SETTABLEN R1 R0 7
+LOADN R1 8
+SETTABLEN R1 R0 8
+LOADN R1 9
+SETTABLEN R1 R0 9
+LOADN R1 10
+SETTABLEN R1 R0 10
+RETURN R0 1
+)");
+
+    // loops with body that's too long
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=1,100 do
+    t[i] = i
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 0
+LOADN R3 1
+LOADN R1 100
+LOADN R2 1
+FORNPREP R1 +2
+SETTABLE R3 R0 R3
+FORNLOOP R1 -2
+RETURN R0 1
+)");
+
+    // loops with body that's long but has a high boost factor due to constant folding
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=1,30 do
+    t[i] = i * i * i
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 0
+LOADN R1 1
+SETTABLEN R1 R0 1
+LOADN R1 8
+SETTABLEN R1 R0 2
+LOADN R1 27
+SETTABLEN R1 R0 3
+LOADN R1 64
+SETTABLEN R1 R0 4
+LOADN R1 125
+SETTABLEN R1 R0 5
+LOADN R1 216
+SETTABLEN R1 R0 6
+LOADN R1 343
+SETTABLEN R1 R0 7
+LOADN R1 512
+SETTABLEN R1 R0 8
+LOADN R1 729
+SETTABLEN R1 R0 9
+LOADN R1 1000
+SETTABLEN R1 R0 10
+LOADN R1 1331
+SETTABLEN R1 R0 11
+LOADN R1 1728
+SETTABLEN R1 R0 12
+LOADN R1 2197
+SETTABLEN R1 R0 13
+LOADN R1 2744
+SETTABLEN R1 R0 14
+LOADN R1 3375
+SETTABLEN R1 R0 15
+LOADN R1 4096
+SETTABLEN R1 R0 16
+LOADN R1 4913
+SETTABLEN R1 R0 17
+LOADN R1 5832
+SETTABLEN R1 R0 18
+LOADN R1 6859
+SETTABLEN R1 R0 19
+LOADN R1 8000
+SETTABLEN R1 R0 20
+LOADN R1 9261
+SETTABLEN R1 R0 21
+LOADN R1 10648
+SETTABLEN R1 R0 22
+LOADN R1 12167
+SETTABLEN R1 R0 23
+LOADN R1 13824
+SETTABLEN R1 R0 24
+LOADN R1 15625
+SETTABLEN R1 R0 25
+LOADN R1 17576
+SETTABLEN R1 R0 26
+LOADN R1 19683
+SETTABLEN R1 R0 27
+LOADN R1 21952
+SETTABLEN R1 R0 28
+LOADN R1 24389
+SETTABLEN R1 R0 29
+LOADN R1 27000
+SETTABLEN R1 R0 30
+RETURN R0 1
+)");
+
+    // loops with body that's long and doesn't have a high boost factor
+    CHECK_EQ("\n" + compileFunction(R"(
+local t = {}
+for i=1,10 do
+    t[i] = math.abs(math.sin(i))
+end
+return t
+)",
+                        0, 2),
+        R"(
+NEWTABLE R0 0 10
+LOADN R3 1
+LOADN R1 10
+LOADN R2 1
+FORNPREP R1 +11
+FASTCALL1 24 R3 +3
+MOVE R6 R3
+GETIMPORT R5 2
+CALL R5 1 -1
+FASTCALL 2 +2
+GETIMPORT R4 4
+CALL R4 -1 1
+SETTABLE R4 R0 R3
+FORNLOOP R1 -11
+RETURN R0 1
 )");
 }
 

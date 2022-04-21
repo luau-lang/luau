@@ -584,20 +584,6 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", false},
-    };
-
-    CheckResult result = check(R"(
-        local function f() return end
-        local g = function() return f() end
-    )");
-
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
     ScopedFastFlag sff[] = {
@@ -636,6 +622,10 @@ TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_over
 // Once fixed, move this to Normalize.test.cpp
 TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_tables")
 {
+#if defined(_DEBUG) || defined(_NOOPT)
+    ScopedFastInt sfi("LuauNormalizeIterationLimit", 500);
+#endif
+
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
     };

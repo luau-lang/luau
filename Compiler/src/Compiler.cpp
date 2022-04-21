@@ -8,12 +8,17 @@
 
 #include "Builtins.h"
 #include "ConstantFolding.h"
+#include "CostModel.h"
 #include "TableShape.h"
 #include "ValueTracking.h"
 
 #include <algorithm>
 #include <bitset>
 #include <math.h>
+#include <limits.h>
+
+LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
+LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThresholdMaxBoost, 300)
 
 namespace Luau
 {
@@ -77,8 +82,12 @@ struct Compiler
         , globals(AstName())
         , variables(nullptr)
         , constants(nullptr)
+        , locstants(nullptr)
         , tableShapes(nullptr)
     {
+        // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
+        localStack.reserve(16);
+        upvals.reserve(16);
     }
 
     uint8_t getLocal(AstLocal* local)
@@ -209,7 +218,9 @@ struct Compiler
 
         Function& f = functions[func];
         f.id = fid;
-        f.upvals = std::move(upvals);
+        f.upvals = upvals;
+
+        upvals.clear(); // note: instead of std::move above, we copy & clear to preserve capacity for future pushes
 
         return fid;
     }
@@ -2133,9 +2144,118 @@ struct Compiler
             pushLocal(stat->vars.data[i], uint8_t(vars + i));
     }
 
+    int getConstantShort(AstExpr* expr)
+    {
+        const Constant* c = constants.find(expr);
+
+        if (c && c->type == Constant::Type_Number)
+        {
+            double n = c->valueNumber;
+
+            if (n >= -32767 && n <= 32767 && double(int(n)) == n)
+                return int(n);
+        }
+
+        return INT_MIN;
+    }
+
+    bool canUnrollForBody(AstStatFor* stat)
+    {
+        struct CanUnrollVisitor : AstVisitor
+        {
+            bool result = true;
+
+            bool visit(AstExpr* node) override
+            {
+                // functions may capture loop variable, and our upval handling doesn't handle elided variables (constant)
+                result = result && !node->is<AstExprFunction>();
+                return result;
+            }
+
+            bool visit(AstStat* node) override
+            {
+                // while we can easily unroll nested loops, our cost model doesn't take unrolling into account so this can result in code explosion
+                // we also avoid continue/break since they introduce control flow across iterations
+                result = result && !node->is<AstStatFor>() && !node->is<AstStatContinue>() && !node->is<AstStatBreak>();
+                return result;
+            }
+        };
+
+        CanUnrollVisitor canUnroll;
+        stat->body->visit(&canUnroll);
+
+        return canUnroll.result;
+    }
+
+    bool tryCompileUnrolledFor(AstStatFor* stat, int thresholdBase, int thresholdMaxBoost)
+    {
+        int from = getConstantShort(stat->from);
+        int to = getConstantShort(stat->to);
+        int step = stat->step ? getConstantShort(stat->step) : 1;
+
+        // check that limits are reasonably small and trip count can be computed
+        if (from == INT_MIN || to == INT_MIN || step == INT_MIN || step == 0 || (step < 0 && to > from) || (step > 0 && to < from))
+        {
+            bytecode.addDebugRemark("loop unroll failed: invalid iteration count");
+            return false;
+        }
+
+        if (!canUnrollForBody(stat))
+        {
+            bytecode.addDebugRemark("loop unroll failed: unsupported loop body");
+            return false;
+        }
+
+        int tripCount = (to - from) / step + 1;
+
+        if (tripCount > thresholdBase * thresholdMaxBoost / 100)
+        {
+            bytecode.addDebugRemark("loop unroll failed: too many iterations (%d)", tripCount);
+            return false;
+        }
+
+        AstLocal* var = stat->var;
+        uint64_t costModel = modelCost(stat->body, &var, 1);
+
+        // we use a dynamic cost threshold that's based on the fixed limit boosted by the cost advantage we gain due to unrolling
+        bool varc = true;
+        int unrolledCost = computeCost(costModel, &varc, 1) * tripCount;
+        int baselineCost = (computeCost(costModel, nullptr, 0) + 1) * tripCount;
+        int unrollProfit = (unrolledCost == 0) ? thresholdMaxBoost : std::min(thresholdMaxBoost, 100 * baselineCost / unrolledCost);
+
+        int threshold = thresholdBase * unrollProfit / 100;
+
+        if (unrolledCost > threshold)
+        {
+            bytecode.addDebugRemark(
+                "loop unroll failed: too expensive (iterations %d, cost %d, profit %.2fx)", tripCount, unrolledCost, double(unrollProfit) / 100);
+            return false;
+        }
+
+        bytecode.addDebugRemark("loop unroll succeeded (iterations %d, cost %d, profit %.2fx)", tripCount, unrolledCost, double(unrollProfit) / 100);
+
+        for (int i = from; step > 0 ? i <= to : i >= to; i += step)
+        {
+            // we need to re-fold constants in the loop body with the new value; this reuses computed constant values elsewhere in the tree
+            locstants[var].type = Constant::Type_Number;
+            locstants[var].valueNumber = i;
+
+            foldConstants(constants, variables, locstants, stat);
+
+            compileStat(stat->body);
+        }
+
+        return true;
+    }
+
     void compileStatFor(AstStatFor* stat)
     {
         RegScope rs(this);
+
+        // Optimization: small loops can be unrolled when it is profitable
+        if (options.optimizationLevel >= 2 && isConstant(stat->to) && isConstant(stat->from) && (!stat->step || isConstant(stat->step)))
+            if (tryCompileUnrolledFor(stat, FInt::LuauCompileLoopUnrollThreshold, FInt::LuauCompileLoopUnrollThresholdMaxBoost))
+                return;
 
         size_t oldLocals = localStack.size();
         size_t oldJumps = loopJumps.size();
@@ -2826,6 +2946,8 @@ struct Compiler
             : self(self)
             , functions(functions)
         {
+            // preallocate the result; this works around std::vector's inefficient growth policy for small arrays
+            functions.reserve(16);
         }
 
         bool visit(AstExprFunction* node) override
@@ -2979,6 +3101,7 @@ struct Compiler
     DenseHashMap<AstName, Global> globals;
     DenseHashMap<AstLocal*, Variable> variables;
     DenseHashMap<AstExpr*, Constant> constants;
+    DenseHashMap<AstLocal*, Constant> locstants;
     DenseHashMap<AstExprTable*, TableShape> tableShapes;
 
     unsigned int regTop = 0;
@@ -3008,7 +3131,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, AstStatBlock* root, const AstName
     if (options.optimizationLevel >= 1)
     {
         // this pass analyzes constantness of expressions
-        foldConstants(compiler.constants, compiler.variables, root);
+        foldConstants(compiler.constants, compiler.variables, compiler.locstants, root);
 
         // this pass analyzes table assignments to estimate table shapes for initially empty tables
         predictTableShapes(compiler.tableShapes, root);

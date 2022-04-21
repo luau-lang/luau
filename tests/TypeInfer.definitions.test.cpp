@@ -295,8 +295,6 @@ TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_type
 
 TEST_CASE_FIXTURE(Fixture, "single_class_type_identity_in_global_types")
 {
-    ScopedFastFlag luauCloneDeclaredGlobals{"LuauCloneDeclaredGlobals", true};
-
     loadDefinition(R"(
 declare class Cls
 end

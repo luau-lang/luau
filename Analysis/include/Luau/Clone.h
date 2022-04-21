@@ -18,7 +18,7 @@ struct CloneState
     SeenTypePacks seenTypePacks;
 
     int recursionCount = 0;
-    bool encounteredFreeType = false;
+    bool encounteredFreeType = false; // TODO: Remove with LuauLosslessClone.
 };
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);

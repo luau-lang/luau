@@ -5,7 +5,6 @@
 #include <algorithm>
 
 #include "Luau/Clone.h"
-#include "Luau/DenseHash.h"
 #include "Luau/Substitution.h"
 #include "Luau/Unifier.h"
 #include "Luau/VisitTypeVar.h"
@@ -254,7 +253,7 @@ bool isSubtype(TypeId subTy, TypeId superTy, InternalErrorReporter& ice)
 }
 
 template<typename T>
-static bool areNormal_(const T& t, const DenseHashSet<void*>& seen, InternalErrorReporter& ice)
+static bool areNormal_(const T& t, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
 {
     int count = 0;
     auto isNormal = [&](TypeId ty) {
@@ -262,18 +261,19 @@ static bool areNormal_(const T& t, const DenseHashSet<void*>& seen, InternalErro
         if (count >= FInt::LuauNormalizeIterationLimit)
             ice.ice("Luau::areNormal hit iteration limit");
 
-        return ty->normal || seen.find(asMutable(ty));
+        // The follow is here because a bound type may not be normal, but the bound type is normal.
+        return ty->normal || follow(ty)->normal || seen.find(asMutable(ty)) != seen.end();
     };
 
     return std::all_of(begin(t), end(t), isNormal);
 }
 
-static bool areNormal(const std::vector<TypeId>& types, const DenseHashSet<void*>& seen, InternalErrorReporter& ice)
+static bool areNormal(const std::vector<TypeId>& types, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
 {
     return areNormal_(types, seen, ice);
 }
 
-static bool areNormal(TypePackId tp, const DenseHashSet<void*>& seen, InternalErrorReporter& ice)
+static bool areNormal(TypePackId tp, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
 {
     tp = follow(tp);
     if (get<FreeTypePack>(tp))
@@ -288,7 +288,7 @@ static bool areNormal(TypePackId tp, const DenseHashSet<void*>& seen, InternalEr
         return true;
 
     if (auto vtp = get<VariadicTypePack>(*tail))
-        return vtp->ty->normal || seen.find(asMutable(vtp->ty));
+        return vtp->ty->normal || follow(vtp->ty)->normal || seen.find(asMutable(vtp->ty)) != seen.end();
 
     return true;
 }
@@ -335,9 +335,14 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const BoundTypeVar& btv)
+    bool operator()(TypeId ty, const BoundTypeVar& btv, std::unordered_set<void*>& seen)
     {
-        // It should never be the case that this TypeVar is normal, but is bound to a non-normal type.
+        // A type could be considered normal when it is in the stack, but we will eventually find out it is not normal as normalization progresses.
+        // So we need to avoid eagerly saying that this bound type is normal if the thing it is bound to is in the stack.
+        if (seen.find(asMutable(btv.boundTo)) != seen.end())
+            return false;
+
+        // It should never be the case that this TypeVar is normal, but is bound to a non-normal type, except in nontrivial cases.
         LUAU_ASSERT(!ty->normal || ty->normal == btv.boundTo->normal);
 
         asMutable(ty)->normal = btv.boundTo->normal;
@@ -365,7 +370,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const ConstrainedTypeVar& ctvRef, DenseHashSet<void*>& seen)
+    bool operator()(TypeId ty, const ConstrainedTypeVar& ctvRef, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -391,8 +396,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const FunctionTypeVar& ftv) = delete;
-    bool operator()(TypeId ty, const FunctionTypeVar& ftv, DenseHashSet<void*>& seen)
+    bool operator()(TypeId ty, const FunctionTypeVar& ftv, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -407,7 +411,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar& ttv, DenseHashSet<void*>& seen)
+    bool operator()(TypeId ty, const TableTypeVar& ttv, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -419,7 +423,7 @@ struct Normalize
         auto checkNormal = [&](TypeId t) {
             // if t is on the stack, it is possible that this type is normal.
             // If t is not normal and it is not on the stack, this type is definitely not normal.
-            if (!t->normal && !seen.find(asMutable(t)))
+            if (!t->normal && seen.find(asMutable(t)) == seen.end())
                 normal = false;
         };
 
@@ -449,7 +453,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const MetatableTypeVar& mtv, DenseHashSet<void*>& seen)
+    bool operator()(TypeId ty, const MetatableTypeVar& mtv, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -477,7 +481,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const UnionTypeVar& utvRef, DenseHashSet<void*>& seen)
+    bool operator()(TypeId ty, const UnionTypeVar& utvRef, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -507,7 +511,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const IntersectionTypeVar& itvRef, DenseHashSet<void*>& seen)
+    bool operator()(TypeId ty, const IntersectionTypeVar& itvRef, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -775,8 +779,8 @@ std::pair<TypeId, bool> normalize(TypeId ty, TypeArena& arena, InternalErrorRepo
         (void)clone(ty, arena, state);
 
     Normalize n{arena, ice, std::move(state.seenTypes), std::move(state.seenTypePacks)};
-    DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(ty, n, seen);
+    std::unordered_set<void*> seen;
+    visitTypeVar(ty, n, seen);
 
     return {ty, !n.limitExceeded};
 }
@@ -800,8 +804,8 @@ std::pair<TypePackId, bool> normalize(TypePackId tp, TypeArena& arena, InternalE
         (void)clone(tp, arena, state);
 
     Normalize n{arena, ice, std::move(state.seenTypes), std::move(state.seenTypePacks)};
-    DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(tp, n, seen);
+    std::unordered_set<void*> seen;
+    visitTypeVar(tp, n, seen);
 
     return {tp, !n.limitExceeded};
 }

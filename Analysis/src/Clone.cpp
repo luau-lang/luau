@@ -10,6 +10,7 @@ LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
+LUAU_FASTFLAGVARIABLE(LuauLosslessClone, false)
 
 namespace Luau
 {
@@ -87,11 +88,18 @@ struct TypePackCloner
 
     void operator()(const Unifiable::Free& t)
     {
-        cloneState.encounteredFreeType = true;
+        if (FFlag::LuauLosslessClone)
+        {
+            defaultClone(t);
+        }
+        else
+        {
+            cloneState.encounteredFreeType = true;
 
-        TypePackId err = getSingletonTypes().errorRecoveryTypePack(getSingletonTypes().anyTypePack);
-        TypePackId cloned = dest.addTypePack(*err);
-        seenTypePacks[typePackId] = cloned;
+            TypePackId err = getSingletonTypes().errorRecoveryTypePack(getSingletonTypes().anyTypePack);
+            TypePackId cloned = dest.addTypePack(*err);
+            seenTypePacks[typePackId] = cloned;
+        }
     }
 
     void operator()(const Unifiable::Generic& t)
@@ -143,10 +151,18 @@ void TypeCloner::defaultClone(const T& t)
 
 void TypeCloner::operator()(const Unifiable::Free& t)
 {
-    cloneState.encounteredFreeType = true;
-    TypeId err = getSingletonTypes().errorRecoveryType(getSingletonTypes().anyType);
-    TypeId cloned = dest.addType(*err);
-    seenTypes[typeId] = cloned;
+    if (FFlag::LuauLosslessClone)
+    {
+        defaultClone(t);
+    }
+    else
+    {
+        cloneState.encounteredFreeType = true;
+
+        TypeId err = getSingletonTypes().errorRecoveryType(getSingletonTypes().anyType);
+        TypeId cloned = dest.addType(*err);
+        seenTypes[typeId] = cloned;
+    }
 }
 
 void TypeCloner::operator()(const Unifiable::Generic& t)
@@ -174,7 +190,8 @@ void TypeCloner::operator()(const PrimitiveTypeVar& t)
 
 void TypeCloner::operator()(const ConstrainedTypeVar& t)
 {
-    cloneState.encounteredFreeType = true;
+    if (!FFlag::LuauLosslessClone)
+        cloneState.encounteredFreeType = true;
 
     TypeId res = dest.addType(ConstrainedTypeVar{t.level});
     ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(res);
@@ -252,7 +269,7 @@ void TypeCloner::operator()(const TableTypeVar& t)
     for (TypePackId& arg : ttv->instantiatedTypePackParams)
         arg = clone(arg, dest, cloneState);
 
-    if (ttv->state == TableState::Free)
+    if (!FFlag::LuauLosslessClone && ttv->state == TableState::Free)
     {
         cloneState.encounteredFreeType = true;
 
@@ -276,7 +293,7 @@ void TypeCloner::operator()(const MetatableTypeVar& t)
 
 void TypeCloner::operator()(const ClassTypeVar& t)
 {
-    TypeId result = dest.addType(ClassTypeVar{t.name, {}, std::nullopt, std::nullopt, t.tags, t.userData});
+    TypeId result = dest.addType(ClassTypeVar{t.name, {}, std::nullopt, std::nullopt, t.tags, t.userData, t.definitionModuleName});
     ClassTypeVar* ctv = getMutable<ClassTypeVar>(result);
 
     seenTypes[typeId] = result;
@@ -361,7 +378,10 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
 
         // Persistent types are not being cloned and we get the original type back which might be read-only
         if (!res->persistent)
+        {
             asMutable(res)->documentationSymbol = typeId->documentationSymbol;
+            asMutable(res)->normal = typeId->normal;
+        }
     }
 
     return res;

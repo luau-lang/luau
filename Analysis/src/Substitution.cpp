@@ -11,6 +11,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 1000)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
 LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowNewTypes, false)
+LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowPossibleMutations, false)
 
 namespace Luau
 {
@@ -106,7 +107,7 @@ void Tarjan::visitChildren(TypePackId tp, int index)
 
 std::pair<int, bool> Tarjan::indexify(TypeId ty)
 {
-    if (FFlag::LuauTypecheckOptPass)
+    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
         LUAU_ASSERT(ty == log->follow(ty));
     else
         ty = log->follow(ty);
@@ -127,7 +128,7 @@ std::pair<int, bool> Tarjan::indexify(TypeId ty)
 
 std::pair<int, bool> Tarjan::indexify(TypePackId tp)
 {
-    if (FFlag::LuauTypecheckOptPass)
+    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
         LUAU_ASSERT(tp == log->follow(tp));
     else
         tp = log->follow(tp);
@@ -148,7 +149,8 @@ std::pair<int, bool> Tarjan::indexify(TypePackId tp)
 
 void Tarjan::visitChild(TypeId ty)
 {
-    ty = log->follow(ty);
+    if (!FFlag::LuauSubstituteFollowPossibleMutations)
+        ty = log->follow(ty);
 
     edgesTy.push_back(ty);
     edgesTp.push_back(nullptr);
@@ -156,7 +158,8 @@ void Tarjan::visitChild(TypeId ty)
 
 void Tarjan::visitChild(TypePackId tp)
 {
-    tp = log->follow(tp);
+    if (!FFlag::LuauSubstituteFollowPossibleMutations)
+        tp = log->follow(tp);
 
     edgesTy.push_back(nullptr);
     edgesTp.push_back(tp);
@@ -471,7 +474,7 @@ TypePackId Substitution::clone(TypePackId tp)
 
 void Substitution::foundDirty(TypeId ty)
 {
-    if (FFlag::LuauTypecheckOptPass)
+    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
         LUAU_ASSERT(ty == log->follow(ty));
     else
         ty = log->follow(ty);
@@ -484,7 +487,7 @@ void Substitution::foundDirty(TypeId ty)
 
 void Substitution::foundDirty(TypePackId tp)
 {
-    if (FFlag::LuauTypecheckOptPass)
+    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
         LUAU_ASSERT(tp == log->follow(tp));
     else
         tp = log->follow(tp);
