@@ -597,8 +597,6 @@ return foo1
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
-    ScopedFastFlag sff("LuauLintNoRobloxBits", true);
-
     unfreeze(typeChecker.globalTypes);
     TableTypeVar::Props instanceProps{
         {"ClassName", {typeChecker.anyType}},
@@ -1439,6 +1437,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
 {
     unfreeze(typeChecker.globalTypes);
     TypeId instanceType = typeChecker.globalTypes.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, {}});
+    persist(instanceType);
     typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     getMutable<ClassTypeVar>(instanceType)->props = {

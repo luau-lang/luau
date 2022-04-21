@@ -6,6 +6,7 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauEqConstraint)
 
 using namespace Luau;
@@ -254,11 +255,11 @@ local c = bf.a.y
 TEST_CASE_FIXTURE(Fixture, "optional_union_functions")
 {
     CheckResult result = check(R"(
-local a = {}
-function a.foo(x:number, y:number) return x + y end
-type A = typeof(a)
-local b: A? = a
-local c = b.foo(1, 2)
+        local a = {}
+        function a.foo(x:number, y:number) return x + y end
+        type A = typeof(a)
+        local b: A? = a
+        local c = b.foo(1, 2)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -356,7 +357,10 @@ a.x = 2
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", toString(result.errors[0]));
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ("Value of type '{| x: number, y: number |}?' could be nil", toString(result.errors[0]));
+    else
+        CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
@@ -533,8 +537,13 @@ TEST_CASE_FIXTURE(Fixture, "table_union_write_indirect")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // NOTE: union normalization will improve this message
-    CHECK_EQ(toString(result.errors[0]),
-        R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[0]), "Type '(string) -> number' could not be converted into '(number) -> string'\n"
+                                             "caused by:\n"
+                                             "  Argument #1 type is not compatible. Type 'number' could not be converted into 'string'");
+    else
+        CHECK_EQ(toString(result.errors[0]),
+            R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
 }
 
 

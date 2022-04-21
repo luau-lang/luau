@@ -1,5 +1,5 @@
 {-# OPTIONS --rewriting #-}
-
+{-# OPTIONS --allow-unsolved-metas #-}
 module Properties.Subtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
@@ -153,10 +153,10 @@ set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} p = r where
   r function function = function
   r (function-err t) (function-err ¬S₁t) with dec-language S₂ t
   r (function-err t) (function-err ¬S₁t) | Left ¬S₂t = function-err ¬S₂t
-  r (function-err t) (function-err ¬S₁t) | Right S₂t = ? -- CONTRADICTION (p Q q (t , t₂) (Left ¬S₁t) (S₂t , language-comp t₂ ¬T₂t₂))
+  r (function-err t) (function-err ¬S₁t) | Right S₂t = {!!} -- CONTRADICTION (p Q q (t , t₂) (Left ¬S₁t) (S₂t , language-comp t₂ ¬T₂t₂))
   r (function-ok s t) (function-ok₁ ¬S₁s) with dec-language S₂ s
   r (function-ok s t) (function-ok₁ ¬S₁s) | Left ¬S₂s = function-ok₁ ¬S₂s
-  r (function-ok s t) (function-ok₁ ¬S₁s) | Right S₂s = ? -- CONTRADICTION (p Q q (s , t₂) (Left ¬S₁s) (S₂s , language-comp t₂ ¬T₂t₂))
+  r (function-ok s t) (function-ok₁ ¬S₁s) | Right S₂s = {!!} -- CONTRADICTION (p Q q (s , t₂) (Left ¬S₁s) (S₂s , language-comp t₂ ¬T₂t₂))
   r (function-ok s t) (function-ok₂ T₁t) with dec-language T₂ t
-  r (function-ok s t) (function-ok₂ T₁t) | Left ¬T₂t = ? -- CONTRADICTION (p Q q (s₂ , t) (Right T₁t) (S₂s₂ ,  language-comp t ¬T₂t))
+  r (function-ok s t) (function-ok₂ T₁t) | Left ¬T₂t = {!!} -- CONTRADICTION (p Q q (s₂ , t) (Right T₁t) (S₂s₂ ,  language-comp t ¬T₂t))
   r (function-ok s t) (function-ok₂ T₁t) | Right T₂t = function-ok₂ T₂t

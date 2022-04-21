@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/Normalize.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 
@@ -8,6 +9,7 @@
 
 LUAU_FASTFLAG(LuauDiscriminableUnions2)
 LUAU_FASTFLAG(LuauWeakEqConstraint)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 using namespace Luau;
 
@@ -48,6 +50,7 @@ struct RefinementClassFixture : Fixture
             {"Y", Property{typeChecker.numberType}},
             {"Z", Property{typeChecker.numberType}},
         };
+        normalize(vec3, arena, *typeChecker.iceHandler);
 
         TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr});
 
@@ -55,17 +58,21 @@ struct RefinementClassFixture : Fixture
         TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
         TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
         getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
+        normalize(isA, arena, *typeChecker.iceHandler);
 
         getMutable<ClassTypeVar>(inst)->props = {
             {"Name", Property{typeChecker.stringType}},
             {"IsA", Property{isA}},
         };
+        normalize(inst, arena, *typeChecker.iceHandler);
 
         TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr});
+        normalize(folder, arena, *typeChecker.iceHandler);
         TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr});
         getMutable<ClassTypeVar>(part)->props = {
             {"Position", Property{vec3}},
         };
+        normalize(part, arena, *typeChecker.iceHandler);
 
         typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
         typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
@@ -697,7 +704,10 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28})));
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ("{| x: number, y: number |}", toString(requireTypeAtPosition({4, 28})));
+    else
+        CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 

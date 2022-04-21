@@ -32,11 +32,13 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/Compiler.cpp
     Compiler/src/Builtins.cpp
     Compiler/src/ConstantFolding.cpp
+    Compiler/src/CostModel.cpp
     Compiler/src/TableShape.cpp
     Compiler/src/ValueTracking.cpp
     Compiler/src/lcode.cpp
     Compiler/src/Builtins.h
     Compiler/src/ConstantFolding.h
+    Compiler/src/CostModel.h
     Compiler/src/TableShape.h
     Compiler/src/ValueTracking.h
 )
@@ -58,6 +60,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/LValue.h
     Analysis/include/Luau/Module.h
     Analysis/include/Luau/ModuleResolver.h
+    Analysis/include/Luau/Normalize.h
     Analysis/include/Luau/Predicate.h
     Analysis/include/Luau/Quantify.h
     Analysis/include/Luau/RecursionCounter.h
@@ -94,6 +97,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Linter.cpp
     Analysis/src/LValue.cpp
     Analysis/src/Module.cpp
+    Analysis/src/Normalize.cpp
     Analysis/src/Quantify.cpp
     Analysis/src/RequireTracer.cpp
     Analysis/src/Scope.cpp
@@ -216,6 +220,7 @@ if(TARGET Luau.UnitTest)
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/Compiler.test.cpp
+        tests/CostModel.test.cpp
         tests/Config.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
@@ -224,6 +229,7 @@ if(TARGET Luau.UnitTest)
         tests/LValue.test.cpp
         tests/Module.test.cpp
         tests/NonstrictMode.test.cpp
+        tests/Normalize.test.cpp
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
         tests/StringUtils.test.cpp

@@ -173,7 +173,7 @@ public:
     }
 
     const Lexeme& next();
-    const Lexeme& next(bool skipComments);
+    const Lexeme& next(bool skipComments, bool updatePrevLocation);
     void nextline();
 
     Lexeme lookahead();

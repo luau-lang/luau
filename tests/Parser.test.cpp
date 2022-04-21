@@ -1618,6 +1618,26 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
     CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
 }
 
+TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
+{
+    ScopedFastFlag luauParseLocationIgnoreCommentSkip{"LuauParseLocationIgnoreCommentSkip", true};
+    ScopedFastFlag luauParseLocationIgnoreCommentSkipInCapture{"LuauParseLocationIgnoreCommentSkipInCapture", true};
+
+    // Same should hold when comments are captured
+    ParseOptions opts;
+    opts.captureComments = true;
+
+    AstStatBlock* block = parse(R"(
+        type F = number
+        --comment
+        print('hello')
+    )",
+        opts);
+
+    REQUIRE_EQ(2, block->body.size);
+    CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_error_loop_control")
 {
     matchParseError("break", "break statement must be inside a loop");

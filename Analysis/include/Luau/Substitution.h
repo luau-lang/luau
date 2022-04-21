@@ -90,6 +90,7 @@ struct Tarjan
     std::vector<int> lowlink;
 
     int childCount = 0;
+    int childLimit = 0;
 
     // This should never be null; ensure you initialize it before calling
     // substitution methods.

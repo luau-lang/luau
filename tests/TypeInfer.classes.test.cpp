@@ -91,6 +91,9 @@ struct ClassFixture : Fixture
         typeChecker.globalScope->exportedTypeBindings["Vector2"] = TypeFun{{}, vector2InstanceType};
         addGlobalBinding(typeChecker, "Vector2", vector2Type, "@test");
 
+        for (const auto& [name, tf] : typeChecker.globalScope->exportedTypeBindings)
+            persist(tf.type);
+
         freeze(arena);
     }
 };

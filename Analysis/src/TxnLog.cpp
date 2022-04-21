@@ -8,6 +8,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAGVARIABLE(LuauTxnLogPreserveOwner, false)
+LUAU_FASTFLAGVARIABLE(LuauJustOneCallFrameForHaveSeen, false)
 
 namespace Luau
 {
@@ -161,18 +162,37 @@ void TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
 
 bool TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs) const
 {
-    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-    if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
+    if (FFlag::LuauJustOneCallFrameForHaveSeen && !FFlag::LuauTypecheckOptPass)
     {
-        return true;
-    }
+        // This function will technically work if `this` is nullptr, but this
+        // indicates a bug, so we explicitly assert.
+        LUAU_ASSERT(static_cast<const void*>(this) != nullptr);
 
-    if (parent)
+        const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+
+        for (const TxnLog* current = this; current; current = current->parent)
+        {
+            if (current->sharedSeen->end() != std::find(current->sharedSeen->begin(), current->sharedSeen->end(), sortedPair))
+                return true;
+        }
+
+        return false;
+    }
+    else
     {
-        return parent->haveSeen(lhs, rhs);
-    }
+        const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+        if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
+        {
+            return true;
+        }
 
-    return false;
+        if (!FFlag::LuauTypecheckOptPass && parent)
+        {
+            return parent->haveSeen(lhs, rhs);
+        }
+
+        return false;
+    }
 }
 
 void TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
@@ -222,8 +242,8 @@ PendingType* TxnLog::pending(TypeId ty) const
 
     for (const TxnLog* current = this; current; current = current->parent)
     {
-        if (auto it = current->typeVarChanges.find(ty); it != current->typeVarChanges.end())
-            return it->second.get();
+        if (auto it = current->typeVarChanges.find(ty))
+            return it->get();
     }
 
     return nullptr;
@@ -237,8 +257,8 @@ PendingTypePack* TxnLog::pending(TypePackId tp) const
 
     for (const TxnLog* current = this; current; current = current->parent)
     {
-        if (auto it = current->typePackChanges.find(tp); it != current->typePackChanges.end())
-            return it->second.get();
+        if (auto it = current->typePackChanges.find(tp))
+            return it->get();
     }
 
     return nullptr;

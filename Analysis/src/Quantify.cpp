@@ -4,6 +4,8 @@
 
 #include "Luau/VisitTypeVar.h"
 
+LUAU_FASTFLAG(LuauTypecheckOptPass)
+
 namespace Luau
 {
 
@@ -12,6 +14,8 @@ struct Quantifier
     TypeLevel level;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
+    bool seenGenericType = false;
+    bool seenMutableType = false;
 
     Quantifier(TypeLevel level)
         : level(level)
@@ -23,6 +27,9 @@ struct Quantifier
 
     bool operator()(TypeId ty, const FreeTypeVar& ftv)
     {
+        if (FFlag::LuauTypecheckOptPass)
+            seenMutableType = true;
+
         if (!level.subsumes(ftv.level))
             return false;
 
@@ -44,17 +51,40 @@ struct Quantifier
         return true;
     }
 
+    bool operator()(TypeId ty, const ConstrainedTypeVar&)
+    {
+        return true;
+    }
+
     bool operator()(TypeId ty, const TableTypeVar&)
     {
         TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
 
+        if (FFlag::LuauTypecheckOptPass)
+        {
+            if (ttv.state == TableState::Generic)
+                seenGenericType = true;
+
+            if (ttv.state == TableState::Free)
+                seenMutableType = true;
+        }
+
         if (ttv.state == TableState::Sealed || ttv.state == TableState::Generic)
             return false;
         if (!level.subsumes(ttv.level))
+        {
+            if (FFlag::LuauTypecheckOptPass && ttv.state == TableState::Unsealed)
+                seenMutableType = true;
             return false;
+        }
 
         if (ttv.state == TableState::Free)
+        {
             ttv.state = TableState::Generic;
+
+            if (FFlag::LuauTypecheckOptPass)
+                seenGenericType = true;
+        }
         else if (ttv.state == TableState::Unsealed)
             ttv.state = TableState::Sealed;
 
@@ -65,6 +95,9 @@ struct Quantifier
 
     bool operator()(TypePackId tp, const FreeTypePack& ftp)
     {
+        if (FFlag::LuauTypecheckOptPass)
+            seenMutableType = true;
+
         if (!level.subsumes(ftp.level))
             return false;
 
@@ -84,6 +117,9 @@ void quantify(TypeId ty, TypeLevel level)
     LUAU_ASSERT(ftv);
     ftv->generics = q.generics;
     ftv->genericPacks = q.genericPacks;
+
+    if (FFlag::LuauTypecheckOptPass && ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
+        ftv->hasNoGenerics = true;
 }
 
 } // namespace Luau

@@ -11,6 +11,7 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 LUAU_FASTFLAGVARIABLE(LuauParseRecoverUnexpectedPack, false)
+LUAU_FASTFLAGVARIABLE(LuauParseLocationIgnoreCommentSkipInCapture, false)
 
 namespace Luau
 {
@@ -2789,7 +2790,7 @@ void Parser::nextLexeme()
 {
     if (options.captureComments)
     {
-        Lexeme::Type type = lexer.next(/* skipComments= */ false).type;
+        Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
 
         while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
         {
@@ -2813,7 +2814,7 @@ void Parser::nextLexeme()
                 hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
             }
 
-            type = lexer.next(/* skipComments= */ false).type;
+            type = lexer.next(/* skipComments= */ false, !FFlag::LuauParseLocationIgnoreCommentSkipInCapture).type;
         }
     }
     else

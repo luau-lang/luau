@@ -76,19 +76,32 @@ struct Instantiation : Substitution
 // A substitution which replaces free types by any
 struct Anyification : Substitution
 {
-    Anyification(TypeArena* arena, TypeId anyType, TypePackId anyTypePack)
+    Anyification(TypeArena* arena, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
         : Substitution(TxnLog::empty(), arena)
+        , iceHandler(iceHandler)
         , anyType(anyType)
         , anyTypePack(anyTypePack)
     {
     }
 
+    InternalErrorReporter* iceHandler;
+
     TypeId anyType;
     TypePackId anyTypePack;
+    bool normalizationTooComplex = false;
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId tp) override;
     TypeId clean(TypeId ty) override;
     TypePackId clean(TypePackId tp) override;
+
+    bool ignoreChildren(TypeId ty) override
+    {
+        return ty->persistent;
+    }
+    bool ignoreChildren(TypePackId ty) override
+    {
+        return ty->persistent;
+    }
 };
 
 // A substitution which replaces the type parameters of a type function by arguments
@@ -139,6 +152,7 @@ struct TypeChecker
     TypeChecker& operator=(const TypeChecker&) = delete;
 
     ModulePtr check(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope = std::nullopt);
+    ModulePtr checkWithoutRecursionCheck(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope = std::nullopt);
 
     std::vector<std::pair<Location, ScopePtr>> getScopes() const;
 
@@ -160,6 +174,7 @@ struct TypeChecker
     void check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
 
     void checkBlock(const ScopePtr& scope, const AstStatBlock& statement);
+    void checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& statement);
     void checkBlockTypeAliases(const ScopePtr& scope, std::vector<AstStat*>& sorted);
 
     ExprResult<TypeId> checkExpr(
@@ -172,6 +187,7 @@ struct TypeChecker
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIndexExpr& expr);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprFunction& expr, std::optional<TypeId> expectedType = std::nullopt);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprTable& expr, std::optional<TypeId> expectedType = std::nullopt);
+    ExprResult<TypeId> checkExpr_(const ScopePtr& scope, const AstExprTable& expr, std::optional<TypeId> expectedType = std::nullopt);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprUnary& expr);
     TypeId checkRelationalOperation(
         const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates = {});
@@ -257,6 +273,8 @@ struct TypeChecker
     ErrorVec canUnify_(Id subTy, Id superTy, const Location& location);
     ErrorVec canUnify(TypeId subTy, TypeId superTy, const Location& location);
     ErrorVec canUnify(TypePackId subTy, TypePackId superTy, const Location& location);
+
+    void unifyLowerBound(TypePackId subTy, TypePackId superTy, const Location& location);
 
     std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location);
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location);
@@ -395,6 +413,7 @@ private:
     void resolve(const EqPredicate& eqP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
 
     bool isNonstrictMode() const;
+    bool useConstrainedIntersections() const;
 
 public:
     /** Extract the types in a type pack, given the assumption that the pack must have some exact length.
@@ -421,7 +440,10 @@ public:
 
     std::vector<RequireCycle> requireCycles;
 
+    // Type inference limits
     std::optional<double> finishTime;
+    std::optional<int> instantiationChildLimit;
+    std::optional<int> unifierIterationLimit;
 
 public:
     const TypeId nilType;

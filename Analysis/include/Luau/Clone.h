@@ -14,12 +14,15 @@ using SeenTypePacks = std::unordered_map<TypePackId, TypePackId>;
 
 struct CloneState
 {
+    SeenTypes seenTypes;
+    SeenTypePacks seenTypePacks;
+
     int recursionCount = 0;
     bool encounteredFreeType = false;
 };
 
-TypePackId clone(TypePackId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState);
-TypeId clone(TypeId tp, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState);
-TypeFun clone(const TypeFun& typeFun, TypeArena& dest, SeenTypes& seenTypes, SeenTypePacks& seenTypePacks, CloneState& cloneState);
+TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
+TypeId clone(TypeId tp, TypeArena& dest, CloneState& cloneState);
+TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState);
 
 } // namespace Luau

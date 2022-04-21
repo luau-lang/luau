@@ -28,6 +28,7 @@ struct ToStringOptions
     bool functionTypeArguments = false;           // If true, output function type argument names when they are available
     bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
     bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
+    bool indent = false;
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     std::optional<ToStringNameMap> nameMap;
@@ -72,6 +73,8 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
 // These functions will dump the type to stdout and can be evaluated in Watch/Immediate windows or as gdb/lldb expression
 std::string dump(TypeId ty);
 std::string dump(TypePackId ty);
+
+std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
 
 std::string generateName(size_t n);
 

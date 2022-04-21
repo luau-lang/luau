@@ -388,7 +388,7 @@ TEST_CASE_FIXTURE(Fixture, "type_lists_should_be_emitted_correctly")
 
     std::string actual = decorateWithTypes(code);
 
-    CHECK_EQ(expected, decorateWithTypes(code));
+    CHECK_EQ(expected, actual);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_type_location")

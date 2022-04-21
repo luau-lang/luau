@@ -349,13 +349,11 @@ void Lexer::setReadNames(bool read)
 
 const Lexeme& Lexer::next()
 {
-    return next(this->skipComments);
+    return next(this->skipComments, true);
 }
 
-const Lexeme& Lexer::next(bool skipComments)
+const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
 {
-    bool first = true;
-
     // in skipComments mode we reject valid comments
     do
     {
@@ -363,11 +361,11 @@ const Lexeme& Lexer::next(bool skipComments)
         while (isSpace(peekch()))
             consume();
 
-        if (!FFlag::LuauParseLocationIgnoreCommentSkip || first)
+        if (!FFlag::LuauParseLocationIgnoreCommentSkip || updatePrevLocation)
             prevLocation = lexeme.location;
 
         lexeme = readNext();
-        first = false;
+        updatePrevLocation = false;
     } while (skipComments && (lexeme.type == Lexeme::Comment || lexeme.type == Lexeme::BlockComment));
 
     return lexeme;

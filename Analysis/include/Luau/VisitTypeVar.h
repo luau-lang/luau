@@ -82,6 +82,15 @@ void visit(TypeId ty, F& f, Set& seen)
     else if (auto etv = get<ErrorTypeVar>(ty))
         apply(ty, *etv, seen, f);
 
+    else if (auto ctv = get<ConstrainedTypeVar>(ty))
+    {
+        if (apply(ty, *ctv, seen, f))
+        {
+            for (TypeId part : ctv->parts)
+                visit(part, f, seen);
+        }
+    }
+
     else if (auto ptv = get<PrimitiveTypeVar>(ty))
         apply(ty, *ptv, seen, f);
 
