@@ -1,5 +1,5 @@
 {-# OPTIONS --rewriting #-}
-{-# OPTIONS --allow-unsolved-metas #-}
+
 module Properties.Subtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
