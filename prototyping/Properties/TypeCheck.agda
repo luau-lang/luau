@@ -1,16 +1,14 @@
 {-# OPTIONS --rewriting #-}
 
-open import Luau.Type using (Mode)
-
-module Properties.TypeCheck (m : Mode) where
+module Properties.TypeCheck where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Either using (Either)
-open import Luau.TypeCheck(m) using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; string; app; function; block; binexp; done; return; local; nothing; orUnknown; tgtBinOp)
+open import Luau.TypeCheck using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; string; app; function; block; binexp; done; return; local; nothing; orUnknown; tgtBinOp)
 open import Luau.Syntax using (Block; Expr; Value; BinaryOperator; yes; nil; addr; number; bool; string; val; var; binexp; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg; +; -; *; /; <; >; ==; ~=; <=; >=)
-open import Luau.Type using (Type; nil; unknown; never; number; boolean; string; _⇒_; tgt)
+open import Luau.Type using (Type; nil; unknown; never; number; boolean; string; _⇒_; src; tgt)
 open import Luau.RuntimeType using (RuntimeType; nil; number; function; string; valueType)
 open import Luau.VarCtxt using (VarCtxt; ∅; _↦_; _⊕_↦_; _⋒_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import Luau.Addr using (Addr)
@@ -21,9 +19,6 @@ open import Properties.Dec using (yes; no)
 open import Properties.Equality using (_≢_; sym; trans; cong)
 open import Properties.Product using (_×_; _,_)
 open import Properties.Remember using (Remember; remember; _,_)
-
-src : Type → Type
-src = Luau.Type.src m
 
 typeOfᴼ : Object yes → Type
 typeOfᴼ (function f ⟨ var x ∈ S ⟩∈ T is B end) = (S ⇒ T)
