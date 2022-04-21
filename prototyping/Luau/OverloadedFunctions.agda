@@ -2,7 +2,7 @@
 
 open import FFI.Data.Either using (Either; Left; Right)
 open import Luau.Type using (Type; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src)
-open import Properties.Subtyping using (dec-subtyping)
+open import Properties.DecSubtyping using (dec-subtyping)
 
 module Luau.OverloadedFunctions where
 

@@ -8,7 +8,7 @@ open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
 open import Properties.Contradiction using (CONTRADICTION; ¬; ⊥)
-open import Properties.DecSubtyping using (language-comp; dec-language; function-err-src; ¬function-err-src; src-¬function-err)
+open import Properties.DecSubtyping using (language-comp; dec-language; function-err-src; ¬function-err-src; src-¬function-err; <:-impl-⊇)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
 open import Properties.Product using (_×_; _,_)
@@ -41,6 +41,61 @@ open import Properties.Product using (_×_; _,_)
 
 <:-trans : ∀ {S T U} → (S <: T) → (T <: U) → (S <: U)
 <:-trans p q = ¬≮:-impl-<: (cond (<:-impl-¬≮: p) (<:-impl-¬≮: q) ∘ ≮:-trans)
+
+-- Properties of union
+
+<:-union : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∪ S) <: (T ∪ U))
+<:-union p q t (left r) = left (p t r)
+<:-union p q t (right r) = right (q t r)
+
+<:-∪-left : ∀ {S T} → S <: (S ∪ T)
+<:-∪-left t p = left p
+
+<:-∪-right : ∀ {S T} → T <: (S ∪ T)
+<:-∪-right t p = right p
+
+<:-∪-lub : ∀ {S T U} → (S <: U) → (T <: U) → ((S ∪ T) <: U)
+<:-∪-lub p q t (left r) = p t r
+<:-∪-lub p q t (right r) = q t r
+
+-- Properties of intersection
+
+<:-intersect : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∩ S) <: (T ∩ U))
+<:-intersect p q t (r₁ , r₂) = (p t r₁ , q t r₂)
+
+<:-∩-left : ∀ {S T} → (S ∩ T) <: S
+<:-∩-left t (p , _) = p
+
+<:-∩-right : ∀ {S T} → (S ∩ T) <: T
+<:-∩-right t (_ , p) = p
+
+<:-∩-glb : ∀ {S T U} → (S <: T) → (S <: U) → (S <: (T ∩ U))
+<:-∩-glb p q t r = (p t r , q t r)
+
+<:-∩-dist-∪ : ∀ {S T U} → (S ∩ (T ∪ U)) <: ((S ∩ T) ∪ (S ∩ U))
+<:-∩-dist-∪ t (p₁ , left p₂) = left (p₁ , p₂)
+<:-∩-dist-∪ t (p₁ , right p₂) = right (p₁ , p₂)
+
+-- Properties of functions
+<:-function : ∀ {R S T U} → (R <: S) → (T <: U) → (S ⇒ T) <: (R ⇒ U)
+<:-function p q function function = function
+<:-function p q (function-ok s t) (function-ok₁ r) = function-ok₁ (<:-impl-⊇ p s r)
+<:-function p q (function-ok s t) (function-ok₂ r) = function-ok₂ (q t r)
+<:-function p q (function-err s) (function-err r) = function-err (<:-impl-⊇ p s r)
+
+<:-function-∩-∪ : ∀ {R S T U} → ((R ⇒ T) ∩ (S ⇒ U)) <: ((R ∪ S) ⇒ (T ∪ U))
+<:-function-∩-∪ function (function , function) = function
+<:-function-∩-∪ (function-ok s t) (function-ok₁ p₁ , function-ok₁ p₂) = function-ok₁ (p₁ , p₂)
+<:-function-∩-∪ (function-ok s t) (p₁ , function-ok₂ p₂) = function-ok₂ (right p₂)
+<:-function-∩-∪ (function-ok _ _) (function-ok₂ p₁ , p₂) = function-ok₂ (left p₁)
+<:-function-∩-∪ (function-err _) (function-err p₁ , function-err q₂) = function-err (p₁ , q₂)
+
+<:-function-∩ : ∀ {S T U} → ((S ⇒ T) ∩ (S ⇒ U)) <: (S ⇒ (T ∩ U))
+<:-function-∩ function (function , function) = function
+<:-function-∩ (function-ok s t) (p₁ , function-ok₁ p₂) = function-ok₁ p₂
+<:-function-∩ (function-ok s t) (function-ok₁ p₁ , p₂) = function-ok₁ p₁
+<:-function-∩ (function-ok s t) (function-ok₂ p₁ , function-ok₂ p₂) = function-ok₂ (p₁ , p₂)
+<:-function-∩ (function-err s) (function-err p₁ , function-err p₂) = function-err p₂
 
 -- Properties of scalars
 skalar = number ∪ (string ∪ (nil ∪ boolean))
@@ -100,6 +155,20 @@ unknown-≮:-never = witness (scalar nil) unknown never
 
 function-≮:-never : ∀ {T U} → ((T ⇒ U) ≮: never)
 function-≮:-never = witness function function never
+
+<:-never : ∀ {T} → (never <: T)
+<:-never t (scalar ())
+<:-never t (scalar-function-err ())
+
+<:-never-left : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: T) → (S ∩ U) ≮: never
+<:-never-left p (witness t q₁ q₂) with p t q₁
+<:-never-left p (witness t q₁ q₂) | left r = CONTRADICTION (language-comp t q₂ r)
+<:-never-left p (witness t q₁ q₂) | right r = witness t (q₁ , r) never
+
+<:-never-right : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: U) → (S ∩ T) ≮: never
+<:-never-right p (witness t q₁ q₂) with p t q₁
+<:-never-right p (witness t q₁ q₂) | left r = witness t (q₁ , r) never
+<:-never-right p (witness t q₁ q₂) | right r = CONTRADICTION (language-comp t q₂ r)
 
 -- A Gentle Introduction To Semantic Subtyping (https://www.cduce.org/papers/gentle.pdf)
 -- defines a "set-theoretic" model (sec 2.5)
