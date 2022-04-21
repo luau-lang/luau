@@ -307,8 +307,6 @@ type Rename = typeof(x.x)
 
 TEST_CASE_FIXTURE(Fixture, "module_type_conflict")
 {
-    ScopedFastFlag luauTypeMismatchModuleName{"LuauTypeMismatchModuleName", true};
-
     fileResolver.source["game/A"] = R"(
 export type T = { x: number }
 return {}
@@ -343,8 +341,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "module_type_conflict_instantiated")
 {
-    ScopedFastFlag luauTypeMismatchModuleName{"LuauTypeMismatchModuleName", true};
-
     fileResolver.source["game/A"] = R"(
 export type Wrap<T> = { x: T }
 return {}

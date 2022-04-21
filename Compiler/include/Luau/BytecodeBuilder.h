@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/DenseHash.h"
+#include "Luau/StringUtils.h"
 
 #include <string>
 
@@ -80,6 +81,8 @@ public:
     void pushDebugUpval(StringRef name);
     uint32_t getDebugPC() const;
 
+    void addDebugRemark(const char* format, ...) LUAU_PRINTF_ATTR(2, 3);
+
     void finalize();
 
     enum DumpFlags
@@ -88,6 +91,7 @@ public:
         Dump_Lines = 1 << 1,
         Dump_Source = 1 << 2,
         Dump_Locals = 1 << 3,
+        Dump_Remarks = 1 << 4,
     };
 
     void setDumpFlags(uint32_t flags)
@@ -227,6 +231,9 @@ private:
     std::vector<DebugUpval> debugUpvals;
 
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
+
+    DenseHashMap<uint32_t, uint32_t> debugRemarks;
+    std::string debugRemarkBuffer;
 
     BytecodeEncoder* encoder = nullptr;
     std::string bytecode;

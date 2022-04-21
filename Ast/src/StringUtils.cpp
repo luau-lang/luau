@@ -11,7 +11,7 @@
 namespace Luau
 {
 
-static void vformatAppend(std::string& ret, const char* fmt, va_list args)
+void vformatAppend(std::string& ret, const char* fmt, va_list args)
 {
     va_list argscopy;
     va_copy(argscopy, args);

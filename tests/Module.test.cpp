@@ -173,13 +173,13 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
         {
             {"__add", {typeChecker.anyType}},
         },
-        std::nullopt, std::nullopt, {}, {}}};
+        std::nullopt, std::nullopt, {}, {}, "Test"}};
     TypeVar exampleClass{ClassTypeVar{"ExampleClass",
         {
             {"PropOne", {typeChecker.numberType}},
             {"PropTwo", {typeChecker.stringType}},
         },
-        std::nullopt, &exampleMetaClass, {}, {}}};
+        std::nullopt, &exampleMetaClass, {}, {}, "Test"}};
 
     TypeArena dest;
     CloneState cloneState;
@@ -196,9 +196,12 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
     CHECK_EQ("ExampleClassMeta", metatable->name);
 }
 
-TEST_CASE_FIXTURE(Fixture, "clone_sanitize_free_types")
+TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
+    ScopedFastFlag sff[]{
+        {"LuauErrorRecoveryType", true},
+        {"LuauLosslessClone", true},
+    };
 
     TypeVar freeTy(FreeTypeVar{TypeLevel{}});
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
@@ -207,17 +210,17 @@ TEST_CASE_FIXTURE(Fixture, "clone_sanitize_free_types")
     CloneState cloneState;
 
     TypeId clonedTy = clone(&freeTy, dest, cloneState);
-    CHECK_EQ("any", toString(clonedTy));
-    CHECK(cloneState.encounteredFreeType);
+    CHECK(get<FreeTypeVar>(clonedTy));
 
     cloneState = {};
     TypePackId clonedTp = clone(&freeTp, dest, cloneState);
-    CHECK_EQ("...any", toString(clonedTp));
-    CHECK(cloneState.encounteredFreeType);
+    CHECK(get<FreeTypePack>(clonedTp));
 }
 
-TEST_CASE_FIXTURE(Fixture, "clone_seal_free_tables")
+TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
 {
+    ScopedFastFlag sff{"LuauLosslessClone", true};
+
     TypeVar tableTy{TableTypeVar{}};
     TableTypeVar* ttv = getMutable<TableTypeVar>(&tableTy);
     ttv->state = TableState::Free;
@@ -227,8 +230,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_seal_free_tables")
 
     TypeId cloned = clone(&tableTy, dest, cloneState);
     const TableTypeVar* clonedTtv = get<TableTypeVar>(cloned);
-    CHECK_EQ(clonedTtv->state, TableState::Sealed);
-    CHECK(cloneState.encounteredFreeType);
+    CHECK_EQ(clonedTtv->state, TableState::Free);
 }
 
 TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")

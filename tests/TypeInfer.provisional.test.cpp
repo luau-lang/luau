@@ -584,20 +584,6 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", false},
-    };
-
-    CheckResult result = check(R"(
-        local function f() return end
-        local g = function() return f() end
-    )");
-
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
     ScopedFastFlag sff[] = {

@@ -14,6 +14,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAG(LuauGcWorkTrackFix)
+
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -1050,6 +1052,7 @@ int lua_gc(lua_State* L, int what, int data)
     {
         size_t prevthreshold = g->GCthreshold;
         size_t amount = (cast_to(size_t, data) << 10);
+        ptrdiff_t oldcredit = g->gcstate == GCSpause ? 0 : g->GCthreshold - g->totalbytes;
 
         // temporarily adjust the threshold so that we can perform GC work
         if (amount <= g->totalbytes)
@@ -1069,9 +1072,9 @@ int lua_gc(lua_State* L, int what, int data)
 
         while (g->GCthreshold <= g->totalbytes)
         {
-            luaC_step(L, false);
+            size_t stepsize = luaC_step(L, false);
 
-            actualwork += g->gcstepsize;
+            actualwork += FFlag::LuauGcWorkTrackFix ? stepsize : g->gcstepsize;
 
             if (g->gcstate == GCSpause)
             {            /* end of cycle? */
@@ -1107,11 +1110,20 @@ int lua_gc(lua_State* L, int what, int data)
         // if cycle hasn't finished, advance threshold forward for the amount of extra work performed
         if (g->gcstate != GCSpause)
         {
-            // if a new cycle was triggered by explicit step, we ignore old threshold as that shows an incorrect 'credit' of GC work
-            if (waspaused)
-                g->GCthreshold = g->totalbytes + actualwork;
+            if (FFlag::LuauGcWorkTrackFix)
+            {
+                // if a new cycle was triggered by explicit step, old 'credit' of GC work is 0
+                ptrdiff_t newthreshold = g->totalbytes + actualwork + oldcredit;
+                g->GCthreshold = newthreshold < 0 ? 0 : newthreshold;
+            }
             else
-                g->GCthreshold = prevthreshold + actualwork;
+            {
+                // if a new cycle was triggered by explicit step, we ignore old threshold as that shows an incorrect 'credit' of GC work
+                if (waspaused)
+                    g->GCthreshold = g->totalbytes + actualwork;
+                else
+                    g->GCthreshold = prevthreshold + actualwork;
+            }
         }
         break;
     }

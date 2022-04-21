@@ -814,13 +814,12 @@ def run(args, argsubcb):
 
             analyzeResult('', mainResult, compareResults)
     else:
-        for subdir, dirs, files in os.walk(arguments.folder):
-            for filename in files:
-                filepath = subdir + os.sep + filename
-
-                if filename.endswith(".lua"):
-                    if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
-                        runTest(subdir, filename, filepath)
+        all_files = [subdir + os.sep + filename for subdir, dirs, files in os.walk(arguments.folder) for filename in files]
+        for filepath in sorted(all_files):
+            subdir, filename = os.path.split(filepath)
+            if filename.endswith(".lua"):
+                if arguments.run_test == None or re.match(arguments.run_test, filename[:-4]):
+                    runTest(subdir, filename, filepath)
 
     if arguments.sort and len(plotValueLists) > 1:
         rearrange(rearrangeSortKeyForComparison)
