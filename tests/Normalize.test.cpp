@@ -21,7 +21,7 @@ void createSomeClasses(TypeChecker& typeChecker)
 
     unfreeze(arena);
 
-    TypeId parentType = arena.addType(ClassTypeVar{"Parent", {}, std::nullopt, std::nullopt, {}, nullptr});
+    TypeId parentType = arena.addType(ClassTypeVar{"Parent", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
     ClassTypeVar* parentClass = getMutable<ClassTypeVar>(parentType);
     parentClass->props["method"] = {makeFunction(arena, parentType, {}, {})};
@@ -31,7 +31,7 @@ void createSomeClasses(TypeChecker& typeChecker)
     addGlobalBinding(typeChecker, "Parent", {parentType});
     typeChecker.globalScope->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
 
-    TypeId childType = arena.addType(ClassTypeVar{"Child", {}, parentType, std::nullopt, {}, nullptr});
+    TypeId childType = arena.addType(ClassTypeVar{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
 
     ClassTypeVar* childClass = getMutable<ClassTypeVar>(childType);
     childClass->props["virtual_method"] = {makeFunction(arena, childType, {}, {})};
@@ -39,7 +39,7 @@ void createSomeClasses(TypeChecker& typeChecker)
     addGlobalBinding(typeChecker, "Child", {childType});
     typeChecker.globalScope->exportedTypeBindings["Child"] = TypeFun{{}, childType};
 
-    TypeId unrelatedType = arena.addType(ClassTypeVar{"Unrelated", {}, std::nullopt, std::nullopt, {}, nullptr});
+    TypeId unrelatedType = arena.addType(ClassTypeVar{"Unrelated", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
     addGlobalBinding(typeChecker, "Unrelated", {unrelatedType});
     typeChecker.globalScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
@@ -400,7 +400,6 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_with_table_prop")
     CHECK_EQ("{| x: {| y: number & string |} |}", toString(requireType("a")));
 }
 
-#if 0
 TEST_CASE_FIXTURE(NormalizeFixture, "tables")
 {
     check(R"(
@@ -428,6 +427,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "tables")
     CHECK(!isSubtype(b, d));
 }
 
+#if 0
 TEST_CASE_FIXTURE(NormalizeFixture, "table_indexers_are_invariant")
 {
     check(R"(
@@ -619,6 +619,7 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
+        {"LuauReturnTypeInferenceInNonstrict", true},
     };
 
     check(R"(
@@ -639,7 +640,7 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
         end
     )");
 
-    CHECK_EQ("(any, any) -> (...any)", toString(getMainModule()->getModuleScope()->returnType));
+    CHECK_EQ("(any, any) -> (any, any) -> any", toString(getMainModule()->getModuleScope()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_is_not_a_constrained_intersection")
@@ -950,6 +951,27 @@ TEST_CASE_FIXTURE(Fixture, "nested_table_normalization_with_non_table__no_ice")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "visiting_a_type_twice_is_not_considered_normal")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        --!strict
+        function f(a, b)
+            local function g()
+                if math.random() > 0.5 then
+                    return a()
+                else
+                    return b
+                end
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("<a>(() -> a, a) -> ()", toString(requireType("f")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "fuzz_failure_instersection_combine_must_follow")
 {
     ScopedFastFlag flags[] = {
@@ -962,6 +984,18 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_failure_instersection_combine_must_follow")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_failure_bound_type_is_normal_but_not_its_bounded_to")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type t252 = ((t0<t252...>)|(any))|(any)
+        type t0 = t252<t0<any,t24...>,t24...>
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

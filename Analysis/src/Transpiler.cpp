@@ -1025,31 +1025,42 @@ struct Printer
         }
         else if (const auto& a = typeAnnotation.as<AstTypeTable>())
         {
-            CommaSeparatorInserter comma(writer);
+            AstTypeReference* indexType = a->indexer ? a->indexer->indexType->as<AstTypeReference>() : nullptr;
 
-            writer.symbol("{");
-
-            for (std::size_t i = 0; i < a->props.size; ++i)
+            if (a->props.size == 0 && indexType && indexType->name == "number")
             {
-                comma();
-                advance(a->props.data[i].location.begin);
-                writer.identifier(a->props.data[i].name.value);
-                if (a->props.data[i].type)
-                {
-                    writer.symbol(":");
-                    visualizeTypeAnnotation(*a->props.data[i].type);
-                }
-            }
-            if (a->indexer)
-            {
-                comma();
-                writer.symbol("[");
-                visualizeTypeAnnotation(*a->indexer->indexType);
-                writer.symbol("]");
-                writer.symbol(":");
+                writer.symbol("{");
                 visualizeTypeAnnotation(*a->indexer->resultType);
+                writer.symbol("}");
             }
-            writer.symbol("}");
+            else
+            {
+                CommaSeparatorInserter comma(writer);
+
+                writer.symbol("{");
+
+                for (std::size_t i = 0; i < a->props.size; ++i)
+                {
+                    comma();
+                    advance(a->props.data[i].location.begin);
+                    writer.identifier(a->props.data[i].name.value);
+                    if (a->props.data[i].type)
+                    {
+                        writer.symbol(":");
+                        visualizeTypeAnnotation(*a->props.data[i].type);
+                    }
+                }
+                if (a->indexer)
+                {
+                    comma();
+                    writer.symbol("[");
+                    visualizeTypeAnnotation(*a->indexer->indexType);
+                    writer.symbol("]");
+                    writer.symbol(":");
+                    visualizeTypeAnnotation(*a->indexer->resultType);
+                }
+                writer.symbol("}");
+            }
         }
         else if (auto a = typeAnnotation.as<AstTypeTypeof>())
         {

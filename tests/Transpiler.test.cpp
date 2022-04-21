@@ -661,4 +661,21 @@ type t4 = false
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "transpile_array_types")
+{
+    std::string code = R"(
+type t1 = {number}
+type t2 = {[string]: number}
+    )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple_types")
+{
+    std::string code = "for k:string,v:boolean in next,{}do end";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_SUITE_END();

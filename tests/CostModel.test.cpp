@@ -98,4 +98,129 @@ end
     CHECK_EQ(2, Luau::Compile::computeCost(model, args2, 1));
 }
 
+TEST_CASE("ImportCall")
+{
+    uint64_t model = modelFunction(R"(
+function test(a)
+    return Instance.new(a)
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("FastCall")
+{
+    uint64_t model = modelFunction(R"(
+function test(a)
+    return math.abs(a + 1)
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    // note: we currently don't treat fast calls differently from cost model perspective
+    CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(5, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("ControlFlow")
+{
+    uint64_t model = modelFunction(R"(
+function test(a)
+    while a < 0 do
+        a += 1
+    end
+    for i=1,2 do
+        a += 1
+    end
+    for i in pairs({}) do
+        a += 1
+        if a % 2 == 0 then continue end
+    end
+    repeat
+        a += 1
+        if a % 2 == 0 then break end
+    until a > 10
+    return a
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(38, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(37, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("Conditional")
+{
+    uint64_t model = modelFunction(R"(
+function test(a)
+    return if a < 0 then -a else a
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(4, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(2, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("VarArgs")
+{
+    uint64_t model = modelFunction(R"(
+function test(...)
+    return select('#', ...) :: number
+end
+)");
+
+    CHECK_EQ(8, Luau::Compile::computeCost(model, nullptr, 0));
+}
+
+TEST_CASE("TablesFunctions")
+{
+    uint64_t model = modelFunction(R"(
+function test()
+    return { 42, op = function() end }
+end
+)");
+
+    CHECK_EQ(22, Luau::Compile::computeCost(model, nullptr, 0));
+}
+
+TEST_CASE("CostOverflow")
+{
+    uint64_t model = modelFunction(R"(
+function test()
+    return {{{{{{{{{{{{{{{}}}}}}}}}}}}}}}
+end
+)");
+
+    CHECK_EQ(127, Luau::Compile::computeCost(model, nullptr, 0));
+}
+
+TEST_CASE("TableAssign")
+{
+    uint64_t model = modelFunction(R"(
+function test(a)
+    for i=1,#a do
+        a[i] = i
+    end
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(4, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(3, Luau::Compile::computeCost(model, args2, 1));
+}
+
 TEST_SUITE_END();

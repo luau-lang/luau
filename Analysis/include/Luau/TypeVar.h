@@ -373,15 +373,17 @@ struct ClassTypeVar
     std::optional<TypeId> metatable; // metaclass?
     Tags tags;
     std::shared_ptr<ClassUserData> userData;
+    ModuleName definitionModuleName;
 
-    ClassTypeVar(
-        Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags, std::shared_ptr<ClassUserData> userData)
+    ClassTypeVar(Name name, Props props, std::optional<TypeId> parent, std::optional<TypeId> metatable, Tags tags,
+        std::shared_ptr<ClassUserData> userData, ModuleName definitionModuleName)
         : name(name)
         , props(props)
         , parent(parent)
         , metatable(metatable)
         , tags(tags)
         , userData(userData)
+        , definitionModuleName(definitionModuleName)
     {
     }
 };

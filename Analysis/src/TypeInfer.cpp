@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
 
+#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Normalize.h"
@@ -47,7 +48,6 @@ LUAU_FASTFLAGVARIABLE(LuauPropertiesGetExpectedType, false)
 LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify4, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckOptPass, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
-LUAU_FASTFLAG(LuauTypeMismatchModuleName)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
 LUAU_FASTFLAGVARIABLE(LuauAssertStripsFalsyTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
@@ -61,7 +61,9 @@ LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 LUAU_FASTFLAGVARIABLE(LuauDecoupleOperatorInferenceFromUnifiedTypeInference, false)
 LUAU_FASTFLAGVARIABLE(LuauArgCountMismatchSaysAtLeastWhenVariadic, false)
 LUAU_FASTFLAGVARIABLE(LuauTableUseCounterInstead, false)
+LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursionLimitException, false);
+LUAU_FASTFLAG(LuauLosslessClone)
 
 namespace Luau
 {
@@ -376,7 +378,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     prepareErrorsForDisplay(currentModule->errors);
 
     bool encounteredFreeType = currentModule->clonePublicInterface(*iceHandler);
-    if (encounteredFreeType)
+    if (!FFlag::LuauLosslessClone && encounteredFreeType)
     {
         reportError(TypeError{module.root->location,
             GenericError{"Free types leaked into this module's public interface. This is an internal Luau error; please report it."}});
@@ -785,7 +787,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
 
     TypePackId retPack = checkExprList(scope, return_.location, return_.list, false, {}, expectedTypes).type;
 
-    if (useConstrainedIntersections())
+    if (FFlag::LuauReturnTypeInferenceInNonstrict ? FFlag::LuauLowerBoundsCalculation : useConstrainedIntersections())
     {
         unifyLowerBound(retPack, scope->returnType, return_.location);
         return;
@@ -1241,7 +1243,12 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
         // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
         if (previouslyDefined)
+        {
+            if (FFlag::LuauReturnTypeInferenceInNonstrict && FFlag::LuauLowerBoundsCalculation)
+                quantify(funScope, ty, exprName->location);
+
             globalBindings[name] = oldBinding;
+        }
         else
             globalBindings[name] = {quantify(funScope, ty, exprName->location), exprName->location};
 
@@ -1555,7 +1562,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
 
     Name className(declaredClass.name.value);
 
-    TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}));
+    TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
     ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
 
     TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
@@ -3284,7 +3291,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
     TypePackId retPack;
     if (expr.returnAnnotation)
         retPack = resolveTypePack(funScope, *expr.returnAnnotation);
-    else if (isNonstrictMode())
+    else if (FFlag::LuauReturnTypeInferenceInNonstrict ? (!FFlag::LuauLowerBoundsCalculation && isNonstrictMode()) : isNonstrictMode())
         retPack = anyTypePack;
     else if (expectedFunctionType)
     {
@@ -5328,19 +5335,9 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         if (const auto& indexer = table->indexer)
             tableIndexer = TableIndexer(resolveType(scope, *indexer->indexType), resolveType(scope, *indexer->resultType));
 
-        if (FFlag::LuauTypeMismatchModuleName)
-        {
-            TableTypeVar ttv{props, tableIndexer, scope->level, TableState::Sealed};
-            ttv.definitionModuleName = currentModuleName;
-            return addType(std::move(ttv));
-        }
-        else
-        {
-            return addType(TableTypeVar{
-                props, tableIndexer, scope->level,
-                TableState::Sealed // FIXME: probably want a way to annotate other kinds of tables maybe
-            });
-        }
+        TableTypeVar ttv{props, tableIndexer, scope->level, TableState::Sealed};
+        ttv.definitionModuleName = currentModuleName;
+        return addType(std::move(ttv));
     }
     else if (const auto& func = annotation.as<AstTypeFunction>())
     {
@@ -5602,9 +5599,7 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
     {
         ttv->instantiatedTypeParams = typeParams;
         ttv->instantiatedTypePackParams = typePackParams;
-
-        if (FFlag::LuauTypeMismatchModuleName)
-            ttv->definitionModuleName = currentModuleName;
+        ttv->definitionModuleName = currentModuleName;
     }
 
     return instantiated;

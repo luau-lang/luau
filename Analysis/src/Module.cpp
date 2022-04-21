@@ -14,8 +14,8 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
-LUAU_FASTFLAGVARIABLE(LuauCloneDeclaredGlobals, false)
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauLosslessClone)
 
 namespace Luau
 {
@@ -182,20 +182,20 @@ bool Module::clonePublicInterface(InternalErrorReporter& ice)
         }
     }
 
-    if (FFlag::LuauCloneDeclaredGlobals)
+    for (auto& [name, ty] : declaredGlobals)
     {
-        for (auto& [name, ty] : declaredGlobals)
-        {
-            ty = clone(ty, interfaceTypes, cloneState);
-            if (FFlag::LuauLowerBoundsCalculation)
-                normalize(ty, interfaceTypes, ice);
-        }
+        ty = clone(ty, interfaceTypes, cloneState);
+        if (FFlag::LuauLowerBoundsCalculation)
+            normalize(ty, interfaceTypes, ice);
     }
 
     freeze(internalTypes);
     freeze(interfaceTypes);
 
-    return cloneState.encounteredFreeType;
+    if (FFlag::LuauLosslessClone)
+        return false; // TODO: make function return void.
+    else
+        return cloneState.encounteredFreeType;
 }
 
 } // namespace Luau

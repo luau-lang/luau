@@ -167,6 +167,7 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     Function top;
     top.vararg = true;
 
+    functionStack.reserve(8);
     functionStack.push_back(top);
 
     nameSelf = names.addStatic("self");
@@ -186,6 +187,13 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
 
     // all hot comments parsed after the first non-comment lexeme are special in that they don't affect type checking / linting mode
     hotcommentHeader = false;
+
+    // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
+    localStack.reserve(16);
+    scratchStat.reserve(16);
+    scratchExpr.reserve(16);
+    scratchLocal.reserve(16);
+    scratchBinding.reserve(16);
 }
 
 bool Parser::blockFollow(const Lexeme& l)
