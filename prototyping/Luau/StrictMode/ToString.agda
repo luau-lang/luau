@@ -27,7 +27,7 @@ treeToString (scalar boolean) n v = v ++ " is a boolean"
 treeToString (scalar string) n v = v ++ " is a string"
 treeToString (scalar nil) n v = v ++ " is nil"
 treeToString function n v = v ++ " is a function"
-treeToString (function-ok t) n v = treeToString t n (v ++ "()")
+treeToString (function-ok s t) n v = treeToString t (suc n) (v ++ "(" ++ w ++ ")") ++ " when\n  " ++ treeToString s (suc n) w where w = tmp n
 treeToString (function-err t) n v = v ++ "(" ++ w ++ ") can error when\n  " ++ treeToString t (suc n) w where w = tmp n
 
 subtypeWarningToString : ∀ {T U} → (T ≮: U) → String
