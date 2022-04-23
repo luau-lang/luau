@@ -22,110 +22,145 @@ data Normal where
   _∩_ : ∀ {F G} → FunType F → FunType G → Normal (F ∩ G)
   _∪_ : ∀ {S T} → Normal S → Scalar T → Normal (S ∪ T)
 
+data OptScalar : Type → Set where
+  never : OptScalar never
+  number : OptScalar number
+  boolean : OptScalar boolean
+  string : OptScalar string
+  nil : OptScalar nil
+  
 -- Normalization produces normal types
 normal : ∀ T → Normal (normalize T)
+normalᶠ : ∀ {F} → FunType F → Normal F
 normal-∪ⁿ : ∀ {S T} → Normal S → Normal T → Normal (S ∪ⁿ T)
 normal-∩ⁿ : ∀ {S T} → Normal S → Normal T → Normal (S ∩ⁿ T)
 normal-∪ᶠ : ∀ {F G} → FunType F → FunType G → FunType (F ∪ᶠ G)
 normal-∩ᶠ : ∀ {F G} → FunType F → FunType G → FunType (F ∩ᶠ G)
-normal-∪ˢ : ∀ {F G} → ¬FunType F → ¬FunType G → ¬FunType (F ∪ˢ G)
-normal-∩ˢ : ∀ {F G} → ¬FunType F → ¬FunType G → ¬FunType (F ∩ˢ G)
 normal-⇒ᶠ : ∀ {S T} → Normal S → Normal T → FunType (S ⇒ᶠ T)
 
-normal nil = never ∪ scalar nil
-normal (S ⇒ T) = {!!}
+normal nil = never ∪ nil
+normal (S ⇒ T) = normalᶠ (normal-⇒ᶠ (normal S) (normal T))
 normal never = never
 normal unknown = unknown
-normal boolean = never ∪ scalar boolean
-normal number = never ∪ scalar number
-normal string = never ∪ scalar string
+normal boolean = never ∪ boolean
+normal number = never ∪ number
+normal string = never ∪ string
 normal (S ∪ T) = normal-∪ⁿ (normal S) (normal T)
 normal (S ∩ T) = normal-∩ⁿ (normal S) (normal T)
 
+normalᶠ (S ⇒ T) = S ⇒ T
+normalᶠ (F ∩ G) = F ∩ G
+
 normal-∪ⁿ never never = never
 normal-∪ⁿ never unknown = unknown
-normal-∪ⁿ never (scalar number) = scalar number
-normal-∪ⁿ never (scalar boolean) = scalar boolean
-normal-∪ⁿ never (scalar string) = scalar string
-normal-∪ⁿ never (scalar nil) = scalar nil
 normal-∪ⁿ never (T ⇒ U) = T ⇒ U
-normal-∪ⁿ never (T ∩ U) = T ∩ U
-normal-∪ⁿ never (T ∪ U) = T ∪ U
+normal-∪ⁿ never (G₁ ∩ G₂) = G₁ ∩ G₂
+normal-∪ⁿ never (T₁ ∪ T₂) = (normal-∪ⁿ never) T₁ ∪ T₂
 normal-∪ⁿ unknown never = unknown
 normal-∪ⁿ unknown unknown = unknown
-normal-∪ⁿ unknown (scalar number) = unknown
-normal-∪ⁿ unknown (scalar boolean) = unknown
-normal-∪ⁿ unknown (scalar string) = unknown
-normal-∪ⁿ unknown (scalar nil) = unknown
 normal-∪ⁿ unknown (T ⇒ U) = unknown
-normal-∪ⁿ unknown (T ∩ U) = unknown
-normal-∪ⁿ unknown (T ∪ U) = unknown
-normal-∪ⁿ (scalar number) never = scalar number
-normal-∪ⁿ (scalar number) unknown = unknown
-normal-∪ⁿ (scalar number) (scalar number) = scalar number ∪ scalar number
-normal-∪ⁿ (scalar number) (scalar boolean) = scalar number ∪ scalar boolean
-normal-∪ⁿ (scalar number) (scalar string) = scalar number ∪ scalar string
-normal-∪ⁿ (scalar number) (scalar nil) = scalar number ∪ scalar nil
-normal-∪ⁿ (scalar number) (T ⇒ U) = {!!}
-normal-∪ⁿ (scalar number) (T ∩ U) = {!!}
-normal-∪ⁿ (scalar number) (T ∪ U) = {!!}
-normal-∪ⁿ (scalar boolean) T = {!!}
-normal-∪ⁿ (scalar string) T = {!!}
-normal-∪ⁿ (scalar nil) T = {!!}
-normal-∪ⁿ (S ⇒ S₁) T = {!!}
-normal-∪ⁿ (x ∩ x₁) T = {!!}
-normal-∪ⁿ (S ∪ x) T = {!!}
--- normal-∪ⁿ never (¬fun (S₁ ∪ S₂)) = ¬fun (S₁ ∪ S₂)
--- normal-∪ⁿ never (fun (S ⇒ T)) = fun (S ⇒ T)
--- normal-∪ⁿ never (fun (F₁ ∩ F₂)) = fun (F₁ ∩ F₂)
--- normal-∪ⁿ never (fun function) = fun function
--- normal-∪ⁿ never (both F S) = both F S
--- normal-∪ⁿ never unknown = unknown
--- normal-∪ⁿ (¬fun (scalar s)) never = ¬fun (scalar s)
--- normal-∪ⁿ (¬fun (scalar s)) (¬fun (scalar t)) = {!!}
--- normal-∪ⁿ (¬fun (scalar s)) (¬fun (T ∪ U)) = {!!}
--- normal-∪ⁿ (¬fun (scalar s)) (fun G) = {!!}
--- normal-∪ⁿ (¬fun (scalar s)) (both G T) = {!!}
--- normal-∪ⁿ (¬fun (scalar s)) unknown = {!!}
--- normal-∪ⁿ (¬fun (S ∪ S₁)) T = {!!}
--- normal-∪ⁿ (fun F) T = {!!}
--- normal-∪ⁿ (both F S) T = {!!}
--- normal-∪ⁿ unknown T = {!!}
--- normal-∪ⁿ never T = {!!}
+normal-∪ⁿ unknown (G₁ ∩ G₂) = unknown
+normal-∪ⁿ unknown (T₁ ∪ T₂) = (normal-∪ⁿ unknown T₁) ∪ T₂
+normal-∪ⁿ (R ⇒ S) never = (R ⇒ S)
+normal-∪ⁿ (R ⇒ S) unknown = unknown
+normal-∪ⁿ (R ⇒ S) (T ⇒ U) = normalᶠ (normal-∪ᶠ (R ⇒ S) (T ⇒ U))
+normal-∪ⁿ (R ⇒ S) (G₁ ∩ G₂) = normalᶠ (normal-∪ᶠ (R ⇒ S) (G₁ ∩ G₂)) 
+normal-∪ⁿ (R ⇒ S) (T₁ ∪ T₂) = (normal-∪ⁿ (R ⇒ S) T₁) ∪ T₂
+normal-∪ⁿ (F₁ ∩ F₂) never = (F₁ ∩ F₂)
+normal-∪ⁿ (F₁ ∩ F₂) unknown = unknown
+normal-∪ⁿ (F₁ ∩ F₂) (T ⇒ U) = normalᶠ (normal-∪ᶠ (F₁ ∩ F₂) (T ⇒ U))
+normal-∪ⁿ (F₁ ∩ F₂) (G₁ ∩ G₂) = normalᶠ (normal-∪ᶠ (F₁ ∩ F₂) (G₁ ∩ G₂))
+normal-∪ⁿ (F₁ ∩ F₂) (T₁ ∪ T₂) = (normal-∪ⁿ (F₁ ∩ F₂) T₁) ∪ T₂
+normal-∪ⁿ (S₁ ∪ S₂) never = S₁ ∪ S₂
+normal-∪ⁿ (S₁ ∪ S₂) unknown = unknown
+normal-∪ⁿ (S₁ ∪ S₂) (T₁ ⇒ T₂) = normal-∪ⁿ S₁ (T₁ ⇒ T₂) ∪ S₂
+normal-∪ⁿ (S₁ ∪ S₂) (G₁ ∩ G₂) = normal-∪ⁿ S₁ (G₁ ∩ G₂) ∪ S₂
+normal-∪ⁿ (S₁ ∪ S₂) (T₁ ∪ T₂) = normal-∪ⁿ (S₁ ∪ S₂) T₁ ∪ T₂
 
-normal-∩ⁿ S T = {!!}
-
--- normal-∪ⁿ S never = S
--- normal-∪ⁿ (F ∪ S) unknown = unknown
+-- normal-∪ⁿ never never = never
 -- normal-∪ⁿ never unknown = unknown
+-- normal-∪ⁿ never (scalar number) = scalar number
+-- normal-∪ⁿ never (scalar boolean) = scalar boolean
+-- normal-∪ⁿ never (scalar string) = scalar string
+-- normal-∪ⁿ never (scalar nil) = scalar nil
+-- normal-∪ⁿ never (T ⇒ U) = T ⇒ U
+-- normal-∪ⁿ never (T ∩ U) = T ∩ U
+-- normal-∪ⁿ never (T ∪ U) = T ∪ U
+-- normal-∪ⁿ unknown never = unknown
 -- normal-∪ⁿ unknown unknown = unknown
--- normal-∪ⁿ never (G ∪ T) = G ∪ T
--- normal-∪ⁿ unknown (G ∪ T) = unknown
--- normal-∪ⁿ (F ∪ S) (G ∪ T) = (normal-∪ᶠ F G) ∪ (normal-∪ˢ S T)
+-- normal-∪ⁿ unknown (scalar number) = unknown
+-- normal-∪ⁿ unknown (scalar boolean) = unknown
+-- normal-∪ⁿ unknown (scalar string) = unknown
+-- normal-∪ⁿ unknown (scalar nil) = unknown
+-- normal-∪ⁿ unknown (T ⇒ U) = unknown
+-- normal-∪ⁿ unknown (T ∩ U) = unknown
+-- normal-∪ⁿ unknown (T ∪ U) = unknown
+-- normal-∪ⁿ (scalar number) never = scalar number
+-- normal-∪ⁿ (scalar number) unknown = unknown
+-- normal-∪ⁿ (scalar number) (scalar number) = scalar number ∪ scalar number
+-- normal-∪ⁿ (scalar number) (scalar boolean) = scalar number ∪ scalar boolean
+-- normal-∪ⁿ (scalar number) (scalar string) = scalar number ∪ scalar string
+-- normal-∪ⁿ (scalar number) (scalar nil) = scalar number ∪ scalar nil
+-- normal-∪ⁿ (scalar number) (T ⇒ U) = {!!}
+-- normal-∪ⁿ (scalar number) (T ∩ U) = {!!}
+-- normal-∪ⁿ (scalar number) (T ∪ U) = {!!}
+-- normal-∪ⁿ (scalar boolean) T = {!!}
+-- normal-∪ⁿ (scalar string) T = {!!}
+-- normal-∪ⁿ (scalar nil) T = {!!}
+-- normal-∪ⁿ (S ⇒ S₁) T = {!!}
+-- normal-∪ⁿ (x ∩ x₁) T = {!!}
+-- normal-∪ⁿ (S ∪ x) T = {!!}
+-- -- normal-∪ⁿ never (¬fun (S₁ ∪ S₂)) = ¬fun (S₁ ∪ S₂)
+-- -- normal-∪ⁿ never (fun (S ⇒ T)) = fun (S ⇒ T)
+-- -- normal-∪ⁿ never (fun (F₁ ∩ F₂)) = fun (F₁ ∩ F₂)
+-- -- normal-∪ⁿ never (fun function) = fun function
+-- -- normal-∪ⁿ never (both F S) = both F S
+-- -- normal-∪ⁿ never unknown = unknown
+-- -- normal-∪ⁿ (¬fun (scalar s)) never = ¬fun (scalar s)
+-- -- normal-∪ⁿ (¬fun (scalar s)) (¬fun (scalar t)) = {!!}
+-- -- normal-∪ⁿ (¬fun (scalar s)) (¬fun (T ∪ U)) = {!!}
+-- -- normal-∪ⁿ (¬fun (scalar s)) (fun G) = {!!}
+-- -- normal-∪ⁿ (¬fun (scalar s)) (both G T) = {!!}
+-- -- normal-∪ⁿ (¬fun (scalar s)) unknown = {!!}
+-- -- normal-∪ⁿ (¬fun (S ∪ S₁)) T = {!!}
+-- -- normal-∪ⁿ (fun F) T = {!!}
+-- -- normal-∪ⁿ (both F S) T = {!!}
+-- -- normal-∪ⁿ unknown T = {!!}
+-- -- normal-∪ⁿ never T = {!!}
 
--- normal-∩ⁿ S never = never
--- normal-∩ⁿ (F ∪ S) unknown = F ∪ S
--- normal-∩ⁿ never unknown = never
--- normal-∩ⁿ unknown unknown = unknown
--- normal-∩ⁿ never (G ∪ T) = never
--- normal-∩ⁿ unknown (G ∪ T) = G ∪ T
--- normal-∩ⁿ (F ∪ S) (G ∪ T) = (normal-∩ᶠ F G) ∪ (normal-∩ˢ S T)
+-- normal-∩ⁿ S T = {!!}
 
-normal-∪ᶠ (R ⇒ S) (T ⇒ U) = normal-⇒ᶠ (normal-∩ⁿ R T) (normal-∪ⁿ S U)
-normal-∪ᶠ (R ⇒ S) (G₁ ∩ G₂) = normal-∩ᶠ (normal-∪ᶠ (R ⇒ S) G₁) (normal-∪ᶠ (R ⇒ S) G₂)
-normal-∪ᶠ (F₁ ∩ F₂) (T ⇒ U) = normal-∩ᶠ (normal-∪ᶠ F₁ (T ⇒ U)) (normal-∪ᶠ F₂ (T ⇒ U))
-normal-∪ᶠ (F₁ ∩ F₂) (G₁ ∩ G₂) = normal-∩ᶠ (normal-∪ᶠ F₁ (G₁ ∩ G₂)) (normal-∪ᶠ F₂ (G₁ ∩ G₂))
+-- -- normal-∪ⁿ S never = S
+-- -- normal-∪ⁿ (F ∪ S) unknown = unknown
+-- -- normal-∪ⁿ never unknown = unknown
+-- -- normal-∪ⁿ unknown unknown = unknown
+-- -- normal-∪ⁿ never (G ∪ T) = G ∪ T
+-- -- normal-∪ⁿ unknown (G ∪ T) = unknown
+-- -- normal-∪ⁿ (F ∪ S) (G ∪ T) = (normal-∪ᶠ F G) ∪ (normal-∪ˢ S T)
 
-normal-∩ᶠ (F₁ ∩ F₂) (T ⇒ U) = (F₁ ∩ F₂) ∩ (T ⇒ U)
-normal-∩ᶠ (F₁ ∩ F₂) (G ∩ G₁) = (F₁ ∩ F₂) ∩ (G ∩ G₁)
-normal-∩ᶠ (R ⇒ S) (G₁ ∩ G₂) = (R ⇒ S) ∩ (G₁ ∩ G₂)
-normal-∩ᶠ (R ⇒ S) (T ⇒ U) = (R ⇒ S) ∩ (T ⇒ U)
+-- -- normal-∩ⁿ S never = never
+-- -- normal-∩ⁿ (F ∪ S) unknown = F ∪ S
+-- -- normal-∩ⁿ never unknown = never
+-- -- normal-∩ⁿ unknown unknown = unknown
+-- -- normal-∩ⁿ never (G ∪ T) = never
+-- -- normal-∩ⁿ unknown (G ∪ T) = G ∪ T
+-- -- normal-∩ⁿ (F ∪ S) (G ∪ T) = (normal-∩ᶠ F G) ∪ (normal-∩ˢ S T)
 
-normal-∪ˢ F G = {!!}
+-- normal-∪ᶠ (R ⇒ S) (T ⇒ U) = normal-⇒ᶠ (normal-∩ⁿ R T) (normal-∪ⁿ S U)
+-- normal-∪ᶠ (R ⇒ S) (G₁ ∩ G₂) = normal-∩ᶠ (normal-∪ᶠ (R ⇒ S) G₁) (normal-∪ᶠ (R ⇒ S) G₂)
+-- normal-∪ᶠ (F₁ ∩ F₂) (T ⇒ U) = normal-∩ᶠ (normal-∪ᶠ F₁ (T ⇒ U)) (normal-∪ᶠ F₂ (T ⇒ U))
+-- normal-∪ᶠ (F₁ ∩ F₂) (G₁ ∩ G₂) = normal-∩ᶠ (normal-∪ᶠ F₁ (G₁ ∩ G₂)) (normal-∪ᶠ F₂ (G₁ ∩ G₂))
 
-normal-∩ˢ F G = {!!}
+-- normal-∩ᶠ (F₁ ∩ F₂) (T ⇒ U) = (F₁ ∩ F₂) ∩ (T ⇒ U)
+-- normal-∩ᶠ (F₁ ∩ F₂) (G ∩ G₁) = (F₁ ∩ F₂) ∩ (G ∩ G₁)
+-- normal-∩ᶠ (R ⇒ S) (G₁ ∩ G₂) = (R ⇒ S) ∩ (G₁ ∩ G₂)
+-- normal-∩ᶠ (R ⇒ S) (T ⇒ U) = (R ⇒ S) ∩ (T ⇒ U)
 
-normal-⇒ᶠ S T = {!!}
+-- normal-∪ˢ F G = {!!}
+
+-- normal-∩ˢ F G = {!!}
+
+-- normal-⇒ᶠ S T = {!!}
 
 -- record _<:forget_ {P : Type → Set} (S : Type) (T : ∃ P) : Set where
 --   constructor ⟨_⟩
