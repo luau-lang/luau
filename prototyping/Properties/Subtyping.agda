@@ -40,7 +40,10 @@ open import Properties.Product using (_×_; _,_)
 ≮:-trans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
 
 <:-trans : ∀ {S T U} → (S <: T) → (T <: U) → (S <: U)
-<:-trans p q = ¬≮:-impl-<: (cond (<:-impl-¬≮: p) (<:-impl-¬≮: q) ∘ ≮:-trans)
+<:-trans p q t r = q t (p t r)
+
+<:-trans-≮: : ∀ {S T U} → (S <: T) → (S ≮: U) → (T ≮: U)
+<:-trans-≮: p (witness t q r) = witness t (p t q) r
 
 -- Properties of union
 
@@ -58,6 +61,12 @@ open import Properties.Product using (_×_; _,_)
 <:-∪-lub p q t (left r) = p t r
 <:-∪-lub p q t (right r) = q t r
 
+≮:-∪-left : ∀ {S T U} → (S ≮: U) → ((S ∪ T) ≮: U)
+≮:-∪-left (witness t p q) = witness t (left p) q
+
+≮:-∪-right : ∀ {S T U} → (T ≮: U) → ((S ∪ T) ≮: U)
+≮:-∪-right (witness t p q) = witness t (right p) q
+
 -- Properties of intersection
 
 <:-intersect : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∩ S) <: (T ∩ U))
@@ -72,9 +81,29 @@ open import Properties.Product using (_×_; _,_)
 <:-∩-glb : ∀ {S T U} → (S <: T) → (S <: U) → (S <: (T ∩ U))
 <:-∩-glb p q t r = (p t r , q t r)
 
+≮:-∩-left : ∀ {S T U} → (S ≮: T) → (S ≮: (T ∩ U))
+≮:-∩-left (witness t p q) = witness t p (left q)
+
+≮:-∩-right : ∀ {S T U} → (S ≮: U) → (S ≮: (T ∩ U))
+≮:-∩-right (witness t p q) = witness t p (right q)
+
+-- Distribution properties
 <:-∩-dist-∪ : ∀ {S T U} → (S ∩ (T ∪ U)) <: ((S ∩ T) ∪ (S ∩ U))
 <:-∩-dist-∪ t (p₁ , left p₂) = left (p₁ , p₂)
 <:-∩-dist-∪ t (p₁ , right p₂) = right (p₁ , p₂)
+
+∩-dist-∪-<: : ∀ {S T U} → ((S ∩ T) ∪ (S ∩ U)) <: (S ∩ (T ∪ U))
+∩-dist-∪-<: t (left (p₁ , p₂)) = (p₁ , left p₂)
+∩-dist-∪-<: t (right (p₁ , p₂)) = (p₁ , right p₂)
+
+<:-∪-dist-∩ : ∀ {S T U} → (S ∪ (T ∩ U)) <: ((S ∪ T) ∩ (S ∪ U))
+<:-∪-dist-∩ t (left p) = (left p , left p)
+<:-∪-dist-∩ t (right (p₁ , p₂)) = (right p₁ , right p₂)
+
+∪-dist-∩-<: : ∀ {S T U} → ((S ∪ T) ∩ (S ∪ U)) <: (S ∪ (T ∩ U))
+∪-dist-∩-<: t (left p₁ , p₂) = left p₁
+∪-dist-∩-<: t (right p₁ , left p₂) = left p₂
+∪-dist-∩-<: t (right p₁ , right p₂) = right (p₁ , p₂)
 
 -- Properties of functions
 <:-function : ∀ {R S T U} → (R <: S) → (T <: U) → (S ⇒ T) <: (R ⇒ U)
@@ -96,6 +125,15 @@ open import Properties.Product using (_×_; _,_)
 <:-function-∩ (function-ok s t) (function-ok₁ p₁ , p₂) = function-ok₁ p₁
 <:-function-∩ (function-ok s t) (function-ok₂ p₁ , function-ok₂ p₂) = function-ok₂ (p₁ , p₂)
 <:-function-∩ (function-err s) (function-err p₁ , function-err p₂) = function-err p₂
+
+<:-function-∪-∩ : ∀ {R S T U} → ((R ∩ S) ⇒ (T ∪ U)) <: ((R ⇒ T) ∪ (S ⇒ U))
+<:-function-∪-∩ function function = left function
+<:-function-∪-∩ (function-ok s t) (function-ok₁ (left p)) = left (function-ok₁ p)
+<:-function-∪-∩ (function-ok s t) (function-ok₁ (right p)) = right (function-ok₁ p)
+<:-function-∪-∩ (function-ok s t) (function-ok₂ (left p)) = left (function-ok₂ p)
+<:-function-∪-∩ (function-ok s t) (function-ok₂ (right p)) = right (function-ok₂ p)
+<:-function-∪-∩ (function-err s) (function-err (left p)) = left (function-err p)
+<:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
 -- Properties of scalars
 skalar = number ∪ (string ∪ (nil ∪ boolean))
@@ -160,15 +198,24 @@ function-≮:-never = witness function function never
 <:-never t (scalar ())
 <:-never t (scalar-function-err ())
 
-<:-never-left : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: T) → (S ∩ U) ≮: never
-<:-never-left p (witness t q₁ q₂) with p t q₁
-<:-never-left p (witness t q₁ q₂) | left r = CONTRADICTION (language-comp t q₂ r)
-<:-never-left p (witness t q₁ q₂) | right r = witness t (q₁ , r) never
+≮:-never-left : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: T) → (S ∩ U) ≮: never
+≮:-never-left p (witness t q₁ q₂) with p t q₁
+≮:-never-left p (witness t q₁ q₂) | left r = CONTRADICTION (language-comp t q₂ r)
+≮:-never-left p (witness t q₁ q₂) | right r = witness t (q₁ , r) never
 
-<:-never-right : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: U) → (S ∩ T) ≮: never
-<:-never-right p (witness t q₁ q₂) with p t q₁
-<:-never-right p (witness t q₁ q₂) | left r = witness t (q₁ , r) never
-<:-never-right p (witness t q₁ q₂) | right r = CONTRADICTION (language-comp t q₂ r)
+≮:-never-right : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: U) → (S ∩ T) ≮: never
+≮:-never-right p (witness t q₁ q₂) with p t q₁
+≮:-never-right p (witness t q₁ q₂) | left r = witness t (q₁ , r) never
+≮:-never-right p (witness t q₁ q₂) | right r = CONTRADICTION (language-comp t q₂ r)
+
+<:-unknown : ∀ {T} → (T <: unknown)
+<:-unknown t p = unknown
+
+<:-everything : unknown <: ((never ⇒ unknown) ∪ skalar)
+<:-everything (scalar s) p = right (skalar-scalar s)
+<:-everything function p = left function
+<:-everything (function-ok s t) p = left (function-ok₁ never)
+<:-everything (function-err s) p = left (function-err never)
 
 -- A Gentle Introduction To Semantic Subtyping (https://www.cduce.org/papers/gentle.pdf)
 -- defines a "set-theoretic" model (sec 2.5)
