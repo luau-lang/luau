@@ -6,8 +6,7 @@ open import Luau.Type using (Type; nil; number; string; boolean; never; unknown;
 ¬function : Type
 ¬function = number ∪ (string ∪ (nil ∪ boolean))
 
--- Normalize
-normalize : Type → Type
+-- Unions and intersections of normalized types
 _∪ᶠ_ : Type → Type → Type
 _∩ᶠ_ : Type → Type → Type
 _∪ⁿˢ_ : Type → Type → Type
@@ -15,16 +14,6 @@ _∩ⁿˢ_ : Type → Type → Type
 _∪ⁿ_ : Type → Type → Type
 _∩ⁿ_ : Type → Type → Type
 _⇒ᶠ_ : Type → Type → Type
-
-normalize nil = never ∪ nil
-normalize (S ⇒ T) = (normalize S ⇒ᶠ normalize T)
-normalize never = never
-normalize unknown = unknown
-normalize boolean = never ∪ boolean
-normalize number = never ∪ number
-normalize string = never ∪ string
-normalize (S ∪ T) = normalize S ∪ⁿ normalize T
-normalize (S ∩ T) = normalize S ∩ⁿ normalize T
 
 -- Union of function types
 never ∪ᶠ G = G
@@ -76,3 +65,16 @@ F ∪ⁿˢ T = F ∪ T
 -- Functions between normalized types
 (never ⇒ᶠ T) = (never ⇒ unknown)
 (S ⇒ᶠ T) = (S ⇒ T)
+
+-- Normalize!
+normalize : Type → Type
+normalize nil = never ∪ nil
+normalize (S ⇒ T) = (normalize S ⇒ᶠ normalize T)
+normalize never = never
+normalize unknown = unknown
+normalize boolean = never ∪ boolean
+normalize number = never ∪ number
+normalize string = never ∪ string
+normalize (S ∪ T) = normalize S ∪ⁿ normalize T
+normalize (S ∩ T) = normalize S ∩ⁿ normalize T
+
