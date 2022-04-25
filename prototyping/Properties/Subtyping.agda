@@ -4,9 +4,10 @@ module Properties.Subtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
+open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
-open import Properties.Contradiction using (CONTRADICTION; ¬)
+open import Properties.Contradiction using (CONTRADICTION; ¬; ⊥)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
 open import Properties.Product using (_×_; _,_)
@@ -73,6 +74,11 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-impl-¬≮: : ∀ {T U} → (T <: U) → ¬(T ≮: U)
 <:-impl-¬≮: p (witness t q r) = language-comp t r (p t q)
 
+<:-impl-⊇ : ∀ {T U} → (T <: U) → ∀ t → ¬Language U t → ¬Language T t
+<:-impl-⊇ {T} p t q with dec-language T t
+<:-impl-⊇ {_} p t q | Left r = r
+<:-impl-⊇ {_} p t q | Right r = CONTRADICTION (language-comp t q (p t r))
+
 -- reflexivity
 ≮:-refl : ∀ {T} → ¬(T ≮: T)
 ≮:-refl (witness t p q) = language-comp t q p
@@ -91,7 +97,93 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 ≮:-trans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
 
 <:-trans : ∀ {S T U} → (S <: T) → (T <: U) → (S <: U)
-<:-trans p q = ¬≮:-impl-<: (cond (<:-impl-¬≮: p) (<:-impl-¬≮: q) ∘ ≮:-trans)
+<:-trans p q t r = q t (p t r)
+
+<:-trans-≮: : ∀ {S T U} → (S <: T) → (S ≮: U) → (T ≮: U)
+<:-trans-≮: p (witness t q r) = witness t (p t q) r
+
+-- Properties of union
+
+<:-union : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∪ S) <: (T ∪ U))
+<:-union p q t (left r) = left (p t r)
+<:-union p q t (right r) = right (q t r)
+
+<:-∪-left : ∀ {S T} → S <: (S ∪ T)
+<:-∪-left t p = left p
+
+<:-∪-right : ∀ {S T} → T <: (S ∪ T)
+<:-∪-right t p = right p
+
+<:-∪-lub : ∀ {S T U} → (S <: U) → (T <: U) → ((S ∪ T) <: U)
+<:-∪-lub p q t (left r) = p t r
+<:-∪-lub p q t (right r) = q t r
+
+≮:-∪-left : ∀ {S T U} → (S ≮: U) → ((S ∪ T) ≮: U)
+≮:-∪-left (witness t p q) = witness t (left p) q
+
+≮:-∪-right : ∀ {S T U} → (T ≮: U) → ((S ∪ T) ≮: U)
+≮:-∪-right (witness t p q) = witness t (right p) q
+
+-- Properties of intersection
+
+<:-intersect : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∩ S) <: (T ∩ U))
+<:-intersect p q t (r₁ , r₂) = (p t r₁ , q t r₂)
+
+<:-∩-left : ∀ {S T} → (S ∩ T) <: S
+<:-∩-left t (p , _) = p
+
+<:-∩-right : ∀ {S T} → (S ∩ T) <: T
+<:-∩-right t (_ , p) = p
+
+<:-∩-glb : ∀ {S T U} → (S <: T) → (S <: U) → (S <: (T ∩ U))
+<:-∩-glb p q t r = (p t r , q t r)
+
+≮:-∩-left : ∀ {S T U} → (S ≮: T) → (S ≮: (T ∩ U))
+≮:-∩-left (witness t p q) = witness t p (left q)
+
+≮:-∩-right : ∀ {S T U} → (S ≮: U) → (S ≮: (T ∩ U))
+≮:-∩-right (witness t p q) = witness t p (right q)
+
+-- Distribution properties
+<:-∩-dist-∪ : ∀ {S T U} → (S ∩ (T ∪ U)) <: ((S ∩ T) ∪ (S ∩ U))
+<:-∩-dist-∪ t (p₁ , left p₂) = left (p₁ , p₂)
+<:-∩-dist-∪ t (p₁ , right p₂) = right (p₁ , p₂)
+
+∩-dist-∪-<: : ∀ {S T U} → ((S ∩ T) ∪ (S ∩ U)) <: (S ∩ (T ∪ U))
+∩-dist-∪-<: t (left (p₁ , p₂)) = (p₁ , left p₂)
+∩-dist-∪-<: t (right (p₁ , p₂)) = (p₁ , right p₂)
+
+<:-∪-dist-∩ : ∀ {S T U} → (S ∪ (T ∩ U)) <: ((S ∪ T) ∩ (S ∪ U))
+<:-∪-dist-∩ t (left p) = (left p , left p)
+<:-∪-dist-∩ t (right (p₁ , p₂)) = (right p₁ , right p₂)
+
+∪-dist-∩-<: : ∀ {S T U} → ((S ∪ T) ∩ (S ∪ U)) <: (S ∪ (T ∩ U))
+∪-dist-∩-<: t (left p₁ , p₂) = left p₁
+∪-dist-∩-<: t (right p₁ , left p₂) = left p₂
+∪-dist-∩-<: t (right p₁ , right p₂) = right (p₁ , p₂)
+
+-- Properties of functions
+<:-function : ∀ {R S T U} → (R <: S) → (T <: U) → (S ⇒ T) <: (R ⇒ U)
+<:-function p q function function = function
+<:-function p q (function-ok t) (function-ok r) = function-ok (q t r)
+<:-function p q (function-err s) (function-err r) = function-err (<:-impl-⊇ p s r)
+
+<:-function-∩-∪ : ∀ {R S T U} → ((R ⇒ T) ∩ (S ⇒ U)) <: ((R ∪ S) ⇒ (T ∪ U))
+<:-function-∩-∪ function (function , function) = function
+<:-function-∩-∪ (function-ok t) (function-ok p₁ , function-ok p₂) = function-ok (right p₂)
+<:-function-∩-∪ (function-err _) (function-err p₁ , function-err q₂) = function-err (p₁ , q₂)
+
+<:-function-∩ : ∀ {S T U} → ((S ⇒ T) ∩ (S ⇒ U)) <: (S ⇒ (T ∩ U))
+<:-function-∩ function (function , function) = function
+<:-function-∩ (function-ok t) (function-ok p₁ , function-ok p₂) = function-ok (p₁ , p₂)
+<:-function-∩ (function-err s) (function-err p₁ , function-err p₂) = function-err p₂
+
+<:-function-∪-∩ : ∀ {R S T U} → ((R ∩ S) ⇒ (T ∪ U)) <: ((R ⇒ T) ∪ (S ⇒ U))
+<:-function-∪-∩ function function = left function
+<:-function-∪-∩ (function-ok t) (function-ok (left p)) = left (function-ok p)
+<:-function-∪-∩ (function-ok t) (function-ok (right p)) = right (function-ok p)
+<:-function-∪-∩ (function-err s) (function-err (left p)) = left (function-err p)
+<:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
 -- Properties of scalars
 skalar = number ∪ (string ∪ (nil ∪ boolean))
@@ -110,6 +202,15 @@ scalar-≮:-never s = witness (scalar s) (scalar s) never
 
 scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
 scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
+
+skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
+skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
+
+skalar-scalar : ∀ {T} (s : Scalar T) → (Language skalar (scalar s))
+skalar-scalar number = left (scalar number)
+skalar-scalar boolean = right (right (right (scalar boolean)))
+skalar-scalar string = right (left (scalar string))
+skalar-scalar nil = right (right (left (scalar nil)))
 
 -- Properties of tgt
 tgt-function-ok : ∀ {T t} → (Language (tgt T) t) → Language T (function-ok t)
@@ -130,15 +231,6 @@ function-ok-tgt (left p) = left (function-ok-tgt p)
 function-ok-tgt (right p) = right (function-ok-tgt p)
 function-ok-tgt (p₁ , p₂) = (function-ok-tgt p₁ , function-ok-tgt p₂)
 function-ok-tgt unknown = unknown
-
-skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
-skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
-
-skalar-scalar : ∀ {T} (s : Scalar T) → (Language skalar (scalar s))
-skalar-scalar number = left (scalar number)
-skalar-scalar boolean = right (right (right (scalar boolean)))
-skalar-scalar string = right (left (scalar string))
-skalar-scalar nil = right (right (left (scalar nil)))
 
 tgt-never-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (never ⇒ U)))
 tgt-never-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
@@ -219,6 +311,29 @@ unknown-≮:-never = witness (scalar nil) unknown never
 function-≮:-never : ∀ {T U} → ((T ⇒ U) ≮: never)
 function-≮:-never = witness function function never
 
+<:-never : ∀ {T} → (never <: T)
+<:-never t (scalar ())
+<:-never t (scalar-function-err ())
+
+≮:-never-left : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: T) → (S ∩ U) ≮: never
+≮:-never-left p (witness t q₁ q₂) with p t q₁
+≮:-never-left p (witness t q₁ q₂) | left r = CONTRADICTION (language-comp t q₂ r)
+≮:-never-left p (witness t q₁ q₂) | right r = witness t (q₁ , r) never
+
+≮:-never-right : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: U) → (S ∩ T) ≮: never
+≮:-never-right p (witness t q₁ q₂) with p t q₁
+≮:-never-right p (witness t q₁ q₂) | left r = witness t (q₁ , r) never
+≮:-never-right p (witness t q₁ q₂) | right r = CONTRADICTION (language-comp t q₂ r)
+
+<:-unknown : ∀ {T} → (T <: unknown)
+<:-unknown t p = unknown
+
+<:-everything : unknown <: ((never ⇒ unknown) ∪ skalar)
+<:-everything (scalar s) p = right (skalar-scalar s)
+<:-everything function p = left function
+<:-everything (function-ok t) p = left (function-ok unknown)
+<:-everything (function-err s) p = left (function-err never)
+
 -- A Gentle Introduction To Semantic Subtyping (https://www.cduce.org/papers/gentle.pdf)
 -- defines a "set-theoretic" model (sec 2.5)
 -- Unfortunately we don't quite have this property, due to uninhabited types,
@@ -234,13 +349,21 @@ _⊗_ : ∀ {A B : Set} → (A → Set) → (B → Set) → ((A × B) → Set)
 Comp : ∀ {A : Set} → (A → Set) → (A → Set)
 Comp P a = ¬(P a)
 
+Lift : ∀ {A : Set} → (A → Set) → (Maybe A → Set)
+Lift P nothing = ⊥
+Lift P (just a) = P a
+
 set-theoretic-if : ∀ {S₁ T₁ S₂ T₂} →
 
   -- This is the "if" part of being a set-theoretic model
+  -- though it uses the definition from Frisch's thesis
+  -- rather than from the Gentle Introduction. The difference
+  -- being the presence of Lift, (written D_Ω in Defn 4.2 of
+  -- https://www.cduce.org/papers/frisch_phd.pdf).
   (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂)) →
-  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂)))
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁))) → Q ⊆ Comp((Language S₂) ⊗ Comp(Lift(Language T₂))))
 
-set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , u) Qtu (S₂t , ¬T₂u) = q (t , u) Qtu (S₁t , ¬T₁u) where
+set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , just u) Qtu (S₂t , ¬T₂u) = q (t , just u) Qtu (S₁t , ¬T₁u) where
 
   S₁t : Language S₁ t
   S₁t with dec-language S₁ t
@@ -252,6 +375,14 @@ set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , u) Qtu (S₂t , ¬T₂u)
   ¬T₁u T₁u with p (function-ok u) (function-ok T₁u)
   ¬T₁u T₁u | function-ok T₂u = ¬T₂u T₂u
 
+set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , nothing) Qt- (S₂t , _) = q (t , nothing) Qt- (S₁t , λ ()) where
+
+  S₁t : Language S₁ t
+  S₁t with dec-language S₁ t
+  S₁t | Left ¬S₁t with p (function-err t) (function-err ¬S₁t)
+  S₁t | Left ¬S₁t | function-err ¬S₂t = CONTRADICTION (language-comp t ¬S₂t S₂t)
+  S₁t | Right r = r
+
 not-quite-set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
 
   -- We don't quite have that this is a set-theoretic model
@@ -260,30 +391,32 @@ not-quite-set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
   ∀ s₂ t₂ → Language S₂ s₂ → ¬Language T₂ t₂ →
 
   -- This is the "only if" part of being a set-theoretic model
-  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁)) → Q ⊆ Comp((Language S₂) ⊗ Comp(Language T₂))) →
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁))) → Q ⊆ Comp((Language S₂) ⊗ Comp(Lift(Language T₂)))) →
   (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂))
 
 not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ t₂ S₂s₂ ¬T₂t₂ p = r where
 
-  Q : (Tree × Tree) → Set
-  Q (t , u) = Either (¬Language S₁ t) (Language T₁ u)
+  Q : (Tree × Maybe Tree) → Set
+  Q (t , just u) = Either (¬Language S₁ t) (Language T₁ u)
+  Q (t , nothing) = ¬Language S₁ t
 
-  q : Q ⊆ Comp((Language S₁) ⊗ Comp(Language T₁))
-  q (t , u) (Left ¬S₁t) (S₁t , ¬T₁u) = language-comp t ¬S₁t S₁t
-  q (t , u) (Right T₂u) (S₁t , ¬T₁u) = ¬T₁u T₂u
+  q : Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁)))
+  q (t , just u) (Left ¬S₁t) (S₁t , ¬T₁u) = language-comp t ¬S₁t S₁t
+  q (t , just u) (Right T₂u) (S₁t , ¬T₁u) = ¬T₁u T₂u
+  q (t , nothing) ¬S₁t (S₁t , _) = language-comp t ¬S₁t S₁t
 
   r : Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂)
   r function function = function
-  r (function-err t) (function-err ¬S₁t) with dec-language S₂ t
-  r (function-err t) (function-err ¬S₁t) | Left ¬S₂t = function-err ¬S₂t
-  r (function-err t) (function-err ¬S₁t) | Right S₂t = CONTRADICTION (p Q q (t , t₂) (Left ¬S₁t) (S₂t , language-comp t₂ ¬T₂t₂))
+  r (function-err s) (function-err ¬S₁s) with dec-language S₂ s
+  r (function-err s) (function-err ¬S₁s) | Left ¬S₂s = function-err ¬S₂s
+  r (function-err s) (function-err ¬S₁s) | Right S₂s = CONTRADICTION (p Q q (s , nothing) ¬S₁s (S₂s , λ ()))
   r (function-ok t) (function-ok T₁t) with dec-language T₂ t
-  r (function-ok t) (function-ok T₁t) | Left ¬T₂t = CONTRADICTION (p Q q (s₂ , t) (Right T₁t) (S₂s₂ ,  language-comp t ¬T₂t))
+  r (function-ok t) (function-ok T₁t) | Left ¬T₂t = CONTRADICTION (p Q q (s₂ , just t) (Right T₁t) (S₂s₂ , language-comp t ¬T₂t))
   r (function-ok t) (function-ok T₁t) | Right T₂t = function-ok T₂t
 
 -- A counterexample when the argument type is empty.
 
-set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language never) ⊗ Comp(Language number)) → Q ⊆ Comp((Language never) ⊗ Comp(Language string)))
+set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language never) ⊗ Comp(Lift(Language number))) → Q ⊆ Comp((Language never) ⊗ Comp(Lift(Language string))))
 set-theoretic-counterexample-one Q q ((scalar s) , u) Qtu (scalar () , p)
 set-theoretic-counterexample-one Q q ((function-err t) , u) Qtu (scalar-function-err () , p)
 
