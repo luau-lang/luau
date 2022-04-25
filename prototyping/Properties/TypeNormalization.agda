@@ -5,7 +5,7 @@ module Properties.TypeNormalization where
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src)
 open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∩ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; _⇒ᶠ_; normalize)
 open import Luau.Subtyping using (_<:_)
-open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; ∪-dist-∩-<:; <:-function; <:-function-∪-∩; <:-everything)
+open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; ∪-dist-∩-<:; <:-function; <:-function-∪-∩; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm)
 
 -- Notmal forms for types
 data FunType : Type → Set
@@ -159,3 +159,68 @@ normal-∩ᶠ F G = F ∩ G
 normal-∪ᶠ (R ⇒ S) (T ⇒ U) = normal-⇒ᶠ (normal-∩ⁿ R T) (normal-∪ⁿ S U)
 normal-∪ᶠ (R ⇒ S) (G ∩ H) = normal-∪ᶠ (R ⇒ S) G ∩ normal-∪ᶠ (R ⇒ S) H
 normal-∪ᶠ (E ∩ F) G = normal-∪ᶠ E G ∩ normal-∪ᶠ F G
+
+∪ᶠ-<:-∪ : ∀ {F G} → FunType F → FunType G → (F ∪ᶠ G) <: (F ∪ G)
+∪ᶠ-<:-∪ F G = {!!}
+
+∪-<:-∪ᶠ : ∀ {F G} → FunType F → FunType G → (F ∪ G) <: (F ∪ᶠ G)
+∪-<:-∪ᶠ F G = {!!}
+
+∪ⁿ-<:-∪ : ∀ {S T} → Normal S → Normal T → (S ∪ⁿ T) <: (S ∪ T)
+∪ⁿ-<:-∪ S never = <:-∪-left
+∪ⁿ-<:-∪ S unknown = <:-∪-right
+∪ⁿ-<:-∪ never (T ⇒ U) = <:-∪-right
+∪ⁿ-<:-∪ unknown (T ⇒ U) = <:-∪-left
+∪ⁿ-<:-∪ (R ⇒ S) (T ⇒ U) = ∪ᶠ-<:-∪ (R ⇒ S) (T ⇒ U)
+∪ⁿ-<:-∪ (R ∩ S) (T ⇒ U) = ∪ᶠ-<:-∪ (R ∩ S) (T ⇒ U)
+∪ⁿ-<:-∪ (R ∪ S) (T ⇒ U) = <:-trans (<:-union (∪ⁿ-<:-∪ R (T ⇒ U)) <:-refl) (<:-∪-lub (<:-∪-lub (<:-trans <:-∪-left <:-∪-left) <:-∪-right) (<:-trans <:-∪-right <:-∪-left))
+∪ⁿ-<:-∪ never (T ∩ U) = <:-∪-right
+∪ⁿ-<:-∪ unknown (T ∩ U) = <:-∪-left
+∪ⁿ-<:-∪ (R ⇒ S) (T ∩ U) = ∪ᶠ-<:-∪ (R ⇒ S) (T ∩ U)
+∪ⁿ-<:-∪ (R ∩ S) (T ∩ U) = ∪ᶠ-<:-∪ (R ∩ S) (T ∩ U)
+∪ⁿ-<:-∪ (R ∪ S) (T ∩ U) = <:-trans (<:-union (∪ⁿ-<:-∪ R (T ∩ U)) <:-refl) (<:-∪-lub (<:-∪-lub (<:-trans <:-∪-left <:-∪-left) <:-∪-right) (<:-trans <:-∪-right <:-∪-left))
+∪ⁿ-<:-∪ S (T ∪ U) = <:-∪-lub (<:-trans (∪ⁿ-<:-∪ S T) (<:-union <:-refl <:-∪-left)) (<:-trans <:-∪-right <:-∪-right)
+
+∪-<:-∪ⁿ : ∀ {S T} → Normal S → Normal T → (S ∪ T) <: (S ∪ⁿ T)
+∪-<:-∪ⁿ S never = <:-∪-lub <:-refl <:-never
+∪-<:-∪ⁿ S unknown = <:-unknown
+∪-<:-∪ⁿ never (T ⇒ U) = <:-∪-lub <:-never <:-refl
+∪-<:-∪ⁿ unknown (T ⇒ U) = <:-unknown
+∪-<:-∪ⁿ (R ⇒ S) (T ⇒ U) = ∪-<:-∪ᶠ (R ⇒ S) (T ⇒ U)
+∪-<:-∪ⁿ (R ∩ S) (T ⇒ U) = ∪-<:-∪ᶠ (R ∩ S) (T ⇒ U)
+∪-<:-∪ⁿ (R ∪ S) (T ⇒ U) = {! <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) (<:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ R (T ⇒ U)) <:-refl)))!}
+∪-<:-∪ⁿ never (T ∩ U) = <:-∪-lub <:-never <:-refl
+∪-<:-∪ⁿ unknown (T ∩ U) = <:-unknown
+∪-<:-∪ⁿ (R ⇒ S) (T ∩ U) = ∪-<:-∪ᶠ (R ⇒ S) (T ∩ U)
+∪-<:-∪ⁿ (R ∩ S) (T ∩ U) = ∪-<:-∪ᶠ (R ∩ S) (T ∩ U)
+∪-<:-∪ⁿ (R ∪ S) (T ∩ U) = <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) (<:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ R (T ∩ U)) <:-refl)))
+∪-<:-∪ⁿ never (T ∪ U) = <:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ never T) <:-refl)
+∪-<:-∪ⁿ unknown (T ∪ U) = <:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ unknown T) <:-refl)
+∪-<:-∪ⁿ (R ⇒ S) (T ∪ U) = <:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ (R ⇒ S) T) <:-refl)
+∪-<:-∪ⁿ (R ∩ S) (T ∪ U) = <:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ (R ∩ S) T) <:-refl)
+∪-<:-∪ⁿ (R ∪ S) (T ∪ U) = <:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ (R ∪ S) T) <:-refl)
+
+normalize-<: : ∀ T → normalize T <: T
+<:-normalize : ∀ T → T <: normalize T
+
+<:-normalize nil = <:-∪-right
+<:-normalize (S ⇒ T) = {!!}
+<:-normalize never = <:-refl
+<:-normalize unknown = <:-refl
+<:-normalize boolean = <:-∪-right
+<:-normalize number = <:-∪-right
+<:-normalize string = <:-∪-right
+<:-normalize (S ∪ T) = <:-trans (<:-union (<:-normalize S) (<:-normalize T)) (∪-<:-∪ⁿ (normal S) (normal T))
+<:-normalize (S ∩ T) = {!!}
+
+normalize-<: nil = <:-∪-lub <:-never <:-refl
+normalize-<: (S ⇒ T) = {!!}
+normalize-<: never = <:-refl
+normalize-<: unknown = <:-refl
+normalize-<: boolean = <:-∪-lub <:-never <:-refl
+normalize-<: number = <:-∪-lub <:-never <:-refl
+normalize-<: string = <:-∪-lub <:-never <:-refl
+normalize-<: (S ∪ T) = <:-trans (∪ⁿ-<:-∪ (normal S) (normal T)) (<:-union (normalize-<: S) (normalize-<: T))
+normalize-<: (S ∩ T) = {!!}
+
+

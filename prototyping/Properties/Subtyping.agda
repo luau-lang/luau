@@ -118,6 +118,20 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-∪-lub p q t (left r) = p t r
 <:-∪-lub p q t (right r) = q t r
 
+<:-∪-symm : ∀ {T U} → (T ∪ U) <: (U ∪ T)
+<:-∪-symm t (left p) = right p
+<:-∪-symm t (right p) = left p
+
+<:-∪-assocl : ∀ {S T U} → (S ∪ (T ∪ U)) <: ((S ∪ T) ∪ U)
+<:-∪-assocl t (left p) = left (left p)
+<:-∪-assocl t (right (left p)) = left (right p)
+<:-∪-assocl t (right (right p)) = right p
+
+<:-∪-assocr : ∀ {S T U} → ((S ∪ T) ∪ U) <: (S ∪ (T ∪ U))
+<:-∪-assocr t (left (left p)) = left p
+<:-∪-assocr t (left (right p)) = right (left p)
+<:-∪-assocr t (right p) = right (right p)
+
 ≮:-∪-left : ∀ {S T U} → (S ≮: U) → ((S ∪ T) ≮: U)
 ≮:-∪-left (witness t p q) = witness t (left p) q
 
