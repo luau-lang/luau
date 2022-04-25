@@ -11,3 +11,4 @@ import Properties.Step
 import Properties.StrictMode
 import Properties.Subtyping
 import Properties.TypeCheck
+import Properties.TypeNormalization
