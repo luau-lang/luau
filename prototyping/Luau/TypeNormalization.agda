@@ -8,21 +8,16 @@ open import Luau.Type using (Type; nil; number; string; boolean; never; unknown;
 
 -- Unions and intersections of normalized types
 _∪ᶠ_ : Type → Type → Type
-_∩ᶠ_ : Type → Type → Type
 _∪ⁿˢ_ : Type → Type → Type
 _∩ⁿˢ_ : Type → Type → Type
 _∪ⁿ_ : Type → Type → Type
 _∩ⁿ_ : Type → Type → Type
-_⇒ᶠ_ : Type → Type → Type
 
 -- Union of function types
-(F₁ ∩ F₂) ∪ᶠ G = (F₁ ∪ᶠ G) ∩ᶠ (F₂ ∪ᶠ G)
-F ∪ᶠ (G₁ ∩ G₂) = (F ∪ᶠ G₁) ∩ᶠ (F ∪ᶠ G₂)
-(R ⇒ S) ∪ᶠ (T ⇒ U) = (R ∩ⁿ T) ⇒ᶠ (S ∪ⁿ U)
+(F₁ ∩ F₂) ∪ᶠ G = (F₁ ∪ᶠ G) ∩ (F₂ ∪ᶠ G)
+F ∪ᶠ (G₁ ∩ G₂) = (F ∪ᶠ G₁) ∩ (F ∪ᶠ G₂)
+(R ⇒ S) ∪ᶠ (T ⇒ U) = (R ∩ⁿ T) ⇒ (S ∪ⁿ U)
 F ∪ᶠ G = F ∪ G
-
--- Intersection of function types
-F ∩ᶠ G = F ∩ G
 
 -- Union of normalized types
 S ∪ⁿ (T₁ ∪ T₂) = (S ∪ⁿ T₁) ∪ T₂
@@ -40,7 +35,7 @@ S ∩ⁿ never = never
 (S₁ ∪ S₂) ∩ⁿ G = (S₁ ∩ⁿ G)
 unknown ∩ⁿ G = G
 never ∩ⁿ G = never
-F ∩ⁿ G = F ∩ᶠ G
+F ∩ⁿ G = F ∩ G
 
 -- Intersection of normalized types with a scalar
 (S₁ ∪ nil) ∩ⁿˢ nil = nil
@@ -48,6 +43,7 @@ F ∩ⁿ G = F ∩ᶠ G
 (S₁ ∪ number) ∩ⁿˢ number = number
 (S₁ ∪ string) ∩ⁿˢ string = string
 (S₁ ∪ S₂) ∩ⁿˢ T = S₁ ∩ⁿˢ T
+unknown ∩ⁿˢ T = T
 F ∩ⁿˢ T = never
 
 -- Union of normalized types with an optional scalar
@@ -60,14 +56,10 @@ unknown ∪ⁿˢ T = unknown
 (S₁ ∪ S₂) ∪ⁿˢ T = (S₁ ∪ⁿˢ T) ∪ S₂
 F ∪ⁿˢ T = F ∪ T
 
--- Functions between normalized types
-(never ⇒ᶠ T) = (never ⇒ unknown)
-(S ⇒ᶠ T) = (S ⇒ T)
-
 -- Normalize!
 normalize : Type → Type
 normalize nil = never ∪ nil
-normalize (S ⇒ T) = (normalize S ⇒ᶠ normalize T)
+normalize (S ⇒ T) = (normalize S ⇒ normalize T)
 normalize never = never
 normalize unknown = unknown
 normalize boolean = never ∪ boolean

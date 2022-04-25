@@ -3,9 +3,9 @@
 module Properties.TypeNormalization where
 
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src)
-open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∩ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; _⇒ᶠ_; normalize)
+open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; normalize)
 open import Luau.Subtyping using (_<:_)
-open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; ∪-dist-∩-<:; <:-function; <:-function-∪-∩; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm)
+open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; <:-∩-symm; <:-function; <:-function-∪-∩; <:-function-∩-∪; <:-function-∪; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm; <:-intersect;  ∪-distl-∩-<:; ∪-distr-∩-<:; <:-∪-distr-∩; <:-∪-distl-∩; ∩-distl-∪-<:; <:-∩-distl-∪; <:-∩-distr-∪; scalar-∩-function-<:-never; scalar-≢-∩-<:-never)
 
 -- Notmal forms for types
 data FunType : Type → Set
@@ -37,11 +37,9 @@ normal-∩ⁿ : ∀ {S T} → Normal S → Normal T → Normal (S ∩ⁿ T)
 normal-∪ⁿˢ : ∀ {S T} → Normal S → OptScalar T → Normal (S ∪ⁿˢ T)
 normal-∩ⁿˢ : ∀ {S T} → Normal S → Scalar T → OptScalar (S ∩ⁿˢ T)
 normal-∪ᶠ : ∀ {F G} → FunType F → FunType G → FunType (F ∪ᶠ G)
-normal-∩ᶠ : ∀ {F G} → FunType F → FunType G → FunType (F ∩ᶠ G)
-normal-⇒ᶠ : ∀ {S T} → Normal S → Normal T → FunType (S ⇒ᶠ T)
 
 normal nil = never ∪ nil
-normal (S ⇒ T) = normalᶠ (normal-⇒ᶠ (normal S) (normal T))
+normal (S ⇒ T) = normalᶠ ((normal S) ⇒ (normal T))
 normal never = never
 normal unknown = unknown
 normal boolean = never ∪ boolean
@@ -119,10 +117,10 @@ normal-∩ⁿˢ never number = never
 normal-∩ⁿˢ never boolean = never
 normal-∩ⁿˢ never string = never
 normal-∩ⁿˢ never nil = never
-normal-∩ⁿˢ unknown number = never
-normal-∩ⁿˢ unknown boolean = never
-normal-∩ⁿˢ unknown string = never
-normal-∩ⁿˢ unknown nil = never
+normal-∩ⁿˢ unknown number = number
+normal-∩ⁿˢ unknown boolean = boolean
+normal-∩ⁿˢ unknown string = string
+normal-∩ⁿˢ unknown nil = nil
 normal-∩ⁿˢ (R ⇒ S) number = never
 normal-∩ⁿˢ (R ⇒ S) boolean = never
 normal-∩ⁿˢ (R ⇒ S) string = never
@@ -148,25 +146,177 @@ normal-∩ⁿˢ (R ∪ boolean) nil = normal-∩ⁿˢ R nil
 normal-∩ⁿˢ (R ∪ string) nil = normal-∩ⁿˢ R nil
 normal-∩ⁿˢ (R ∪ nil) nil = nil
 
-normal-⇒ᶠ never T = never ⇒ unknown
-normal-⇒ᶠ unknown T = unknown ⇒ T
-normal-⇒ᶠ (R ⇒ S) T = (R ⇒ S) ⇒ T
-normal-⇒ᶠ (R ∩ S) T = (R ∩ S) ⇒ T
-normal-⇒ᶠ (R ∪ S) T = (R ∪ S) ⇒ T
-
-normal-∩ᶠ F G = F ∩ G
-
-normal-∪ᶠ (R ⇒ S) (T ⇒ U) = normal-⇒ᶠ (normal-∩ⁿ R T) (normal-∪ⁿ S U)
+normal-∪ᶠ (R ⇒ S) (T ⇒ U) = (normal-∩ⁿ R T) ⇒ (normal-∪ⁿ S U)
 normal-∪ᶠ (R ⇒ S) (G ∩ H) = normal-∪ᶠ (R ⇒ S) G ∩ normal-∪ᶠ (R ⇒ S) H
 normal-∪ᶠ (E ∩ F) G = normal-∪ᶠ E G ∩ normal-∪ᶠ F G
 
+scalar-∩-fun-<:-never : ∀ {F S} → FunType F → Scalar S → (F ∩ S) <: never
+scalar-∩-fun-<:-never (T ⇒ U) S = scalar-∩-function-<:-never S
+scalar-∩-fun-<:-never (F ∩ G) S = <:-trans (<:-intersect <:-∩-left <:-refl) (scalar-∩-fun-<:-never F S)
+
+flipper : ∀ {S T U} → ((S ∪ T) ∪ U) <: ((S ∪ U) ∪ T)
+flipper = <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) <:-∪-assocl)
+
+∩-<:-∩ⁿ :  ∀ {S T} → Normal S → Normal T → (S ∩ T) <: (S ∩ⁿ T)
+∩ⁿ-<:-∩ :  ∀ {S T} → Normal S → Normal T → (S ∩ⁿ T) <: (S ∩ T)
+∩-<:-∩ⁿˢ :  ∀ {S T} → Normal S → Scalar T → (S ∩ T) <: (S ∩ⁿˢ T)
+∩ⁿˢ-<:-∩ :  ∀ {S T} → Normal S → Scalar T → (S ∩ⁿˢ T) <: (S ∩ T)
 ∪ᶠ-<:-∪ : ∀ {F G} → FunType F → FunType G → (F ∪ᶠ G) <: (F ∪ G)
-∪ᶠ-<:-∪ F G = {!!}
+∪ⁿ-<:-∪ : ∀ {S T} → Normal S → Normal T → (S ∪ⁿ T) <: (S ∪ T)
+∪-<:-∪ⁿ : ∀ {S T} → Normal S → Normal T → (S ∪ T) <: (S ∪ⁿ T)
+∪ⁿˢ-<:-∪ : ∀ {S T} → Normal S → OptScalar T → (S ∪ⁿˢ T) <: (S ∪ T)
+∪-<:-∪ⁿˢ : ∀ {S T} → Normal S → OptScalar T → (S ∪ T) <: (S ∪ⁿˢ T)
+
+∩-<:-∩ⁿ S never = <:-∩-right
+∩-<:-∩ⁿ S unknown = <:-∩-left
+∩-<:-∩ⁿ S (T ∪ U) = <:-trans <:-∩-distl-∪ (<:-trans (<:-union (∩-<:-∩ⁿ S T) (∩-<:-∩ⁿˢ S U)) (∪-<:-∪ⁿˢ (normal-∩ⁿ S T) (normal-∩ⁿˢ S U)) )
+∩-<:-∩ⁿ never (T ⇒ U) = <:-∩-left
+∩-<:-∩ⁿ unknown (T ⇒ U) = <:-∩-right
+∩-<:-∩ⁿ (R ⇒ S) (T ⇒ U) = <:-refl
+∩-<:-∩ⁿ (R ∩ S) (T ⇒ U) = <:-refl
+∩-<:-∩ⁿ (R ∪ S) (T ⇒ U) = <:-trans <:-∩-distr-∪ (<:-trans (<:-union (∩-<:-∩ⁿ R (T ⇒ U)) (<:-trans <:-∩-symm (∩-<:-∩ⁿˢ (T ⇒ U) S))) (<:-∪-lub <:-refl <:-never))
+∩-<:-∩ⁿ never (T ∩ U) = <:-∩-left
+∩-<:-∩ⁿ unknown (T ∩ U) = <:-∩-right
+∩-<:-∩ⁿ (R ⇒ S) (T ∩ U) = <:-refl
+∩-<:-∩ⁿ (R ∩ S) (T ∩ U) = <:-refl
+∩-<:-∩ⁿ (R ∪ S) (T ∩ U) = <:-trans <:-∩-distr-∪ (<:-trans (<:-union (∩-<:-∩ⁿ R (T ∩ U)) (<:-trans <:-∩-symm (∩-<:-∩ⁿˢ (T ∩ U) S))) (<:-∪-lub <:-refl <:-never))
+
+∩ⁿ-<:-∩ S never = <:-never
+∩ⁿ-<:-∩ S unknown = <:-∩-glb <:-refl <:-unknown
+∩ⁿ-<:-∩ S (T ∪ U) = <:-trans (∪ⁿˢ-<:-∪ (normal-∩ⁿ S T) (normal-∩ⁿˢ S U)) (<:-trans (<:-union (∩ⁿ-<:-∩ S T) (∩ⁿˢ-<:-∩ S U)) ∩-distl-∪-<:)
+∩ⁿ-<:-∩ never (T ⇒ U) = <:-never
+∩ⁿ-<:-∩ unknown (T ⇒ U) = <:-∩-glb <:-unknown <:-refl
+∩ⁿ-<:-∩ (R ⇒ S) (T ⇒ U) = <:-refl
+∩ⁿ-<:-∩ (R ∩ S) (T ⇒ U) = <:-refl
+∩ⁿ-<:-∩ (R ∪ S) (T ⇒ U) = <:-trans (∩ⁿ-<:-∩ R (T ⇒ U)) (<:-∩-glb (<:-trans <:-∩-left <:-∪-left) <:-∩-right)
+∩ⁿ-<:-∩ never (T ∩ U) = <:-never
+∩ⁿ-<:-∩ unknown (T ∩ U) = <:-∩-glb <:-unknown <:-refl
+∩ⁿ-<:-∩ (R ⇒ S) (T ∩ U) = <:-refl
+∩ⁿ-<:-∩ (R ∩ S) (T ∩ U) = <:-refl
+∩ⁿ-<:-∩ (R ∪ S) (T ∩ U) = <:-trans (∩ⁿ-<:-∩ R (T ∩ U)) (<:-∩-glb (<:-trans <:-∩-left <:-∪-left) <:-∩-right)
+
+∩-<:-∩ⁿˢ never number = <:-∩-left
+∩-<:-∩ⁿˢ never boolean = <:-∩-left
+∩-<:-∩ⁿˢ never string = <:-∩-left
+∩-<:-∩ⁿˢ never nil = <:-∩-left
+∩-<:-∩ⁿˢ unknown T = <:-∩-right
+∩-<:-∩ⁿˢ (R ⇒ S) T = scalar-∩-fun-<:-never (R ⇒ S) T
+∩-<:-∩ⁿˢ (F ∩ G) T = scalar-∩-fun-<:-never (F ∩ G) T
+∩-<:-∩ⁿˢ (R ∪ number) number = <:-∩-right
+∩-<:-∩ⁿˢ (R ∪ boolean) number = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R number) (scalar-≢-∩-<:-never boolean number (λ ())))
+∩-<:-∩ⁿˢ (R ∪ string) number = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R number) (scalar-≢-∩-<:-never string number (λ ())))
+∩-<:-∩ⁿˢ (R ∪ nil) number = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R number) (scalar-≢-∩-<:-never nil number (λ ())))
+∩-<:-∩ⁿˢ (R ∪ number) boolean = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R boolean) (scalar-≢-∩-<:-never number boolean (λ ())))
+∩-<:-∩ⁿˢ (R ∪ boolean) boolean = <:-∩-right
+∩-<:-∩ⁿˢ (R ∪ string) boolean = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R boolean) (scalar-≢-∩-<:-never string boolean (λ ())))
+∩-<:-∩ⁿˢ (R ∪ nil) boolean = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R boolean) (scalar-≢-∩-<:-never nil boolean (λ ())))
+∩-<:-∩ⁿˢ (R ∪ number) string = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R string) (scalar-≢-∩-<:-never number string (λ ())))
+∩-<:-∩ⁿˢ (R ∪ boolean) string = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R string) (scalar-≢-∩-<:-never boolean string (λ ())))
+∩-<:-∩ⁿˢ (R ∪ string) string = <:-∩-right
+∩-<:-∩ⁿˢ (R ∪ nil) string = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R string) (scalar-≢-∩-<:-never nil string (λ ())))
+∩-<:-∩ⁿˢ (R ∪ number) nil = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R nil) (scalar-≢-∩-<:-never number nil (λ ())))
+∩-<:-∩ⁿˢ (R ∪ boolean) nil = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R nil) (scalar-≢-∩-<:-never boolean nil (λ ())))
+∩-<:-∩ⁿˢ (R ∪ string) nil = <:-trans <:-∩-distr-∪ (<:-∪-lub (∩-<:-∩ⁿˢ R nil) (scalar-≢-∩-<:-never string nil (λ ())))
+∩-<:-∩ⁿˢ (R ∪ nil) nil = <:-∩-right
+
+∩ⁿˢ-<:-∩ never T = <:-never
+∩ⁿˢ-<:-∩ unknown T = <:-∩-glb <:-unknown <:-refl
+∩ⁿˢ-<:-∩ (R ⇒ S) T = <:-never
+∩ⁿˢ-<:-∩ (F ∩ G) T = <:-never
+∩ⁿˢ-<:-∩ (R ∪ number) number = <:-∩-glb <:-∪-right <:-refl
+∩ⁿˢ-<:-∩ (R ∪ boolean) number = <:-trans (∩ⁿˢ-<:-∩ R number) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ string) number = <:-trans (∩ⁿˢ-<:-∩ R number) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ nil) number = <:-trans (∩ⁿˢ-<:-∩ R number) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ number) boolean = <:-trans (∩ⁿˢ-<:-∩ R boolean) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ boolean) boolean = <:-∩-glb <:-∪-right <:-refl
+∩ⁿˢ-<:-∩ (R ∪ string) boolean = <:-trans (∩ⁿˢ-<:-∩ R boolean) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ nil) boolean = <:-trans (∩ⁿˢ-<:-∩ R boolean) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ number) string = <:-trans (∩ⁿˢ-<:-∩ R string) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ boolean) string = <:-trans (∩ⁿˢ-<:-∩ R string) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ string) string = <:-∩-glb <:-∪-right <:-refl
+∩ⁿˢ-<:-∩ (R ∪ nil) string = <:-trans (∩ⁿˢ-<:-∩ R string) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ number) nil = <:-trans (∩ⁿˢ-<:-∩ R nil) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ boolean) nil = <:-trans (∩ⁿˢ-<:-∩ R nil) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ string) nil = <:-trans (∩ⁿˢ-<:-∩ R nil) (<:-intersect <:-∪-left <:-refl)
+∩ⁿˢ-<:-∩ (R ∪ nil) nil = <:-∩-glb <:-∪-right <:-refl
+
+∪ᶠ-<:-∪ (R ⇒ S) (T ⇒ U) = <:-trans (<:-function (∩-<:-∩ⁿ R T) (∪ⁿ-<:-∪ S U)) <:-function-∪-∩
+∪ᶠ-<:-∪ (R ⇒ S) (G ∩ H) = <:-trans (<:-intersect (∪ᶠ-<:-∪ (R ⇒ S) G) (∪ᶠ-<:-∪ (R ⇒ S) H)) ∪-distl-∩-<:
+∪ᶠ-<:-∪ (E ∩ F) G = <:-trans (<:-intersect (∪ᶠ-<:-∪ E G) (∪ᶠ-<:-∪ F G)) ∪-distr-∩-<:
 
 ∪-<:-∪ᶠ : ∀ {F G} → FunType F → FunType G → (F ∪ G) <: (F ∪ᶠ G)
-∪-<:-∪ᶠ F G = {!!}
+∪-<:-∪ᶠ (R ⇒ S) (T ⇒ U) = <:-trans <:-function-∪ (<:-function (∩ⁿ-<:-∩ R T) (∪-<:-∪ⁿ S U))
+∪-<:-∪ᶠ (R ⇒ S) (G ∩ H) = <:-trans <:-∪-distl-∩ (<:-intersect (∪-<:-∪ᶠ (R ⇒ S) G) (∪-<:-∪ᶠ (R ⇒ S) H))
+∪-<:-∪ᶠ (E ∩ F) G = <:-trans <:-∪-distr-∩ (<:-intersect (∪-<:-∪ᶠ E G) (∪-<:-∪ᶠ F G))
 
-∪ⁿ-<:-∪ : ∀ {S T} → Normal S → Normal T → (S ∪ⁿ T) <: (S ∪ T)
+∪ⁿˢ-<:-∪ S never = <:-∪-left
+∪ⁿˢ-<:-∪ never number = <:-refl
+∪ⁿˢ-<:-∪ never boolean = <:-refl
+∪ⁿˢ-<:-∪ never string = <:-refl
+∪ⁿˢ-<:-∪ never nil = <:-refl
+∪ⁿˢ-<:-∪ unknown number = <:-∪-left
+∪ⁿˢ-<:-∪ unknown boolean = <:-∪-left
+∪ⁿˢ-<:-∪ unknown string = <:-∪-left
+∪ⁿˢ-<:-∪ unknown nil = <:-∪-left
+∪ⁿˢ-<:-∪ (R ⇒ S) number = <:-refl
+∪ⁿˢ-<:-∪ (R ⇒ S) boolean = <:-refl
+∪ⁿˢ-<:-∪ (R ⇒ S) string = <:-refl
+∪ⁿˢ-<:-∪ (R ⇒ S) nil = <:-refl
+∪ⁿˢ-<:-∪ (R ∩ S) number = <:-refl
+∪ⁿˢ-<:-∪ (R ∩ S) boolean = <:-refl
+∪ⁿˢ-<:-∪ (R ∩ S) string = <:-refl
+∪ⁿˢ-<:-∪ (R ∩ S) nil = <:-refl
+∪ⁿˢ-<:-∪ (R ∪ number) number = <:-union <:-∪-left <:-refl
+∪ⁿˢ-<:-∪ (R ∪ boolean) number = <:-trans (<:-union (∪ⁿˢ-<:-∪ R number) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ string) number = <:-trans (<:-union (∪ⁿˢ-<:-∪ R number) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ nil) number = <:-trans (<:-union (∪ⁿˢ-<:-∪ R number) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ number) boolean = <:-trans (<:-union (∪ⁿˢ-<:-∪ R boolean) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ boolean) boolean = <:-union <:-∪-left <:-refl
+∪ⁿˢ-<:-∪ (R ∪ string) boolean = <:-trans (<:-union (∪ⁿˢ-<:-∪ R boolean) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ nil) boolean = <:-trans (<:-union (∪ⁿˢ-<:-∪ R boolean) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ number) string = <:-trans (<:-union (∪ⁿˢ-<:-∪ R string) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ boolean) string = <:-trans (<:-union (∪ⁿˢ-<:-∪ R string) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ string) string = <:-union <:-∪-left <:-refl
+∪ⁿˢ-<:-∪ (R ∪ nil) string = <:-trans (<:-union (∪ⁿˢ-<:-∪ R string) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ number) nil = <:-trans (<:-union (∪ⁿˢ-<:-∪ R nil) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ boolean) nil = <:-trans (<:-union (∪ⁿˢ-<:-∪ R nil) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ string) nil = <:-trans (<:-union (∪ⁿˢ-<:-∪ R nil) <:-refl) flipper
+∪ⁿˢ-<:-∪ (R ∪ nil) nil = <:-union <:-∪-left <:-refl
+
+∪-<:-∪ⁿˢ T never = <:-∪-lub <:-refl <:-never
+∪-<:-∪ⁿˢ never number = <:-refl
+∪-<:-∪ⁿˢ never boolean = <:-refl
+∪-<:-∪ⁿˢ never string = <:-refl
+∪-<:-∪ⁿˢ never nil = <:-refl
+∪-<:-∪ⁿˢ unknown number = <:-unknown
+∪-<:-∪ⁿˢ unknown boolean = <:-unknown
+∪-<:-∪ⁿˢ unknown string = <:-unknown
+∪-<:-∪ⁿˢ unknown nil = <:-unknown
+∪-<:-∪ⁿˢ (R ⇒ S) number = <:-refl
+∪-<:-∪ⁿˢ (R ⇒ S) boolean = <:-refl
+∪-<:-∪ⁿˢ (R ⇒ S) string = <:-refl
+∪-<:-∪ⁿˢ (R ⇒ S) nil = <:-refl
+∪-<:-∪ⁿˢ (R ∩ S) number = <:-refl
+∪-<:-∪ⁿˢ (R ∩ S) boolean = <:-refl
+∪-<:-∪ⁿˢ (R ∩ S) string = <:-refl
+∪-<:-∪ⁿˢ (R ∩ S) nil = <:-refl
+∪-<:-∪ⁿˢ (R ∪ number) number = <:-∪-lub <:-refl <:-∪-right
+∪-<:-∪ⁿˢ (R ∪ boolean) number = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R number) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ string) number = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R number) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ nil) number = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R number) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ number) boolean = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R boolean) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ boolean) boolean = <:-∪-lub <:-refl <:-∪-right
+∪-<:-∪ⁿˢ (R ∪ string) boolean = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R boolean) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ nil) boolean = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R boolean) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ number) string = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R string) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ boolean) string = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R string) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ string) string = <:-∪-lub <:-refl <:-∪-right
+∪-<:-∪ⁿˢ (R ∪ nil) string = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R string) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ number) nil = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R nil) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ boolean) nil = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R nil) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ string) nil = <:-trans flipper (<:-union (∪-<:-∪ⁿˢ R nil) <:-refl)
+∪-<:-∪ⁿˢ (R ∪ nil) nil = <:-∪-lub <:-refl <:-∪-right
+
 ∪ⁿ-<:-∪ S never = <:-∪-left
 ∪ⁿ-<:-∪ S unknown = <:-∪-right
 ∪ⁿ-<:-∪ never (T ⇒ U) = <:-∪-right
@@ -181,14 +331,13 @@ normal-∪ᶠ (E ∩ F) G = normal-∪ᶠ E G ∩ normal-∪ᶠ F G
 ∪ⁿ-<:-∪ (R ∪ S) (T ∩ U) = <:-trans (<:-union (∪ⁿ-<:-∪ R (T ∩ U)) <:-refl) (<:-∪-lub (<:-∪-lub (<:-trans <:-∪-left <:-∪-left) <:-∪-right) (<:-trans <:-∪-right <:-∪-left))
 ∪ⁿ-<:-∪ S (T ∪ U) = <:-∪-lub (<:-trans (∪ⁿ-<:-∪ S T) (<:-union <:-refl <:-∪-left)) (<:-trans <:-∪-right <:-∪-right)
 
-∪-<:-∪ⁿ : ∀ {S T} → Normal S → Normal T → (S ∪ T) <: (S ∪ⁿ T)
 ∪-<:-∪ⁿ S never = <:-∪-lub <:-refl <:-never
 ∪-<:-∪ⁿ S unknown = <:-unknown
 ∪-<:-∪ⁿ never (T ⇒ U) = <:-∪-lub <:-never <:-refl
 ∪-<:-∪ⁿ unknown (T ⇒ U) = <:-unknown
 ∪-<:-∪ⁿ (R ⇒ S) (T ⇒ U) = ∪-<:-∪ᶠ (R ⇒ S) (T ⇒ U)
 ∪-<:-∪ⁿ (R ∩ S) (T ⇒ U) = ∪-<:-∪ᶠ (R ∩ S) (T ⇒ U)
-∪-<:-∪ⁿ (R ∪ S) (T ⇒ U) = {! <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) (<:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ R (T ⇒ U)) <:-refl)))!}
+∪-<:-∪ⁿ (R ∪ S) (T ⇒ U) =  <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) (<:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ R (T ⇒ U)) <:-refl)))
 ∪-<:-∪ⁿ never (T ∩ U) = <:-∪-lub <:-never <:-refl
 ∪-<:-∪ⁿ unknown (T ∩ U) = <:-unknown
 ∪-<:-∪ⁿ (R ⇒ S) (T ∩ U) = ∪-<:-∪ᶠ (R ⇒ S) (T ∩ U)
@@ -204,23 +353,23 @@ normalize-<: : ∀ T → normalize T <: T
 <:-normalize : ∀ T → T <: normalize T
 
 <:-normalize nil = <:-∪-right
-<:-normalize (S ⇒ T) = {!!}
+<:-normalize (S ⇒ T) = <:-function (normalize-<: S) (<:-normalize T)
 <:-normalize never = <:-refl
 <:-normalize unknown = <:-refl
 <:-normalize boolean = <:-∪-right
 <:-normalize number = <:-∪-right
 <:-normalize string = <:-∪-right
 <:-normalize (S ∪ T) = <:-trans (<:-union (<:-normalize S) (<:-normalize T)) (∪-<:-∪ⁿ (normal S) (normal T))
-<:-normalize (S ∩ T) = {!!}
+<:-normalize (S ∩ T) = <:-trans (<:-intersect (<:-normalize S) (<:-normalize T)) (∩-<:-∩ⁿ (normal S) (normal T))
 
 normalize-<: nil = <:-∪-lub <:-never <:-refl
-normalize-<: (S ⇒ T) = {!!}
+normalize-<: (S ⇒ T) = <:-function (<:-normalize S) (normalize-<: T)
 normalize-<: never = <:-refl
 normalize-<: unknown = <:-refl
 normalize-<: boolean = <:-∪-lub <:-never <:-refl
 normalize-<: number = <:-∪-lub <:-never <:-refl
 normalize-<: string = <:-∪-lub <:-never <:-refl
 normalize-<: (S ∪ T) = <:-trans (∪ⁿ-<:-∪ (normal S) (normal T)) (<:-union (normalize-<: S) (normalize-<: T))
-normalize-<: (S ∩ T) = {!!}
+normalize-<: (S ∩ T) = <:-trans (∩ⁿ-<:-∩ (normal S) (normal T)) (<:-intersect (normalize-<: S) (normalize-<: T))
 
 
