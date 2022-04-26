@@ -16,7 +16,7 @@ data FunType where
   _⇒_ : ∀ {S T} → Normal S → Normal T → FunType (S ⇒ T)
   _∩_ : ∀ {F G} → FunType F → FunType G → FunType (F ∩ G)
 
-data Normal where 
+data Normal where
   never : Normal never
   unknown : Normal unknown
   _⇒_ : ∀ {S T} → Normal S → Normal T → Normal (S ⇒ T)
@@ -29,7 +29,7 @@ data OptScalar : Type → Set where
   boolean : OptScalar boolean
   string : OptScalar string
   nil : OptScalar nil
-  
+
 -- Normalization produces normal types
 normal : ∀ T → Normal (normalize T)
 normalᶠ : ∀ {F} → FunType F → Normal F
@@ -60,7 +60,7 @@ normal-∪ⁿ never (G₁ ∩ G₂) = G₁ ∩ G₂
 normal-∪ⁿ unknown (T ⇒ U) = unknown
 normal-∪ⁿ unknown (G₁ ∩ G₂) = unknown
 normal-∪ⁿ (R ⇒ S) (T ⇒ U) = normalᶠ (normal-∪ᶠ (R ⇒ S) (T ⇒ U))
-normal-∪ⁿ (R ⇒ S) (G₁ ∩ G₂) = normalᶠ (normal-∪ᶠ (R ⇒ S) (G₁ ∩ G₂)) 
+normal-∪ⁿ (R ⇒ S) (G₁ ∩ G₂) = normalᶠ (normal-∪ᶠ (R ⇒ S) (G₁ ∩ G₂))
 normal-∪ⁿ (F₁ ∩ F₂) (T ⇒ U) = normalᶠ (normal-∪ᶠ (F₁ ∩ F₂) (T ⇒ U))
 normal-∪ⁿ (F₁ ∩ F₂) (G₁ ∩ G₂) = normalᶠ (normal-∪ᶠ (F₁ ∩ F₂) (G₁ ∩ G₂))
 normal-∪ⁿ (S₁ ∪ S₂) (T₁ ⇒ T₂) = normal-∪ⁿ S₁ (T₁ ⇒ T₂) ∪ S₂

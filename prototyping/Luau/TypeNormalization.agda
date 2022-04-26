@@ -25,7 +25,7 @@ S ∪ⁿ unknown = unknown
 S ∪ⁿ never = S
 unknown ∪ⁿ T = unknown
 never ∪ⁿ T = T
-(S₁ ∪ S₂) ∪ⁿ G = (S₁ ∪ⁿ G) ∪ S₂ 
+(S₁ ∪ S₂) ∪ⁿ G = (S₁ ∪ⁿ G) ∪ S₂
 F ∪ⁿ G = F ∪ᶠ G
 
 -- Intersection of normalized types
