@@ -102,6 +102,9 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-trans-≮: : ∀ {S T U} → (S <: T) → (S ≮: U) → (T ≮: U)
 <:-trans-≮: p (witness t q r) = witness t (p t q) r
 
+≮:-trans-<: : ∀ {S T U} → (S ≮: U) → (T <: U) → (S ≮: T)
+≮:-trans-<: (witness t p q) r = witness t p (<:-impl-⊇ r t q)
+
 -- Properties of union
 
 <:-union : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∪ S) <: (T ∪ U))
@@ -229,9 +232,21 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-function-∪-∩ (function-err s) (function-err (left p)) = left (function-err p)
 <:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
+≮:-function-left : ∀ {R S T U} → (R ≮: S) → (S ⇒ T) ≮: (R ⇒ U)
+≮:-function-left (witness t p q) = witness (function-err t) (function-err q) (function-err p)
+
+≮:-function-right : ∀ {R S T U} → (T ≮: U) → (S ⇒ T) ≮: (R ⇒ U)
+≮:-function-right (witness t p q) = witness (function-ok t) (function-ok p) (function-ok q)
+
 -- Properties of scalars
 skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
 skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
+
+scalar-<: : ∀ {S T} → (s : Scalar S) → Language T (scalar s) → (S <: T)
+scalar-<: number p (scalar number) (scalar number) = p
+scalar-<: boolean p (scalar boolean) (scalar boolean) = p
+scalar-<: string p (scalar string) (scalar string) = p
+scalar-<: nil p (scalar nil) (scalar nil) = p
 
 scalar-∩-function-<:-never : ∀ {S T U} → (Scalar S) → ((T ⇒ U) ∩ S) <: never
 scalar-∩-function-<:-never number .(scalar number) (() , scalar number)

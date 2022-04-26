@@ -4,6 +4,7 @@ module Properties where
 
 import Properties.Contradiction
 import Properties.Dec
+import Properties.DecSubtyping
 import Properties.Equality
 import Properties.Functions
 import Properties.FunctionTypes

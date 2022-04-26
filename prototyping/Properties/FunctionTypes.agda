@@ -60,6 +60,16 @@ fun-¬scalar : ∀ {S T} (s : Scalar S) → FunType T → ¬Language T (scalar s
 fun-¬scalar s (S ⇒ T) = function-scalar s
 fun-¬scalar s (S ∩ T) = left (fun-¬scalar s S)
 
+¬fun-scalar : ∀ {S T t} (s : Scalar S) → FunType T → Language T t → ¬Language S t
+¬fun-scalar s (S ⇒ T) function = scalar-function s
+¬fun-scalar s (S ⇒ T) (function-ok p) = scalar-function-ok s
+¬fun-scalar s (S ⇒ T) (function-err p) = scalar-function-err s
+¬fun-scalar s (S ∩ T) (p₁ , p₂) = ¬fun-scalar s T p₂
+
+fun-function : ∀ {T} → FunType T → Language T function
+fun-function (S ⇒ T) = function
+fun-function (S ∩ T) = (fun-function S , fun-function T)
+
 srcⁿ-¬scalar : ∀ {S T t} (s : Scalar S) → Normal T → Language T (scalar s) → (¬Language (srcⁿ T) t)
 srcⁿ-¬scalar s never (scalar ())
 srcⁿ-¬scalar s unknown p = never
@@ -130,3 +140,11 @@ never-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-refl (
 never-tgt-≮: (witness function p (q₁ , scalar-function ()))
 never-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
 never-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
+
+src-tgtᶠ-<: : ∀ {T U V} → (FunType T) → (U <: src T) → (tgt T <: V) → (T <: (U ⇒ V))
+src-tgtᶠ-<: T p q (scalar s) r = CONTRADICTION (language-comp (scalar s) (fun-¬scalar s T) r)
+src-tgtᶠ-<: T p q function r = function
+src-tgtᶠ-<: T p q (function-ok s) r = function-ok (q s (function-ok-tgt r))
+src-tgtᶠ-<: T p q (function-err s) r = function-err (<:-impl-⊇ p s (src-¬function-err r))
+
+
