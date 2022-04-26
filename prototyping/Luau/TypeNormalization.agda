@@ -1,6 +1,6 @@
 module Luau.TypeNormalization where
 
-open import Luau.Type using (Type; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src)
+open import Luau.Type using (Type; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 
 -- The top non-function type
 ¬function : Type
@@ -67,4 +67,3 @@ normalize number = never ∪ number
 normalize string = never ∪ string
 normalize (S ∪ T) = normalize S ∪ⁿ normalize T
 normalize (S ∩ T) = normalize S ∩ⁿ normalize T
-

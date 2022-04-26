@@ -6,7 +6,7 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
-open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
+open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; skalar)
 open import Properties.Contradiction using (CONTRADICTION; ¬; ⊥)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
@@ -230,8 +230,6 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
 -- Properties of scalars
-skalar = number ∪ (string ∪ (nil ∪ boolean))
-
 function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
 function-≮:-scalar s = witness function function (scalar-function s)
 
@@ -250,89 +248,11 @@ scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-s
 scalar-≢-∩-<:-never : ∀ {T U V} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ∩ U) <: V
 scalar-≢-∩-<:-never s t p u (scalar s₁ , scalar s₂) = CONTRADICTION (p refl)
 
-skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
-skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
-
 skalar-scalar : ∀ {T} (s : Scalar T) → (Language skalar (scalar s))
 skalar-scalar number = left (scalar number)
 skalar-scalar boolean = right (right (right (scalar boolean)))
 skalar-scalar string = right (left (scalar string))
 skalar-scalar nil = right (right (left (scalar nil)))
-
-scalar-∩-function-<:-never : ∀ {S T U} → (Scalar S) → ((T ⇒ U) ∩ S) <: never
-scalar-∩-function-<:-never number .(scalar number) (() , scalar number)
-scalar-∩-function-<:-never boolean .(scalar boolean) (() , scalar boolean)
-scalar-∩-function-<:-never string .(scalar string) (() , scalar string)
-scalar-∩-function-<:-never nil .(scalar nil) (() , scalar nil)
-
--- Properties of tgt
-tgt-function-ok : ∀ {T t} → (Language (tgt T) t) → Language T (function-ok t)
-tgt-function-ok {T = nil} (scalar ())
-tgt-function-ok {T = T₁ ⇒ T₂} p = function-ok p
-tgt-function-ok {T = never} (scalar ())
-tgt-function-ok {T = unknown} p = unknown
-tgt-function-ok {T = boolean} (scalar ())
-tgt-function-ok {T = number} (scalar ())
-tgt-function-ok {T = string} (scalar ())
-tgt-function-ok {T = T₁ ∪ T₂} (left p) = left (tgt-function-ok p)
-tgt-function-ok {T = T₁ ∪ T₂} (right p) = right (tgt-function-ok p)
-tgt-function-ok {T = T₁ ∩ T₂} (p₁ , p₂) = (tgt-function-ok p₁ , tgt-function-ok p₂)
-
-function-ok-tgt : ∀ {T t} → Language T (function-ok t) → (Language (tgt T) t)
-function-ok-tgt (function-ok p) = p
-function-ok-tgt (left p) = left (function-ok-tgt p)
-function-ok-tgt (right p) = right (function-ok-tgt p)
-function-ok-tgt (p₁ , p₂) = (function-ok-tgt p₁ , function-ok-tgt p₂)
-function-ok-tgt unknown = unknown
-
-tgt-never-≮: : ∀ {T U} → (tgt T ≮: U) → (T ≮: (skalar ∪ (never ⇒ U)))
-tgt-never-≮: (witness t p q) = witness (function-ok t) (tgt-function-ok p) (skalar-function-ok , function-ok q)
-
-never-tgt-≮: : ∀ {T U} → (T ≮: (skalar ∪ (never ⇒ U))) → (tgt T ≮: U)
-never-tgt-≮: (witness (scalar s) p (q₁ , q₂)) = CONTRADICTION (≮:-refl (witness (scalar s) (skalar-scalar s) q₁))
-never-tgt-≮: (witness function p (q₁ , scalar-function ()))
-never-tgt-≮: (witness (function-ok t) p (q₁ , function-ok q₂)) = witness t (function-ok-tgt p) q₂
-never-tgt-≮: (witness (function-err (scalar s)) p (q₁ , function-err (scalar ())))
-
--- Properties of src
-¬function-err-src : ∀ {T t} → (Language (src T) t) → ¬Language T (function-err t)
-¬function-err-src {T = nil} (scalar ())
-¬function-err-src {T = T₁ ⇒ T₂} p = function-err p
-¬function-err-src {T = never} unknown = never
-¬function-err-src {T = unknown} (scalar ())
-¬function-err-src {T = boolean} (scalar ())
-¬function-err-src {T = number} (scalar ())
-¬function-err-src {T = string} (scalar ())
-¬function-err-src {T = T₁ ∪ T₂} (p₁ , p₂) = (¬function-err-src p₁ , ¬function-err-src p₂)
-¬function-err-src {T = T₁ ∩ T₂} (left p) = left (¬function-err-src p)
-¬function-err-src {T = T₁ ∩ T₂} (right p) = right (¬function-err-src p)
-
-src-¬function-err : ∀ {T t} → Language T (function-err t) → (¬Language (src T) t)
-src-¬function-err {T = nil} p = never
-src-¬function-err {T = T₁ ⇒ T₂} (function-err p) = p
-src-¬function-err {T = unknown} p = never
-src-¬function-err {T = boolean} p = never
-src-¬function-err {T = number} p = never
-src-¬function-err {T = string} p = never
-src-¬function-err {T = T₁ ∪ T₂} (left p) = left (src-¬function-err p)
-src-¬function-err {T = T₁ ∪ T₂} (right p) = right (src-¬function-err p)
-src-¬function-err {T = T₁ ∩ T₂} (p₁ , p₂) = (src-¬function-err p₁ , src-¬function-err p₂)
-
-src-¬scalar : ∀ {S T t} (s : Scalar S) → Language T (scalar s) → (¬Language (src T) t)
-src-¬scalar number (scalar number) = never
-src-¬scalar boolean (scalar boolean) = never
-src-¬scalar string (scalar string) = never
-src-¬scalar nil (scalar nil) = never
-src-¬scalar s (left p) = left (src-¬scalar s p)
-src-¬scalar s (right p) = right (src-¬scalar s p)
-src-¬scalar s (p₁ , p₂) = (src-¬scalar s p₁ , src-¬scalar s p₂)
-src-¬scalar s unknown = never
-
-unknown-src-≮: : ∀ {S T U} → (U ≮: S) → (T ≮: (U ⇒ unknown)) → (U ≮: src T)
-unknown-src-≮: (witness t x x₁) (witness (scalar s) p (function-scalar s)) = witness t x (src-¬scalar s p)
-unknown-src-≮: r (witness (function-ok (scalar s)) p (function-ok (scalar-scalar s () q)))
-unknown-src-≮: r (witness (function-ok (function-ok _)) p (function-ok (scalar-function-ok ())))
-unknown-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
 
 -- Properties of unknown and never
 unknown-≮: : ∀ {T U} → (T ≮: U) → (unknown ≮: U)

@@ -24,6 +24,8 @@ data Scalar : Type → Set where
   string : Scalar string
   nil : Scalar nil
 
+skalar = number ∪ (string ∪ (nil ∪ boolean))
+
 lhs : Type → Type
 lhs (T ⇒ _) = T
 lhs (T ∪ _) = T
@@ -145,28 +147,6 @@ just T ≡ᴹᵀ nothing = no (λ ())
 just T ≡ᴹᵀ just U with T ≡ᵀ U
 (just T ≡ᴹᵀ just T) | yes refl = yes refl
 (just T ≡ᴹᵀ just U) | no p = no (λ q → p (just-inv q))
-
-src : Type → Type
-src nil = never
-src number = never
-src boolean = never
-src string = never
-src (S ⇒ T) = S
-src (S ∪ T) = (src S) ∩ (src T)
-src (S ∩ T) = (src S) ∪ (src T)
-src never = unknown
-src unknown = never
-
-tgt : Type → Type
-tgt nil = never
-tgt (S ⇒ T) = T
-tgt never = never
-tgt unknown = unknown
-tgt number = never
-tgt boolean = never
-tgt string = never
-tgt (S ∪ T) = (tgt S) ∪ (tgt T)
-tgt (S ∩ T) = (tgt S) ∩ (tgt T)
 
 optional : Type → Type
 optional nil = nil
