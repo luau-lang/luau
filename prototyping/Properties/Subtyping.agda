@@ -230,6 +230,15 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
 -- Properties of scalars
+skalar-function-ok : ∀ {t} → (¬Language skalar (function-ok t))
+skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
+
+scalar-∩-function-<:-never : ∀ {S T U} → (Scalar S) → ((T ⇒ U) ∩ S) <: never
+scalar-∩-function-<:-never number .(scalar number) (() , scalar number)
+scalar-∩-function-<:-never boolean .(scalar boolean) (() , scalar boolean)
+scalar-∩-function-<:-never string .(scalar string) (() , scalar string)
+scalar-∩-function-<:-never nil .(scalar nil) (() , scalar nil)
+
 function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
 function-≮:-scalar s = witness function function (scalar-function s)
 
