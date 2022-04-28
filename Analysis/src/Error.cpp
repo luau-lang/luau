@@ -8,8 +8,6 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleName, false);
-
 static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
     std::string s = "expects ";
@@ -59,27 +57,20 @@ struct ErrorConverter
 
         std::string result;
 
-        if (FFlag::LuauTypeMismatchModuleName)
+        if (givenTypeName == wantedTypeName)
         {
-            if (givenTypeName == wantedTypeName)
+            if (auto givenDefinitionModule = getDefinitionModuleName(tm.givenType))
             {
-                if (auto givenDefinitionModule = getDefinitionModuleName(tm.givenType))
+                if (auto wantedDefinitionModule = getDefinitionModuleName(tm.wantedType))
                 {
-                    if (auto wantedDefinitionModule = getDefinitionModuleName(tm.wantedType))
-                    {
-                        result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" + wantedTypeName +
-                                 "' from '" + *wantedDefinitionModule + "'";
-                    }
+                    result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" + wantedTypeName +
+                             "' from '" + *wantedDefinitionModule + "'";
                 }
             }
+        }
 
-            if (result.empty())
-                result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
-        }
-        else
-        {
+        if (result.empty())
             result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
-        }
 
         if (tm.error)
         {

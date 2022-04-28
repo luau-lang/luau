@@ -13,6 +13,7 @@
 #include <optional>
 
 LUAU_FASTFLAG(LuauSeparateTypechecks)
+LUAU_FASTFLAG(LuauDirtySourceModule)
 
 namespace Luau
 {
@@ -57,19 +58,27 @@ std::optional<ModuleName> pathExprToModuleName(const ModuleName& currentModuleNa
 
 struct SourceNode
 {
-    bool isDirty(bool forAutocomplete) const
+    bool hasDirtySourceModule() const
+    {
+        LUAU_ASSERT(FFlag::LuauDirtySourceModule);
+
+        return dirtySourceModule;
+    }
+
+    bool hasDirtyModule(bool forAutocomplete) const
     {
         if (FFlag::LuauSeparateTypechecks)
-            return forAutocomplete ? dirtyAutocomplete : dirty;
+            return forAutocomplete ? dirtyModuleForAutocomplete : dirtyModule;
         else
-            return dirty;
+            return dirtyModule;
     }
 
     ModuleName name;
     std::unordered_set<ModuleName> requires;
     std::vector<std::pair<ModuleName, Location>> requireLocations;
-    bool dirty = true;
-    bool dirtyAutocomplete = true;
+    bool dirtySourceModule = true;
+    bool dirtyModule = true;
+    bool dirtyModuleForAutocomplete = true;
     double autocompleteLimitsMult = 1.0;
 };
 
@@ -163,7 +172,7 @@ struct Frontend
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
 private:
-    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name, bool forAutocomplete);
+    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name, bool forAutocomplete_DEPRECATED);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 
     bool parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root, bool forAutocomplete);

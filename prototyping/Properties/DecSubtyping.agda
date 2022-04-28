@@ -1,117 +1,74 @@
 {-# OPTIONS --rewriting #-}
+{-# OPTIONS --allow-unsolved-metas #-}
 
 module Properties.DecSubtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
-open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
-open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
+open import Luau.FunctionTypes using (src; srcⁿ; tgt)
+open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
+open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
+open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-union)
+open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:)
+open import Properties.FunctionTypes using (fun-¬scalar; ¬fun-scalar; fun-function; src-unknown-≮:)
+open import Properties.Equality using (_≢_)
 
--- ¬Language T is the complement of Language T
-language-comp : ∀ {T} t → ¬Language T t → ¬(Language T t)
-language-comp t (p₁ , p₂) (left q) = language-comp t p₁ q
-language-comp t (p₁ , p₂) (right q) = language-comp t p₂ q
-language-comp t (left p) (q₁ , q₂) = language-comp t p q₁
-language-comp t (right p) (q₁ , q₂) = language-comp t p q₂
-language-comp (scalar s) (scalar-scalar s p₁ p₂) (scalar s) = p₂ refl
-language-comp (scalar s) (function-scalar s) (scalar s) = language-comp function (scalar-function s) function
-language-comp (scalar s) never (scalar ())
-language-comp function (scalar-function ()) function
-language-comp (function-ok s t) (scalar-function-ok ()) (function-ok₁ _)
-language-comp (function-ok s t) (scalar-function-ok ()) (function-ok₂ _)
-language-comp (function-ok s t) (function-ok p _) (function-ok₁ q) = language-comp s q p
-language-comp (function-ok s t) (function-ok _ p) (function-ok₂ q) = language-comp t p q
-language-comp (function-err t) (function-err p) (function-err q) = language-comp t q p
+-- Honest this terminates, since src and tgt reduce the depth of nested arrows
+{-# TERMINATING #-}
+dec-subtypingˢⁿ : ∀ {T U} → Scalar T → Normal U → Either (T ≮: U) (T <: U)
+dec-subtypingᶠ : ∀ {T U} → FunType T → FunType U → Either (T ≮: U) (T <: U)
+dec-subtypingᶠⁿ : ∀ {T U} → FunType T → Normal U → Either (T ≮: U) (T <: U)
+dec-subtypingⁿ : ∀ {T U} → Normal T → Normal U → Either (T ≮: U) (T <: U)
+dec-subtyping : ∀ T U → Either (T ≮: U) (T <: U)
 
--- Properties of src
-function-err-src : ∀ {T t} → (¬Language (src T) t) → Language T (function-err t)
-function-err-src {T = nil} never = scalar-function-err nil
-function-err-src {T = T₁ ⇒ T₂} p = function-err p
-function-err-src {T = never} (scalar-scalar number () p)
-function-err-src {T = never} (scalar-function-ok ())
-function-err-src {T = unknown} never = unknown
-function-err-src {T = boolean} p = scalar-function-err boolean
-function-err-src {T = number} p = scalar-function-err number
-function-err-src {T = string} p = scalar-function-err string
-function-err-src {T = T₁ ∪ T₂} (left p) = left (function-err-src p)
-function-err-src {T = T₁ ∪ T₂} (right p) = right (function-err-src p)
-function-err-src {T = T₁ ∩ T₂} (p₁ , p₂) = function-err-src p₁ , function-err-src p₂
+resolve : Type → Type → Type
+resolve (S ⇒ T) V = T
+resolve T = {!!}
 
-¬function-err-src : ∀ {T t} → (Language (src T) t) → ¬Language T (function-err t)
-¬function-err-src {T = nil} (scalar ())
-¬function-err-src {T = T₁ ⇒ T₂} p = function-err p
-¬function-err-src {T = never} unknown = never
-¬function-err-src {T = unknown} (scalar ())
-¬function-err-src {T = boolean} (scalar ())
-¬function-err-src {T = number} (scalar ())
-¬function-err-src {T = string} (scalar ())
-¬function-err-src {T = T₁ ∪ T₂} (p₁ , p₂) = (¬function-err-src p₁ , ¬function-err-src p₂)
-¬function-err-src {T = T₁ ∩ T₂} (left p) = left (¬function-err-src p)
-¬function-err-src {T = T₁ ∩ T₂} (right p) = right (¬function-err-src p)
+dec-subtypingˢⁿ T U with dec-language _ (scalar T)
+dec-subtypingˢⁿ T U | Left p = Left (witness (scalar T) (scalar T) p)
+dec-subtypingˢⁿ T U | Right p = Right (scalar-<: T p)
 
-src-¬function-err : ∀ {T t} → Language T (function-err t) → (¬Language (src T) t)
-src-¬function-err {T = nil} p = never
-src-¬function-err {T = T₁ ⇒ T₂} (function-err p) = p
-src-¬function-err {T = never} (scalar-function-err ())
-src-¬function-err {T = unknown} p = never
-src-¬function-err {T = boolean} p = never
-src-¬function-err {T = number} p = never
-src-¬function-err {T = string} p = never
-src-¬function-err {T = T₁ ∪ T₂} (left p) = left (src-¬function-err p)
-src-¬function-err {T = T₁ ∪ T₂} (right p) = right (src-¬function-err p)
-src-¬function-err {T = T₁ ∩ T₂} (p₁ , p₂) = (src-¬function-err p₁ , src-¬function-err p₂)
+dec-subtypingᶠ {T = T} _ (U ⇒ V) with dec-subtypingⁿ U (normal (src T)) | dec-subtypingⁿ (normal (tgt T)) V
+dec-subtypingᶠ {T = T} _ (U ⇒ V) | Left p | q = Left (≮:-trans-<: (src-unknown-≮: (≮:-trans-<: p (<:-normalize (src T)))) (<:-function <:-refl <:-unknown))
+dec-subtypingᶠ {T = T} _ (U ⇒ V) | Right p | Left q = {!!} -- Left (≮:-trans-<: (tgt-never-≮: (<:-trans-≮: (normalize-<: (tgt T)) q)) (<:-trans (<:-function <:-never <:-refl) <:-∪-right))
+dec-subtypingᶠ T (U ⇒ V) | Right p | Right q = {!!} -- Right (src-tgtᶠ-<: T (<:-trans p (normalize-<: _)) (<:-trans (<:-normalize _) q))
 
-src-≮: : ∀ {T U} → (src T ≮: src U) → (U ≮: T)
-src-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
+dec-subtypingᶠ T (U ∩ V) with dec-subtypingᶠ T U | dec-subtypingᶠ T V
+dec-subtypingᶠ T (U ∩ V) | Left p | q = Left (≮:-∩-left p)
+dec-subtypingᶠ T (U ∩ V) | Right p | Left q = Left (≮:-∩-right q)
+dec-subtypingᶠ T (U ∩ V) | Right p | Right q = Right (<:-∩-glb p q)
 
--- Language membership is decidable
-dec-language : ∀ T t → Either (¬Language T t) (Language T t)
-dec-language nil (scalar number) = Left (scalar-scalar number nil (λ ()))
-dec-language nil (scalar boolean) = Left (scalar-scalar boolean nil (λ ()))
-dec-language nil (scalar string) = Left (scalar-scalar string nil (λ ()))
-dec-language nil (scalar nil) = Right (scalar nil)
-dec-language nil function = Left (scalar-function nil)
-dec-language nil (function-ok s t) = Left (scalar-function-ok nil)
-dec-language nil (function-err t) = Right (scalar-function-err nil)
-dec-language boolean (scalar number) = Left (scalar-scalar number boolean (λ ()))
-dec-language boolean (scalar boolean) = Right (scalar boolean)
-dec-language boolean (scalar string) = Left (scalar-scalar string boolean (λ ()))
-dec-language boolean (scalar nil) = Left (scalar-scalar nil boolean (λ ()))
-dec-language boolean function = Left (scalar-function boolean)
-dec-language boolean (function-ok s t) = Left (scalar-function-ok boolean)
-dec-language boolean (function-err t) = Right (scalar-function-err boolean)
-dec-language number (scalar number) = Right (scalar number)
-dec-language number (scalar boolean) = Left (scalar-scalar boolean number (λ ()))
-dec-language number (scalar string) = Left (scalar-scalar string number (λ ()))
-dec-language number (scalar nil) = Left (scalar-scalar nil number (λ ()))
-dec-language number function = Left (scalar-function number)
-dec-language number (function-ok s t) = Left (scalar-function-ok number)
-dec-language number (function-err t) = Right (scalar-function-err number)
-dec-language string (scalar number) = Left (scalar-scalar number string (λ ()))
-dec-language string (scalar boolean) = Left (scalar-scalar boolean string (λ ()))
-dec-language string (scalar string) = Right (scalar string)
-dec-language string (scalar nil) = Left (scalar-scalar nil string (λ ()))
-dec-language string function = Left (scalar-function string)
-dec-language string (function-ok s t) = Left (scalar-function-ok string)
-dec-language string (function-err t) = Right (scalar-function-err string)
-dec-language (T₁ ⇒ T₂) (scalar s) = Left (function-scalar s)
-dec-language (T₁ ⇒ T₂) function = Right function
-dec-language (T₁ ⇒ T₂) (function-ok s t) = cond (Right ∘ function-ok₁) (λ p → mapLR (function-ok p) function-ok₂ (dec-language T₂ t)) (dec-language T₁ s)
-dec-language (T₁ ⇒ T₂) (function-err t) = mapLR function-err function-err (swapLR (dec-language T₁ t))
-dec-language never t = Left never
-dec-language unknown t = Right unknown
-dec-language (T₁ ∪ T₂) t = cond (λ p → cond (Left ∘ _,_ p) (Right ∘ right) (dec-language T₂ t)) (Right ∘ left) (dec-language T₁ t)
-dec-language (T₁ ∩ T₂) t = cond (Left ∘ left) (λ p → cond (Left ∘ right) (Right ∘ _,_ p) (dec-language T₂ t)) (dec-language T₁ t)
+dec-subtypingᶠⁿ T never = Left (witness function (fun-function T) never)
+dec-subtypingᶠⁿ T unknown = Right <:-unknown
+dec-subtypingᶠⁿ T (U ⇒ V) = dec-subtypingᶠ T (U ⇒ V)
+dec-subtypingᶠⁿ T (U ∩ V) = dec-subtypingᶠ T (U ∩ V)
+dec-subtypingᶠⁿ T (U ∪ V) with dec-subtypingᶠⁿ T U
+dec-subtypingᶠⁿ T (U ∪ V) | Left (witness t p q) = Left (witness t p (q , ¬fun-scalar V T p))
+dec-subtypingᶠⁿ T (U ∪ V) | Right p = Right (<:-trans p <:-∪-left)
 
--- if T <: U then ¬Language U ⊆ ¬Language T
-<:-impl-⊇ : ∀ {T U} → (T <: U) → ∀ t → ¬Language U t → ¬Language T t
-<:-impl-⊇ {T} p t ¬Ut with dec-language T t
-<:-impl-⊇ p t ¬Ut | Left ¬Tt = ¬Tt
-<:-impl-⊇ p t ¬Ut | Right Tt = CONTRADICTION (language-comp t ¬Ut (p t Tt))
+dec-subtypingⁿ never U = Right <:-never
+dec-subtypingⁿ unknown unknown = Right <:-refl
+dec-subtypingⁿ unknown U with dec-subtypingᶠⁿ (never ⇒ unknown) U
+dec-subtypingⁿ unknown U | Left p = Left (<:-trans-≮: <:-unknown p)
+dec-subtypingⁿ unknown U | Right p₁ with dec-subtypingˢⁿ number U
+dec-subtypingⁿ unknown U | Right p₁ | Left p = Left (<:-trans-≮: <:-unknown p)
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ with dec-subtypingˢⁿ string U
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ | Left p = Left (<:-trans-≮: <:-unknown p)
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ | Right p₃ with dec-subtypingˢⁿ nil U
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ | Right p₃ | Left p = Left (<:-trans-≮: <:-unknown p)
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ | Right p₃ | Right p₄ with dec-subtypingˢⁿ boolean U
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ | Right p₃ | Right p₄ | Left p = Left (<:-trans-≮: <:-unknown p)
+dec-subtypingⁿ unknown U | Right p₁ | Right p₂ | Right p₃ | Right p₄ | Right p₅ = Right (<:-trans <:-everything (<:-∪-lub p₁ (<:-∪-lub p₂ (<:-∪-lub p₃ (<:-∪-lub p₄ p₅)))))
+dec-subtypingⁿ (S ⇒ T) U = dec-subtypingᶠⁿ (S ⇒ T) U
+dec-subtypingⁿ (S ∩ T) U = dec-subtypingᶠⁿ (S ∩ T) U
+dec-subtypingⁿ (S ∪ T) U with dec-subtypingⁿ S U | dec-subtypingˢⁿ T U
+dec-subtypingⁿ (S ∪ T) U | Left p | q = Left (≮:-∪-left p)
+dec-subtypingⁿ (S ∪ T) U | Right p | Left q = Left (≮:-∪-right q)
+dec-subtypingⁿ (S ∪ T) U | Right p | Right q = Right (<:-∪-lub p q)
 
--- Subtyping is decidable
--- TODO: Prove this!
-
-postulate dec-subtyping : ∀ T U → Either (T ≮: U) (T <: U)
+dec-subtyping T U with dec-subtypingⁿ (normal T) (normal U)
+dec-subtyping T U | Left p = Left (<:-trans-≮: (normalize-<: T) (≮:-trans-<: p (<:-normalize U)))
+dec-subtyping T U | Right p = Right (<:-trans (<:-normalize T) (<:-trans p (normalize-<: U)))

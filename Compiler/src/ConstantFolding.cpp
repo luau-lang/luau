@@ -191,13 +191,13 @@ struct ConstantVisitor : AstVisitor
 {
     DenseHashMap<AstExpr*, Constant>& constants;
     DenseHashMap<AstLocal*, Variable>& variables;
+    DenseHashMap<AstLocal*, Constant>& locals;
 
-    DenseHashMap<AstLocal*, Constant> locals;
-
-    ConstantVisitor(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables)
+    ConstantVisitor(
+        DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstLocal*, Constant>& locals)
         : constants(constants)
         , variables(variables)
-        , locals(nullptr)
+        , locals(locals)
     {
     }
 
@@ -385,9 +385,10 @@ struct ConstantVisitor : AstVisitor
     }
 };
 
-void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, AstNode* root)
+void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap<AstLocal*, Constant>& locals, AstNode* root)
 {
-    ConstantVisitor visitor{constants, variables};
+    ConstantVisitor visitor{constants, variables, locals};
     root->visit(&visitor);
 }
 

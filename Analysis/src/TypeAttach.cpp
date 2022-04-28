@@ -479,6 +479,20 @@ public:
     {
         return visitLocal(al->local);
     }
+
+    virtual bool visit(AstStatFor* stat) override
+    {
+        visitLocal(stat->var);
+        return true;
+    }
+
+    virtual bool visit(AstStatForIn* stat) override
+    {
+        for (size_t i = 0; i < stat->vars.size; ++i)
+            visitLocal(stat->vars.data[i]);
+        return true;
+    }
+
     virtual bool visit(AstExprFunction* fn) override
     {
         // TODO: add generics if the inferred type of the function is generic CLI-39908

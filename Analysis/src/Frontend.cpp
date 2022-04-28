@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauSeparateTypechecks, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
+LUAU_FASTFLAGVARIABLE(LuauDirtySourceModule, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 0)
 
 namespace Luau
@@ -358,7 +359,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     CheckResult checkResult;
 
     auto it = sourceNodes.find(name);
-    if (it != sourceNodes.end() && !it->second.isDirty(frontendOptions.forAutocomplete))
+    if (it != sourceNodes.end() && !it->second.hasDirtyModule(frontendOptions.forAutocomplete))
     {
         // No recheck required.
         if (FFlag::LuauSeparateTypechecks)
@@ -402,7 +403,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         LUAU_ASSERT(sourceNodes.count(moduleName));
         SourceNode& sourceNode = sourceNodes[moduleName];
 
-        if (!sourceNode.isDirty(frontendOptions.forAutocomplete))
+        if (!sourceNode.hasDirtyModule(frontendOptions.forAutocomplete))
             continue;
 
         LUAU_ASSERT(sourceModules.count(moduleName));
@@ -478,7 +479,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             stats.timeCheck += duration;
             stats.filesStrict += 1;
 
-            sourceNode.dirtyAutocomplete = false;
+            sourceNode.dirtyModuleForAutocomplete = false;
             continue;
         }
 
@@ -541,7 +542,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         checkResult.errors.insert(checkResult.errors.end(), module->errors.begin(), module->errors.end());
 
         moduleResolver.modules[moduleName] = std::move(module);
-        sourceNode.dirty = false;
+        sourceNode.dirtyModule = false;
     }
 
     return checkResult;
@@ -618,7 +619,7 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& chec
                     // this relies on the fact that markDirty marks reverse-dependencies dirty as well
                     // thus if a node is not dirty, all its transitive deps aren't dirty, which means that they won't ever need
                     // to be built, *and* can't form a cycle with any nodes we did process.
-                    if (!it->second.isDirty(forAutocomplete))
+                    if (!it->second.hasDirtyModule(forAutocomplete))
                         continue;
 
                     // note: this check is technically redundant *except* that getSourceNode has somewhat broken memoization
@@ -768,7 +769,7 @@ LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOp
 bool Frontend::isDirty(const ModuleName& name, bool forAutocomplete) const
 {
     auto it = sourceNodes.find(name);
-    return it == sourceNodes.end() || it->second.isDirty(forAutocomplete);
+    return it == sourceNodes.end() || it->second.hasDirtyModule(forAutocomplete);
 }
 
 /*
@@ -810,20 +811,31 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
         if (markedDirty)
             markedDirty->push_back(next);
 
-        if (FFlag::LuauSeparateTypechecks)
+        if (FFlag::LuauDirtySourceModule)
         {
-            if (sourceNode.dirty && sourceNode.dirtyAutocomplete)
+            LUAU_ASSERT(FFlag::LuauSeparateTypechecks);
+
+            if (sourceNode.dirtySourceModule && sourceNode.dirtyModule && sourceNode.dirtyModuleForAutocomplete)
                 continue;
 
-            sourceNode.dirty = true;
-            sourceNode.dirtyAutocomplete = true;
+            sourceNode.dirtySourceModule = true;
+            sourceNode.dirtyModule = true;
+            sourceNode.dirtyModuleForAutocomplete = true;
+        }
+        else if (FFlag::LuauSeparateTypechecks)
+        {
+            if (sourceNode.dirtyModule && sourceNode.dirtyModuleForAutocomplete)
+                continue;
+
+            sourceNode.dirtyModule = true;
+            sourceNode.dirtyModuleForAutocomplete = true;
         }
         else
         {
-            if (sourceNode.dirty)
+            if (sourceNode.dirtyModule)
                 continue;
 
-            sourceNode.dirty = true;
+            sourceNode.dirtyModule = true;
         }
 
         if (0 == reverseDeps.count(name))
@@ -851,13 +863,14 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
-std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& checkResult, const ModuleName& name, bool forAutocomplete)
+std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& checkResult, const ModuleName& name, bool forAutocomplete_DEPRECATED)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::getSourceNode", "Frontend");
     LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
 
     auto it = sourceNodes.find(name);
-    if (it != sourceNodes.end() && !it->second.isDirty(forAutocomplete))
+    if (it != sourceNodes.end() &&
+        (FFlag::LuauDirtySourceModule ? !it->second.hasDirtySourceModule() : !it->second.hasDirtyModule(forAutocomplete_DEPRECATED)))
     {
         auto moduleIt = sourceModules.find(name);
         if (moduleIt != sourceModules.end())
@@ -901,17 +914,20 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
     sourceNode.requires.clear();
     sourceNode.requireLocations.clear();
 
+    if (FFlag::LuauDirtySourceModule)
+        sourceNode.dirtySourceModule = false;
+
     if (FFlag::LuauSeparateTypechecks)
     {
         if (it == sourceNodes.end())
         {
-            sourceNode.dirty = true;
-            sourceNode.dirtyAutocomplete = true;
+            sourceNode.dirtyModule = true;
+            sourceNode.dirtyModuleForAutocomplete = true;
         }
     }
     else
     {
-        sourceNode.dirty = true;
+        sourceNode.dirtyModule = true;
     }
 
     for (const auto& [moduleName, location] : requireTrace.requires)

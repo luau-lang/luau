@@ -133,7 +133,7 @@
 #define luaC_init(L, o, tt) luaC_initobj(L, cast_to(GCObject*, (o)), tt)
 
 LUAI_FUNC void luaC_freeall(lua_State* L);
-LUAI_FUNC void luaC_step(lua_State* L, bool assist);
+LUAI_FUNC size_t luaC_step(lua_State* L, bool assist);
 LUAI_FUNC void luaC_fullgc(lua_State* L);
 LUAI_FUNC void luaC_initobj(lua_State* L, GCObject* o, uint8_t tt);
 LUAI_FUNC void luaC_initupval(lua_State* L, UpVal* uv);

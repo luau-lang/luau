@@ -106,7 +106,7 @@ struct GCCycleMetrics
     double markassisttime = 0.0;
     double markmaxexplicittime = 0.0;
     size_t markexplicitsteps = 0;
-    size_t markrequests = 0;
+    size_t markwork = 0;
 
     double atomicstarttimestamp = 0.0;
     size_t atomicstarttotalsizebytes = 0;
@@ -122,10 +122,7 @@ struct GCCycleMetrics
     double sweepassisttime = 0.0;
     double sweepmaxexplicittime = 0.0;
     size_t sweepexplicitsteps = 0;
-    size_t sweeprequests = 0;
-
-    size_t assistrequests = 0;
-    size_t explicitrequests = 0;
+    size_t sweepwork = 0;
 
     size_t assistwork = 0;
     size_t explicitwork = 0;

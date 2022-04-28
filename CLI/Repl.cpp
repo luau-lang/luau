@@ -579,7 +579,8 @@ static bool compileFile(const char* name, CompileFormat format)
 
         if (format == CompileFormat::Text)
         {
-            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals);
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
+                             Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
 
@@ -636,13 +637,60 @@ static int assertionHandler(const char* expr, const char* file, int line, const 
     return 1;
 }
 
+static void setLuauFlags(bool state)
+{
+    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+    {
+        if (strncmp(flag->name, "Luau", 4) == 0)
+            flag->value = state;
+    }
+}
+
+static void setFlag(std::string_view name, bool state)
+{
+    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+    {
+        if (name == flag->name)
+        {
+            flag->value = state;
+            return;
+        }
+    }
+
+    fprintf(stderr, "Warning: --fflag unrecognized flag '%.*s'.\n\n", int(name.length()), name.data());
+}
+
+static void applyFlagKeyValue(std::string_view element)
+{
+    if (size_t separator = element.find('='); separator != std::string_view::npos)
+    {
+        std::string_view key = element.substr(0, separator);
+        std::string_view value = element.substr(separator + 1);
+
+        if (value == "true")
+            setFlag(key, true);
+        else if (value == "false")
+            setFlag(key, false);
+        else
+            fprintf(stderr, "Warning: --fflag unrecognized value '%.*s' for flag '%.*s'.\n\n", int(value.length()), value.data(), int(key.length()),
+                key.data());
+    }
+    else
+    {
+        if (element == "true")
+            setLuauFlags(true);
+        else if (element == "false")
+            setLuauFlags(false);
+        else
+            setFlag(element, true);
+    }
+}
+
 int replMain(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
 
-    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-        if (strncmp(flag->name, "Luau", 4) == 0)
-            flag->value = true;
+    setLuauFlags(true);
 
     CliMode mode = CliMode::Unknown;
     CompileFormat compileFormat{};
@@ -726,6 +774,22 @@ int replMain(int argc, char** argv)
             printf("To run with --timetrace, Luau has to be built with LUAU_ENABLE_TIME_TRACE enabled\n");
             return 1;
 #endif
+        }
+        else if (strncmp(argv[i], "--fflags=", 9) == 0)
+        {
+            std::string_view list = argv[i] + 9;
+
+            while (!list.empty())
+            {
+                size_t ending = list.find(",");
+
+                applyFlagKeyValue(list.substr(0, ending));
+
+                if (ending != std::string_view::npos)
+                    list.remove_prefix(ending + 1);
+                else
+                    break;
+            }
         }
         else if (argv[i][0] == '-')
         {

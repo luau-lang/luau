@@ -44,7 +44,7 @@ struct RefinementClassFixture : Fixture
         TypeArena& arena = typeChecker.globalTypes;
 
         unfreeze(arena);
-        TypeId vec3 = arena.addType(ClassTypeVar{"Vector3", {}, std::nullopt, std::nullopt, {}, nullptr});
+        TypeId vec3 = arena.addType(ClassTypeVar{"Vector3", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassTypeVar>(vec3)->props = {
             {"X", Property{typeChecker.numberType}},
             {"Y", Property{typeChecker.numberType}},
@@ -52,7 +52,7 @@ struct RefinementClassFixture : Fixture
         };
         normalize(vec3, arena, *typeChecker.iceHandler);
 
-        TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr});
+        TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
         TypePackId isAParams = arena.addTypePack({inst, typeChecker.stringType});
         TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
@@ -66,9 +66,9 @@ struct RefinementClassFixture : Fixture
         };
         normalize(inst, arena, *typeChecker.iceHandler);
 
-        TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr});
+        TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
         normalize(folder, arena, *typeChecker.iceHandler);
-        TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr});
+        TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassTypeVar>(part)->props = {
             {"Position", Property{vec3}},
         };

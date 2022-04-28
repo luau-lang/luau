@@ -26,7 +26,6 @@ data Language where
   function-ok₁ : ∀ {T U t u} → (¬Language T t) → Language (T ⇒ U) (function-ok t u)
   function-ok₂ : ∀ {T U t u} → (Language U u) → Language (T ⇒ U) (function-ok t u)
   function-err : ∀ {T U t} → (¬Language T t) → Language (T ⇒ U) (function-err t)
-  scalar-function-err : ∀ {S t} → (Scalar S) → Language S (function-err t)
   left : ∀ {T U t} → Language T t → Language (T ∪ U) t
   right : ∀ {T U u} → Language U u → Language (T ∪ U) u
   _,_ : ∀ {T U t} → Language T t → Language U t → Language (T ∩ U) t
@@ -37,6 +36,7 @@ data ¬Language where
   scalar-scalar : ∀ {S T} → (s : Scalar S) → (Scalar T) → (S ≢ T) → ¬Language T (scalar s)
   scalar-function : ∀ {S} → (Scalar S) → ¬Language S function
   scalar-function-ok : ∀ {S t u} → (Scalar S) → ¬Language S (function-ok t u)
+  scalar-function-err : ∀ {S t} → (Scalar S) → ¬Language S (function-err t)
   function-scalar : ∀ {S T U} (s : Scalar S) → ¬Language (T ⇒ U) (scalar s)
   function-ok : ∀ {T U t u} → (Language T t) → (¬Language U u) → ¬Language (T ⇒ U) (function-ok t u)
   function-err : ∀ {T U t} → (Language T t) → ¬Language (T ⇒ U) (function-err t)

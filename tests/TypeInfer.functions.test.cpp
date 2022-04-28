@@ -656,6 +656,11 @@ TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
 {
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -664,7 +669,7 @@ TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
         end
 
         return function()
-            return f():andThen()
+            return f()
         end
     )");
 
@@ -791,13 +796,17 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
 
 TEST_CASE_FIXTURE(Fixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
 {
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
-        function Test(a)
+        function Test(a): ...any
             return 1, ""
         end
-
 
         local tab = {}
         table.insert(tab, Test(1));
@@ -1614,6 +1623,21 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(nullptr != get<OccursCheckFailed>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
+{
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f() return end
+        local g = function() return f() end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -6,12 +6,65 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
-open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; src; tgt)
+open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; skalar)
 open import Properties.Contradiction using (CONTRADICTION; ¬; ⊥)
-open import Properties.DecSubtyping using (language-comp; dec-language; function-err-src; ¬function-err-src; src-¬function-err; <:-impl-⊇)
 open import Properties.Equality using (_≢_)
 open import Properties.Functions using (_∘_)
 open import Properties.Product using (_×_; _,_)
+
+-- Language membership is decidable
+dec-language : ∀ T t → Either (¬Language T t) (Language T t)
+dec-language nil (scalar number) = Left (scalar-scalar number nil (λ ()))
+dec-language nil (scalar boolean) = Left (scalar-scalar boolean nil (λ ()))
+dec-language nil (scalar string) = Left (scalar-scalar string nil (λ ()))
+dec-language nil (scalar nil) = Right (scalar nil)
+dec-language nil function = Left (scalar-function nil)
+dec-language nil (function-ok s t) = Left (scalar-function-ok nil)
+dec-language nil (function-err t) = Left (scalar-function-err nil)
+dec-language boolean (scalar number) = Left (scalar-scalar number boolean (λ ()))
+dec-language boolean (scalar boolean) = Right (scalar boolean)
+dec-language boolean (scalar string) = Left (scalar-scalar string boolean (λ ()))
+dec-language boolean (scalar nil) = Left (scalar-scalar nil boolean (λ ()))
+dec-language boolean function = Left (scalar-function boolean)
+dec-language boolean (function-ok s t) = Left (scalar-function-ok boolean)
+dec-language boolean (function-err t) = Left (scalar-function-err boolean)
+dec-language number (scalar number) = Right (scalar number)
+dec-language number (scalar boolean) = Left (scalar-scalar boolean number (λ ()))
+dec-language number (scalar string) = Left (scalar-scalar string number (λ ()))
+dec-language number (scalar nil) = Left (scalar-scalar nil number (λ ()))
+dec-language number function = Left (scalar-function number)
+dec-language number (function-ok s t) = Left (scalar-function-ok number)
+dec-language number (function-err t) = Left (scalar-function-err number)
+dec-language string (scalar number) = Left (scalar-scalar number string (λ ()))
+dec-language string (scalar boolean) = Left (scalar-scalar boolean string (λ ()))
+dec-language string (scalar string) = Right (scalar string)
+dec-language string (scalar nil) = Left (scalar-scalar nil string (λ ()))
+dec-language string function = Left (scalar-function string)
+dec-language string (function-ok s t) = Left (scalar-function-ok string)
+dec-language string (function-err t) = Left (scalar-function-err string)
+dec-language (T₁ ⇒ T₂) (scalar s) = Left (function-scalar s)
+dec-language (T₁ ⇒ T₂) function = Right function
+dec-language (T₁ ⇒ T₂) (function-ok s t) = cond (Right ∘ function-ok₁) (λ p → mapLR (function-ok p) function-ok₂ (dec-language T₂ t)) (dec-language T₁ s)
+dec-language (T₁ ⇒ T₂) (function-err t) = mapLR function-err function-err (swapLR (dec-language T₁ t))
+dec-language never t = Left never
+dec-language unknown t = Right unknown
+dec-language (T₁ ∪ T₂) t = cond (λ p → cond (Left ∘ _,_ p) (Right ∘ right) (dec-language T₂ t)) (Right ∘ left) (dec-language T₁ t)
+dec-language (T₁ ∩ T₂) t = cond (Left ∘ left) (λ p → cond (Left ∘ right) (Right ∘ _,_ p) (dec-language T₂ t)) (dec-language T₁ t)
+
+-- ¬Language T is the complement of Language T
+language-comp : ∀ {T} t → ¬Language T t → ¬(Language T t)
+language-comp t (p₁ , p₂) (left q) = language-comp t p₁ q
+language-comp t (p₁ , p₂) (right q) = language-comp t p₂ q
+language-comp t (left p) (q₁ , q₂) = language-comp t p q₁
+language-comp t (right p) (q₁ , q₂) = language-comp t p q₂
+language-comp (scalar s) (scalar-scalar s p₁ p₂) (scalar s) = p₂ refl
+language-comp (scalar s) (function-scalar s) (scalar s) = language-comp function (scalar-function s) function
+language-comp (scalar s) never (scalar ())
+language-comp function (scalar-function ()) function
+language-comp (function-ok s t) (scalar-function-ok ()) (function-ok₁ p)
+language-comp (function-ok s t) (function-ok p₁ p₂) (function-ok₁ q) = language-comp s q p₁
+language-comp (function-ok s t) (function-ok p₁ p₂) (function-ok₂ q) = language-comp t p₂ q
+language-comp (function-err t) (function-err p) (function-err q) = language-comp t q p
 
 -- ≮: is the complement of <:
 ¬≮:-impl-<: : ∀ {T U} → ¬(T ≮: U) → (T <: U)
@@ -21,6 +74,11 @@ open import Properties.Product using (_×_; _,_)
 
 <:-impl-¬≮: : ∀ {T U} → (T <: U) → ¬(T ≮: U)
 <:-impl-¬≮: p (witness t q r) = language-comp t r (p t q)
+
+<:-impl-⊇ : ∀ {T U} → (T <: U) → ∀ t → ¬Language U t → ¬Language T t
+<:-impl-⊇ {T} p t q with dec-language T t
+<:-impl-⊇ {_} p t q | Left r = r
+<:-impl-⊇ {_} p t q | Right r = CONTRADICTION (language-comp t q (p t r))
 
 -- reflexivity
 ≮:-refl : ∀ {T} → ¬(T ≮: T)
@@ -45,6 +103,9 @@ open import Properties.Product using (_×_; _,_)
 <:-trans-≮: : ∀ {S T U} → (S <: T) → (S ≮: U) → (T ≮: U)
 <:-trans-≮: p (witness t q r) = witness t (p t q) r
 
+≮:-trans-<: : ∀ {S T U} → (S ≮: U) → (T <: U) → (S ≮: T)
+≮:-trans-<: (witness t p q) r = witness t p (<:-impl-⊇ r t q)
+
 -- Properties of union
 
 <:-union : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∪ S) <: (T ∪ U))
@@ -60,6 +121,20 @@ open import Properties.Product using (_×_; _,_)
 <:-∪-lub : ∀ {S T U} → (S <: U) → (T <: U) → ((S ∪ T) <: U)
 <:-∪-lub p q t (left r) = p t r
 <:-∪-lub p q t (right r) = q t r
+
+<:-∪-symm : ∀ {T U} → (T ∪ U) <: (U ∪ T)
+<:-∪-symm t (left p) = right p
+<:-∪-symm t (right p) = left p
+
+<:-∪-assocl : ∀ {S T U} → (S ∪ (T ∪ U)) <: ((S ∪ T) ∪ U)
+<:-∪-assocl t (left p) = left (left p)
+<:-∪-assocl t (right (left p)) = left (right p)
+<:-∪-assocl t (right (right p)) = right p
+
+<:-∪-assocr : ∀ {S T U} → ((S ∪ T) ∪ U) <: (S ∪ (T ∪ U))
+<:-∪-assocr t (left (left p)) = left p
+<:-∪-assocr t (left (right p)) = right (left p)
+<:-∪-assocr t (right p) = right (right p)
 
 ≮:-∪-left : ∀ {S T U} → (S ≮: U) → ((S ∪ T) ≮: U)
 ≮:-∪-left (witness t p q) = witness t (left p) q
@@ -81,6 +156,9 @@ open import Properties.Product using (_×_; _,_)
 <:-∩-glb : ∀ {S T U} → (S <: T) → (S <: U) → (S <: (T ∩ U))
 <:-∩-glb p q t r = (p t r , q t r)
 
+<:-∩-symm : ∀ {T U} → (T ∩ U) <: (U ∩ T)
+<:-∩-symm t (p₁ , p₂) = (p₂ , p₁)
+
 ≮:-∩-left : ∀ {S T U} → (S ≮: T) → (S ≮: (T ∩ U))
 ≮:-∩-left (witness t p q) = witness t p (left q)
 
@@ -88,22 +166,39 @@ open import Properties.Product using (_×_; _,_)
 ≮:-∩-right (witness t p q) = witness t p (right q)
 
 -- Distribution properties
-<:-∩-dist-∪ : ∀ {S T U} → (S ∩ (T ∪ U)) <: ((S ∩ T) ∪ (S ∩ U))
-<:-∩-dist-∪ t (p₁ , left p₂) = left (p₁ , p₂)
-<:-∩-dist-∪ t (p₁ , right p₂) = right (p₁ , p₂)
+<:-∩-distl-∪ : ∀ {S T U} → (S ∩ (T ∪ U)) <: ((S ∩ T) ∪ (S ∩ U))
+<:-∩-distl-∪ t (p₁ , left p₂) = left (p₁ , p₂)
+<:-∩-distl-∪ t (p₁ , right p₂) = right (p₁ , p₂)
 
-∩-dist-∪-<: : ∀ {S T U} → ((S ∩ T) ∪ (S ∩ U)) <: (S ∩ (T ∪ U))
-∩-dist-∪-<: t (left (p₁ , p₂)) = (p₁ , left p₂)
-∩-dist-∪-<: t (right (p₁ , p₂)) = (p₁ , right p₂)
+∩-distl-∪-<: : ∀ {S T U} → ((S ∩ T) ∪ (S ∩ U)) <: (S ∩ (T ∪ U))
+∩-distl-∪-<: t (left (p₁ , p₂)) = (p₁ , left p₂)
+∩-distl-∪-<: t (right (p₁ , p₂)) = (p₁ , right p₂)
 
-<:-∪-dist-∩ : ∀ {S T U} → (S ∪ (T ∩ U)) <: ((S ∪ T) ∩ (S ∪ U))
-<:-∪-dist-∩ t (left p) = (left p , left p)
-<:-∪-dist-∩ t (right (p₁ , p₂)) = (right p₁ , right p₂)
+<:-∩-distr-∪ : ∀ {S T U} → ((S ∪ T) ∩ U) <:  ((S ∩ U) ∪ (T ∩ U))
+<:-∩-distr-∪ t (left p₁ , p₂) = left (p₁ , p₂)
+<:-∩-distr-∪ t (right p₁ , p₂) = right (p₁ , p₂)
 
-∪-dist-∩-<: : ∀ {S T U} → ((S ∪ T) ∩ (S ∪ U)) <: (S ∪ (T ∩ U))
-∪-dist-∩-<: t (left p₁ , p₂) = left p₁
-∪-dist-∩-<: t (right p₁ , left p₂) = left p₂
-∪-dist-∩-<: t (right p₁ , right p₂) = right (p₁ , p₂)
+∩-distr-∪-<: : ∀ {S T U} → ((S ∩ U) ∪ (T ∩ U)) <: ((S ∪ T) ∩ U)
+∩-distr-∪-<: t (left (p₁ , p₂)) = (left p₁ , p₂)
+∩-distr-∪-<: t (right (p₁ , p₂)) = (right p₁ , p₂)
+
+<:-∪-distl-∩ : ∀ {S T U} → (S ∪ (T ∩ U)) <: ((S ∪ T) ∩ (S ∪ U))
+<:-∪-distl-∩ t (left p) = (left p , left p)
+<:-∪-distl-∩ t (right (p₁ , p₂)) = (right p₁ , right p₂)
+
+∪-distl-∩-<: : ∀ {S T U} → ((S ∪ T) ∩ (S ∪ U)) <: (S ∪ (T ∩ U))
+∪-distl-∩-<: t (left p₁ , p₂) = left p₁
+∪-distl-∩-<: t (right p₁ , left p₂) = left p₂
+∪-distl-∩-<: t (right p₁ , right p₂) = right (p₁ , p₂)
+
+<:-∪-distr-∩ : ∀ {S T U} → ((S ∩ T) ∪ U) <: ((S ∪ U) ∩ (T ∪ U))
+<:-∪-distr-∩ t (left (p₁ , p₂)) = left p₁ , left p₂
+<:-∪-distr-∩ t (right p) = (right p , right p)
+
+∪-distr-∩-<: : ∀ {S T U} → ((S ∪ U) ∩ (T ∪ U)) <: ((S ∩ T) ∪ U)
+∪-distr-∩-<: t (left p₁ , left p₂) = left (p₁ , p₂)
+∪-distr-∩-<: t (left p₁ , right p₂) = right p₂
+∪-distr-∩-<: t (right p₁ , p₂) = right p₁
 
 -- Properties of functions
 <:-function : ∀ {R S T U} → (R <: S) → (T <: U) → (S ⇒ T) <: (R ⇒ U)
@@ -116,7 +211,7 @@ open import Properties.Product using (_×_; _,_)
 <:-function-∩-∪ function (function , function) = function
 <:-function-∩-∪ (function-ok s t) (function-ok₁ p₁ , function-ok₁ p₂) = function-ok₁ (p₁ , p₂)
 <:-function-∩-∪ (function-ok s t) (p₁ , function-ok₂ p₂) = function-ok₂ (right p₂)
-<:-function-∩-∪ (function-ok _ _) (function-ok₂ p₁ , p₂) = function-ok₂ (left p₁)
+<:-function-∩-∪ (function-ok s t) (function-ok₂ p₁ , p₂) = function-ok₂ (left p₁)
 <:-function-∩-∪ (function-err _) (function-err p₁ , function-err q₂) = function-err (p₁ , q₂)
 
 <:-function-∩ : ∀ {S T U} → ((S ⇒ T) ∩ (S ⇒ U)) <: (S ⇒ (T ∩ U))
@@ -126,17 +221,48 @@ open import Properties.Product using (_×_; _,_)
 <:-function-∩ (function-ok s t) (function-ok₂ p₁ , function-ok₂ p₂) = function-ok₂ (p₁ , p₂)
 <:-function-∩ (function-err s) (function-err p₁ , function-err p₂) = function-err p₂
 
+<:-function-∪ : ∀ {R S T U} → ((R ⇒ S) ∪ (T ⇒ U)) <: ((R ∩ T) ⇒ (S ∪ U))
+<:-function-∪ function (left function) = function
+<:-function-∪ (function-ok s t) (left (function-ok₁ p)) = function-ok₁ (left p)
+<:-function-∪ (function-ok s t) (left (function-ok₂ p)) = function-ok₂ (left p)
+<:-function-∪ (function-err s) (left (function-err p)) = function-err (left p)
+<:-function-∪ (scalar s) (left (scalar ()))
+<:-function-∪ function (right function) = function
+<:-function-∪ (function-ok s t) (right (function-ok₁ p)) = function-ok₁ (right p)
+<:-function-∪ (function-ok s t) (right (function-ok₂ p)) = function-ok₂ (right p)
+<:-function-∪ (function-err s) (right (function-err x)) = function-err (right x)
+<:-function-∪ (scalar s) (right (scalar ()))
+
 <:-function-∪-∩ : ∀ {R S T U} → ((R ∩ S) ⇒ (T ∪ U)) <: ((R ⇒ T) ∪ (S ⇒ U))
 <:-function-∪-∩ function function = left function
 <:-function-∪-∩ (function-ok s t) (function-ok₁ (left p)) = left (function-ok₁ p)
-<:-function-∪-∩ (function-ok s t) (function-ok₁ (right p)) = right (function-ok₁ p)
 <:-function-∪-∩ (function-ok s t) (function-ok₂ (left p)) = left (function-ok₂ p)
+<:-function-∪-∩ (function-ok s t) (function-ok₁ (right p)) = right (function-ok₁ p)
 <:-function-∪-∩ (function-ok s t) (function-ok₂ (right p)) = right (function-ok₂ p)
 <:-function-∪-∩ (function-err s) (function-err (left p)) = left (function-err p)
 <:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
+≮:-function-left : ∀ {R S T U} → (R ≮: S) → (S ⇒ T) ≮: (R ⇒ U)
+≮:-function-left (witness t p q) = witness (function-err t) (function-err q) (function-err p)
+
+≮:-function-right : ∀ {R S T U} → (R ≮: never) → (T ≮: U) → (S ⇒ T) ≮: (R ⇒ U)
+≮:-function-right (witness s r _) (witness t p q) = witness (function-ok s t) (function-ok₂ p) (function-ok r q)
+
 -- Properties of scalars
-skalar = number ∪ (string ∪ (nil ∪ boolean))
+skalar-function-ok : ∀ {s t} → (¬Language skalar (function-ok s t))
+skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
+
+scalar-<: : ∀ {S T} → (s : Scalar S) → Language T (scalar s) → (S <: T)
+scalar-<: number p (scalar number) (scalar number) = p
+scalar-<: boolean p (scalar boolean) (scalar boolean) = p
+scalar-<: string p (scalar string) (scalar string) = p
+scalar-<: nil p (scalar nil) (scalar nil) = p
+
+scalar-∩-function-<:-never : ∀ {S T U} → (Scalar S) → ((T ⇒ U) ∩ S) <: never
+scalar-∩-function-<:-never number .(scalar number) (() , scalar number)
+scalar-∩-function-<:-never boolean .(scalar boolean) (() , scalar boolean)
+scalar-∩-function-<:-never string .(scalar string) (() , scalar string)
+scalar-∩-function-<:-never nil .(scalar nil) (() , scalar nil)
 
 function-≮:-scalar : ∀ {S T U} → (Scalar U) → ((S ⇒ T) ≮: U)
 function-≮:-scalar s = witness function function (scalar-function s)
@@ -145,7 +271,7 @@ scalar-≮:-function : ∀ {S T U} → (Scalar U) → (U ≮: (S ⇒ T))
 scalar-≮:-function s = witness (scalar s) (scalar s) (function-scalar s)
 
 unknown-≮:-scalar : ∀ {U} → (Scalar U) → (unknown ≮: U)
-unknown-≮:-scalar s = witness (function) unknown (scalar-function s)
+unknown-≮:-scalar s = witness function unknown (scalar-function s)
 
 scalar-≮:-never : ∀ {U} → (Scalar U) → (U ≮: never)
 scalar-≮:-never s = witness (scalar s) (scalar s) never
@@ -153,33 +279,14 @@ scalar-≮:-never s = witness (scalar s) (scalar s) never
 scalar-≢-impl-≮: : ∀ {T U} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ≮: U)
 scalar-≢-impl-≮: s₁ s₂ p = witness (scalar s₁) (scalar s₁) (scalar-scalar s₁ s₂ p)
 
-skalar-function-ok : ∀ {s t} → (¬Language skalar (function-ok s t))
-skalar-function-ok = (scalar-function-ok number , (scalar-function-ok string , (scalar-function-ok nil , scalar-function-ok boolean)))
+scalar-≢-∩-<:-never : ∀ {T U V} → (Scalar T) → (Scalar U) → (T ≢ U) → (T ∩ U) <: V
+scalar-≢-∩-<:-never s t p u (scalar s₁ , scalar s₂) = CONTRADICTION (p refl)
 
 skalar-scalar : ∀ {T} (s : Scalar T) → (Language skalar (scalar s))
 skalar-scalar number = left (scalar number)
 skalar-scalar boolean = right (right (right (scalar boolean)))
 skalar-scalar string = right (left (scalar string))
 skalar-scalar nil = right (right (left (scalar nil)))
-
-src-¬scalar : ∀ {S T t} (s : Scalar S) → Language T (scalar s) → (¬Language (src T) t)
-src-¬scalar number (scalar number) = never
-src-¬scalar boolean (scalar boolean) = never
-src-¬scalar string (scalar string) = never
-src-¬scalar nil (scalar nil) = never
-src-¬scalar s (left p) = left (src-¬scalar s p)
-src-¬scalar s (right p) = right (src-¬scalar s p)
-src-¬scalar s (p₁ , p₂) = (src-¬scalar s p₁ , src-¬scalar s p₂)
-src-¬scalar s unknown = never
-
-src-unknown-≮: : ∀ {T U} → (T ≮: src U) → (U ≮: (T ⇒ unknown))
-src-unknown-≮: (witness t p q) = witness (function-err t) (function-err-src q) (¬function-err-src p)
-
-unknown-src-≮: : ∀ {S T U} → (U ≮: S) → (T ≮: (U ⇒ unknown)) → (U ≮: src T)
-unknown-src-≮: (witness t p _) (witness (scalar s) q (function-scalar s)) = witness t p (src-¬scalar s q)
-unknown-src-≮: (witness _ _ _) (witness function _ (scalar-function ()))
-unknown-src-≮: (witness _ _ _) (witness (function-ok _ t) _ (function-ok _ r)) = CONTRADICTION (language-comp t r unknown)
-unknown-src-≮: (witness _ _ _) (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
 
 -- Properties of unknown and never
 unknown-≮: : ∀ {T U} → (T ≮: U) → (unknown ≮: U)
@@ -196,7 +303,6 @@ function-≮:-never = witness function function never
 
 <:-never : ∀ {T} → (never <: T)
 <:-never t (scalar ())
-<:-never t (scalar-function-err ())
 
 ≮:-never-left : ∀ {S T U} → (S <: (T ∪ U)) → (S ≮: T) → (S ∩ U) ≮: never
 ≮:-never-left p (witness t q₁ q₂) with p t q₁
@@ -256,7 +362,7 @@ set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , just u) Qtu (S₂t , ¬T
 
   ¬T₁u : ¬(Language T₁ u)
   ¬T₁u T₁u with p (function-ok t u) (function-ok₂ T₁u)
-  ¬T₁u T₁u | function-ok₁ ¬S₂t = CONTRADICTION (language-comp t ¬S₂t S₂t)
+  ¬T₁u T₁u | function-ok₁ ¬S₂t = language-comp t ¬S₂t S₂t
   ¬T₁u T₁u | function-ok₂ T₂u = ¬T₂u T₂u
 
 set-theoretic-if {S₁} {T₁} {S₂} {T₂} p Q q (t , nothing) Qt- (S₂t , _) = q (t , nothing) Qt- (S₁t , λ ()) where

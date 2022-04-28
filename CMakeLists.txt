@@ -73,6 +73,12 @@ else()
     list(APPEND LUAU_OPTIONS -Wall) # All warnings
 endif()
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    # Some gcc versions treat var in `if (type var = val)` as unused
+    # Some gcc versions treat variables used in constexpr if blocks as unused
+    list(APPEND LUAU_OPTIONS -Wno-unused)
+endif()
+
 # Enabled in CI; we should be warning free on our main compiler versions but don't guarantee being warning free everywhere
 if(LUAU_WERROR)
     if(MSVC)

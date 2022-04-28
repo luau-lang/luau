@@ -327,7 +327,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
     }
     else if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
     {
-        formatAppend(result, "VariadicTypePack %d", index);
+        formatAppend(result, "VariadicTypePack %s%d", vtp->hidden ? "hidden " : "", index);
         finishNodeLabel(tp);
         finishNode();
 

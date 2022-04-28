@@ -2086,7 +2086,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
 {
     ScopedFastFlag luauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-    ScopedFastFlag luauExtendedIndexerError{"LuauExtendedIndexerError", true};
 
     CheckResult result = check(R"(
         type A = { [number]: string }
@@ -2105,7 +2104,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
 {
     ScopedFastFlag luauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-    ScopedFastFlag luauExtendedIndexerError{"LuauExtendedIndexerError", true};
 
     CheckResult result = check(R"(
         type A = { [number]: number }
