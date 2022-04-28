@@ -5,13 +5,13 @@ module Properties.DecSubtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
-open import Luau.FunctionTypes using (src; srcⁿ; tgt)
 open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
+open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
-open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-union)
-open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:)
+open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-union; ≮:-left-∪; ≮:-right-∪; <:-impl-⊇)
+open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:; normal-∩ⁿ; normal-∪ⁿ; ∪-<:-∪ⁿ; ∪ⁿ-<:-∪)
 open import Properties.FunctionTypes using (fun-¬scalar; ¬fun-scalar; fun-function; src-unknown-≮:)
 open import Properties.Equality using (_≢_)
 
@@ -23,17 +23,48 @@ dec-subtypingᶠⁿ : ∀ {T U} → FunType T → Normal U → Either (T ≮: U)
 dec-subtypingⁿ : ∀ {T U} → Normal T → Normal U → Either (T ≮: U) (T <: U)
 dec-subtyping : ∀ T U → Either (T ≮: U) (T <: U)
 
-resolve : Type → Type → Type
-resolve (S ⇒ T) V = T
-resolve T = {!!}
+srcᶠ : ∀ {F} → FunType F → Type
+normal-srcᶠ : ∀ {F} → (Fᶠ : FunType F) → Normal (srcᶠ Fᶠ)
+srcᶠ-function-err : ∀ {F} → (Fᶠ : FunType F) → ∀ s → ¬Language (srcᶠ Fᶠ) s → Language F (function-err s)
+
+≮:-srcᶠ : ∀ {F S T} → (Fᶠ : FunType F) → (S ≮: srcᶠ Fᶠ) → (F ≮: (S ⇒ T))
+
+resolveᶠⁿ : ∀ {F V} → FunType F → Normal V → Type
+normal-resolveᶠⁿ : ∀ {F V} → (Fᶠ : FunType F) → (Vⁿ : Normal V) → Normal (resolveᶠⁿ Fᶠ Vⁿ)
+
+srcᶠ {S ⇒ T} F = S
+srcᶠ (F ∩ G) = srcᶠ F ∪ⁿ srcᶠ G
+
+normal-srcᶠ (S ⇒ T) = S
+normal-srcᶠ (F ∩ G) = normal-∪ⁿ (normal-srcᶠ F) (normal-srcᶠ G)
+
+srcᶠ-function-err (S ⇒ T) s p = function-err p
+srcᶠ-function-err (F ∩ G) s p with <:-impl-⊇ (∪-<:-∪ⁿ (normal-srcᶠ F) (normal-srcᶠ G)) s p
+srcᶠ-function-err (F ∩ G) s p | (p₁ , p₂) = (srcᶠ-function-err F s p₁ , srcᶠ-function-err G s p₂)
+
+≮:-srcᶠ F (witness s p q) = witness (function-err s) (srcᶠ-function-err F s q) (function-err p)
+
+resolveᶠⁿ {S ⇒ T} F V = T
+resolveᶠⁿ (F ∩ G) V with dec-subtypingⁿ V (normal-srcᶠ F) | dec-subtypingⁿ V (normal-srcᶠ G)
+resolveᶠⁿ (F ∩ G) V | Left p | Left q = resolveᶠⁿ F V ∪ⁿ resolveᶠⁿ G V
+resolveᶠⁿ (F ∩ G) V | Left p | Right q = resolveᶠⁿ G V
+resolveᶠⁿ (F ∩ G) V | Right p | Left q = resolveᶠⁿ F V
+resolveᶠⁿ (F ∩ G) V | Right p | Right q = resolveᶠⁿ F V ∩ⁿ resolveᶠⁿ G V
+
+normal-resolveᶠⁿ (S ⇒ T) V = T
+normal-resolveᶠⁿ (F ∩ G) V with dec-subtypingⁿ V (normal-srcᶠ F) | dec-subtypingⁿ V (normal-srcᶠ G)
+normal-resolveᶠⁿ (F ∩ G) V | Left p | Left q = normal-∪ⁿ (normal-resolveᶠⁿ F V) (normal-resolveᶠⁿ G V)
+normal-resolveᶠⁿ (F ∩ G) V | Left p | Right q = normal-resolveᶠⁿ G V
+normal-resolveᶠⁿ (F ∩ G) V | Right p | Left q = normal-resolveᶠⁿ F V
+normal-resolveᶠⁿ (F ∩ G) V | Right p | Right q = normal-∩ⁿ (normal-resolveᶠⁿ F V) (normal-resolveᶠⁿ G V)
 
 dec-subtypingˢⁿ T U with dec-language _ (scalar T)
 dec-subtypingˢⁿ T U | Left p = Left (witness (scalar T) (scalar T) p)
 dec-subtypingˢⁿ T U | Right p = Right (scalar-<: T p)
 
-dec-subtypingᶠ {T = T} _ (U ⇒ V) with dec-subtypingⁿ U (normal (src T)) | dec-subtypingⁿ (normal (tgt T)) V
-dec-subtypingᶠ {T = T} _ (U ⇒ V) | Left p | q = Left (≮:-trans-<: (src-unknown-≮: (≮:-trans-<: p (<:-normalize (src T)))) (<:-function <:-refl <:-unknown))
-dec-subtypingᶠ {T = T} _ (U ⇒ V) | Right p | Left q = {!!} -- Left (≮:-trans-<: (tgt-never-≮: (<:-trans-≮: (normalize-<: (tgt T)) q)) (<:-trans (<:-function <:-never <:-refl) <:-∪-right))
+dec-subtypingᶠ T (U ⇒ V) with dec-subtypingⁿ U (normal-srcᶠ T) | dec-subtypingⁿ (normal-resolveᶠⁿ T U) V
+dec-subtypingᶠ T (U ⇒ V) | Left p | q = Left (≮:-srcᶠ T p)
+dec-subtypingᶠ T (U ⇒ V) | Right p | Left q = {!!} -- Left (≮:-trans-<: (tgt-never-≮: (<:-trans-≮: (normalize-<: (tgt T)) q)) (<:-trans (<:-function <:-never <:-refl) <:-∪-right))
 dec-subtypingᶠ T (U ⇒ V) | Right p | Right q = {!!} -- Right (src-tgtᶠ-<: T (<:-trans p (normalize-<: _)) (<:-trans (<:-normalize _) q))
 
 dec-subtypingᶠ T (U ∩ V) with dec-subtypingᶠ T U | dec-subtypingᶠ T V

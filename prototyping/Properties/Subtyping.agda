@@ -142,6 +142,12 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 ≮:-∪-right : ∀ {S T U} → (T ≮: U) → ((S ∪ T) ≮: U)
 ≮:-∪-right (witness t p q) = witness t (right p) q
 
+≮:-left-∪ : ∀ {S T U} → (S ≮: (T ∪ U)) → (S ≮: T)
+≮:-left-∪ (witness t p (q₁ , q₂)) = witness t p q₁
+
+≮:-right-∪ : ∀ {S T U} → (S ≮: (T ∪ U)) → (S ≮: U)
+≮:-right-∪ (witness t p (q₁ , q₂)) = witness t p q₂
+
 -- Properties of intersection
 
 <:-intersect : ∀ {R S T U} → (R <: T) → (S <: U) → ((R ∩ S) <: (T ∩ U))
