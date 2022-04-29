@@ -2206,9 +2206,15 @@ struct Compiler
             return false;
         }
 
+        if (Variable* lv = variables.find(stat->var); lv && lv->written)
+        {
+            bytecode.addDebugRemark("loop unroll failed: mutable loop variable");
+            return false;
+        }
+
         int tripCount = (to - from) / step + 1;
 
-        if (tripCount > thresholdBase * thresholdMaxBoost / 100)
+        if (tripCount > thresholdBase)
         {
             bytecode.addDebugRemark("loop unroll failed: too many iterations (%d)", tripCount);
             return false;

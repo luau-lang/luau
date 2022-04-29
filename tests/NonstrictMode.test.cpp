@@ -283,7 +283,6 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
     ScopedFastFlag sff[]{
         {"LuauReturnTypeInferenceInNonstrict", true},
         {"LuauLowerBoundsCalculation", true},
-        {"LuauSealExports", true},
     };
 
     CheckResult result = check(R"(

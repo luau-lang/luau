@@ -200,7 +200,7 @@ typedef struct global_State
     uint64_t rngstate; /* PCG random number generator state */
     uint64_t ptrenckey[4]; /* pointer encoding key for display */
 
-    void (*udatagc[LUA_UTAG_LIMIT])(void*);          /* for each userdata tag, a gc callback to be called immediately before freeing memory */
+    void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); /* for each userdata tag, a gc callback to be called immediately before freeing memory */
 
     lua_Callbacks cb;
 

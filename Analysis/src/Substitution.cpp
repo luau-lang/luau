@@ -8,7 +8,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 1000)
+LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
 LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowNewTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowPossibleMutations, false)

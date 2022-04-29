@@ -33,7 +33,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauTableRehashRework, false)
 LUAU_FASTFLAGVARIABLE(LuauTableNewBoundary2, false)
 
 // max size of both array and hash part is 2^MAXBITS
@@ -400,16 +399,9 @@ static void resize(lua_State* L, Table* t, int nasize, int nhsize)
         {
             if (!ttisnil(&t->array[i]))
             {
-                if (FFlag::LuauTableRehashRework)
-                {
-                    TValue ok;
-                    setnvalue(&ok, cast_num(i + 1));
-                    setobjt2t(L, newkey(L, t, &ok), &t->array[i]);
-                }
-                else
-                {
-                    setobjt2t(L, luaH_setnum(L, t, i + 1), &t->array[i]);
-                }
+                TValue ok;
+                setnvalue(&ok, cast_num(i + 1));
+                setobjt2t(L, newkey(L, t, &ok), &t->array[i]);
             }
         }
         /* shrink array */
@@ -418,30 +410,14 @@ static void resize(lua_State* L, Table* t, int nasize, int nhsize)
     /* used for the migration check at the end */
     TValue* anew = t->array;
     /* re-insert elements from hash part */
-    if (FFlag::LuauTableRehashRework)
+    for (int i = twoto(oldhsize) - 1; i >= 0; i--)
     {
-        for (int i = twoto(oldhsize) - 1; i >= 0; i--)
+        LuaNode* old = nold + i;
+        if (!ttisnil(gval(old)))
         {
-            LuaNode* old = nold + i;
-            if (!ttisnil(gval(old)))
-            {
-                TValue ok;
-                getnodekey(L, &ok, old);
-                setobjt2t(L, arrayornewkey(L, t, &ok), gval(old));
-            }
-        }
-    }
-    else
-    {
-        for (int i = twoto(oldhsize) - 1; i >= 0; i--)
-        {
-            LuaNode* old = nold + i;
-            if (!ttisnil(gval(old)))
-            {
-                TValue ok;
-                getnodekey(L, &ok, old);
-                setobjt2t(L, luaH_set(L, t, &ok), gval(old));
-            }
+            TValue ok;
+            getnodekey(L, &ok, old);
+            setobjt2t(L, arrayornewkey(L, t, &ok), gval(old));
         }
     }
 
@@ -559,7 +535,7 @@ static TValue* newkey(lua_State* L, Table* t, const TValue* key)
     {
         rehash(L, t, key); /* grow table */
 
-        // after rehash, numeric keys might be located in the new array part, but won't be found in the node part
+        /* after rehash, numeric keys might be located in the new array part, but won't be found in the node part */
         return arrayornewkey(L, t, key);
     }
 
@@ -571,15 +547,8 @@ static TValue* newkey(lua_State* L, Table* t, const TValue* key)
         {                      /* cannot find a free place? */
             rehash(L, t, key); /* grow table */
 
-            if (!FFlag::LuauTableRehashRework)
-            {
-                return luaH_set(L, t, key); /* re-insert key into grown table */
-            }
-            else
-            {
-                // after rehash, numeric keys might be located in the new array part, but won't be found in the node part
-                return arrayornewkey(L, t, key);
-            }
+            /* after rehash, numeric keys might be located in the new array part, but won't be found in the node part */
+            return arrayornewkey(L, t, key);
         }
         LUAU_ASSERT(n != dummynode);
         TValue mk;

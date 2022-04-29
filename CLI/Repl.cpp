@@ -34,7 +34,8 @@ enum class CliMode
 enum class CompileFormat
 {
     Text,
-    Binary
+    Binary,
+    Null
 };
 
 constexpr int MaxTraversalLimit = 50;
@@ -594,6 +595,8 @@ static bool compileFile(const char* name, CompileFormat format)
         case CompileFormat::Binary:
             fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
             break;
+        case CompileFormat::Null:
+            break;
         }
 
         return true;
@@ -715,6 +718,10 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[1], "--compile=text") == 0)
         {
             compileFormat = CompileFormat::Text;
+        }
+        else if (strcmp(argv[1], "--compile=null") == 0)
+        {
+            compileFormat = CompileFormat::Null;
         }
         else
         {
