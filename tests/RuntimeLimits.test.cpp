@@ -19,7 +19,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 
 struct LimitFixture : Fixture
 {
-#if defined(_NOOPT)
+#if defined(_NOOPT) || defined(_DEBUG)
     ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 150};
 #endif
 
