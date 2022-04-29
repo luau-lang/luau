@@ -249,7 +249,7 @@ int computeCost(uint64_t model, const bool* varsConst, size_t varCount)
         return cost;
 
     for (size_t i = 0; i < varCount && i < 7; ++i)
-        cost -= int((model >> (8 * i + 8)) & 0x7f) * varsConst[i];
+        cost -= int((model >> (i * 8 + 8)) & 0x7f) * varsConst[i];
 
     return cost;
 }

@@ -2122,8 +2122,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
     ScopedFastFlag sffs[]{
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
     };
 
@@ -2143,8 +2141,6 @@ a.p = { x = 9 }
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
     ScopedFastFlag sffs[]{
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
         {"LuauUnsealedTableLiteral", true},
     };
@@ -2171,8 +2167,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 {
     ScopedFastFlag sffs[]{
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
     };
 
@@ -2377,8 +2371,6 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
 TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf1")
 {
-    ScopedFastFlag sff{"LuauTxnLogCheckForInvalidation", true};
-
     CheckResult result = check(R"(
 -- This example produced a UAF at one point, caused by pointers to table types becoming
 -- invalidated by child unifiers. (Calling log.concat can cause pointers to become invalid.)
@@ -2409,8 +2401,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf2")
 {
-    ScopedFastFlag sff{"LuauTxnLogCheckForInvalidation", true};
-
     CheckResult result = check(R"(
 -- Another example that UAFd, this time found by fuzzing.
 local _

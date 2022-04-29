@@ -137,6 +137,21 @@ int registerTypes(Luau::TypeChecker& env)
 
     return 0;
 }
+
+static void setupFrontend(Luau::Frontend& frontend)
+{
+    registerTypes(frontend.typeChecker);
+    Luau::freeze(frontend.typeChecker.globalTypes);
+
+    registerTypes(frontend.typeCheckerForAutocomplete);
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+
+    frontend.iceHandler.onInternalError = [](const char* error) {
+        printf("ICE: %s\n", error);
+        LUAU_ASSERT(!"ICE");
+    };
+}
+
 struct FuzzFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
@@ -238,19 +253,11 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     if (kFuzzTypeck)
     {
         static FuzzFileResolver fileResolver;
-        static Luau::NullConfigResolver configResolver;
+        static FuzzConfigResolver configResolver;
         static Luau::FrontendOptions options{true, true};
         static Luau::Frontend frontend(&fileResolver, &configResolver, options);
 
-        static int once = registerTypes(frontend.typeChecker);
-        (void)once;
-        static int once2 = (Luau::freeze(frontend.typeChecker.globalTypes), 0);
-        (void)once2;
-
-        frontend.iceHandler.onInternalError = [](const char* error) {
-            printf("ICE: %s\n", error);
-            LUAU_ASSERT(!"ICE");
-        };
+        static int once = (setupFrontend(frontend), 0);
 
         // restart
         frontend.clear();

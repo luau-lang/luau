@@ -2761,7 +2761,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
     ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
-    ScopedFastFlag luauExpectedTypesOfProperties{"LuauExpectedTypesOfProperties", true};
 
     check(R"(
         type tag = "cat" | "dog"

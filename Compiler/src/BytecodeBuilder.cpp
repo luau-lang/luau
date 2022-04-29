@@ -181,7 +181,6 @@ BytecodeBuilder::BytecodeBuilder(BytecodeEncoder* encoder)
     : constantMap({Constant::Type_Nil, ~0ull})
     , tableShapeMap(TableShape())
     , stringTable({nullptr, 0})
-    , debugRemarks(~0u)
     , encoder(encoder)
 {
     LUAU_ASSERT(stringTable.find(StringRef{"", 0}) == nullptr);
@@ -257,6 +256,8 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
 
 void BytecodeBuilder::setMainFunction(uint32_t fid)
 {
+    LUAU_ASSERT(fid < functions.size());
+
     mainFunction = fid;
 }
 
@@ -531,7 +532,7 @@ void BytecodeBuilder::addDebugRemark(const char* format, ...)
     // we null-terminate all remarks to avoid storing remark length
     debugRemarkBuffer += '\0';
 
-    debugRemarks[uint32_t(insns.size())] = uint32_t(offset);
+    debugRemarks.emplace_back(uint32_t(insns.size()), uint32_t(offset));
 }
 
 void BytecodeBuilder::finalize()
@@ -1719,6 +1720,7 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
     const uint32_t* codeEnd = insns.data() + insns.size();
 
     int lastLine = -1;
+    size_t nextRemark = 0;
 
     std::string result;
 
@@ -1741,6 +1743,7 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
     while (code != codeEnd)
     {
         uint8_t op = LUAU_INSN_OP(*code);
+        uint32_t pc = uint32_t(code - insns.data());
 
         if (op == LOP_PREPVARARGS)
         {
@@ -1751,15 +1754,16 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
 
         if (dumpFlags & Dump_Remarks)
         {
-            const uint32_t* remark = debugRemarks.find(uint32_t(code - insns.data()));
-
-            if (remark)
-                formatAppend(result, "REMARK %s\n", debugRemarkBuffer.c_str() + *remark);
+            while (nextRemark < debugRemarks.size() && debugRemarks[nextRemark].first == pc)
+            {
+                formatAppend(result, "REMARK %s\n", debugRemarkBuffer.c_str() + debugRemarks[nextRemark].second);
+                nextRemark++;
+            }
         }
 
         if (dumpFlags & Dump_Source)
         {
-            int line = lines[code - insns.data()];
+            int line = lines[pc];
 
             if (line > 0 && line != lastLine)
             {
@@ -1771,7 +1775,7 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
 
         if (dumpFlags & Dump_Lines)
         {
-            formatAppend(result, "%d: ", lines[code - insns.data()]);
+            formatAppend(result, "%d: ", lines[pc]);
         }
 
         code = dumpInstruction(code, result);
@@ -1784,11 +1788,11 @@ void BytecodeBuilder::setDumpSource(const std::string& source)
 {
     dumpSource.clear();
 
-    std::string::size_type pos = 0;
+    size_t pos = 0;
 
     while (pos != std::string::npos)
     {
-        std::string::size_type next = source.find('\n', pos);
+        size_t next = source.find('\n', pos);
 
         if (next == std::string::npos)
         {

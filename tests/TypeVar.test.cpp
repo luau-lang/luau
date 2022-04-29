@@ -184,8 +184,6 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_empty_union")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    ScopedFastFlag sff{"LuauSealExports", true};
-
     TypeVar ftv11{FreeTypeVar{TypeLevel{}}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};

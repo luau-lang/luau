@@ -951,8 +951,6 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 
 TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         type Overload = ((string) -> string) & ((number, number) -> number)
         local abc: Overload
@@ -1538,7 +1536,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
 {
-    ScopedFastFlag sff{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
     CheckResult result = check(R"(
     function test(a: number, b: string, ...)
     end
@@ -1560,8 +1557,6 @@ TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic")
 {
-    ScopedFastFlag sff1{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
-    ScopedFastFlag sff2{"LuauFixArgumentCountMismatchAmountWithGenericTypes", true};
     CheckResult result = check(R"(
 function test(a: number, b: string, ...)
     return 1
@@ -1587,8 +1582,6 @@ wrapper(test)
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic2")
 {
-    ScopedFastFlag sff1{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
-    ScopedFastFlag sff2{"LuauFixArgumentCountMismatchAmountWithGenericTypes", true};
     CheckResult result = check(R"(
 function test(a: number, b: string, ...)
     return 1

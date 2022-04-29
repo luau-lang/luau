@@ -78,6 +78,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_with_an_iterator_of_type_any")
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
 {
+    ScopedFastFlag luauDoNotRelyOnNextBinding{"LuauDoNotRelyOnNextBinding", true};
+
     CheckResult result = check(R"(
         local foo = "bar"
         for i, v in foo do
@@ -85,6 +87,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Cannot call non-function string", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_with_just_one_iterator_is_ok")
@@ -468,6 +471,21 @@ TEST_CASE_FIXTURE(Fixture, "loop_typecheck_crash_on_empty_optional")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
+{
+    ScopedFastFlag luauInstantiateFollows{"LuauInstantiateFollows", true};
+
+    // Just check that this doesn't assert
+    check(R"(
+        --!nonstrict
+        function _(l0:number)
+        return _
+        end
+        for _ in _(8) do
+        end
+    )");
 }
 
 TEST_SUITE_END();

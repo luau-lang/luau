@@ -11,8 +11,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauFixArgumentCountMismatchAmountWithGenericTypes)
-
 TEST_SUITE_BEGIN("GenericsTests");
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
@@ -679,8 +677,6 @@ local d: D = c
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_dont_cache_type_parameters")
 {
-    ScopedFastFlag sff{"LuauGenericFunctionsDontCacheTypeParams", true};
-
     CheckResult result = check(R"(
 -- See https://github.com/Roblox/luau/issues/332
 -- This function has a type parameter with the same name as clones,
@@ -707,8 +703,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
     ScopedFastFlag sffs[] = {
         {"LuauTableSubtypingVariance2", true},
         {"LuauUnsealedTableLiteral", true},
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauRecursiveTypeParameterRestriction", true},
     };
 
     CheckResult result = check(R"(
@@ -733,8 +727,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")
 {
-    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
-
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -753,8 +745,6 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification2")
 {
-    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
-
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -773,8 +763,6 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification3")
 {
-    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
-
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -805,11 +793,7 @@ wrapper(test)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 1 argument, but 1 is specified)");
+    CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
@@ -826,11 +810,7 @@ wrapper(test2, 1, "", 3)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 3 arguments, but 4 are specified)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 1 argument, but 4 are specified)");
+    CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 3 arguments, but 4 are specified)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")

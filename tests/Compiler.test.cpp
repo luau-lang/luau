@@ -2698,16 +2698,22 @@ TEST_CASE("DebugRemarks")
 
     uint32_t fid = bcb.beginFunction(0);
 
-    bcb.addDebugRemark("test remark #%d", 42);
+    bcb.addDebugRemark("test remark #%d", 1);
+    bcb.emitABC(LOP_LOADNIL, 0, 0, 0);
+    bcb.addDebugRemark("test remark #%d", 2);
+    bcb.addDebugRemark("test remark #%d", 3);
     bcb.emitABC(LOP_RETURN, 0, 1, 0);
 
-    bcb.endFunction(0, 0);
+    bcb.endFunction(1, 0);
 
     bcb.setMainFunction(fid);
     bcb.finalize();
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
-REMARK test remark #42
+REMARK test remark #1
+LOADNIL R0
+REMARK test remark #2
+REMARK test remark #3
 RETURN R0 0
 )");
 }
@@ -4332,7 +4338,7 @@ RETURN R0 1
     // loops with body that's long but has a high boost factor due to constant folding
     CHECK_EQ("\n" + compileFunction(R"(
 local t = {}
-for i=1,30 do
+for i=1,25 do
     t[i] = i * i * i
 end
 return t
@@ -4390,16 +4396,6 @@ LOADN R1 13824
 SETTABLEN R1 R0 24
 LOADN R1 15625
 SETTABLEN R1 R0 25
-LOADN R1 17576
-SETTABLEN R1 R0 26
-LOADN R1 19683
-SETTABLEN R1 R0 27
-LOADN R1 21952
-SETTABLEN R1 R0 28
-LOADN R1 24389
-SETTABLEN R1 R0 29
-LOADN R1 27000
-SETTABLEN R1 R0 30
 RETURN R0 1
 )");
 
@@ -4430,5 +4426,31 @@ FORNLOOP R1 -11
 RETURN R0 1
 )");
 }
+
+TEST_CASE("LoopUnrollMutable")
+{
+    // can't unroll loops that mutate iteration variable
+    CHECK_EQ("\n" + compileFunction(R"(
+for i=1,3 do
+    i = 3
+    print(i) -- should print 3 three times in a row
+end
+)",
+                        0, 2),
+        R"(
+LOADN R2 1
+LOADN R0 3
+LOADN R1 1
+FORNPREP R0 +7
+MOVE R3 R2
+LOADN R3 3
+GETIMPORT R4 1
+MOVE R5 R3
+CALL R4 1 0
+FORNLOOP R0 -7
+RETURN R0 0
+)");
+}
+
 
 TEST_SUITE_END();

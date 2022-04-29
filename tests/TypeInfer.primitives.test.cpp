@@ -85,8 +85,6 @@ TEST_CASE_FIXTURE(Fixture, "string_function_other")
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
 local x: number = 9999
 function x:y(z: number)

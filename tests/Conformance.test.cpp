@@ -1056,7 +1056,7 @@ TEST_CASE("UserdataApi")
     lua_State* L = globalState.get();
 
     // setup dtor for tag 42 (created later)
-    lua_setuserdatadtor(L, 42, [](void* data) {
+    lua_setuserdatadtor(L, 42, [](lua_State* l, void* data) {
         dtorhits += *(int*)data;
     });
 

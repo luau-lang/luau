@@ -23,10 +23,7 @@ LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree2, false)
 LUAU_FASTFLAGVARIABLE(LuauDifferentOrderOfUnificationDoesntMatter, false)
-LUAU_FASTFLAGVARIABLE(LuauTxnLogSeesTypePacks2, false)
-LUAU_FASTFLAGVARIABLE(LuauTxnLogCheckForInvalidation, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
-LUAU_FASTFLAGVARIABLE(LuauTxnLogDontRetryForIndexers, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
 
@@ -1021,7 +1018,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     if (superTp == subTp)
         return;
 
-    if (FFlag::LuauTxnLogSeesTypePacks2 && log.haveSeen(superTp, subTp))
+    if (log.haveSeen(superTp, subTp))
         return;
 
     if (log.getMutable<Unifiable::Free>(superTp))
@@ -1265,12 +1262,9 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         log.pushSeen(superFunction->generics[i], subFunction->generics[i]);
     }
 
-    if (FFlag::LuauTxnLogSeesTypePacks2)
+    for (size_t i = 0; i < numGenericPacks; i++)
     {
-        for (size_t i = 0; i < numGenericPacks; i++)
-        {
-            log.pushSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
-        }
+        log.pushSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
     }
 
     CountMismatch::Context context = ctx;
@@ -1330,12 +1324,9 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
 
     ctx = context;
 
-    if (FFlag::LuauTxnLogSeesTypePacks2)
+    for (int i = int(numGenericPacks) - 1; 0 <= i; i--)
     {
-        for (int i = int(numGenericPacks) - 1; 0 <= i; i--)
-        {
-            log.popSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
-        }
+        log.popSeen(superFunction->genericPacks[i], subFunction->genericPacks[i]);
     }
 
     for (int i = int(numGenerics) - 1; 0 <= i; i--)
@@ -1499,20 +1490,17 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         else
             missingProperties.push_back(name);
 
-        if (FFlag::LuauTxnLogCheckForInvalidation)
+        // Recursive unification can change the txn log, and invalidate the old
+        // table. If we detect that this has happened, we start over, with the updated
+        // txn log.
+        TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
+        TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
+        if (superTable != newSuperTable || subTable != newSubTable)
         {
-            // Recursive unification can change the txn log, and invalidate the old
-            // table. If we detect that this has happened, we start over, with the updated
-            // txn log.
-            TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
-            TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
-            if (superTable != newSuperTable || subTable != newSubTable)
-            {
-                if (errors.empty())
-                    return tryUnifyTables(subTy, superTy, isIntersection);
-                else
-                    return;
-            }
+            if (errors.empty())
+                return tryUnifyTables(subTy, superTy, isIntersection);
+            else
+                return;
         }
     }
 
@@ -1570,20 +1558,17 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         else
             extraProperties.push_back(name);
 
-        if (FFlag::LuauTxnLogCheckForInvalidation)
+        // Recursive unification can change the txn log, and invalidate the old
+        // table. If we detect that this has happened, we start over, with the updated
+        // txn log.
+        TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
+        TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
+        if (superTable != newSuperTable || subTable != newSubTable)
         {
-            // Recursive unification can change the txn log, and invalidate the old
-            // table. If we detect that this has happened, we start over, with the updated
-            // txn log.
-            TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
-            TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
-            if (superTable != newSuperTable || subTable != newSubTable)
-            {
-                if (errors.empty())
-                    return tryUnifyTables(subTy, superTy, isIntersection);
-                else
-                    return;
-            }
+            if (errors.empty())
+                return tryUnifyTables(subTy, superTy, isIntersection);
+            else
+                return;
         }
     }
 
@@ -1630,27 +1615,9 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         }
     }
 
-    if (FFlag::LuauTxnLogDontRetryForIndexers)
-    {
-        // Changing the indexer can invalidate the table pointers.
-        superTable = log.getMutable<TableTypeVar>(superTy);
-        subTable = log.getMutable<TableTypeVar>(subTy);
-    }
-    else if (FFlag::LuauTxnLogCheckForInvalidation)
-    {
-        // Recursive unification can change the txn log, and invalidate the old
-        // table. If we detect that this has happened, we start over, with the updated
-        // txn log.
-        TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
-        TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
-        if (superTable != newSuperTable || subTable != newSubTable)
-        {
-            if (errors.empty())
-                return tryUnifyTables(subTy, superTy, isIntersection);
-            else
-                return;
-        }
-    }
+    // Changing the indexer can invalidate the table pointers.
+    superTable = log.getMutable<TableTypeVar>(superTy);
+    subTable = log.getMutable<TableTypeVar>(subTy);
 
     if (!missingProperties.empty())
     {

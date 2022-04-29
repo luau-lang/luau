@@ -1606,8 +1606,6 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_of_functions_unions_and_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
 {
-    ScopedFastFlag luauParseLocationIgnoreCommentSkip{"LuauParseLocationIgnoreCommentSkip", true};
-
     AstStatBlock* block = parse(R"(
         type F = number
         --comment
@@ -1620,7 +1618,6 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
 {
-    ScopedFastFlag luauParseLocationIgnoreCommentSkip{"LuauParseLocationIgnoreCommentSkip", true};
     ScopedFastFlag luauParseLocationIgnoreCommentSkipInCapture{"LuauParseLocationIgnoreCommentSkipInCapture", true};
 
     // Same should hold when comments are captured
