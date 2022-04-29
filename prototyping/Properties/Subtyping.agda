@@ -248,6 +248,12 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-function-∪-∩ (function-err s) (function-err (left p)) = left (function-err p)
 <:-function-∪-∩ (function-err s) (function-err (right p)) = right (function-err p)
 
+<:-function-never : ∀ {T U} → (never ⇒ T) <: (never ⇒ U)
+<:-function-never function function = function
+<:-function-never (function-ok s t) (function-ok₁ p) = function-ok₁ p
+<:-function-never (function-ok s t) (function-ok₂ p) = function-ok₁ never
+<:-function-never (function-err s) (function-err p) = function-err p
+
 ≮:-function-left : ∀ {R S T U} → (R ≮: S) → (S ⇒ T) ≮: (R ⇒ U)
 ≮:-function-left (witness t p q) = witness (function-err t) (function-err q) (function-err p)
 

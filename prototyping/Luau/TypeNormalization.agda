@@ -2,29 +2,26 @@ module Luau.TypeNormalization where
 
 open import Luau.Type using (Type; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 
--- The top non-function type
-¬function : Type
-¬function = number ∪ (string ∪ (nil ∪ boolean))
-
--- Unions and intersections of normalized types
+-- Operations on normalized types
 _∪ᶠ_ : Type → Type → Type
 _∪ⁿˢ_ : Type → Type → Type
 _∩ⁿˢ_ : Type → Type → Type
 _∪ⁿ_ : Type → Type → Type
 _∩ⁿ_ : Type → Type → Type
+_⇒ⁿ_ : Type → Type → Type
 
 -- Union of function types
 (F₁ ∩ F₂) ∪ᶠ G = (F₁ ∪ᶠ G) ∩ (F₂ ∪ᶠ G)
 F ∪ᶠ (G₁ ∩ G₂) = (F ∪ᶠ G₁) ∩ (F ∪ᶠ G₂)
-(R ⇒ S) ∪ᶠ (T ⇒ U) = (R ∩ⁿ T) ⇒ (S ∪ⁿ U)
+(R ⇒ S) ∪ᶠ (T ⇒ U) = (R ∩ⁿ T) ⇒ⁿ (S ∪ⁿ U)
 F ∪ᶠ G = F ∪ G
 
 -- Union of normalized types
 S ∪ⁿ (T₁ ∪ T₂) = (S ∪ⁿ T₁) ∪ T₂
 S ∪ⁿ unknown = unknown
 S ∪ⁿ never = S
-unknown ∪ⁿ T = unknown
 never ∪ⁿ T = T
+unknown ∪ⁿ T = unknown
 (S₁ ∪ S₂) ∪ⁿ G = (S₁ ∪ⁿ G) ∪ S₂
 F ∪ⁿ G = F ∪ᶠ G
 
@@ -56,10 +53,14 @@ unknown ∪ⁿˢ T = unknown
 (S₁ ∪ S₂) ∪ⁿˢ T = (S₁ ∪ⁿˢ T) ∪ S₂
 F ∪ⁿˢ T = F ∪ T
 
+-- Functions on normalized types
+never ⇒ⁿ T = never ⇒ unknown
+S ⇒ⁿ T = S ⇒ T
+
 -- Normalize!
 normalize : Type → Type
 normalize nil = never ∪ nil
-normalize (S ⇒ T) = (normalize S ⇒ normalize T)
+normalize (S ⇒ T) = (normalize S ⇒ⁿ normalize T)
 normalize never = never
 normalize unknown = unknown
 normalize boolean = never ∪ boolean

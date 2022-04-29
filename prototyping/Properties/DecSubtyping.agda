@@ -26,11 +26,13 @@ dec-subtyping : ∀ T U → Either (T ≮: U) (T <: U)
 srcᶠ : ∀ {F} → FunType F → Type
 normal-srcᶠ : ∀ {F} → (Fᶠ : FunType F) → Normal (srcᶠ Fᶠ)
 srcᶠ-function-err : ∀ {F} → (Fᶠ : FunType F) → ∀ s → ¬Language (srcᶠ Fᶠ) s → Language F (function-err s)
-
 ≮:-srcᶠ : ∀ {F S T} → (Fᶠ : FunType F) → (S ≮: srcᶠ Fᶠ) → (F ≮: (S ⇒ T))
 
 resolveᶠⁿ : ∀ {F V} → FunType F → Normal V → Type
 normal-resolveᶠⁿ : ∀ {F V} → (Fᶠ : FunType F) → (Vⁿ : Normal V) → Normal (resolveᶠⁿ Fᶠ Vⁿ)
+resolveᶠⁿ-funtion-ok : ∀ {F V} → (Fᶠ : FunType F) → (Vⁿ : Normal V) → ∀ s t → Language (srcᶠ Fᶠ) s → ¬Language (resolveᶠⁿ Fᶠ Vⁿ) t → ¬Language F (function-ok s t)
+≮:-resolveᶠⁿ : ∀ {F S T} → (Fᶠ : FunType F) → (Sᶠ : Normal S) → (S <: srcᶠ Fᶠ) → (srcᶠ Fᶠ ≮: never) → (resolveᶠⁿ Fᶠ Sᶠ ≮: T) → (F ≮: (S ⇒ T))
+<:-resolveᶠⁿ : ∀ {F S T} → (Fᶠ : FunType F) → (Sᶠ : Normal S) → (S <: srcᶠ Fᶠ) → (resolveᶠⁿ Fᶠ Sᶠ <: T) → (F <: (S ⇒ T))
 
 srcᶠ {S ⇒ T} F = S
 srcᶠ (F ∩ G) = srcᶠ F ∪ⁿ srcᶠ G
@@ -58,14 +60,20 @@ normal-resolveᶠⁿ (F ∩ G) V | Left p | Right q = normal-resolveᶠⁿ G V
 normal-resolveᶠⁿ (F ∩ G) V | Right p | Left q = normal-resolveᶠⁿ F V
 normal-resolveᶠⁿ (F ∩ G) V | Right p | Right q = normal-∩ⁿ (normal-resolveᶠⁿ F V) (normal-resolveᶠⁿ G V)
 
+resolveᶠⁿ-funtion-ok F V s t p q = {!!}
+
+≮:-resolveᶠⁿ F S p (witness s q₁ q₂) (witness t r₁ r₂) = witness {!function!} {!!} {!!}
+
+<:-resolveᶠⁿ F S p q = {!!}
+
 dec-subtypingˢⁿ T U with dec-language _ (scalar T)
 dec-subtypingˢⁿ T U | Left p = Left (witness (scalar T) (scalar T) p)
 dec-subtypingˢⁿ T U | Right p = Right (scalar-<: T p)
 
 dec-subtypingᶠ T (U ⇒ V) with dec-subtypingⁿ U (normal-srcᶠ T) | dec-subtypingⁿ (normal-resolveᶠⁿ T U) V
 dec-subtypingᶠ T (U ⇒ V) | Left p | q = Left (≮:-srcᶠ T p)
-dec-subtypingᶠ T (U ⇒ V) | Right p | Left q = {!!} -- Left (≮:-trans-<: (tgt-never-≮: (<:-trans-≮: (normalize-<: (tgt T)) q)) (<:-trans (<:-function <:-never <:-refl) <:-∪-right))
-dec-subtypingᶠ T (U ⇒ V) | Right p | Right q = {!!} -- Right (src-tgtᶠ-<: T (<:-trans p (normalize-<: _)) (<:-trans (<:-normalize _) q))
+dec-subtypingᶠ T (U ⇒ V) | Right p | Left q = Left (≮:-resolveᶠⁿ T U p ? q)
+dec-subtypingᶠ T (U ⇒ V) | Right p | Right q = Right (<:-resolveᶠⁿ T U p q)
 
 dec-subtypingᶠ T (U ∩ V) with dec-subtypingᶠ T U | dec-subtypingᶠ T V
 dec-subtypingᶠ T (U ∩ V) | Left p | q = Left (≮:-∩-left p)
