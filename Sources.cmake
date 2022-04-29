@@ -220,8 +220,8 @@ if(TARGET Luau.UnitTest)
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/Compiler.test.cpp
-        tests/CostModel.test.cpp
         tests/Config.test.cpp
+        tests/CostModel.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
         tests/JsonEncoder.test.cpp
@@ -232,6 +232,7 @@ if(TARGET Luau.UnitTest)
         tests/Normalize.test.cpp
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
+        tests/RuntimeLimits.test.cpp
         tests/StringUtils.test.cpp
         tests/Symbol.test.cpp
         tests/ToDot.test.cpp

@@ -975,8 +975,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
 
 TEST_CASE_FIXTURE(FrontendFixture, "imported_table_modification_2")
 {
-    ScopedFastFlag sffs("LuauSealExports", true);
-
     frontend.options.retainFullTypeGraphs = false;
 
     fileResolver.source["Module/A"] = R"(
@@ -1033,6 +1031,22 @@ return false;
 
     // We don't care about the result. That we haven't crashed is enough.
     fix.frontend.check("Module/B");
+}
+
+TEST_CASE("check_without_builtin_next")
+{
+    ScopedFastFlag luauDoNotRelyOnNextBinding{"LuauDoNotRelyOnNextBinding", true};
+
+    TestFileResolver fileResolver;
+    TestConfigResolver configResolver;
+    Frontend frontend(&fileResolver, &configResolver);
+
+    fileResolver.source["Module/A"] = "for k,v in 2 do end";
+    fileResolver.source["Module/B"] = "return next";
+
+    // We don't care about the result. That we haven't crashed is enough.
+    frontend.check("Module/A");
+    frontend.check("Module/B");
 }
 
 TEST_SUITE_END();

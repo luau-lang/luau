@@ -2653,12 +2653,12 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
         }
         else
         {
-            std::string::size_type space = hc.content.find_first_of(" \t");
+            size_t space = hc.content.find_first_of(" \t");
             std::string_view first = std::string_view(hc.content).substr(0, space);
 
             if (first == "nolint")
             {
-                std::string::size_type notspace = hc.content.find_first_not_of(" \t", space);
+                size_t notspace = hc.content.find_first_not_of(" \t", space);
 
                 if (space == std::string::npos || notspace == std::string::npos)
                 {
@@ -2827,7 +2827,7 @@ uint64_t LintWarning::parseMask(const std::vector<HotComment>& hotcomments)
         if (hc.content.compare(0, 6, "nolint") != 0)
             continue;
 
-        std::string::size_type name = hc.content.find_first_not_of(" \t", 6);
+        size_t name = hc.content.find_first_not_of(" \t", 6);
 
         // --!nolint disables everything
         if (name == std::string::npos)

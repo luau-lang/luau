@@ -23,7 +23,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauErrorRecoveryType)
 LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
 LUAU_FASTFLAG(LuauDiscriminableUnions2)
 LUAU_FASTFLAGVARIABLE(LuauAnyInIsOptionalIsOptional, false)
@@ -775,18 +774,12 @@ TypePackId SingletonTypes::errorRecoveryTypePack()
 
 TypeId SingletonTypes::errorRecoveryType(TypeId guess)
 {
-    if (FFlag::LuauErrorRecoveryType)
-        return guess;
-    else
-        return &errorType_;
+    return guess;
 }
 
 TypePackId SingletonTypes::errorRecoveryTypePack(TypePackId guess)
 {
-    if (FFlag::LuauErrorRecoveryType)
-        return guess;
-    else
-        return &errorTypePack_;
+    return guess;
 }
 
 SingletonTypes& getSingletonTypes()

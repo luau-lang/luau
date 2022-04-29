@@ -24,7 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauSeparateTypechecks, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
 LUAU_FASTFLAGVARIABLE(LuauDirtySourceModule, false)
-LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 0)
+LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 
 namespace Luau
 {

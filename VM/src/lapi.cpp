@@ -1323,7 +1323,7 @@ void lua_unref(lua_State* L, int ref)
     return;
 }
 
-void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(void*))
+void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     L->global->udatagc[tag] = dtor;

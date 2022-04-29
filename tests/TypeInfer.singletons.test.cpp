@@ -164,10 +164,6 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_subtyping")
 
 TEST_CASE_FIXTURE(Fixture, "tagged_unions_using_singletons")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauExpectedTypesOfProperties", true},
-    };
-
     CheckResult result = check(R"(
         type Dog = { tag: "Dog", howls: boolean }
         type Cat = { tag: "Cat", meows: boolean }
@@ -281,10 +277,6 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_string")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauExpectedTypesOfProperties", true},
-    };
-
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }
@@ -302,10 +294,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_tagged_union_mismatch_bool")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauExpectedTypesOfProperties", true},
-    };
-
     CheckResult result = check(R"(
 type Good = { success: true, result: string }
 type Bad = { success: false, error: string }
@@ -323,10 +311,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauExpectedTypesOfProperties", true},
-    };
-
     CheckResult result = check(R"(
 type Cat = { tag: 'cat', catfood: string }
 type Dog = { tag: 'dog', dogfood: string }

@@ -232,7 +232,7 @@ private:
 
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
 
-    DenseHashMap<uint32_t, uint32_t> debugRemarks;
+    std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
     std::string debugRemarkBuffer;
 
     BytecodeEncoder* encoder = nullptr;

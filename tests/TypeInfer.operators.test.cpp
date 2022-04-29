@@ -142,8 +142,6 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}
@@ -178,8 +176,6 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersectio
 
 TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection_on_rhs")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         --!strict
         local Vec3 = {}

@@ -199,7 +199,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
     ScopedFastFlag sff[]{
-        {"LuauErrorRecoveryType", true},
         {"LuauLosslessClone", true},
     };
 

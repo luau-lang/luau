@@ -7,8 +7,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauFixIncorrectLineNumberDuplicateType)
-
 TEST_SUITE_BEGIN("TypeAliases");
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
@@ -257,11 +255,7 @@ TEST_CASE_FIXTURE(Fixture, "reported_location_is_correct_when_type_alias_are_dup
     auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
     REQUIRE(dtd);
     CHECK_EQ(dtd->name, "B");
-
-    if (FFlag::LuauFixIncorrectLineNumberDuplicateType)
-        CHECK_EQ(dtd->previousLocation.begin.line + 1, 3);
-    else
-        CHECK_EQ(dtd->previousLocation.begin.line + 1, 1);
+    CHECK_EQ(dtd->previousLocation.begin.line + 1, 3);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
@@ -495,8 +489,6 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 {
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
     CheckResult result = check(R"(
         -- OK because forwarded types are used with their parameters.
         type Tree<T> = { data: T, children: Forest<T> }
@@ -508,8 +500,6 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
 {
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
     CheckResult result = check(R"(
         -- Not OK because forwarded types are used with different types than their parameters.
         type Forest<T> = {Tree<{T}>}
@@ -531,8 +521,6 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
 {
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
     CheckResult result = check(R"(
         type Tree1<T,U> = { data: T, children: {Tree2<U,T>} }
         type Tree2<T,U> = { data: U, children: {Tree1<T,U>} }
@@ -647,9 +635,6 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
 {
     ScopedFastFlag sff[] = {
         {"LuauTwoPassAliasDefinitionFix", true},
-
-        // We also force this flag because it surfaced an unfortunate interaction.
-        {"LuauErrorRecoveryType", true},
     };
 
     CheckResult result = check(R"(
@@ -687,8 +672,6 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
 
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
 {
-    ScopedFastFlag sff{"LuauRecursiveTypeParameterRestriction", true};
-
     CheckResult result = check(R"(
         -- this would be an infinite type if we allowed it
         type Tree<T> = { data: T, children: {Tree<{T}>} }

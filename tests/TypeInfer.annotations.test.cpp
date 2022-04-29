@@ -221,8 +221,6 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_is_bidirectional")
 
 TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
 {
-    ScopedFastFlag sff2{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         local a = 55 :: string
     )");
@@ -407,8 +405,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         type A = B
         type B = A
