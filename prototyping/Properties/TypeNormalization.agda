@@ -3,7 +3,7 @@
 module Properties.TypeNormalization where
 
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
-open import Luau.Subtyping using (scalar-function-err)
+open import Luau.Subtyping using (Tree; Language; function; scalar; unknown; right; scalar-function-err; _,_)
 open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; _⇒ⁿ_; normalize)
 open import Luau.Subtyping using (_<:_)
 open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; <:-∩-symm; <:-function; <:-function-∪-∩; <:-function-∩-∪; <:-function-∪; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm; <:-intersect;  ∪-distl-∩-<:; ∪-distr-∩-<:; <:-∪-distr-∩; <:-∪-distl-∩; ∩-distl-∪-<:; <:-∩-distl-∪; <:-∩-distr-∪; scalar-∩-function-<:-never; scalar-≢-∩-<:-never; <:-function-never)
@@ -39,6 +39,27 @@ data OptScalar : Type → Set where
   boolean : OptScalar boolean
   string : OptScalar string
   nil : OptScalar nil
+
+-- Function types are inhabited
+inhabitedᶠ : ∀ {F} → (FunType F) → Language F function
+inhabitedᶠ function = function
+inhabitedᶠ (S ⇒ T) = function
+inhabitedᶠ (F ∩ G) = (inhabitedᶠ F , inhabitedᶠ G)
+
+-- Inhabited types are inhabited
+inhabitant : ∀ {T} → Inhabited T → Tree
+inhabitant function = function
+inhabitant (S ⇒ T) = function
+inhabitant (S ∩ T) = function
+inhabitant (S ∪ T) = scalar T
+inhabitant unknown = function
+
+inhabited : ∀ {T} → (Tⁱ : Inhabited T) → Language T (inhabitant Tⁱ)
+inhabited function = function
+inhabited (S ⇒ T) = function
+inhabited (S ∩ T) = inhabitedᶠ (S ∩ T)
+inhabited (S ∪ T) = right (scalar T)
+inhabited unknown = unknown
 
 -- Normalization produces normal types
 normal : ∀ T → Normal (normalize T)

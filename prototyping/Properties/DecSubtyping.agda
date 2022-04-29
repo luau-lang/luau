@@ -5,14 +5,13 @@ module Properties.DecSubtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
-open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-err; left; right; _,_)
+open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
 open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-union; ≮:-left-∪; ≮:-right-∪; <:-impl-⊇)
-open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:; normal-∩ⁿ; normal-∪ⁿ; ∪-<:-∪ⁿ; ∪ⁿ-<:-∪)
-open import Properties.FunctionTypes using (fun-¬scalar; ¬fun-scalar; fun-function; src-unknown-≮:)
+open import Properties.TypeNormalization using (FunType; Normal; never; unknown; function; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:; normal-∩ⁿ; normal-∪ⁿ; ∪-<:-∪ⁿ; ∪ⁿ-<:-∪; ∩ⁿ-<:-∩; normalⁱ)
 open import Properties.Equality using (_≢_)
 
 -- Honest this terminates, since src and tgt reduce the depth of nested arrows
@@ -30,16 +29,21 @@ srcᶠ-function-err : ∀ {F} → (Fᶠ : FunType F) → ∀ s → ¬Language (s
 
 resolveᶠⁿ : ∀ {F V} → FunType F → Normal V → Type
 normal-resolveᶠⁿ : ∀ {F V} → (Fᶠ : FunType F) → (Vⁿ : Normal V) → Normal (resolveᶠⁿ Fᶠ Vⁿ)
-resolveᶠⁿ-funtion-ok : ∀ {F V} → (Fᶠ : FunType F) → (Vⁿ : Normal V) → ∀ s t → Language (srcᶠ Fᶠ) s → ¬Language (resolveᶠⁿ Fᶠ Vⁿ) t → ¬Language F (function-ok s t)
-≮:-resolveᶠⁿ : ∀ {F S T} → (Fᶠ : FunType F) → (Sᶠ : Normal S) → (S <: srcᶠ Fᶠ) → (srcᶠ Fᶠ ≮: never) → (resolveᶠⁿ Fᶠ Sᶠ ≮: T) → (F ≮: (S ⇒ T))
+resolveᶠⁿ-function-ok : ∀ {F V} → (Fᶠ : FunType F) → (Vⁿ : Normal V) → (V <: srcᶠ Fᶠ) → ∀ s t → Language (srcᶠ Fᶠ) s → ¬Language (resolveᶠⁿ Fᶠ Vⁿ) t → ¬Language F (function-ok s t)
+≮:-resolveᶠⁿ : ∀ {F S T} → (Fᶠ : FunType F) → (Sᶠ : Normal S) → (S <: srcᶠ Fᶠ) → (resolveᶠⁿ Fᶠ Sᶠ ≮: T) → (F ≮: (S ⇒ T))
 <:-resolveᶠⁿ : ∀ {F S T} → (Fᶠ : FunType F) → (Sᶠ : Normal S) → (S <: srcᶠ Fᶠ) → (resolveᶠⁿ Fᶠ Sᶠ <: T) → (F <: (S ⇒ T))
+
+fun-function : ∀ {F} → FunType F → Language F function
+¬fun-scalar : ∀ {F S} → (s : Scalar S) → FunType F → ¬Language F (scalar s)
 
 srcᶠ {S ⇒ T} F = S
 srcᶠ (F ∩ G) = srcᶠ F ∪ⁿ srcᶠ G
 
-normal-srcᶠ (S ⇒ T) = S
+normal-srcᶠ function = never
+normal-srcᶠ (S ⇒ T) = normalⁱ S
 normal-srcᶠ (F ∩ G) = normal-∪ⁿ (normal-srcᶠ F) (normal-srcᶠ G)
 
+srcᶠ-function-err function s p = function-err p
 srcᶠ-function-err (S ⇒ T) s p = function-err p
 srcᶠ-function-err (F ∩ G) s p with <:-impl-⊇ (∪-<:-∪ⁿ (normal-srcᶠ F) (normal-srcᶠ G)) s p
 srcᶠ-function-err (F ∩ G) s p | (p₁ , p₂) = (srcᶠ-function-err F s p₁ , srcᶠ-function-err G s p₂)
@@ -53,6 +57,7 @@ resolveᶠⁿ (F ∩ G) V | Left p | Right q = resolveᶠⁿ G V
 resolveᶠⁿ (F ∩ G) V | Right p | Left q = resolveᶠⁿ F V
 resolveᶠⁿ (F ∩ G) V | Right p | Right q = resolveᶠⁿ F V ∩ⁿ resolveᶠⁿ G V
 
+normal-resolveᶠⁿ function V = unknown
 normal-resolveᶠⁿ (S ⇒ T) V = T
 normal-resolveᶠⁿ (F ∩ G) V with dec-subtypingⁿ V (normal-srcᶠ F) | dec-subtypingⁿ V (normal-srcᶠ G)
 normal-resolveᶠⁿ (F ∩ G) V | Left p | Left q = normal-∪ⁿ (normal-resolveᶠⁿ F V) (normal-resolveᶠⁿ G V)
@@ -60,20 +65,29 @@ normal-resolveᶠⁿ (F ∩ G) V | Left p | Right q = normal-resolveᶠⁿ G V
 normal-resolveᶠⁿ (F ∩ G) V | Right p | Left q = normal-resolveᶠⁿ F V
 normal-resolveᶠⁿ (F ∩ G) V | Right p | Right q = normal-∩ⁿ (normal-resolveᶠⁿ F V) (normal-resolveᶠⁿ G V)
 
-resolveᶠⁿ-funtion-ok F V s t p q = {!!}
+resolveᶠⁿ-function-ok function V p₀ s t (scalar ()) q
+resolveᶠⁿ-function-ok (S ⇒ T) V p₀ s t p₁ p₂ = function-ok p₁ p₂
+resolveᶠⁿ-function-ok (F ∩ G) V p₀ s t p₁ p₂ with dec-subtypingⁿ V (normal-srcᶠ F) | dec-subtypingⁿ V (normal-srcᶠ G) | ∪ⁿ-<:-∪ (normal-srcᶠ F) (normal-srcᶠ G) s p₁
+resolveᶠⁿ-function-ok (F ∩ G) V p₀ s t p₁ p₂ | Left q₁ | Left q₂ | q₃ with <:-impl-⊇ (∪-<:-∪ⁿ (normal-resolveᶠⁿ F V) (normal-resolveᶠⁿ G V)) t p₂
+resolveᶠⁿ-function-ok (F ∩ G) V p₀ s t p₁ p₂ | Left q₁ | Left q₂ | left q₃ | (r₁ , r₂) = left (resolveᶠⁿ-function-ok F V {!p₀!} s t q₃ r₁)
+resolveᶠⁿ-function-ok (F ∩ G) V p₀ s t p₁ p₂ | Left q₁ | Left q₂ | right q₃ | (r₁ , r₂) = right (resolveᶠⁿ-function-ok G V {!!} s t q₃ r₂)
+resolveᶠⁿ-function-ok (F ∩ G) V p₀ s t p₁ p₂ | Left q₁ | Right q₂ | q₃ = {!resolveᶠⁿ-function-ok G V s t!}
 
-≮:-resolveᶠⁿ F S p (witness s q₁ q₂) (witness t r₁ r₂) = witness {!function!} {!!} {!!}
+≮:-resolveᶠⁿ F S p (witness t q r) = witness {!function-ok !} {!!} {!p!}
 
 <:-resolveᶠⁿ F S p q = {!!}
+
+fun-function F = {!!}
+¬fun-scalar s F = {!!}
 
 dec-subtypingˢⁿ T U with dec-language _ (scalar T)
 dec-subtypingˢⁿ T U | Left p = Left (witness (scalar T) (scalar T) p)
 dec-subtypingˢⁿ T U | Right p = Right (scalar-<: T p)
 
-dec-subtypingᶠ T (U ⇒ V) with dec-subtypingⁿ U (normal-srcᶠ T) | dec-subtypingⁿ (normal-resolveᶠⁿ T U) V
+dec-subtypingᶠ T (U ⇒ V) with dec-subtypingⁿ (normalⁱ U) (normal-srcᶠ T) | dec-subtypingⁿ (normal-resolveᶠⁿ T (normalⁱ U)) V
 dec-subtypingᶠ T (U ⇒ V) | Left p | q = Left (≮:-srcᶠ T p)
-dec-subtypingᶠ T (U ⇒ V) | Right p | Left q = Left (≮:-resolveᶠⁿ T U p ? q)
-dec-subtypingᶠ T (U ⇒ V) | Right p | Right q = Right (<:-resolveᶠⁿ T U p q)
+dec-subtypingᶠ T (U ⇒ V) | Right p | Left q = Left (≮:-resolveᶠⁿ T (normalⁱ U) p q)
+dec-subtypingᶠ T (U ⇒ V) | Right p | Right q = Right (<:-resolveᶠⁿ T (normalⁱ U) p q)
 
 dec-subtypingᶠ T (U ∩ V) with dec-subtypingᶠ T U | dec-subtypingᶠ T V
 dec-subtypingᶠ T (U ∩ V) | Left p | q = Left (≮:-∩-left p)
@@ -85,12 +99,12 @@ dec-subtypingᶠⁿ T unknown = Right <:-unknown
 dec-subtypingᶠⁿ T (U ⇒ V) = dec-subtypingᶠ T (U ⇒ V)
 dec-subtypingᶠⁿ T (U ∩ V) = dec-subtypingᶠ T (U ∩ V)
 dec-subtypingᶠⁿ T (U ∪ V) with dec-subtypingᶠⁿ T U
-dec-subtypingᶠⁿ T (U ∪ V) | Left (witness t p q) = Left (witness t p (q , ¬fun-scalar V T p))
+dec-subtypingᶠⁿ T (U ∪ V) | Left (witness t p q) = Left (witness t p (q , {!!}))
 dec-subtypingᶠⁿ T (U ∪ V) | Right p = Right (<:-trans p <:-∪-left)
 
 dec-subtypingⁿ never U = Right <:-never
 dec-subtypingⁿ unknown unknown = Right <:-refl
-dec-subtypingⁿ unknown U with dec-subtypingᶠⁿ (never ⇒ unknown) U
+dec-subtypingⁿ unknown U with dec-subtypingᶠⁿ function U
 dec-subtypingⁿ unknown U | Left p = Left (<:-trans-≮: <:-unknown p)
 dec-subtypingⁿ unknown U | Right p₁ with dec-subtypingˢⁿ number U
 dec-subtypingⁿ unknown U | Right p₁ | Left p = Left (<:-trans-≮: <:-unknown p)
@@ -107,6 +121,12 @@ dec-subtypingⁿ (S ∪ T) U with dec-subtypingⁿ S U | dec-subtypingˢⁿ T U
 dec-subtypingⁿ (S ∪ T) U | Left p | q = Left (≮:-∪-left p)
 dec-subtypingⁿ (S ∪ T) U | Right p | Left q = Left (≮:-∪-right q)
 dec-subtypingⁿ (S ∪ T) U | Right p | Right q = Right (<:-∪-lub p q)
+dec-subtypingⁿ function function = Right <:-refl
+dec-subtypingⁿ function (T ⇒ U) = {!!}
+dec-subtypingⁿ function (T ∩ U) = {!!}
+dec-subtypingⁿ function (T ∪ U) = {!!}
+dec-subtypingⁿ function never = Left (witness function function never)
+dec-subtypingⁿ function unknown = Right <:-unknown
 
 dec-subtyping T U with dec-subtypingⁿ (normal T) (normal U)
 dec-subtyping T U | Left p = Left (<:-trans-≮: (normalize-<: T) (≮:-trans-<: p (<:-normalize U)))
