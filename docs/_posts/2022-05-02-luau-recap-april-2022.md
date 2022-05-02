@@ -41,7 +41,7 @@ local a: A = { 1, 2, 3 }
 local b: B = a
 ```
 
-If the following code were to error because `Hello` was undefined, we would erraneously include the comment in the span of the error.  This is now fixed.
+If the following code were to error because `Hello` was undefined, we would erroneously include the comment in the span of the error.  This is now fixed.
 ```lua
 type Foo = Hello -- some comment over here
 ```
