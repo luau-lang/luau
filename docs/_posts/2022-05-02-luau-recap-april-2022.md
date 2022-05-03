@@ -14,7 +14,7 @@ It is now allowed to define functions on sealed tables that have string indexers
 ```lua
 local a : {[string]: () -> number} = {}
 
-function b.y() return 4 end -- OK
+function a.y() return 4 end -- OK
 ```
 
 Autocomplete will now provide string literal suggestions for singleton types.  eg
