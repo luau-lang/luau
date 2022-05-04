@@ -21,6 +21,8 @@
 #include <fcntl.h>
 #endif
 
+#include <locale.h>
+
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
 enum class CliMode
@@ -434,6 +436,9 @@ static void loadHistory(const char* name)
 static void runReplImpl(lua_State* L)
 {
     ic_set_default_completer(completeRepl, L);
+
+    // Reset the locale to C
+    setlocale(LC_ALL, "C");
 
     // Make brace matching easier to see
     ic_style_def("ic-bracematch", "teal");
