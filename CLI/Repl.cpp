@@ -21,6 +21,8 @@
 #include <fcntl.h>
 #endif
 
+#include <locale.h>
+
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
 enum class CliMode
