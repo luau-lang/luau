@@ -241,6 +241,8 @@ TEST_CASE("Math")
 
 TEST_CASE("Table")
 {
+    ScopedFastFlag sff("LuauFixBuiltinsStackLimit", true);
+
     runConformance("nextvar.lua");
 }
 
@@ -1097,6 +1099,16 @@ TEST_CASE("UserdataApi")
     globalState.reset();
 
     CHECK(dtorhits == 42);
+}
+
+TEST_CASE("Iter")
+{
+    ScopedFastFlag sffs[] = {
+        { "LuauCompileIter", true },
+        { "LuauIter", true },
+    };
+
+    runConformance("iter.lua");
 }
 
 TEST_SUITE_END();

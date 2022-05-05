@@ -42,7 +42,68 @@ local Rcon = { { 0x00, 0x00, 0x00, 0x00 },
              {0x1b, 0x00, 0x00, 0x00},
              {0x36, 0x00, 0x00, 0x00} }; 
 
-function Cipher(input, w)    -- main Cipher function [§5.1]
+local function SubBytes(s, Nb)    -- apply SBox to state S [§5.1.1]
+  for r = 0,3 do
+    for c = 0,Nb-1 do s[r + 1][c + 1] = Sbox[s[r + 1][c + 1] + 1]; end
+  end
+  return s;
+end
+
+
+local function ShiftRows(s, Nb)    -- shift row r of state S left by r bytes [§5.1.2]
+  local t = {};
+  for r = 1,3 do
+    for c = 0,3 do t[c + 1] = s[r + 1][((c + r) % Nb) + 1] end;  -- shift into temp copy
+    for c = 0,3 do s[r + 1][c + 1] = t[c + 1]; end         -- and copy back
+  end          -- note that this will work for Nb=4,5,6, but not 7,8 (always 4 for AES):
+  return s;  -- see fp.gladman.plus.com/cryptography_technology/rijndael/aes.spec.311.pdf 
+end
+
+
+local function MixColumns(s, Nb)   -- combine bytes of each col of state S [§5.1.3]
+  for c = 0,3 do
+    local a = {};  -- 'a' is a copy of the current column from 's'
+    local b = {};  -- 'b' is a•{02} in GF(2^8)
+    for i = 0,3 do
+      a[i + 1] = s[i + 1][c + 1];
+
+      if bit32.band(s[i + 1][c + 1], 0x80) ~= 0 then
+        b[i + 1] = bit32.bxor(bit32.lshift(s[i + 1][c + 1], 1), 0x011b);
+      else
+        b[i + 1] = bit32.lshift(s[i + 1][c + 1], 1);
+      end
+    end
+    -- a[n] ^ b[n] is a•{03} in GF(2^8)
+    s[1][c + 1] = bit32.bxor(b[1], a[2], b[2], a[3], a[4]); -- 2*a0 + 3*a1 + a2 + a3
+    s[2][c + 1] = bit32.bxor(a[1], b[2], a[3], b[3], a[4]); -- a0 * 2*a1 + 3*a2 + a3
+    s[3][c + 1] = bit32.bxor(a[1], a[2], b[3], a[4], b[4]); -- a0 + a1 + 2*a2 + 3*a3
+    s[4][c + 1] = bit32.bxor(a[1], b[1], a[2], a[3], b[4]); -- 3*a0 + a1 + a2 + 2*a3
+end
+  return s;
+end
+
+
+local function SubWord(w)    -- apply SBox to 4-byte word w
+  for i = 0,3 do w[i + 1] = Sbox[w[i + 1] + 1]; end
+  return w;
+end
+
+local function RotWord(w)    -- rotate 4-byte word w left by one byte
+  w[5] = w[1];
+  for i = 0,3 do w[i + 1] = w[i + 2]; end
+  return w;
+end
+
+
+
+local function AddRoundKey(state, w, rnd, Nb)  -- xor Round Key into state S [§5.1.4]
+  for r = 0,3 do
+    for c = 0,Nb-1 do state[r + 1][c + 1] = bit32.bxor(state[r + 1][c + 1], w[rnd*4+c + 1][r + 1]); end
+  end
+  return state;
+end
+
+local function Cipher(input, w)    -- main Cipher function [§5.1]
   local Nb = 4;               -- block size (in words): no of columns in state (fixed at 4 for AES)
   local Nr = #w / Nb - 1; -- no of rounds: 10/12/14 for 128/192/256-bit keys
 
@@ -69,56 +130,7 @@ function Cipher(input, w)    -- main Cipher function [§5.1]
 end
 
 
-function SubBytes(s, Nb)    -- apply SBox to state S [§5.1.1]
-  for r = 0,3 do
-    for c = 0,Nb-1 do s[r + 1][c + 1] = Sbox[s[r + 1][c + 1] + 1]; end
-  end
-  return s;
-end
-
-
-function ShiftRows(s, Nb)    -- shift row r of state S left by r bytes [§5.1.2]
-  local t = {};
-  for r = 1,3 do
-    for c = 0,3 do t[c + 1] = s[r + 1][((c + r) % Nb) + 1] end;  -- shift into temp copy
-    for c = 0,3 do s[r + 1][c + 1] = t[c + 1]; end         -- and copy back
-  end          -- note that this will work for Nb=4,5,6, but not 7,8 (always 4 for AES):
-  return s;  -- see fp.gladman.plus.com/cryptography_technology/rijndael/aes.spec.311.pdf 
-end
-
-
-function MixColumns(s, Nb)   -- combine bytes of each col of state S [§5.1.3]
-  for c = 0,3 do
-    local a = {};  -- 'a' is a copy of the current column from 's'
-    local b = {};  -- 'b' is a•{02} in GF(2^8)
-    for i = 0,3 do
-      a[i + 1] = s[i + 1][c + 1];
-
-      if bit32.band(s[i + 1][c + 1], 0x80) ~= 0 then
-        b[i + 1] = bit32.bxor(bit32.lshift(s[i + 1][c + 1], 1), 0x011b);
-      else
-        b[i + 1] = bit32.lshift(s[i + 1][c + 1], 1);
-      end
-    end
-    -- a[n] ^ b[n] is a•{03} in GF(2^8)
-    s[1][c + 1] = bit32.bxor(b[1], a[2], b[2], a[3], a[4]); -- 2*a0 + 3*a1 + a2 + a3
-    s[2][c + 1] = bit32.bxor(a[1], b[2], a[3], b[3], a[4]); -- a0 * 2*a1 + 3*a2 + a3
-    s[3][c + 1] = bit32.bxor(a[1], a[2], b[3], a[4], b[4]); -- a0 + a1 + 2*a2 + 3*a3
-    s[4][c + 1] = bit32.bxor(a[1], b[1], a[2], a[3], b[4]); -- 3*a0 + a1 + a2 + 2*a3
-end
-  return s;
-end
-
-
-function AddRoundKey(state, w, rnd, Nb)  -- xor Round Key into state S [§5.1.4]
-  for r = 0,3 do
-    for c = 0,Nb-1 do state[r + 1][c + 1] = bit32.bxor(state[r + 1][c + 1], w[rnd*4+c + 1][r + 1]); end
-  end
-  return state;
-end
-
-
-function KeyExpansion(key)  -- generate Key Schedule (byte-array Nr+1 x Nb) from Key [§5.2]
+local function KeyExpansion(key)  -- generate Key Schedule (byte-array Nr+1 x Nb) from Key [§5.2]
   local Nb = 4;            -- block size (in words): no of columns in state (fixed at 4 for AES)
   local Nk = #key / 4  -- key length (in words): 4/6/8 for 128/192/256-bit keys
   local Nr = Nk + 6;       -- no of rounds: 10/12/14 for 128/192/256-bit keys
@@ -146,17 +158,17 @@ function KeyExpansion(key)  -- generate Key Schedule (byte-array Nr+1 x Nb) from
   return w;
 end
 
-function SubWord(w)    -- apply SBox to 4-byte word w
-  for i = 0,3 do w[i + 1] = Sbox[w[i + 1] + 1]; end
-  return w;
+local function escCtrlChars(str)  -- escape control chars which might cause problems handling ciphertext
+  return string.gsub(str, "[\0\t\n\v\f\r\'\"!-]", function(c) return '!' .. string.byte(c, 1) .. '!'; end);
 end
 
-function RotWord(w)    -- rotate 4-byte word w left by one byte
-  w[5] = w[1];
-  for i = 0,3 do w[i + 1] = w[i + 2]; end
-  return w;
-end
+local function unescCtrlChars(str)  -- unescape potentially problematic control characters
+  return string.gsub(str, "!%d%d?%d?!", function(c)
+    local sc = string.sub(c, 2,-2)
 
+    return string.char(tonumber(sc));
+  end);
+end
 
 --[[ 
  * Use AES to encrypt 'plaintext' with 'password' using 'nBits' key, in 'Counter' mode of operation
@@ -166,7 +178,7 @@ end
  *   - cipherblock = plaintext xor outputblock
  ]]
 
-function AESEncryptCtr(plaintext, password, nBits)
+local function AESEncryptCtr(plaintext, password, nBits)
   if (not (nBits==128 or nBits==192 or nBits==256)) then return ''; end  -- standard allows 128/192/256 bit keys
 
   -- for this example script, generate the key by applying Cipher to 1st 16/24/32 chars of password; 
@@ -243,7 +255,7 @@ end
  *   - cipherblock = plaintext xor outputblock
  ]]
 
-function AESDecryptCtr(ciphertext, password, nBits)
+local function AESDecryptCtr(ciphertext, password, nBits)
   if (not (nBits==128 or nBits==192 or nBits==256)) then return ''; end  -- standard allows 128/192/256 bit keys
 
   local nBytes = nBits/8;  -- no bytes in key
@@ -300,19 +312,7 @@ function AESDecryptCtr(ciphertext, password, nBits)
   return table.concat(plaintext)
 end
 
-function escCtrlChars(str)  -- escape control chars which might cause problems handling ciphertext
-  return string.gsub(str, "[\0\t\n\v\f\r\'\"!-]", function(c) return '!' .. string.byte(c, 1) .. '!'; end);
-end
-
-function unescCtrlChars(str)  -- unescape potentially problematic control characters
-  return string.gsub(str, "!%d%d?%d?!", function(c)
-    local sc = string.sub(c, 2,-2)
-
-    return string.char(tonumber(sc));
-  end);
-end
-
-function test()
+local function test()
 
 local plainText = "ROMEO: But, soft! what light through yonder window breaks?\n\
 It is the east, and Juliet is the sun.\n\

@@ -313,7 +313,7 @@ template<typename T>
 struct AstArray
 {
     T* data;
-    std::size_t size;
+    size_t size;
 
     const T* begin() const
     {

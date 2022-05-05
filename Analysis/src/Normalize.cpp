@@ -304,37 +304,23 @@ static bool areNormal(TypePackId tp, const std::unordered_set<void*>& seen, Inte
         ++iterationLimit; \
     } while (false)
 
-struct Normalize
+struct Normalize final : TypeVarVisitor
 {
+    using TypeVarVisitor::Set;
+
+    Normalize(TypeArena& arena, InternalErrorReporter& ice)
+        : arena(arena)
+        , ice(ice)
+    {
+    }
+
     TypeArena& arena;
     InternalErrorReporter& ice;
-
-    // Debug data. Types being normalized are invalidated but trying to see what's going on is painful.
-    // To actually see the original type, read it by using the pointer of the type being normalized.
-    // e.g. in lldb, `e dump(originalTys[ty])`.
-    SeenTypes originalTys;
-    SeenTypePacks originalTps;
 
     int iterationLimit = 0;
     bool limitExceeded = false;
 
-    template<typename T>
-    bool operator()(TypePackId, const T&)
-    {
-        return true;
-    }
-
-    template<typename TID>
-    void cycle(TID)
-    {
-    }
-
-    bool operator()(TypeId ty, const FreeTypeVar&)
-    {
-        LUAU_ASSERT(!ty->normal);
-        return false;
-    }
-
+    // TODO: Clip with FFlag::LuauUseVisitRecursionLimit
     bool operator()(TypeId ty, const BoundTypeVar& btv, std::unordered_set<void*>& seen)
     {
         // A type could be considered normal when it is in the stack, but we will eventually find out it is not normal as normalization progresses.
@@ -349,27 +335,22 @@ struct Normalize
         return !ty->normal;
     }
 
-    bool operator()(TypeId ty, const PrimitiveTypeVar&)
+    bool operator()(TypeId ty, const FreeTypeVar& ftv)
     {
-        LUAU_ASSERT(ty->normal);
-        return false;
+        return visit(ty, ftv);
     }
-
-    bool operator()(TypeId ty, const GenericTypeVar&)
+    bool operator()(TypeId ty, const PrimitiveTypeVar& ptv)
     {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-
-        return false;
+        return visit(ty, ptv);
     }
-
-    bool operator()(TypeId ty, const ErrorTypeVar&)
+    bool operator()(TypeId ty, const GenericTypeVar& gtv)
     {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
+        return visit(ty, gtv);
     }
-
+    bool operator()(TypeId ty, const ErrorTypeVar& etv)
+    {
+        return visit(ty, etv);
+    }
     bool operator()(TypeId ty, const ConstrainedTypeVar& ctvRef, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
@@ -470,17 +451,12 @@ struct Normalize
 
     bool operator()(TypeId ty, const ClassTypeVar& ctv)
     {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
+        return visit(ty, ctv);
     }
-
-    bool operator()(TypeId ty, const AnyTypeVar&)
+    bool operator()(TypeId ty, const AnyTypeVar& atv)
     {
-        LUAU_ASSERT(ty->normal);
-        return false;
+        return visit(ty, atv);
     }
-
     bool operator()(TypeId ty, const UnionTypeVar& utvRef, std::unordered_set<void*>& seen)
     {
         CHECK_ITERATION_LIMIT(false);
@@ -570,8 +546,257 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const LazyTypeVar&)
+    // TODO: Clip with FFlag::LuauUseVisitRecursionLimit
+    template<typename T>
+    bool operator()(TypePackId, const T&)
     {
+        return true;
+    }
+
+    // TODO: Clip with FFlag::LuauUseVisitRecursionLimit
+    template<typename TID>
+    void cycle(TID)
+    {
+    }
+
+    bool visit(TypeId ty, const FreeTypeVar&) override
+    {
+        LUAU_ASSERT(!ty->normal);
+        return false;
+    }
+
+    bool visit(TypeId ty, const BoundTypeVar& btv) override
+    {
+        // A type could be considered normal when it is in the stack, but we will eventually find out it is not normal as normalization progresses.
+        // So we need to avoid eagerly saying that this bound type is normal if the thing it is bound to is in the stack.
+        if (seen.find(asMutable(btv.boundTo)) != seen.end())
+            return false;
+
+        // It should never be the case that this TypeVar is normal, but is bound to a non-normal type, except in nontrivial cases.
+        LUAU_ASSERT(!ty->normal || ty->normal == btv.boundTo->normal);
+
+        asMutable(ty)->normal = btv.boundTo->normal;
+        return !ty->normal;
+    }
+
+    bool visit(TypeId ty, const PrimitiveTypeVar&) override
+    {
+        LUAU_ASSERT(ty->normal);
+        return false;
+    }
+
+    bool visit(TypeId ty, const GenericTypeVar&) override
+    {
+        if (!ty->normal)
+            asMutable(ty)->normal = true;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const ErrorTypeVar&) override
+    {
+        if (!ty->normal)
+            asMutable(ty)->normal = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const ConstrainedTypeVar& ctvRef) override
+    {
+        CHECK_ITERATION_LIMIT(false);
+
+        ConstrainedTypeVar* ctv = const_cast<ConstrainedTypeVar*>(&ctvRef);
+
+        std::vector<TypeId> parts = std::move(ctv->parts);
+
+        // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
+        for (TypeId part : parts)
+            traverse(part);
+
+        std::vector<TypeId> newParts = normalizeUnion(parts);
+
+        const bool normal = areNormal(newParts, seen, ice);
+
+        if (newParts.size() == 1)
+            *asMutable(ty) = BoundTypeVar{newParts[0]};
+        else
+            *asMutable(ty) = UnionTypeVar{std::move(newParts)};
+
+        asMutable(ty)->normal = normal;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const FunctionTypeVar& ftv) override
+    {
+        CHECK_ITERATION_LIMIT(false);
+
+        if (ty->normal)
+            return false;
+
+        traverse(ftv.argTypes);
+        traverse(ftv.retType);
+
+        asMutable(ty)->normal = areNormal(ftv.argTypes, seen, ice) && areNormal(ftv.retType, seen, ice);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableTypeVar& ttv) override
+    {
+        CHECK_ITERATION_LIMIT(false);
+
+        if (ty->normal)
+            return false;
+
+        bool normal = true;
+
+        auto checkNormal = [&](TypeId t) {
+            // if t is on the stack, it is possible that this type is normal.
+            // If t is not normal and it is not on the stack, this type is definitely not normal.
+            if (!t->normal && seen.find(asMutable(t)) == seen.end())
+                normal = false;
+        };
+
+        if (ttv.boundTo)
+        {
+            traverse(*ttv.boundTo);
+            asMutable(ty)->normal = (*ttv.boundTo)->normal;
+            return false;
+        }
+
+        for (const auto& [_name, prop] : ttv.props)
+        {
+            traverse(prop.type);
+            checkNormal(prop.type);
+        }
+
+        if (ttv.indexer)
+        {
+            traverse(ttv.indexer->indexType);
+            checkNormal(ttv.indexer->indexType);
+            traverse(ttv.indexer->indexResultType);
+            checkNormal(ttv.indexer->indexResultType);
+        }
+
+        asMutable(ty)->normal = normal;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const MetatableTypeVar& mtv) override
+    {
+        CHECK_ITERATION_LIMIT(false);
+
+        if (ty->normal)
+            return false;
+
+        traverse(mtv.table);
+        traverse(mtv.metatable);
+
+        asMutable(ty)->normal = mtv.table->normal && mtv.metatable->normal;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const ClassTypeVar& ctv) override
+    {
+        if (!ty->normal)
+            asMutable(ty)->normal = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const AnyTypeVar&) override
+    {
+        LUAU_ASSERT(ty->normal);
+        return false;
+    }
+
+    bool visit(TypeId ty, const UnionTypeVar& utvRef) override
+    {
+        CHECK_ITERATION_LIMIT(false);
+
+        if (ty->normal)
+            return false;
+
+        UnionTypeVar* utv = &const_cast<UnionTypeVar&>(utvRef);
+        std::vector<TypeId> options = std::move(utv->options);
+
+        // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
+        for (TypeId option : options)
+            traverse(option);
+
+        std::vector<TypeId> newOptions = normalizeUnion(options);
+
+        const bool normal = areNormal(newOptions, seen, ice);
+
+        LUAU_ASSERT(!newOptions.empty());
+
+        if (newOptions.size() == 1)
+            *asMutable(ty) = BoundTypeVar{newOptions[0]};
+        else
+            utv->options = std::move(newOptions);
+
+        asMutable(ty)->normal = normal;
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const IntersectionTypeVar& itvRef) override
+    {
+        CHECK_ITERATION_LIMIT(false);
+
+        if (ty->normal)
+            return false;
+
+        IntersectionTypeVar* itv = &const_cast<IntersectionTypeVar&>(itvRef);
+
+        std::vector<TypeId> oldParts = std::move(itv->parts);
+
+        for (TypeId part : oldParts)
+            traverse(part);
+
+        std::vector<TypeId> tables;
+        for (TypeId part : oldParts)
+        {
+            part = follow(part);
+            if (get<TableTypeVar>(part))
+                tables.push_back(part);
+            else
+            {
+                Replacer replacer{&arena, nullptr, nullptr}; // FIXME this is super super WEIRD
+                combineIntoIntersection(replacer, itv, part);
+            }
+        }
+
+        // Don't allocate a new table if there's just one in the intersection.
+        if (tables.size() == 1)
+            itv->parts.push_back(tables[0]);
+        else if (!tables.empty())
+        {
+            const TableTypeVar* first = get<TableTypeVar>(tables[0]);
+            LUAU_ASSERT(first);
+
+            TypeId newTable = arena.addType(TableTypeVar{first->state, first->level});
+            TableTypeVar* ttv = getMutable<TableTypeVar>(newTable);
+            for (TypeId part : tables)
+            {
+                // Intuition: If combineIntoTable() needs to clone a table, any references to 'part' are cyclic and need
+                // to be rewritten to point at 'newTable' in the clone.
+                Replacer replacer{&arena, part, newTable};
+                combineIntoTable(replacer, ttv, part);
+            }
+
+            itv->parts.push_back(newTable);
+        }
+
+        asMutable(ty)->normal = areNormal(itv->parts, seen, ice);
+
+        if (itv->parts.size() == 1)
+        {
+            TypeId part = itv->parts[0];
+            *asMutable(ty) = BoundTypeVar{part};
+        }
+
         return false;
     }
 
@@ -778,9 +1003,9 @@ std::pair<TypeId, bool> normalize(TypeId ty, TypeArena& arena, InternalErrorRepo
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(ty, arena, state);
 
-    Normalize n{arena, ice, std::move(state.seenTypes), std::move(state.seenTypePacks)};
+    Normalize n{arena, ice};
     std::unordered_set<void*> seen;
-    visitTypeVar(ty, n, seen);
+    DEPRECATED_visitTypeVar(ty, n, seen);
 
     return {ty, !n.limitExceeded};
 }
@@ -803,9 +1028,9 @@ std::pair<TypePackId, bool> normalize(TypePackId tp, TypeArena& arena, InternalE
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(tp, arena, state);
 
-    Normalize n{arena, ice, std::move(state.seenTypes), std::move(state.seenTypePacks)};
+    Normalize n{arena, ice};
     std::unordered_set<void*> seen;
-    visitTypeVar(tp, n, seen);
+    DEPRECATED_visitTypeVar(tp, n, seen);
 
     return {tp, !n.limitExceeded};
 }

@@ -9,7 +9,7 @@ LUAU_FASTFLAG(LuauTypecheckOptPass)
 namespace Luau
 {
 
-struct Quantifier
+struct Quantifier final : TypeVarOnceVisitor
 {
     TypeLevel level;
     std::vector<TypeId> generics;
@@ -17,26 +17,17 @@ struct Quantifier
     bool seenGenericType = false;
     bool seenMutableType = false;
 
-    Quantifier(TypeLevel level)
+    explicit Quantifier(TypeLevel level)
         : level(level)
     {
     }
 
-    void cycle(TypeId) {}
-    void cycle(TypePackId) {}
+    void cycle(TypeId) override {}
+    void cycle(TypePackId) override {}
 
     bool operator()(TypeId ty, const FreeTypeVar& ftv)
     {
-        if (FFlag::LuauTypecheckOptPass)
-            seenMutableType = true;
-
-        if (!level.subsumes(ftv.level))
-            return false;
-
-        *asMutable(ty) = GenericTypeVar{level};
-        generics.push_back(ty);
-
-        return false;
+        return visit(ty, ftv);
     }
 
     template<typename T>
@@ -56,8 +47,33 @@ struct Quantifier
         return true;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar&)
+    bool operator()(TypeId ty, const TableTypeVar& ttv)
     {
+        return visit(ty, ttv);
+    }
+
+    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    {
+        return visit(tp, ftp);
+    }
+
+    bool visit(TypeId ty, const FreeTypeVar& ftv) override
+    {
+        if (FFlag::LuauTypecheckOptPass)
+            seenMutableType = true;
+
+        if (!level.subsumes(ftv.level))
+            return false;
+
+        *asMutable(ty) = GenericTypeVar{level};
+        generics.push_back(ty);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableTypeVar&) override
+    {
+        LUAU_ASSERT(getMutable<TableTypeVar>(ty));
         TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
 
         if (FFlag::LuauTypecheckOptPass)
@@ -93,7 +109,7 @@ struct Quantifier
         return true;
     }
 
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    bool visit(TypePackId tp, const FreeTypePack& ftp) override
     {
         if (FFlag::LuauTypecheckOptPass)
             seenMutableType = true;
@@ -111,7 +127,7 @@ void quantify(TypeId ty, TypeLevel level)
 {
     Quantifier q{level};
     DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(ty, q, seen);
+    DEPRECATED_visitTypeVarOnce(ty, q, seen);
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
     LUAU_ASSERT(ftv);

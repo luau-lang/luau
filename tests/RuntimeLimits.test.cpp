@@ -19,8 +19,8 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 
 struct LimitFixture : Fixture
 {
-#if defined(_NOOPT)
-    ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 150};
+#if defined(_NOOPT) || defined(_DEBUG)
+    ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
 #endif
 
     ScopedFastFlag LuauJustOneCallFrameForHaveSeen{"LuauJustOneCallFrameForHaveSeen", true};
@@ -35,12 +35,17 @@ bool hasError(const CheckResult& result, T* = nullptr)
     return it != result.errors.end();
 }
 
-TEST_SUITE_BEGIN("RuntimeLimitTests");
+TEST_SUITE_BEGIN("RuntimeLimits");
 
-TEST_CASE_FIXTURE(LimitFixture, "bail_early_on_typescript_port_of_Result_type" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
     constexpr const char* src = R"LUA(
         --!strict
+
+        -- Big thanks to Dionysusnu by letting us use this code as part of our test suite!
+        -- https://github.com/Dionysusnu/rbxts-rust-classes
+        -- Licensed under the MPL 2.0: https://raw.githubusercontent.com/Dionysusnu/rbxts-rust-classes/master/LICENSE
+
         local TS = _G[script]
         local lazyGet = TS.import(script, script.Parent.Parent, "util", "lazyLoad").lazyGet
         local unit = TS.import(script, script.Parent.Parent, "util", "Unit").unit

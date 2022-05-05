@@ -353,6 +353,11 @@ enum LuauOpcode
     // AUX: constant index
     LOP_FASTCALL2K,
 
+    // FORGPREP: prepare loop variables for a generic for loop, jump to the loop backedge unconditionally
+    // A: target register; generic for loops assume a register layout [generator, state, index, variables...]
+    // D: jump offset (-32768..32767)
+    LOP_FORGPREP,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };

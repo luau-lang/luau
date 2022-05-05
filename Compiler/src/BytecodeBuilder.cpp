@@ -96,6 +96,7 @@ inline bool isJumpD(LuauOpcode op)
     case LOP_JUMPIFNOTLT:
     case LOP_FORNPREP:
     case LOP_FORNLOOP:
+    case LOP_FORGPREP:
     case LOP_FORGLOOP:
     case LOP_FORGPREP_INEXT:
     case LOP_FORGLOOP_INEXT:
@@ -1269,6 +1270,11 @@ void BytecodeBuilder::validate() const
             VJUMP(LUAU_INSN_D(insn));
             break;
 
+        case LOP_FORGPREP:
+            VREG(LUAU_INSN_A(insn) + 2 + 1); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
         case LOP_FORGLOOP:
             VREG(
                 LUAU_INSN_A(insn) + 2 + insns[i + 1]); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
@@ -1620,6 +1626,10 @@ const uint32_t* BytecodeBuilder::dumpInstruction(const uint32_t* code, std::stri
 
     case LOP_FORNLOOP:
         formatAppend(result, "FORNLOOP R%d %+d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        break;
+
+    case LOP_FORGPREP:
+        formatAppend(result, "FORGPREP R%d %+d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
         break;
 
     case LOP_FORGLOOP:
