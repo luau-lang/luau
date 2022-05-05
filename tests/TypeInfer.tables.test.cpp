@@ -2331,7 +2331,7 @@ TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
 {
-    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter", true};
+    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter2", true};
 
     CheckResult result = check(R"(
         local a: {x: number, y: number, [any]: any} | {y: number}
@@ -2351,7 +2351,7 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
 {
-    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter", true};
+    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter2", true};
 
     CheckResult result = check(R"(
         local a: {y: number} | {x: number, y: number, [any]: any}

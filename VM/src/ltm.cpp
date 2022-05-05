@@ -37,6 +37,8 @@ const char* const luaT_eventname[] = {
     "__newindex",
     "__mode",
     "__namecall",
+    "__call",
+    "__iter",
 
     "__eq",
 
@@ -54,13 +56,13 @@ const char* const luaT_eventname[] = {
     "__lt",
     "__le",
     "__concat",
-    "__call",
     "__type",
 };
 // clang-format on
 
 static_assert(sizeof(luaT_typenames) / sizeof(luaT_typenames[0]) == LUA_T_COUNT, "luaT_typenames size mismatch");
 static_assert(sizeof(luaT_eventname) / sizeof(luaT_eventname[0]) == TM_N, "luaT_eventname size mismatch");
+static_assert(TM_EQ < 8, "fasttm optimization stores a bitfield with metamethods in a byte");
 
 void luaT_init(lua_State* L)
 {

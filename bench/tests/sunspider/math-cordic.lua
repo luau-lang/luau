@@ -31,15 +31,15 @@ function test()
 
 local AG_CONST = 0.6072529350;
 
-function FIXED(X)
+local function FIXED(X)
   return X * 65536.0;
 end
 
-function FLOAT(X)
+local function FLOAT(X)
   return X / 65536.0;
 end
 
-function DEG2RAD(X)
+local function DEG2RAD(X)
   return 0.017453 * (X);
 end
 
@@ -52,7 +52,7 @@ local Angles = {
 
 local Target = 28.027;
 
-function cordicsincos(Target)
+local function cordicsincos(Target)
     local X;
     local Y;
     local TargetAngle;
@@ -85,7 +85,7 @@ end
 
 local total = 0;
 
-function cordic( runs )
+local function cordic( runs )
   for i = 1,runs do
       total = total + cordicsincos(Target);
   end

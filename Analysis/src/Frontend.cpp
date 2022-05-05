@@ -18,7 +18,6 @@
 
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauCyclicModuleTypeSurface)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauSeparateTypechecks, false)
@@ -433,8 +432,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         {
             // The autocomplete typecheck is always in strict mode with DM awareness
             // to provide better type information for IDE features
-            if (FFlag::LuauCyclicModuleTypeSurface)
-                typeCheckerForAutocomplete.requireCycles = requireCycles;
+            typeCheckerForAutocomplete.requireCycles = requireCycles;
 
             if (autocompleteTimeLimit != 0.0)
                 typeCheckerForAutocomplete.finishTime = TimeTrace::getClock() + autocompleteTimeLimit;
@@ -483,8 +481,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             continue;
         }
 
-        if (FFlag::LuauCyclicModuleTypeSurface)
-            typeChecker.requireCycles = requireCycles;
+        typeChecker.requireCycles = requireCycles;
 
         ModulePtr module = typeChecker.check(sourceModule, mode, environmentScope);
 
@@ -493,8 +490,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
         // to provide better typen information for IDE features.
         if (!FFlag::LuauSeparateTypechecks && frontendOptions.typecheckTwice_DEPRECATED)
         {
-            if (FFlag::LuauCyclicModuleTypeSurface)
-                typeCheckerForAutocomplete.requireCycles = requireCycles;
+            typeCheckerForAutocomplete.requireCycles = requireCycles;
 
             ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict);
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
@@ -704,30 +700,6 @@ std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view sour
     stats.timeLint += getTimestamp() - timestamp;
 
     return {std::move(sourceModule), classifyLints(warnings, config)};
-}
-
-CheckResult Frontend::check(const SourceModule& module)
-{
-    LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
-
-    const Config& config = configResolver->getConfig(module.name);
-
-    Mode mode = module.mode.value_or(config.mode);
-
-    double timestamp = getTimestamp();
-
-    ModulePtr checkedModule = typeChecker.check(module, mode);
-
-    stats.timeCheck += getTimestamp() - timestamp;
-    stats.filesStrict += mode == Mode::Strict;
-    stats.filesNonstrict += mode == Mode::Nonstrict;
-
-    if (checkedModule == nullptr)
-        throw std::runtime_error("Frontend::check produced a nullptr module for module " + module.name);
-    moduleResolver.modules[module.name] = checkedModule;
-
-    return CheckResult{checkedModule->errors};
 }
 
 LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)

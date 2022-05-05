@@ -10,7 +10,6 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauParseRecoverUnexpectedPack, false)
 LUAU_FASTFLAGVARIABLE(LuauParseLocationIgnoreCommentSkipInCapture, false)
 
 namespace Luau
@@ -1430,7 +1429,7 @@ AstType* Parser::parseTypeAnnotation(TempVector<AstType*>& parts, const Location
             parts.push_back(parseSimpleTypeAnnotation(/* allowPack= */ false).type);
             isIntersection = true;
         }
-        else if (FFlag::LuauParseRecoverUnexpectedPack && c == Lexeme::Dot3)
+        else if (c == Lexeme::Dot3)
         {
             report(lexer.current().location, "Unexpected '...' after type annotation");
             nextLexeme();
@@ -1551,7 +1550,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
             prefix = name.name;
             name = parseIndexName("field name", pointPosition);
         }
-        else if (FFlag::LuauParseRecoverUnexpectedPack && lexer.current().type == Lexeme::Dot3)
+        else if (lexer.current().type == Lexeme::Dot3)
         {
             report(lexer.current().location, "Unexpected '...' after type name; type pack is not allowed in this context");
             nextLexeme();

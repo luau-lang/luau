@@ -261,6 +261,9 @@ RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
+    ScopedFastFlag sff("LuauCompileIter", true);
+    ScopedFastFlag sff2("LuauCompileIterNoPairs", false);
+
     // basic for loop: variable directly refers to internal iteration index (R2)
     CHECK_EQ("\n" + compileFunction0("for i=1,5 do print(i) end"), R"(
 LOADN R2 1
@@ -295,7 +298,7 @@ GETIMPORT R0 2
 LOADK R1 K3
 LOADK R2 K4
 CALL R0 2 3
-JUMP +4
+FORGPREP R0 +4
 GETIMPORT R5 6
 MOVE R6 R3
 CALL R5 1 0
@@ -347,6 +350,8 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
+    ScopedFastFlag sff("LuauCompileIter", true);
+
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
 GETIMPORT R0 1
@@ -385,7 +390,7 @@ GETIMPORT R0 3
 MOVE R1 R0
 NEWTABLE R2 0 0
 CALL R1 1 3
-JUMP +0
+FORGPREP R1 +0
 FORGLOOP R1 -1 2
 RETURN R0 0
 )");
@@ -397,7 +402,7 @@ SETGLOBAL R0 K2
 GETGLOBAL R0 K2
 NEWTABLE R1 0 0
 CALL R0 1 3
-JUMP +0
+FORGPREP R0 +0
 FORGLOOP R0 -1 2
 RETURN R0 0
 )");
@@ -407,7 +412,7 @@ RETURN R0 0
 GETIMPORT R0 1
 NEWTABLE R1 0 0
 CALL R0 1 3
-JUMP +0
+FORGPREP R0 +0
 FORGLOOP R0 -1 2
 RETURN R0 0
 )");
@@ -2260,6 +2265,8 @@ TEST_CASE("TypeAliasing")
 
 TEST_CASE("DebugLineInfo")
 {
+    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
+
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -2316,6 +2323,8 @@ return result
 
 TEST_CASE("DebugLineInfoFor")
 {
+    ScopedFastFlag sff("LuauCompileIter", true);
+
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -2336,7 +2345,7 @@ end
 5: LOADN R0 1
 7: LOADN R1 2
 9: LOADN R2 3
-9: JUMP +4
+9: FORGPREP R0 +4
 11: GETIMPORT R5 1
 11: MOVE R6 R3
 11: CALL R5 1 0
@@ -2541,6 +2550,8 @@ a
 
 TEST_CASE("DebugSource")
 {
+    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
+
     const char* source = R"(
 local kSelectedBiomes = {
     ['Mountains'] = true,
@@ -2616,6 +2627,8 @@ RETURN R1 1
 
 TEST_CASE("DebugLocals")
 {
+    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
+
     const char* source = R"(
 function foo(e, f)
     local a = 1
@@ -3767,6 +3780,8 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
+    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
+
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -4452,5 +4467,688 @@ RETURN R0 0
 )");
 }
 
+TEST_CASE("InlineBasic")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // inline function that returns a constant
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo()
+    return 42
+end
+
+local x = foo()
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R1 42
+RETURN R1 1
+)");
+
+    // inline function that returns the argument
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local x = foo(42)
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R1 42
+RETURN R1 1
+)");
+
+    // inline function that returns one of the two arguments
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b, c)
+    if a then
+        return b
+    else
+        return c
+    end
+end
+
+local x = foo(true, math.random(), 5)
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETIMPORT R2 3
+CALL R2 0 1
+MOVE R1 R2
+RETURN R1 1
+RETURN R1 1
+)");
+
+    // inline function that returns one of the two arguments
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b, c)
+    if a then
+        return b
+    else
+        return c
+    end
+end
+
+local x = foo(true, 5, math.random())
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETIMPORT R2 3
+CALL R2 0 1
+LOADN R1 5
+RETURN R1 1
+RETURN R1 1
+)");
+}
+
+TEST_CASE("InlineMutate")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // if the argument is mutated, it gets a register even if the value is constant
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    a = a or 5
+    return a
+end
+
+local x = foo(42)
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R2 42
+ORK R2 R2 K1
+MOVE R1 R2
+RETURN R1 1
+)");
+
+    // if the argument is a local, it can be used directly
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local x = ...
+local y = foo(x)
+return y
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+MOVE R2 R1
+RETURN R2 1
+)");
+
+    // ... but if it's mutated, we move it in case it is mutated through a capture during the inlined function
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local x = ...
+x = nil
+local y = foo(x)
+return y
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+LOADNIL R1
+MOVE R3 R1
+MOVE R2 R3
+RETURN R2 1
+)");
+
+    // we also don't inline functions if they have been assigned to
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+foo = foo
+
+local x = foo(42)
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R0 R0
+MOVE R1 R0
+LOADN R2 42
+CALL R1 1 1
+RETURN R1 1
+)");
+}
+
+TEST_CASE("InlineUpval")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // if the argument is an upvalue, we naturally need to copy it to a local
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local b = ...
+
+function bar()
+    local x = foo(b)
+    return x
+end
+)",
+                        1, 2),
+        R"(
+GETUPVAL R1 0
+MOVE R0 R1
+RETURN R0 1
+)");
+
+    // if the function uses an upvalue it's more complicated, because the lexical upvalue may become a local
+    CHECK_EQ("\n" + compileFunction(R"(
+local b = ...
+
+local function foo(a)
+    return a + b
+end
+
+local x = foo(42)
+return x
+)",
+                        1, 2),
+        R"(
+GETVARARGS R0 1
+DUPCLOSURE R1 K0
+CAPTURE VAL R0
+LOADN R3 42
+ADD R2 R3 R0
+RETURN R2 1
+)");
+
+    // sometimes the lexical upvalue is deep enough that it's still an upvalue though
+    CHECK_EQ("\n" + compileFunction(R"(
+local b = ...
+
+function bar()
+    local function foo(a)
+        return a + b
+    end
+
+    local x = foo(42)
+    return x
+end
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+CAPTURE UPVAL U0
+LOADN R2 42
+GETUPVAL R3 0
+ADD R1 R2 R3
+RETURN R1 1
+)");
+}
+
+TEST_CASE("InlineFallthrough")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // if the function doesn't return, we still fill the results with nil
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo()
+end
+
+local a, b = foo()
+
+return a, b
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADNIL R1
+LOADNIL R2
+MOVE R3 R1
+MOVE R4 R2
+RETURN R3 2
+)");
+
+    // this happens even if the function returns conditionally
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    if a then return 42 end
+end
+
+local a, b = foo(false)
+
+return a, b
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADNIL R1
+LOADNIL R2
+MOVE R3 R1
+MOVE R4 R2
+RETURN R3 2
+)");
+
+    // note though that we can't inline a function like this in multret context
+    // this is because we don't have a SETTOP instruction
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo()
+end
+
+return foo()
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+CALL R1 0 -1
+RETURN R1 -1
+)");
+}
+
+TEST_CASE("InlineCapture")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // can't inline function with nested functions that capture locals because they might be constants
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    local function bar()
+        return a
+    end
+    return bar()
+end
+)",
+                        1, 2),
+        R"(
+NEWCLOSURE R1 P0
+CAPTURE VAL R0
+MOVE R2 R1
+CALL R2 0 -1
+RETURN R2 -1
+)");
+}
+
+TEST_CASE("InlineArgMismatch")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // when inlining a function, we must respect all the usual rules
+
+    // caller might not have enough arguments
+    // TODO: we don't inline this atm
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local x = foo()
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+CALL R1 0 1
+RETURN R1 1
+)");
+
+    // caller might be using multret for arguments
+    // TODO: we don't inline this atm
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local x = foo(math.modf(1.5))
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+LOADK R3 K1
+FASTCALL1 20 R3 +2
+GETIMPORT R2 4
+CALL R2 1 -1
+CALL R1 -1 1
+RETURN R1 1
+)");
+
+    // caller might have too many arguments, but we still need to compute them for side effects
+    // TODO: we don't inline this atm
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local x = foo(42, print())
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+LOADN R2 42
+GETIMPORT R3 2
+CALL R3 0 -1
+CALL R1 -1 1
+RETURN R1 1
+)");
+}
+
+TEST_CASE("InlineMultiple")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // we call this with a different set of variable/constant args
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local x, y = ...
+local a = foo(x, 1)
+local b = foo(1, x)
+local c = foo(1, 2)
+local d = foo(x, y)
+return a, b, c, d
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 2
+ADDK R3 R1 K1
+LOADN R5 1
+ADD R4 R5 R1
+LOADN R5 3
+ADD R6 R1 R2
+MOVE R7 R3
+MOVE R8 R4
+MOVE R9 R5
+MOVE R10 R6
+RETURN R7 4
+)");
+}
+
+TEST_CASE("InlineChain")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // inline a chain of functions
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local function bar(x)
+    return foo(x, 1) * foo(x, -1)
+end
+
+local function baz()
+    return (bar(42))
+end
+
+return (baz())
+)",
+                        3, 2),
+        R"(
+DUPCLOSURE R0 K0
+DUPCLOSURE R1 K1
+DUPCLOSURE R2 K2
+LOADN R4 43
+LOADN R5 41
+MUL R3 R4 R5
+RETURN R3 1
+)");
+}
+
+TEST_CASE("InlineThresholds")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    ScopedFastInt sfis[] = {
+        {"LuauCompileInlineThreshold", 25},
+        {"LuauCompileInlineThresholdMaxBoost", 300},
+        {"LuauCompileInlineDepth", 2},
+    };
+
+    // this function has enormous register pressure (50 regs) so we choose not to inline it
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo()
+    return {{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
+end
+
+return (foo())
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+CALL R1 0 1
+RETURN R1 1
+)");
+
+    // this function has less register pressure but a large cost
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo()
+    return {},{},{},{},{}
+end
+
+return (foo())
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+CALL R1 0 1
+RETURN R1 1
+)");
+
+    // this chain of function is of length 3 but our limit in this test is 2, so we call foo twice
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local function bar(x)
+    return foo(x, 1) * foo(x, -1)
+end
+
+local function baz()
+    return (bar(42))
+end
+
+return (baz())
+)",
+                        3, 2),
+        R"(
+DUPCLOSURE R0 K0
+DUPCLOSURE R1 K1
+DUPCLOSURE R2 K2
+MOVE R4 R0
+LOADN R5 42
+LOADN R6 1
+CALL R4 2 1
+MOVE R5 R0
+LOADN R6 42
+LOADN R7 -1
+CALL R5 2 1
+MUL R3 R4 R5
+RETURN R3 1
+)");
+}
+
+TEST_CASE("InlineIIFE")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // IIFE with arguments
+    CHECK_EQ("\n" + compileFunction(R"(
+function choose(a, b, c)
+    return ((function(a, b, c) if a then return b else return c end end)(a, b, c))
+end
+)",
+                        1, 2),
+        R"(
+JUMPIFNOT R0 +2
+MOVE R3 R1
+RETURN R3 1
+MOVE R3 R2
+RETURN R3 1
+RETURN R3 1
+)");
+
+    // IIFE with upvalues
+    CHECK_EQ("\n" + compileFunction(R"(
+function choose(a, b, c)
+    return ((function() if a then return b else return c end end)())
+end
+)",
+                        1, 2),
+        R"(
+JUMPIFNOT R0 +2
+MOVE R3 R1
+RETURN R3 1
+MOVE R3 R2
+RETURN R3 1
+RETURN R3 1
+)");
+}
+
+TEST_CASE("InlineRecurseArguments")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    // we can't inline a function if it's used to compute its own arguments
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+end
+foo(foo(foo,foo(foo,foo))[foo])
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+MOVE R4 R0
+MOVE R5 R0
+MOVE R6 R0
+CALL R4 2 1
+LOADNIL R3
+GETTABLE R2 R3 R0
+CALL R1 1 0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("InlineFastCallK")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    CHECK_EQ("\n" + compileFunction(R"(
+local function set(l0)
+    rawset({}, l0)
+end
+
+set(false)
+set({})
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+NEWTABLE R2 0 0
+FASTCALL2K 49 R2 K1 +4
+LOADK R3 K1
+GETIMPORT R1 3
+CALL R1 2 0
+NEWTABLE R1 0 0
+NEWTABLE R3 0 0
+FASTCALL2 49 R3 R1 +4
+MOVE R4 R1
+GETIMPORT R2 3
+CALL R2 2 0
+RETURN R0 0
+)");
+}
+
+TEST_CASE("InlineExprIndexK")
+{
+    ScopedFastFlag sff("LuauCompileSupportInlining", true);
+
+    CHECK_EQ("\n" + compileFunction(R"(
+local _ = function(l0)
+local _ = nil
+while _(_)[_] do
+end
+end
+local _ = _(0)[""]
+if _ then
+do
+for l0=0,8 do
+end
+end
+elseif _ then
+_ = nil
+do
+for l0=0,8 do
+return true
+end
+end
+end
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADNIL R4
+LOADNIL R5
+CALL R4 1 1
+LOADNIL R5
+GETTABLE R3 R4 R5
+JUMPIFNOT R3 +1
+JUMPBACK -7
+LOADNIL R2
+GETTABLEKS R1 R2 K1
+JUMPIFNOT R1 +1
+RETURN R0 0
+JUMPIFNOT R1 +19
+LOADNIL R1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+LOADB R2 1
+RETURN R2 1
+RETURN R0 0
+)");
+}
 
 TEST_SUITE_END();

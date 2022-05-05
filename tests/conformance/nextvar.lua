@@ -368,48 +368,6 @@ assert(next(a,nil) == 1000 and next(a,1000) == nil)
 assert(next({}) == nil)
 assert(next({}, nil) == nil)
 
-for a,b in pairs{} do error("not here") end
-for i=1,0 do error("not here") end
-for i=0,1,-1 do error("not here") end
-a = nil; for i=1,1 do assert(not a); a=1 end; assert(a)
-a = nil; for i=1,1,-1 do assert(not a); a=1 end; assert(a)
-
-a = 0; for i=0, 1, 0.1 do a=a+1 end; assert(a==11)
--- precision problems
---a = 0; for i=1, 0, -0.01 do a=a+1 end; assert(a==101)
-a = 0; for i=0, 0.999999999, 0.1 do a=a+1 end; assert(a==10)
-a = 0; for i=1, 1, 1 do a=a+1 end; assert(a==1)
-a = 0; for i=1e10, 1e10, -1 do a=a+1 end; assert(a==1)
-a = 0; for i=1, 0.99999, 1 do a=a+1 end; assert(a==0)
-a = 0; for i=99999, 1e5, -1 do a=a+1 end; assert(a==0)
-a = 0; for i=1, 0.99999, -1 do a=a+1 end; assert(a==1)
-
--- conversion
-a = 0; for i="10","1","-2" do a=a+1 end; assert(a==5)
-
-
-collectgarbage()
-
-
--- testing generic 'for'
-
-local function f (n, p)
-  local t = {}; for i=1,p do t[i] = i*10 end
-  return function (_,n)
-           if n > 0 then
-             n = n-1
-             return n, unpack(t)
-           end
-         end, nil, n
-end
-
-local x = 0
-for n,a,b,c,d in f(5,3) do
-  x = x+1
-  assert(a == 10 and b == 20 and c == 30 and d == nil)
-end
-assert(x == 5)
-
 -- testing table.create and table.find
 do
   local t = table.create(5)
@@ -594,6 +552,19 @@ do
 
   table.move(t1, 1, 5, 1, t2)
   assert(#t2 == 6)
+end
+
+-- test table.unpack fastcall for rejecting large unpacks
+do
+  local ok, res = pcall(function()
+    local a = table.create(7999, 0)
+    local b = table.create(8000, 0)
+
+    local at = { table.unpack(a) }
+    local bt = { table.unpack(b) }
+  end)
+
+  assert(not ok)
 end
 
 return"OK"

@@ -264,6 +264,7 @@ if(TARGET Luau.UnitTest)
         tests/TypePack.test.cpp
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
+        tests/VisitTypeVar.test.cpp
         tests/main.cpp)
 endif()
 

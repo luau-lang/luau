@@ -3,6 +3,8 @@
 
 #include <math.h>
 
+LUAU_FASTFLAG(LuauCompileSupportInlining)
+
 namespace Luau
 {
 namespace Compile
@@ -314,10 +316,33 @@ struct ConstantVisitor : AstVisitor
             LUAU_ASSERT(!"Unknown expression type");
         }
 
-        if (result.type != Constant::Type_Unknown)
-            constants[node] = result;
+        recordConstant(constants, node, result);
 
         return result;
+    }
+
+    template<typename T>
+    void recordConstant(DenseHashMap<T, Constant>& map, T key, const Constant& value)
+    {
+        if (value.type != Constant::Type_Unknown)
+            map[key] = value;
+        else if (!FFlag::LuauCompileSupportInlining)
+            ;
+        else if (Constant* old = map.find(key))
+            old->type = Constant::Type_Unknown;
+    }
+
+    void recordValue(AstLocal* local, const Constant& value)
+    {
+        // note: we rely on trackValues to have been run before us
+        Variable* v = variables.find(local);
+        LUAU_ASSERT(v);
+
+        if (!v->written)
+        {
+            v->constant = (value.type != Constant::Type_Unknown);
+            recordConstant(locals, local, value);
+        }
     }
 
     bool visit(AstExpr* node) override
@@ -336,18 +361,7 @@ struct ConstantVisitor : AstVisitor
         {
             Constant arg = analyze(node->values.data[i]);
 
-            if (arg.type != Constant::Type_Unknown)
-            {
-                // note: we rely on trackValues to have been run before us
-                Variable* v = variables.find(node->vars.data[i]);
-                LUAU_ASSERT(v);
-
-                if (!v->written)
-                {
-                    locals[node->vars.data[i]] = arg;
-                    v->constant = true;
-                }
-            }
+            recordValue(node->vars.data[i], arg);
         }
 
         if (node->vars.size > node->values.size)
@@ -361,15 +375,8 @@ struct ConstantVisitor : AstVisitor
             {
                 for (size_t i = node->values.size; i < node->vars.size; ++i)
                 {
-                    // note: we rely on trackValues to have been run before us
-                    Variable* v = variables.find(node->vars.data[i]);
-                    LUAU_ASSERT(v);
-
-                    if (!v->written)
-                    {
-                        locals[node->vars.data[i]].type = Constant::Type_Nil;
-                        v->constant = true;
-                    }
+                    Constant nil = {Constant::Type_Nil};
+                    recordValue(node->vars.data[i], nil);
                 }
             }
         }

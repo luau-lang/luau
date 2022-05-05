@@ -488,4 +488,71 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
     )");
 }
 
+TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
+{
+    ScopedFastFlag sff{"LuauTypecheckIter", true};
+
+    CheckResult result = check(R"(
+        local t: {string} = {}
+        local key
+        for k: number in t do
+        end
+        for k: number, v: string in t do
+        end
+        for k, v in t do
+            key = k
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    CHECK_EQ(*typeChecker.numberType, *requireType("key"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
+{
+    ScopedFastFlag sff{"LuauTypecheckIter", true};
+
+    CheckResult result = check(R"(
+        local t: {string} = {}
+        local extra
+        for k, v, e in t do
+            extra = e
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    CHECK_EQ(*typeChecker.nilType, *requireType("extra"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
+{
+    ScopedFastFlag sff{"LuauTypecheckIter", true};
+
+    CheckResult result = check(R"(
+        local t = {}
+        for k, v in t do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+    CHECK_EQ("Cannot iterate over a table without indexer", ge->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_iter_iter_metamethod")
+{
+    ScopedFastFlag sff{"LuauTypecheckIter", true};
+
+    CheckResult result = check(R"(
+        local t = {}
+        setmetatable(t, { __iter = function(o) return next, o.children end })
+        for k: number, v: string in t do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
 TEST_SUITE_END();

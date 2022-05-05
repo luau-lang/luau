@@ -22,7 +22,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree2, false)
-LUAU_FASTFLAGVARIABLE(LuauDifferentOrderOfUnificationDoesntMatter, false)
+LUAU_FASTFLAGVARIABLE(LuauDifferentOrderOfUnificationDoesntMatter2, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
@@ -30,7 +30,7 @@ LUAU_FASTFLAG(LuauTypecheckOptPass)
 namespace Luau
 {
 
-struct PromoteTypeLevels
+struct PromoteTypeLevels final : TypeVarOnceVisitor
 {
     TxnLog& log;
     const TypeArena* typeArena = nullptr;
@@ -53,13 +53,34 @@ struct PromoteTypeLevels
         }
     }
 
+    // TODO cycle and operator() need to be clipped when FFlagLuauUseVisitRecursionLimit is clipped
     template<typename TID>
     void cycle(TID)
     {
     }
-
     template<typename TID, typename T>
     bool operator()(TID ty, const T&)
+    {
+        return visit(ty);
+    }
+    bool operator()(TypeId ty, const FreeTypeVar& ftv)
+    {
+        return visit(ty, ftv);
+    }
+    bool operator()(TypeId ty, const FunctionTypeVar& ftv)
+    {
+        return visit(ty, ftv);
+    }
+    bool operator()(TypeId ty, const TableTypeVar& ttv)
+    {
+        return visit(ty, ttv);
+    }
+    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    {
+        return visit(tp, ftp);
+    }
+
+    bool visit(TypeId ty) override
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
         if (ty->owningArena != typeArena)
@@ -68,7 +89,16 @@ struct PromoteTypeLevels
         return true;
     }
 
-    bool operator()(TypeId ty, const FreeTypeVar&)
+    bool visit(TypePackId tp) override
+    {
+        // Type levels of types from other modules are already global, so we don't need to promote anything inside
+        if (tp->owningArena != typeArena)
+            return false;
+
+        return true;
+    }
+
+    bool visit(TypeId ty, const FreeTypeVar&) override
     {
         // Surprise, it's actually a BoundTypeVar that hasn't been committed yet.
         // Calling getMutable on this will trigger an assertion.
@@ -79,7 +109,7 @@ struct PromoteTypeLevels
         return true;
     }
 
-    bool operator()(TypeId ty, const FunctionTypeVar&)
+    bool visit(TypeId ty, const FunctionTypeVar&) override
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
         if (ty->owningArena != typeArena)
@@ -89,7 +119,7 @@ struct PromoteTypeLevels
         return true;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar& ttv)
+    bool visit(TypeId ty, const TableTypeVar& ttv) override
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
         if (ty->owningArena != typeArena)
@@ -102,7 +132,7 @@ struct PromoteTypeLevels
         return true;
     }
 
-    bool operator()(TypePackId tp, const FreeTypePack&)
+    bool visit(TypePackId tp, const FreeTypePack&) override
     {
         // Surprise, it's actually a BoundTypePack that hasn't been committed yet.
         // Calling getMutable on this will trigger an assertion.
@@ -122,7 +152,7 @@ static void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel
 
     PromoteTypeLevels ptl{log, typeArena, minLevel};
     DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(ty, ptl, seen);
+    DEPRECATED_visitTypeVarOnce(ty, ptl, seen);
 }
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypePackId tp)
@@ -133,10 +163,10 @@ void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLev
 
     PromoteTypeLevels ptl{log, typeArena, minLevel};
     DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(tp, ptl, seen);
+    DEPRECATED_visitTypeVarOnce(tp, ptl, seen);
 }
 
-struct SkipCacheForType
+struct SkipCacheForType final : TypeVarOnceVisitor
 {
     SkipCacheForType(const DenseHashMap<TypeId, bool>& skipCacheForType, const TypeArena* typeArena)
         : skipCacheForType(skipCacheForType)
@@ -144,28 +174,68 @@ struct SkipCacheForType
     {
     }
 
-    void cycle(TypeId) {}
-    void cycle(TypePackId) {}
+    // TODO cycle() and operator() can be clipped with FFlagLuauUseVisitRecursionLimit
+    void cycle(TypeId) override {}
+    void cycle(TypePackId) override {}
 
     bool operator()(TypeId ty, const FreeTypeVar& ftv)
     {
-        result = true;
-        return false;
+        return visit(ty, ftv);
     }
-
     bool operator()(TypeId ty, const BoundTypeVar& btv)
     {
-        result = true;
-        return false;
+        return visit(ty, btv);
+    }
+    bool operator()(TypeId ty, const GenericTypeVar& gtv)
+    {
+        return visit(ty, gtv);
+    }
+    bool operator()(TypeId ty, const TableTypeVar& ttv)
+    {
+        return visit(ty, ttv);
+    }
+    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    {
+        return visit(tp, ftp);
+    }
+    bool operator()(TypePackId tp, const BoundTypePack& ftp)
+    {
+        return visit(tp, ftp);
+    }
+    bool operator()(TypePackId tp, const GenericTypePack& ftp)
+    {
+        return visit(tp, ftp);
+    }
+    template<typename T>
+    bool operator()(TypeId ty, const T& t)
+    {
+        return visit(ty);
+    }
+    template<typename T>
+    bool operator()(TypePackId tp, const T&)
+    {
+        return visit(tp);
     }
 
-    bool operator()(TypeId ty, const GenericTypeVar& btv)
+    bool visit(TypeId, const FreeTypeVar&) override
     {
         result = true;
         return false;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar&)
+    bool visit(TypeId, const BoundTypeVar&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypeId, const GenericTypeVar&) override
+    {
+        result = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableTypeVar&) override
     {
         // Types from other modules don't contain mutable elements and are ok to cache
         if (ty->owningArena != typeArena)
@@ -188,8 +258,7 @@ struct SkipCacheForType
         return true;
     }
 
-    template<typename T>
-    bool operator()(TypeId ty, const T& t)
+    bool visit(TypeId ty) override
     {
         // Types from other modules don't contain mutable elements and are ok to cache
         if (ty->owningArena != typeArena)
@@ -206,8 +275,7 @@ struct SkipCacheForType
         return true;
     }
 
-    template<typename T>
-    bool operator()(TypePackId tp, const T&)
+    bool visit(TypePackId tp) override
     {
         // Types from other modules don't contain mutable elements and are ok to cache
         if (tp->owningArena != typeArena)
@@ -216,19 +284,19 @@ struct SkipCacheForType
         return true;
     }
 
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    bool visit(TypePackId tp, const FreeTypePack&) override
     {
         result = true;
         return false;
     }
 
-    bool operator()(TypePackId tp, const BoundTypePack& ftp)
+    bool visit(TypePackId tp, const BoundTypePack&) override
     {
         result = true;
         return false;
     }
 
-    bool operator()(TypePackId tp, const GenericTypePack& ftp)
+    bool visit(TypePackId tp, const GenericTypePack&) override
     {
         result = true;
         return false;
@@ -578,7 +646,7 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
             failed = true;
         }
 
-        if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter)
+        if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter2)
         {
         }
         else
@@ -593,7 +661,7 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
     }
 
     // even if A | B <: T fails, we want to bind some options of T with A | B iff A | B was a subtype of that option.
-    if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter)
+    if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter2)
     {
         auto tryBind = [this, subTy](TypeId superOption) {
             superOption = log.follow(superOption);
@@ -602,6 +670,14 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
             auto ttv = log.getMutable<TableTypeVar>(superOption);
             if (!log.is<FreeTypeVar>(superOption) && (!ttv || ttv->state != TableState::Free))
                 return;
+
+            // If superOption is already present in subTy, do nothing.  Nothing new has been learned, but the subtype
+            // test is successful.
+            if (auto subUnion = get<UnionTypeVar>(subTy))
+            {
+                if (end(subUnion) != std::find(begin(subUnion), end(subUnion), superOption))
+                    return;
+            }
 
             // Since we have already checked if S <: T, checking it again will not queue up the type for replacement.
             // So we'll have to do it ourselves. We assume they unified cleanly if they are still in the seen set.
@@ -822,7 +898,7 @@ bool Unifier::canCacheResult(TypeId subTy, TypeId superTy)
 
     auto skipCacheFor = [this](TypeId ty) {
         SkipCacheForType visitor{sharedState.skipCacheForType, types};
-        visitTypeVarOnce(ty, visitor, sharedState.seenAny);
+        DEPRECATED_visitTypeVarOnce(ty, visitor, sharedState.seenAny);
 
         sharedState.skipCacheForType[ty] = visitor.result;
 

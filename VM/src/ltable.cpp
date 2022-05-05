@@ -33,8 +33,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauTableNewBoundary2, false)
-
 // max size of both array and hash part is 2^MAXBITS
 #define MAXBITS 26
 #define MAXSIZE (1 << MAXBITS)
@@ -431,7 +429,6 @@ static void resize(lua_State* L, Table* t, int nasize, int nhsize)
 
 static int adjustasize(Table* t, int size, const TValue* ek)
 {
-    LUAU_ASSERT(FFlag::LuauTableNewBoundary2);
     bool tbound = t->node != dummynode || size < t->sizearray;
     int ekindex = ek && ttisnumber(ek) ? arrayindex(nvalue(ek)) : -1;
     /* move the array size up until the boundary is guaranteed to be inside the array part */
@@ -443,7 +440,7 @@ static int adjustasize(Table* t, int size, const TValue* ek)
 void luaH_resizearray(lua_State* L, Table* t, int nasize)
 {
     int nsize = (t->node == dummynode) ? 0 : sizenode(t);
-    int asize = FFlag::LuauTableNewBoundary2 ? adjustasize(t, nasize, NULL) : nasize;
+    int asize = adjustasize(t, nasize, NULL);
     resize(L, t, asize, nsize);
 }
 
@@ -468,8 +465,7 @@ static void rehash(lua_State* L, Table* t, const TValue* ek)
     int na = computesizes(nums, &nasize);
     int nh = totaluse - na;
     /* enforce the boundary invariant; for performance, only do hash lookups if we must */
-    if (FFlag::LuauTableNewBoundary2)
-        nasize = adjustasize(t, nasize, ek);
+    nasize = adjustasize(t, nasize, ek);
     /* resize the table to new computed sizes */
     resize(L, t, nasize, nh);
 }
@@ -531,7 +527,7 @@ static LuaNode* getfreepos(Table* t)
 static TValue* newkey(lua_State* L, Table* t, const TValue* key)
 {
     /* enforce boundary invariant */
-    if (FFlag::LuauTableNewBoundary2 && ttisnumber(key) && nvalue(key) == t->sizearray + 1)
+    if (ttisnumber(key) && nvalue(key) == t->sizearray + 1)
     {
         rehash(L, t, key); /* grow table */
 
@@ -713,37 +709,6 @@ TValue* luaH_setstr(lua_State* L, Table* t, TString* key)
     }
 }
 
-static LUAU_NOINLINE int unbound_search(Table* t, unsigned int j)
-{
-    LUAU_ASSERT(!FFlag::LuauTableNewBoundary2);
-    unsigned int i = j; /* i is zero or a present index */
-    j++;
-    /* find `i' and `j' such that i is present and j is not */
-    while (!ttisnil(luaH_getnum(t, j)))
-    {
-        i = j;
-        j *= 2;
-        if (j > cast_to(unsigned int, INT_MAX))
-        { /* overflow? */
-            /* table was built with bad purposes: resort to linear search */
-            i = 1;
-            while (!ttisnil(luaH_getnum(t, i)))
-                i++;
-            return i - 1;
-        }
-    }
-    /* now do a binary search between them */
-    while (j - i > 1)
-    {
-        unsigned int m = (i + j) / 2;
-        if (ttisnil(luaH_getnum(t, m)))
-            j = m;
-        else
-            i = m;
-    }
-    return i;
-}
-
 static int updateaboundary(Table* t, int boundary)
 {
     if (boundary < t->sizearray && ttisnil(&t->array[boundary - 1]))
@@ -800,17 +765,12 @@ int luaH_getn(Table* t)
         maybesetaboundary(t, boundary);
         return boundary;
     }
-    else if (FFlag::LuauTableNewBoundary2)
+    else
     {
         /* validate boundary invariant */
         LUAU_ASSERT(t->node == dummynode || ttisnil(luaH_getnum(t, j + 1)));
         return j;
     }
-    /* else must find a boundary in hash part */
-    else if (t->node == dummynode) /* hash part is empty? */
-        return j;                  /* that is easy... */
-    else
-        return unbound_search(t, j);
 }
 
 Table* luaH_clone(lua_State* L, Table* tt)
