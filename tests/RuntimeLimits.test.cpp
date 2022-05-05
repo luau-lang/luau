@@ -41,6 +41,11 @@ TEST_CASE_FIXTURE(LimitFixture, "bail_early_on_typescript_port_of_Result_type" *
 {
     constexpr const char* src = R"LUA(
         --!strict
+
+        -- Big thanks to Dionysusnu by letting us use this code as part of our test suite!
+        -- https://github.com/Dionysusnu/rbxts-rust-classes
+        -- Licensed under the MPL 2.0: https://raw.githubusercontent.com/Dionysusnu/rbxts-rust-classes/master/LICENSE
+
         local TS = _G[script]
         local lazyGet = TS.import(script, script.Parent.Parent, "util", "lazyLoad").lazyGet
         local unit = TS.import(script, script.Parent.Parent, "util", "Unit").unit
