@@ -1270,7 +1270,7 @@ const char* lua_setupvalue(lua_State* L, int funcindex, int n)
         L->top--;
         setobj(L, val, L->top);
         luaC_barrier(L, clvalue(fi), L->top);
-        luaC_upvalbarrier(L, NULL, val);
+        luaC_upvalbarrier(L, cast_to(UpVal*, NULL), val);
     }
     return name;
 }

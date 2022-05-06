@@ -16,6 +16,8 @@ typedef enum
     TM_NEWINDEX,
     TM_MODE,
     TM_NAMECALL,
+    TM_CALL,
+    TM_ITER,
 
     TM_EQ, /* last tag method with `fast' access */
 
@@ -33,7 +35,6 @@ typedef enum
     TM_LT,
     TM_LE,
     TM_CONCAT,
-    TM_CALL,
     TM_TYPE,
 
     TM_N /* number of elements in the enum */

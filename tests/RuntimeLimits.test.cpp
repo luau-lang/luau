@@ -35,9 +35,9 @@ bool hasError(const CheckResult& result, T* = nullptr)
     return it != result.errors.end();
 }
 
-TEST_SUITE_BEGIN("RuntimeLimitTests");
+TEST_SUITE_BEGIN("RuntimeLimits");
 
-TEST_CASE_FIXTURE(LimitFixture, "bail_early_on_typescript_port_of_Result_type" * doctest::timeout(1.0))
+TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
     constexpr const char* src = R"LUA(
         --!strict

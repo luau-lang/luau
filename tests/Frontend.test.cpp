@@ -386,8 +386,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_error_paths")
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
 {
-    ScopedFastFlag luauCyclicModuleTypeSurface{"LuauCyclicModuleTypeSurface", true};
-
     fileResolver.source["game/A"] = R"(
         return {hello = 2}
     )";
@@ -410,8 +408,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
 {
-    ScopedFastFlag luauCyclicModuleTypeSurface{"LuauCyclicModuleTypeSurface", true};
-
     fileResolver.source["game/A"] = R"(
         return {mod_a = 2}
     )";

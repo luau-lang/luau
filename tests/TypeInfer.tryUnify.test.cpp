@@ -242,8 +242,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 {
-    ScopedFastFlag luauTxnLogPreserveOwner{"LuauTxnLogPreserveOwner", true};
-
     TypeId a = arena.addType(TypeVar{FreeTypeVar{TypeLevel{}}});
     TypeId b = typeChecker.numberType;
 
@@ -255,8 +253,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
 {
-    ScopedFastFlag luauTxnLogPreserveOwner{"LuauTxnLogPreserveOwner", true};
-
     TypePackId a = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
     TypePackId b = typeChecker.anyTypePack;
 

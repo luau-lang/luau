@@ -26,11 +26,11 @@ LUAU_FASTINTVARIABLE(LuauTypeInferRecursionLimit, 165)
 LUAU_FASTINTVARIABLE(LuauTypeInferIterationLimit, 20000)
 LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
+LUAU_FASTFLAGVARIABLE(LuauUseVisitRecursionLimit, false)
+LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauSeparateTypechecks)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
-LUAU_FASTFLAG(LuauAutocompleteSingletonTypes)
-LUAU_FASTFLAGVARIABLE(LuauCyclicModuleTypeSurface, false)
 LUAU_FASTFLAGVARIABLE(LuauDoNotRelyOnNextBinding, false)
 LUAU_FASTFLAGVARIABLE(LuauEqConstraint, false)
 LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as false.
@@ -40,6 +40,7 @@ LUAU_FASTFLAGVARIABLE(LuauInferStatFunction, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateFollows, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix, false)
 LUAU_FASTFLAGVARIABLE(LuauDiscriminableUnions2, false)
+LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify4, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckOptPass, false)
@@ -57,6 +58,7 @@ LUAU_FASTFLAGVARIABLE(LuauTableUseCounterInstead, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursionLimitException, false);
 LUAU_FASTFLAG(LuauLosslessClone)
+LUAU_FASTFLAGVARIABLE(LuauTypecheckIter, false);
 
 namespace Luau
 {
@@ -1159,6 +1161,47 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             iterTy = follow(instantiate(scope, checkExpr(scope, *firstValue).type, firstValue->location));
     }
 
+    if (FFlag::LuauTypecheckIter)
+    {
+        if (std::optional<TypeId> iterMM = findMetatableEntry(iterTy, "__iter", firstValue->location))
+        {
+            // if __iter metamethod is present, it will be called and the results are going to be called as if they are functions
+            // TODO: this needs to typecheck all returned values by __iter as if they were for loop arguments
+            // the structure of the function makes it difficult to do this especially since we don't have actual expressions, only types
+            for (TypeId var : varTypes)
+                unify(anyType, var, forin.location);
+
+            return check(loopScope, *forin.body);
+        }
+        else if (const TableTypeVar* iterTable = get<TableTypeVar>(iterTy))
+        {
+            // TODO: note that this doesn't cleanly handle iteration over mixed tables and tables without an indexer
+            // this behavior is more or less consistent with what we do for pairs(), but really both are pretty wrong and need revisiting
+            if (iterTable->indexer)
+            {
+                if (varTypes.size() > 0)
+                    unify(iterTable->indexer->indexType, varTypes[0], forin.location);
+
+                if (varTypes.size() > 1)
+                    unify(iterTable->indexer->indexResultType, varTypes[1], forin.location);
+
+                for (size_t i = 2; i < varTypes.size(); ++i)
+                    unify(nilType, varTypes[i], forin.location);
+            }
+            else
+            {
+                TypeId varTy = errorRecoveryType(loopScope);
+
+                for (TypeId var : varTypes)
+                    unify(varTy, var, forin.location);
+
+                reportError(firstValue->location, GenericError{"Cannot iterate over a table without indexer"});
+            }
+
+            return check(loopScope, *forin.body);
+        }
+    }
+
     const FunctionTypeVar* iterFunc = get<FunctionTypeVar>(iterTy);
     if (!iterFunc)
     {
@@ -2026,15 +2069,29 @@ std::vector<TypeId> TypeChecker::reduceUnion(const std::vector<TypeId>& types)
 
             if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
             {
-                std::vector<TypeId> r = reduceUnion(utv->options);
-                for (TypeId ty : r)
+                if (FFlag::LuauReduceUnionRecursion)
                 {
-                    ty = follow(ty);
-                    if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
-                        return {ty};
+                    for (TypeId ty : utv)
+                    {
+                        if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
+                            return {ty};
 
-                    if (std::find(result.begin(), result.end(), ty) == result.end())
-                        result.push_back(ty);
+                        if (result.end() == std::find(result.begin(), result.end(), ty))
+                            result.push_back(ty);
+                    }
+                }
+                else
+                {
+                    std::vector<TypeId> r = reduceUnion(utv->options);
+                    for (TypeId ty : r)
+                    {
+                        ty = follow(ty);
+                        if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
+                            return {ty};
+
+                        if (std::find(result.begin(), result.end(), ty) == result.end())
+                            result.push_back(ty);
+                    }
                 }
             }
             else if (std::find(result.begin(), result.end(), t) == result.end())
@@ -4372,17 +4429,12 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
     }
 
     // Types of requires that transitively refer to current module have to be replaced with 'any'
-    std::string humanReadableName;
+    std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
 
-    if (FFlag::LuauCyclicModuleTypeSurface)
+    for (const auto& [location, path] : requireCycles)
     {
-        humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
-
-        for (const auto& [location, path] : requireCycles)
-        {
-            if (!path.empty() && path.front() == humanReadableName)
-                return anyType;
-        }
+        if (!path.empty() && path.front() == humanReadableName)
+            return anyType;
     }
 
     ModulePtr module = resolver->getModule(moduleInfo.name);
@@ -4392,32 +4444,14 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
         // either the file does not exist or there's a cycle. If there's a cycle
         // we will already have reported the error.
         if (!resolver->moduleExists(moduleInfo.name) && !moduleInfo.optional)
-        {
-            if (FFlag::LuauCyclicModuleTypeSurface)
-            {
-                reportError(TypeError{location, UnknownRequire{humanReadableName}});
-            }
-            else
-            {
-                std::string reportedModulePath = resolver->getHumanReadableModuleName(moduleInfo.name);
-                reportError(TypeError{location, UnknownRequire{reportedModulePath}});
-            }
-        }
+            reportError(TypeError{location, UnknownRequire{humanReadableName}});
 
         return errorRecoveryType(scope);
     }
 
     if (module->type != SourceCode::Module)
     {
-        if (FFlag::LuauCyclicModuleTypeSurface)
-        {
-            reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
-        }
-        else
-        {
-            std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
-            reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
-        }
+        reportError(location, IllegalRequire{humanReadableName, "Module is not a ModuleScript.  It cannot be required."});
         return errorRecoveryType(scope);
     }
 
@@ -4429,15 +4463,7 @@ TypeId TypeChecker::checkRequire(const ScopePtr& scope, const ModuleInfo& module
     std::optional<TypeId> moduleType = first(modulePack);
     if (!moduleType)
     {
-        if (FFlag::LuauCyclicModuleTypeSurface)
-        {
-            reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
-        }
-        else
-        {
-            std::string humanReadableName = resolver->getHumanReadableModuleName(moduleInfo.name);
-            reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
-        }
+        reportError(location, IllegalRequire{humanReadableName, "Module does not return exactly 1 value.  It cannot be required."});
         return errorRecoveryType(scope);
     }
 
@@ -4947,10 +4973,7 @@ TypeId TypeChecker::freshType(TypeLevel level)
 
 TypeId TypeChecker::singletonType(bool value)
 {
-    if (FFlag::LuauAutocompleteSingletonTypes)
-        return value ? getSingletonTypes().trueType : getSingletonTypes().falseType;
-
-    return currentModule->internalTypes.addType(TypeVar(SingletonTypeVar(BooleanSingleton{value})));
+    return value ? getSingletonTypes().trueType : getSingletonTypes().falseType;
 }
 
 TypeId TypeChecker::singletonType(std::string value)

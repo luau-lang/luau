@@ -1034,4 +1034,45 @@ TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+/**
+ * The problem we had here was that the type of q in B.h was initially inferring to {} | {prop: free} before we bound
+ * that second table to the enclosing union.
+ */
+TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_table")
+{
+    ScopedFastFlag flag[] = {
+        {"LuauStatFunctionSimplify4", true},
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauDifferentOrderOfUnificationDoesntMatter2", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local A = {}
+
+        function A:f()
+            local t = {}
+
+            for key, value in pairs(self) do
+                t[key] = value
+            end
+
+            return t
+        end
+
+        local B = A:f()
+
+        function B.g(t)
+            assert(type(t) == "table")
+            assert(t.prop ~= nil)
+        end
+
+        function B.h(q)
+            q = q or {}
+            return q or {}
+        end
+    )");
+}
+
 TEST_SUITE_END();

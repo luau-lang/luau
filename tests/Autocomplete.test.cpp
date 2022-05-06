@@ -2760,8 +2760,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
-    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
-
     check(R"(
         type tag = "cat" | "dog"
         local function f(a: tag) end
@@ -2798,8 +2796,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")
 {
-    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
-
     check(R"(
         type tagged = {tag:"cat", fieldx:number} | {tag:"dog", fieldy:number}
         local x: tagged = {tag="cat", fieldx=2}
@@ -2821,8 +2817,6 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_boolean_singleton")
 {
-    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
-
     check(R"(
 local function f(x: true) end
 f(@1)
@@ -2838,8 +2832,6 @@ f(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_escape")
 {
-    ScopedFastFlag luauAutocompleteSingletonTypes{"LuauAutocompleteSingletonTypes", true};
-
     check(R"(
         type tag = "strange\t\"cat\"" | 'nice\t"dog"'
         local function f(x: tag) end

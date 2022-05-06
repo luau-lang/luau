@@ -14,7 +14,6 @@
 #include <utility>
 
 LUAU_FASTFLAGVARIABLE(LuauIfElseExprFixCompletionIssue, false);
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteSingletonTypes, false);
 LUAU_FASTFLAGVARIABLE(LuauFixAutocompleteClassSecurityLevel, false);
 LUAU_FASTFLAG(LuauSelfCallAutocompleteFix)
 
@@ -1341,38 +1340,21 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
             scope = scope->parent;
         }
 
-        if (FFlag::LuauAutocompleteSingletonTypes)
-        {
-            TypeCorrectKind correctForNil = checkTypeCorrectKind(module, typeArena, node, position, typeChecker.nilType);
-            TypeCorrectKind correctForTrue = checkTypeCorrectKind(module, typeArena, node, position, getSingletonTypes().trueType);
-            TypeCorrectKind correctForFalse = checkTypeCorrectKind(module, typeArena, node, position, getSingletonTypes().falseType);
-            TypeCorrectKind correctForFunction =
-                functionIsExpectedAt(module, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+        TypeCorrectKind correctForNil = checkTypeCorrectKind(module, typeArena, node, position, typeChecker.nilType);
+        TypeCorrectKind correctForTrue = checkTypeCorrectKind(module, typeArena, node, position, getSingletonTypes().trueType);
+        TypeCorrectKind correctForFalse = checkTypeCorrectKind(module, typeArena, node, position, getSingletonTypes().falseType);
+        TypeCorrectKind correctForFunction =
+            functionIsExpectedAt(module, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 
-            result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
-            result["true"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForTrue};
-            result["false"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForFalse};
-            result["nil"] = {AutocompleteEntryKind::Keyword, typeChecker.nilType, false, false, correctForNil};
-            result["not"] = {AutocompleteEntryKind::Keyword};
-            result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
+        result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
+        result["true"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForTrue};
+        result["false"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForFalse};
+        result["nil"] = {AutocompleteEntryKind::Keyword, typeChecker.nilType, false, false, correctForNil};
+        result["not"] = {AutocompleteEntryKind::Keyword};
+        result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
 
-            if (auto ty = findExpectedTypeAt(module, node, position))
-                autocompleteStringSingleton(*ty, true, result);
-        }
-        else
-        {
-            TypeCorrectKind correctForNil = checkTypeCorrectKind(module, typeArena, node, position, typeChecker.nilType);
-            TypeCorrectKind correctForBoolean = checkTypeCorrectKind(module, typeArena, node, position, typeChecker.booleanType);
-            TypeCorrectKind correctForFunction =
-                functionIsExpectedAt(module, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
-
-            result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
-            result["true"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForBoolean};
-            result["false"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForBoolean};
-            result["nil"] = {AutocompleteEntryKind::Keyword, typeChecker.nilType, false, false, correctForNil};
-            result["not"] = {AutocompleteEntryKind::Keyword};
-            result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
-        }
+        if (auto ty = findExpectedTypeAt(module, node, position))
+            autocompleteStringSingleton(*ty, true, result);
     }
 }
 
@@ -1680,11 +1662,8 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     {
         AutocompleteEntryMap result;
 
-        if (FFlag::LuauAutocompleteSingletonTypes)
-        {
-            if (auto it = module->astExpectedTypes.find(node->asExpr()))
-                autocompleteStringSingleton(*it, false, result);
-        }
+        if (auto it = module->astExpectedTypes.find(node->asExpr()))
+            autocompleteStringSingleton(*it, false, result);
 
         if (finder.ancestry.size() >= 2)
         {
@@ -1693,8 +1672,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 if (auto it = module->astTypes.find(idxExpr->expr))
                     autocompleteProps(*module, typeArena, follow(*it), PropIndexType::Point, finder.ancestry, result);
             }
-            else if (auto binExpr = finder.ancestry.at(finder.ancestry.size() - 2)->as<AstExprBinary>();
-                     binExpr && FFlag::LuauAutocompleteSingletonTypes)
+            else if (auto binExpr = finder.ancestry.at(finder.ancestry.size() - 2)->as<AstExprBinary>())
             {
                 if (binExpr->op == AstExprBinary::CompareEq || binExpr->op == AstExprBinary::CompareNe)
                 {

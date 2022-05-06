@@ -97,7 +97,7 @@ class LuauVariantSyntheticChildrenProvider:
 
             if self.current_type:
                 storage = self.valobj.GetChildMemberWithName("storage")
-                self.stored_value = storage.Cast(self.current_type.GetPointerType()).Dereference()
+                self.stored_value = storage.Cast(self.current_type)
             else:
                 self.stored_value = None
         else:

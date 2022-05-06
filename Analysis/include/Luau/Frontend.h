@@ -145,7 +145,6 @@ struct Frontend
      */
     std::pair<SourceModule, LintResult> lintFragment(std::string_view source, std::optional<LintOptions> enabledLintWarnings = {});
 
-    CheckResult check(const SourceModule& module); // OLD.  TODO KILL
     LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;

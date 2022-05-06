@@ -2041,8 +2041,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_pack_errors")
 {
-    ScopedFastFlag luauParseRecoverUnexpectedPack{"LuauParseRecoverUnexpectedPack", true};
-
     matchParseError("type Y<T...> = {a: T..., b: number}", "Unexpected '...' after type name; type pack is not allowed in this context",
         Location{{0, 20}, {0, 23}});
     matchParseError("type Y<T...> = {a: (number | string)...", "Unexpected '...' after type annotation", Location{{0, 36}, {0, 39}});
@@ -2618,8 +2616,6 @@ type Y<T..., U = T...> = (T...) -> U...
 
 TEST_CASE_FIXTURE(Fixture, "recover_unexpected_type_pack")
 {
-    ScopedFastFlag luauParseRecoverUnexpectedPack{"LuauParseRecoverUnexpectedPack", true};
-
     ParseResult result = tryParse(R"(
 type X<T...> = { a: T..., b: number }
 type Y<T> = { a: T..., b: number }

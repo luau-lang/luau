@@ -26,7 +26,7 @@ namespace Luau
 namespace
 {
 
-struct FindCyclicTypes
+struct FindCyclicTypes final : TypeVarVisitor
 {
     FindCyclicTypes() = default;
     FindCyclicTypes(const FindCyclicTypes&) = delete;
@@ -38,20 +38,22 @@ struct FindCyclicTypes
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
 
-    void cycle(TypeId ty)
+    void cycle(TypeId ty) override
     {
         cycles.insert(ty);
     }
 
-    void cycle(TypePackId tp)
+    void cycle(TypePackId tp) override
     {
         cycleTPs.insert(tp);
     }
 
+    // TODO: Clip all the operator()s when we clip FFlagLuauUseVisitRecursionLimit
+
     template<typename T>
     bool operator()(TypeId ty, const T&)
     {
-        return visited.insert(ty).second;
+        return visit(ty);
     }
 
     bool operator()(TypeId ty, const TableTypeVar& ttv) = delete;
@@ -64,10 +66,10 @@ struct FindCyclicTypes
         if (ttv.name || ttv.syntheticName)
         {
             for (TypeId itp : ttv.instantiatedTypeParams)
-                visitTypeVar(itp, *this, seen);
+                DEPRECATED_visitTypeVar(itp, *this, seen);
 
             for (TypePackId itp : ttv.instantiatedTypePackParams)
-                visitTypeVar(itp, *this, seen);
+                DEPRECATED_visitTypeVar(itp, *this, seen);
 
             return exhaustive;
         }
@@ -83,7 +85,41 @@ struct FindCyclicTypes
     template<typename T>
     bool operator()(TypePackId tp, const T&)
     {
+        return visit(tp);
+    }
+
+    bool visit(TypeId ty) override
+    {
+        return visited.insert(ty).second;
+    }
+
+    bool visit(TypePackId tp) override
+    {
         return visitedPacks.insert(tp).second;
+    }
+
+    bool visit(TypeId ty, const TableTypeVar& ttv) override
+    {
+        if (!visited.insert(ty).second)
+            return false;
+
+        if (ttv.name || ttv.syntheticName)
+        {
+            for (TypeId itp : ttv.instantiatedTypeParams)
+                traverse(itp);
+
+            for (TypePackId itp : ttv.instantiatedTypePackParams)
+                traverse(itp);
+
+            return exhaustive;
+        }
+
+        return true;
+    }
+
+    bool visit(TypeId ty, const ClassTypeVar&) override
+    {
+        return false;
     }
 };
 
@@ -92,7 +128,7 @@ void findCyclicTypes(std::set<TypeId>& cycles, std::set<TypePackId>& cycleTPs, T
 {
     FindCyclicTypes fct;
     fct.exhaustive = exhaustive;
-    visitTypeVar(ty, fct);
+    DEPRECATED_visitTypeVar(ty, fct);
 
     cycles = std::move(fct.cycles);
     cycleTPs = std::move(fct.cycleTPs);

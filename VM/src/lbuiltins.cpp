@@ -15,6 +15,8 @@
 #include <intrin.h>
 #endif
 
+LUAU_FASTFLAGVARIABLE(LuauFixBuiltinsStackLimit, false)
+
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -1003,7 +1005,7 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
         else if (nparams == 3 && ttisnumber(args) && ttisnumber(args + 1) && nvalue(args) == 1.0)
             n = int(nvalue(args + 1));
 
-        if (n >= 0 && n <= t->sizearray && cast_int(L->stack_last - res) >= n)
+        if (n >= 0 && n <= t->sizearray && cast_int(L->stack_last - res) >= n && (!FFlag::LuauFixBuiltinsStackLimit || n + nparams <= LUAI_MAXCSTACK))
         {
             TValue* array = t->array;
             for (int i = 0; i < n; ++i)
