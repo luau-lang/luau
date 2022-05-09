@@ -61,6 +61,12 @@ inhabited (S ∩ T) = inhabitedᶠ (S ∩ T)
 inhabited (S ∪ T) = right (scalar T)
 inhabited unknown = unknown
 
+-- Top function type
+function-top : ∀ {F} → (FunType F) → (F <: (never ⇒ unknown))
+function-top function = <:-refl
+function-top (S ⇒ T) = <:-function <:-never <:-unknown
+function-top (F ∩ G) = <:-trans <:-∩-left (function-top F)
+
 -- Normalization produces normal types
 normal : ∀ T → Normal (normalize T)
 normalᶠ : ∀ {F} → FunType F → Normal F
