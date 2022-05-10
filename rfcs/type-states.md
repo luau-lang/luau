@@ -133,8 +133,7 @@ local function f(x: number | string)
         x = 5
     end
 
-    -- `x` is of type `number`
-    -- `x` is of type `number | string`
+    -- `x` should be of type `number`, but without control flow analysis, it will be of type `number | string`
 end
 ```
 
