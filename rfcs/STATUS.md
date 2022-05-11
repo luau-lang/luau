@@ -39,10 +39,10 @@ This document tracks unimplemented RFCs.
 
 [RFC: Generalized iteration](https://github.com/Roblox/luau/blob/master/rfcs/generalized-iteration.md)
 
-**Status**: Needs implementation
+**Status**: Implemented but not fully rolled out yet.
 
 ## Lower Bounds Calculation
 
 [RFC: Lower bounds calculation](https://github.com/Roblox/luau/blob/master/rfcs/lower-bounds-calculation.md)
 
-**Status**: Needs implementation
+**Status**: Implemented but not fully rolled out yet.
