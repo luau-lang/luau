@@ -88,7 +88,7 @@ Similarly, type states can now properly track implicit `nil`.
 local function f() return "hi" end
 
 local x, y = f(), 5
-x, y = f()
+x, y = f() -- type error, f() returns 1 value but we expect 2 values.
 
 local z: string = y -- type error, y is nil
 ```
@@ -101,6 +101,33 @@ Something that we can do with type states is to _also_ infer singleton types wit
 local x = "hello!"
 local y: "hello!" = x -- no type errors!
 ```
+
+The reason why this can work is because at the expression `"hello!"` we know the incoming type does not contain a singleton type, so we return the type `string`. However, we can also return `"hello!"` as the lower bound of the expression which is stored as a _state_.
+
+### Locals with explicit type annotations
+
+There's one edge case with all this: what to do about locals with explicit type annotations and no initialization?
+
+```lua
+local x: string
+```
+
+The harsh fact of it is that `x`'s current state will be `nil`. Reading `x` will _not_ directly cause an error.
+
+```lua
+local y: string? = x -- no error because nil <: string?
+local z: string  = x -- type error because nil </: string
+```
+
+How about with some initialization?
+
+```lua
+local function f() return "hi" end
+
+local x: string, y: number = f()
+```
+
+In this case, we'll keep the behavior the same as today, where we will be as strict as we can be. Since `f()` returns one single value, we report a type error indicating that the values count mismatches. Only difference is, we now know `y`'s current state is `nil`.
 
 ## Drawbacks
 
