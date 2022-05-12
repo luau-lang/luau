@@ -1,0 +1,92 @@
+name: Benchmarks - PR
+
+on:
+  pull_request:
+    branches:
+      - main
+    # we don't use paths-ignore in required pass workflows
+
+jobs:
+  benchmarks-run:
+    name: Run ${{ matrix.bench.title }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        engine:
+          - { channel: stable, version: latest, runner: "robloxdev-cli" }
+          # - { channel: develop, version: latest, runner: 'robloxdev-cli' }
+          # covers environment closest to RobloxStudio, but not available on Linux
+          # - { channel: develop, version: latest, runner: 'roblox-cli'}
+        bench:
+          - {
+              script: "run-benchmarks",
+              timeout: 12,
+              title: "Concurrent FPS Benchmark",
+              cachegrindTitle: "FrameRate",
+              cachegrindIterCount: 20, # Extra iterations to ensure we hit the first artificial slowdown.
+            }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+
+      # Build Luau
+      - name: make test
+        run: |
+        make -j2 config=sanitize werror=1 test
+      - name: make test w/flags
+        run: |
+          make -j2 config=sanitize werror=1 flags=true test
+      - name: make cli
+        run: |
+          make -j2 config=sanitize werror=1 luau luau-analyze # match config with tests to improve build time
+          ./luau tests/conformance/assert.lua
+          ./luau-analyze tests/conformance/assert.lua
+
+      - uses: actions/setup-python@v1
+
+      #Run benchmark with `python bench/bench.py` and stores the output to a file
+      - name: Run benchmark
+        run: python bench/bench.py | tee output.txt
+
+        # Download previous benchmark result from cache (if exists)
+      - name: Download previous benchmark data
+        uses: actions/cache@v1
+        with:
+          path: ./cache
+          key: ${{ runner.os }}-benchmark
+
+      
+      #Run `github-action-benchmark` action
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+        gh-pages-
+          tool: "benchmarkluau"
+          output-file-path: output.txt
+          external-data-json-path: ./cache/benchmark-data.json
+          fail-on-alert: true
+
+      # Checkout gh-pages
+      - name: Checkout gh-pages
+        run: |
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git status
+          git fetch --no-tags --depth=1 origin gh-pages
+          git checkout --track origin/gh-pages
+          git pull
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }}
+          tool: "roblox"
+          output-file-path: ${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./dev/bench/data.json
+          alert-threshold: 115%
+          fail-threshold: 130%
+          fail-on-alert: true
+          comment-on-alert: true
+          comment-always: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
