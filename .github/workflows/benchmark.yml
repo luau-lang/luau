@@ -34,7 +34,7 @@ jobs:
       # Build Luau
       - name: make test
         run: |
-        make -j2 config=sanitize werror=1 test
+          make -j2 config=sanitize werror=1 test
       - name: make test w/flags
         run: |
           make -j2 config=sanitize werror=1 flags=true test
