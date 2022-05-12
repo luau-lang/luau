@@ -57,7 +57,10 @@ jobs:
           ./luau tests/conformance/assert.lua
           ./luau-analyze tests/conformance/assert.lua
 
-      - uses: actions/setup-python@v1
+      - uses: actions/setup-python@v3
+        with:
+          python-version: "3.x" # Version range or exact version of a Python version to use, using SemVer's version range syntax
+          architecture: "x64"
 
       #Run benchmark with `python bench/bench.py` and stores the output to a file
       - name: Run benchmark
