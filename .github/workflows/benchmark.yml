@@ -1,4 +1,4 @@
-name: Benchmarks - PR
+name: Luau Benchmarks
 
 on:
   push:
@@ -35,8 +35,8 @@ jobs:
           - {
               script: "run-benchmarks",
               timeout: 12,
-              title: "Concurrent FPS Benchmark",
-              cachegrindTitle: "FrameRate",
+              title: "Luau Performance Benchmark",
+              cachegrindTitle: "Performance",
               cachegrindIterCount: 20, # Extra iterations to ensure we hit the first artificial slowdown.
             }
 
