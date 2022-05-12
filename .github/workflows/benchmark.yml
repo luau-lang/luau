@@ -3,20 +3,20 @@ name: Benchmarks - PR
 on:
   push:
     branches:
-      - 'master'
+      - "master"
     paths-ignore:
-      - 'docs/**'
-      - 'papers/**'
-      - 'rfcs/**'
-      - '*.md'
-      - 'prototyping/**'
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
   pull_request:
     paths-ignore:
-      - 'docs/**'
-      - 'papers/**'
-      - 'rfcs/**'
-      - '*.md'
-      - 'prototyping/**'
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
     # we don't use paths-ignore in required pass workflows
 
 jobs:
@@ -70,12 +70,10 @@ jobs:
           path: ./cache
           key: ${{ runner.os }}-benchmark
 
-      
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
-        gh-pages-
           tool: "benchmarkluau"
           output-file-path: output.txt
           external-data-json-path: ./cache/benchmark-data.json
