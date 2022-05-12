@@ -1,9 +1,22 @@
 name: Benchmarks - PR
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
+      - 'master'
+    paths-ignore:
+      - 'docs/**'
+      - 'papers/**'
+      - 'rfcs/**'
+      - '*.md'
+      - 'prototyping/**'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'papers/**'
+      - 'rfcs/**'
+      - '*.md'
+      - 'prototyping/**'
     # we don't use paths-ignore in required pass workflows
 
 jobs:
