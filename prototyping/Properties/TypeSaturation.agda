@@ -8,8 +8,8 @@ open import Luau.Subtyping using (Tree; Language; ¬Language; _<:_; _≮:_; witn
 open import Luau.Type using (Type; _⇒_; _∩_; _∪_; never; unknown)
 open import Luau.TypeNormalization using (_⇒ⁿ_; _∩ⁿ_; _∪ⁿ_)
 open import Luau.TypeSaturation using (_⋓_; _⋒_; _∩ᵘ_; _∩ⁱ_; ∪-saturate; ∩-saturate; saturate)
-open import Properties.Subtyping using (dec-language; language-comp; <:-impl-⊇; <:-refl; <:-trans; <:-trans-≮:; <:-impl-¬≮: ; <:-function; <:-union; <:-∪-symm; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∪-assocl; <:-∪-assocr; <:-intersect; <:-∩-symm; <:-∩-left; <:-∩-right; <:-∩-glb; ≮:-function-left; ≮:-function-right; <:-∩-assocl; <:-∩-assocr; ∩-<:-∪; <:-∩-distl-∪; ∩-distl-∪-<:; <:-∩-distr-∪; ∩-distr-∪-<:)
-open import Properties.TypeNormalization using (FunType; function; _⇒_; _∩_; _∪_; never; unknown; inhabitant; inhabited; function-top; normal-⇒ⁿ; normal-∪ⁿ; normal-∩ⁿ; normalⁱ; <:-tgtⁿ; ∪ⁿ-<:-∪; ∪-<:-∪ⁿ)
+open import Properties.Subtyping using (dec-language; language-comp; <:-impl-⊇; <:-refl; <:-trans; <:-trans-≮:; <:-impl-¬≮: ; <:-never; <:-unknown; <:-function; <:-union; <:-∪-symm; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∪-assocl; <:-∪-assocr; <:-intersect; <:-∩-symm; <:-∩-left; <:-∩-right; <:-∩-glb; ≮:-function-left; ≮:-function-right; <:-∩-assocl; <:-∩-assocr; ∩-<:-∪; <:-∩-distl-∪; ∩-distl-∪-<:; <:-∩-distr-∪; ∩-distr-∪-<:)
+open import Properties.TypeNormalization using (FunType; function; _⇒_; _∩_; _∪_; never; unknown; inhabitant; inhabited; function-top; normal-⇒ⁿ; normal-∪ⁿ; normal-∩ⁿ; normalⁱ; <:-tgtⁿ; ∪ⁿ-<:-∪; ∪-<:-∪ⁿ; ∩ⁿ-<:-∩; ∩-<:-∩ⁿ)
 open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.Functions using (_∘_)
 
@@ -216,7 +216,7 @@ ov-⋒-∩ = {!!}
 ∩-∩-saturated : ∀ {F} → (FunType F) → (∩-saturate F ⋒ ∩-saturate F) ⊂:ᵒ ∩-saturate F
 ∩-∩-saturated F = {!!}
 
--- An inductive presentation of the ⋒-closure of a type
+-- An inductive presentation of the ⋒-overloads of a type
 data ⋒-Overload F G : Type → Set where
 
   defn : ∀ {R S T U} →
@@ -226,8 +226,33 @@ data ⋒-Overload F G : Type → Set where
     ---------------------------
     ⋒-Overload F G ((R ∩ T) ⇒ (S ∩ U))
 
-⋒-overload : ∀ F G {S T} → Overload (F ⋒ G) (S ⇒ T) → ⋒-Overload F G (S ⇒ T)
-⋒-overload = {!!}
+data ⋒-Overload-<: F G : Type → Set where
+ 
+  defn : ∀ {R S T U} →
+
+    ⋒-Overload F G (R ⇒ S) →
+    T <: R →
+    S <: U →
+    ---------------------
+    ⋒-Overload-<: F G (T ⇒ U)
+
+⋒-overload-<: : ∀ {F G S T} → FunType F → FunType G → Overload (F ⋒ G) (S ⇒ T) → ⋒-Overload-<: F G (S ⇒ T)
+⋒-overload-<: function function here = defn (defn here here) <:-never <:-unknown
+⋒-overload-<: function (T ⇒ U) here = defn (defn here here) (∩ⁿ-<:-∩ never (normalⁱ T)) (<:-tgtⁿ (∩-<:-∩ⁿ unknown U))
+⋒-overload-<: function (G ∩ H) (left o) with ⋒-overload-<: function G o
+⋒-overload-<: function (G ∩ H) (left o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (left o₂)) o₃ o₄
+⋒-overload-<: function (G ∩ H) (right o) with ⋒-overload-<: function H o
+⋒-overload-<: function (G ∩ H) (right o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (right o₂)) o₃ o₄
+⋒-overload-<: (R ⇒ S) function here = defn (defn here here) (∩ⁿ-<:-∩ (normalⁱ R) never) (<:-tgtⁿ (∩-<:-∩ⁿ S unknown))
+⋒-overload-<: (R ⇒ S) (T ⇒ U) here = defn (defn here here) (∩ⁿ-<:-∩ (normalⁱ R) (normalⁱ T)) (<:-tgtⁿ (∩-<:-∩ⁿ S U))
+⋒-overload-<: (R ⇒ S) (G ∩ H) (left o) with ⋒-overload-<: (R ⇒ S) G o
+⋒-overload-<: (R ⇒ S) (G ∩ H) (left o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (left o₂)) o₃ o₄
+⋒-overload-<: (R ⇒ S) (G ∩ H) (right o) with ⋒-overload-<: (R ⇒ S) H o
+⋒-overload-<: (R ⇒ S) (G ∩ H) (right o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (right o₂)) o₃ o₄
+⋒-overload-<: (E ∩ F) G (left o) with ⋒-overload-<: E G o
+⋒-overload-<: (E ∩ F) G (left o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn (left o₁) o₂) o₃ o₄
+⋒-overload-<: (E ∩ F) G (right o) with ⋒-overload-<: F G o
+⋒-overload-<: (E ∩ F) G (right o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn (right o₁) o₂) o₃ o₄
 
 -- An inductive presentation of the ⋓-closure of a type
 data ⋓-Closure F : Type → Set where
@@ -247,7 +272,7 @@ data ⋓-Closure F : Type → Set where
 
 data ⋓-Closure-<: F : Type → Set where
  
- defn : ∀ {R S T U} →
+  defn : ∀ {R S T U} →
 
     ⋓-Closure F (R ⇒ S) →
     T <: R →
@@ -255,47 +280,47 @@ data ⋓-Closure-<: F : Type → Set where
     ---------------------
     ⋓-Closure-<: F (T ⇒ U)
 
-⋓-cl-⊆ᵒ : ∀ {F G S T} → (F ⊆ᵒ G) → ⋓-Closure F (S ⇒ T) → ⋓-Closure G (S ⇒ T)
-⋓-cl-⊆ᵒ p (ov o) = ov (p o)
-⋓-cl-⊆ᵒ p (union c d) = union (⋓-cl-⊆ᵒ p c) (⋓-cl-⊆ᵒ p d)
+⋓-closure-resp-⊆ᵒ : ∀ {F G S T} → (F ⊆ᵒ G) → ⋓-Closure F (S ⇒ T) → ⋓-Closure G (S ⇒ T)
+⋓-closure-resp-⊆ᵒ p (ov o) = ov (p o)
+⋓-closure-resp-⊆ᵒ p (union c d) = union (⋓-closure-resp-⊆ᵒ p c) (⋓-closure-resp-⊆ᵒ p d)
 
-∪-sat-closure : ∀ {F S T} → FunType F → Overload (∪-saturate F) (S ⇒ T) → ⋓-Closure F (S ⇒ T)
-∪-sat-closure function here = ov here
-∪-sat-closure (S ⇒ T) here = ov here
-∪-sat-closure (Fᶠ ∩ Gᶠ) (left (left o)) = ⋓-cl-⊆ᵒ ⊆ᵒ-left (∪-sat-closure Fᶠ o)
-∪-sat-closure (Fᶠ ∩ Gᶠ) (left (right o)) = ⋓-cl-⊆ᵒ ⊆ᵒ-right (∪-sat-closure Gᶠ o)
-∪-sat-closure {F ∩ G} (Fᶠ ∩ Gᶠ) (right o) with ⋓-∪-overload (∪-saturate F) (∪-saturate G) o
-∪-sat-closure (Fᶠ ∩ Gᶠ) (right o) | defn p q = union (⋓-cl-⊆ᵒ ⊆ᵒ-left (∪-sat-closure Fᶠ p)) (⋓-cl-⊆ᵒ ⊆ᵒ-right (∪-sat-closure Gᶠ q))
+∪-saturate-overload-impl-⋓-closure : ∀ {F S T} → FunType F → Overload (∪-saturate F) (S ⇒ T) → ⋓-Closure F (S ⇒ T)
+∪-saturate-overload-impl-⋓-closure function here = ov here
+∪-saturate-overload-impl-⋓-closure (S ⇒ T) here = ov here
+∪-saturate-overload-impl-⋓-closure (Fᶠ ∩ Gᶠ) (left (left o)) = ⋓-closure-resp-⊆ᵒ ⊆ᵒ-left (∪-saturate-overload-impl-⋓-closure Fᶠ o)
+∪-saturate-overload-impl-⋓-closure (Fᶠ ∩ Gᶠ) (left (right o)) = ⋓-closure-resp-⊆ᵒ ⊆ᵒ-right (∪-saturate-overload-impl-⋓-closure Gᶠ o)
+∪-saturate-overload-impl-⋓-closure {F ∩ G} (Fᶠ ∩ Gᶠ) (right o) with ⋓-∪-overload (∪-saturate F) (∪-saturate G) o
+∪-saturate-overload-impl-⋓-closure (Fᶠ ∩ Gᶠ) (right o) | defn p q = union (⋓-closure-resp-⊆ᵒ ⊆ᵒ-left (∪-saturate-overload-impl-⋓-closure Fᶠ p)) (⋓-closure-resp-⊆ᵒ ⊆ᵒ-right (∪-saturate-overload-impl-⋓-closure Gᶠ q))
 
-closure-∪-sat-<:ᵒ : ∀ {F S T} → (FunType F) → ⋓-Closure F (S ⇒ T) → (∪-saturate F) <:ᵒ (S ⇒ T)
-closure-∪-sat-<:ᵒ Fᶠ (ov o) = <:ᵒ-ov (⊆ᵒ-∪-sat o)
-closure-∪-sat-<:ᵒ Fᶠ (union c d) with closure-∪-sat-<:ᵒ Fᶠ c | closure-∪-sat-<:ᵒ Fᶠ d
-closure-∪-sat-<:ᵒ Fᶠ (union c d) | defn o o₁ o₂ | defn p p₁ p₂ = <:ᵒ-trans-<: (⋓-cl-∪ (∪-∪-saturated Fᶠ) o p) (<:-union o₁ p₁) (<:-union o₂ p₂)
+⋓-closure-impl-∪-saturate-<:ᵒ : ∀ {F S T} → (FunType F) → ⋓-Closure F (S ⇒ T) → (∪-saturate F) <:ᵒ (S ⇒ T)
+⋓-closure-impl-∪-saturate-<:ᵒ Fᶠ (ov o) = <:ᵒ-ov (⊆ᵒ-∪-sat o)
+⋓-closure-impl-∪-saturate-<:ᵒ Fᶠ (union c d) with ⋓-closure-impl-∪-saturate-<:ᵒ Fᶠ c | ⋓-closure-impl-∪-saturate-<:ᵒ Fᶠ d
+⋓-closure-impl-∪-saturate-<:ᵒ Fᶠ (union c d) | defn o o₁ o₂ | defn p p₁ p₂ = <:ᵒ-trans-<: (⋓-cl-∪ (∪-∪-saturated Fᶠ) o p) (<:-union o₁ p₁) (<:-union o₂ p₂)
 
-∪-closure-<:ᵒ : ∀ {F S T} → F <:ᵒ (S ⇒ T) → ⋓-Closure-<: F (S ⇒ T)
-∪-closure-<:ᵒ (defn o p q) = defn (ov o) p q
+⋓-closure-<:ᵒ : ∀ {F S T} → F <:ᵒ (S ⇒ T) → ⋓-Closure-<: F (S ⇒ T)
+⋓-closure-<:ᵒ (defn o p q) = defn (ov o) p q
 
-∪-closure-∩ : ∀ {F R S T U} → (FunType F) → (F ⋒ F) ⊂:ᵒ F → ⋓-Closure F (R ⇒ S) → ⋓-Closure F (T ⇒ U) → ⋓-Closure-<: F ((R ∩ T) ⇒ (S ∩ U))
-∪-closure-∩ Fᶠ p (ov n) (ov o) = ∪-closure-<:ᵒ (p (ov-⋒-∩ n o))
-∪-closure-∩ Fᶠ p c (union d d₁) with ∪-closure-∩ Fᶠ p c d | ∪-closure-∩ Fᶠ p c d₁ 
-∪-closure-∩ Fᶠ p c (union d d₁) | defn e e₁ e₂ | defn f f₁ f₂ = defn (union e f) (<:-trans <:-∩-distl-∪ (<:-union e₁ f₁)) (<:-trans (<:-union e₂ f₂) ∩-distl-∪-<:)
-∪-closure-∩ Fᶠ p (union c c₁) d with ∪-closure-∩ Fᶠ p c d | ∪-closure-∩ Fᶠ p c₁ d
-∪-closure-∩ Fᶠ p (union c c₁) d | defn e e₁ e₂ | defn f f₁ f₂ = defn (union e f) (<:-trans <:-∩-distr-∪ (<:-union e₁ f₁)) (<:-trans (<:-union e₂ f₂) ∩-distr-∪-<:)
+⋓-closure-<:-∩ : ∀ {F R S T U} → (FunType F) → (F ⋒ F) ⊂:ᵒ F → ⋓-Closure F (R ⇒ S) → ⋓-Closure F (T ⇒ U) → ⋓-Closure-<: F ((R ∩ T) ⇒ (S ∩ U))
+⋓-closure-<:-∩ Fᶠ p (ov n) (ov o) = ⋓-closure-<:ᵒ (p (ov-⋒-∩ n o))
+⋓-closure-<:-∩ Fᶠ p c (union d d₁) with ⋓-closure-<:-∩ Fᶠ p c d | ⋓-closure-<:-∩ Fᶠ p c d₁ 
+⋓-closure-<:-∩ Fᶠ p c (union d d₁) | defn e e₁ e₂ | defn f f₁ f₂ = defn (union e f) (<:-trans <:-∩-distl-∪ (<:-union e₁ f₁)) (<:-trans (<:-union e₂ f₂) ∩-distl-∪-<:)
+⋓-closure-<:-∩ Fᶠ p (union c c₁) d with ⋓-closure-<:-∩ Fᶠ p c d | ⋓-closure-<:-∩ Fᶠ p c₁ d
+⋓-closure-<:-∩ Fᶠ p (union c c₁) d | defn e e₁ e₂ | defn f f₁ f₂ = defn (union e f) (<:-trans <:-∩-distr-∪ (<:-union e₁ f₁)) (<:-trans (<:-union e₂ f₂) ∩-distr-∪-<:)
 
 -- ∪-saturate preserves ⋒-closure
-∪-∩-saturated : ∀ {F} → (FunType F) → (F ⋒ F) ⊂:ᵒ F → (∪-saturate F ⋒ ∪-saturate F) ⊂:ᵒ ∪-saturate F
-∪-∩-saturated {F} Fᶠ p o with ⋒-overload (∪-saturate F) (∪-saturate F) o
-∪-∩-saturated {F} Fᶠ p o | defn o₁ o₂ with ∪-sat-closure Fᶠ o₁ | ∪-sat-closure Fᶠ o₂ 
-∪-∩-saturated {F} Fᶠ p o | defn o₁ o₂ | c₁ | c₂ with ∪-closure-∩ Fᶠ p c₁ c₂
-∪-∩-saturated {F} Fᶠ p o | defn o₁ o₂ | c₁ | c₂ | defn d q r = <:ᵒ-trans-<: (closure-∪-sat-<:ᵒ Fᶠ d) q r
+∪-saturate-⋒-closed : ∀ {F} → (FunType F) → (F ⋒ F) ⊂:ᵒ F → (∪-saturate F ⋒ ∪-saturate F) ⊂:ᵒ ∪-saturate F
+∪-saturate-⋒-closed Fᶠ p o with ⋒-overload-<: (normal-∪-saturate Fᶠ) (normal-∪-saturate Fᶠ) o
+∪-saturate-⋒-closed Fᶠ p o | defn (defn o₁ o₂) o₃ o₄ with ∪-saturate-overload-impl-⋓-closure Fᶠ o₁ | ∪-saturate-overload-impl-⋓-closure Fᶠ o₂ 
+∪-saturate-⋒-closed Fᶠ p o | defn (defn o₁ o₂) o₃ o₄ | c₁ | c₂ with ⋓-closure-<:-∩ Fᶠ p c₁ c₂
+∪-saturate-⋒-closed Fᶠ p o | defn (defn o₁ o₂) o₃ o₄ | c₁ | c₂ | defn d q r = <:ᵒ-trans-<: (⋓-closure-impl-∪-saturate-<:ᵒ Fᶠ d) (<:-trans o₃ q) (<:-trans r o₄)
 
 -- so saturate is ⋒-closed
-∩-saturated : ∀ {F} → (FunType F) → (saturate F ⋒ saturate F) ⊂:ᵒ saturate F
-∩-saturated F = ∪-∩-saturated (normal-∩-saturate F) (∩-∩-saturated F)
+saturated-is-⋒-closed : ∀ {F} → (FunType F) → (saturate F ⋒ saturate F) ⊂:ᵒ saturate F
+saturated-is-⋒-closed F = ∪-saturate-⋒-closed (normal-∩-saturate F) (∩-∩-saturated F)
 
 -- Every function type can be saturated!
 saturated : ∀ {F} → (FunType F) → Saturated (saturate F)
-saturated F = ⋒-⋓-cl-impl-sat (∩-saturated F) (∪-saturated F)
+saturated F = ⋒-⋓-cl-impl-sat (saturated-is-⋒-closed F) (∪-saturated F)
 
 -- Subtyping is decidable on saturated normalized types
 
