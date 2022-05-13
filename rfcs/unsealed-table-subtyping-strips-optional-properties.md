@@ -1,5 +1,7 @@
 # Only strip optional properties from unsealed tables during subtyping
 
+**Status**: Implemented
+
 ## Summary
 
 Currently subtyping allows optional properties to be stripped from table types during subtyping.
