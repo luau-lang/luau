@@ -77,7 +77,7 @@ TEST_CASE_FIXTURE(Fixture, "and_or_ternary")
     CHECK_EQ(toString(*requireType("s")), "number | string");
 }
 
-TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 {
     CheckResult result = check(R"(
         function add(a: number, b: string)
@@ -140,7 +140,7 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
     CHECK_EQ("number", toString(requireType("c")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_overloaded_multiply_that_is_an_intersection")
 {
     CheckResult result = check(R"(
         --!strict
@@ -174,7 +174,7 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersectio
     CHECK_EQ("Vec3", toString(requireType("e")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "typecheck_overloaded_multiply_that_is_an_intersection_on_rhs")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_overloaded_multiply_that_is_an_intersection_on_rhs")
 {
     CheckResult result = check(R"(
         --!strict
@@ -245,7 +245,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
     REQUIRE_EQ(gen->message, "Type a cannot be compared with < because it has no metatable");
 }
 
-TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
 {
     CheckResult result = check(R"(
         local M = {}
@@ -266,7 +266,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_offer_ov
     REQUIRE_EQ(gen->message, "Table M does not offer metamethod __lt");
 }
 
-TEST_CASE_FIXTURE(Fixture, "cannot_compare_tables_that_do_not_have_the_same_metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_compare_tables_that_do_not_have_the_same_metatable")
 {
     CheckResult result = check(R"(
         --!strict
@@ -289,7 +289,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_compare_tables_that_do_not_have_the_same_meta
     REQUIRE_EQ((Location{{11, 18}, {11, 23}}), result.errors[1].location);
 }
 
-TEST_CASE_FIXTURE(Fixture, "produce_the_correct_error_message_when_comparing_a_table_with_a_metatable_with_one_that_does_not")
+TEST_CASE_FIXTURE(BuiltinsFixture, "produce_the_correct_error_message_when_comparing_a_table_with_a_metatable_with_one_that_does_not")
 {
     CheckResult result = check(R"(
         --!strict
@@ -361,7 +361,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
     CHECK_EQ(result.errors[1], (TypeError{Location{{2, 8}, {2, 15}}, TypeMismatch{typeChecker.stringType, typeChecker.numberType}}));
 }
 
-TEST_CASE_FIXTURE(Fixture, "compound_assign_metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_metatable")
 {
     CheckResult result = check(R"(
         --!strict
@@ -381,7 +381,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_metatable")
     CHECK_EQ(0, result.errors.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_mismatch_metatable")
 {
     CheckResult result = check(R"(
         --!strict
@@ -428,7 +428,7 @@ local x = false
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "typecheck_unary_minus")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
 {
     CheckResult result = check(R"(
         --!strict
@@ -461,7 +461,7 @@ TEST_CASE_FIXTURE(Fixture, "typecheck_unary_minus")
     REQUIRE_EQ(gen->message, "Unary operator '-' not supported by type 'bar'");
 }
 
-TEST_CASE_FIXTURE(Fixture, "unary_not_is_boolean")
+TEST_CASE_FIXTURE(BuiltinsFixture, "unary_not_is_boolean")
 {
     CheckResult result = check(R"(
         local b = not "string"
@@ -473,7 +473,7 @@ TEST_CASE_FIXTURE(Fixture, "unary_not_is_boolean")
     REQUIRE_EQ("boolean", toString(requireType("c")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "disallow_string_and_types_without_metatables_from_arithmetic_binary_ops")
+TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables_from_arithmetic_binary_ops")
 {
     CheckResult result = check(R"(
         --!strict
@@ -573,7 +573,7 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
     CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'a'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "and_binexps_dont_unify")
+TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
 {
     CheckResult result = check(R"(
     --!strict
@@ -628,7 +628,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
     CHECK_EQ("Type contains a self-recursive construct that cannot be resolved", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "UnknownGlobalCompoundAssign")
+TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalCompoundAssign")
 {
     // In non-strict mode, global definition is still allowed
     {
@@ -755,8 +755,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 
 TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
 {
-    ScopedFastFlag sff{"LuauDecoupleOperatorInferenceFromUnifiedTypeInference", true};
-
     CheckResult result = check(Mode::Strict, R"(
         local function f(x, y)
             return x + y
@@ -777,6 +775,49 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
     // When type inference is unified, we could add an assertion that
     // the strict and nonstrict types are equivalent. This isn't actually
     // the case right now, though.
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_branch_succeeds")
+{
+    ScopedFastFlag sff("LuauSuccessTypingForEqualityOperations", true);
+
+    CheckResult result = check(R"(
+        local mm = {}
+        type Foo = typeof(setmetatable({}, mm))
+        local x: Foo
+        local y: Foo?
+
+        local v1 = x == y
+        local v2 = y == x
+        local v3 = x ~= y
+        local v4 = y ~= x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CheckResult result2 = check(R"(
+        local mm1 = {
+            x = "foo",
+        }
+
+        local mm2 = {
+            y = "bar",
+        }
+
+        type Foo = typeof(setmetatable({}, mm1))
+        type Bar = typeof(setmetatable({}, mm2))
+
+        local x1: Foo
+        local x2: Foo?
+        local y1: Bar
+        local y2: Bar?
+
+        local v1 = x1 == y1
+        local v2 = x2 == y2
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result2);
+    CHECK(toString(result2.errors[0]) == "Types Foo and Bar cannot be compared with == because they do not have the same metatable");
 }
 
 TEST_SUITE_END();

@@ -10,7 +10,6 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauParseLocationIgnoreCommentSkipInCapture, false)
 
 namespace Luau
 {
@@ -2821,7 +2820,7 @@ void Parser::nextLexeme()
                 hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
             }
 
-            type = lexer.next(/* skipComments= */ false, !FFlag::LuauParseLocationIgnoreCommentSkipInCapture).type;
+            type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
         }
     }
     else

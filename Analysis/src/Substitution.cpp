@@ -12,6 +12,7 @@ LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
 LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowNewTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowPossibleMutations, false)
+LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
 {
@@ -408,7 +409,8 @@ TypeId Substitution::clone(TypeId ty)
     {
         LUAU_ASSERT(!ttv->boundTo);
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
-        clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
+        if (!FFlag::LuauNoMethodLocations)
+            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;

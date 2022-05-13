@@ -240,7 +240,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_in_if_condition_position")
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_in_assert_position")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
 {
     CheckResult result = check(R"(
         local a
@@ -300,7 +300,7 @@ TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "impossible_type_narrow_is_not_an_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
 {
     // This unit test serves as a reminder to not implement this warning until Luau is intelligent enough.
     // For instance, getting a value out of the indexer and checking whether the value exists is not an error.
@@ -333,7 +333,7 @@ TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
     CHECK_EQ("number?", toString(requireType("bar")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "index_on_a_refined_property")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_on_a_refined_property")
 {
     CheckResult result = check(R"(
         local t: {x: {y: string}?} = {x = {y = "hello!"}}
@@ -346,7 +346,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_refined_property")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "assert_non_binary_expressions_actually_resolve_constraints")
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_non_binary_expressions_actually_resolve_constraints")
 {
     CheckResult result = check(R"(
         local foo: string? = "hello"
@@ -730,7 +730,7 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_guard_warns_on_no_overlapping_types_only_when_sense_is_true")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_warns_on_no_overlapping_types_only_when_sense_is_true")
 {
     CheckResult result = check(R"(
         local function f(t: {x: number})
@@ -846,7 +846,7 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
     CHECK_EQ("{| x: boolean |}?", toString(requireTypeAtPosition({3, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
 {
     CheckResult result = check(R"(
         local a: (number | string)?
@@ -862,7 +862,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_a_to_be_truthy_then_assert_a_to_be_number")
     CHECK_EQ("number", toString(requireTypeAtPosition({5, 18})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
+TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
 {
     // This bug came up because there was a mistake in Luau::merge where zipping on two maps would produce the wrong merged result.
     CheckResult result = check(R"(
@@ -899,7 +899,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_n
     CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint_ifelse_expression")
+TEST_CASE_FIXTURE(BuiltinsFixture, "is_truthy_constraint_ifelse_expression")
 {
     CheckResult result = check(R"(
         function f(v:string?)
@@ -913,7 +913,7 @@ TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint_ifelse_expression")
     CHECK_EQ("nil", toString(requireTypeAtPosition({2, 45})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint_ifelse_expression")
+TEST_CASE_FIXTURE(BuiltinsFixture, "invert_is_truthy_constraint_ifelse_expression")
 {
     CheckResult result = check(R"(
         function f(v:string?)
@@ -945,7 +945,7 @@ TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
     CHECK_EQ("any", toString(requireTypeAtPosition({6, 66})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "correctly_lookup_a_shadowed_local_that_which_was_previously_refined")
+TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_lookup_a_shadowed_local_that_which_was_previously_refined")
 {
     CheckResult result = check(R"(
         local foo: string? = "hi"

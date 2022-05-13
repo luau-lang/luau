@@ -14,7 +14,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineIntersectionFix, false);
 
 namespace Luau
 {
@@ -863,7 +862,7 @@ struct Normalize final : TypeVarVisitor
 
             TypeId theTable = result->parts.back();
 
-            if (!get<TableTypeVar>(FFlag::LuauNormalizeCombineIntersectionFix ? follow(theTable) : theTable))
+            if (!get<TableTypeVar>(follow(theTable)))
             {
                 result->parts.push_back(arena.addType(TableTypeVar{TableState::Sealed, TypeLevel{}}));
                 theTable = result->parts.back();

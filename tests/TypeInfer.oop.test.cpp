@@ -142,7 +142,7 @@ TEST_CASE_FIXTURE(Fixture, "inferring_hundreds_of_self_calls_should_not_suffocat
     CHECK_GE(50, module->internalTypes.typeVars.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "object_constructor_can_refer_to_method_of_self")
+TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_self")
 {
     // CLI-30902
     CheckResult result = check(R"(
@@ -243,7 +243,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_oop")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_oop")
 {
     CheckResult result = check(R"(
    --!strict

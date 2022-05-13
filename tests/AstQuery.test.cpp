@@ -7,7 +7,7 @@
 
 using namespace Luau;
 
-struct DocumentationSymbolFixture : Fixture
+struct DocumentationSymbolFixture : BuiltinsFixture
 {
     std::optional<DocumentationSymbol> getDocSymbol(const std::string& source, Position position)
     {

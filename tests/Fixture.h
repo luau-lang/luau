@@ -151,6 +151,11 @@ struct Fixture
     LoadDefinitionFileResult loadDefinition(const std::string& source);
 };
 
+struct BuiltinsFixture : Fixture
+{
+    BuiltinsFixture(bool freeze = true, bool prepareAutocomplete = false);
+};
+
 ModuleName fromString(std::string_view name);
 
 template<typename T>

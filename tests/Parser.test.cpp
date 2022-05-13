@@ -1618,8 +1618,6 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
 {
-    ScopedFastFlag luauParseLocationIgnoreCommentSkipInCapture{"LuauParseLocationIgnoreCommentSkipInCapture", true};
-
     // Same should hold when comments are captured
     ParseOptions opts;
     opts.captureComments = true;

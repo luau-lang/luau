@@ -53,7 +53,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     CHECK_EQ(expected, decorateWithTypes(code));
 }
 
-TEST_CASE_FIXTURE(Fixture, "xpcall_returns_what_f_returns")
+TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
 {
     const std::string code = R"(
         local a, b, c = xpcall(function() return 1, "foo" end, function() return "foo", 1 end)
@@ -105,7 +105,7 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 
 // Ideally setmetatable's second argument would be an optional free table.
 // For now, infer it as just a free table.
-TEST_CASE_FIXTURE(Fixture, "setmetatable_constrains_free_type_into_free_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
     CheckResult result = check(R"(
         local a = {}
@@ -146,7 +146,7 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 // Originally from TypeInfer.test.cpp.
 // I dont think type checking the metamethod at every site of == is the correct thing to do.
 // We should be type checking the metamethod at the call site of setmetatable.
-TEST_CASE_FIXTURE(Fixture, "error_on_eq_metamethod_returning_a_type_other_than_boolean")
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_other_than_boolean")
 {
     CheckResult result = check(R"(
         local tab = {a = 1}
@@ -428,7 +428,7 @@ TEST_CASE_FIXTURE(Fixture, "pcall_returns_at_least_two_value_but_function_return
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(Fixture, "choose_the_right_overload_for_pcall")
+TEST_CASE_FIXTURE(BuiltinsFixture, "choose_the_right_overload_for_pcall")
 {
     CheckResult result = check(R"(
         local function f(): number
@@ -449,7 +449,7 @@ TEST_CASE_FIXTURE(Fixture, "choose_the_right_overload_for_pcall")
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(Fixture, "function_returns_many_things_but_first_of_it_is_forgotten")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_many_things_but_first_of_it_is_forgotten")
 {
     CheckResult result = check(R"(
         local function f(): (number, string, boolean)

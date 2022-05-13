@@ -77,7 +77,7 @@ struct NaiveFileResolver : NullFileResolver
 
 } // namespace
 
-struct FrontendFixture : Fixture
+struct FrontendFixture : BuiltinsFixture
 {
     FrontendFixture()
     {

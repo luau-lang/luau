@@ -628,7 +628,12 @@ struct Compiler
                 return;
 
             if (fi && !fi->canInline)
-                bytecode.addDebugRemark("inlining failed: complex constructs in function body");
+            {
+                if (func->vararg)
+                    bytecode.addDebugRemark("inlining failed: function is variadic");
+                else
+                    bytecode.addDebugRemark("inlining failed: complex constructs in function body");
+            }
         }
 
         RegScope rs(this);
@@ -2342,17 +2347,28 @@ struct Compiler
         RegScope rs(this);
 
         uint8_t temp = 0;
+        bool consecutive = false;
         bool multRet = false;
 
-        // Optimization: return local value directly instead of copying it into a temporary
-        if (stat->list.size == 1 && isExprLocalReg(stat->list.data[0]))
+        // Optimization: return locals directly instead of copying them into a temporary
+        // this is very important for a single return value and occasionally effective for multiple values
+        if (stat->list.size > 0 && isExprLocalReg(stat->list.data[0]))
         {
-            AstExprLocal* le = stat->list.data[0]->as<AstExprLocal>();
-            LUAU_ASSERT(le);
+            temp = getLocal(stat->list.data[0]->as<AstExprLocal>()->local);
+            consecutive = true;
 
-            temp = getLocal(le->local);
+            for (size_t i = 1; i < stat->list.size; ++i)
+            {
+                AstExpr* v = stat->list.data[i];
+                if (!isExprLocalReg(v) || getLocal(v->as<AstExprLocal>()->local) != temp + i)
+                {
+                    consecutive = false;
+                    break;
+                }
+            }
         }
-        else if (stat->list.size > 0)
+
+        if (!consecutive && stat->list.size > 0)
         {
             temp = allocReg(stat, unsigned(stat->list.size));
 

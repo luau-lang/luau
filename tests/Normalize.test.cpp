@@ -739,7 +739,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
     CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
 }
 
-TEST_CASE_FIXTURE(Fixture, "union_of_distinct_free_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
@@ -760,7 +760,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_distinct_free_types")
     CHECK("<a, b>(a, b) -> a | b" == toString(requireType("fussy")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "constrained_intersection_of_intersections")
+TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_intersection_of_intersections")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
@@ -951,7 +951,7 @@ TEST_CASE_FIXTURE(Fixture, "nested_table_normalization_with_non_table__no_ice")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "visiting_a_type_twice_is_not_considered_normal")
+TEST_CASE_FIXTURE(BuiltinsFixture, "visiting_a_type_twice_is_not_considered_normal")
 {
     ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
 
@@ -976,7 +976,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_failure_instersection_combine_must_follow")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeCombineIntersectionFix", true},
     };
 
     CheckResult result = check(R"(

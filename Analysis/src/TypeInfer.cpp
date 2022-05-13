@@ -36,13 +36,11 @@ LUAU_FASTFLAGVARIABLE(LuauEqConstraint, false)
 LUAU_FASTFLAGVARIABLE(LuauWeakEqConstraint, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
-LUAU_FASTFLAGVARIABLE(LuauInferStatFunction, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateFollows, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix, false)
 LUAU_FASTFLAGVARIABLE(LuauDiscriminableUnions2, false)
 LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
-LUAU_FASTFLAGVARIABLE(LuauStatFunctionSimplify4, false)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckOptPass, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
@@ -53,12 +51,13 @@ LUAU_FASTFLAGVARIABLE(LuauDoNotTryToReduce, false)
 LUAU_FASTFLAGVARIABLE(LuauDoNotAccidentallyDependOnPointerOrdering, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckImplicitNumbericKeys, false)
 LUAU_FASTFLAG(LuauAnyInIsOptionalIsOptional)
-LUAU_FASTFLAGVARIABLE(LuauDecoupleOperatorInferenceFromUnifiedTypeInference, false)
 LUAU_FASTFLAGVARIABLE(LuauTableUseCounterInstead, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursionLimitException, false);
 LUAU_FASTFLAG(LuauLosslessClone)
 LUAU_FASTFLAGVARIABLE(LuauTypecheckIter, false);
+LUAU_FASTFLAGVARIABLE(LuauSuccessTypingForEqualityOperations, false)
+LUAU_FASTFLAGVARIABLE(LuauNoMethodLocations, false);
 
 namespace Luau
 {
@@ -587,7 +586,7 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
         {
             std::optional<TypeId> expectedType;
 
-            if (FFlag::LuauInferStatFunction && !fun->func->self)
+            if (!fun->func->self)
             {
                 if (auto name = fun->name->as<AstExprIndexName>())
                 {
@@ -1307,7 +1306,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         scope->bindings[name->local] = {anyIfNonstrict(quantify(funScope, ty, name->local->location)), name->local->location};
         return;
     }
-    else if (auto name = function.name->as<AstExprIndexName>(); name && FFlag::LuauStatFunctionSimplify4)
+    else if (auto name = function.name->as<AstExprIndexName>())
     {
         TypeId exprTy = checkExpr(scope, *name->expr).type;
         TableTypeVar* ttv = getMutableTableType(exprTy);
@@ -1341,78 +1340,13 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         if (ttv && ttv->state != TableState::Sealed)
             ttv->props[name->index.value] = {follow(quantify(funScope, ty, name->indexLocation)), /* deprecated */ false, {}, name->indexLocation};
     }
-    else if (FFlag::LuauStatFunctionSimplify4)
+    else
     {
         LUAU_ASSERT(function.name->is<AstExprError>());
 
         ty = follow(ty);
 
         checkFunctionBody(funScope, ty, *function.func);
-    }
-    else if (function.func->self)
-    {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify4);
-
-        AstExprIndexName* indexName = function.name->as<AstExprIndexName>();
-        if (!indexName)
-            ice("member function declaration has malformed name expression");
-
-        TypeId selfTy = checkExpr(scope, *indexName->expr).type;
-        TableTypeVar* tableSelf = getMutableTableType(selfTy);
-        if (!tableSelf)
-        {
-            if (isTableIntersection(selfTy))
-                reportError(TypeError{function.location, CannotExtendTable{selfTy, CannotExtendTable::Property, indexName->index.value}});
-            else if (!get<ErrorTypeVar>(selfTy) && !get<AnyTypeVar>(selfTy))
-                reportError(TypeError{function.location, OnlyTablesCanHaveMethods{selfTy}});
-        }
-        else if (tableSelf->state == TableState::Sealed)
-            reportError(TypeError{function.location, CannotExtendTable{selfTy, CannotExtendTable::Property, indexName->index.value}});
-
-        const bool tableIsExtendable = tableSelf && tableSelf->state != TableState::Sealed;
-
-        ty = follow(ty);
-
-        if (tableIsExtendable)
-            tableSelf->props[indexName->index.value] = {ty, /* deprecated */ false, {}, indexName->indexLocation};
-
-        const FunctionTypeVar* funTy = get<FunctionTypeVar>(ty);
-        if (!funTy)
-            ice("Methods should be functions");
-
-        std::optional<TypeId> arg0 = first(funTy->argTypes);
-        if (!arg0)
-            ice("Methods should always have at least 1 argument (self)");
-
-        checkFunctionBody(funScope, ty, *function.func);
-
-        if (tableIsExtendable)
-            tableSelf->props[indexName->index.value] = {
-                follow(quantify(funScope, ty, indexName->indexLocation)), /* deprecated */ false, {}, indexName->indexLocation};
-    }
-    else
-    {
-        LUAU_ASSERT(!FFlag::LuauStatFunctionSimplify4);
-
-        TypeId leftType = checkLValueBinding(scope, *function.name);
-
-        checkFunctionBody(funScope, ty, *function.func);
-
-        unify(ty, leftType, function.location);
-
-        LUAU_ASSERT(function.name->is<AstExprIndexName>() || function.name->is<AstExprError>());
-
-        if (auto exprIndexName = function.name->as<AstExprIndexName>())
-        {
-            if (auto typeIt = currentModule->astTypes.find(exprIndexName->expr))
-            {
-                if (auto ttv = getMutableTableType(*typeIt))
-                {
-                    if (auto it = ttv->props.find(exprIndexName->index.value); it != ttv->props.end())
-                        it->second.type = follow(quantify(funScope, leftType, function.name->location));
-                }
-            }
-        }
     }
 }
 
@@ -1523,7 +1457,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
                     // This is a shallow clone, original recursive links to self are not updated
                     TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
 
-                    clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
+                    if (!FFlag::LuauNoMethodLocations)
+                        clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
                     clone.definitionModuleName = ttv->definitionModuleName;
                     clone.name = name;
 
@@ -2652,13 +2587,58 @@ TypeId TypeChecker::checkRelationalOperation(
         std::optional<TypeId> leftMetatable = isString(lhsType) ? std::nullopt : getMetatable(follow(lhsType));
         std::optional<TypeId> rightMetatable = isString(rhsType) ? std::nullopt : getMetatable(follow(rhsType));
 
-        // TODO: this check seems odd, the second part is redundant
-        // is it meant to be if (leftMetatable && rightMetatable && leftMetatable != rightMetatable)
-        if (bool(leftMetatable) != bool(rightMetatable) && leftMetatable != rightMetatable)
+        if (FFlag::LuauSuccessTypingForEqualityOperations)
         {
-            reportError(expr.location, GenericError{format("Types %s and %s cannot be compared with %s because they do not have the same metatable",
-                                           toString(lhsType).c_str(), toString(rhsType).c_str(), toString(expr.op).c_str())});
-            return errorRecoveryType(booleanType);
+            if (leftMetatable != rightMetatable)
+            {
+                bool matches = false;
+                if (isEquality)
+                {
+                    if (const UnionTypeVar* utv = get<UnionTypeVar>(leftType); utv && rightMetatable)
+                    {
+                        for (TypeId leftOption : utv)
+                        {
+                            if (getMetatable(follow(leftOption)) == rightMetatable)
+                            {
+                                matches = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (!matches)
+                    {
+                        if (const UnionTypeVar* utv = get<UnionTypeVar>(rhsType); utv && leftMetatable)
+                        {
+                            for (TypeId rightOption : utv)
+                            {
+                                if (getMetatable(follow(rightOption)) == leftMetatable)
+                                {
+                                    matches = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+                if (!matches)
+                {
+                    reportError(expr.location, GenericError{format("Types %s and %s cannot be compared with %s because they do not have the same metatable",
+                                            toString(lhsType).c_str(), toString(rhsType).c_str(), toString(expr.op).c_str())});
+                    return errorRecoveryType(booleanType);
+                }
+            }
+        }
+        else
+        {
+            if (bool(leftMetatable) != bool(rightMetatable) && leftMetatable != rightMetatable)
+            {
+                reportError(expr.location, GenericError{format("Types %s and %s cannot be compared with %s because they do not have the same metatable",
+                                            toString(lhsType).c_str(), toString(rhsType).c_str(), toString(expr.op).c_str())});
+                return errorRecoveryType(booleanType);
+            }
         }
 
         if (leftMetatable)
@@ -2754,22 +2734,11 @@ TypeId TypeChecker::checkBinaryOperation(
     lhsType = follow(lhsType);
     rhsType = follow(rhsType);
 
-    if (FFlag::LuauDecoupleOperatorInferenceFromUnifiedTypeInference)
+    if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
     {
-        if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
-        {
-            auto name = getIdentifierOfBaseVar(expr.left);
-            reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
-            // We will fall-through to the `return anyType` check below.
-        }
-    }
-    else
-    {
-        if (!isNonstrictMode() && get<FreeTypeVar>(lhsType))
-        {
-            auto name = getIdentifierOfBaseVar(expr.left);
-            reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
-        }
+        auto name = getIdentifierOfBaseVar(expr.left);
+        reportError(expr.location, CannotInferBinaryOperation{expr.op, name, CannotInferBinaryOperation::Operation});
+        // We will fall-through to the `return anyType` check below.
     }
 
     // If we know nothing at all about the lhs type, we can usually say nothing about the result.
@@ -3231,43 +3200,27 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
     else if (auto indexName = funName.as<AstExprIndexName>())
     {
         TypeId lhsType = checkExpr(scope, *indexName->expr).type;
-
-        if (!FFlag::LuauStatFunctionSimplify4 && (get<ErrorTypeVar>(lhsType) || get<AnyTypeVar>(lhsType)))
-            return lhsType;
-
         TableTypeVar* ttv = getMutableTableType(lhsType);
 
-        if (FFlag::LuauStatFunctionSimplify4)
+        if (!ttv || ttv->state == TableState::Sealed)
         {
-            if (!ttv || ttv->state == TableState::Sealed)
-            {
-                if (auto ty = getIndexTypeFromType(scope, lhsType, indexName->index.value, indexName->indexLocation, false))
-                    return *ty;
+            if (auto ty = getIndexTypeFromType(scope, lhsType, indexName->index.value, indexName->indexLocation, false))
+                return *ty;
 
-                return errorRecoveryType(scope);
-            }
-        }
-        else
-        {
-            if (!ttv || lhsType->persistent || ttv->state == TableState::Sealed)
-                return errorRecoveryType(scope);
+            return errorRecoveryType(scope);
         }
 
         Name name = indexName->index.value;
 
         if (ttv->props.count(name))
-        {
-            if (FFlag::LuauStatFunctionSimplify4)
-                return ttv->props[name].type;
-            else
-                return errorRecoveryType(scope);
-        }
+            return ttv->props[name].type;
 
         Property& property = ttv->props[name];
 
         property.type = freshTy();
         property.location = indexName->indexLocation;
-        ttv->methodDefinitionLocations[name] = funName.location;
+        if (!FFlag::LuauNoMethodLocations)
+            ttv->methodDefinitionLocations[name] = funName.location;
         return property.type;
     }
     else if (funName.is<AstExprError>())
@@ -4669,7 +4622,8 @@ TypeId ReplaceGenerics::clean(TypeId ty)
     if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
     {
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, level, TableState::Free};
-        clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
+        if (!FFlag::LuauNoMethodLocations)
+            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
         clone.definitionModuleName = ttv->definitionModuleName;
         return addType(std::move(clone));
     }
@@ -4715,7 +4669,8 @@ TypeId Anyification::clean(TypeId ty)
     if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
     {
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, TableState::Sealed};
-        clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
+        if (!FFlag::LuauNoMethodLocations)
+            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;

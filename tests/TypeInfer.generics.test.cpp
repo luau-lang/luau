@@ -67,7 +67,7 @@ TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_polytypes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "inferred_local_vars_can_be_polytypes")
+TEST_CASE_FIXTURE(BuiltinsFixture, "inferred_local_vars_can_be_polytypes")
 {
     CheckResult result = check(R"(
         local function id(x) return x end
@@ -79,7 +79,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_local_vars_can_be_polytypes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_instantiated_polytypes")
+TEST_CASE_FIXTURE(BuiltinsFixture, "local_vars_can_be_instantiated_polytypes")
 {
     CheckResult result = check(R"(
         local function id(x) return x end
@@ -609,7 +609,7 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
     CHECK(requireType("y1") == requireType("y2"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "bound_tables_do_not_clone_original_fields")
+TEST_CASE_FIXTURE(BuiltinsFixture, "bound_tables_do_not_clone_original_fields")
 {
     CheckResult result = check(R"(
 local exports = {}
@@ -675,7 +675,7 @@ local d: D = c
         R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
 }
 
-TEST_CASE_FIXTURE(Fixture, "generic_functions_dont_cache_type_parameters")
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_functions_dont_cache_type_parameters")
 {
     CheckResult result = check(R"(
 -- See https://github.com/Roblox/luau/issues/332
@@ -1013,7 +1013,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
     CHECK(it != result.errors.end());
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
     ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
 
@@ -1078,7 +1078,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded"
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_generic_lib_function_function_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
     CheckResult result = check(R"(
 local a = {{x=4}, {x=7}, {x=1}}
