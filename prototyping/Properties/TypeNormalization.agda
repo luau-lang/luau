@@ -237,16 +237,16 @@ scalar-∩-fun-<:-never function S = scalar-∩-function-<:-never S
 scalar-∩-fun-<:-never (T ⇒ U) S = scalar-∩-function-<:-never S
 scalar-∩-fun-<:-never (F ∩ G) S = <:-trans (<:-intersect <:-∩-left <:-refl) (scalar-∩-fun-<:-never F S)
 
-<:-tgtⁿ : ∀ {S T U} → (T <: U) → T <: tgtⁿ S U
-<:-tgtⁿ {never} p = <:-unknown
-<:-tgtⁿ {nil} p = p
-<:-tgtⁿ {unknown} p = p
-<:-tgtⁿ {boolean} p = p
-<:-tgtⁿ {number} p = p
-<:-tgtⁿ {string} p = p
-<:-tgtⁿ {S ⇒ T} p = p
-<:-tgtⁿ {S ∪ T} p = p
-<:-tgtⁿ {S ∩ T} p = p
+<:-tgtⁿ : ∀ {T U} → U <: tgtⁿ T U
+<:-tgtⁿ {never} = <:-unknown
+<:-tgtⁿ {nil} = <:-refl
+<:-tgtⁿ {unknown} = <:-refl
+<:-tgtⁿ {boolean} = <:-refl
+<:-tgtⁿ {number} = <:-refl
+<:-tgtⁿ {string} = <:-refl
+<:-tgtⁿ {S ⇒ T} = <:-refl
+<:-tgtⁿ {S ∪ T} = <:-refl
+<:-tgtⁿ {S ∩ T} = <:-refl
 
 flipper : ∀ {S T U} → ((S ∪ T) ∪ U) <: ((S ∪ U) ∪ T)
 flipper = <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) <:-∪-assocl)

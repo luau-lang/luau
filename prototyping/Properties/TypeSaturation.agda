@@ -202,7 +202,7 @@ data ⋓-Overload F G : Type → Set where
 
 ∪-∪-saturated : ∀ {F} → (FunType F) → (∪-saturate F ⋓ ∪-saturate F) ⊂:ᵒ ∪-saturate F
 ∪-∪-saturated function here = <:ᵒ-refl
-∪-∪-saturated (Sⁱ ⇒ Tⁿ) here = defn here (<:-trans (∪ⁿ-<:-∪ (normalⁱ Sⁱ) (normalⁱ Sⁱ)) (<:-∪-lub <:-refl <:-refl)) (<:-tgtⁿ (<:-trans <:-∪-left (∪-<:-∪ⁿ Tⁿ Tⁿ)))
+∪-∪-saturated (Sⁱ ⇒ Tⁿ) here = defn here (<:-trans (∪ⁿ-<:-∪ (normalⁱ Sⁱ) (normalⁱ Sⁱ)) (<:-∪-lub <:-refl <:-refl)) (<:-trans (<:-trans <:-∪-left (∪-<:-∪ⁿ Tⁿ Tⁿ)) <:-tgtⁿ)
 ∪-∪-saturated (Fᶠ ∩ Gᶠ) o = ∩ᵘ-∪-saturated (∪-∪-saturated Fᶠ) (∪-∪-saturated Gᶠ) o
 
 -- ∩-saturate is ⋓-closed
@@ -210,8 +210,18 @@ data ⋓-Overload F G : Type → Set where
 ∪-saturated F = ∪-∪-saturated (normal-∩-saturate F)
 
 -- ∩-saturate is ⋒-closed
-ov-⋒-∩ : ∀ {F G R S T U} → Overload F (R ⇒ S) → Overload G (T ⇒ U) → Overload (F ⋒ G) ((R ∩ T) ⇒ (S ∩ U))
-ov-⋒-∩ = {!!}
+ov-⋒-∩ : ∀ {F G R S T U} → FunType F → FunType G → Overload F (R ⇒ S) → Overload G (T ⇒ U) → (F ⋒ G) <:ᵒ ((R ∩ T) ⇒ (S ∩ U))
+ov-⋒-∩ function function here here = defn here (∩-<:-∩ⁿ never never) (<:-∩-glb <:-refl <:-refl)
+ov-⋒-∩ function (T ⇒ U) here here = defn here (∩-<:-∩ⁿ never (normalⁱ T)) {!<:-tgtⁿ (∩ⁿ-<:-∩ unknown U)!}
+ov-⋒-∩ function (G ∩ H) here (left o) = {!!}
+ov-⋒-∩ function (G ∩ H) here (right o) = {!!}
+ov-⋒-∩ (R ⇒ S) function here here = defn here (∩-<:-∩ⁿ {!!} {!!}) {!!}
+ov-⋒-∩ (R ⇒ S) (T ⇒ U) here here = defn here (∩-<:-∩ⁿ {!!} {!!}) {!!}
+ov-⋒-∩ (R ⇒ S) (G ∩ H) here (left o) = {!!}
+ov-⋒-∩ (R ⇒ S) (G ∩ H) here (right o) = {!!}
+ov-⋒-∩ (E ∩ F) function n o = {!!}
+ov-⋒-∩ (E ∩ F) (T ⇒ U) n o = {!!}
+ov-⋒-∩ (E ∩ F) (G ∩ H) n o = {!!}
 
 ∩-∩-saturated : ∀ {F} → (FunType F) → (∩-saturate F ⋒ ∩-saturate F) ⊂:ᵒ ∩-saturate F
 ∩-∩-saturated F = {!!}
@@ -238,13 +248,13 @@ data ⋒-Overload-<: F G : Type → Set where
 
 ⋒-overload-<: : ∀ {F G S T} → FunType F → FunType G → Overload (F ⋒ G) (S ⇒ T) → ⋒-Overload-<: F G (S ⇒ T)
 ⋒-overload-<: function function here = defn (defn here here) <:-never <:-unknown
-⋒-overload-<: function (T ⇒ U) here = defn (defn here here) (∩ⁿ-<:-∩ never (normalⁱ T)) (<:-tgtⁿ (∩-<:-∩ⁿ unknown U))
+⋒-overload-<: function (T ⇒ U) here = defn (defn here here) (∩ⁿ-<:-∩ never (normalⁱ T)) (<:-trans (∩-<:-∩ⁿ unknown U) <:-tgtⁿ)
 ⋒-overload-<: function (G ∩ H) (left o) with ⋒-overload-<: function G o
 ⋒-overload-<: function (G ∩ H) (left o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (left o₂)) o₃ o₄
 ⋒-overload-<: function (G ∩ H) (right o) with ⋒-overload-<: function H o
 ⋒-overload-<: function (G ∩ H) (right o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (right o₂)) o₃ o₄
-⋒-overload-<: (R ⇒ S) function here = defn (defn here here) (∩ⁿ-<:-∩ (normalⁱ R) never) (<:-tgtⁿ (∩-<:-∩ⁿ S unknown))
-⋒-overload-<: (R ⇒ S) (T ⇒ U) here = defn (defn here here) (∩ⁿ-<:-∩ (normalⁱ R) (normalⁱ T)) (<:-tgtⁿ (∩-<:-∩ⁿ S U))
+⋒-overload-<: (R ⇒ S) function here = defn (defn here here) (∩ⁿ-<:-∩ (normalⁱ R) never) (<:-trans (∩-<:-∩ⁿ S unknown) <:-tgtⁿ)
+⋒-overload-<: (R ⇒ S) (T ⇒ U) here = defn (defn here here) (∩ⁿ-<:-∩ (normalⁱ R) (normalⁱ T)) (<:-trans (∩-<:-∩ⁿ S U) <:-tgtⁿ)
 ⋒-overload-<: (R ⇒ S) (G ∩ H) (left o) with ⋒-overload-<: (R ⇒ S) G o
 ⋒-overload-<: (R ⇒ S) (G ∩ H) (left o) | defn (defn o₁ o₂) o₃ o₄ = defn (defn o₁ (left o₂)) o₃ o₄
 ⋒-overload-<: (R ⇒ S) (G ∩ H) (right o) with ⋒-overload-<: (R ⇒ S) H o
@@ -301,7 +311,8 @@ data ⋓-Closure-<: F : Type → Set where
 ⋓-closure-<:ᵒ (defn o p q) = defn (ov o) p q
 
 ⋓-closure-<:-∩ : ∀ {F R S T U} → (FunType F) → (F ⋒ F) ⊂:ᵒ F → ⋓-Closure F (R ⇒ S) → ⋓-Closure F (T ⇒ U) → ⋓-Closure-<: F ((R ∩ T) ⇒ (S ∩ U))
-⋓-closure-<:-∩ Fᶠ p (ov n) (ov o) = ⋓-closure-<:ᵒ (p (ov-⋒-∩ n o))
+⋓-closure-<:-∩ Fᶠ p (ov n) (ov o) with ov-⋒-∩ Fᶠ Fᶠ n o
+⋓-closure-<:-∩ Fᶠ p (ov n) (ov o) | defn q q₁ q₂ = ⋓-closure-<:ᵒ (<:ᵒ-trans-<: (p q) q₁ q₂)
 ⋓-closure-<:-∩ Fᶠ p c (union d d₁) with ⋓-closure-<:-∩ Fᶠ p c d | ⋓-closure-<:-∩ Fᶠ p c d₁ 
 ⋓-closure-<:-∩ Fᶠ p c (union d d₁) | defn e e₁ e₂ | defn f f₁ f₂ = defn (union e f) (<:-trans <:-∩-distl-∪ (<:-union e₁ f₁)) (<:-trans (<:-union e₂ f₂) ∩-distl-∪-<:)
 ⋓-closure-<:-∩ Fᶠ p (union c c₁) d with ⋓-closure-<:-∩ Fᶠ p c d | ⋓-closure-<:-∩ Fᶠ p c₁ d
