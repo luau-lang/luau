@@ -113,7 +113,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     CHECK_EQ(2, dest.typeVars.size());      // One table and one function
 }
 
-TEST_CASE_FIXTURE(Fixture, "builtin_types_point_into_globalTypes_arena")
+TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
 {
     CheckResult result = check(R"(
         return {sign=math.sign}
@@ -250,7 +250,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")
     CHECK_EQ(getSingletonTypes().stringType, ctv->parts[1]);
 }
 
-TEST_CASE_FIXTURE(Fixture, "clone_self_property")
+TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
 {
     ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
 

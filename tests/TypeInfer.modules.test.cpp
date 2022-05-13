@@ -16,7 +16,7 @@ LUAU_FASTFLAG(LuauTableSubtypingVariance2)
 
 TEST_SUITE_BEGIN("TypeInferModules");
 
-TEST_CASE_FIXTURE(Fixture, "require")
+TEST_CASE_FIXTURE(BuiltinsFixture, "require")
 {
     fileResolver.source["game/A"] = R"(
         local function hooty(x: number): string
@@ -54,7 +54,7 @@ TEST_CASE_FIXTURE(Fixture, "require")
     REQUIRE_EQ("number", toString(*hType));
 }
 
-TEST_CASE_FIXTURE(Fixture, "require_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "require_types")
 {
     fileResolver.source["workspace/A"] = R"(
         export type Point = {x: number, y: number}
@@ -69,7 +69,7 @@ TEST_CASE_FIXTURE(Fixture, "require_types")
     )";
 
     CheckResult bResult = frontend.check("workspace/B");
-    dumpErrors(bResult);
+    LUAU_REQUIRE_NO_ERRORS(bResult);
 
     ModulePtr b = frontend.moduleResolver.modules["workspace/B"];
     REQUIRE(b != nullptr);
@@ -78,7 +78,7 @@ TEST_CASE_FIXTURE(Fixture, "require_types")
     REQUIRE_MESSAGE(bool(get<TableTypeVar>(hType)), "Expected table but got " << toString(hType));
 }
 
-TEST_CASE_FIXTURE(Fixture, "require_a_variadic_function")
+TEST_CASE_FIXTURE(BuiltinsFixture, "require_a_variadic_function")
 {
     fileResolver.source["game/A"] = R"(
         local T = {}
@@ -121,7 +121,7 @@ TEST_CASE_FIXTURE(Fixture, "type_error_of_unknown_qualified_type")
     REQUIRE_EQ(result.errors[0], (TypeError{Location{{1, 17}, {1, 40}}, UnknownSymbol{"SomeModule.DoesNotExist"}}));
 }
 
-TEST_CASE_FIXTURE(Fixture, "require_module_that_does_not_export")
+TEST_CASE_FIXTURE(BuiltinsFixture, "require_module_that_does_not_export")
 {
     const std::string sourceA = R"(
     )";
@@ -148,7 +148,7 @@ TEST_CASE_FIXTURE(Fixture, "require_module_that_does_not_export")
     CHECK_EQ("*unknown*", toString(hootyType));
 }
 
-TEST_CASE_FIXTURE(Fixture, "warn_if_you_try_to_require_a_non_modulescript")
+TEST_CASE_FIXTURE(BuiltinsFixture, "warn_if_you_try_to_require_a_non_modulescript")
 {
     fileResolver.source["Modules/A"] = "";
     fileResolver.sourceTypes["Modules/A"] = SourceCode::Local;
@@ -164,7 +164,7 @@ TEST_CASE_FIXTURE(Fixture, "warn_if_you_try_to_require_a_non_modulescript")
     CHECK(get<IllegalRequire>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "general_require_call_expression")
+TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_call_expression")
 {
     fileResolver.source["game/A"] = R"(
 --!strict
@@ -183,7 +183,7 @@ a = tbl.abc.def
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "general_require_type_mismatch")
+TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_type_mismatch")
 {
     fileResolver.source["game/A"] = R"(
 return { def = 4 }
@@ -219,7 +219,7 @@ return m
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "custom_require_global")
+TEST_CASE_FIXTURE(BuiltinsFixture, "custom_require_global")
 {
     CheckResult result = check(R"(
 --!nonstrict
@@ -231,7 +231,7 @@ local crash = require(game.A)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "require_failed_module")
+TEST_CASE_FIXTURE(BuiltinsFixture, "require_failed_module")
 {
     fileResolver.source["game/A"] = R"(
 return unfortunately()
@@ -267,7 +267,7 @@ function x:Destroy(): () end
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types_2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types_2")
 {
     fileResolver.source["game/A"] = R"(
 export type Type = { x: { a: number } }
@@ -285,7 +285,7 @@ type Rename = typeof(x.x)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types_3")
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types_3")
 {
     fileResolver.source["game/A"] = R"(
 local y = setmetatable({}, {})
@@ -304,7 +304,7 @@ type Rename = typeof(x.x)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "module_type_conflict")
+TEST_CASE_FIXTURE(BuiltinsFixture, "module_type_conflict")
 {
     fileResolver.source["game/A"] = R"(
 export type T = { x: number }
@@ -338,7 +338,7 @@ caused by:
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "module_type_conflict_instantiated")
+TEST_CASE_FIXTURE(BuiltinsFixture, "module_type_conflict_instantiated")
 {
     fileResolver.source["game/A"] = R"(
 export type Wrap<T> = { x: T }

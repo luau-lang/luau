@@ -11,6 +11,7 @@ LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 LUAU_FASTFLAG(LuauTypecheckOptPass)
 LUAU_FASTFLAGVARIABLE(LuauLosslessClone, false)
+LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
 {
@@ -277,7 +278,8 @@ void TypeCloner::operator()(const TableTypeVar& t)
     }
 
     ttv->definitionModuleName = t.definitionModuleName;
-    ttv->methodDefinitionLocations = t.methodDefinitionLocations;
+    if (!FFlag::LuauNoMethodLocations)
+        ttv->methodDefinitionLocations = t.methodDefinitionLocations;
     ttv->tags = t.tags;
 }
 

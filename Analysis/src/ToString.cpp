@@ -248,6 +248,13 @@ struct StringifierState
         result.name += s;
     }
 
+    void emit(TypeLevel level)
+    {
+        emit(std::to_string(level.level));
+        emit("-");
+        emit(std::to_string(level.subLevel));
+    }
+
     void emit(const char* s)
     {
         if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
@@ -379,7 +386,7 @@ struct TypeVarStringifier
         if (FFlag::DebugLuauVerboseTypeNames)
         {
             state.emit("-");
-            state.emit(std::to_string(ftv.level.level));
+            state.emit(ftv.level);
         }
     }
 
@@ -403,7 +410,10 @@ struct TypeVarStringifier
     {
         state.result.invalid = true;
 
-        state.emit("[[");
+        state.emit("[");
+        if (FFlag::DebugLuauVerboseTypeNames)
+            state.emit(ctv.level);
+        state.emit("[");
 
         bool first = true;
         for (TypeId ty : ctv.parts)
@@ -947,7 +957,7 @@ struct TypePackStringifier
         if (FFlag::DebugLuauVerboseTypeNames)
         {
             state.emit("-");
-            state.emit(std::to_string(pack.level.level));
+            state.emit(pack.level);
         }
 
         state.emit("...");

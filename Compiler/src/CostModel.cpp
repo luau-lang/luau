@@ -187,7 +187,7 @@ struct CostVisitor : AstVisitor
         if (node->is<AstStatIf>())
             result += 2;
         else if (node->is<AstStatWhile>() || node->is<AstStatRepeat>() || node->is<AstStatFor>() || node->is<AstStatForIn>())
-            result += 2;
+            result += 5;
         else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
             result += 1;
 

@@ -4713,7 +4713,6 @@ local function foo()
 end
 
 local a, b = foo()
-
 return a, b
 )",
                         1, 2),
@@ -4721,9 +4720,7 @@ return a, b
 DUPCLOSURE R0 K0
 LOADNIL R1
 LOADNIL R2
-MOVE R3 R1
-MOVE R4 R2
-RETURN R3 2
+RETURN R1 2
 )");
 
     // this happens even if the function returns conditionally
@@ -4733,7 +4730,6 @@ local function foo(a)
 end
 
 local a, b = foo(false)
-
 return a, b
 )",
                         1, 2),
@@ -4741,9 +4737,7 @@ return a, b
 DUPCLOSURE R0 K0
 LOADNIL R1
 LOADNIL R2
-MOVE R3 R1
-MOVE R4 R2
-RETURN R3 2
+RETURN R1 2
 )");
 
     // note though that we can't inline a function like this in multret context
@@ -4880,11 +4874,7 @@ LOADN R5 1
 ADD R4 R5 R1
 LOADN R5 3
 ADD R6 R1 R2
-MOVE R7 R3
-MOVE R8 R4
-MOVE R9 R5
-MOVE R10 R6
-RETURN R7 4
+RETURN R3 4
 )");
 }
 
@@ -5147,6 +5137,61 @@ LOADB R2 1
 RETURN R2 1
 LOADB R2 1
 RETURN R2 1
+RETURN R0 0
+)");
+}
+
+TEST_CASE("ReturnConsecutive")
+{
+    // we can return a single local directly
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x = ...
+return x
+)"),
+        R"(
+GETVARARGS R0 1
+RETURN R0 1
+)");
+
+    // or multiple, when they are allocated in consecutive registers
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return x, y
+)"),
+        R"(
+GETVARARGS R0 2
+RETURN R0 2
+)");
+
+    // but not if it's an expression
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return x, y + 1
+)"),
+        R"(
+GETVARARGS R0 2
+MOVE R2 R0
+ADDK R3 R1 K0
+RETURN R2 2
+)");
+
+    // or a local with wrong register number
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return y, x
+)"),
+        R"(
+GETVARARGS R0 2
+MOVE R2 R1
+MOVE R3 R0
+RETURN R2 2
+)");
+
+    // also double check the optimization doesn't trip on no-argument return (these are rare)
+    CHECK_EQ("\n" + compileFunction0(R"(
+return
+)"),
+        R"(
 RETURN R0 0
 )");
 }
