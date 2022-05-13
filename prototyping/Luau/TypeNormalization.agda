@@ -9,6 +9,7 @@ _∩ⁿˢ_ : Type → Type → Type
 _∪ⁿ_ : Type → Type → Type
 _∩ⁿ_ : Type → Type → Type
 _⇒ⁿ_ : Type → Type → Type
+tgtⁿ : Type → Type → Type
 
 -- Union of function types
 (F₁ ∩ F₂) ∪ᶠ G = (F₁ ∪ᶠ G) ∩ (F₂ ∪ᶠ G)
@@ -54,8 +55,10 @@ unknown ∪ⁿˢ T = unknown
 F ∪ⁿˢ T = F ∪ T
 
 -- Functions on normalized types
-never ⇒ⁿ T = never ⇒ unknown
-S ⇒ⁿ T = S ⇒ T
+S ⇒ⁿ T = S ⇒ (tgtⁿ S T)
+
+tgtⁿ never T = unknown
+tgtⁿ S T = T
 
 -- Normalize!
 normalize : Type → Type

@@ -4,7 +4,7 @@ module Properties.TypeNormalization where
 
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 open import Luau.Subtyping using (Tree; Language; function; scalar; unknown; right; scalar-function-err; _,_)
-open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; _⇒ⁿ_; normalize)
+open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; _⇒ⁿ_; tgtⁿ; normalize)
 open import Luau.Subtyping using (_<:_)
 open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; <:-∩-symm; <:-function; <:-function-∪-∩; <:-function-∩-∪; <:-function-∪; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm; <:-intersect;  ∪-distl-∩-<:; ∪-distr-∩-<:; <:-∪-distr-∩; <:-∪-distl-∩; ∩-distl-∪-<:; <:-∩-distl-∪; <:-∩-distr-∪; scalar-∩-function-<:-never; scalar-≢-∩-<:-never; <:-function-never)
 
@@ -236,6 +236,17 @@ scalar-∩-fun-<:-never : ∀ {F S} → FunType F → Scalar S → (F ∩ S) <: 
 scalar-∩-fun-<:-never function S = scalar-∩-function-<:-never S
 scalar-∩-fun-<:-never (T ⇒ U) S = scalar-∩-function-<:-never S
 scalar-∩-fun-<:-never (F ∩ G) S = <:-trans (<:-intersect <:-∩-left <:-refl) (scalar-∩-fun-<:-never F S)
+
+<:-tgtⁿ : ∀ {S T U} → (T <: U) → T <: tgtⁿ S U
+<:-tgtⁿ {never} p = <:-unknown
+<:-tgtⁿ {nil} p = p
+<:-tgtⁿ {unknown} p = p
+<:-tgtⁿ {boolean} p = p
+<:-tgtⁿ {number} p = p
+<:-tgtⁿ {string} p = p
+<:-tgtⁿ {S ⇒ T} p = p
+<:-tgtⁿ {S ∪ T} p = p
+<:-tgtⁿ {S ∩ T} p = p
 
 flipper : ∀ {S T U} → ((S ∪ T) ∪ U) <: ((S ∪ U) ∪ T)
 flipper = <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) <:-∪-assocl)

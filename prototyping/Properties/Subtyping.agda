@@ -165,6 +165,12 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-∩-symm : ∀ {T U} → (T ∩ U) <: (U ∩ T)
 <:-∩-symm t (p₁ , p₂) = (p₂ , p₁)
 
+<:-∩-assocl : ∀ {S T U} → (S ∩ (T ∩ U)) <: ((S ∩ T) ∩ U)
+<:-∩-assocl t (p , (p₁ , p₂)) = (p , p₁) , p₂
+
+<:-∩-assocr : ∀ {S T U} → ((S ∩ T) ∩ U) <: (S ∩ (T ∩ U))
+<:-∩-assocr t ((p , p₁) , p₂) = p , (p₁ , p₂)
+
 ≮:-∩-left : ∀ {S T U} → (S ≮: T) → (S ≮: (T ∩ U))
 ≮:-∩-left (witness t p q) = witness t p (left q)
 
@@ -205,6 +211,9 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 ∪-distr-∩-<: t (left p₁ , left p₂) = left (p₁ , p₂)
 ∪-distr-∩-<: t (left p₁ , right p₂) = right p₂
 ∪-distr-∩-<: t (right p₁ , p₂) = right p₁
+
+∩-<:-∪ : ∀ {S T} → (S ∩ T) <: (S ∪ T)
+∩-<:-∪ t (p , _) = left p
 
 -- Properties of functions
 <:-function : ∀ {R S T U} → (R <: S) → (T <: U) → (S ⇒ T) <: (R ⇒ U)
