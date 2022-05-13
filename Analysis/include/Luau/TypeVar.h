@@ -329,7 +329,7 @@ struct TableTypeVar
     // We need to know which is which when we stringify types.
     std::optional<std::string> syntheticName;
 
-    std::map<Name, Location> methodDefinitionLocations;
+    std::map<Name, Location> methodDefinitionLocations; // TODO: Remove with FFlag::LuauNoMethodLocations
     std::vector<TypeId> instantiatedTypeParams;
     std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;

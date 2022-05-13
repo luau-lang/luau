@@ -104,7 +104,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_arguments_table2")
     REQUIRE(!result.errors.empty());
 }
 
-TEST_CASE_FIXTURE(Fixture, "error_takes_optional_arguments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_takes_optional_arguments")
 {
     CheckResult result = check(R"(
         error("message")
@@ -517,10 +517,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_allow_cyclic_unions_to_be_inferred")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_union_write_indirect")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-
     CheckResult result = check(R"(
         type A = { x: number, y: (number) -> string } | { z: number, y: (number) -> string }
 

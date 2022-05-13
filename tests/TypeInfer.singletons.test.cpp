@@ -415,7 +415,7 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_with_a_singleton_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
     ScopedFastFlag sff[]{
         {"LuauWidenIfSupertypeIsFree2", true},

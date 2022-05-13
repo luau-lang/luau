@@ -316,8 +316,6 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-
     CheckResult result = check(R"(
         type X = { x: (number) -> number }
         type Y = { y: (string) -> string }
@@ -351,8 +349,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-
     // After normalization, previous 'table_intersection_write_sealed_indirect' is identical to this one
     CheckResult result = check(R"(
     type XY = { x: (number) -> number, y: (string) -> string }
@@ -375,7 +371,7 @@ caused by:
     CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'XY'");
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_intersection_setmetatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersection_setmetatable")
 {
     CheckResult result = check(R"(
         local t: {} & {}

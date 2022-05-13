@@ -29,7 +29,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
     CHECK_EQ(*typeChecker.numberType, *requireType("q"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_loop")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
 {
     CheckResult result = check(R"(
         local n
@@ -46,7 +46,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop")
     CHECK_EQ(*typeChecker.stringType, *requireType("s"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_next")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
 {
     CheckResult result = check(R"(
         local n
@@ -90,7 +90,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
     CHECK_EQ("Cannot call non-function string", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_with_just_one_iterator_is_ok")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
 {
     CheckResult result = check(R"(
         local function keys(dictionary)
@@ -109,7 +109,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_with_just_one_iterator_is_ok")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_with_a_custom_iterator_should_type_check")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
 {
     CheckResult result = check(R"(
         local function range(l, h): () -> number
@@ -161,7 +161,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
     REQUIRE(get<CannotCallNonFunction>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_the_right_amount_of_values")
 {
     CheckResult result = check(R"(
         local function hasDivisors(value: number, table)
@@ -210,7 +210,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_error_on_factory_not_returning_the_right
     CHECK_EQ(typeChecker.stringType, tm->givenType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args_but_none_given")
 {
     CheckResult result = check(R"(
         function prime_iter(state, index)
@@ -288,7 +288,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop_condition_binds_to_its_block")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "symbols_in_repeat_block_should_not_be_visible_beyond_until_condition")
+TEST_CASE_FIXTURE(BuiltinsFixture, "symbols_in_repeat_block_should_not_be_visible_beyond_until_condition")
 {
     CheckResult result = check(R"(
         repeat
@@ -301,7 +301,7 @@ TEST_CASE_FIXTURE(Fixture, "symbols_in_repeat_block_should_not_be_visible_beyond
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "varlist_declared_by_for_in_loop_should_be_free")
+TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_free")
 {
     CheckResult result = check(R"(
         local T = {}
@@ -316,7 +316,7 @@ TEST_CASE_FIXTURE(Fixture, "varlist_declared_by_for_in_loop_should_be_free")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "properly_infer_iteratee_is_a_free_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "properly_infer_iteratee_is_a_free_table")
 {
     // In this case, we cannot know the element type of the table {}.  It could be anything.
     // We therefore must initially ascribe a free typevar to iter.
@@ -329,7 +329,7 @@ TEST_CASE_FIXTURE(Fixture, "properly_infer_iteratee_is_a_free_table")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_while")
+TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_while")
 {
     CheckResult result = check(R"(
         while true do
@@ -346,7 +346,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_while")
     CHECK_EQ(us->name, "a");
 }
 
-TEST_CASE_FIXTURE(Fixture, "ipairs_produces_integral_indices")
+TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_produces_integral_indices")
 {
     CheckResult result = check(R"(
         local key
@@ -378,7 +378,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_where_iteratee_is_free")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "unreachable_code_after_infinite_loop")
+TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
 {
     {
         CheckResult result = check(R"(
@@ -460,7 +460,7 @@ TEST_CASE_FIXTURE(Fixture, "unreachable_code_after_infinite_loop")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "loop_typecheck_crash_on_empty_optional")
+TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -541,7 +541,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
     CHECK_EQ("Cannot iterate over a table without indexer", ge->message);
 }
 
-TEST_CASE_FIXTURE(Fixture, "loop_iter_iter_metamethod")
+TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")
 {
     ScopedFastFlag sff{"LuauTypecheckIter", true};
 

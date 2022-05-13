@@ -27,7 +27,7 @@ template<class BaseType>
 struct ACFixtureImpl : BaseType
 {
     ACFixtureImpl()
-        : Fixture(true, true)
+        : BaseType(true, true)
     {
     }
 
@@ -111,6 +111,18 @@ struct ACFixtureImpl : BaseType
 };
 
 struct ACFixture : ACFixtureImpl<Fixture>
+{
+    ACFixture()
+        : ACFixtureImpl<Fixture>()
+    {
+        addGlobalBinding(frontend.typeChecker, "table", Binding{typeChecker.anyType});
+        addGlobalBinding(frontend.typeChecker, "math", Binding{typeChecker.anyType});
+        addGlobalBinding(frontend.typeCheckerForAutocomplete, "table", Binding{typeChecker.anyType});
+        addGlobalBinding(frontend.typeCheckerForAutocomplete, "math", Binding{typeChecker.anyType});
+    }
+};
+
+struct ACBuiltinsFixture : ACFixtureImpl<BuiltinsFixture>
 {
 };
 
@@ -277,7 +289,7 @@ TEST_CASE_FIXTURE(ACFixture, "function_parameters")
     CHECK(ac.entryMap.count("test"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "get_member_completions")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "get_member_completions")
 {
     check(R"(
         local a = table.@1
@@ -376,7 +388,7 @@ TEST_CASE_FIXTURE(ACFixture, "table_intersection")
     CHECK(ac.entryMap.count("c3"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "get_string_completions")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "get_string_completions")
 {
     check(R"(
         local a = ("foo"):@1
@@ -427,7 +439,7 @@ TEST_CASE_FIXTURE(ACFixture, "method_call_inside_function_body")
     CHECK(!ac.entryMap.count("math"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "method_call_inside_if_conditional")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "method_call_inside_if_conditional")
 {
     check(R"(
         if table:  @1
@@ -1884,7 +1896,7 @@ ex.b(function(x:
     CHECK(!ac.entryMap.count("(done) -> number"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "suggest_external_module_type")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "suggest_external_module_type")
 {
     fileResolver.source["Module/A"] = R"(
 export type done = { x: number, y: number }
@@ -2235,7 +2247,7 @@ local a: aaa.do
     CHECK(ac.entryMap.count("other"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocompleteSource")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteSource")
 {
     std::string_view source = R"(
         local a = table. -- Line 1
@@ -2269,7 +2281,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_comments")
     CHECK_EQ(0, ac.entryMap.size());
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocompleteProp_index_function_metamethod_is_variadic")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteProp_index_function_metamethod_is_variadic")
 {
     std::string_view source = R"(
         type Foo = {x: number}
@@ -2720,7 +2732,7 @@ type A<T... = ...@1> = () -> T
     CHECK(ac.entryMap.count("string"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_oop_implicit_self")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_oop_implicit_self")
 {
     check(R"(
 --!strict
@@ -2728,15 +2740,15 @@ local Class = {}
 Class.__index = Class
 type Class = typeof(setmetatable({} :: { x: number }, Class))
 function Class.new(x: number): Class
-	return setmetatable({x = x}, Class)
+    return setmetatable({x = x}, Class)
 end
 function Class.getx(self: Class)
-	return self.x
+    return self.x
 end
 function test()
-	local c = Class.new(42)
-	local n = c:@1
-	print(n)
+    local c = Class.new(42)
+    local n = c:@1
+    print(n)
 end
     )");
 
@@ -2745,7 +2757,7 @@ end
     CHECK(ac.entryMap.count("getx"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_on_string_singletons")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 {
     check(R"(
         --!strict
@@ -2989,7 +3001,7 @@ s.@1
     CHECK(ac.entryMap["sub"].wrongIndexType == true);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "string_library_non_self_calls_are_fine")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "string_library_non_self_calls_are_fine")
 {
     ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
 
@@ -3007,7 +3019,7 @@ string.@1
     CHECK(ac.entryMap["sub"].wrongIndexType == false);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "string_library_self_calls_are_invalid")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "string_library_self_calls_are_invalid")
 {
     ScopedFastFlag selfCallAutocompleteFix{"LuauSelfCallAutocompleteFix", true};
 

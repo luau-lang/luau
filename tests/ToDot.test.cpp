@@ -224,7 +224,7 @@ n1 -> n4 [label="typePackParam"];
     (void)toDot(requireType("a"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable")
 {
     CheckResult result = check(R"(
 local a: typeof(setmetatable({}, {}))

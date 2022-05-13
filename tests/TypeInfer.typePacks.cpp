@@ -339,7 +339,7 @@ local c: Packed<string, number, boolean>
     CHECK_EQ(toString(ttvC->instantiatedTypePackParams[0], {true}), "number, boolean");
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_import")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_type_packs_import")
 {
     fileResolver.source["game/A"] = R"(
 export type Packed<T, U...> = { a: T, b: (U...) -> () }
@@ -369,7 +369,7 @@ local d: { a: typeof(c) }
     CHECK_EQ(toString(requireType("d")), "{| a: Packed<string, number, boolean> |}");
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_pack_type_parameters")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_pack_type_parameters")
 {
     fileResolver.source["game/A"] = R"(
 export type Packed<T, U...> = { a: T, b: (U...) -> () }
@@ -784,7 +784,7 @@ local a: Y<...number>
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_default_export")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_default_export")
 {
     fileResolver.source["Module/Types"] = R"(
 export type A<T, U = string> = { a: T, b: U }

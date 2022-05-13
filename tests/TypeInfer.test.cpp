@@ -161,7 +161,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_nearly_identical_recursive_types")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
+TEST_CASE_FIXTURE(BuiltinsFixture, "warn_on_lowercase_parent_property")
 {
     CheckResult result = check(R"(
         local M = require(script.parent.DoesNotMatter)
@@ -175,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
     REQUIRE_EQ("parent", ed->symbol);
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_case")
+TEST_CASE_FIXTURE(BuiltinsFixture, "weird_case")
 {
     CheckResult result = check(R"(
         local function f() return 4 end
@@ -419,7 +419,7 @@ TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
     CHECK_EQ("any", toString(requireType("bar")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_do")
+TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_do")
 {
     CheckResult result = check(R"(
         do
@@ -534,7 +534,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_assert")
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_replacement_name_in_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_in_error")
 {
     {
         CheckResult result = check(R"(
@@ -587,7 +587,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_replacement_name_in_error
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "index_expr_should_be_checked")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_expr_should_be_checked")
 {
     CheckResult result = check(R"(
         local foo: any
@@ -768,7 +768,7 @@ b, c = {2, "s"}, {"b", 4}
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types_mutable_lval")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_assignment_value_types_mutable_lval")
 {
     CheckResult result = check(R"(
 local a = {}
@@ -836,7 +836,7 @@ local a: number? = if true then 1 else nil
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_3")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_if_else_expressions_expected_type_3")
 {
     CheckResult result = check(R"(
 local function times<T>(n: any, f: () -> T)
@@ -907,7 +907,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_found_this")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "recursive_metatable_crash")
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_crash")
 {
     CheckResult result = check(R"(
 local function getIt()
@@ -1041,7 +1041,6 @@ TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
 TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_table")
 {
     ScopedFastFlag flag[] = {
-        {"LuauStatFunctionSimplify4", true},
         {"LuauLowerBoundsCalculation", true},
         {"LuauDifferentOrderOfUnificationDoesntMatter2", true},
     };

@@ -60,7 +60,7 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
     CHECK_EQ("TheTable", toString(&table));
 }
 
-TEST_CASE_FIXTURE(Fixture, "exhaustive_toString_of_cyclic_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 {
     CheckResult result = check(R"(
         --!strict
@@ -338,7 +338,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     REQUIRE_EQ("c", toString(params[2], opts));
 }
 
-TEST_CASE_FIXTURE(Fixture, "toStringDetailed2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
     ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
 

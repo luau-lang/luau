@@ -76,9 +76,9 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    // loop baseline cost is 2
-    CHECK_EQ(3, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(3, Luau::Compile::computeCost(model, args2, 1));
+    // loop baseline cost is 5
+    CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("MutableVariable")
@@ -154,8 +154,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(38, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(37, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(50, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(49, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("Conditional")
@@ -219,8 +219,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(4, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(3, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(7, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_SUITE_END();
