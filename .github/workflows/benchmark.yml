@@ -86,4 +86,4 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.TEST_GITHUB_TOKEN }}
