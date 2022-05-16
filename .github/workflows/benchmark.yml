@@ -81,9 +81,10 @@ jobs:
           tool: "benchmarkluau"
           output-file-path: ${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./dev/bench/data.json
-          alert-threshold: 115%
-          fail-threshold: 130%
+          alert-threshold: 150%
+          fail-threshold: 200%
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
+          # TODO: Revert to GITHUB_TOKEN
           github-token: ${{ secrets.TEST_GITHUB_TOKEN }}
