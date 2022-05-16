@@ -48,9 +48,8 @@ jobs:
 
       - uses: actions/setup-python@v3
         with:
-          python-version: "3.x"
+          python-version: "3.9"
           architecture: "x64"
-          cache: "pip"
 
       - name: Install requests
         run: python -m pip install requests
