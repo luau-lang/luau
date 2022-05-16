@@ -61,7 +61,6 @@ jobs:
         with:
           python-version: "3.x" # Version range or exact version of a Python version to use, using SemVer's version range syntax
           architecture: "x64"
-        run: pip install requests
 
       #Run benchmark with `python bench/bench.py` and stores the output to a file
       - name: Run benchmark
