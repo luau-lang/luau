@@ -80,5 +80,4 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          # TODO: Revert to GITHUB_TOKEN
           github-token: ${{ secrets.GITHUB_TOKEN }}
