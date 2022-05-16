@@ -71,6 +71,7 @@ jobs:
           git fetch --no-tags --depth=1 origin gh-pages
           git checkout --track origin/gh-pages
           git pull
+          git status
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
