@@ -617,4 +617,40 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
     CHECK_EQ("test<a>(first: a, second: string, ...: number): a", toStringNamedFunction("test", *ftv, opts));
 }
 
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
+{
+    ScopedFastFlag flag{"LuauDocFuncParameters", true};
+    CheckResult result = check(R"(
+        local foo = {}
+        function foo:method(arg: string): ()
+        end
+    )");
+
+    TypeId parentTy = requireType("foo");
+    auto ttv = get<TableTypeVar>(follow(parentTy));
+    auto ftv = get<FunctionTypeVar>(ttv->props.at("method").type);
+
+    CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
+{
+    ScopedFastFlag flag{"LuauDocFuncParameters", true};
+    CheckResult result = check(R"(
+        local foo = {}
+        function foo:method(arg: string): ()
+        end
+    )");
+
+    TypeId parentTy = requireType("foo");
+    auto ttv = get<TableTypeVar>(follow(parentTy));
+    auto ftv = get<FunctionTypeVar>(ttv->props.at("method").type);
+
+    ToStringOptions opts;
+    opts.hideFunctionSelfArgument = true;
+    CHECK_EQ("foo:method<a>(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
+}
+
+
 TEST_SUITE_END();

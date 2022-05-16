@@ -1230,6 +1230,14 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
         size_t idx = 0;
         while (argPackIter != end(ftv.argTypes))
         {
+            // ftv takes a self parameter as the first argument, skip it if specified in option
+            if (idx == 0 && ftv.hasSelf && opts.hideFunctionSelfArgument)
+            {
+                ++argPackIter;
+                ++idx;
+                continue;
+            }
+
             if (!first)
                 state.emit(", ");
             first = false;
