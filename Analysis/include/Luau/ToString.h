@@ -28,6 +28,7 @@ struct ToStringOptions
     bool functionTypeArguments = false;           // If true, output function type argument names when they are available
     bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
     bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
+    bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
     bool indent = false;
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
