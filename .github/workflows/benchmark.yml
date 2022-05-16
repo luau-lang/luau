@@ -17,7 +17,6 @@ on:
       - "rfcs/**"
       - "*.md"
       - "prototyping/**"
-    # we don't use paths-ignore in required pass workflows
 
 jobs:
   benchmarks-run:
@@ -37,7 +36,7 @@ jobs:
               timeout: 12,
               title: "benchmarkluau",
               cachegrindTitle: "Performance",
-              cachegrindIterCount: 20, # Extra iterations to ensure we hit the first artificial slowdown.
+              cachegrindIterCount: 20,
             }
 
     runs-on: ${{ matrix.os }}
@@ -49,22 +48,29 @@ jobs:
 
       - uses: actions/setup-python@v3
         with:
-          python-version: "3.x" # Version range or exact version of a Python version to use, using SemVer's version range syntax
+          python-version: "3.x"
           architecture: "x64"
 
       - name: Install requests
         run: python -m pip install requests
 
-      #Run benchmark with `python bench/bench.py` and stores the output to a file
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-        # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
         uses: actions/cache@v1
         with:
           path: ./cache
           key: ${{ runner.os }}-benchmark
+
+      - name: Checkout gh-pages
+        run: |
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git status
+          git fetch --no-tags --depth=1 origin gh-pages
+          git checkout --track origin/gh-pages
+          git pull
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
@@ -80,13 +86,3 @@ jobs:
           comment-on-alert: true
           comment-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      # Checkout gh-pages
-      - name: Checkout gh-pages
-        run: |
-          git config user.name github-actions
-          git config user.email github@users.noreply.github.com
-          git status
-          git fetch --no-tags --depth=1 origin gh-pages
-          git checkout --track origin/gh-pages
-          git pull
