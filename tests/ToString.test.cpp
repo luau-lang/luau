@@ -126,6 +126,39 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_inte
     CHECK_EQ(toString(&itv), "((number, string) -> (string, number)) & ((string, number) -> (number, string))");
 }
 
+TEST_CASE_FIXTURE(Fixture, "intersections_respects_use_line_breaks")
+{
+    CheckResult result = check(R"(
+        local a: ((string) -> string) & ((number) -> number)
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+
+    //clang-format off
+    CHECK_EQ("((number) -> number)"
+             "\n& ((string) -> string)",
+        toString(requireType("a"), opts));
+    //clang-format on
+}
+
+TEST_CASE_FIXTURE(Fixture, "unions_respects_use_line_breaks")
+{
+    CheckResult result = check(R"(
+        local a: string | number | boolean
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+
+    //clang-format off
+    CHECK_EQ("boolean"
+             "\n| number"
+             "\n| string",
+        toString(requireType("a"), opts));
+    //clang-format on
+}
+
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded")
 {
     TableTypeVar ttv{};

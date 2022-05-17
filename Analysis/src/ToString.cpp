@@ -744,8 +744,10 @@ struct TypeVarStringifier
         bool first = true;
         for (std::string& ss : results)
         {
-            if (!first)
-                state.emit(" | ");
+            if (!first) {
+                state.newline();
+                state.emit("| ");
+            }
             state.emit(ss);
             first = false;
         }
@@ -797,8 +799,10 @@ struct TypeVarStringifier
         bool first = true;
         for (std::string& ss : results)
         {
-            if (!first)
-                state.emit(" & ");
+            if (!first) {
+                state.newline();
+                state.emit("& ");
+            }
             state.emit(ss);
             first = false;
         }
