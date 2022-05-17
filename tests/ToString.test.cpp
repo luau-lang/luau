@@ -136,8 +136,8 @@ TEST_CASE_FIXTURE(Fixture, "intersections_respects_use_line_breaks")
     opts.useLineBreaks = true;
 
     //clang-format off
-    CHECK_EQ("((number) -> number)"
-             "\n& ((string) -> string)",
+    CHECK_EQ("((number) -> number)\n"
+             "& ((string) -> string)",
         toString(requireType("a"), opts));
     //clang-format on
 }
@@ -152,9 +152,9 @@ TEST_CASE_FIXTURE(Fixture, "unions_respects_use_line_breaks")
     opts.useLineBreaks = true;
 
     //clang-format off
-    CHECK_EQ("boolean"
-             "\n| number"
-             "\n| string",
+    CHECK_EQ("boolean\n"
+             "| number\n"
+             "| string",
         toString(requireType("a"), opts));
     //clang-format on
 }
