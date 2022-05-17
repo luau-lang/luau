@@ -594,22 +594,22 @@ struct TypeVarStringifier
         {
         case TableState::Sealed:
             state.result.invalid = true;
-            openbrace = "{| ";
-            closedbrace = " |}";
+            openbrace = "{|";
+            closedbrace = "|}";
             break;
         case TableState::Unsealed:
-            openbrace = "{ ";
-            closedbrace = " }";
+            openbrace = "{";
+            closedbrace = "}";
             break;
         case TableState::Free:
             state.result.invalid = true;
-            openbrace = "{- ";
-            closedbrace = " -}";
+            openbrace = "{-";
+            closedbrace = "-}";
             break;
         case TableState::Generic:
             state.result.invalid = true;
-            openbrace = "{+ ";
-            closedbrace = " +}";
+            openbrace = "{+";
+            closedbrace = "+}";
             break;
         }
 
@@ -628,6 +628,7 @@ struct TypeVarStringifier
         bool comma = false;
         if (ttv.indexer)
         {
+            state.newline();
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");
@@ -642,6 +643,10 @@ struct TypeVarStringifier
             if (comma)
             {
                 state.emit(",");
+                state.newline();
+            }
+            else
+            {
                 state.newline();
             }
 
@@ -670,6 +675,10 @@ struct TypeVarStringifier
         }
 
         state.dedent();
+        if (comma)
+            state.newline();
+        else
+            state.emit("  ");        
         state.emit(closedbrace);
 
         state.unsee(&ttv);

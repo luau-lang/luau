@@ -60,6 +60,40 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
     CHECK_EQ("TheTable", toString(&table));
 }
 
+TEST_CASE_FIXTURE(Fixture, "empty_table")
+{
+    CheckResult result = check(R"(
+        local a: {}
+    )");
+
+    CHECK_EQ("{|  |}", toString(requireType("a")));
+
+    // Should stay the same with useLineBreaks enabled
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+    CHECK_EQ("{|  |}", toString(requireType("a"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
+{
+    CheckResult result = check(R"(
+        local a: { prop: string, anotherProp: number, thirdProp: boolean }
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+    opts.indent = true;
+
+    //clang-format off
+    CHECK_EQ("{|\n"
+             "    anotherProp: number,\n"
+             "    prop: string,\n"
+             "    thirdProp: boolean\n"
+             "|}",
+        toString(requireType("a"), opts));
+    //clang-format on
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 {
     CheckResult result = check(R"(
