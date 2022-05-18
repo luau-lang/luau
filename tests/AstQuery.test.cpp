@@ -92,4 +92,17 @@ bar(foo())
     CHECK_EQ("number", toString(*expectedOty));
 }
 
+TEST_CASE_FIXTURE(Fixture, "ast_ancestry_at_eof")
+{
+    check(R"(
+if true then
+    )");
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), Position(2, 3));
+    REQUIRE_GE(ancestry.size(), 2);
+    AstStat* parentStat = ancestry[ancestry.size() - 2]->asStat();
+    REQUIRE(bool(parentStat));
+    REQUIRE(parentStat->is<AstStatIf>());
+}
+
 TEST_SUITE_END();
