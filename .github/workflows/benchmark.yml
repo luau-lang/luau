@@ -44,7 +44,7 @@ jobs:
       - uses: actions/checkout@v2
 
       - run: |
-          git checkout ${{ GITHUB_SHA }}
+          git checkout ${{ github.sha }}
           for historicTags in $(git rev-list --tags -n 9); do
             git checkout $historicTags
             echo "Checking out $historicTags"
