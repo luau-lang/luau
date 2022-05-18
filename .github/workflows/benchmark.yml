@@ -1,15 +1,6 @@
 name: Luau Benchmarks
 
 on:
-  push:
-    branches:
-      - "master"
-    paths-ignore:
-      - "docs/**"
-      - "papers/**"
-      - "rfcs/**"
-      - "*.md"
-      - "prototyping/**"
   pull_request:
     paths-ignore:
       - "docs/**"
