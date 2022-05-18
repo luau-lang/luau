@@ -98,7 +98,7 @@ TEST_CASE_FIXTURE(Fixture, "ast_ancestry_at_eof")
 if true then
     )");
 
-    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), Position(2, 3));
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), Position(2, 4));
     REQUIRE_GE(ancestry.size(), 2);
     AstStat* parentStat = ancestry[ancestry.size() - 2]->asStat();
     REQUIRE(bool(parentStat));
