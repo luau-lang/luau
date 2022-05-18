@@ -42,6 +42,13 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
+        run: |
+          git checkout ${{ GITHUB_SHA }}
+          for historicTags in $(git rev-list --tags -n 9); do
+            git checkout $historicTags
+            echo "Checking out $historicTags"
+            git pull
+          done
 
       - name: Build Luau
         run: make config=release luau luau-analyze
