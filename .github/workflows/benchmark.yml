@@ -49,7 +49,7 @@ jobs:
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Cd 1 level up and create gh-pages dir then cd into it
-        run: cd .. && mkdir gh-pages && cd gh-pages && pwd && ls
+        run: ls && cd .. && mkdir gh-pages && cd gh-pages && pwd && ls
 
       - name: Switch to & checkout gh-pages repo
         uses: actions/checkout@v3
