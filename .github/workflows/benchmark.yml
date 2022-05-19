@@ -48,7 +48,7 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-      - run: cd .. && mkdir gh-pages && cd gh-pages
+      - run: cd ../../ && mkdir gh-pages && cd gh-pages
 
       # in gh-pages directory
       - name: Switch to & checkout gh-pages repo
