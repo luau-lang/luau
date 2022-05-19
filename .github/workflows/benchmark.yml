@@ -72,14 +72,6 @@ jobs:
       - name: Cd back to luau before checking out original repo
         run: cd .. && pwd && ls
 
-      - name: Switch to original luau repo
-        uses: actions/checkout@v3
-        with:
-          repository: ${{ github.repository }}
-
-      - name: Print current directory & list files
-        run: pwd && ls
-
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
@@ -87,7 +79,7 @@ jobs:
           name: ${{ matrix.bench.title }}
           tool: "benchmarkluau"
           # This should come from Luau repo
-          output-file-path: ${{ matrix.bench.script }}-output.txt
+          output-file-path: ../${{ matrix.bench.script }}-output.txt
 
           # This should map to thebenchmark results repo
           external-data-json-path: ../gh-pages/dev/bench/data.json
