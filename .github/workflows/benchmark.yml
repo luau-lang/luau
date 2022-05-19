@@ -73,6 +73,9 @@ jobs:
         with:
           repository: ${{ github.repository }}
 
+      - name: Print current directory & list files
+        run: pwd && ls
+
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
