@@ -34,12 +34,6 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: "Print current working dir"
-        run: ls && pwd
-
-      - name: "Print parent dir"
-        run: cd .. && ls && pwd
-
       - name: Build Luau
         run: make config=release luau luau-analyze
 
@@ -54,16 +48,20 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-      - run: cd ../../ && mkdir gh-pages && cd gh-pages
+      - name: Create gh-pages dir in runner root dir
+        run: |
+          cd .. 
+          mkdir gh-pages 
+          cd gh-pages
 
       # in gh-pages directory
-      - name: Switch to & checkout gh-pages repo
+      - name: Switch to benchmark results repo
         uses: actions/checkout@v3
         with:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
 
-      - name: Checkout gh-pages
+      - name: Checkout gh-pages (benchmark results) source
         run: |
           git status
           git fetch --no-tags --depth=1 origin main
@@ -72,7 +70,7 @@ jobs:
           git status
 
       # Switch back to luau directory
-      - run: pwd && ls &&cd .. && pwd && ls
+      - run: pwd && ls && cd .. && pwd && ls
       - run: ls gh-pages
       - run: ls luau
 
