@@ -728,8 +728,6 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_verifies_types_do_intersect")
 
 TEST_CASE_FIXTURE(Fixture, "operator_eq_operands_are_not_subtypes_of_each_other_but_has_overlap")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: string | number, b: boolean | number)
             return a == b

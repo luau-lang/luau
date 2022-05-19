@@ -187,7 +187,6 @@ struct TypeChecker
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIndexExpr& expr);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprFunction& expr, std::optional<TypeId> expectedType = std::nullopt);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprTable& expr, std::optional<TypeId> expectedType = std::nullopt);
-    ExprResult<TypeId> checkExpr_(const ScopePtr& scope, const AstExprTable& expr, std::optional<TypeId> expectedType = std::nullopt);
     ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprUnary& expr);
     TypeId checkRelationalOperation(
         const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates = {});
@@ -395,7 +394,7 @@ private:
         const AstArray<AstGenericType>& genericNames, const AstArray<AstGenericTypePack>& genericPackNames, bool useCache = false);
 
 public:
-    ErrorVec resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);
+    void resolve(const PredicateVec& predicates, const ScopePtr& scope, bool sense);
 
 private:
     void refineLValue(const LValue& lvalue, RefinementMap& refis, const ScopePtr& scope, TypeIdPredicate predicate);
@@ -403,14 +402,14 @@ private:
     std::optional<TypeId> resolveLValue(const ScopePtr& scope, const LValue& lvalue);
     std::optional<TypeId> resolveLValue(const RefinementMap& refis, const ScopePtr& scope, const LValue& lvalue);
 
-    void resolve(const PredicateVec& predicates, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr = false);
-    void resolve(const Predicate& predicate, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr);
-    void resolve(const TruthyPredicate& truthyP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr);
-    void resolve(const AndPredicate& andP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
-    void resolve(const OrPredicate& orP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
-    void resolve(const IsAPredicate& isaP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
-    void resolve(const TypeGuardPredicate& typeguardP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
-    void resolve(const EqPredicate& eqP, ErrorVec& errVec, RefinementMap& refis, const ScopePtr& scope, bool sense);
+    void resolve(const PredicateVec& predicates, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr = false);
+    void resolve(const Predicate& predicate, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr);
+    void resolve(const TruthyPredicate& truthyP, RefinementMap& refis, const ScopePtr& scope, bool sense, bool fromOr);
+    void resolve(const AndPredicate& andP, RefinementMap& refis, const ScopePtr& scope, bool sense);
+    void resolve(const OrPredicate& orP, RefinementMap& refis, const ScopePtr& scope, bool sense);
+    void resolve(const IsAPredicate& isaP, RefinementMap& refis, const ScopePtr& scope, bool sense);
+    void resolve(const TypeGuardPredicate& typeguardP, RefinementMap& refis, const ScopePtr& scope, bool sense);
+    void resolve(const EqPredicate& eqP, RefinementMap& refis, const ScopePtr& scope, bool sense);
 
     bool isNonstrictMode() const;
     bool useConstrainedIntersections() const;

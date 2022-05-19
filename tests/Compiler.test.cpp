@@ -4269,22 +4269,26 @@ FORNLOOP R3 -6
 FORNLOOP R0 -11
 RETURN R0 0
 )");
+}
 
-    // can't unroll loops if the body has functions that refer to loop variables
+TEST_CASE("LoopUnrollNestedClosure")
+{
+    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
+
+    // if the body has functions that refer to loop variables, we unroll the loop and use MOVE+CAPTURE for upvalues
     CHECK_EQ("\n" + compileFunction(R"(
-for i=1,1 do
+for i=1,2 do
     local x = function() return i end
 end
 )",
                         1, 2),
         R"(
-LOADN R2 1
-LOADN R0 1
 LOADN R1 1
-FORNPREP R0 +3
-NEWCLOSURE R3 P0
-CAPTURE VAL R2
-FORNLOOP R0 -3
+NEWCLOSURE R0 P0
+CAPTURE VAL R1
+LOADN R1 2
+NEWCLOSURE R0 P0
+CAPTURE VAL R1
 RETURN R0 0
 )");
 }
@@ -4469,8 +4473,6 @@ RETURN R0 0
 
 TEST_CASE("InlineBasic")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // inline function that returns a constant
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo()
@@ -4550,10 +4552,72 @@ RETURN R1 1
 )");
 }
 
+TEST_CASE("InlineBasicProhibited")
+{
+    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
+
+    // we can't inline variadic functions
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(...)
+    return 42
+end
+
+local x = foo()
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+CALL R1 0 1
+RETURN R1 1
+)");
+
+    // we also can't inline functions that have internal loops
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo()
+    for i=1,4 do end
+end
+
+local x = foo()
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+CALL R1 0 1
+RETURN R1 1
+)");
+}
+
+TEST_CASE("InlineNestedClosures")
+{
+    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
+
+    // we can inline functions that contain/return functions
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(x)
+    return function(y) return x + y end
+end
+
+local x = foo(1)(2)
+return x
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R2 1
+NEWCLOSURE R1 P1
+CAPTURE VAL R2
+LOADN R2 2
+CALL R1 1 1
+RETURN R1 1
+)");
+}
+
 TEST_CASE("InlineMutate")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // if the argument is mutated, it gets a register even if the value is constant
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -4636,8 +4700,6 @@ RETURN R1 1
 
 TEST_CASE("InlineUpval")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // if the argument is an upvalue, we naturally need to copy it to a local
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -4705,8 +4767,6 @@ RETURN R1 1
 
 TEST_CASE("InlineFallthrough")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // if the function doesn't return, we still fill the results with nil
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo()
@@ -4759,8 +4819,6 @@ RETURN R1 -1
 
 TEST_CASE("InlineCapture")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // can't inline function with nested functions that capture locals because they might be constants
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -4782,12 +4840,9 @@ RETURN R2 -1
 
 TEST_CASE("InlineArgMismatch")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // when inlining a function, we must respect all the usual rules
 
     // caller might not have enough arguments
-    // TODO: we don't inline this atm
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
     return a
@@ -4799,13 +4854,11 @@ return x
                         1, 2),
         R"(
 DUPCLOSURE R0 K0
-MOVE R1 R0
-CALL R1 0 1
+LOADNIL R1
 RETURN R1 1
 )");
 
     // caller might be using multret for arguments
-    // TODO: we don't inline this atm
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a, b)
     return a + b
@@ -4817,17 +4870,32 @@ return x
                         1, 2),
         R"(
 DUPCLOSURE R0 K0
-MOVE R1 R0
 LOADK R3 K1
 FASTCALL1 20 R3 +2
 GETIMPORT R2 4
-CALL R2 1 -1
-CALL R1 -1 1
+CALL R2 1 2
+ADD R1 R2 R3
+RETURN R1 1
+)");
+
+    // caller might be using varargs for arguments
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a, b)
+    return a + b
+end
+
+local x = foo(...)
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R2 2
+ADD R1 R2 R3
 RETURN R1 1
 )");
 
     // caller might have too many arguments, but we still need to compute them for side effects
-    // TODO: we don't inline this atm
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
     return a
@@ -4839,19 +4907,34 @@ return x
                         1, 2),
         R"(
 DUPCLOSURE R0 K0
-MOVE R1 R0
+GETIMPORT R2 2
+CALL R2 0 1
+LOADN R1 42
+RETURN R1 1
+)");
+
+    // caller might not have enough arguments, and the arg might be mutated so it needs a register
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    a = 42
+    return a
+end
+
+local x = foo()
+return x
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADNIL R2
 LOADN R2 42
-GETIMPORT R3 2
-CALL R3 0 -1
-CALL R1 -1 1
+MOVE R1 R2
 RETURN R1 1
 )");
 }
 
 TEST_CASE("InlineMultiple")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // we call this with a different set of variable/constant args
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a, b)
@@ -4880,8 +4963,6 @@ RETURN R3 4
 
 TEST_CASE("InlineChain")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // inline a chain of functions
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a, b)
@@ -4912,8 +4993,6 @@ RETURN R3 1
 
 TEST_CASE("InlineThresholds")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     ScopedFastInt sfis[] = {
         {"LuauCompileInlineThreshold", 25},
         {"LuauCompileInlineThresholdMaxBoost", 300},
@@ -4988,8 +5067,6 @@ RETURN R3 1
 
 TEST_CASE("InlineIIFE")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // IIFE with arguments
     CHECK_EQ("\n" + compileFunction(R"(
 function choose(a, b, c)
@@ -5025,8 +5102,6 @@ RETURN R3 1
 
 TEST_CASE("InlineRecurseArguments")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     // we can't inline a function if it's used to compute its own arguments
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a, b)
@@ -5036,22 +5111,20 @@ foo(foo(foo,foo(foo,foo))[foo])
                         1, 2),
         R"(
 DUPCLOSURE R0 K0
-MOVE R1 R0
+MOVE R2 R0
+MOVE R3 R0
 MOVE R4 R0
 MOVE R5 R0
 MOVE R6 R0
-CALL R4 2 1
-LOADNIL R3
-GETTABLE R2 R3 R0
-CALL R1 1 0
+CALL R4 2 -1
+CALL R2 -1 1
+GETTABLE R1 R2 R0
 RETURN R0 0
 )");
 }
 
 TEST_CASE("InlineFastCallK")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 local function set(l0)
     rawset({}, l0)
@@ -5080,8 +5153,6 @@ RETURN R0 0
 
 TEST_CASE("InlineExprIndexK")
 {
-    ScopedFastFlag sff("LuauCompileSupportInlining", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 local _ = function(l0)
 local _ = nil
@@ -5141,6 +5212,58 @@ RETURN R0 0
 )");
 }
 
+TEST_CASE("InlineHiddenMutation")
+{
+    // when the argument is assigned inside the function, we can't reuse the local
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    a = 42
+    return a
+end
+
+local x = ...
+local y = foo(x :: number)
+return y
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+MOVE R3 R1
+LOADN R3 42
+MOVE R2 R3
+RETURN R2 1
+)");
+
+    // and neither can we do that when it's assigned outside the function
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    mutator()
+    return a
+end
+
+local x = ...
+mutator = function() x = 42 end
+
+local y = foo(x :: number)
+return y
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+NEWCLOSURE R2 P1
+CAPTURE REF R1
+SETGLOBAL R2 K1
+MOVE R3 R1
+GETGLOBAL R4 K1
+CALL R4 0 0
+MOVE R2 R3
+CLOSEUPVALS R1
+RETURN R2 1
+)");
+}
+
 TEST_CASE("ReturnConsecutive")
 {
     // we can return a single local directly
@@ -5193,6 +5316,16 @@ return
 )"),
         R"(
 RETURN R0 0
+)");
+
+    // this optimization also works in presence of group / type casts
+    CHECK_EQ("\n" + compileFunction0(R"(
+local x, y = ...
+return (x), y :: number
+)"),
+        R"(
+GETVARARGS R0 2
+RETURN R0 2
 )");
 }
 

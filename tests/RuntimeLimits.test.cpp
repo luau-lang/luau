@@ -22,8 +22,6 @@ struct LimitFixture : BuiltinsFixture
 #if defined(_NOOPT) || defined(_DEBUG)
     ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
 #endif
-
-    ScopedFastFlag LuauJustOneCallFrameForHaveSeen{"LuauJustOneCallFrameForHaveSeen", true};
 };
 
 template <typename T>

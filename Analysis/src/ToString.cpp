@@ -219,6 +219,8 @@ struct StringifierState
         return generateName(s);
     }
 
+    int previousNameIndex = 0;
+
     std::string getName(TypePackId ty)
     {
         const size_t s = result.nameMap.typePacks.size();
@@ -228,9 +230,10 @@ struct StringifierState
 
         for (int count = 0; count < 256; ++count)
         {
-            std::string candidate = generateName(usedNames.size() + count);
+            std::string candidate = generateName(previousNameIndex + count);
             if (!usedNames.count(candidate))
             {
+                previousNameIndex += count;
                 usedNames.insert(candidate);
                 n = candidate;
                 return candidate;
@@ -399,6 +402,7 @@ struct TypeVarStringifier
     {
         if (gtv.explicitName)
         {
+            state.usedNames.insert(gtv.name);
             state.result.nameMap.typeVars[ty] = gtv.name;
             state.emit(gtv.name);
         }
@@ -745,7 +749,10 @@ struct TypeVarStringifier
         for (std::string& ss : results)
         {
             if (!first)
-                state.emit(" | ");
+            {
+                state.newline();
+                state.emit("| ");
+            }
             state.emit(ss);
             first = false;
         }
@@ -798,7 +805,10 @@ struct TypeVarStringifier
         for (std::string& ss : results)
         {
             if (!first)
-                state.emit(" & ");
+            {
+                state.newline();
+                state.emit("& ");
+            }
             state.emit(ss);
             first = false;
         }
@@ -937,6 +947,7 @@ struct TypePackStringifier
             state.emit("gen-");
         if (pack.explicitName)
         {
+            state.usedNames.insert(pack.name);
             state.result.nameMap.typePacks[tp] = pack.name;
             state.emit(pack.name);
         }
@@ -1230,6 +1241,14 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
         size_t idx = 0;
         while (argPackIter != end(ftv.argTypes))
         {
+            // ftv takes a self parameter as the first argument, skip it if specified in option
+            if (idx == 0 && ftv.hasSelf && opts.hideFunctionSelfArgument)
+            {
+                ++argPackIter;
+                ++idx;
+                continue;
+            }
+
             if (!first)
                 state.emit(", ");
             first = false;

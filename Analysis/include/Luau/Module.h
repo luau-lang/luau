@@ -2,11 +2,10 @@
 #pragma once
 
 #include "Luau/FileResolver.h"
-#include "Luau/TypePack.h"
-#include "Luau/TypedAllocator.h"
 #include "Luau/ParseOptions.h"
 #include "Luau/Error.h"
 #include "Luau/ParseResult.h"
+#include "Luau/TypeArena.h"
 
 #include <memory>
 #include <vector>
@@ -54,35 +53,6 @@ struct RequireCycle
     std::vector<ModuleName> path; // one of the paths for a require() to go all the way back to the originating module
 };
 
-struct TypeArena
-{
-    TypedAllocator<TypeVar> typeVars;
-    TypedAllocator<TypePackVar> typePacks;
-
-    void clear();
-
-    template<typename T>
-    TypeId addType(T tv)
-    {
-        if constexpr (std::is_same_v<T, UnionTypeVar>)
-            LUAU_ASSERT(tv.options.size() >= 2);
-
-        return addTV(TypeVar(std::move(tv)));
-    }
-
-    TypeId addTV(TypeVar&& tv);
-
-    TypeId freshType(TypeLevel level);
-
-    TypePackId addTypePack(std::initializer_list<TypeId> types);
-    TypePackId addTypePack(std::vector<TypeId> types);
-    TypePackId addTypePack(TypePack pack);
-    TypePackId addTypePack(TypePackVar pack);
-};
-
-void freeze(TypeArena& arena);
-void unfreeze(TypeArena& arena);
-
 struct Module
 {
     ~Module();
@@ -111,9 +81,7 @@ struct Module
 
     // Once a module has been typechecked, we clone its public interface into a separate arena.
     // This helps us to force TypeVar ownership into a DAG rather than a DCG.
-    // Returns true if there were any free types encountered in the public interface. This
-    // indicates a bug in the type checker that we want to surface.
-    bool clonePublicInterface(InternalErrorReporter& ice);
+    void clonePublicInterface(InternalErrorReporter& ice);
 };
 
 } // namespace Luau

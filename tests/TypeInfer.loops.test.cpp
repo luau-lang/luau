@@ -475,8 +475,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
 {
-    ScopedFastFlag luauInstantiateFollows{"LuauInstantiateFollows", true};
-
     // Just check that this doesn't assert
     check(R"(
         --!nonstrict
