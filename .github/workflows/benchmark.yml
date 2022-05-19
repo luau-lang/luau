@@ -48,6 +48,9 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
+      - name: Print benchmark storage location details
+        run: pwd && ls
+
       - name: Create gh-pages dir in runner root dir
         run: |
           cd .. 
