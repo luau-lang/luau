@@ -67,6 +67,8 @@ jobs:
 
       # Switch back to luau directory
       - run: cd .. && pwd && ls
+      - run: ls gh-pages
+      - run: ls luau
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
