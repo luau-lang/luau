@@ -49,10 +49,14 @@ jobs:
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Checkout gh-pages
+        uses: actions/checkout@v3
+        with:
+          repository: AllanJeremy/luau-benchmark-results
+
         run: |
           git status
-          git fetch --no-tags --depth=1 origin gh-pages
-          git checkout --track origin/gh-pages
+          git fetch --no-tags --depth=1 origin main
+          git checkout --track origin/main
           git pull
           git status
 
