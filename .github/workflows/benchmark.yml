@@ -66,7 +66,7 @@ jobs:
           git status
 
       # Switch back to luau directory
-      - run: cd ..
+      - run: cd .. && pwd && ls
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
