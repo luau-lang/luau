@@ -224,6 +224,7 @@ private:
 
     DenseHashMap<ConstantKey, int32_t, ConstantKeyHash> constantMap;
     DenseHashMap<TableShape, int32_t, TableShapeHash> tableShapeMap;
+    DenseHashMap<uint32_t, int16_t> protoMap;
 
     int debugLine = 0;
 

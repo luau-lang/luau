@@ -17,9 +17,6 @@
 #include <string.h>
 
 LUAU_FASTFLAGVARIABLE(LuauIter, false)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauIterCallTelemetry, false)
-
-void (*lua_iter_call_telemetry)(lua_State* L);
 
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
@@ -156,17 +153,6 @@ LUAU_NOINLINE static bool luau_loopFORG(lua_State* L, int a, int c)
     // note: it's safe to push arguments past top for complicated reasons (see top of the file)
     StkId ra = &L->base[a];
     LUAU_ASSERT(ra + 3 <= L->top);
-
-    if (DFFlag::LuauIterCallTelemetry)
-    {
-        /* TODO: we might be able to stop supporting this depending on whether it's used in practice */
-        void (*telemetrycb)(lua_State* L) = lua_iter_call_telemetry;
-
-        if (telemetrycb && ttistable(ra) && fasttm(L, hvalue(ra)->metatable, TM_CALL))
-            telemetrycb(L);
-        if (telemetrycb && ttisuserdata(ra) && fasttm(L, uvalue(ra)->metatable, TM_CALL))
-            telemetrycb(L);
-    }
 
     setobjs2s(L, ra + 3 + 2, ra + 2);
     setobjs2s(L, ra + 3 + 1, ra + 1);

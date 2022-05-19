@@ -1496,8 +1496,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         local function f(x: any) end
         f()

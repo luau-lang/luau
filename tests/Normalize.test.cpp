@@ -683,6 +683,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", false}
     };
 
     check(R"(
@@ -695,6 +696,26 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 
     TypeId t = requireType("f");
     CHECK(t->normal);
+}
+
+// Unfortunately, getting this right in the general case is difficult.
+TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true}
+    };
+
+    check(R"(
+        type Fiber = {
+            return_: Fiber?
+        }
+
+        local f: Fiber
+    )");
+
+    TypeId t = requireType("f");
+    CHECK(!t->normal);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_tail_is_marked_normal")
@@ -995,6 +1016,30 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_failure_bound_type_is_normal_but_not_its_bounde
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+// We had an issue where a normal BoundTypeVar might point at a non-normal BoundTypeVar if it in turn pointed to a
+// normal TypeVar because we were calling follow() in an improper place.
+TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their_pointee_is_normal")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true},
+    };
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T:M()
+            local function f(a)
+                print(self.prop)
+                self:g(a)
+                self.prop = a
+            end
+        end
+
+        return T
+    )");
 }
 
 TEST_SUITE_END();

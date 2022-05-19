@@ -10,6 +10,7 @@
 
 LUAU_FASTFLAG(LuauUseVisitRecursionLimit)
 LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 
 namespace Luau
 {
@@ -471,18 +472,21 @@ struct GenericTypeVarVisitor
 
         else if (auto pack = get<TypePack>(tp))
         {
-            visit(tp, *pack);
+            bool res = visit(tp, *pack);
+            if (!FFlag::LuauNormalizeFlagIsConservative || res)
+            {
+                for (TypeId ty : pack->head)
+                    traverse(ty);
 
-            for (TypeId ty : pack->head)
-                traverse(ty);
-
-            if (pack->tail)
-                traverse(*pack->tail);
+                if (pack->tail)
+                    traverse(*pack->tail);
+            }
         }
         else if (auto pack = get<VariadicTypePack>(tp))
         {
-            visit(tp, *pack);
-            traverse(pack->ty);
+            bool res = visit(tp, *pack);
+            if (!FFlag::LuauNormalizeFlagIsConservative || res)
+                traverse(pack->ty);
         }
         else
             LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypePackId) is not exhaustive!");

@@ -8,7 +8,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauAssertStripsFalsyTypes)
 LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
@@ -408,41 +407,29 @@ static std::optional<ExprResult<TypePackId>> magicFunctionAssert(
 {
     auto [paramPack, predicates] = exprResult;
 
-    if (FFlag::LuauAssertStripsFalsyTypes)
+    TypeArena& arena = typechecker.currentModule->internalTypes;
+
+    auto [head, tail] = flatten(paramPack);
+    if (head.empty() && tail)
     {
-        TypeArena& arena = typechecker.currentModule->internalTypes;
-
-        auto [head, tail] = flatten(paramPack);
-        if (head.empty() && tail)
-        {
-            std::optional<TypeId> fst = first(*tail);
-            if (!fst)
-                return ExprResult<TypePackId>{paramPack};
-            head.push_back(*fst);
-        }
-
-        typechecker.reportErrors(typechecker.resolve(predicates, scope, true));
-
-        if (head.size() > 0)
-        {
-            std::optional<TypeId> newhead = typechecker.pickTypesFromSense(head[0], true);
-            if (!newhead)
-                head = {typechecker.nilType};
-            else
-                head[0] = *newhead;
-        }
-
-        return ExprResult<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
-    }
-    else
-    {
-        if (expr.args.size < 1)
+        std::optional<TypeId> fst = first(*tail);
+        if (!fst)
             return ExprResult<TypePackId>{paramPack};
-
-        typechecker.reportErrors(typechecker.resolve(predicates, scope, true));
-
-        return ExprResult<TypePackId>{paramPack};
+        head.push_back(*fst);
     }
+
+    typechecker.resolve(predicates, scope, true);
+
+    if (head.size() > 0)
+    {
+        std::optional<TypeId> newhead = typechecker.pickTypesFromSense(head[0], true);
+        if (!newhead)
+            head = {typechecker.nilType};
+        else
+            head[0] = *newhead;
+    }
+
+    return ExprResult<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
 }
 
 static std::optional<ExprResult<TypePackId>> magicFunctionPack(

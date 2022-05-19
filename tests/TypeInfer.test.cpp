@@ -15,7 +15,6 @@
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
-LUAU_FASTFLAG(LuauEqConstraint)
 
 using namespace Luau;
 
@@ -308,7 +307,6 @@ TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
     int limit = 600;
 #endif
 
-    ScopedFastFlag sff{"LuauTableUseCounterInstead", true};
     ScopedFastInt sfi{"LuauCheckRecursionLimit", limit};
 
     CheckResult result = check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end");
@@ -1011,8 +1009,6 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 
 TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
 {
-    ScopedFastFlag substituteFollowNewTypes{"LuauSubstituteFollowNewTypes", true};
-
     CheckResult result = check(R"(
         local obj = {}
 

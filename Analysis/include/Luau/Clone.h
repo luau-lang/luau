@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/TypeArena.h"
 #include "Luau/TypeVar.h"
 
 #include <unordered_map>
@@ -18,7 +19,6 @@ struct CloneState
     SeenTypePacks seenTypePacks;
 
     int recursionCount = 0;
-    bool encounteredFreeType = false; // TODO: Remove with LuauLosslessClone.
 };
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);

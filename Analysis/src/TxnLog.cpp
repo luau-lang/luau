@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauJustOneCallFrameForHaveSeen, false)
-
 namespace Luau
 {
 
@@ -150,37 +148,13 @@ void TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
 
 bool TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs) const
 {
-    if (FFlag::LuauJustOneCallFrameForHaveSeen && !FFlag::LuauTypecheckOptPass)
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
     {
-        // This function will technically work if `this` is nullptr, but this
-        // indicates a bug, so we explicitly assert.
-        LUAU_ASSERT(static_cast<const void*>(this) != nullptr);
-
-        const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-
-        for (const TxnLog* current = this; current; current = current->parent)
-        {
-            if (current->sharedSeen->end() != std::find(current->sharedSeen->begin(), current->sharedSeen->end(), sortedPair))
-                return true;
-        }
-
-        return false;
+        return true;
     }
-    else
-    {
-        const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-        if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
-        {
-            return true;
-        }
 
-        if (!FFlag::LuauTypecheckOptPass && parent)
-        {
-            return parent->haveSeen(lhs, rhs);
-        }
-
-        return false;
-    }
+    return false;
 }
 
 void TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
