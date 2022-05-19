@@ -67,6 +67,7 @@ jobs:
 
       - name: Checkout gh-pages (benchmark results) source
         run: |
+          pwd && ls
           git status
           git fetch --no-tags --depth=1 origin main
           git checkout main
