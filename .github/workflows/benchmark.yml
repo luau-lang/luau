@@ -32,15 +32,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v2
-
-      - run: |
-          git checkout ${{ github.sha }}
-          for historicTags in $(git rev-list --tags -n 9); do
-            git checkout $historicTags
-            echo "Checking out $historicTags"
-            git pull
-          done
+      - uses: actions/checkout@v3
 
       - name: Build Luau
         run: make config=release luau luau-analyze
@@ -58,8 +50,6 @@ jobs:
 
       - name: Checkout gh-pages
         run: |
-          git config user.name github-actions
-          git config user.email github@users.noreply.github.com
           git status
           git fetch --no-tags --depth=1 origin gh-pages
           git checkout --track origin/gh-pages
