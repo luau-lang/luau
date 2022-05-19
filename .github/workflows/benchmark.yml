@@ -53,7 +53,6 @@ jobs:
 
       - name: Create gh-pages dir in runner root dir & navigate to it
         run: |
-          cd ../
           mkdir gh-pages 
           cd gh-pages
           pwd && ls
@@ -64,7 +63,7 @@ jobs:
         with:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
-          path: "../../gh-pages"
+          path: "gh-pages"
 
       - name: Checkout gh-pages (benchmark results) source
         run: |
@@ -74,12 +73,7 @@ jobs:
           git pull
           git status
 
-      # Switch back to luau directory
-      - name: Switch to root directory
-        run: |
-          cd ../
-          pwd
-          ls luau
+      - run: pwd && ls
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
@@ -91,7 +85,7 @@ jobs:
           output-file-path: ./${{ matrix.bench.script }}-output.txt
 
           # This should map to thebenchmark results repo
-          external-data-json-path: ../gh-pages/dev/bench/data.json
+          external-data-json-path: ./gh-pages/dev/bench/data.json
 
           alert-threshold: 150%
           fail-threshold: 200%
