@@ -75,7 +75,7 @@ jobs:
           name: ${{ matrix.bench.title }}
           tool: "benchmarkluau"
           # This should come from Luau repo
-          output-file-path: ${{ matrix.bench.script }}-output.txt
+          output-file-path: ../${{ matrix.bench.script }}-output.txt
 
           # This should map to thebenchmark results repo
           external-data-json-path: ../gh-pages/dev/bench/data.json
