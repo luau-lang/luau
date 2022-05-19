@@ -48,11 +48,12 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-      - name: Checkout gh-pages
+      - name: Switch to & checkout gh-pages repo
         uses: actions/checkout@v3
         with:
           repository: AllanJeremy/luau-benchmark-results
 
+      - name: Checkout gh-pages
         run: |
           git status
           git fetch --no-tags --depth=1 origin main
