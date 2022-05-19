@@ -48,6 +48,9 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
+      - name: Cd 1 level up and create gh-pages dir then cd into it
+        run: cd .. && mkdir gh-pages && cd gh-pages
+
       - name: Switch to & checkout gh-pages repo
         uses: actions/checkout@v3
         with:
@@ -61,6 +64,14 @@ jobs:
           git checkout main
           git pull
           git status
+
+      - name: Cd back to root before checking out original repo
+        run: cd ..
+
+      - name: Switch to original luau repo
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository }}
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
