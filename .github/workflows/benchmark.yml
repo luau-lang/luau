@@ -66,7 +66,7 @@ jobs:
           git status
 
       # Switch back to luau directory
-      - run: cd .. && pwd && ls
+      - run: pwd && ls && cd .. && pwd && ls
       - run: ls gh-pages
       - run: ls luau
 
