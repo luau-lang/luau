@@ -34,6 +34,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Print parent directory
+        run: cd .. && ls
+
       - name: Build Luau
         run: make config=release luau luau-analyze
 
@@ -48,9 +51,9 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-      - run: cd ../../ && mkdir gh-pages && cd gh-pages
+      - name: Cd 1 level up and create gh-pages dir then cd into it
+        run: ls && cd .. && mkdir gh-pages && cd gh-pages && pwd && ls
 
-      # in gh-pages directory
       - name: Switch to & checkout gh-pages repo
         uses: actions/checkout@v3
         with:
@@ -65,10 +68,16 @@ jobs:
           git pull
           git status
 
-      # Switch back to luau directory
-      - run: pwd && ls && cd .. && pwd && ls
-      - run: ls gh-pages
-      - run: ls luau
+      - name: Cd back to luau before checking out original repo
+        run: cd .. && pwd && ls
+
+      - name: Switch to original luau repo
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ github.repository }}
+
+      - name: Print current directory & list files
+        run: pwd && ls
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
@@ -77,7 +86,7 @@ jobs:
           name: ${{ matrix.bench.title }}
           tool: "benchmarkluau"
           # This should come from Luau repo
-          output-file-path: ../${{ matrix.bench.script }}-output.txt
+          output-file-path: ${{ matrix.bench.script }}-output.txt
 
           # This should map to thebenchmark results repo
           external-data-json-path: ../gh-pages/dev/bench/data.json
