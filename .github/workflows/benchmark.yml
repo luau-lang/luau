@@ -58,7 +58,7 @@ jobs:
         run: |
           git status
           git fetch --no-tags --depth=1 origin main
-          git checkout origin/main
+          git checkout main
           git pull
           git status
 
