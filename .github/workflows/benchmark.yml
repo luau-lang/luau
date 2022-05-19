@@ -65,8 +65,8 @@ jobs:
           git pull
           git status
 
-      - name: Cd back to root before checking out original repo
-        run: cd .. && pwd && ls
+      - name: Cd back to luau before checking out original repo
+        run: cd ../luau && pwd && ls
 
       - name: Switch to original luau repo
         uses: actions/checkout@v3
@@ -83,7 +83,7 @@ jobs:
           output-file-path: ${{ matrix.bench.script }}-output.txt
 
           # This should map to thebenchmark results repo
-          external-data-json-path: ./dev/bench/data.json
+          external-data-json-path: ../gh-pages/dev/bench/data.json
           alert-threshold: 150%
           fail-threshold: 200%
           fail-on-alert: true
