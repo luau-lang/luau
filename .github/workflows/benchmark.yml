@@ -48,15 +48,14 @@ jobs:
       - name: Run benchmark
         run: python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
+      - run: cd .. && mkdir gh-pages && cd gh-pages
+
+      # in gh-pages directory
       - name: Switch to & checkout gh-pages repo
         uses: actions/checkout@v3
         with:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
-          path: "../gh-pages"
-
-      - name: Cd into gh-pages
-        run: cd ../gh-pages
 
       - name: Checkout gh-pages
         run: |
@@ -66,8 +65,8 @@ jobs:
           git pull
           git status
 
-      - name: Print parent directory
-        run: cd .. && pwd && ls
+      # Switch back to luau directory
+      - run: cd ../luau
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
