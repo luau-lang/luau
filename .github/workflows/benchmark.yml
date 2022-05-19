@@ -52,12 +52,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: AllanJeremy/luau-benchmark-results
+          ref: "main"
 
       - name: Checkout gh-pages
         run: |
           git status
           git fetch --no-tags --depth=1 origin main
-          git checkout --track origin/main
+          git checkout origin/main
           git pull
           git status
 
