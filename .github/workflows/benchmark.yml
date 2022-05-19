@@ -53,9 +53,10 @@ jobs:
 
       - name: Create gh-pages dir in runner root dir & navigate to it
         run: |
-          cd .. 
+          cd ../
           mkdir gh-pages 
           cd gh-pages
+          pwd && ls
 
       # in gh-pages directory
       - name: Switch to benchmark results repo
