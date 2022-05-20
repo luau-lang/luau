@@ -126,52 +126,49 @@ P ⊂: Q = ∀ {S T} → P (S ⇒ T) → <:-Close Q (S ⇒ T)
 
 -- <:-Close is a monad
 just : ∀ {P S T} → P (S ⇒ T) → <:-Close P (S ⇒ T)
-just p = {!!}
+just p = defn p <:-refl <:-refl
 
 infixl 5 _>>=_ _>>=ˡ_ _>>=ʳ_
 _>>=_ : ∀ {P Q S T} → <:-Close P (S ⇒ T) → (P ⊂: Q) → <:-Close Q (S ⇒ T)
-p >>= P⊂Q = {!!}
+(defn p p₁ p₂) >>= P⊂Q with P⊂Q p
+(defn p p₁ p₂) >>= P⊂Q | defn q q₁ q₂ = defn q (<:-trans p₁ q₁) (<:-trans q₂ p₂)
 
 _>>=ˡ_ : ∀ {P R S T} → <:-Close P (S ⇒ T) → (R <: S) → <:-Close P (R ⇒ T)
-_>>=ˡ_ = {!!}
+(defn p p₁ p₂) >>=ˡ q = defn p (<:-trans q p₁) p₂
 
 _>>=ʳ_ : ∀ {P S T U} → <:-Close P (S ⇒ T) → (T <: U) → <:-Close P (S ⇒ U)
-_>>=ʳ_ = {!!}
+(defn p p₁ p₂) >>=ʳ q = defn p p₁ (<:-trans p₂ q)
 
 -- F <:ᵒ (S ⇒ T) when (S ⇒ T) is a supertype of an overload of F
 _<:ᵒ_ : Type → Type → Set
 _<:ᵒ_ F = <:-Close (Overloads F)
 
+-- Properties of ⊂:
+_[∪]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) → <:-Close (∪-Lift P Q) ((R ∪ T) ⇒ (S ∪ U))
+(defn p p₁ p₂) [∪] (defn q q₁ q₂) = defn (union p q) (<:-union p₁ q₁) (<:-union p₂ q₂)
+
+_[∩]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) → <:-Close (∩-Lift P Q) ((R ∩ T) ⇒ (S ∩ U))
+(defn p p₁ p₂) [∩] (defn q q₁ q₂) = defn (intersect p q) (<:-intersect p₁ q₁) (<:-intersect p₂ q₂)
+
 ⊂:-∩-saturate-inj : ∀ {P} → P ⊂: ∩-Saturate P
 ⊂:-∩-saturate-inj p = defn (base p) <:-refl <:-refl
 
-⊂:-∩-saturate-indn : ∀ {P Q} → (P ⊂: Q) → (∩-Lift Q Q ⊂: Q) → (∩-Saturate P ⊂: Q)
-⊂:-∩-saturate-indn = {!!}
-
-⊂:-∩-saturate : ∀ {P Q} → (P ⊂: Q) → (∩-Saturate P ⊂: ∩-Saturate Q)
-⊂:-∩-saturate P⊂Q p = {!!}
-
 ⊂:-∪-saturate-inj : ∀ {P} → P ⊂: ∪-Saturate P
-⊂:-∪-saturate-inj p = defn (base p) (λ t z → z) (λ t z → z)
-
-⊂:-∪-saturate : ∀ {P Q} → (P ⊂: Q) → (∪-Saturate P ⊂: ∪-Saturate Q)
-⊂:-∪-saturate P⊂Q p = {!!}
-
-_[∪]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) → <:-Close (∪-Lift P Q) ((R ∪ T) ⇒ (S ∪ U))
-p [∪] q = {!!}
-
-_[∩]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) → <:-Close (∩-Lift P Q) ((R ∩ T) ⇒ (S ∩ U))
-p [∩] q = {!!}
-
-⊂:-∩-saturate-lift : ∀ {P} → (∪-Lift P P ⊂: P) → (∪-Saturate P ⊂: P)
-⊂:-∩-saturate-lift ∪P⊂P (base p) = defn p <:-refl <:-refl
-⊂:-∩-saturate-lift ∪P⊂P (union p q) = (⊂:-∩-saturate-lift ∪P⊂P p [∪] ⊂:-∩-saturate-lift ∪P⊂P q) >>= ∪P⊂P
+⊂:-∪-saturate-inj p = just (base p)
 
 ⊂:-∩-lift-saturate : ∀ {P} → ∩-Lift (∩-Saturate P) (∩-Saturate P) ⊂: ∩-Saturate P
-⊂:-∩-lift-saturate (intersect p q) = defn (intersect p q) <:-refl <:-refl
+⊂:-∩-lift-saturate (intersect p q) = just (intersect p q)
 
 ⊂:-∪-lift-saturate : ∀ {P} → ∪-Lift (∪-Saturate P) (∪-Saturate P) ⊂: ∪-Saturate P
-⊂:-∪-lift-saturate = {!!}
+⊂:-∪-lift-saturate (union p q) = just (union p q)
+
+⊂:-∪-saturate : ∀ {P Q} → (P ⊂: Q) → (∪-Saturate P ⊂: ∪-Saturate Q)
+⊂:-∪-saturate P⊂Q (base p) = P⊂Q p >>= ⊂:-∪-saturate-inj
+⊂:-∪-saturate P⊂Q (union p q) = (⊂:-∪-saturate P⊂Q p [∪] ⊂:-∪-saturate P⊂Q q) >>= ⊂:-∪-lift-saturate
+
+⊂:-∩-saturate-indn : ∀ {P Q} → (P ⊂: Q) → (∩-Lift Q Q ⊂: Q) → (∩-Saturate P ⊂: Q)
+⊂:-∩-saturate-indn P⊂Q QQ⊂Q (base p) = P⊂Q p
+⊂:-∩-saturate-indn P⊂Q QQ⊂Q (intersect p q) = (⊂:-∩-saturate-indn P⊂Q QQ⊂Q p [∩] ⊂:-∩-saturate-indn P⊂Q QQ⊂Q q) >>= QQ⊂Q
 
 ∪-saturate-resp-∩-saturation : ∀ {P} → (∩-Lift P P ⊂: P) → (∩-Lift (∪-Saturate P) (∪-Saturate P) ⊂: ∪-Saturate P)
 ∪-saturate-resp-∩-saturation ∩P⊂P (intersect (base p) (base q)) = ∩P⊂P (intersect p q) >>= ⊂:-∪-saturate-inj
@@ -184,13 +181,13 @@ ov-language (S ⇒ T) p = p here
 ov-language (F ∩ G) p = (ov-language F (p ∘ left) , ov-language G (p ∘ right))
 
 ov-<: : ∀ {F R S T U} → FunType F → Overloads F (R ⇒ S) → ((R ⇒ S) <: (T ⇒ U)) → F <: (T ⇒ U)
-ov-<: F never p = <:-trans (<:-trans (function-top {!!}) <:-function-never) p
+ov-<: F never p = <:-trans (<:-trans (function-top F) <:-function-never) p
 ov-<: F here p = p
 ov-<: (F ∩ G) (left o) p = <:-trans <:-∩-left (ov-<: F o p)
 ov-<: (F ∩ G) (right o) p = <:-trans <:-∩-right (ov-<: G o p)
 
 ⊂:-overloads-left : ∀ {F G} → Overloads F ⊂: Overloads (F ∩ G)
-⊂:-overloads-left = {!!}
+⊂:-overloads-left p = just (left p)
 
 ⊂:-overloads-right : ∀ {F G} → Overloads G ⊂: Overloads (F ∩ G)
 ⊂:-overloads-right = {!!}
