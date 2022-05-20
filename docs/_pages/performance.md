@@ -94,13 +94,13 @@ As a result, builtin calls are very fast in Luau - they are still slightly slowe
 
 Luau implements a fully generic iteration protocol; however, for iteration through tables in addition to generalized iteration (`for .. in t`) it recognizes three common idioms (`for .. in ipairs(t)`, `for .. in pairs(t)` and `for .. in next, t`) and emits specialized bytecode that is carefully optimized using custom internal iterators.
 
-As a result, iteration through tables typically doesn't result in function calls for every iteration; the performance of iteration using generalized iteration, `pairs` and `ipairs` is comparable, so generalized iteration (without the use of `pairs`/`ipairs`) is recommended in general unless the code needs to be compatible with vanilla Lua or the specific semantics of `ipairs` (which stops at the first `nil` element) is required. Additionally, using generalized iteration avoids calling `pairs` when the loop starts which can be noticeable when the table is very short.
+As a result, iteration through tables typically doesn't result in function calls for every iteration; the performance of iteration using generalized iteration, `pairs` and `ipairs` is comparable, so generalized iteration (without the use of `pairs`/`ipairs`) is recommended unless the code needs to be compatible with vanilla Lua or the specific semantics of `ipairs` (which stops at the first `nil` element) is required. Additionally, using generalized iteration avoids calling `pairs` when the loop starts which can be noticeable when the table is very short.
 
 Iterating through array-like tables using `for i=1,#t` tends to be slightly slower because of extra cost incurred when reading elements from the table.
 
 ## Optimized table length
 
-Luau tables are using a hybrid array/hash storage, like in Lua; in some sense "arrays" don't truly exist and are an internal optimization, but some operations, notably `#t` and functions that depend on it, like `table.insert`, are defined by the Luau/Lua language to allow internal optimizations. Luau takes advantage of that fact.
+Luau tables use a hybrid array/hash storage, like in Lua; in some sense "arrays" don't truly exist and are an internal optimization, but some operations, notably `#t` and functions that depend on it, like `table.insert`, are defined by the Luau/Lua language to allow internal optimizations. Luau takes advantage of that fact.
 
 Unlike Lua, Luau guarantees that the element at index `#t` is stored in the array part of the table. This can accelerate various table operations that use indices limited by `#t`, and this makes `#t` worst-case complexity O(logN), unlike Lua where the worst case complexity is O(N). This also accelerates computation of this value for small tables like `{ [1] = 1 }` since we never need to look at the hash part.
 
