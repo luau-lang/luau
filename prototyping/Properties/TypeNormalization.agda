@@ -5,7 +5,7 @@ module Properties.TypeNormalization where
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 open import Luau.Subtyping using (Tree; Language; function; scalar; unknown; right; scalar-function-err; _,_)
 open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; _⇒ⁿ_; tgtⁿ; normalize)
-open import Luau.Subtyping using (_<:_)
+open import Luau.Subtyping using (_<:_; _≮:_; witness; never)
 open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; <:-∩-symm; <:-function; <:-function-∪-∩; <:-function-∩-∪; <:-function-∪; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm; <:-intersect;  ∪-distl-∩-<:; ∪-distr-∩-<:; <:-∪-distr-∩; <:-∪-distl-∩; ∩-distl-∪-<:; <:-∩-distl-∪; <:-∩-distr-∪; scalar-∩-function-<:-never; scalar-≢-∩-<:-never; <:-function-never)
 
 -- Normal forms for types
@@ -60,6 +60,9 @@ inhabited (S ⇒ T) = function
 inhabited (S ∩ T) = inhabitedᶠ (S ∩ T)
 inhabited (S ∪ T) = right (scalar T)
 inhabited unknown = unknown
+
+inhabited-≮:-never : ∀ {T} → (Inhabited T) → (T ≮: never)
+inhabited-≮:-never Tⁱ = witness (inhabitant Tⁱ) (inhabited Tⁱ) never
 
 -- Top function type
 function-top : ∀ {F} → (FunType F) → (F <: (never ⇒ unknown))

@@ -263,6 +263,17 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-function-never (function-ok s t) (function-ok₂ p) = function-ok₁ never
 <:-function-never (function-err s) (function-err p) = function-err p
 
+<:-function-left : ∀ {R S T U} → (S ⇒ T) <: (R ⇒ U) → (R <: S)
+<:-function-left {R} {S} p s Rs with dec-language S s
+<:-function-left p s Rs | Right Ss = Ss
+<:-function-left p s Rs | Left ¬Ss with p (function-err s) (function-err ¬Ss)
+<:-function-left p s Rs | Left ¬Ss | function-err ¬Rs = CONTRADICTION (language-comp s ¬Rs Rs)
+
+<:-function-right : ∀ {R S T U} → (S ⇒ T) <: (R ⇒ U) → (R ≮: never) → (T <: U)
+<:-function-right p (witness s Rs never) t Tt with p (function-ok s t) (function-ok₂ Tt)
+<:-function-right p (witness s Rs never) t Tt | function-ok₁ ¬Rs = CONTRADICTION (language-comp s ¬Rs Rs)
+<:-function-right p (witness s Rs never) t Tt | function-ok₂ St = St
+
 ≮:-function-left : ∀ {R S T U} → (R ≮: S) → (S ⇒ T) ≮: (R ⇒ U)
 ≮:-function-left (witness t p q) = witness (function-err t) (function-err q) (function-err p)
 
