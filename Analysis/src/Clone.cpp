@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/Clone.h"
-#include "Luau/Module.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
@@ -9,8 +8,6 @@
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
-LUAU_FASTFLAG(LuauTypecheckOptPass)
-LUAU_FASTFLAGVARIABLE(LuauLosslessClone, false)
 LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
@@ -89,20 +86,8 @@ struct TypePackCloner
 
     void operator()(const Unifiable::Free& t)
     {
-        if (FFlag::LuauLosslessClone)
-        {
-            defaultClone(t);
-        }
-        else
-        {
-            cloneState.encounteredFreeType = true;
-
-            TypePackId err = getSingletonTypes().errorRecoveryTypePack(getSingletonTypes().anyTypePack);
-            TypePackId cloned = dest.addTypePack(*err);
-            seenTypePacks[typePackId] = cloned;
-        }
+        defaultClone(t);
     }
-
     void operator()(const Unifiable::Generic& t)
     {
         defaultClone(t);
@@ -152,18 +137,7 @@ void TypeCloner::defaultClone(const T& t)
 
 void TypeCloner::operator()(const Unifiable::Free& t)
 {
-    if (FFlag::LuauLosslessClone)
-    {
-        defaultClone(t);
-    }
-    else
-    {
-        cloneState.encounteredFreeType = true;
-
-        TypeId err = getSingletonTypes().errorRecoveryType(getSingletonTypes().anyType);
-        TypeId cloned = dest.addType(*err);
-        seenTypes[typeId] = cloned;
-    }
+    defaultClone(t);
 }
 
 void TypeCloner::operator()(const Unifiable::Generic& t)
@@ -191,9 +165,6 @@ void TypeCloner::operator()(const PrimitiveTypeVar& t)
 
 void TypeCloner::operator()(const ConstrainedTypeVar& t)
 {
-    if (!FFlag::LuauLosslessClone)
-        cloneState.encounteredFreeType = true;
-
     TypeId res = dest.addType(ConstrainedTypeVar{t.level});
     ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(res);
     LUAU_ASSERT(ctv);
@@ -230,9 +201,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
     ftv->argTypes = clone(t.argTypes, dest, cloneState);
     ftv->argNames = t.argNames;
     ftv->retType = clone(t.retType, dest, cloneState);
-
-    if (FFlag::LuauTypecheckOptPass)
-        ftv->hasNoGenerics = t.hasNoGenerics;
+    ftv->hasNoGenerics = t.hasNoGenerics;
 }
 
 void TypeCloner::operator()(const TableTypeVar& t)
@@ -269,13 +238,6 @@ void TypeCloner::operator()(const TableTypeVar& t)
 
     for (TypePackId& arg : ttv->instantiatedTypePackParams)
         arg = clone(arg, dest, cloneState);
-
-    if (!FFlag::LuauLosslessClone && ttv->state == TableState::Free)
-    {
-        cloneState.encounteredFreeType = true;
-
-        ttv->state = TableState::Sealed;
-    }
 
     ttv->definitionModuleName = t.definitionModuleName;
     if (!FFlag::LuauNoMethodLocations)

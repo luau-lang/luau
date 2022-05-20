@@ -2772,6 +2772,8 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
+    ScopedFastFlag sff{"LuauTwoPassAliasDefinitionFix", true};
+
     check(R"(
         type tag = "cat" | "dog"
         local function f(a: tag) end
@@ -2844,6 +2846,8 @@ f(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_escape")
 {
+        ScopedFastFlag sff{"LuauTwoPassAliasDefinitionFix", true};
+
     check(R"(
         type tag = "strange\t\"cat\"" | 'nice\t"dog"'
         local function f(x: tag) end

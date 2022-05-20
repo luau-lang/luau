@@ -177,8 +177,6 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
 
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_depth")
 {
-    ScopedFastFlag sff{"LuauDoNotTryToReduce", true};
-
     CheckResult result = check(R"(
         type A = {x: {y: {z: {thing: string}}}}
         type B = {x: {y: {z: {thing: string}}}}

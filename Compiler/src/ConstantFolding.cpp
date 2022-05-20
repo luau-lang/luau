@@ -3,8 +3,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCompileSupportInlining)
-
 namespace Luau
 {
 namespace Compile
@@ -330,7 +328,7 @@ struct ConstantVisitor : AstVisitor
     {
         if (value.type != Constant::Type_Unknown)
             map[key] = value;
-        else if (!FFlag::LuauCompileSupportInlining || wasEmpty)
+        else if (wasEmpty)
             ;
         else if (Constant* old = map.find(key))
             old->type = Constant::Type_Unknown;

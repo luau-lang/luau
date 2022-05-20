@@ -7,7 +7,6 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTFLAG(LuauEqConstraint)
 
 using namespace Luau;
 

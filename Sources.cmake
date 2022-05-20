@@ -73,6 +73,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/ToString.h
     Analysis/include/Luau/Transpiler.h
     Analysis/include/Luau/TxnLog.h
+    Analysis/include/Luau/TypeArena.h
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeInfer.h
@@ -108,6 +109,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/ToString.cpp
     Analysis/src/Transpiler.cpp
     Analysis/src/TxnLog.cpp
+    Analysis/src/TypeArena.cpp
     Analysis/src/TypeAttach.cpp
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeInfer.cpp

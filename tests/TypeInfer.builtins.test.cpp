@@ -878,8 +878,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_add_definitions_to_persistent_types")
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
 {
     ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
         {"LuauWidenIfSupertypeIsFree2", true},
     };
 
@@ -899,8 +897,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
 {
     ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
         {"LuauWidenIfSupertypeIsFree2", true},
     };
 
@@ -916,11 +912,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pack_tail_but_only_for_the_first_type")
 {
-    ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(...: number?)
             return assert(...)
@@ -933,11 +924,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pa
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_returns_false_and_string_iff_it_knows_the_first_argument_cannot_be_truthy")
 {
-    ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: nil)
             return assert(x, "hmm")

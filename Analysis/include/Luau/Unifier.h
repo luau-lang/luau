@@ -5,7 +5,7 @@
 #include "Luau/Location.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
-#include "Luau/Module.h" // FIXME: For TypeArena.  It merits breaking out into its own header.
+#include "Luau/TypeArena.h"
 #include "Luau/UnifierSharedState.h"
 
 #include <unordered_set>
@@ -55,8 +55,6 @@ struct Unifier
     UnifierSharedState& sharedState;
 
     Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
-    Unifier(TypeArena* types, Mode mode, std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen, const Location& location, Variance variance,
-        UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
