@@ -50,10 +50,10 @@ jobs:
           python bench/bench.py | tee ../${{ matrix.bench.script }}-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
-        run: ./scripts/run-with-cachegrind.sh ./${{ matrix.engine.runner }} scripts/${{ matrix.bench.script }}.lua "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee -a ${{ matrix.bench.script }}-output.txt
+        run: sudo ./scripts/run-with-cachegrind.sh ./${{ matrix.engine.runner }} scripts/${{ matrix.bench.script }}.lua "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
-        run: ./scripts/run-with-cachegrind.sh ./${{ matrix.engine.runner }} scripts/${{ matrix.bench.script }}.lua "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
+        run: sudo ./scripts/run-with-cachegrind.sh ./${{ matrix.engine.runner }} scripts/${{ matrix.bench.script }}.lua "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Navigate to root dir, create gh-pages dir then navigate into it
         run: cd .. && mkdir gh-pages && cd gh-pages
