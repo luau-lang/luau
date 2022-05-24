@@ -17,10 +17,10 @@ open import Luau.Var using (Var; _≡ⱽ_)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.Dec using (yes; no)
-open import Properties.DecSubtyping using (resolve)
 open import Properties.Equality using (_≢_; sym; trans; cong)
 open import Properties.Product using (_×_; _,_)
 open import Properties.Remember using (Remember; remember; _,_)
+open import Properties.ResolveOverloads using (resolve)
 
 typeOfᴼ : Object yes → Type
 typeOfᴼ (function f ⟨ var x ∈ S ⟩∈ T is B end) = (S ⇒ T)

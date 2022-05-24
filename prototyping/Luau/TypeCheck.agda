@@ -14,8 +14,9 @@ open import Luau.Type using (Type; nil; unknown; number; boolean; string; _⇒_)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
-open import Properties.DecSubtyping using (dec-subtyping; resolve)
+open import Properties.DecSubtyping using (dec-subtyping)
 open import Properties.Product using (_×_; _,_)
+open import Properties.ResolveOverloads using (resolve)
 
 orUnknown : Maybe Type → Type
 orUnknown nothing = unknown

@@ -14,6 +14,7 @@ open import Luau.TypeCheck using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; ⊢ᴴ_; ⊢ᴼ_; 
 open import Properties.Contradiction using (¬)
 open import Properties.TypeCheck using (typeCheckᴮ)
 open import Properties.Product using (_,_)
+open import Properties.ResolveOverloads using (resolve)
 
 data Warningᴱ (H : Heap yes) {Γ} : ∀ {M T} → (Γ ⊢ᴱ M ∈ T) → Set
 data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set
