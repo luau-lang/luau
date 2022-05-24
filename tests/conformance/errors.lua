@@ -230,6 +230,11 @@ if not limitedstack then
     ehassert(pcall(function() return userdata[1] end)) -- LOP_GETTABLEN
     ehassert(pcall(function() return userdata.StringConstant end)) -- LOP_GETTABLEKS (luau_callTM)
 
+    -- lua_resume test
+    local coro = coroutine.create(function() end)
+    ps, pe = coroutine.resume(coro)
+    ehassert(not ps and string.find(pe, "C stack overflow"))
+
     return true
   end, cso)
 
