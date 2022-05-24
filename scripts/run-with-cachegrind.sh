@@ -22,20 +22,14 @@ now_ms() {
 }
 
 # Run cachegrind on a given benchmark and echo the results.
-CLI_VERSION=$($1 version | tr -d '\n')
+PYTHON_VERSION=$($1 --version | tr -d '\n')
 ITERATION_COUNT=$4
 START_TIME=$(now_ms)
 
 valgrind \
     --quiet \
     --tool=cachegrind \
-    "$1" run \
-        --load.model model.rbxm \
-        --run "$2" \
-        --headlessRenderer 1 \
-        --lua.globals minSamples=$ITERATION_COUNT \
-        --lua.globals cachegrind=true \
-    >/dev/null
+    "$1" "$2"
 
 TIME_ELAPSED=$(bc <<< "$(now_ms) - ${START_TIME}")
 
@@ -100,10 +94,10 @@ for i in "${!TOTALS_ARRAY[@]}"; do
     if [[ $OPS_PER_SEC =~ ^[+-]?[0-9]*$ ]]
     then # $OPS_PER_SEC is integer
         printf "%s#%s x %.0f %s ±%s (%d runs sampled)(roblox-cli version %s)\n" \
-            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS" "$CLI_VERSION"
+            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS" "$PYTHON_VERSION"
     else # $OPS_PER_SEC is float
         printf "%s#%s x %.10f %s ±%s (%d runs sampled)(roblox-cli version %s)\n" \
-            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS" "$CLI_VERSION"
+            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS" "$PYTHON_VERSION"
     fi
     
 done
