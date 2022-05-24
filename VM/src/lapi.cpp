@@ -478,18 +478,22 @@ lua_CFunction lua_tocfunction(lua_State* L, int idx)
     return (!iscfunction(o)) ? NULL : cast_to(lua_CFunction, clvalue(o)->c.f);
 }
 
+void* lua_tolightuserdata(lua_State* L, int idx)
+{
+    StkId o = index2addr(L, idx);
+    return (!ttislightuserdata(o)) ? NULL : pvalue(o);
+}
+
 void* lua_touserdata(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
-    switch (ttype(o))
-    {
-    case LUA_TUSERDATA:
+    // fast-path: check userdata first since it is most likely the expected result
+    if (ttisuserdata(o))
         return uvalue(o)->data;
-    case LUA_TLIGHTUSERDATA:
+    else if (ttislightuserdata(o))
         return pvalue(o);
-    default:
+    else
         return NULL;
-    }
 }
 
 void* lua_touserdatatagged(lua_State* L, int idx, int tag)
@@ -524,8 +528,9 @@ const void* lua_topointer(lua_State* L, int idx)
     case LUA_TTHREAD:
         return thvalue(o);
     case LUA_TUSERDATA:
+        return uvalue(o)->data;
     case LUA_TLIGHTUSERDATA:
-        return lua_touserdata(L, idx);
+        return pvalue(o);
     default:
         return NULL;
     }
