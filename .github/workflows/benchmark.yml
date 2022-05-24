@@ -17,10 +17,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
         engine:
-          - { channel: stable, version: latest, runner: "robloxdev-cli" }
-          # - { channel: develop, version: latest, runner: 'robloxdev-cli' }
-          # covers environment closest to RobloxStudio, but not available on Linux
-          # - { channel: develop, version: latest, runner: 'roblox-cli'}
+          - { channel: stable, version: latest }
         bench:
           - {
               script: "run-benchmarks",
