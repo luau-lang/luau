@@ -4,51 +4,40 @@ module Properties.TypeSaturation where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right)
-open import Luau.Subtyping using (Tree; Language; ¬Language; _<:_; _≮:_; witness; scalar; function; function-err; function-ok; function-ok₁; function-ok₂; scalar-function; _,_)
+open import Luau.Subtyping using (Tree; Language; ¬Language; _<:_; _≮:_; witness; scalar; function; function-err; function-ok; function-ok₁; function-ok₂; scalar-function; _,_; never)
 open import Luau.Type using (Type; _⇒_; _∩_; _∪_; never; unknown)
-open import Luau.TypeNormalization using (_⇒ⁿ_; _∩ⁿ_; _∪ⁿ_)
+open import Luau.TypeNormalization using (_∩ⁿ_; _∪ⁿ_)
 open import Luau.TypeSaturation using (_⋓_; _⋒_; _∩ᵘ_; _∩ⁱ_; ∪-saturate; ∩-saturate; saturate)
 open import Properties.Subtyping using (dec-language; language-comp; <:-impl-⊇; <:-refl; <:-trans; <:-trans-≮:; <:-impl-¬≮: ; <:-never; <:-unknown; <:-function; <:-union; <:-∪-symm; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∪-assocl; <:-∪-assocr; <:-intersect; <:-∩-symm; <:-∩-left; <:-∩-right; <:-∩-glb; ≮:-function-left; ≮:-function-right; <:-function-never; <:-∩-assocl; <:-∩-assocr; ∩-<:-∪; <:-∩-distl-∪; ∩-distl-∪-<:; <:-∩-distr-∪; ∩-distr-∪-<:)
-open import Properties.TypeNormalization using (FunType; function; _⇒_; _∩_; _∪_; never; unknown; inhabitant; inhabited; function-top; normal-⇒ⁿ; normal-∪ⁿ; normal-∩ⁿ; normalⁱ; <:-tgtⁿ; ∪ⁿ-<:-∪; ∪-<:-∪ⁿ; ∩ⁿ-<:-∩; ∩-<:-∩ⁿ)
+open import Properties.TypeNormalization using (FunType; _⇒_; _∩_; _∪_; never; unknown; function-top; normal-∪ⁿ; normal-∩ⁿ; ∪ⁿ-<:-∪; ∪-<:-∪ⁿ; ∩ⁿ-<:-∩; ∩-<:-∩ⁿ)
 open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.Functions using (_∘_)
 
 -- Saturation preserves normalization
 normal-⋒ : ∀ {F G} → FunType F → FunType G → FunType (F ⋒ G)
-normal-⋒ function function = function
-normal-⋒ function (T ⇒ U) = normal-⇒ⁿ (normal-∩ⁿ never (normalⁱ T)) (normal-∩ⁿ unknown U)
-normal-⋒ function (G ∩ H) = normal-⋒ function G ∩ normal-⋒ function H
-normal-⋒ (R ⇒ S) function = normal-⇒ⁿ (normal-∩ⁿ (normalⁱ R) never) (normal-∩ⁿ S unknown)
-normal-⋒ (R ⇒ S) (T ⇒ U) = normal-⇒ⁿ (normal-∩ⁿ (normalⁱ R) (normalⁱ T)) (normal-∩ⁿ S U)
+normal-⋒ (R ⇒ S) (T ⇒ U) = (normal-∩ⁿ R T) ⇒ (normal-∩ⁿ S U)
 normal-⋒ (R ⇒ S) (G ∩ H) = normal-⋒ (R ⇒ S) G ∩ normal-⋒ (R ⇒ S) H
 normal-⋒ (E ∩ F) G = normal-⋒ E G ∩ normal-⋒ F G
 
 normal-⋓ : ∀ {F G} → FunType F → FunType G → FunType (F ⋓ G)
-normal-⋓ function function = function
-normal-⋓ function (T ⇒ U) = normal-⇒ⁿ (normal-∪ⁿ never (normalⁱ T)) (normal-∪ⁿ unknown U)
-normal-⋓ function (G ∩ H) = normal-⋓ function G ∩ normal-⋓ function H
-normal-⋓ (R ⇒ S) function = normal-⇒ⁿ (normal-∪ⁿ (normalⁱ R) never) (normal-∪ⁿ S unknown)
-normal-⋓ (R ⇒ S) (T ⇒ U) = normal-⇒ⁿ (normal-∪ⁿ (normalⁱ R) (normalⁱ T)) (normal-∪ⁿ S U)
+normal-⋓ (R ⇒ S) (T ⇒ U) = (normal-∪ⁿ R T) ⇒ (normal-∪ⁿ S U)
 normal-⋓ (R ⇒ S) (G ∩ H) = normal-⋓ (R ⇒ S) G ∩ normal-⋓ (R ⇒ S) H
 normal-⋓ (E ∩ F) G = normal-⋓ E G ∩ normal-⋓ F G
 
 normal-∩-saturate : ∀ {F} → FunType F → FunType (∩-saturate F)
-normal-∩-saturate function = function
 normal-∩-saturate (S ⇒ T) = S ⇒ T
 normal-∩-saturate (F ∩ G) = (normal-∩-saturate F ∩ normal-∩-saturate G) ∩ normal-⋒ (normal-∩-saturate F) (normal-∩-saturate G)
 
 normal-∪-saturate : ∀ {F} → FunType F → FunType (∪-saturate F)
-normal-∪-saturate function = function
 normal-∪-saturate (S ⇒ T) = S ⇒ T
 normal-∪-saturate (F ∩ G) = (normal-∪-saturate F ∩ normal-∪-saturate G) ∩ normal-⋓ (normal-∪-saturate F) (normal-∪-saturate G)
 
 normal-saturate : ∀ {F} → FunType F → FunType (saturate F)
 normal-saturate F = normal-∪-saturate (normal-∩-saturate F)
 
--- Overloads F is the set of overloads of F (including never ⇒ never).
+-- Overloads F is the set of overloads of F
 data Overloads : Type → Type → Set where
 
-   never : ∀ {F} → Overloads F (never ⇒ never)
    here : ∀ {S T} → Overloads (S ⇒ T) (S ⇒ T)
    left : ∀ {S T F G} → Overloads F (S ⇒ T) → Overloads (F ∩ G) (S ⇒ T)
    right : ∀ {S T F G} → Overloads G (S ⇒ T) → Overloads (F ∩ G) (S ⇒ T)
@@ -144,6 +133,9 @@ _<:ᵒ_ : Type → Type → Set
 _<:ᵒ_ F = <:-Close (Overloads F)
 
 -- Properties of ⊂:
+⊂:-refl : ∀ {P} → P ⊂: P
+⊂:-refl p = just p
+
 _[∪]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) → <:-Close (∪-Lift P Q) ((R ∪ T) ⇒ (S ∪ U))
 (defn p p₁ p₂) [∪] (defn q q₁ q₂) = defn (union p q) (<:-union p₁ q₁) (<:-union p₂ q₂)
 
@@ -162,6 +154,16 @@ _[∩]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) �
 ⊂:-∪-lift-saturate : ∀ {P} → ∪-Lift (∪-Saturate P) (∪-Saturate P) ⊂: ∪-Saturate P
 ⊂:-∪-lift-saturate (union p q) = just (union p q)
 
+⊂:-∩-lift : ∀ {P Q R S} → (P ⊂: Q) → (R ⊂: S) → (∩-Lift P R ⊂: ∩-Lift Q S)
+⊂:-∩-lift P⊂Q R⊂S (intersect n o) = P⊂Q n [∩] R⊂S o
+
+⊂:-∪-lift : ∀ {P Q R S} → (P ⊂: Q) → (R ⊂: S) → (∪-Lift P R ⊂: ∪-Lift Q S)
+⊂:-∪-lift P⊂Q R⊂S (union n o) = P⊂Q n [∪] R⊂S o
+
+⊂:-∩-saturate : ∀ {P Q} → (P ⊂: Q) → (∩-Saturate P ⊂: ∩-Saturate Q)
+⊂:-∩-saturate P⊂Q (base p) = P⊂Q p >>= ⊂:-∩-saturate-inj
+⊂:-∩-saturate P⊂Q (intersect p q) = (⊂:-∩-saturate P⊂Q p [∩] ⊂:-∩-saturate P⊂Q q) >>= ⊂:-∩-lift-saturate
+
 ⊂:-∪-saturate : ∀ {P Q} → (P ⊂: Q) → (∪-Saturate P ⊂: ∪-Saturate Q)
 ⊂:-∪-saturate P⊂Q (base p) = P⊂Q p >>= ⊂:-∪-saturate-inj
 ⊂:-∪-saturate P⊂Q (union p q) = (⊂:-∪-saturate P⊂Q p [∪] ⊂:-∪-saturate P⊂Q q) >>= ⊂:-∪-lift-saturate
@@ -176,12 +178,10 @@ _[∩]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) �
 ∪-saturate-resp-∩-saturation ∩P⊂P (intersect (union p p₁) q) = (∪-saturate-resp-∩-saturation ∩P⊂P (intersect p q) [∪] ∪-saturate-resp-∩-saturation ∩P⊂P (intersect p₁ q)) >>= ⊂:-∪-lift-saturate >>=ˡ <:-∩-distr-∪ >>=ʳ ∩-distr-∪-<:
 
 ov-language : ∀ {F t} → FunType F → (∀ {S T} → Overloads F (S ⇒ T) → Language (S ⇒ T) t) → Language F t
-ov-language function p = p here
 ov-language (S ⇒ T) p = p here
 ov-language (F ∩ G) p = (ov-language F (p ∘ left) , ov-language G (p ∘ right))
 
 ov-<: : ∀ {F R S T U} → FunType F → Overloads F (R ⇒ S) → ((R ⇒ S) <: (T ⇒ U)) → F <: (T ⇒ U)
-ov-<: F never p = <:-trans (<:-trans (function-top F) <:-function-never) p
 ov-<: F here p = p
 ov-<: (F ∩ G) (left o) p = <:-trans <:-∩-left (ov-<: F o p)
 ov-<: (F ∩ G) (right o) p = <:-trans <:-∩-right (ov-<: G o p)
@@ -190,16 +190,41 @@ ov-<: (F ∩ G) (right o) p = <:-trans <:-∩-right (ov-<: G o p)
 ⊂:-overloads-left p = just (left p)
 
 ⊂:-overloads-right : ∀ {F G} → Overloads G ⊂: Overloads (F ∩ G)
-⊂:-overloads-right = {!!}
+⊂:-overloads-right p = just (right p)
 
 ⊂:-overloads-⋒ : ∀ {F G} → FunType F → FunType G → ∩-Lift (Overloads F) (Overloads G) ⊂: Overloads (F ⋒ G)
-⊂:-overloads-⋒ F G = {!!}
+⊂:-overloads-⋒ (R ⇒ S) (T ⇒ U) (intersect here here) = defn here (∩-<:-∩ⁿ R T) (∩ⁿ-<:-∩ S U)
+⊂:-overloads-⋒ (R ⇒ S) (G ∩ H) (intersect here (left o)) = ⊂:-overloads-⋒ (R ⇒ S) G (intersect here o) >>= ⊂:-overloads-left
+⊂:-overloads-⋒ (R ⇒ S) (G ∩ H) (intersect here (right o)) = ⊂:-overloads-⋒ (R ⇒ S) H (intersect here o) >>= ⊂:-overloads-right
+⊂:-overloads-⋒ (E ∩ F) G (intersect (left n) o) = ⊂:-overloads-⋒ E G (intersect n o) >>= ⊂:-overloads-left
+⊂:-overloads-⋒ (E ∩ F) G (intersect (right n) o) = ⊂:-overloads-⋒ F G (intersect n o) >>= ⊂:-overloads-right
 
 ⊂:-⋒-overloads : ∀ {F G} → FunType F → FunType G → Overloads (F ⋒ G) ⊂: ∩-Lift (Overloads F) (Overloads G)
-⊂:-⋒-overloads F G = {!!}
+⊂:-⋒-overloads (R ⇒ S) (T ⇒ U) here = defn (intersect here here) (∩ⁿ-<:-∩ R T) (∩-<:-∩ⁿ S U)
+⊂:-⋒-overloads (R ⇒ S) (G ∩ H) (left o) = ⊂:-⋒-overloads (R ⇒ S) G o >>= ⊂:-∩-lift ⊂:-refl ⊂:-overloads-left 
+⊂:-⋒-overloads (R ⇒ S) (G ∩ H) (right o) = ⊂:-⋒-overloads (R ⇒ S) H o >>= ⊂:-∩-lift ⊂:-refl ⊂:-overloads-right
+⊂:-⋒-overloads (E ∩ F) G (left o) = ⊂:-⋒-overloads E G o >>= ⊂:-∩-lift ⊂:-overloads-left ⊂:-refl
+⊂:-⋒-overloads (E ∩ F) G (right o) = ⊂:-⋒-overloads F G o >>= ⊂:-∩-lift ⊂:-overloads-right ⊂:-refl
+
+⊂:-overloads-⋓ : ∀ {F G} → FunType F → FunType G → ∪-Lift (Overloads F) (Overloads G) ⊂: Overloads (F ⋓ G)
+⊂:-overloads-⋓ (R ⇒ S) (T ⇒ U) (union here here) = defn here (∪-<:-∪ⁿ R T) (∪ⁿ-<:-∪ S U)
+⊂:-overloads-⋓ (R ⇒ S) (G ∩ H) (union here (left o)) = ⊂:-overloads-⋓ (R ⇒ S) G (union here o) >>= ⊂:-overloads-left
+⊂:-overloads-⋓ (R ⇒ S) (G ∩ H) (union here (right o)) = ⊂:-overloads-⋓ (R ⇒ S) H (union here o) >>= ⊂:-overloads-right
+⊂:-overloads-⋓ (E ∩ F) G (union (left n) o) = ⊂:-overloads-⋓ E G (union n o) >>= ⊂:-overloads-left
+⊂:-overloads-⋓ (E ∩ F) G (union (right n) o) = ⊂:-overloads-⋓ F G (union n o) >>= ⊂:-overloads-right
+
+⊂:-⋓-overloads : ∀ {F G} → FunType F → FunType G → Overloads (F ⋓ G) ⊂: ∪-Lift (Overloads F) (Overloads G)
+⊂:-⋓-overloads (R ⇒ S) (T ⇒ U) here = defn (union here here) (∪ⁿ-<:-∪ R T) (∪-<:-∪ⁿ S U)
+⊂:-⋓-overloads (R ⇒ S) (G ∩ H) (left o) = ⊂:-⋓-overloads (R ⇒ S) G o >>= ⊂:-∪-lift ⊂:-refl ⊂:-overloads-left
+⊂:-⋓-overloads (R ⇒ S) (G ∩ H) (right o) = ⊂:-⋓-overloads (R ⇒ S) H o >>= ⊂:-∪-lift ⊂:-refl ⊂:-overloads-right
+⊂:-⋓-overloads (E ∩ F) G (left o) = ⊂:-⋓-overloads E G o >>= ⊂:-∪-lift ⊂:-overloads-left ⊂:-refl
+⊂:-⋓-overloads (E ∩ F) G (right o) = ⊂:-⋓-overloads F G o >>= ⊂:-∪-lift ⊂:-overloads-right ⊂:-refl
 
 ∪-saturate-overloads : ∀ {F} → FunType F → Overloads (∪-saturate F) ⊂: ∪-Saturate (Overloads F)
-∪-saturate-overloads F = {!!}
+∪-saturate-overloads (S ⇒ T) here = just (base here)
+∪-saturate-overloads (F ∩ G) (left (left o)) = ∪-saturate-overloads F o >>= ⊂:-∪-saturate ⊂:-overloads-left
+∪-saturate-overloads (F ∩ G) (left (right o)) = ∪-saturate-overloads G o >>= ⊂:-∪-saturate ⊂:-overloads-right
+∪-saturate-overloads (F ∩ G) (right o) = {!⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) o >>= ?!}
 
 overloads-∪-saturate : ∀ {F} → FunType F → ∪-Saturate (Overloads F) ⊂: Overloads (∪-saturate F)
 overloads-∪-saturate F = {!!}
@@ -208,17 +233,24 @@ overloads-∪-saturate F = {!!}
 ∪-saturated F = {!!}
 
 ∩-saturate-overloads : ∀ {F} → FunType F → Overloads (∩-saturate F) ⊂: ∩-Saturate (Overloads F)
-∩-saturate-overloads F = {!!}
+∩-saturate-overloads (S ⇒ T) here = just (base here)
+∩-saturate-overloads (F ∩ G) (left (left o)) = ∩-saturate-overloads F o >>= ⊂:-∩-saturate ⊂:-overloads-left
+∩-saturate-overloads (F ∩ G) (left (right o)) = ∩-saturate-overloads G o >>= ⊂:-∩-saturate ⊂:-overloads-right
+∩-saturate-overloads (F ∩ G) (right o) =
+  ⊂:-⋒-overloads (normal-∩-saturate F) (normal-∩-saturate G) o >>=
+  ⊂:-∩-lift (∩-saturate-overloads F) (∩-saturate-overloads G) >>=
+  ⊂:-∩-lift (⊂:-∩-saturate ⊂:-overloads-left) (⊂:-∩-saturate ⊂:-overloads-right) >>= ⊂:-∩-lift-saturate
 
 overloads-∩-saturate : ∀ {F} → FunType F → ∩-Saturate (Overloads F) ⊂: Overloads (∩-saturate F)
 overloads-∩-saturate F = ⊂:-∩-saturate-indn (inj F) (step F) where
   
   inj :  ∀ {F} → FunType F → Overloads F ⊂: Overloads (∩-saturate F)
-  inj = {!!}
+  inj (S ⇒ T) here = just here
+  inj (F ∩ G) (left p) = inj F p >>= ⊂:-overloads-left >>= ⊂:-overloads-left
+  inj (F ∩ G) (right p) = inj G p >>= ⊂:-overloads-right >>= ⊂:-overloads-left
 
   step : ∀ {F} → FunType F → ∩-Lift (Overloads (∩-saturate F)) (Overloads (∩-saturate F)) ⊂: Overloads (∩-saturate F)
-  step function (intersect here here) = defn here <:-∩-left (<:-∩-glb <:-refl <:-refl)
-  step (S ⇒ T) (intersect here here) = defn here <:-∩-left (<:-∩-glb <:-refl <:-refl)
+  step (S ⇒ T) (intersect here here) = defn here <:-∩-left (<:-∩-glb <:-refl <:-refl) 
   step (F ∩ G) (intersect (left (left p)) (left (left q))) = step F (intersect p q) >>= ⊂:-overloads-left >>= ⊂:-overloads-left
   step (F ∩ G) (intersect (left (left p)) (left (right q))) = ⊂:-overloads-⋒ (normal-∩-saturate F) (normal-∩-saturate G) (intersect p q) >>= ⊂:-overloads-right
   step (F ∩ G) (intersect (left (right p)) (left (left q))) = ⊂:-overloads-⋒ (normal-∩-saturate F) (normal-∩-saturate G) (intersect q p) >>= ⊂:-overloads-right >>=ˡ <:-∩-symm >>=ʳ <:-∩-symm
@@ -243,8 +275,6 @@ overloads-∩-saturate F = ⊂:-∩-saturate-indn (inj F) (step F) where
     ⊂:-overloads-right >>=ˡ
     <:-trans (<:-intersect p₃ q₃) (<:-∩-glb (<:-intersect <:-∩-left <:-∩-left) (<:-intersect <:-∩-right <:-∩-right)) >>=ʳ
     <:-trans (<:-∩-glb (<:-intersect <:-∩-left <:-∩-left) (<:-intersect <:-∩-right <:-∩-right)) (<:-intersect p₄ q₄)
-  step (F ∩ G) (intersect (right p) (left never)) | defn (intersect p₁ p₂) p₃ p₄ = defn never <:-∩-right <:-never
-  step (F ∩ G) (intersect (right p) never) | defn (intersect p₁ p₂) p₃ p₄ = defn never <:-∩-right <:-never
   step (F ∩ G) (intersect p (right q)) with ⊂:-⋒-overloads (normal-∩-saturate F) (normal-∩-saturate G) q
   step (F ∩ G) (intersect (left (left p)) (right q)) | defn (intersect q₁ q₂) q₃ q₄ =
     (step F (intersect p q₁) [∩] just q₂) >>=
@@ -265,12 +295,6 @@ overloads-∩-saturate F = ⊂:-∩-saturate-indn (inj F) (step F) where
     ⊂:-overloads-right >>=ˡ
     <:-trans (<:-intersect p₃ q₃) (<:-∩-glb (<:-intersect <:-∩-left <:-∩-left) (<:-intersect <:-∩-right <:-∩-right)) >>=ʳ
     <:-trans (<:-∩-glb (<:-intersect <:-∩-left <:-∩-left) (<:-intersect <:-∩-right <:-∩-right)) (<:-intersect p₄ q₄)
-  step (F ∩ G) (intersect never (right q)) | defn (intersect q₁ q₂) q₃ q₄ = defn never <:-∩-left <:-never
-  step (F ∩ G) (intersect (left never) (right q)) | defn (intersect q₁ q₂) q₃ q₄ = defn never <:-∩-left <:-never
-  step (F ∩ G) (intersect (left never) q) = defn never <:-∩-left <:-never
-  step (F ∩ G) (intersect p (left never)) = defn never <:-∩-right <:-never
-  step F (intersect never q) = defn never <:-∩-left <:-never
-  step F (intersect p never) = defn never <:-∩-right <:-never
 
 saturate-overloads : ∀ {F} → FunType F → Overloads (saturate F) ⊂: ∪-Saturate (∩-Saturate (Overloads F))
 saturate-overloads F o = ∪-saturate-overloads (normal-∩-saturate F) o >>= (⊂:-∪-saturate (∩-saturate-overloads F))
@@ -298,12 +322,11 @@ saturated F = defn
 
 -- Subtyping is decidable on saturated normalized types
 
-dec-<:-overloads : ∀ {F S T} → FunType F → FunType (S ⇒ T) → Saturated F →
+dec-<:-overloads : ∀ {F S T} → FunType F → FunType (S ⇒ T) → Saturated F → (S ≮: never) →
   (∀ {S′ T′} → (Overloads F (S′ ⇒ T′)) → Either (S ≮: S′) (S <: S′)) →
   (∀ {S′ T′} → (Overloads F (S′ ⇒ T′)) → Either (T′ ≮: T) (T′ <: T)) →
   Either (F ≮: (S ⇒ T)) (F <: (S ⇒ T))
-dec-<:-overloads {F} {S} {T} Fᶠ function _ _ _ = Right (function-top Fᶠ)
-dec-<:-overloads {F} {S} {T} Fᶠ (Sⁱ ⇒ Tⁿ) (defn sat-∩ sat-∪) dec-src dec-tgt = result (top Fᶠ (λ o → o)) where
+dec-<:-overloads {F} {S} {T} Fᶠ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) (witness s₀ Ss₀ never) dec-src dec-tgt = result (top Fᶠ (λ o → o)) where
 
   data Top G : Set where
 
@@ -315,11 +338,11 @@ dec-<:-overloads {F} {S} {T} Fᶠ (Sⁱ ⇒ Tⁿ) (defn sat-∩ sat-∪) dec-src
       Top G
 
   top : ∀ {G} → (FunType G) → (G ⊆ᵒ F) → Top G
-  top {S′ ⇒ T′} _ G⊆F = defn S′ T′ (G⊆F here) (λ { here → <:-refl ; never → <:-never })
+  top {S′ ⇒ T′} _ G⊆F = defn S′ T′ (G⊆F here) (λ { here → <:-refl })
   top (Gᶠ ∩ Hᶠ) G⊆F with top Gᶠ (G⊆F ∘ left) | top Hᶠ (G⊆F ∘ right)
   top (Gᶠ ∩ Hᶠ) G⊆F | defn Rᵗ Sᵗ p p₁ | defn Tᵗ Uᵗ q q₁ with sat-∪ p q
   top (Gᶠ ∩ Hᶠ) G⊆F | defn Rᵗ Sᵗ p p₁ | defn Tᵗ Uᵗ q q₁ | defn n r r₁ = defn _ _ n
-    (λ { (left o) → <:-trans (<:-trans (p₁ o) <:-∪-left) r ; (right o) → <:-trans (<:-trans (q₁ o) <:-∪-right) r ; never → <:-never })
+    (λ { (left o) → <:-trans (<:-trans (p₁ o) <:-∪-left) r ; (right o) → <:-trans (<:-trans (q₁ o) <:-∪-right) r })
 
   result : Top F → Either (F ≮: (S ⇒ T)) (F <: (S ⇒ T))
   result (defn Sᵗ Tᵗ oᵗ srcᵗ) with dec-src oᵗ
@@ -328,7 +351,7 @@ dec-<:-overloads {F} {S} {T} Fᶠ (Sⁱ ⇒ Tⁿ) (defn sat-∩ sat-∪) dec-src
 
     data LargestSrc (G : Type) : Set where
 
-      defn : ∀ S₀ T₀ →
+      yes : ∀ S₀ T₀ →
 
         Overloads F (S₀ ⇒ T₀) →
         T₀ <: T →
@@ -336,21 +359,36 @@ dec-<:-overloads {F} {S} {T} Fᶠ (Sⁱ ⇒ Tⁿ) (defn sat-∩ sat-∪) dec-src
         -----------------------
         LargestSrc G
 
+      no : ∀ S₀ T₀ →
+
+        Overloads F (S₀ ⇒ T₀) →
+        T₀ ≮: T →  
+        (∀ {S′ T′} → Overloads G (S′ ⇒ T′) → T₀ <: T′) →
+        -----------------------
+        LargestSrc G
+
     largest : ∀ {G} → (FunType G) → (G ⊆ᵒ F) → LargestSrc G
     largest {S′ ⇒ T′} _ G⊆F with dec-tgt (G⊆F here)
-    largest {S′ ⇒ T′} _ G⊆F | Left T′≮:T = defn never never never <:-never (λ { here T′<:T → CONTRADICTION (<:-impl-¬≮: T′<:T T′≮:T) ; never _ → <:-never })
-    largest {S′ ⇒ T′} _ G⊆F | Right T′<:T = defn S′ T′ (G⊆F here) T′<:T (λ { here _ → <:-refl  ; never _ → <:-never })
+    largest {S′ ⇒ T′} _ G⊆F | Left T′≮:T = no S′ T′ (G⊆F here) T′≮:T λ { here → <:-refl }
+    largest {S′ ⇒ T′} _ G⊆F | Right T′<:T = yes S′ T′ (G⊆F here) T′<:T (λ { here _ → <:-refl })
     largest (Gᶠ ∩ Hᶠ) GH⊆F with largest Gᶠ (GH⊆F ∘ left) | largest Hᶠ (GH⊆F ∘ right)
-    largest (Gᶠ ∩ Hᶠ) GH⊆F | defn S₁ T₁ o₁ T₁<:T src₁ | defn S₂ T₂ o₂ T₂<:T src₂ with sat-∪ o₁ o₂
-    largest (Gᶠ ∩ Hᶠ) GH⊆F | defn S₁ T₁ o₁ T₁<:T src₁ | defn S₂ T₂ o₂ T₂<:T src₂ | defn o src tgt = defn _ _ o (<:-trans tgt (<:-∪-lub T₁<:T T₂<:T))
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | no S₁ T₁ o₁ T₁≮:T tgt₁ | no S₂ T₂ o₂ T₂≮:T tgt₂ with sat-∩ o₁ o₂
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | no S₁ T₁ o₁ T₁≮:T tgt₁ | no S₂ T₂ o₂ T₂≮:T tgt₂ | defn o src tgt with dec-tgt o
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | no S₁ T₁ o₁ T₁≮:T tgt₁ | no S₂ T₂ o₂ T₂≮:T tgt₂ | defn o src tgt | Left T₀≮:T = no _ _ o T₀≮:T (λ { (left o) → <:-trans tgt (<:-trans <:-∩-left (tgt₁ o)) ; (right o) → <:-trans tgt (<:-trans <:-∩-right (tgt₂ o)) })
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | no S₁ T₁ o₁ T₁≮:T tgt₁ | no S₂ T₂ o₂ T₂≮:T tgt₂ | defn o src tgt | Right T₀<:T = yes _ _ o T₀<:T (λ { (left o) p → CONTRADICTION (<:-impl-¬≮: p (<:-trans-≮: (tgt₁ o) T₁≮:T)) ; (right o) p → CONTRADICTION (<:-impl-¬≮: p (<:-trans-≮: (tgt₂ o) T₂≮:T)) })
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | no S₁ T₁ o₁ T₁≮:T tgt₁ | yes S₂ T₂ o₂ T₂<:T src₂ = yes S₂ T₂ o₂ T₂<:T (λ { (left o) p → CONTRADICTION (<:-impl-¬≮: p (<:-trans-≮: (tgt₁ o) T₁≮:T)) ; (right o) p → src₂ o p })
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | yes S₁ T₁ o₁ T₁<:T src₁ | no S₂ T₂ o₂ T₂≮:T tgt₂ = yes S₁ T₁ o₁ T₁<:T (λ { (left o) p → src₁ o p ; (right o) p → CONTRADICTION (<:-impl-¬≮: p (<:-trans-≮: (tgt₂ o) T₂≮:T)) })
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | yes S₁ T₁ o₁ T₁<:T src₁ | yes S₂ T₂ o₂ T₂<:T src₂ with sat-∪ o₁ o₂
+    largest (Gᶠ ∩ Hᶠ) GH⊆F | yes S₁ T₁ o₁ T₁<:T src₁ | yes S₂ T₂ o₂ T₂<:T src₂ | defn o src tgt = yes _ _ o (<:-trans tgt (<:-∪-lub T₁<:T T₂<:T))
       (λ { (left o) T′<:T → <:-trans (src₁ o T′<:T) (<:-trans <:-∪-left src)
          ; (right o) T′<:T → <:-trans (src₂ o T′<:T) (<:-trans <:-∪-right src)
-         ; never _ → <:-never })
+         })
 
     result₀ : LargestSrc F → Either (F ≮: (S ⇒ T)) (F <: (S ⇒ T))
-    result₀ (defn S₀ T₀ o₀ T₀<:T src₀) with dec-src o₀
-    result₀ (defn S₀ T₀ o₀ T₀<:T src₀) | Right S<:S₀ = Right (ov-<: Fᶠ o₀ (<:-function S<:S₀ T₀<:T))
-    result₀ (defn S₀ T₀ o₀ T₀<:T src₀) | Left (witness s Ss ¬S₀s) = Left (result₁ (smallest Fᶠ (λ o → o))) where
+    result₀ (no S₀ T₀ o₀ (witness t T₀t ¬Tt) tgt₀) = Left (witness (function-ok s₀ t) (ov-language Fᶠ (λ o → function-ok₂ (tgt₀ o t T₀t))) (function-ok Ss₀ ¬Tt))
+    result₀ (yes S₀ T₀ o₀ T₀<:T src₀) with dec-src o₀
+    result₀ (yes S₀ T₀ o₀ T₀<:T src₀) | Right S<:S₀ = Right (ov-<: Fᶠ o₀ (<:-function S<:S₀ T₀<:T))
+    result₀ (yes S₀ T₀ o₀ T₀<:T src₀) | Left (witness s Ss ¬S₀s) = Left (result₁ (smallest Fᶠ (λ o → o))) where
 
       data SmallestTgt (G : Type) : Set where
 
@@ -364,14 +402,14 @@ dec-<:-overloads {F} {S} {T} Fᶠ (Sⁱ ⇒ Tⁿ) (defn sat-∩ sat-∪) dec-src
 
       smallest : ∀ {G} → (FunType G) → (G ⊆ᵒ F) → SmallestTgt G
       smallest {S′ ⇒ T′} _ G⊆F with dec-language S′ s
-      smallest {S′ ⇒ T′} _ G⊆F | Left ¬S′s = defn Sᵗ Tᵗ oᵗ (S<:Sᵗ s Ss) λ { here S′s → CONTRADICTION (language-comp s ¬S′s S′s) ; never (scalar ()) }
-      smallest {S′ ⇒ T′} _ G⊆F | Right S′s = defn S′ T′ (G⊆F here) S′s (λ { here _ → <:-refl ; never (scalar ()) })
+      smallest {S′ ⇒ T′} _ G⊆F | Left ¬S′s = defn Sᵗ Tᵗ oᵗ (S<:Sᵗ s Ss) λ { here S′s → CONTRADICTION (language-comp s ¬S′s S′s) }
+      smallest {S′ ⇒ T′} _ G⊆F | Right S′s = defn S′ T′ (G⊆F here) S′s (λ { here _ → <:-refl })
       smallest (Gᶠ ∩ Hᶠ) GH⊆F with smallest Gᶠ (GH⊆F ∘ left) | smallest Hᶠ (GH⊆F ∘ right)
       smallest (Gᶠ ∩ Hᶠ) GH⊆F | defn S₁ T₁ o₁ R₁s tgt₁ | defn S₂ T₂ o₂ R₂s tgt₂ with sat-∩ o₁ o₂
       smallest (Gᶠ ∩ Hᶠ) GH⊆F | defn S₁ T₁ o₁ R₁s tgt₁ | defn S₂ T₂ o₂ R₂s tgt₂ | defn o src tgt = defn _ _ o (src s (R₁s , R₂s))
         (λ { (left o) S′s → <:-trans (<:-trans tgt <:-∩-left) (tgt₁ o S′s)
            ; (right o) S′s → <:-trans (<:-trans tgt <:-∩-right) (tgt₂ o S′s)
-           ; never (scalar ()) } )
+           })
 
       result₁ : SmallestTgt F → (F ≮: (S ⇒ T))
       result₁ (defn S₁ T₁ o₁ S₁s tgt₁) with dec-tgt o₁

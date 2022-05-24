@@ -8,13 +8,11 @@ _∪ⁿˢ_ : Type → Type → Type
 _∩ⁿˢ_ : Type → Type → Type
 _∪ⁿ_ : Type → Type → Type
 _∩ⁿ_ : Type → Type → Type
-_⇒ⁿ_ : Type → Type → Type
-tgtⁿ : Type → Type → Type
 
 -- Union of function types
 (F₁ ∩ F₂) ∪ᶠ G = (F₁ ∪ᶠ G) ∩ (F₂ ∪ᶠ G)
 F ∪ᶠ (G₁ ∩ G₂) = (F ∪ᶠ G₁) ∩ (F ∪ᶠ G₂)
-(R ⇒ S) ∪ᶠ (T ⇒ U) = (R ∩ⁿ T) ⇒ⁿ (S ∪ⁿ U)
+(R ⇒ S) ∪ᶠ (T ⇒ U) = (R ∩ⁿ T) ⇒ (S ∪ⁿ U)
 F ∪ᶠ G = F ∪ G
 
 -- Union of normalized types
@@ -54,16 +52,10 @@ unknown ∪ⁿˢ T = unknown
 (S₁ ∪ S₂) ∪ⁿˢ T = (S₁ ∪ⁿˢ T) ∪ S₂
 F ∪ⁿˢ T = F ∪ T
 
--- Functions on normalized types
-S ⇒ⁿ T = S ⇒ (tgtⁿ S T)
-
-tgtⁿ never T = unknown
-tgtⁿ S T = T
-
 -- Normalize!
 normalize : Type → Type
 normalize nil = never ∪ nil
-normalize (S ⇒ T) = (normalize S ⇒ⁿ normalize T)
+normalize (S ⇒ T) = (normalize S ⇒ normalize T)
 normalize never = never
 normalize unknown = unknown
 normalize boolean = never ∪ boolean

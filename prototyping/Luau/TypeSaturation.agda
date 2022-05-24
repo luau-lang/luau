@@ -1,16 +1,16 @@
 module Luau.TypeSaturation where
 
 open import Luau.Type using (Type; _⇒_; _∩_; _∪_)
-open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _⇒ⁿ_)
+open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_)
 
 _⋓_ : Type → Type → Type
-(S₁ ⇒ T₁) ⋓ (S₂ ⇒ T₂) = (S₁ ∪ⁿ S₂) ⇒ⁿ (T₁ ∪ⁿ T₂)
+(S₁ ⇒ T₁) ⋓ (S₂ ⇒ T₂) = (S₁ ∪ⁿ S₂) ⇒ (T₁ ∪ⁿ T₂)
 (F₁ ∩ G₁) ⋓ F₂ = (F₁ ⋓ F₂) ∩ (G₁ ⋓ F₂)
 F₁ ⋓ (F₂ ∩ G₂) = (F₁ ⋓ F₂) ∩ (F₁ ⋓ G₂)
 F ⋓ G = F ∩ G
 
 _⋒_ : Type → Type → Type
-(S₁ ⇒ T₁) ⋒ (S₂ ⇒ T₂) = (S₁ ∩ⁿ S₂) ⇒ⁿ (T₁ ∩ⁿ T₂)
+(S₁ ⇒ T₁) ⋒ (S₂ ⇒ T₂) = (S₁ ∩ⁿ S₂) ⇒ (T₁ ∩ⁿ T₂)
 (F₁ ∩ G₁) ⋒ F₂ = (F₁ ⋒ F₂) ∩ (G₁ ⋒ F₂)
 F₁ ⋒ (F₂ ∩ G₂) = (F₁ ⋒ F₂) ∩ (F₁ ⋒ G₂)
 F ⋒ G = F ∩ G
