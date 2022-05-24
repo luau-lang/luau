@@ -172,6 +172,10 @@ _[∩]_ : ∀ {P Q R S T U} → <:-Close P (R ⇒ S) → <:-Close Q (T ⇒ U) �
 ⊂:-∩-saturate-indn P⊂Q QQ⊂Q (base p) = P⊂Q p
 ⊂:-∩-saturate-indn P⊂Q QQ⊂Q (intersect p q) = (⊂:-∩-saturate-indn P⊂Q QQ⊂Q p [∩] ⊂:-∩-saturate-indn P⊂Q QQ⊂Q q) >>= QQ⊂Q
 
+⊂:-∪-saturate-indn : ∀ {P Q} → (P ⊂: Q) → (∪-Lift Q Q ⊂: Q) → (∪-Saturate P ⊂: Q)
+⊂:-∪-saturate-indn P⊂Q QQ⊂Q (base p) = P⊂Q p
+⊂:-∪-saturate-indn P⊂Q QQ⊂Q (union p q) = (⊂:-∪-saturate-indn P⊂Q QQ⊂Q p [∪] ⊂:-∪-saturate-indn P⊂Q QQ⊂Q q) >>= QQ⊂Q
+
 ∪-saturate-resp-∩-saturation : ∀ {P} → (∩-Lift P P ⊂: P) → (∩-Lift (∪-Saturate P) (∪-Saturate P) ⊂: ∪-Saturate P)
 ∪-saturate-resp-∩-saturation ∩P⊂P (intersect (base p) (base q)) = ∩P⊂P (intersect p q) >>= ⊂:-∪-saturate-inj
 ∪-saturate-resp-∩-saturation ∩P⊂P (intersect p (union q q₁)) = (∪-saturate-resp-∩-saturation ∩P⊂P (intersect p q) [∪] ∪-saturate-resp-∩-saturation ∩P⊂P (intersect p q₁)) >>= ⊂:-∪-lift-saturate >>=ˡ <:-∩-distl-∪ >>=ʳ ∩-distl-∪-<:
@@ -224,13 +228,72 @@ ov-<: (F ∩ G) (right o) p = <:-trans <:-∩-right (ov-<: G o p)
 ∪-saturate-overloads (S ⇒ T) here = just (base here)
 ∪-saturate-overloads (F ∩ G) (left (left o)) = ∪-saturate-overloads F o >>= ⊂:-∪-saturate ⊂:-overloads-left
 ∪-saturate-overloads (F ∩ G) (left (right o)) = ∪-saturate-overloads G o >>= ⊂:-∪-saturate ⊂:-overloads-right
-∪-saturate-overloads (F ∩ G) (right o) = {!⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) o >>= ?!}
+∪-saturate-overloads (F ∩ G) (right o) =
+  ⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) o >>=
+  ⊂:-∪-lift (∪-saturate-overloads F) (∪-saturate-overloads G) >>=
+  ⊂:-∪-lift (⊂:-∪-saturate ⊂:-overloads-left) (⊂:-∪-saturate ⊂:-overloads-right) >>=
+  ⊂:-∪-lift-saturate
 
 overloads-∪-saturate : ∀ {F} → FunType F → ∪-Saturate (Overloads F) ⊂: Overloads (∪-saturate F)
-overloads-∪-saturate F = {!!}
+overloads-∪-saturate F = ⊂:-∪-saturate-indn (inj F) (step F) where
+
+  inj : ∀ {F} → FunType F → Overloads F ⊂: Overloads (∪-saturate F)
+  inj (S ⇒ T) here = just here
+  inj (F ∩ G) (left p) = inj F p >>= ⊂:-overloads-left >>= ⊂:-overloads-left
+  inj (F ∩ G) (right p) = inj G p >>= ⊂:-overloads-right >>= ⊂:-overloads-left
+
+  step : ∀ {F} → FunType F → ∪-Lift (Overloads (∪-saturate F)) (Overloads (∪-saturate F)) ⊂: Overloads (∪-saturate F)
+  step (S ⇒ T) (union here here) = defn here (<:-∪-lub <:-refl <:-refl) <:-∪-left
+  step (F ∩ G) (union (left (left p)) (left (left q))) = step F (union p q) >>= ⊂:-overloads-left >>= ⊂:-overloads-left
+  step (F ∩ G) (union (left (left p)) (left (right q))) = ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) (union p q) >>= ⊂:-overloads-right
+  step (F ∩ G) (union (left (right p)) (left (left q))) = ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) (union q p) >>= ⊂:-overloads-right >>=ˡ <:-∪-symm >>=ʳ <:-∪-symm
+  step (F ∩ G) (union (left (right p)) (left (right q))) = step G (union p q) >>= ⊂:-overloads-right >>= ⊂:-overloads-left
+  step (F ∩ G) (union p (right q)) with ⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) q
+  step (F ∩ G) (union (left (left p)) (right q)) | defn (union q₁ q₂) q₃ q₄ =
+    (step F (union p q₁) [∪] just q₂) >>=
+    ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) >>=
+    ⊂:-overloads-right >>=ˡ
+    <:-trans (<:-union <:-refl q₃) <:-∪-assocl >>=ʳ
+    <:-trans <:-∪-assocr (<:-union <:-refl q₄)
+  step (F ∩ G) (union (left (right p)) (right q)) | defn (union q₁ q₂) q₃ q₄ =
+    (just q₁ [∪] step G (union p q₂)) >>=
+    ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) >>=
+    ⊂:-overloads-right >>=ˡ
+    <:-trans (<:-union <:-refl q₃) (<:-∪-lub (<:-trans <:-∪-left <:-∪-right) (<:-∪-lub <:-∪-left (<:-trans <:-∪-right <:-∪-right))) >>=ʳ
+    <:-trans (<:-∪-lub (<:-trans <:-∪-left <:-∪-right) (<:-∪-lub <:-∪-left (<:-trans <:-∪-right <:-∪-right))) (<:-union <:-refl q₄)
+  step (F ∩ G) (union (right p) (right q)) | defn (union q₁ q₂) q₃ q₄ with ⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) p
+  step (F ∩ G) (union (right p) (right q)) | defn (union q₁ q₂) q₃ q₄ | defn (union p₁ p₂) p₃ p₄ =
+    (step F (union p₁ q₁) [∪] step G (union p₂ q₂)) >>=
+    ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) >>=
+    ⊂:-overloads-right >>=ˡ
+    <:-trans (<:-union p₃ q₃) (<:-∪-lub (<:-union <:-∪-left <:-∪-left) (<:-union <:-∪-right <:-∪-right)) >>=ʳ
+    <:-trans (<:-∪-lub (<:-union <:-∪-left <:-∪-left) (<:-union <:-∪-right <:-∪-right)) (<:-union p₄ q₄)
+  step (F ∩ G) (union (right p) q) with ⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) p
+  step (F ∩ G) (union (right p) (left (left q))) | defn (union p₁ p₂) p₃ p₄ =
+    (step F (union p₁ q) [∪] just p₂) >>=
+    ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) >>=
+    ⊂:-overloads-right >>=ˡ
+    <:-trans (<:-union p₃ <:-refl) (<:-∪-lub (<:-union <:-∪-left <:-refl) (<:-trans <:-∪-right <:-∪-left)) >>=ʳ
+    <:-trans (<:-∪-lub (<:-union <:-∪-left <:-refl) (<:-trans <:-∪-right <:-∪-left)) (<:-union p₄ <:-refl)
+  step (F ∩ G) (union (right p) (left (right q))) | defn (union p₁ p₂) p₃ p₄ =
+    (just p₁ [∪] step G (union p₂ q)) >>=
+    ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) >>=
+    ⊂:-overloads-right >>=ˡ
+    <:-trans (<:-union p₃ <:-refl) <:-∪-assocr >>=ʳ
+    <:-trans <:-∪-assocl (<:-union p₄ <:-refl)
+  step (F ∩ G) (union (right p) (right q)) | defn (union p₁ p₂) p₃ p₄ with ⊂:-⋓-overloads (normal-∪-saturate F) (normal-∪-saturate G) q
+  step (F ∩ G) (union (right p) (right q)) | defn (union p₁ p₂) p₃ p₄ | defn (union q₁ q₂) q₃ q₄ =
+    (step F (union p₁ q₁) [∪] step G (union p₂ q₂)) >>=
+    ⊂:-overloads-⋓ (normal-∪-saturate F) (normal-∪-saturate G) >>=
+    ⊂:-overloads-right >>=ˡ
+    <:-trans (<:-union p₃ q₃) (<:-∪-lub (<:-union <:-∪-left <:-∪-left) (<:-union <:-∪-right <:-∪-right)) >>=ʳ
+    <:-trans (<:-∪-lub (<:-union <:-∪-left <:-∪-left) (<:-union <:-∪-right <:-∪-right)) (<:-union p₄ q₄)
 
 ∪-saturated : ∀ {F} → FunType F → ∪-Lift (Overloads (∪-saturate F)) (Overloads (∪-saturate F)) ⊂: Overloads (∪-saturate F)
-∪-saturated F = {!!}
+∪-saturated F o =
+  ⊂:-∪-lift (∪-saturate-overloads F) (∪-saturate-overloads F) o >>=
+  ⊂:-∪-lift-saturate >>=
+  overloads-∪-saturate F
 
 ∩-saturate-overloads : ∀ {F} → FunType F → Overloads (∩-saturate F) ⊂: ∩-Saturate (Overloads F)
 ∩-saturate-overloads (S ⇒ T) here = just (base here)
@@ -239,7 +302,8 @@ overloads-∪-saturate F = {!!}
 ∩-saturate-overloads (F ∩ G) (right o) =
   ⊂:-⋒-overloads (normal-∩-saturate F) (normal-∩-saturate G) o >>=
   ⊂:-∩-lift (∩-saturate-overloads F) (∩-saturate-overloads G) >>=
-  ⊂:-∩-lift (⊂:-∩-saturate ⊂:-overloads-left) (⊂:-∩-saturate ⊂:-overloads-right) >>= ⊂:-∩-lift-saturate
+  ⊂:-∩-lift (⊂:-∩-saturate ⊂:-overloads-left) (⊂:-∩-saturate ⊂:-overloads-right) >>=
+  ⊂:-∩-lift-saturate
 
 overloads-∩-saturate : ∀ {F} → FunType F → ∩-Saturate (Overloads F) ⊂: Overloads (∩-saturate F)
 overloads-∩-saturate F = ⊂:-∩-saturate-indn (inj F) (step F) where
