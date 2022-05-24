@@ -55,13 +55,16 @@ jobs:
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Navigate to root dir, create gh-pages dir then navigate into it
-        run: cd .. && mkdir gh-pages && cd gh-pages
+        run: cd .. && mkdir gh-pages && cd gh-pages && pwd
 
       - name: Switch to & checkout gh-pages repo
         uses: actions/checkout@v3
         with:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
+          path: "./"
+
+      - run: pwd
 
       - name: Checkout gh-pages
         run: |
