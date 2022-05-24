@@ -30,6 +30,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
+        with:
+          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
 
       - name: Build Luau
         run: make config=release luau luau-analyze
@@ -62,7 +64,7 @@ jobs:
         with:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
-          path: "./"
+          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
 
       - run: pwd
 
