@@ -222,12 +222,19 @@ language-comp (function-err t) (function-err p) (function-err q) = language-comp
 <:-function p q (function-ok s t) (function-ok₂ r) = function-ok₂ (q t r)
 <:-function p q (function-err s) (function-err r) = function-err (<:-impl-⊇ p s r)
 
+<:-function-∩-∩ : ∀ {R S T U} → ((R ⇒ T) ∩ (S ⇒ U)) <: ((R ∩ S) ⇒ (T ∩ U))
+<:-function-∩-∩ function (function , function) = function
+<:-function-∩-∩ (function-ok s t) (function-ok₁ p , q) = function-ok₁ (left p)
+<:-function-∩-∩ (function-ok s t) (function-ok₂ p , function-ok₁ q) = function-ok₁ (right q)
+<:-function-∩-∩ (function-ok s t) (function-ok₂ p , function-ok₂ q) = function-ok₂ (p , q)
+<:-function-∩-∩ (function-err s) (function-err p , q) = function-err (left p)
+
 <:-function-∩-∪ : ∀ {R S T U} → ((R ⇒ T) ∩ (S ⇒ U)) <: ((R ∪ S) ⇒ (T ∪ U))
 <:-function-∩-∪ function (function , function) = function
 <:-function-∩-∪ (function-ok s t) (function-ok₁ p₁ , function-ok₁ p₂) = function-ok₁ (p₁ , p₂)
 <:-function-∩-∪ (function-ok s t) (p₁ , function-ok₂ p₂) = function-ok₂ (right p₂)
 <:-function-∩-∪ (function-ok s t) (function-ok₂ p₁ , p₂) = function-ok₂ (left p₁)
-<:-function-∩-∪ (function-err _) (function-err p₁ , function-err q₂) = function-err (p₁ , q₂)
+<:-function-∩-∪ (function-err s) (function-err p₁ , function-err q₂) = function-err (p₁ , q₂)
 
 <:-function-∩ : ∀ {S T U} → ((S ⇒ T) ∩ (S ⇒ U)) <: (S ⇒ (T ∩ U))
 <:-function-∩ function (function , function) = function
