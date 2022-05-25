@@ -26,6 +26,7 @@ jobs:
               cachegrindTitle: "Performance",
               cachegrindIterCount: 20,
             }
+        benchResultsRepo: [{ name: "luau-lang/benchmark-data", branch: "main" }]
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -51,8 +52,8 @@ jobs:
       - name: Switch to & checkout benchmark results (gh-pages) repo
         uses: actions/checkout@v3
         with:
-          repository: AllanJeremy/luau-benchmark-results
-          ref: "main"
+          repository: ${{ matrix.benchmarkResultsRepo.name }}
+          ref: ${{ matrix.benchmarkResultsRepo.branch }}
           path: "./gh-pages"
 
       #Run `github-action-benchmark` action
