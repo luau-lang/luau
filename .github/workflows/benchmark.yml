@@ -27,7 +27,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          [{ name: "AllanJeremy/luau-benchmark-results", branch: "main" }]
+          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
