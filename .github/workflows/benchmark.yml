@@ -56,7 +56,7 @@ jobs:
         with:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
-          path: "./gh-pages"
+          path: "../gh-pages"
 
       - name: Checkout benchmark results (gh-pages)
         run: |
