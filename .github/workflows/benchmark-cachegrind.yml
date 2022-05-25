@@ -56,9 +56,6 @@ jobs:
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
-      - name: Create gh-pages directory
-        run: mkdir gh-pages
-
       - name: Switch to & checkout benchmark results (gh-pages) repo
         uses: actions/checkout@v3
         with:
@@ -67,17 +64,6 @@ jobs:
           token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
           path: "./gh-pages"
 
-      - name: Navigate into gh-pages directory
-        run: cd gh-pages
-
-      - name: Checkout benchmark results (gh-pages)
-        run: |
-          git status
-          git fetch --no-tags --depth=1 origin main
-          git checkout main
-          git pull
-          git status
-
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
@@ -85,10 +71,10 @@ jobs:
           name: ${{ matrix.bench.title }}
           tool: "benchmarkluau"
           # This should come from Luau repo
-          output-file-path: ../${{ matrix.bench.script }}-output.txt
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
 
           # This should map to thebenchmark results repo
-          external-data-json-path: ../gh-pages/dev/bench/data.json
+          external-data-json-path: ./gh-pages/dev/bench/data.json
           alert-threshold: 150%
           fail-threshold: 200%
           fail-on-alert: true
