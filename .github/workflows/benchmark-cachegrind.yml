@@ -30,9 +30,8 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
-        with:
-          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
+      - name: Checkout Luau
+        uses: actions/checkout@v3
 
       - name: Build Luau
         run: make config=release luau luau-analyze
@@ -62,7 +61,6 @@ jobs:
         with:
           repository: ${{ matrix.benchmarkResultsRepo.name }}
           ref: ${{ matrix.benchmarkResultsRepo.branch }}
-          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
           path: "./gh-pages"
 
       #Run `github-action-benchmark` action

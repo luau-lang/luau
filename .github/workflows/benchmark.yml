@@ -30,7 +30,8 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Luau repository
+        uses: actions/checkout@v3
 
       - name: Build Luau
         run: make config=release luau luau-analyze
@@ -49,7 +50,7 @@ jobs:
         run: |
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-      - name: Switch to & checkout benchmark results (gh-pages) repo
+      - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
         with:
           repository: ${{ matrix.benchmarkResultsRepo.name }}
