@@ -58,6 +58,9 @@ jobs:
           ref: ${{ matrix.benchmarkResultsRepo.branch }}
           path: "./gh-pages"
 
+      - name: Print gh-pages directory (benchmark results repo expected)
+        run: ls gh-pages
+
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
