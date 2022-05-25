@@ -22,7 +22,7 @@ jobs:
           - {
               script: "run-benchmarks",
               timeout: 12,
-              title: "Luau Benchmarks",
+              title: "Luau Benchmarks (CacheGrind)",
               cachegrindTitle: "Performance",
               cachegrindIterCount: 20,
             }
