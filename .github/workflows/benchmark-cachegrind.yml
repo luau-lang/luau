@@ -60,8 +60,8 @@ jobs:
       - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
         with:
-          repository: ${{ matrix.benchmarkResultsRepo.name }}
-          ref: ${{ matrix.benchmarkResultsRepo.branch }}
+          repository: ${{ matrix.benchResultsRepo.name }}
+          ref: ${{ matrix.benchResultsRepo.branch }}
           path: "./gh-pages"
 
       #Run `github-action-benchmark` action
