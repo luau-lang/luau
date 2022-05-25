@@ -15,6 +15,7 @@ data Tree : Set where
   function : Tree
   function-ok : Tree → Tree → Tree
   function-err : Tree → Tree
+  function-tgt : Tree → Tree
 
 data Language : Type → Tree → Set
 data ¬Language : Type → Tree → Set
@@ -26,6 +27,7 @@ data Language where
   function-ok₁ : ∀ {T U t u} → (¬Language T t) → Language (T ⇒ U) (function-ok t u)
   function-ok₂ : ∀ {T U t u} → (Language U u) → Language (T ⇒ U) (function-ok t u)
   function-err : ∀ {T U t} → (¬Language T t) → Language (T ⇒ U) (function-err t)
+  function-tgt : ∀ {T U t} → (Language U t) → Language (T ⇒ U) (function-tgt t)
   left : ∀ {T U t} → Language T t → Language (T ∪ U) t
   right : ∀ {T U u} → Language U u → Language (T ∪ U) u
   _,_ : ∀ {T U t} → Language T t → Language U t → Language (T ∩ U) t
@@ -37,9 +39,11 @@ data ¬Language where
   scalar-function : ∀ {S} → (Scalar S) → ¬Language S function
   scalar-function-ok : ∀ {S t u} → (Scalar S) → ¬Language S (function-ok t u)
   scalar-function-err : ∀ {S t} → (Scalar S) → ¬Language S (function-err t)
+  scalar-function-tgt : ∀ {S t} → (Scalar S) → ¬Language S (function-tgt t)
   function-scalar : ∀ {S T U} (s : Scalar S) → ¬Language (T ⇒ U) (scalar s)
   function-ok : ∀ {T U t u} → (Language T t) → (¬Language U u) → ¬Language (T ⇒ U) (function-ok t u)
   function-err : ∀ {T U t} → (Language T t) → ¬Language (T ⇒ U) (function-err t)
+  function-tgt : ∀ {T U t} → (¬Language U t) → ¬Language (T ⇒ U) (function-tgt t)
   _,_ : ∀ {T U t} → ¬Language T t → ¬Language U t → ¬Language (T ∪ U) t
   left : ∀ {T U t} → ¬Language T t → ¬Language (T ∩ U) t
   right : ∀ {T U u} → ¬Language U u → ¬Language (T ∩ U) u

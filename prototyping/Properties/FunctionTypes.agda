@@ -4,7 +4,7 @@ module Properties.FunctionTypes where
 
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
 open import Luau.FunctionTypes using (srcⁿ; src; tgt)
-open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
+open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-function-tgt; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; function-tgt; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_; skalar)
 open import Properties.Contradiction using (CONTRADICTION; ¬; ⊥)
 open import Properties.Functions using (_∘_)
@@ -65,6 +65,7 @@ fun-¬scalar s (S ∩ T) = left (fun-¬scalar s S)
 ¬fun-scalar s (S ⇒ T) (function-ok₁ p) = scalar-function-ok s
 ¬fun-scalar s (S ⇒ T) (function-ok₂ p) = scalar-function-ok s
 ¬fun-scalar s (S ⇒ T) (function-err p) = scalar-function-err s
+¬fun-scalar s (S ⇒ T) (function-tgt p) = scalar-function-tgt s
 ¬fun-scalar s (S ∩ T) (p₁ , p₂) = ¬fun-scalar s T p₂
 
 fun-function : ∀ {T} → FunType T → Language T function
@@ -114,3 +115,4 @@ unknown-src-≮: r (witness (function-ok s .function) p (function-ok x (scalar-f
 unknown-src-≮: r (witness (function-ok s .(function-ok _ _)) p (function-ok x (scalar-function-ok ())))
 unknown-src-≮: r (witness (function-ok s .(function-err _)) p (function-ok x (scalar-function-err ())))
 unknown-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
+unknown-src-≮: r (witness (function-tgt t) p (function-tgt (scalar-function-tgt ())))

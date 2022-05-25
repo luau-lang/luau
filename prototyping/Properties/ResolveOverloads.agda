@@ -74,22 +74,22 @@ resolve F R = resolveⁿ (normal F) (normal R)
 <:-resolve : ∀ {R S T} → T <: resolve (S ⇒ T) R
 <:-resolve {R} {S} {T} = <:-trans (<:-normalize T) (<:-resolveⁿ (normal (S ⇒ T)) (normal R))
 
-resolveˢ-<:-⇒ : ∀ {F R U} → (FunType F) → (Saturated F) → (r : Resolved F R) → (R ≮: never) → (F <: (R ⇒ U)) → (target r <: U)
-resolveˢ-<:-⇒ Fᶠ Fˢ r R≮:never F<:R⇒U with <:-impl-<:ᵒ Fᶠ Fˢ R≮:never F<:R⇒U
-resolveˢ-<:-⇒ Fᶠ Fˢ (yes Sʳ Tʳ oʳ R<:Sʳ tgtʳ) R≮:never F<:R⇒U | defn o o₁ o₂ = <:-trans (tgtʳ o o₁) o₂
-resolveˢ-<:-⇒ Fᶠ Fˢ (no tgtʳ) R≮:never F<:R⇒U | defn o o₁ o₂ = CONTRADICTION (<:-impl-¬≮: o₁ (tgtʳ o))
+resolveˢ-<:-⇒ : ∀ {F R U} → (FunType F) → (Saturated F) → (r : Resolved F R) → (F <: (R ⇒ U)) → (target r <: U)
+resolveˢ-<:-⇒ Fᶠ Fˢ r F<:R⇒U with <:-impl-<:ᵒ Fᶠ Fˢ F<:R⇒U
+resolveˢ-<:-⇒ Fᶠ Fˢ (yes Sʳ Tʳ oʳ R<:Sʳ tgtʳ) F<:R⇒U | defn o o₁ o₂ = <:-trans (tgtʳ o o₁) o₂
+resolveˢ-<:-⇒ Fᶠ Fˢ (no tgtʳ) F<:R⇒U | defn o o₁ o₂ = CONTRADICTION (<:-impl-¬≮: o₁ (tgtʳ o))
 
-resolveⁿ-<:-⇒ : ∀ {F R U} → (Fⁿ : Normal F) → (Rⁿ : Normal R) → (R ≮: never) → (F <: (R ⇒ U)) → (resolveⁿ Fⁿ Rⁿ <: U)
-resolveⁿ-<:-⇒ (Sⁿ ⇒ Tⁿ) Rⁿ R≮:never F<:R⇒U = resolveˢ-<:-⇒ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) (resolveˢ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) Rⁿ (λ o → o)) R≮:never F<:R⇒U
-resolveⁿ-<:-⇒ (Fⁿ ∩ Gⁿ) Rⁿ R≮:never F<:R⇒U = resolveˢ-<:-⇒ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) (resolveˢ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) Rⁿ (λ o → o)) R≮:never (<:-trans (saturate-<: (Fⁿ ∩ Gⁿ)) F<:R⇒U)
-resolveⁿ-<:-⇒ (Sⁿ ∪ Tˢ) Rⁿ R≮:never F<:R⇒U = CONTRADICTION (<:-impl-¬≮: F<:R⇒U (<:-trans-≮: <:-∪-right (scalar-≮:-function Tˢ)))
-resolveⁿ-<:-⇒ never Rⁿ R≮:never F<:R⇒U = <:-never
-resolveⁿ-<:-⇒ unknown Rⁿ R≮:never F<:R⇒U = CONTRADICTION (<:-impl-¬≮: F<:R⇒U unknown-≮:-function)
+resolveⁿ-<:-⇒ : ∀ {F R U} → (Fⁿ : Normal F) → (Rⁿ : Normal R) → (F <: (R ⇒ U)) → (resolveⁿ Fⁿ Rⁿ <: U)
+resolveⁿ-<:-⇒ (Sⁿ ⇒ Tⁿ) Rⁿ F<:R⇒U = resolveˢ-<:-⇒ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) (resolveˢ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) Rⁿ (λ o → o)) F<:R⇒U
+resolveⁿ-<:-⇒ (Fⁿ ∩ Gⁿ) Rⁿ F<:R⇒U = resolveˢ-<:-⇒ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) (resolveˢ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) Rⁿ (λ o → o)) (<:-trans (saturate-<: (Fⁿ ∩ Gⁿ)) F<:R⇒U)
+resolveⁿ-<:-⇒ (Sⁿ ∪ Tˢ) Rⁿ F<:R⇒U = CONTRADICTION (<:-impl-¬≮: F<:R⇒U (<:-trans-≮: <:-∪-right (scalar-≮:-function Tˢ)))
+resolveⁿ-<:-⇒ never Rⁿ F<:R⇒U = <:-never
+resolveⁿ-<:-⇒ unknown Rⁿ F<:R⇒U = CONTRADICTION (<:-impl-¬≮: F<:R⇒U unknown-≮:-function)
 
-resolve-<:-⇒ : ∀ {F R U} → (R ≮: never) → (F <: (R ⇒ U)) → (resolve F R <: U)
-resolve-<:-⇒ {F} {R} R≮:never F<:R⇒U = resolveⁿ-<:-⇒ (normal F) (normal R) (<:-trans-≮: (<:-normalize R) R≮:never) (<:-trans (normalize-<: F) (<:-trans F<:R⇒U (<:-function (normalize-<: R) <:-refl)))
+resolve-<:-⇒ : ∀ {F R U} → (F <: (R ⇒ U)) → (resolve F R <: U)
+resolve-<:-⇒ {F} {R} F<:R⇒U = resolveⁿ-<:-⇒ (normal F) (normal R) (<:-trans (normalize-<: F) (<:-trans F<:R⇒U (<:-function (normalize-<: R) <:-refl)))
 
-resolve-≮:-⇒ : ∀ {F R U} → (R ≮: never) → (resolve F R ≮: U) → (F ≮: (R ⇒ U))
-resolve-≮:-⇒ {F} {R} {U} R≮:never FR≮:U with dec-subtyping F (R ⇒ U)
-resolve-≮:-⇒ {F} {R} {U} R≮:never FR≮:U | Left F≮:R⇒U = F≮:R⇒U
-resolve-≮:-⇒ {F} {R} {U} R≮:never FR≮:U | Right F<:R⇒U = CONTRADICTION (<:-impl-¬≮: (resolve-<:-⇒ R≮:never F<:R⇒U) FR≮:U)
+resolve-≮:-⇒ : ∀ {F R U} → (resolve F R ≮: U) → (F ≮: (R ⇒ U))
+resolve-≮:-⇒ {F} {R} {U} FR≮:U with dec-subtyping F (R ⇒ U)
+resolve-≮:-⇒ {F} {R} {U} FR≮:U | Left F≮:R⇒U = F≮:R⇒U
+resolve-≮:-⇒ {F} {R} {U} FR≮:U | Right F<:R⇒U = CONTRADICTION (<:-impl-¬≮: (resolve-<:-⇒ F<:R⇒U) FR≮:U)

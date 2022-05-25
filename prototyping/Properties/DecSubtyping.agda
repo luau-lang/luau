@@ -5,13 +5,13 @@ module Properties.DecSubtyping where
 
 open import Agda.Builtin.Equality using (_≡_; refl)
 open import FFI.Data.Either using (Either; Left; Right; mapLR; swapLR; cond)
-open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; left; right; _,_)
+open import Luau.Subtyping using (_<:_; _≮:_; Tree; Language; ¬Language; witness; unknown; never; scalar; function; scalar-function; scalar-function-ok; scalar-function-err; scalar-function-tgt; scalar-scalar; function-scalar; function-ok; function-ok₁; function-ok₂; function-err; function-tgt; left; right; _,_)
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_)
 open import Luau.TypeSaturation using (saturate)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
-open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-function-never; <:-union; ≮:-left-∪; ≮:-right-∪; <:-∩-distr-∪; <:-impl-⊇; language-comp)
+open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-union; ≮:-left-∪; ≮:-right-∪; <:-∩-distr-∪; <:-impl-⊇; language-comp)
 open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:; normal-∩ⁿ; normal-∪ⁿ; ∪-<:-∪ⁿ; ∪ⁿ-<:-∪; ∩ⁿ-<:-∩; ∩-<:-∩ⁿ; normalᶠ; function-top)
 open import Properties.TypeSaturation using (Overloads; Saturated; _⊆ᵒ_; _<:ᵒ_; defn; here; left; right; ov-language; ov-<:; saturated; normal-saturate; normal-overload-src; normal-overload-tgt; saturate-<:; <:-saturate; <:ᵒ-impl-<:; _>>=ˡ_; _>>=ʳ_)
 open import Properties.Equality using (_≢_)
@@ -25,12 +25,13 @@ fun-¬scalar s (S ⇒ T) function = scalar-function s
 fun-¬scalar s (S ⇒ T) (function-ok₁ p) = scalar-function-ok s
 fun-¬scalar s (S ⇒ T) (function-ok₂ p) = scalar-function-ok s
 fun-¬scalar s (S ⇒ T) (function-err p) = scalar-function-err s
+fun-¬scalar s (S ⇒ T) (function-tgt p) = scalar-function-tgt s
 fun-¬scalar s (F ∩ G) (p₁ , p₂) = fun-¬scalar s G p₂
 
 -- Honest this terminates, since saturation maintains the depth of nested arrows
 {-# TERMINATING #-}
 dec-subtypingˢⁿ : ∀ {T U} → Scalar T → Normal U → Either (T ≮: U) (T <: U)
-dec-subtypingˢᶠᵒ : ∀ {F S T} → FunType F → Saturated F → FunType (S ⇒ T) → (S ≮: never) → Either (F ≮: (S ⇒ T)) (F <:ᵒ (S ⇒ T))
+dec-subtypingˢᶠᵒ : ∀ {F S T} → FunType F → Saturated F → FunType (S ⇒ T) → Either (F ≮: (S ⇒ T)) (F <:ᵒ (S ⇒ T))
 dec-subtypingˢᶠ : ∀ {F G} → FunType F → Saturated F → FunType G → Either (F ≮: G) (F <: G)
 dec-subtypingᶠ : ∀ {F G} → FunType F → FunType G → Either (F ≮: G) (F <: G)
 dec-subtypingᶠⁿ : ∀ {F U} → FunType F → Normal U → Either (F ≮: U) (F <: U)
@@ -41,7 +42,7 @@ dec-subtypingˢⁿ T U with dec-language _ (scalar T)
 dec-subtypingˢⁿ T U | Left p = Left (witness (scalar T) (scalar T) p)
 dec-subtypingˢⁿ T U | Right p = Right (scalar-<: T p)
 
-dec-subtypingˢᶠᵒ {F} {S} {T} Fᶠ (defn sat-∩ sat-∪) (Sⁿ ⇒ Tⁿ) (witness s₀ Ss₀ never) = result (top Fᶠ (λ o → o)) where
+dec-subtypingˢᶠᵒ {F} {S} {T} Fᶠ (defn sat-∩ sat-∪) (Sⁿ ⇒ Tⁿ) = result (top Fᶠ (λ o → o)) where
 
   data Top G : Set where
 
@@ -100,7 +101,7 @@ dec-subtypingˢᶠᵒ {F} {S} {T} Fᶠ (defn sat-∩ sat-∪) (Sⁿ ⇒ Tⁿ) (w
          })
 
     result₀ : LargestSrc F → Either (F ≮: (S ⇒ T)) (F <:ᵒ (S ⇒ T))
-    result₀ (no S₀ T₀ o₀ (witness t T₀t ¬Tt) tgt₀) = Left (witness (function-ok s₀ t) (ov-language Fᶠ (λ o → function-ok₂ (tgt₀ o t T₀t))) (function-ok Ss₀ ¬Tt))
+    result₀ (no S₀ T₀ o₀ (witness t T₀t ¬Tt) tgt₀) = Left (witness (function-tgt t) (ov-language Fᶠ (λ o → function-tgt (tgt₀ o t T₀t))) (function-tgt ¬Tt))
     result₀ (yes S₀ T₀ o₀ T₀<:T src₀) with dec-subtypingⁿ Sⁿ (normal-overload-src Fᶠ o₀)
     result₀ (yes S₀ T₀ o₀ T₀<:T src₀) | Right S<:S₀ = Right (defn o₀ S<:S₀ T₀<:T)
     result₀ (yes S₀ T₀ o₀ T₀<:T src₀) | Left (witness s Ss ¬S₀s) = Left (result₁ (smallest Fᶠ (λ o → o))) where
@@ -136,11 +137,9 @@ dec-subtypingˢᶠᵒ {F} {S} {T} Fᶠ (defn sat-∩ sat-∪) (Sⁿ ⇒ Tⁿ) (w
         lemma {S′} o | Left ¬S′s = function-ok₁ ¬S′s
         lemma {S′} o | Right S′s = function-ok₂ (tgt₁ o S′s t T₁t)
 
-dec-subtypingˢᶠ F Fˢ (S ⇒ T) with dec-subtypingⁿ S never
-dec-subtypingˢᶠ F Fˢ (S ⇒ T) | Right S<:never = Right (<:-trans (function-top F) (<:-trans <:-function-never (<:-function S<:never <:-refl)))
-dec-subtypingˢᶠ F Fˢ (S ⇒ T) | Left S≮:never with dec-subtypingˢᶠᵒ F Fˢ (S ⇒ T) S≮:never
-dec-subtypingˢᶠ F Fˢ (S ⇒ T) | Left S≮:never | Left F≮:S⇒T = Left F≮:S⇒T
-dec-subtypingˢᶠ F Fˢ (S ⇒ T) | Left S≮:never | Right F<:ᵒS⇒T = Right (<:ᵒ-impl-<: F F<:ᵒS⇒T)
+dec-subtypingˢᶠ F Fˢ (S ⇒ T) with dec-subtypingˢᶠᵒ F Fˢ (S ⇒ T) 
+dec-subtypingˢᶠ F Fˢ (S ⇒ T) | Left F≮:S⇒T = Left F≮:S⇒T
+dec-subtypingˢᶠ F Fˢ (S ⇒ T) | Right F<:ᵒS⇒T = Right (<:ᵒ-impl-<: F F<:ᵒS⇒T)
 dec-subtypingˢᶠ F Fˢ (G ∩ H) with dec-subtypingˢᶠ F Fˢ G | dec-subtypingˢᶠ F Fˢ H
 dec-subtypingˢᶠ F Fˢ (G ∩ H) | Left F≮:G | _ = Left (≮:-∩-left F≮:G)
 dec-subtypingˢᶠ F Fˢ (G ∩ H) | _ | Left F≮:H = Left (≮:-∩-right F≮:H)
@@ -186,7 +185,7 @@ dec-subtyping T U | Right p = Right (<:-trans (<:-normalize T) (<:-trans p (norm
 -- <:ᵒ coincides with <:, that is F is a subtype of (S ⇒ T) precisely
 -- when one of its overloads is.
 
-<:-impl-<:ᵒ : ∀ {F S T} → FunType F → Saturated F → (S ≮: never) → (F <: (S ⇒ T)) → (F <:ᵒ (S ⇒ T))
-<:-impl-<:ᵒ {F} {S} {T} Fᶠ Fˢ S≮:never F<:S⇒T with dec-subtypingˢᶠᵒ Fᶠ Fˢ (normal S ⇒ normal T) (<:-trans-≮: (<:-normalize S) S≮:never)
-<:-impl-<:ᵒ {F} {S} {T} Fᶠ Fˢ S≮:never F<:S⇒T | Left F≮:S⇒T = CONTRADICTION (<:-impl-¬≮: (<:-trans F<:S⇒T (<:-normalize (S ⇒ T))) F≮:S⇒T)
-<:-impl-<:ᵒ {F} {S} {T} Fᶠ Fˢ S≮:never F<:S⇒T | Right F<:ᵒS⇒T = F<:ᵒS⇒T >>=ˡ <:-normalize S >>=ʳ normalize-<: T
+<:-impl-<:ᵒ : ∀ {F S T} → FunType F → Saturated F → (F <: (S ⇒ T)) → (F <:ᵒ (S ⇒ T))
+<:-impl-<:ᵒ {F} {S} {T} Fᶠ Fˢ F<:S⇒T with dec-subtypingˢᶠᵒ Fᶠ Fˢ (normal S ⇒ normal T)
+<:-impl-<:ᵒ {F} {S} {T} Fᶠ Fˢ F<:S⇒T | Left F≮:S⇒T = CONTRADICTION (<:-impl-¬≮: (<:-trans F<:S⇒T (<:-normalize (S ⇒ T))) F≮:S⇒T)
+<:-impl-<:ᵒ {F} {S} {T} Fᶠ Fˢ F<:S⇒T | Right F<:ᵒS⇒T = F<:ᵒS⇒T >>=ˡ <:-normalize S >>=ʳ normalize-<: T

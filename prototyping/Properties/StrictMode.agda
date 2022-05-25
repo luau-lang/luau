@@ -86,7 +86,7 @@ heap-weakeningᴱ Γ H (val (addr a)) (snoc {a = b} q) p | no r = ≡-trans-≮:
 heap-weakeningᴱ Γ H (val (number x)) h p = p
 heap-weakeningᴱ Γ H (val (bool x)) h p = p
 heap-weakeningᴱ Γ H (val (string x)) h p = p
-heap-weakeningᴱ Γ H (M $ N) h p = ⇒-≮:-resolve (resolve⁻¹-≮:-⇒ (heap-weakeningᴱ Γ H N h (⇒-≮:-resolve⁻¹ (heap-weakeningᴱ Γ H M h (resolve-≮:-⇒ {!!} p)))))
+heap-weakeningᴱ Γ H (M $ N) h p = ⇒-≮:-resolve (resolve⁻¹-≮:-⇒ (heap-weakeningᴱ Γ H N h (⇒-≮:-resolve⁻¹ (heap-weakeningᴱ Γ H M h (resolve-≮:-⇒ p)))))
 heap-weakeningᴱ Γ H (function f ⟨ var x ∈ T ⟩∈ U is B end) h p = p
 heap-weakeningᴱ Γ H (block var b ∈ T is B end) h p = p
 heap-weakeningᴱ Γ H (binexp M op N) h p = p
@@ -107,7 +107,7 @@ substitutivityᴮ-unless-no : ∀ {Γ Γ′ T V} H B v x y (r : x ≢ y) → (Γ
 substitutivityᴱ H (var y) v x p = substitutivityᴱ-whenever H v x y (x ≡ⱽ y) p
 substitutivityᴱ H (val w) v x p = Left p
 substitutivityᴱ H (binexp M op N) v x p = Left p
-substitutivityᴱ H (M $ N) v x p with substitutivityᴱ H M v x (resolve-≮:-⇒ {!!} p) 
+substitutivityᴱ H (M $ N) v x p with substitutivityᴱ H M v x (resolve-≮:-⇒ p) 
 substitutivityᴱ H (M $ N) v x p | Left q with substitutivityᴱ H N v x (⇒-≮:-resolve⁻¹ q)
 substitutivityᴱ H (M $ N) v x p | Left q | Left r = Left (⇒-≮:-resolve (resolve⁻¹-≮:-⇒ r))
 substitutivityᴱ H (M $ N) v x p | Left q | Right r = Right r
@@ -142,10 +142,10 @@ binOpPreservation H (·· v w) = refl
 reflect-subtypingᴱ : ∀ H M {H′ M′ T} → (H ⊢ M ⟶ᴱ M′ ⊣ H′) → (typeOfᴱ H′ ∅ M′ ≮: T) → Either (typeOfᴱ H ∅ M ≮: T) (Warningᴱ H (typeCheckᴱ H ∅ M))
 reflect-subtypingᴮ : ∀ H B {H′ B′ T} → (H ⊢ B ⟶ᴮ B′ ⊣ H′) → (typeOfᴮ H′ ∅ B′ ≮: T) → Either (typeOfᴮ H ∅ B ≮: T) (Warningᴮ H (typeCheckᴮ H ∅ B))
 
-reflect-subtypingᴱ H (M $ N) (app₁ s) p with reflect-subtypingᴱ H M s (resolve-≮:-⇒ {!!} p)
+reflect-subtypingᴱ H (M $ N) (app₁ s) p with reflect-subtypingᴱ H M s (resolve-≮:-⇒ p)
 reflect-subtypingᴱ H (M $ N) (app₁ s) p | Left q = Left (⇒-≮:-resolve (resolve⁻¹-≮:-⇒ (heap-weakeningᴱ ∅ H N (rednᴱ⊑ s) (⇒-≮:-resolve⁻¹ q))))
 reflect-subtypingᴱ H (M $ N) (app₁ s) p | Right W = Right (app₁ W)
-reflect-subtypingᴱ H (M $ N) (app₂ v s) p with reflect-subtypingᴱ H N s (⇒-≮:-resolve⁻¹ (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (resolve-≮:-⇒ {!!} p)))
+reflect-subtypingᴱ H (M $ N) (app₂ v s) p with reflect-subtypingᴱ H N s (⇒-≮:-resolve⁻¹ (heap-weakeningᴱ ∅ H M (rednᴱ⊑ s) (resolve-≮:-⇒ p)))
 reflect-subtypingᴱ H (M $ N) (app₂ v s) p | Left q = Left (⇒-≮:-resolve (resolve⁻¹-≮:-⇒ q))
 reflect-subtypingᴱ H (M $ N) (app₂ v s) p | Right W = Right (app₂ W)
 reflect-subtypingᴱ H (M $ N) {T = T} (beta (function f ⟨ var y ∈ S ⟩∈ U is B end) v refl q) p = Left (≡-trans-≮: (cong (λ F → resolve F (typeOfᴱ H ∅ N)) (cong orUnknown (cong typeOfᴹᴼ q))) (<:-trans-≮: (<:-resolve {typeOfᴱ H ∅ N} {S} {U}) p))
