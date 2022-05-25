@@ -26,7 +26,8 @@ jobs:
               cachegrindTitle: "Performance",
               cachegrindIterCount: 20,
             }
-        benchResultsRepo: [{ name: "luau-lang/benchmark-data", branch: "main" }]
+        benchResultsRepo:
+          [{ name: "AllanJeremy/luau-benchmark-results", branch: "main" }]
 
     runs-on: ${{ matrix.os }}
     steps:
