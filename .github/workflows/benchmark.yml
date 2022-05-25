@@ -48,7 +48,7 @@ jobs:
         run: |
           python bench/bench.py | tee ../${{ matrix.bench.script }}-output.txt
 
-      - name: Navigate to root dir then create gh-pages directory
+      - name: Create gh-pages directory
         run: mkdir gh-pages
 
       - name: Switch to & checkout benchmark results (gh-pages) repo

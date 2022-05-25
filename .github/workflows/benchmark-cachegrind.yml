@@ -56,7 +56,7 @@ jobs:
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
-      - name: Navigate to root dir then create gh-pages directory
+      - name: Create gh-pages directory
         run: mkdir gh-pages
 
       - name: Switch to & checkout benchmark results (gh-pages) repo
