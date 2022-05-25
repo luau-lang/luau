@@ -46,7 +46,7 @@ jobs:
 
       - name: Run benchmark
         run: |
-          python bench/bench.py | tee ../${{ matrix.bench.script }}-output.txt
+          python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Switch to & checkout benchmark results (gh-pages) repo
         uses: actions/checkout@v3
