@@ -57,7 +57,7 @@ jobs:
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Navigate to root dir then create gh-pages directory
-        run: cd .. && mkdir gh-pages
+        run: mkdir gh-pages
 
       - name: Switch to & checkout benchmark results (gh-pages) repo
         uses: actions/checkout@v3
@@ -65,7 +65,7 @@ jobs:
           repository: AllanJeremy/luau-benchmark-results
           ref: "main"
           token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
-          path: "../gh-pages"
+          path: "./gh-pages"
 
       - name: Navigate into gh-pages directory
         run: cd gh-pages
@@ -77,9 +77,6 @@ jobs:
           git checkout main
           git pull
           git status
-
-      - name: Navigate back to luau before checking out original repo
-        run: cd ..
 
       #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
