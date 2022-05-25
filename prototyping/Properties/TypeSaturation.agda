@@ -233,6 +233,9 @@ ov-<: F here p = p
 ov-<: (F ∩ G) (left o) p = <:-trans <:-∩-left (ov-<: F o p)
 ov-<: (F ∩ G) (right o) p = <:-trans <:-∩-right (ov-<: G o p)
 
+<:ᵒ-impl-<: : ∀ {F S T} → FunType F → F <:ᵒ (S ⇒ T) → F <: (S ⇒ T)
+<:ᵒ-impl-<: F (defn o o₁ o₂) = ov-<: F o (<:-function o₁ o₂)
+
 ⊂:-overloads-left : ∀ {F G} → Overloads F ⊂: Overloads (F ∩ G)
 ⊂:-overloads-left p = just (left p)
 

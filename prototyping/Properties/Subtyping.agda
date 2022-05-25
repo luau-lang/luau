@@ -337,6 +337,9 @@ never-≮: (witness t p q) = witness t p never
 unknown-≮:-never : (unknown ≮: never)
 unknown-≮:-never = witness (scalar nil) unknown never
 
+unknown-≮:-function : ∀ {S T} → (unknown ≮: (S ⇒ T))
+unknown-≮:-function = witness (scalar nil) unknown (function-scalar nil)
+
 function-≮:-never : ∀ {T U} → ((T ⇒ U) ≮: never)
 function-≮:-never = witness function function never
 
