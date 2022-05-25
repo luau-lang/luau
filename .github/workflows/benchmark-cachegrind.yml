@@ -51,7 +51,7 @@ jobs:
           sudo apt-get install valgrind
 
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
-        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee -a ${{ matrix.bench.script }}-output.txt
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
@@ -69,7 +69,7 @@ jobs:
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
           name: ${{ matrix.bench.title }}
-          tool: "benchmarkluau"
+          tool: "roblox"
           # This should come from Luau repo
           output-file-path: ./${{ matrix.bench.script }}-output.txt
 
