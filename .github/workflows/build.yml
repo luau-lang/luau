@@ -72,7 +72,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: install
       run: |
-        sudo apt install llvm
+        sudo apt install llvm clang-14
     - name: make coverage
       run: |
         CXX=clang++-14 make -j2 config=coverage coverage
