@@ -1,6 +1,6 @@
 import os, sys, time
 try:
-    import  numpy as np
+    import numpy as np
     from scipy import mean, stats
 except ModuleNotFoundError:
     print("Warning: scipy package is not installed, confidence values will not be available")
