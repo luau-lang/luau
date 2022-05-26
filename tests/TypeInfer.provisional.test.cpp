@@ -409,14 +409,15 @@ TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_table
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(Fixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
+TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
 {
     CheckResult result = check(R"(
         local function f(): () end
         local ok, res = pcall(f)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Function only returns 1 value. 2 are required here", toString(result.errors[0]));
     // LUAU_REQUIRE_NO_ERRORS(result);
     // CHECK_EQ("boolean", toString(requireType("ok")));
     // CHECK_EQ("any", toString(requireType("res")));

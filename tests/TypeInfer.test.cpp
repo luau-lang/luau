@@ -681,7 +681,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
         _(nil)
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
@@ -693,7 +693,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
     CHECK(it != result.errors.end());
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_stack_overflow_from_isoptional2")
 {
     CheckResult result = check(R"(
         function _(l0:({})|(t0)):((((typeof((xpcall)))|(t96<t0>))|(t13))&(t96<t0>),()->typeof(...))
@@ -720,10 +720,10 @@ TEST_CASE_FIXTURE(Fixture, "no_infinite_loop_when_trying_to_unify_uh_this")
         _()
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -737,7 +737,7 @@ TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
@@ -1038,7 +1038,6 @@ TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_
 {
     ScopedFastFlag flag[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauDifferentOrderOfUnificationDoesntMatter2", true},
     };
 
     CheckResult result = check(R"(

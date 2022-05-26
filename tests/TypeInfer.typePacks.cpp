@@ -939,7 +939,7 @@ until _
 )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks")
+TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks")
 {
     CheckResult result = check(R"(
         type ( ... ) ( ) ;
@@ -949,10 +949,10 @@ TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks")
         ( ... ) ""
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 {
     CheckResult result = check(R"(
         function _(l0:((typeof((pcall)))|((((t0)->())|(typeof(-67108864)))|(any)))|(any),...):(((typeof(0))|(any))|(any),typeof(-67108864),any)
@@ -961,7 +961,7 @@ TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks2")
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

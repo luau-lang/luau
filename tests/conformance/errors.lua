@@ -382,4 +382,9 @@ assert(ecall(function() return "a" <= 5 end) == "attempt to compare string <= nu
 
 assert(ecall(function() local t = {} setmetatable(t, { __newindex = function(t,i,v) end }) t[nil] = 2 end) == "table index is nil")
 
+-- for loop type errors
+assert(ecall(function() for i='a',2 do end end) == "invalid 'for' initial value (number expected, got string)")
+assert(ecall(function() for i=1,'a' do end end) == "invalid 'for' limit (number expected, got string)")
+assert(ecall(function() for i=1,2,'a' do end end) == "invalid 'for' step (number expected, got string)")
+
 return('OK')

@@ -39,4 +39,4 @@ struct TypeArena
 void freeze(TypeArena& arena);
 void unfreeze(TypeArena& arena);
 
-}
+} // namespace Luau

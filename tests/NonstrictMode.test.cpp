@@ -15,10 +15,7 @@ TEST_SUITE_BEGIN("NonstrictModeTests");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_number_or_string")
 {
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true}
-    };
+    ScopedFastFlag sff[]{{"LuauReturnTypeInferenceInNonstrict", true}, {"LuauLowerBoundsCalculation", true}};
 
     CheckResult result = check(R"(
         --!nonstrict

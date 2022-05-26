@@ -24,7 +24,7 @@ struct LimitFixture : BuiltinsFixture
 #endif
 };
 
-template <typename T>
+template<typename T>
 bool hasError(const CheckResult& result, T* = nullptr)
 {
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](const TypeError& a) {

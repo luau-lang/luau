@@ -1700,31 +1700,18 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback)
 {
-    if (FFlag::LuauSeparateTypechecks)
-    {
-        // FIXME: We can improve performance here by parsing without checking.
-        // The old type graph is probably fine. (famous last words!)
-        FrontendOptions opts;
-        opts.forAutocomplete = true;
-        frontend.check(moduleName, opts);
-    }
-    else
-    {
-        // FIXME: We can improve performance here by parsing without checking.
-        // The old type graph is probably fine. (famous last words!)
-        // FIXME: We don't need to typecheck for script analysis here, just for autocomplete.
-        frontend.check(moduleName);
-    }
+    // FIXME: We can improve performance here by parsing without checking.
+    // The old type graph is probably fine. (famous last words!)
+    FrontendOptions opts;
+    opts.forAutocomplete = true;
+    frontend.check(moduleName, opts);
 
     const SourceModule* sourceModule = frontend.getSourceModule(moduleName);
     if (!sourceModule)
         return {};
 
-    TypeChecker& typeChecker =
-        (frontend.options.typecheckTwice_DEPRECATED || FFlag::LuauSeparateTypechecks ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
-    ModulePtr module =
-        (frontend.options.typecheckTwice_DEPRECATED || FFlag::LuauSeparateTypechecks ? frontend.moduleResolverForAutocomplete.getModule(moduleName)
-                                                                                     : frontend.moduleResolver.getModule(moduleName));
+    TypeChecker& typeChecker = frontend.typeCheckerForAutocomplete;
+    ModulePtr module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
 
     if (!module)
         return {};
@@ -1752,9 +1739,7 @@ OwningAutocompleteResult autocompleteSource(Frontend& frontend, std::string_view
     sourceModule->mode = Mode::Strict;
     sourceModule->commentLocations = std::move(result.commentLocations);
 
-    TypeChecker& typeChecker =
-        (frontend.options.typecheckTwice_DEPRECATED || FFlag::LuauSeparateTypechecks ? frontend.typeCheckerForAutocomplete : frontend.typeChecker);
-
+    TypeChecker& typeChecker = frontend.typeCheckerForAutocomplete;
     ModulePtr module = typeChecker.check(*sourceModule, Mode::Strict);
 
     OwningAutocompleteResult autocompleteResult = {

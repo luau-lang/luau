@@ -1891,7 +1891,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
     REQUIRE_EQ(ttv->state, TableState::Sealed);
 }
 
-TEST_CASE_FIXTURE(Fixture, "less_exponential_blowup_please")
+TEST_CASE_FIXTURE(BuiltinsFixture, "less_exponential_blowup_please")
 {
     CheckResult result = check(R"(
         --!strict
@@ -1920,7 +1920,7 @@ TEST_CASE_FIXTURE(Fixture, "less_exponential_blowup_please")
         newData:First()
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "common_table_element_union_in_call")
@@ -2327,8 +2327,6 @@ TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
 {
-    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter2", true};
-
     CheckResult result = check(R"(
         local a: {x: number, y: number, [any]: any} | {y: number}
 
@@ -2347,8 +2345,6 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
 {
-    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter2", true};
-
     CheckResult result = check(R"(
         local a: {y: number} | {x: number, y: number, [any]: any}
 
@@ -2680,10 +2676,11 @@ do end
 )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
 {
     CheckResult result = check("local x = setmetatable({})");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but only 1 is specified", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_table_cloning")
@@ -3004,6 +3001,32 @@ TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra_2")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "prop_access_on_key_whose_types_mismatches")
+{
+    ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};
+
+    CheckResult result = check(R"(
+        local t: {number} = {}
+        local x = t.x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Key 'x' not found in table '{number}'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "prop_access_on_unions_of_indexers_where_key_whose_types_mismatches")
+{
+    ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};
+
+    CheckResult result = check(R"(
+        local t: { [number]: number } | { [boolean]: number } = {}
+        local u = t.x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type '{number} | {| [boolean]: number |}' does not have key 'x'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

@@ -487,13 +487,12 @@ void* lua_tolightuserdata(lua_State* L, int idx)
 void* lua_touserdata(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
-    // fast-path: check userdata first since it is most likely the expected result
     if (ttisuserdata(o))
-        return uvalue(o)->data;
+         return uvalue(o)->data;
     else if (ttislightuserdata(o))
-        return pvalue(o);
+         return pvalue(o);
     else
-        return NULL;
+         return NULL;
 }
 
 void* lua_touserdatatagged(lua_State* L, int idx, int tag)
