@@ -75,7 +75,7 @@ jobs:
         sudo apt install llvm
     - name: make coverage
       run: |
-        CXX=clang++ make -j2 config=coverage coverage
+        CXX=clang++-14 make -j2 config=coverage coverage
     - name: upload coverage
       uses: coverallsapp/github-action@master
       with:
