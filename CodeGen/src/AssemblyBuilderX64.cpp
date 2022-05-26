@@ -385,7 +385,9 @@ void AssemblyBuilderX64::finalize()
     size_t dataSize = data.size() - dataPos;
 
     // Shrink data
-    memmove(&data[0], &data[dataPos], dataSize);
+    if (dataSize > 0)
+        memmove(&data[0], &data[dataPos], dataSize);
+
     data.resize(dataSize);
 
     finalized = true;
