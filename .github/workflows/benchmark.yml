@@ -82,6 +82,6 @@ jobs:
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
-        if: !!github.event.push
+        if: github.event.push
         run: |
           echo "Pushing benchmark results..."
