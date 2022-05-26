@@ -181,7 +181,7 @@ LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
     ++L->nCcalls;
 
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        luaG_runerror(L, "C stack overflow");
+        luaD_checkCstack(L);
 
     luaD_checkstack(L, LUA_MINSTACK);
 

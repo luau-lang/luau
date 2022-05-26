@@ -167,6 +167,81 @@ if not limitedstack then
   end
 end
 
+-- C stack overflow
+if not limitedstack then
+  local count = 1
+  local cso = setmetatable({}, {
+    __index = function(self, i)
+      count = count + 1
+      return self[i]
+    end,
+    __newindex = function(self, i, v)
+      count = count + 1
+      self[i] = v
+    end,
+    __tostring = function(self)
+      count = count + 1
+      return tostring(self)
+    end
+  })
+
+  local ehline
+  local function ehassert(cond)
+    if not cond then
+      ehline = debug.info(2, "l")
+      error()
+    end
+  end
+
+  local userdata = newproxy(true)
+  getmetatable(userdata).__index = print
+  assert(debug.info(print, "s") == "[C]")
+
+  local s, e = xpcall(tostring, function(e)
+    ehassert(string.find(e, "C stack overflow"))
+    print("after __tostring C stack overflow", count) -- 198: 1 resume + 1 xpcall + 198 luaB_tostring calls (which runs our __tostring successfully 197 times, erroring on the last attempt)
+    ehassert(count > 1)
+
+    local ps, pe
+
+    -- __tostring overflow (lua_call)
+    count = 1
+    ps, pe = pcall(tostring, cso)
+    print("after __tostring overflow in handler", count) -- 23: xpcall error handler + pcall + 23 luaB_tostring calls
+    ehassert(not ps and string.find(pe, "error in error handling"))
+    ehassert(count > 1)
+
+    -- __index overflow (callTMres)
+    count = 1
+    ps, pe = pcall(function() return cso[cso] end)
+    print("after __index overflow in handler", count) -- 23: xpcall error handler + pcall + 23 __index calls
+    ehassert(not ps and string.find(pe, "error in error handling"))
+    ehassert(count > 1)
+
+    -- __newindex overflow (callTM)
+    count = 1
+    ps, pe = pcall(function() cso[cso] = "kohuke" end)
+    print("after __newindex overflow in handler", count) -- 23: xpcall error handler + pcall + 23 __newindex calls
+    ehassert(not ps and string.find(pe, "error in error handling"))
+    ehassert(count > 1)
+
+    -- test various C __index invocations on userdata
+    ehassert(pcall(function() return userdata[userdata] end)) -- LOP_GETTABLE
+    ehassert(pcall(function() return userdata[1] end)) -- LOP_GETTABLEN
+    ehassert(pcall(function() return userdata.StringConstant end)) -- LOP_GETTABLEKS (luau_callTM)
+
+    -- lua_resume test
+    local coro = coroutine.create(function() end)
+    ps, pe = coroutine.resume(coro)
+    ehassert(not ps and string.find(pe, "C stack overflow"))
+
+    return true
+  end, cso)
+
+  assert(not s)
+  assert(e == true, "error in xpcall eh, line " .. tostring(ehline))
+end
+
 --[[
 local i=1
 while stack[i] ~= l1 do

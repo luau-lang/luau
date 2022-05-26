@@ -1066,6 +1066,7 @@ TEST_CASE("UserdataApi")
     int lud;
     lua_pushlightuserdata(L, &lud);
 
+    CHECK(lua_tolightuserdata(L, -1) == &lud);
     CHECK(lua_touserdata(L, -1) == &lud);
     CHECK(lua_topointer(L, -1) == &lud);
 
@@ -1073,6 +1074,7 @@ TEST_CASE("UserdataApi")
     int* ud1 = (int*)lua_newuserdata(L, 4);
     *ud1 = 42;
 
+    CHECK(lua_tolightuserdata(L, -1) == nullptr);
     CHECK(lua_touserdata(L, -1) == ud1);
     CHECK(lua_topointer(L, -1) == ud1);
 
