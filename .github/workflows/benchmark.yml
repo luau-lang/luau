@@ -87,6 +87,8 @@ jobs:
         run: |
           echo "Pushing benchmark results..."
           cd gh-pages
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
           git add ./dev/bench/data.json
           git commit -m "Add benchmarks results for ${{ github.sha }}"
           git push
