@@ -12,21 +12,9 @@ open import Luau.TypeSaturation using (saturate)
 open import Properties.Contradiction using (CONTRADICTION; ¬)
 open import Properties.Functions using (_∘_)
 open import Properties.Subtyping using (<:-refl; <:-trans; ≮:-trans-<:; <:-trans-≮:; <:-never; <:-unknown; <:-∪-left; <:-∪-right; <:-∪-lub;  ≮:-∪-left; ≮:-∪-right; <:-∩-left; <:-∩-right; <:-∩-glb;  ≮:-∩-left; ≮:-∩-right; dec-language; scalar-<:; <:-everything; <:-function; ≮:-function-left; ≮:-function-right; <:-impl-¬≮:; <:-intersect; <:-function-∩-∪; <:-function-∩; <:-union; ≮:-left-∪; ≮:-right-∪; <:-∩-distr-∪; <:-impl-⊇; language-comp)
-open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:; normal-∩ⁿ; normal-∪ⁿ; ∪-<:-∪ⁿ; ∪ⁿ-<:-∪; ∩ⁿ-<:-∩; ∩-<:-∩ⁿ; normalᶠ; function-top)
+open import Properties.TypeNormalization using (FunType; Normal; never; unknown; _∩_; _∪_; _⇒_; normal; <:-normalize; normalize-<:; normal-∩ⁿ; normal-∪ⁿ; ∪-<:-∪ⁿ; ∪ⁿ-<:-∪; ∩ⁿ-<:-∩; ∩-<:-∩ⁿ; normalᶠ; fun-top; fun-function; fun-¬scalar)
 open import Properties.TypeSaturation using (Overloads; Saturated; _⊆ᵒ_; _<:ᵒ_; defn; here; left; right; ov-language; ov-<:; saturated; normal-saturate; normal-overload-src; normal-overload-tgt; saturate-<:; <:-saturate; <:ᵒ-impl-<:; _>>=ˡ_; _>>=ʳ_)
 open import Properties.Equality using (_≢_)
-
-fun-function : ∀ {F} → FunType F → Language F function
-fun-function (S ⇒ T) = function
-fun-function (F ∩ G) = (fun-function F , fun-function G)
-
-fun-¬scalar : ∀ {F S t} → (s : Scalar S) → FunType F → Language F t → ¬Language S t
-fun-¬scalar s (S ⇒ T) function = scalar-function s
-fun-¬scalar s (S ⇒ T) (function-ok₁ p) = scalar-function-ok s
-fun-¬scalar s (S ⇒ T) (function-ok₂ p) = scalar-function-ok s
-fun-¬scalar s (S ⇒ T) (function-err p) = scalar-function-err s
-fun-¬scalar s (S ⇒ T) (function-tgt p) = scalar-function-tgt s
-fun-¬scalar s (F ∩ G) (p₁ , p₂) = fun-¬scalar s G p₂
 
 -- Honest this terminates, since saturation maintains the depth of nested arrows
 {-# TERMINATING #-}
