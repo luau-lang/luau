@@ -83,7 +83,7 @@ jobs:
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
-        if: github.event_name == "push"
+        if: github.event_name == 'push'
         run: |
           echo "Pushing benchmark results..."
           cd gh-pages
