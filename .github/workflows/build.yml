@@ -29,6 +29,26 @@ jobs:
     - uses: actions/checkout@v1
     - name: make test
       run: |
+        make -j2 config=sanitize werror=1 test
+    - name: make test w/flags
+      run: |
+        make -j2 config=sanitize werror=1 flags=true test
+    - name: make cli
+      run: |
+         make -j2 config=sanitize werror=1 luau luau-analyze # match config with tests to improve build time
+         ./luau tests/conformance/assert.lua
+         ./luau-analyze tests/conformance/assert.lua
+
+  unix3:
+    strategy:
+      matrix:
+        os: [ubuntu, macos]
+    name: ${{matrix.os}}-3
+    runs-on: ${{matrix.os}}-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: make test
+      run: |
         make -j3 config=sanitize werror=1 test
     - name: make test w/flags
       run: |
