@@ -1001,7 +1001,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
         type t0 = t0 | {}
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);

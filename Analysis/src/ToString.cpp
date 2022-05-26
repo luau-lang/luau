@@ -48,46 +48,6 @@ struct FindCyclicTypes final : TypeVarVisitor
         cycleTPs.insert(tp);
     }
 
-    // TODO: Clip all the operator()s when we clip FFlagLuauUseVisitRecursionLimit
-
-    template<typename T>
-    bool operator()(TypeId ty, const T&)
-    {
-        return visit(ty);
-    }
-
-    bool operator()(TypeId ty, const TableTypeVar& ttv) = delete;
-
-    bool operator()(TypeId ty, const TableTypeVar& ttv, std::unordered_set<void*>& seen)
-    {
-        if (!visited.insert(ty).second)
-            return false;
-
-        if (ttv.name || ttv.syntheticName)
-        {
-            for (TypeId itp : ttv.instantiatedTypeParams)
-                DEPRECATED_visitTypeVar(itp, *this, seen);
-
-            for (TypePackId itp : ttv.instantiatedTypePackParams)
-                DEPRECATED_visitTypeVar(itp, *this, seen);
-
-            return exhaustive;
-        }
-
-        return true;
-    }
-
-    bool operator()(TypeId, const ClassTypeVar&)
-    {
-        return false;
-    }
-
-    template<typename T>
-    bool operator()(TypePackId tp, const T&)
-    {
-        return visit(tp);
-    }
-
     bool visit(TypeId ty) override
     {
         return visited.insert(ty).second;
@@ -128,7 +88,7 @@ void findCyclicTypes(std::set<TypeId>& cycles, std::set<TypePackId>& cycleTPs, T
 {
     FindCyclicTypes fct;
     fct.exhaustive = exhaustive;
-    DEPRECATED_visitTypeVar(ty, fct);
+    fct.traverse(ty);
 
     cycles = std::move(fct.cycles);
     cycleTPs = std::move(fct.cycleTPs);

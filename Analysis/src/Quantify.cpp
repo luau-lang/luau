@@ -119,8 +119,7 @@ struct Quantifier final : TypeVarOnceVisitor
 void quantify(TypeId ty, TypeLevel level)
 {
     Quantifier q{level};
-    DenseHashSet<void*> seen{nullptr};
-    DEPRECATED_visitTypeVarOnce(ty, q, seen);
+    q.traverse(ty);
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
     LUAU_ASSERT(ftv);

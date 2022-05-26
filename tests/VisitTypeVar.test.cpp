@@ -8,12 +8,10 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauUseVisitRecursionLimit)
 LUAU_FASTINT(LuauVisitRecursionLimit)
 
 struct VisitTypeVarFixture : Fixture
 {
-    ScopedFastFlag flag1 = {"LuauUseVisitRecursionLimit", true};
     ScopedFastFlag flag2 = {"LuauRecursionLimitException", true};
 };
 

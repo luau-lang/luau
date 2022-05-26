@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <Type Name="Luau::CodeGen::RegisterX64">
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 31">noreg</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 0">rip</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 0">al</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 1">cl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 2">dl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 3">bl</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 0">eax</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 1">ecx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 2">edx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 3">ebx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 4">esp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 5">ebp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 6">esi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 7">edi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index >= 8">e{(int)index,d}d</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 0">rax</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 1">rcx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 2">rdx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 3">rbx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 4">rsp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 5">rbp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 6">rsi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 7">rdi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index >= 8">r{(int)index,d}</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::xmmword">xmm{(int)index,d}</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::ymmword">ymm{(int)index,d}</DisplayString>
+  </Type>
+  
+  <Type Name="Luau::CodeGen::OperandX64">
+    <DisplayString Condition="cat == 0">{reg}</DisplayString>
+    <DisplayString Condition="cat == 1">{mem.size,en} ptr[{mem.base} + {mem.index}*{(int)mem.scale,d} + {disp}]</DisplayString>
+    <DisplayString Condition="cat == 2">{imm}</DisplayString>
+    <Expand>
+      <ExpandedItem Condition="cat == 0">reg</ExpandedItem>
+      <ExpandedItem Condition="cat == 1">mem</ExpandedItem>
+      <ExpandedItem Condition="cat == 2">imm</ExpandedItem>
+      <Item Condition="cat == 1" Name="disp">disp</Item>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

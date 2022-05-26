@@ -4,6 +4,8 @@
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 
+#include <limits.h>
+
 namespace Luau
 {
 namespace Compile
@@ -11,10 +13,49 @@ namespace Compile
 
 inline uint64_t parallelAddSat(uint64_t x, uint64_t y)
 {
-    uint64_t s = x + y;
-    uint64_t m = s & 0x8080808080808080ull; // saturation mask
+    uint64_t r = x + y;
+    uint64_t s = r & 0x8080808080808080ull; // saturation mask
 
-    return (s ^ m) | (m - (m >> 7));
+    return (r ^ s) | (s - (s >> 7));
+}
+
+static uint64_t parallelMulSat(uint64_t a, int b)
+{
+    int bs = (b < 127) ? b : 127;
+
+    // multiply every other value by b, yielding 14-bit products
+    uint64_t l = bs * ((a >> 0) & 0x007f007f007f007full);
+    uint64_t h = bs * ((a >> 8) & 0x007f007f007f007full);
+
+    // each product is 14-bit, so adding 32768-128 sets high bit iff the sum is 128 or larger without an overflow
+    uint64_t ls = l + 0x7f807f807f807f80ull;
+    uint64_t hs = h + 0x7f807f807f807f80ull;
+
+    // we now merge saturation bits as well as low 7-bits of each product into one
+    uint64_t s = (hs & 0x8000800080008000ull) | ((ls & 0x8000800080008000ull) >> 8);
+    uint64_t r = ((h & 0x007f007f007f007full) << 8) | (l & 0x007f007f007f007full);
+
+    // the low bits are now correct for values that didn't saturate, and we simply need to mask them if high bit is 1
+    return r | (s - (s >> 7));
+}
+
+inline bool getNumber(AstExpr* node, double& result)
+{
+    // since constant model doesn't use constant folding atm, we perform the basic extraction that's sufficient to handle positive/negative literals
+    if (AstExprConstantNumber* ne = node->as<AstExprConstantNumber>())
+    {
+        result = ne->value;
+        return true;
+    }
+
+    if (AstExprUnary* ue = node->as<AstExprUnary>(); ue && ue->op == AstExprUnary::Minus)
+        if (AstExprConstantNumber* ne = ue->expr->as<AstExprConstantNumber>())
+        {
+            result = -ne->value;
+            return true;
+        }
+
+    return false;
 }
 
 struct Cost
@@ -44,6 +85,13 @@ struct Cost
         model = parallelAddSat(model, other.model);
         constant = 0;
         return *this;
+    }
+
+    Cost operator*(int other) const
+    {
+        Cost result;
+        result.model = parallelMulSat(model, other);
+        return result;
     }
 
     static Cost fold(const Cost& x, const Cost& y)
@@ -173,6 +221,16 @@ struct CostVisitor : AstVisitor
                 *i = 0;
     }
 
+    void loop(AstStatBlock* body, Cost iterCost, int factor = 3)
+    {
+        Cost before = result;
+
+        result = Cost();
+        body->visit(this);
+
+        result = before + (result + iterCost) * factor;
+    }
+
     bool visit(AstExpr* node) override
     {
         // note: we short-circuit the visitor traversal through any expression trees by returning false
@@ -182,12 +240,52 @@ struct CostVisitor : AstVisitor
         return false;
     }
 
+    bool visit(AstStatFor* node) override
+    {
+        result += model(node->from);
+        result += model(node->to);
+
+        if (node->step)
+            result += model(node->step);
+
+        int tripCount = -1;
+        double from, to, step = 1;
+        if (getNumber(node->from, from) && getNumber(node->to, to) && (!node->step || getNumber(node->step, step)))
+            tripCount = getTripCount(from, to, step);
+
+        loop(node->body, 1, tripCount < 0 ? 3 : tripCount);
+        return false;
+    }
+
+    bool visit(AstStatForIn* node) override
+    {
+        for (size_t i = 0; i < node->values.size; ++i)
+            result += model(node->values.data[i]);
+
+        loop(node->body, 1);
+        return false;
+    }
+
+    bool visit(AstStatWhile* node) override
+    {
+        Cost condition = model(node->condition);
+
+        loop(node->body, condition);
+        return false;
+    }
+
+    bool visit(AstStatRepeat* node) override
+    {
+        Cost condition = model(node->condition);
+
+        loop(node->body, condition);
+        return false;
+    }
+
     bool visit(AstStat* node) override
     {
         if (node->is<AstStatIf>())
             result += 2;
-        else if (node->is<AstStatWhile>() || node->is<AstStatRepeat>() || node->is<AstStatFor>() || node->is<AstStatForIn>())
-            result += 5;
         else if (node->is<AstStatBreak>() || node->is<AstStatContinue>())
             result += 1;
 
@@ -252,6 +350,22 @@ int computeCost(uint64_t model, const bool* varsConst, size_t varCount)
         cost -= int((model >> (i * 8 + 8)) & 0x7f) * varsConst[i];
 
     return cost;
+}
+
+int getTripCount(double from, double to, double step)
+{
+    // we compute trip count in integers because that way we know that the loop math (repeated addition) is precise
+    int fromi = (from >= -32767 && from <= 32767 && double(int(from)) == from) ? int(from) : INT_MIN;
+    int toi = (to >= -32767 && to <= 32767 && double(int(to)) == to) ? int(to) : INT_MIN;
+    int stepi = (step >= -32767 && step <= 32767 && double(int(step)) == step) ? int(step) : INT_MIN;
+
+    if (fromi == INT_MIN || toi == INT_MIN || stepi == INT_MIN || stepi == 0)
+        return -1;
+
+    if ((stepi < 0 && toi > fromi) || (stepi > 0 && toi < fromi))
+        return 0;
+
+    return (toi - fromi) / stepi + 1;
 }
 
 } // namespace Compile

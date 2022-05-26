@@ -181,7 +181,7 @@ LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
     ++L->nCcalls;
 
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        luaG_runerror(L, "C stack overflow");
+        luaD_checkCstack(L);
 
     luaD_checkstack(L, LUA_MINSTACK);
 
@@ -694,7 +694,7 @@ static void luau_execute(lua_State* L)
                     }
                     else
                     {
-                        // slow-path, may invoke Lua calls via __index metamethod
+                        // slow-path, may invoke Lua calls via __newindex metamethod
                         L->cachedslot = slot;
                         VM_PROTECT(luaV_settable(L, rb, kv, ra));
                         // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
@@ -704,7 +704,7 @@ static void luau_execute(lua_State* L)
                 }
                 else
                 {
-                    // fast-path: user data with C __index TM
+                    // fast-path: user data with C __newindex TM
                     const TValue* fn = 0;
                     if (ttisuserdata(rb) && (fn = fasttm(L, uvalue(rb)->metatable, TM_NEWINDEX)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
@@ -725,7 +725,7 @@ static void luau_execute(lua_State* L)
                     }
                     else
                     {
-                        // slow-path, may invoke Lua calls via __index metamethod
+                        // slow-path, may invoke Lua calls via __newindex metamethod
                         VM_PROTECT(luaV_settable(L, rb, kv, ra));
                         VM_NEXT();
                     }
@@ -2358,9 +2358,8 @@ static void luau_execute(lua_State* L)
                 // fast-path: ipairs/inext
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
                 {
-                    if (FFlag::LuauIter)
-                        setnilvalue(ra);
-
+                    setnilvalue(ra);
+                    /* ra+1 is already the table */
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
                 else if (FFlag::LuauIter && !ttisfunction(ra))
@@ -2380,7 +2379,7 @@ static void luau_execute(lua_State* L)
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: ipairs/inext
-                if (ttistable(ra + 1) && ttislightuserdata(ra + 2))
+                if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
                 {
                     Table* h = hvalue(ra + 1);
                     int index = int(reinterpret_cast<uintptr_t>(pvalue(ra + 2)));
@@ -2431,9 +2430,8 @@ static void luau_execute(lua_State* L)
                 // fast-path: pairs/next
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
                 {
-                    if (FFlag::LuauIter)
-                        setnilvalue(ra);
-
+                    setnilvalue(ra);
+                    /* ra+1 is already the table */
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
                 else if (FFlag::LuauIter && !ttisfunction(ra))
@@ -2453,7 +2451,7 @@ static void luau_execute(lua_State* L)
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: pairs/next
-                if (ttistable(ra + 1) && ttislightuserdata(ra + 2))
+                if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
                 {
                     Table* h = hvalue(ra + 1);
                     int index = int(reinterpret_cast<uintptr_t>(pvalue(ra + 2)));

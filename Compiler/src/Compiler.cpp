@@ -15,10 +15,8 @@
 #include <algorithm>
 #include <bitset>
 #include <math.h>
-#include <limits.h>
 
 LUAU_FASTFLAGVARIABLE(LuauCompileIter, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileIterNoReserve, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileIterNoPairs, false)
 
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
@@ -176,24 +174,19 @@ struct Compiler
 
     bool canInlineFunctionBody(AstStat* stat)
     {
+        if (FFlag::LuauCompileNestedClosureO2)
+            return true; // TODO: remove this function
+
         struct CanInlineVisitor : AstVisitor
         {
             bool result = true;
 
             bool visit(AstExprFunction* node) override
             {
-                if (!FFlag::LuauCompileNestedClosureO2)
-                    result = false;
+                result = false;
 
                 // short-circuit to avoid analyzing nested closure bodies
                 return false;
-            }
-
-            bool visit(AstStat* node) override
-            {
-                // loops may need to be unrolled which can result in cost amplification
-                result = result && !node->is<AstStatFor>();
-                return result;
             }
         };
 
@@ -494,7 +487,8 @@ struct Compiler
             varc[i] = isConstant(expr->args.data[i]);
 
         // if the last argument only returns a single value, all following arguments are nil
-        if (expr->args.size != 0 && !(expr->args.data[expr->args.size - 1]->is<AstExprCall>() || expr->args.data[expr->args.size - 1]->is<AstExprVarargs>()))
+        if (expr->args.size != 0 &&
+            !(expr->args.data[expr->args.size - 1]->is<AstExprCall>() || expr->args.data[expr->args.size - 1]->is<AstExprVarargs>()))
             for (size_t i = expr->args.size; i < func->args.size && i < 8; ++i)
                 varc[i] = true;
 
@@ -665,10 +659,10 @@ struct Compiler
             {
                 if (func->vararg)
                     bytecode.addDebugRemark("inlining failed: function is variadic");
-                else if (fi)
-                    bytecode.addDebugRemark("inlining failed: complex constructs in function body");
-                else
+                else if (!fi)
                     bytecode.addDebugRemark("inlining failed: can't inline recursive calls");
+                else if (getfenvUsed || setfenvUsed)
+                    bytecode.addDebugRemark("inlining failed: module uses getfenv/setfenv");
             }
         }
 
@@ -1031,6 +1025,13 @@ struct Compiler
         return cv && cv->type != Constant::Type_Unknown && !cv->isTruthful();
     }
 
+    Constant getConstant(AstExpr* node)
+    {
+        const Constant* cv = constants.find(node);
+
+        return cv ? *cv : Constant{Constant::Type_Unknown};
+    }
+
     size_t compileCompareJump(AstExprBinary* expr, bool not_ = false)
     {
         RegScope rs(this);
@@ -1141,9 +1142,7 @@ struct Compiler
     void compileConditionValue(AstExpr* node, const uint8_t* target, std::vector<size_t>& skipJump, bool onlyTruth)
     {
         // Optimization: we don't need to compute constant values
-        const Constant* cv = constants.find(node);
-
-        if (cv && cv->type != Constant::Type_Unknown)
+        if (const Constant* cv = constants.find(node); cv && cv->type != Constant::Type_Unknown)
         {
             // note that we only need to compute the value if it's truthy; otherwise we cal fall through
             if (cv->isTruthful() == onlyTruth)
@@ -1301,9 +1300,7 @@ struct Compiler
         RegScope rs(this);
 
         // Optimization: when left hand side is a constant, we can emit left hand side or right hand side
-        const Constant* cl = constants.find(expr->left);
-
-        if (cl && cl->type != Constant::Type_Unknown)
+        if (const Constant* cl = constants.find(expr->left); cl && cl->type != Constant::Type_Unknown)
         {
             compileExpr(and_ == cl->isTruthful() ? expr->right : expr->left, target, targetTemp);
             return;
@@ -1735,13 +1732,11 @@ struct Compiler
     {
         RegScope rs(this);
 
-        // note: cv may be invalidated by compileExpr* so we stop using it before calling compile recursively
-        const Constant* cv = constants.find(expr->index);
+        Constant cv = getConstant(expr->index);
 
-        if (cv && cv->type == Constant::Type_Number && cv->valueNumber >= 1 && cv->valueNumber <= 256 &&
-            double(int(cv->valueNumber)) == cv->valueNumber)
+        if (cv.type == Constant::Type_Number && cv.valueNumber >= 1 && cv.valueNumber <= 256 && double(int(cv.valueNumber)) == cv.valueNumber)
         {
-            uint8_t i = uint8_t(int(cv->valueNumber) - 1);
+            uint8_t i = uint8_t(int(cv.valueNumber) - 1);
 
             uint8_t rt = compileExprAuto(expr->expr, rs);
 
@@ -1749,9 +1744,9 @@ struct Compiler
 
             bytecode.emitABC(LOP_GETTABLEN, target, rt, i);
         }
-        else if (cv && cv->type == Constant::Type_String)
+        else if (cv.type == Constant::Type_String)
         {
-            BytecodeBuilder::StringRef iname = sref(cv->getString());
+            BytecodeBuilder::StringRef iname = sref(cv.getString());
             int32_t cid = bytecode.addConstantString(iname);
             if (cid < 0)
                 CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
@@ -1864,13 +1859,10 @@ struct Compiler
         }
 
         // Optimization: if expression has a constant value, we can emit it directly
-        if (const Constant* cv = constants.find(node))
+        if (const Constant* cv = constants.find(node); cv && cv->type != Constant::Type_Unknown)
         {
-            if (cv->type != Constant::Type_Unknown)
-            {
-                compileExprConstant(node, cv, target);
-                return;
-            }
+            compileExprConstant(node, cv, target);
+            return;
         }
 
         if (AstExprGroup* expr = node->as<AstExprGroup>())
@@ -2069,23 +2061,22 @@ struct Compiler
 
     LValue compileLValueIndex(uint8_t reg, AstExpr* index, RegScope& rs)
     {
-        const Constant* cv = constants.find(index);
+        Constant cv = getConstant(index);
 
-        if (cv && cv->type == Constant::Type_Number && cv->valueNumber >= 1 && cv->valueNumber <= 256 &&
-            double(int(cv->valueNumber)) == cv->valueNumber)
+        if (cv.type == Constant::Type_Number && cv.valueNumber >= 1 && cv.valueNumber <= 256 && double(int(cv.valueNumber)) == cv.valueNumber)
         {
             LValue result = {LValue::Kind_IndexNumber};
             result.reg = reg;
-            result.number = uint8_t(int(cv->valueNumber) - 1);
+            result.number = uint8_t(int(cv.valueNumber) - 1);
             result.location = index->location;
 
             return result;
         }
-        else if (cv && cv->type == Constant::Type_String)
+        else if (cv.type == Constant::Type_String)
         {
             LValue result = {LValue::Kind_IndexName};
             result.reg = reg;
-            result.name = sref(cv->getString());
+            result.name = sref(cv.getString());
             result.location = index->location;
 
             return result;
@@ -2520,42 +2511,21 @@ struct Compiler
             pushLocal(stat->vars.data[i], uint8_t(vars + i));
     }
 
-    int getConstantShort(AstExpr* expr)
-    {
-        const Constant* c = constants.find(expr);
-
-        if (c && c->type == Constant::Type_Number)
-        {
-            double n = c->valueNumber;
-
-            if (n >= -32767 && n <= 32767 && double(int(n)) == n)
-                return int(n);
-        }
-
-        return INT_MIN;
-    }
-
     bool canUnrollForBody(AstStatFor* stat)
     {
+        if (FFlag::LuauCompileNestedClosureO2)
+            return true; // TODO: remove this function
+
         struct CanUnrollVisitor : AstVisitor
         {
             bool result = true;
 
             bool visit(AstExprFunction* node) override
             {
-                if (!FFlag::LuauCompileNestedClosureO2)
-                    result = false;
+                result = false;
 
                 // short-circuit to avoid analyzing nested closure bodies
                 return false;
-            }
-
-            bool visit(AstStat* node) override
-            {
-                // while we can easily unroll nested loops, our cost model doesn't take unrolling into account so this can result in code explosion
-                // we also avoid continue/break since they introduce control flow across iterations
-                result = result && !node->is<AstStatFor>() && !node->is<AstStatContinue>() && !node->is<AstStatBreak>();
-                return result;
             }
         };
 
@@ -2567,14 +2537,26 @@ struct Compiler
 
     bool tryCompileUnrolledFor(AstStatFor* stat, int thresholdBase, int thresholdMaxBoost)
     {
-        int from = getConstantShort(stat->from);
-        int to = getConstantShort(stat->to);
-        int step = stat->step ? getConstantShort(stat->step) : 1;
+        Constant one = {Constant::Type_Number};
+        one.valueNumber = 1.0;
 
-        // check that limits are reasonably small and trip count can be computed
-        if (from == INT_MIN || to == INT_MIN || step == INT_MIN || step == 0 || (step < 0 && to > from) || (step > 0 && to < from))
+        Constant fromc = getConstant(stat->from);
+        Constant toc = getConstant(stat->to);
+        Constant stepc = stat->step ? getConstant(stat->step) : one;
+
+        int tripCount = (fromc.type == Constant::Type_Number && toc.type == Constant::Type_Number && stepc.type == Constant::Type_Number)
+                            ? getTripCount(fromc.valueNumber, toc.valueNumber, stepc.valueNumber)
+                            : -1;
+
+        if (tripCount < 0)
         {
             bytecode.addDebugRemark("loop unroll failed: invalid iteration count");
+            return false;
+        }
+
+        if (tripCount > thresholdBase)
+        {
+            bytecode.addDebugRemark("loop unroll failed: too many iterations (%d)", tripCount);
             return false;
         }
 
@@ -2587,14 +2569,6 @@ struct Compiler
         if (Variable* lv = variables.find(stat->var); lv && lv->written)
         {
             bytecode.addDebugRemark("loop unroll failed: mutable loop variable");
-            return false;
-        }
-
-        int tripCount = (to - from) / step + 1;
-
-        if (tripCount > thresholdBase)
-        {
-            bytecode.addDebugRemark("loop unroll failed: too many iterations (%d)", tripCount);
             return false;
         }
 
@@ -2618,23 +2592,54 @@ struct Compiler
 
         bytecode.addDebugRemark("loop unroll succeeded (iterations %d, cost %d, profit %.2fx)", tripCount, unrolledCost, double(unrollProfit) / 100);
 
-        for (int i = from; step > 0 ? i <= to : i >= to; i += step)
+        compileUnrolledFor(stat, tripCount, fromc.valueNumber, stepc.valueNumber);
+        return true;
+    }
+
+    void compileUnrolledFor(AstStatFor* stat, int tripCount, double from, double step)
+    {
+        AstLocal* var = stat->var;
+
+        size_t oldLocals = localStack.size();
+        size_t oldJumps = loopJumps.size();
+
+        loops.push_back({oldLocals, nullptr});
+
+        for (int iv = 0; iv < tripCount; ++iv)
         {
             // we need to re-fold constants in the loop body with the new value; this reuses computed constant values elsewhere in the tree
             locstants[var].type = Constant::Type_Number;
-            locstants[var].valueNumber = i;
+            locstants[var].valueNumber = from + iv * step;
 
             foldConstants(constants, variables, locstants, stat);
 
+            size_t iterJumps = loopJumps.size();
+
             compileStat(stat->body);
+
+            // all continue jumps need to go to the next iteration
+            size_t contLabel = bytecode.emitLabel();
+
+            for (size_t i = iterJumps; i < loopJumps.size(); ++i)
+                if (loopJumps[i].type == LoopJump::Continue)
+                    patchJump(stat, loopJumps[i].label, contLabel);
         }
+
+        // all break jumps need to go past the loop
+        size_t endLabel = bytecode.emitLabel();
+
+        for (size_t i = oldJumps; i < loopJumps.size(); ++i)
+            if (loopJumps[i].type == LoopJump::Break)
+                patchJump(stat, loopJumps[i].label, endLabel);
+
+        loopJumps.resize(oldJumps);
+
+        loops.pop_back();
 
         // clean up fold state in case we need to recompile - normally we compile the loop body once, but due to inlining we may need to do it again
         locstants[var].type = Constant::Type_Unknown;
 
         foldConstants(constants, variables, locstants, stat);
-
-        return true;
     }
 
     void compileStatFor(AstStatFor* stat)
@@ -2720,16 +2725,6 @@ struct Compiler
 
         // this puts initial values of (generator, state, index) into the loop registers
         compileExprListTemp(stat->values, regs, 3, /* targetTop= */ true);
-
-        // we don't need this because the extra stack space is just for calling the function with a loop protocol which is similar to calling
-        // metamethods - it should fit into the extra stack reservation
-        if (!FFlag::LuauCompileIterNoReserve)
-        {
-            // for the general case, we will execute a CALL for every iteration that needs to evaluate "variables... = generator(state, index)"
-            // this requires at least extra 3 stack slots after index
-            // note that these stack slots overlap with the variables so we only need to reserve them to make sure stack frame is large enough
-            reserveReg(stat, 3);
-        }
 
         // note that we reserve at least 2 variables; this allows our fast path to assume that we need 2 variables instead of 1 or 2
         uint8_t vars = allocReg(stat, std::max(unsigned(stat->vars.size), 2u));
