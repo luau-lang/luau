@@ -77,3 +77,13 @@ jobs:
           comment-on-alert: true
           comment-always: true
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: github.event.push
+        run: |
+          echo "Pushing benchmark results..."
+          cd gh-pages
+          git add ./dev/bench/data.json
+          git commit -m "Add benchmarks results for ${{ github.sha }}"
+          git push
+          cd ..
