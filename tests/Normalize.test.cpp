@@ -44,6 +44,9 @@ void createSomeClasses(TypeChecker& typeChecker)
     addGlobalBinding(typeChecker, "Unrelated", {unrelatedType});
     typeChecker.globalScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
 
+    for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+        persist(ty.type);
+
     freeze(arena);
 }
 
@@ -681,10 +684,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", false}
-    };
+    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", false}};
 
     check(R"(
         type Fiber = {
@@ -701,10 +701,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 // Unfortunately, getting this right in the general case is difficult.
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true}
-    };
+    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", true}};
 
     check(R"(
         type Fiber = {
@@ -1040,6 +1037,29 @@ TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their
 
         return T
     )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
+{
+    createSomeClasses(typeChecker);
+
+    CheckResult result = check(R"(
+export type t0 = { a: Child }
+export type t1 = { a: typeof(string.byte) }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersection_combine_on_bound_self")
+{
+    ScopedFastFlag luauNormalizeCombineEqFix{"LuauNormalizeCombineEqFix", true};
+
+    CheckResult result = check(R"(
+export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

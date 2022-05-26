@@ -600,7 +600,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_decimal_argument_is_rounded_down
 }
 
 // Could be flaky if the fix has regressed.
-TEST_CASE_FIXTURE(Fixture, "bad_select_should_not_crash")
+TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
 {
     CheckResult result = check(R"(
         do end
@@ -612,7 +612,9 @@ TEST_CASE_FIXTURE(Fixture, "bad_select_should_not_crash")
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[0]));
+    CHECK_EQ("Argument count mismatch. Function expects 1 argument, but none are specified", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
@@ -877,10 +879,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_add_definitions_to_persistent_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
 {
-    ScopedFastFlag sff[]{
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: (number | boolean)?)
             return assert(x)
@@ -896,10 +894,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
 {
-    ScopedFastFlag sff[]{
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: (number | boolean)?): number | true
             return assert(x)

@@ -443,7 +443,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_flattenintersection")
         until _(_)(_)._
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

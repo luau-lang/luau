@@ -567,4 +567,29 @@ do
   assert(not ok)
 end
 
+-- test iteration with lightuserdata keys
+do
+  function countud()
+    local t = {}
+    t[makelud(1)] = 1
+    t[makelud(2)] = 2
+
+    local count = 0
+    for k,v in pairs(t) do
+      count += v
+    end
+
+    return count
+  end
+
+  assert(countud() == 3)
+end
+
+-- test iteration with lightuserdata keys with a substituted environment
+do
+  local env = { makelud = makelud, pairs = pairs }
+  setfenv(countud, env)
+  assert(countud() == 3)
+end
+
 return"OK"

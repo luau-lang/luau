@@ -245,6 +245,7 @@ void luaD_call(lua_State* L, StkId func, int nResults)
         if (!oldactive)
             resetbit(L->stackstate, THREAD_ACTIVEBIT);
     }
+
     L->nCcalls--;
     luaC_checkGC(L);
 }

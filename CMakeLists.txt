@@ -19,9 +19,11 @@ if(LUAU_STATIC_CRT)
 endif()
 
 project(Luau LANGUAGES CXX C)
+add_library(Luau.Common INTERFACE)
 add_library(Luau.Ast STATIC)
 add_library(Luau.Compiler STATIC)
 add_library(Luau.Analysis STATIC)
+add_library(Luau.CodeGen STATIC)
 add_library(Luau.VM STATIC)
 add_library(isocline STATIC)
 
@@ -48,8 +50,11 @@ endif()
 
 include(Sources.cmake)
 
+target_include_directories(Luau.Common INTERFACE Common/include)
+
 target_compile_features(Luau.Ast PUBLIC cxx_std_17)
 target_include_directories(Luau.Ast PUBLIC Ast/include)
+target_link_libraries(Luau.Ast PUBLIC Luau.Common)
 
 target_compile_features(Luau.Compiler PUBLIC cxx_std_17)
 target_include_directories(Luau.Compiler PUBLIC Compiler/include)
@@ -59,8 +64,13 @@ target_compile_features(Luau.Analysis PUBLIC cxx_std_17)
 target_include_directories(Luau.Analysis PUBLIC Analysis/include)
 target_link_libraries(Luau.Analysis PUBLIC Luau.Ast)
 
+target_compile_features(Luau.CodeGen PRIVATE cxx_std_17)
+target_include_directories(Luau.CodeGen PUBLIC CodeGen/include)
+target_link_libraries(Luau.CodeGen PUBLIC Luau.Common)
+
 target_compile_features(Luau.VM PRIVATE cxx_std_11)
 target_include_directories(Luau.VM PUBLIC VM/include)
+target_link_libraries(Luau.VM PUBLIC Luau.Common)
 
 target_include_directories(isocline PUBLIC extern/isocline/include)
 
@@ -101,6 +111,7 @@ endif()
 
 target_compile_options(Luau.Ast PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.Analysis PRIVATE ${LUAU_OPTIONS})
+target_compile_options(Luau.CodeGen PRIVATE ${LUAU_OPTIONS})
 target_compile_options(Luau.VM PRIVATE ${LUAU_OPTIONS})
 target_compile_options(isocline PRIVATE ${LUAU_OPTIONS} ${ISOCLINE_OPTIONS})
 
@@ -120,6 +131,7 @@ endif()
 if(MSVC)
     target_link_options(Luau.Ast INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/Ast.natvis)
     target_link_options(Luau.Analysis INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/Analysis.natvis)
+    target_link_options(Luau.CodeGen INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/CodeGen.natvis)
     target_link_options(Luau.VM INTERFACE /NATVIS:${CMAKE_CURRENT_SOURCE_DIR}/tools/natvis/VM.natvis)
 endif()
 
@@ -127,6 +139,7 @@ endif()
 if(MSVC_IDE)
     target_sources(Luau.Ast PRIVATE tools/natvis/Ast.natvis)
     target_sources(Luau.Analysis PRIVATE tools/natvis/Analysis.natvis)
+    target_sources(Luau.CodeGen PRIVATE tools/natvis/CodeGen.natvis)
     target_sources(Luau.VM PRIVATE tools/natvis/VM.natvis)
 endif()
 
@@ -154,7 +167,7 @@ endif()
 if(LUAU_BUILD_TESTS)
     target_compile_options(Luau.UnitTest PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.UnitTest PRIVATE extern)
-    target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Compiler)
+    target_link_libraries(Luau.UnitTest PRIVATE Luau.Analysis Luau.Compiler Luau.CodeGen)
 
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.Conformance PRIVATE extern)

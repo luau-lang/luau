@@ -32,6 +32,9 @@ struct Widen : Substitution
     TypeId clean(TypeId ty) override;
     TypePackId clean(TypePackId ty) override;
     bool ignoreChildren(TypeId ty) override;
+
+    TypeId operator()(TypeId ty);
+    TypePackId operator()(TypePackId ty);
 };
 
 // TODO: Use this more widely.

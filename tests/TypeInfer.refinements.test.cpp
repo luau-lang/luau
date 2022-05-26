@@ -7,7 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauWeakEqConstraint)
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 using namespace Luau;
@@ -77,6 +76,10 @@ struct RefinementClassFixture : Fixture
         typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
         typeChecker.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
         typeChecker.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
+
+        for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+            persist(ty.type);
+
         freeze(typeChecker.globalTypes);
     }
 };
@@ -444,8 +447,6 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff2{"LuauWeakEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a, b: string?)
             if a == b then

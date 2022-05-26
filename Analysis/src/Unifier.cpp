@@ -21,8 +21,6 @@ LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
-LUAU_FASTFLAGVARIABLE(LuauWidenIfSupertypeIsFree2, false)
-LUAU_FASTFLAGVARIABLE(LuauDifferentOrderOfUnificationDoesntMatter2, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
 
 namespace Luau
@@ -149,8 +147,7 @@ static void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel
         return;
 
     PromoteTypeLevels ptl{log, typeArena, minLevel};
-    DenseHashSet<void*> seen{nullptr};
-    DEPRECATED_visitTypeVarOnce(ty, ptl, seen);
+    ptl.traverse(ty);
 }
 
 void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypePackId tp)
@@ -160,8 +157,7 @@ void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLev
         return;
 
     PromoteTypeLevels ptl{log, typeArena, minLevel};
-    DenseHashSet<void*> seen{nullptr};
-    DEPRECATED_visitTypeVarOnce(tp, ptl, seen);
+    ptl.traverse(tp);
 }
 
 struct SkipCacheForType final : TypeVarOnceVisitor
@@ -170,49 +166,6 @@ struct SkipCacheForType final : TypeVarOnceVisitor
         : skipCacheForType(skipCacheForType)
         , typeArena(typeArena)
     {
-    }
-
-    // TODO cycle() and operator() can be clipped with FFlagLuauUseVisitRecursionLimit
-    void cycle(TypeId) override {}
-    void cycle(TypePackId) override {}
-
-    bool operator()(TypeId ty, const FreeTypeVar& ftv)
-    {
-        return visit(ty, ftv);
-    }
-    bool operator()(TypeId ty, const BoundTypeVar& btv)
-    {
-        return visit(ty, btv);
-    }
-    bool operator()(TypeId ty, const GenericTypeVar& gtv)
-    {
-        return visit(ty, gtv);
-    }
-    bool operator()(TypeId ty, const TableTypeVar& ttv)
-    {
-        return visit(ty, ttv);
-    }
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
-    {
-        return visit(tp, ftp);
-    }
-    bool operator()(TypePackId tp, const BoundTypePack& ftp)
-    {
-        return visit(tp, ftp);
-    }
-    bool operator()(TypePackId tp, const GenericTypePack& ftp)
-    {
-        return visit(tp, ftp);
-    }
-    template<typename T>
-    bool operator()(TypeId ty, const T& t)
-    {
-        return visit(ty);
-    }
-    template<typename T>
-    bool operator()(TypePackId tp, const T&)
-    {
-        return visit(tp);
     }
 
     bool visit(TypeId, const FreeTypeVar&) override
@@ -339,6 +292,16 @@ TypePackId Widen::clean(TypePackId)
 bool Widen::ignoreChildren(TypeId ty)
 {
     return !log->is<UnionTypeVar>(ty);
+}
+
+TypeId Widen::operator()(TypeId ty)
+{
+    return substitute(ty).value_or(ty);
+}
+
+TypePackId Widen::operator()(TypePackId tp)
+{
+    return substitute(tp).value_or(tp);
 }
 
 static std::optional<TypeError> hasUnificationTooComplex(const ErrorVec& errors)
@@ -475,6 +438,8 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         if (!occursFailed)
         {
             promoteTypeLevels(log, types, superLevel, subTy);
+
+            Widen widen{types};
             log.replace(superTy, BoundTypeVar(widen(subTy)));
         }
 
@@ -612,9 +577,6 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
     std::optional<TypeError> unificationTooComplex;
     std::optional<TypeError> firstFailedOption;
 
-    size_t count = uv->options.size();
-    size_t i = 0;
-
     for (TypeId type : uv->options)
     {
         Unifier innerState = makeChildUnifier();
@@ -630,60 +592,44 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
 
             failed = true;
         }
-
-        if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter2)
-        {
-        }
-        else
-        {
-            if (i == count - 1)
-            {
-                log.concat(std::move(innerState.log));
-            }
-
-            ++i;
-        }
     }
 
     // even if A | B <: T fails, we want to bind some options of T with A | B iff A | B was a subtype of that option.
-    if (FFlag::LuauDifferentOrderOfUnificationDoesntMatter2)
-    {
-        auto tryBind = [this, subTy](TypeId superOption) {
-            superOption = log.follow(superOption);
+    auto tryBind = [this, subTy](TypeId superOption) {
+        superOption = log.follow(superOption);
 
-            // just skip if the superOption is not free-ish.
-            auto ttv = log.getMutable<TableTypeVar>(superOption);
-            if (!log.is<FreeTypeVar>(superOption) && (!ttv || ttv->state != TableState::Free))
-                return;
+        // just skip if the superOption is not free-ish.
+        auto ttv = log.getMutable<TableTypeVar>(superOption);
+        if (!log.is<FreeTypeVar>(superOption) && (!ttv || ttv->state != TableState::Free))
+            return;
 
-            // If superOption is already present in subTy, do nothing.  Nothing new has been learned, but the subtype
-            // test is successful.
-            if (auto subUnion = get<UnionTypeVar>(subTy))
-            {
-                if (end(subUnion) != std::find(begin(subUnion), end(subUnion), superOption))
-                    return;
-            }
-
-            // Since we have already checked if S <: T, checking it again will not queue up the type for replacement.
-            // So we'll have to do it ourselves. We assume they unified cleanly if they are still in the seen set.
-            if (log.haveSeen(subTy, superOption))
-            {
-                // TODO: would it be nice for TxnLog::replace to do this?
-                if (log.is<TableTypeVar>(superOption))
-                    log.bindTable(superOption, subTy);
-                else
-                    log.replace(superOption, *subTy);
-            }
-        };
-
-        if (auto utv = log.getMutable<UnionTypeVar>(superTy))
+        // If superOption is already present in subTy, do nothing.  Nothing new has been learned, but the subtype
+        // test is successful.
+        if (auto subUnion = get<UnionTypeVar>(subTy))
         {
-            for (TypeId ty : utv)
-                tryBind(ty);
+            if (end(subUnion) != std::find(begin(subUnion), end(subUnion), superOption))
+                return;
         }
-        else
-            tryBind(superTy);
+
+        // Since we have already checked if S <: T, checking it again will not queue up the type for replacement.
+        // So we'll have to do it ourselves. We assume they unified cleanly if they are still in the seen set.
+        if (log.haveSeen(subTy, superOption))
+        {
+            // TODO: would it be nice for TxnLog::replace to do this?
+            if (log.is<TableTypeVar>(superOption))
+                log.bindTable(superOption, subTy);
+            else
+                log.replace(superOption, *subTy);
+        }
+    };
+
+    if (auto utv = log.getMutable<UnionTypeVar>(superTy))
+    {
+        for (TypeId ty : utv)
+            tryBind(ty);
     }
+    else
+        tryBind(superTy);
 
     if (unificationTooComplex)
         reportError(*unificationTooComplex);
@@ -883,7 +829,7 @@ bool Unifier::canCacheResult(TypeId subTy, TypeId superTy)
 
     auto skipCacheFor = [this](TypeId ty) {
         SkipCacheForType visitor{sharedState.skipCacheForType, types};
-        DEPRECATED_visitTypeVarOnce(ty, visitor, sharedState.seenAny);
+        visitor.traverse(ty);
 
         sharedState.skipCacheForType[ty] = visitor.result;
 
@@ -1088,6 +1034,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
         if (!log.getMutable<ErrorTypeVar>(superTp))
         {
+            Widen widen{types};
             log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
         }
     }
@@ -1671,28 +1618,6 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     }
 }
 
-TypeId Unifier::widen(TypeId ty)
-{
-    if (!FFlag::LuauWidenIfSupertypeIsFree2)
-        return ty;
-
-    Widen widen{types};
-    std::optional<TypeId> result = widen.substitute(ty);
-    // TODO: what does it mean for substitution to fail to widen?
-    return result.value_or(ty);
-}
-
-TypePackId Unifier::widen(TypePackId tp)
-{
-    if (!FFlag::LuauWidenIfSupertypeIsFree2)
-        return tp;
-
-    Widen widen{types};
-    std::optional<TypePackId> result = widen.substitute(tp);
-    // TODO: what does it mean for substitution to fail to widen?
-    return result.value_or(tp);
-}
-
 TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen)
 {
     ty = follow(ty);
@@ -1809,10 +1734,7 @@ void Unifier::tryUnifyFreeTable(TypeId subTy, TypeId superTy)
     {
         if (auto subProp = findTablePropertyRespectingMeta(subTy, freeName))
         {
-            if (FFlag::LuauWidenIfSupertypeIsFree2)
-                tryUnify_(*subProp, freeProp.type);
-            else
-                tryUnify_(freeProp.type, *subProp);
+            tryUnify_(*subProp, freeProp.type);
 
             /*
              * TypeVars are commonly cyclic, so it is entirely possible

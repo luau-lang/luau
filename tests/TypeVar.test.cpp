@@ -357,8 +357,7 @@ local b: (T, T, T) -> T
     TypeId bType = requireType("b");
 
     VisitCountTracker tester;
-    DenseHashSet<void*> seen{nullptr};
-    DEPRECATED_visitTypeVarOnce(bType, tester, seen);
+    tester.traverse(bType);
 
     for (auto [_, count] : tester.tyVisits)
         CHECK_EQ(count, 1);

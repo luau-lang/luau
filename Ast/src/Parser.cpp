@@ -11,6 +11,8 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
+LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
+
 namespace Luau
 {
 
@@ -1588,6 +1590,17 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionTypeAnnotation(allowPack);
+    }
+    else if (FFlag::LuauParserFunctionKeywordAsTypeHelp && lexer.current().type == Lexeme::ReservedFunction)
+    {
+        Location location = lexer.current().location;
+
+        nextLexeme();
+
+        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false,
+                    "Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> "
+                    "...any'"),
+            {}};
     }
     else
     {

@@ -85,4 +85,4 @@ void unfreeze(TypeArena& arena)
     arena.typePacks.unfreeze();
 }
 
-}
+} // namespace Luau

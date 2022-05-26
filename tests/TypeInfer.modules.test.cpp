@@ -249,7 +249,7 @@ local ModuleA = require(game.A)
     CHECK_EQ("*unknown*", toString(*oty));
 }
 
-TEST_CASE_FIXTURE(Fixture, "do_not_modify_imported_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types")
 {
     fileResolver.source["game/A"] = R"(
 export type Type = { unrelated: boolean }
@@ -264,7 +264,7 @@ function x:Destroy(): () end
     )";
 
     CheckResult result = frontend.check("game/B");
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types_2")

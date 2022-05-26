@@ -56,8 +56,18 @@ bool isWithinComment(const SourceModule& sourceModule, Position pos)
 
 struct ForceNormal : TypeVarOnceVisitor
 {
+    const TypeArena* typeArena = nullptr;
+
+    ForceNormal(const TypeArena* typeArena)
+        : typeArena(typeArena)
+    {
+    }
+
     bool visit(TypeId ty) override
     {
+        if (ty->owningArena != typeArena)
+            return false;
+
         asMutable(ty)->normal = true;
         return true;
     }
@@ -100,7 +110,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
             normalize(*moduleScope->varargPack, interfaceTypes, ice);
     }
 
-    ForceNormal forceNormal;
+    ForceNormal forceNormal{&interfaceTypes};
 
     for (auto& [name, tf] : moduleScope->exportedTypeBindings)
     {
