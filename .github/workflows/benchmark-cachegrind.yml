@@ -73,6 +73,7 @@ jobs:
         with:
           repository: ${{ matrix.benchResultsRepo.name }}
           ref: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
 
       - name: Store ${{ matrix.bench.title }} result
@@ -87,7 +88,6 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
         if: github.event_name == 'push'
