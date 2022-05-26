@@ -64,16 +64,12 @@ jobs:
           token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
           path: "./gh-pages"
 
-      #Run `github-action-benchmark` action
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
           name: ${{ matrix.bench.title }}
           tool: "roblox"
-          # This should come from Luau repo
           output-file-path: ./${{ matrix.bench.script }}-output.txt
-
-          # This should map to thebenchmark results repo
           external-data-json-path: ./gh-pages/dev/bench/data.json
           alert-threshold: 150%
           fail-threshold: 200%
