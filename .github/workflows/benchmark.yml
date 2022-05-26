@@ -8,6 +8,15 @@ on:
       - "rfcs/**"
       - "*.md"
       - "prototyping/**"
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
 
 jobs:
   benchmarks-run:
@@ -71,3 +80,8 @@ jobs:
           comment-on-alert: true
           comment-always: true
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: !!github.event.push
+        run: |
+          echo "Pushing benchmark results..."
