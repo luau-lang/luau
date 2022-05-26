@@ -67,7 +67,7 @@ jobs:
         Debug/luau-analyze tests/conformance/assert.lua
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v2
     - name: install
