@@ -88,6 +88,7 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push benchmark results
         if: github.event_name == 'push'
