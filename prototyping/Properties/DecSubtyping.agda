@@ -1,5 +1,4 @@
 {-# OPTIONS --rewriting #-}
-{-# OPTIONS --allow-unsolved-metas #-}
 
 module Properties.DecSubtyping where
 
