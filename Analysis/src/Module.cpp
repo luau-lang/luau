@@ -13,9 +13,8 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false)
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTFLAG(LuauLosslessClone)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauNormalizeFlagIsConservative);
 
 namespace Luau
 {
@@ -55,89 +54,35 @@ bool isWithinComment(const SourceModule& sourceModule, Position pos)
     return contains(pos, *iter);
 }
 
-void TypeArena::clear()
+struct ForceNormal : TypeVarOnceVisitor
 {
-    typeVars.clear();
-    typePacks.clear();
-}
+    const TypeArena* typeArena = nullptr;
 
-TypeId TypeArena::addTV(TypeVar&& tv)
-{
-    TypeId allocated = typeVars.allocate(std::move(tv));
+    ForceNormal(const TypeArena* typeArena)
+        : typeArena(typeArena)
+    {
+    }
 
-    asMutable(allocated)->owningArena = this;
+    bool visit(TypeId ty) override
+    {
+        if (ty->owningArena != typeArena)
+            return false;
 
-    return allocated;
-}
+        asMutable(ty)->normal = true;
+        return true;
+    }
 
-TypeId TypeArena::freshType(TypeLevel level)
-{
-    TypeId allocated = typeVars.allocate(FreeTypeVar{level});
+    bool visit(TypeId ty, const FreeTypeVar& ftv) override
+    {
+        visit(ty);
+        return true;
+    }
 
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-TypePackId TypeArena::addTypePack(std::initializer_list<TypeId> types)
-{
-    TypePackId allocated = typePacks.allocate(TypePack{std::move(types)});
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-TypePackId TypeArena::addTypePack(std::vector<TypeId> types)
-{
-    TypePackId allocated = typePacks.allocate(TypePack{std::move(types)});
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-TypePackId TypeArena::addTypePack(TypePack tp)
-{
-    TypePackId allocated = typePacks.allocate(std::move(tp));
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-TypePackId TypeArena::addTypePack(TypePackVar tp)
-{
-    TypePackId allocated = typePacks.allocate(std::move(tp));
-
-    asMutable(allocated)->owningArena = this;
-
-    return allocated;
-}
-
-ScopePtr Module::getModuleScope() const
-{
-    LUAU_ASSERT(!scopes.empty());
-    return scopes.front().second;
-}
-
-void freeze(TypeArena& arena)
-{
-    if (!FFlag::DebugLuauFreezeArena)
-        return;
-
-    arena.typeVars.freeze();
-    arena.typePacks.freeze();
-}
-
-void unfreeze(TypeArena& arena)
-{
-    if (!FFlag::DebugLuauFreezeArena)
-        return;
-
-    arena.typeVars.unfreeze();
-    arena.typePacks.unfreeze();
-}
+    bool visit(TypePackId tp, const FreeTypePack& ftp) override
+    {
+        return true;
+    }
+};
 
 Module::~Module()
 {
@@ -145,7 +90,7 @@ Module::~Module()
     unfreeze(internalTypes);
 }
 
-bool Module::clonePublicInterface(InternalErrorReporter& ice)
+void Module::clonePublicInterface(InternalErrorReporter& ice)
 {
     LUAU_ASSERT(interfaceTypes.typeVars.empty());
     LUAU_ASSERT(interfaceTypes.typePacks.empty());
@@ -165,11 +110,22 @@ bool Module::clonePublicInterface(InternalErrorReporter& ice)
             normalize(*moduleScope->varargPack, interfaceTypes, ice);
     }
 
+    ForceNormal forceNormal{&interfaceTypes};
+
     for (auto& [name, tf] : moduleScope->exportedTypeBindings)
     {
         tf = clone(tf, interfaceTypes, cloneState);
         if (FFlag::LuauLowerBoundsCalculation)
+        {
             normalize(tf.type, interfaceTypes, ice);
+
+            if (FFlag::LuauNormalizeFlagIsConservative)
+            {
+                // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
+                // won't be marked normal.  If the types aren't normal by now, they never will be.
+                forceNormal.traverse(tf.type);
+            }
+        }
     }
 
     for (TypeId ty : moduleScope->returnType)
@@ -191,11 +147,12 @@ bool Module::clonePublicInterface(InternalErrorReporter& ice)
 
     freeze(internalTypes);
     freeze(interfaceTypes);
+}
 
-    if (FFlag::LuauLosslessClone)
-        return false; // TODO: make function return void.
-    else
-        return cloneState.encounteredFreeType;
+ScopePtr Module::getModuleScope() const
+{
+    LUAU_ASSERT(!scopes.empty());
+    return scopes.front().second;
 }
 
 } // namespace Luau

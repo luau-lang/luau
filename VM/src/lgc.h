@@ -120,7 +120,7 @@
 
 #define luaC_upvalbarrier(L, uv, tv) \
     { \
-        if (iscollectable(tv) && iswhite(gcvalue(tv)) && (!(uv) || ((UpVal*)uv)->v != &((UpVal*)uv)->u.value)) \
+        if (iscollectable(tv) && iswhite(gcvalue(tv)) && (!(uv) || (uv)->v != &(uv)->u.value)) \
             luaC_barrierupval(L, gcvalue(tv)); \
     }
 

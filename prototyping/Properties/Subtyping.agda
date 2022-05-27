@@ -441,7 +441,7 @@ not-quite-set-theoretic-only-if : ∀ {S₁ T₁ S₂ T₂} →
   ∀ s₂ → Language S₂ s₂ →
 
   -- This is the "only if" part of being a set-theoretic model
-  (∀ Q → Q ⊆ Comp(Language S₁ ⊗ Comp(Lift(Language T₁))) → Q ⊆ Comp(Language S₂ ⊗ Comp(Lift(Language T₂)))) →
+  (∀ Q → Q ⊆ Comp((Language S₁) ⊗ Comp(Lift(Language T₁))) → Q ⊆ Comp((Language S₂) ⊗ Comp(Lift(Language T₂)))) →
   (Language (S₁ ⇒ T₁) ⊆ Language (S₂ ⇒ T₂))
 
 not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ S₂s₂ p = r where
@@ -474,7 +474,7 @@ not-quite-set-theoretic-only-if {S₁} {T₁} {S₂} {T₂} s₂ S₂s₂ p = r 
 
 -- A counterexample when the argument type is empty.
 
-set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language never) ⊗ Comp(Language number)) → Q ⊆ Comp((Language never) ⊗ Comp(Language string)))
+set-theoretic-counterexample-one : (∀ Q → Q ⊆ Comp((Language never) ⊗ Comp(Lift(Language number))) → Q ⊆ Comp((Language never) ⊗ Comp(Lift(Language string))))
 set-theoretic-counterexample-one Q q ((scalar s) , u) Qtu (scalar () , p)
 
 set-theoretic-counterexample-two : (never ⇒ number) ≮: (never ⇒ string)

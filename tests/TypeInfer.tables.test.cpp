@@ -201,7 +201,7 @@ TEST_CASE_FIXTURE(Fixture, "used_dot_instead_of_colon")
     REQUIRE(it != result.errors.end());
 }
 
-TEST_CASE_FIXTURE(Fixture, "used_colon_correctly")
+TEST_CASE_FIXTURE(BuiltinsFixture, "used_colon_correctly")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -883,7 +883,7 @@ TEST_CASE_FIXTURE(Fixture, "assigning_to_an_unsealed_table_with_string_literal_s
     CHECK_EQ(*typeChecker.stringType, *propertyA);
 }
 
-TEST_CASE_FIXTURE(Fixture, "oop_indexer_works")
+TEST_CASE_FIXTURE(BuiltinsFixture, "oop_indexer_works")
 {
     CheckResult result = check(R"(
         local clazz = {}
@@ -906,7 +906,7 @@ TEST_CASE_FIXTURE(Fixture, "oop_indexer_works")
     CHECK_EQ(*typeChecker.stringType, *requireType("words"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "indexer_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexer_table")
 {
     CheckResult result = check(R"(
         local clazz = {a="hello"}
@@ -919,7 +919,7 @@ TEST_CASE_FIXTURE(Fixture, "indexer_table")
     CHECK_EQ(*typeChecker.stringType, *requireType("b"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "indexer_fn")
+TEST_CASE_FIXTURE(BuiltinsFixture, "indexer_fn")
 {
     CheckResult result = check(R"(
         local instanace = setmetatable({}, {__index=function() return 10 end})
@@ -930,7 +930,7 @@ TEST_CASE_FIXTURE(Fixture, "indexer_fn")
     CHECK_EQ(*typeChecker.numberType, *requireType("b"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "meta_add")
+TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add")
 {
     // Note: meta_add_inferred and this unit test are currently the same exact thing.
     // We'll want to change this one in particular when we add real syntax for metatables.
@@ -947,7 +947,7 @@ TEST_CASE_FIXTURE(Fixture, "meta_add")
     CHECK_EQ(follow(requireType("a")), follow(requireType("c")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "meta_add_inferred")
+TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add_inferred")
 {
     CheckResult result = check(R"(
         local a = {}
@@ -960,7 +960,7 @@ TEST_CASE_FIXTURE(Fixture, "meta_add_inferred")
     CHECK_EQ(*requireType("a"), *requireType("c"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "meta_add_both_ways")
+TEST_CASE_FIXTURE(BuiltinsFixture, "meta_add_both_ways")
 {
     CheckResult result = check(R"(
         type VectorMt = { __add: (Vector, number) -> Vector }
@@ -980,7 +980,7 @@ TEST_CASE_FIXTURE(Fixture, "meta_add_both_ways")
 
 // This test exposed a bug where we let go of the "seen" stack while unifying table types
 // As a result, type inference crashed with a stack overflow.
-TEST_CASE_FIXTURE(Fixture, "unification_of_unions_in_a_self_referential_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "unification_of_unions_in_a_self_referential_type")
 {
     CheckResult result = check(R"(
         type A = {}
@@ -1009,7 +1009,7 @@ TEST_CASE_FIXTURE(Fixture, "unification_of_unions_in_a_self_referential_type")
     CHECK_EQ(bmtv->metatable, requireType("bmt"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "oop_polymorphic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "oop_polymorphic")
 {
     CheckResult result = check(R"(
         local animal = {}
@@ -1060,7 +1060,7 @@ TEST_CASE_FIXTURE(Fixture, "user_defined_table_types_are_named")
     CHECK_EQ("Vector3", toString(requireType("v")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "result_is_always_any_if_lhs_is_any")
+TEST_CASE_FIXTURE(BuiltinsFixture, "result_is_always_any_if_lhs_is_any")
 {
     CheckResult result = check(R"(
         type Vector3MT = {
@@ -1133,7 +1133,7 @@ TEST_CASE_FIXTURE(Fixture, "nice_error_when_trying_to_fetch_property_of_boolean"
     CHECK_EQ("Type 'boolean' does not have key 'some_prop'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_builtin_sealed_table_must_fail")
+TEST_CASE_FIXTURE(BuiltinsFixture, "defining_a_method_for_a_builtin_sealed_table_must_fail")
 {
     CheckResult result = check(R"(
         function string.m() end
@@ -1142,7 +1142,7 @@ TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_builtin_sealed_table_must_fa
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_builtin_sealed_table_must_fail")
+TEST_CASE_FIXTURE(BuiltinsFixture, "defining_a_self_method_for_a_builtin_sealed_table_must_fail")
 {
     CheckResult result = check(R"(
         function string:m() end
@@ -1261,7 +1261,7 @@ TEST_CASE_FIXTURE(Fixture, "found_like_key_in_table_function_call")
     CHECK_EQ(toString(te), "Key 'fOo' not found in table 't'.  Did you mean 'Foo'?");
 }
 
-TEST_CASE_FIXTURE(Fixture, "found_like_key_in_table_property_access")
+TEST_CASE_FIXTURE(BuiltinsFixture, "found_like_key_in_table_property_access")
 {
     CheckResult result = check(R"(
         local t = {X = 1}
@@ -1286,7 +1286,7 @@ TEST_CASE_FIXTURE(Fixture, "found_like_key_in_table_property_access")
     CHECK_EQ(toString(te), "Key 'x' not found in table 't'.  Did you mean 'X'?");
 }
 
-TEST_CASE_FIXTURE(Fixture, "found_multiple_like_keys")
+TEST_CASE_FIXTURE(BuiltinsFixture, "found_multiple_like_keys")
 {
     CheckResult result = check(R"(
         local t = {Foo = 1, foO = 2}
@@ -1312,7 +1312,7 @@ TEST_CASE_FIXTURE(Fixture, "found_multiple_like_keys")
     CHECK_EQ(toString(te), "Key 'foo' not found in table 't'.  Did you mean one of 'Foo', 'foO'?");
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_suggest_exact_match_keys")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_suggest_exact_match_keys")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -1339,7 +1339,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_exact_match_keys")
     CHECK_EQ(toString(te), "Key 'Foo' not found in table 't'.  Did you mean 'foO'?");
 }
 
-TEST_CASE_FIXTURE(Fixture, "getmetatable_returns_pointer_to_metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "getmetatable_returns_pointer_to_metatable")
 {
     CheckResult result = check(R"(
         local t = {x = 1}
@@ -1352,7 +1352,7 @@ TEST_CASE_FIXTURE(Fixture, "getmetatable_returns_pointer_to_metatable")
     CHECK_EQ(*requireType("mt"), *requireType("returnedMT"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "metatable_mismatch_should_fail")
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_mismatch_should_fail")
 {
     CheckResult result = check(R"(
         local t1 = {x = 1}
@@ -1374,7 +1374,7 @@ TEST_CASE_FIXTURE(Fixture, "metatable_mismatch_should_fail")
     CHECK_EQ(*tm->givenType, *requireType("t2"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "property_lookup_through_tabletypevar_metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "property_lookup_through_tabletypevar_metatable")
 {
     CheckResult result = check(R"(
         local t = {x = 1}
@@ -1393,7 +1393,7 @@ TEST_CASE_FIXTURE(Fixture, "property_lookup_through_tabletypevar_metatable")
     CHECK_EQ(up->key, "z");
 }
 
-TEST_CASE_FIXTURE(Fixture, "missing_metatable_for_sealed_tables_do_not_get_inferred")
+TEST_CASE_FIXTURE(BuiltinsFixture, "missing_metatable_for_sealed_tables_do_not_get_inferred")
 {
     CheckResult result = check(R"(
         local t = {x = 1}
@@ -1742,7 +1742,7 @@ TEST_CASE_FIXTURE(Fixture, "hide_table_error_properties")
     CHECK_EQ("Cannot add property 'b' to table '{| x: number |}'", toString(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "builtin_table_names")
+TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_table_names")
 {
     CheckResult result = check(R"(
         os.h = 2
@@ -1755,7 +1755,7 @@ TEST_CASE_FIXTURE(Fixture, "builtin_table_names")
     CHECK_EQ("Cannot add property 'k' to table 'string'", toString(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "persistent_sealed_table_is_immutable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "persistent_sealed_table_is_immutable")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -1858,7 +1858,7 @@ local foos: {Foo} = {
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "quantifying_a_bound_var_works")
+TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
 {
     CheckResult result = check(R"(
         local clazz = {}
@@ -1891,7 +1891,7 @@ TEST_CASE_FIXTURE(Fixture, "quantifying_a_bound_var_works")
     REQUIRE_EQ(ttv->state, TableState::Sealed);
 }
 
-TEST_CASE_FIXTURE(Fixture, "less_exponential_blowup_please")
+TEST_CASE_FIXTURE(BuiltinsFixture, "less_exponential_blowup_please")
 {
     CheckResult result = check(R"(
         --!strict
@@ -1920,7 +1920,7 @@ TEST_CASE_FIXTURE(Fixture, "less_exponential_blowup_please")
         newData:First()
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "common_table_element_union_in_call")
@@ -1983,7 +1983,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in_nonstrict")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_nonstrict")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -1996,7 +1996,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_should_cope_with_optional_properties_in_strict")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
     ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
 
@@ -2052,7 +2052,7 @@ caused by:
   Property 'y' is not compatible. Type 'number' could not be converted into 'string')");
 }
 
-TEST_CASE_FIXTURE(Fixture, "error_detailed_metatable_prop")
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_detailed_metatable_prop")
 {
     ScopedFastFlag sff[]{
         {"LuauTableSubtypingVariance2", true},
@@ -2122,8 +2122,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
     ScopedFastFlag sffs[]{
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
     };
 
@@ -2143,8 +2141,6 @@ a.p = { x = 9 }
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
     ScopedFastFlag sffs[]{
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
         {"LuauUnsealedTableLiteral", true},
     };
@@ -2171,8 +2167,6 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 {
     ScopedFastFlag sffs[]{
-        {"LuauPropertiesGetExpectedType", true},
-        {"LuauExpectedTypesOfProperties", true},
         {"LuauTableSubtypingVariance2", true},
     };
 
@@ -2189,7 +2183,7 @@ a.p = { x = 9 }
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "recursive_metatable_type_call")
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_type_call")
 {
     ScopedFastFlag sff[]{
         {"LuauUnsealedTableLiteral", true},
@@ -2283,10 +2277,8 @@ local y = #x
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable_index")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable_index")
 {
-    ScopedFastFlag sff{"LuauTerminateCyclicMetatableIndexLookup", true};
-
     // t :: t1 where t1 = {metatable {__index: t1, __tostring: (t1) -> string}}
     CheckResult result = check(R"(
         local mt = {}
@@ -2302,7 +2294,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_hang_when_trying_to_look_up_in_cyclic_metatable
     CHECK_EQ("Type 't' does not have key 'p'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "give_up_after_one_metatable_index_look_up")
+TEST_CASE_FIXTURE(BuiltinsFixture, "give_up_after_one_metatable_index_look_up")
 {
     CheckResult result = check(R"(
         local data = { x = 5 }
@@ -2319,8 +2311,6 @@ TEST_CASE_FIXTURE(Fixture, "give_up_after_one_metatable_index_look_up")
 
 TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
 {
-    ScopedFastFlag sff{"LuauDoNotTryToReduce", true};
-
     CheckResult result = check(R"(
         type T = {} & {p: number | string}
         local function f(t: T)
@@ -2337,8 +2327,6 @@ TEST_CASE_FIXTURE(Fixture, "confusing_indexing")
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table")
 {
-    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter", true};
-
     CheckResult result = check(R"(
         local a: {x: number, y: number, [any]: any} | {y: number}
 
@@ -2357,8 +2345,6 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
 TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a_table_2")
 {
-    ScopedFastFlag sff{"LuauDifferentOrderOfUnificationDoesntMatter", true};
-
     CheckResult result = check(R"(
         local a: {y: number} | {x: number, y: number, [any]: any}
 
@@ -2377,8 +2363,6 @@ TEST_CASE_FIXTURE(Fixture, "pass_a_union_of_tables_to_a_function_that_requires_a
 
 TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf1")
 {
-    ScopedFastFlag sff{"LuauTxnLogCheckForInvalidation", true};
-
     CheckResult result = check(R"(
 -- This example produced a UAF at one point, caused by pointers to table types becoming
 -- invalidated by child unifiers. (Calling log.concat can cause pointers to become invalid.)
@@ -2409,8 +2393,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "unifying_tables_shouldnt_uaf2")
 {
-    ScopedFastFlag sff{"LuauTxnLogCheckForInvalidation", true};
-
     CheckResult result = check(R"(
 -- Another example that UAFd, this time found by fuzzing.
 local _
@@ -2488,7 +2470,7 @@ TEST_CASE_FIXTURE(Fixture, "free_rhs_table_can_also_be_bound")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_unifies_into_map")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_unifies_into_map")
 {
     CheckResult result = check(R"(
         local Instance: any
@@ -2574,7 +2556,7 @@ TEST_CASE_FIXTURE(Fixture, "generalize_table_argument")
  * the generalization process), then it loses the knowledge that its metatable will have an :incr()
  * method.
  */
-TEST_CASE_FIXTURE(Fixture, "dont_quantify_table_that_belongs_to_outer_scope")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_scope")
 {
     CheckResult result = check(R"(
         local Counter = {}
@@ -2616,7 +2598,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_quantify_table_that_belongs_to_outer_scope")
 }
 
 // TODO: CLI-39624
-TEST_CASE_FIXTURE(Fixture, "instantiate_tables_at_scope_level")
+TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_tables_at_scope_level")
 {
     CheckResult result = check(R"(
         --!strict
@@ -2694,13 +2676,14 @@ do end
 )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
 {
     CheckResult result = check("local x = setmetatable({})");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but only 1 is specified", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning")
+TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_table_cloning")
 {
     CheckResult result = check(R"(
 --!nonstrict
@@ -2721,7 +2704,7 @@ type t0<t32> = any
     CHECK(ttv->instantiatedTypeParams.empty());
 }
 
-TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning_2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_table_cloning_2")
 {
     ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
 
@@ -2777,7 +2760,7 @@ local baz = foo[bar]
     CHECK_EQ(result.errors[0].location, Location{Position{3, 16}, Position{3, 19}});
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_simple_call")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_simple_call")
 {
     CheckResult result = check(R"(
 local a = setmetatable({ x = 2 }, {
@@ -2793,7 +2776,7 @@ local c = a(2) -- too many arguments
     CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "access_index_metamethod_that_returns_variadic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "access_index_metamethod_that_returns_variadic")
 {
     CheckResult result = check(R"(
         type Foo = {x: string}
@@ -2888,7 +2871,7 @@ TEST_CASE_FIXTURE(Fixture, "pairs_parameters_are_not_unsealed_tables")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_function_check_use_after_free")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_function_check_use_after_free")
 {
     CheckResult result = check(R"(
 local t = {}
@@ -2926,7 +2909,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_properties_of_a_table_should_start_with_the
 }
 
 // The real bug here was that we weren't always uncondionally typechecking a trailing return statement last.
-TEST_CASE_FIXTURE(Fixture, "dont_leak_free_table_props")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 {
     CheckResult result = check(R"(
         local function a(state)
@@ -2981,8 +2964,6 @@ TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
 
 TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
 {
-    ScopedFastFlag sff{"LuauCheckImplicitNumbericKeys", true};
-
     CheckResult result = check(R"(
         local t: { [string]: number } = { 5, 6, 7 }
     )");
@@ -2992,6 +2973,60 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[2]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra")
+{
+    ScopedFastFlag luauExpectedPropTypeFromIndexer{"LuauExpectedPropTypeFromIndexer", true};
+    ScopedFastFlag luauSubtypingAddOptPropsToUnsealedTables{"LuauSubtypingAddOptPropsToUnsealedTables", true};
+
+    CheckResult result = check(R"(
+        type X = { { x: boolean?, y: boolean? } }
+
+        local l1: {[string]: X} = { key = { { x = true }, { y = true } } }
+        local l2: {[any]: X} = { key = { { x = true }, { y = true } } }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra_2")
+{
+    ScopedFastFlag luauExpectedPropTypeFromIndexer{"LuauExpectedPropTypeFromIndexer", true};
+
+    CheckResult result = check(R"(
+        type X = {[any]: string | boolean}
+
+        local x: X = { key = "str" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "prop_access_on_key_whose_types_mismatches")
+{
+    ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};
+
+    CheckResult result = check(R"(
+        local t: {number} = {}
+        local x = t.x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Key 'x' not found in table '{number}'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "prop_access_on_unions_of_indexers_where_key_whose_types_mismatches")
+{
+    ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};
+
+    CheckResult result = check(R"(
+        local t: { [number]: number } | { [boolean]: number } = {}
+        local u = t.x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type '{number} | {| [boolean]: number |}' does not have key 'x'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

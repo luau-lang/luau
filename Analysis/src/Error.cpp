@@ -2,7 +2,6 @@
 #include "Luau/Error.h"
 
 #include "Luau/Clone.h"
-#include "Luau/Module.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 
@@ -178,15 +177,7 @@ struct ErrorConverter
 
     std::string operator()(const Luau::FunctionRequiresSelf& e) const
     {
-        if (e.requiredExtraNils)
-        {
-            const char* plural = e.requiredExtraNils == 1 ? "" : "s";
-            return format("This function was declared to accept self, but you did not pass enough arguments. Use a colon instead of a dot or "
-                          "pass %i extra nil%s to suppress this warning",
-                e.requiredExtraNils, plural);
-        }
-        else
-            return "This function must be called with self. Did you mean to use a colon instead of a dot?";
+        return "This function must be called with self. Did you mean to use a colon instead of a dot?";
     }
 
     std::string operator()(const Luau::OccursCheckFailed&) const
@@ -539,7 +530,7 @@ bool FunctionDoesNotTakeSelf::operator==(const FunctionDoesNotTakeSelf&) const
 
 bool FunctionRequiresSelf::operator==(const FunctionRequiresSelf& e) const
 {
-    return requiredExtraNils == e.requiredExtraNils;
+    return true;
 }
 
 bool OccursCheckFailed::operator==(const OccursCheckFailed&) const

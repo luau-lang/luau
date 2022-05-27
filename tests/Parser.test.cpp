@@ -1606,8 +1606,6 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_of_functions_unions_and_intersections")
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
 {
-    ScopedFastFlag luauParseLocationIgnoreCommentSkip{"LuauParseLocationIgnoreCommentSkip", true};
-
     AstStatBlock* block = parse(R"(
         type F = number
         --comment
@@ -1620,9 +1618,6 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
 {
-    ScopedFastFlag luauParseLocationIgnoreCommentSkip{"LuauParseLocationIgnoreCommentSkip", true};
-    ScopedFastFlag luauParseLocationIgnoreCommentSkipInCapture{"LuauParseLocationIgnoreCommentSkipInCapture", true};
-
     // Same should hold when comments are captured
     ParseOptions opts;
     opts.captureComments = true;
@@ -2044,8 +2039,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_pack_errors")
 {
-    ScopedFastFlag luauParseRecoverUnexpectedPack{"LuauParseRecoverUnexpectedPack", true};
-
     matchParseError("type Y<T...> = {a: T..., b: number}", "Unexpected '...' after type name; type pack is not allowed in this context",
         Location{{0, 20}, {0, 23}});
     matchParseError("type Y<T...> = {a: (number | string)...", "Unexpected '...' after type annotation", Location{{0, 36}, {0, 39}});
@@ -2621,14 +2614,23 @@ type Y<T..., U = T...> = (T...) -> U...
 
 TEST_CASE_FIXTURE(Fixture, "recover_unexpected_type_pack")
 {
-    ScopedFastFlag luauParseRecoverUnexpectedPack{"LuauParseRecoverUnexpectedPack", true};
-
     ParseResult result = tryParse(R"(
 type X<T...> = { a: T..., b: number }
 type Y<T> = { a: T..., b: number }
 type Z<T> = { a: string | T..., b: number }
     )");
     REQUIRE_EQ(3, result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
+{
+    ScopedFastFlag sff{"LuauParserFunctionKeywordAsTypeHelp", true};
+    ParseResult result = tryParse(R"(
+        type Foo = function
+    )");
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> ...any'",
+        result.errors[0].getMessage());
 }
 
 TEST_SUITE_END();

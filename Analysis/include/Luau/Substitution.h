@@ -1,8 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Module.h"
-#include "Luau/ModuleResolver.h"
+#include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 #include "Luau/DenseHash.h"

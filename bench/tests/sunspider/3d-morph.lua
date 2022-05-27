@@ -31,7 +31,7 @@ local loops = 15
 local nx = 120
 local nz = 120
 
-function morph(a, f)
+local function morph(a, f)
     local PI2nx = math.pi * 8/nx
     local sin = math.sin
     local f30 = -(50 * sin(f*math.pi*2))

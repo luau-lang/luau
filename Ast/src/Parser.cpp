@@ -10,8 +10,8 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauParseRecoverUnexpectedPack, false)
-LUAU_FASTFLAGVARIABLE(LuauParseLocationIgnoreCommentSkipInCapture, false)
+
+LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
 
 namespace Luau
 {
@@ -1430,7 +1430,7 @@ AstType* Parser::parseTypeAnnotation(TempVector<AstType*>& parts, const Location
             parts.push_back(parseSimpleTypeAnnotation(/* allowPack= */ false).type);
             isIntersection = true;
         }
-        else if (FFlag::LuauParseRecoverUnexpectedPack && c == Lexeme::Dot3)
+        else if (c == Lexeme::Dot3)
         {
             report(lexer.current().location, "Unexpected '...' after type annotation");
             nextLexeme();
@@ -1551,7 +1551,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
             prefix = name.name;
             name = parseIndexName("field name", pointPosition);
         }
-        else if (FFlag::LuauParseRecoverUnexpectedPack && lexer.current().type == Lexeme::Dot3)
+        else if (lexer.current().type == Lexeme::Dot3)
         {
             report(lexer.current().location, "Unexpected '...' after type name; type pack is not allowed in this context");
             nextLexeme();
@@ -1590,6 +1590,17 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionTypeAnnotation(allowPack);
+    }
+    else if (FFlag::LuauParserFunctionKeywordAsTypeHelp && lexer.current().type == Lexeme::ReservedFunction)
+    {
+        Location location = lexer.current().location;
+
+        nextLexeme();
+
+        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false,
+                    "Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> "
+                    "...any'"),
+            {}};
     }
     else
     {
@@ -2822,7 +2833,7 @@ void Parser::nextLexeme()
                 hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
             }
 
-            type = lexer.next(/* skipComments= */ false, !FFlag::LuauParseLocationIgnoreCommentSkipInCapture).type;
+            type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
         }
     }
     else

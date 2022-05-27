@@ -33,6 +33,9 @@ struct ToDotClassFixture : Fixture
         };
         typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
 
+        for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+            persist(ty.type);
+
         freeze(arena);
     }
 };
@@ -224,7 +227,7 @@ n1 -> n4 [label="typePackParam"];
     (void)toDot(requireType("a"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable")
 {
     CheckResult result = check(R"(
 local a: typeof(setmetatable({}, {}))
@@ -425,13 +428,14 @@ n1 -> n2;
 n2 [label="SingletonTypeVar string: hi"];
 n1 -> n3;
 )"
-"n3 [label=\"SingletonTypeVar string: \\\"hello\\\"\"];"
-R"(
+             "n3 [label=\"SingletonTypeVar string: \\\"hello\\\"\"];"
+             R"(
 n1 -> n4;
 n4 [label="SingletonTypeVar boolean: true"];
 n1 -> n5;
 n5 [label="SingletonTypeVar boolean: false"];
-})", toDot(requireType("x"), opts));
+})",
+        toDot(requireType("x"), opts));
 }
 
 TEST_SUITE_END();

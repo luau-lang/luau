@@ -92,10 +92,6 @@ Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
     configResolver.defaultConfig.parseOptions.captureComments = true;
 
-    registerBuiltinTypes(frontend.typeChecker);
-    if (prepareAutocomplete)
-        registerBuiltinTypes(frontend.typeCheckerForAutocomplete);
-    registerTestTypes();
     Luau::freeze(frontend.typeChecker.globalTypes);
     Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 
@@ -408,6 +404,21 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
 
     REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
     return result;
+}
+
+BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
+    : Fixture(freeze, prepareAutocomplete)
+{
+    Luau::unfreeze(frontend.typeChecker.globalTypes);
+    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+
+    registerBuiltinTypes(frontend.typeChecker);
+    if (prepareAutocomplete)
+        registerBuiltinTypes(frontend.typeCheckerForAutocomplete);
+    registerTestTypes();
+
+    Luau::freeze(frontend.typeChecker.globalTypes);
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 }
 
 ModuleName fromString(std::string_view name)

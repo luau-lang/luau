@@ -42,7 +42,6 @@ struct UnifierSharedState
 
     InternalErrorReporter* iceHandler;
 
-    DenseHashSet<void*> seenAny{nullptr};
     DenseHashMap<TypeId, bool> skipCacheForType{nullptr};
     DenseHashSet<std::pair<TypeId, TypeId>, TypeIdPairHash> cachedUnify{{nullptr, nullptr}};
     DenseHashMap<std::pair<TypeId, TypeId>, TypeErrorData, TypeIdPairHash> cachedUnifyError{{nullptr, nullptr}};

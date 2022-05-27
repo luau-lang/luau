@@ -213,6 +213,14 @@ CallInfo* luaD_growCI(lua_State* L)
     return ++L->ci;
 }
 
+void luaD_checkCstack(lua_State *L)
+{
+    if (L->nCcalls == LUAI_MAXCCALLS)
+        luaG_runerror(L, "C stack overflow");
+    else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3)))
+        luaD_throw(L, LUA_ERRERR); /* error while handling stack error */
+}
+
 /*
 ** Call a function (C or Lua). The function to be called is at *func.
 ** The arguments are on the stack, right after the function.
@@ -222,12 +230,8 @@ CallInfo* luaD_growCI(lua_State* L)
 void luaD_call(lua_State* L, StkId func, int nResults)
 {
     if (++L->nCcalls >= LUAI_MAXCCALLS)
-    {
-        if (L->nCcalls == LUAI_MAXCCALLS)
-            luaG_runerror(L, "C stack overflow");
-        else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3)))
-            luaD_throw(L, LUA_ERRERR); /* error while handing stack error */
-    }
+        luaD_checkCstack(L);
+
     if (luau_precall(L, func, nResults) == PCRLUA)
     {                                        /* is a Lua function? */
         L->ci->flags |= LUA_CALLINFO_RETURN; /* luau_execute will stop after returning from the stack frame */
@@ -241,6 +245,7 @@ void luaD_call(lua_State* L, StkId func, int nResults)
         if (!oldactive)
             resetbit(L->stackstate, THREAD_ACTIVEBIT);
     }
+
     L->nCcalls--;
     luaC_checkGC(L);
 }

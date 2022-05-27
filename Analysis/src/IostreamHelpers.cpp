@@ -48,7 +48,7 @@ static void errorToString(std::ostream& stream, const T& err)
     else if constexpr (std::is_same_v<T, FunctionDoesNotTakeSelf>)
         stream << "FunctionDoesNotTakeSelf { }";
     else if constexpr (std::is_same_v<T, FunctionRequiresSelf>)
-        stream << "FunctionRequiresSelf { extraNils " << err.requiredExtraNils << " }";
+        stream << "FunctionRequiresSelf { }";
     else if constexpr (std::is_same_v<T, OccursCheckFailed>)
         stream << "OccursCheckFailed { }";
     else if constexpr (std::is_same_v<T, UnknownRequire>)

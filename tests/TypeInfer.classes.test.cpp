@@ -10,7 +10,7 @@
 using namespace Luau;
 using std::nullopt;
 
-struct ClassFixture : Fixture
+struct ClassFixture : BuiltinsFixture
 {
     ClassFixture()
     {

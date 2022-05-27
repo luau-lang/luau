@@ -26,7 +26,7 @@ namespace Luau
 namespace
 {
 
-struct FindCyclicTypes
+struct FindCyclicTypes final : TypeVarVisitor
 {
     FindCyclicTypes() = default;
     FindCyclicTypes(const FindCyclicTypes&) = delete;
@@ -38,25 +38,27 @@ struct FindCyclicTypes
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
 
-    void cycle(TypeId ty)
+    void cycle(TypeId ty) override
     {
         cycles.insert(ty);
     }
 
-    void cycle(TypePackId tp)
+    void cycle(TypePackId tp) override
     {
         cycleTPs.insert(tp);
     }
 
-    template<typename T>
-    bool operator()(TypeId ty, const T&)
+    bool visit(TypeId ty) override
     {
         return visited.insert(ty).second;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar& ttv) = delete;
+    bool visit(TypePackId tp) override
+    {
+        return visitedPacks.insert(tp).second;
+    }
 
-    bool operator()(TypeId ty, const TableTypeVar& ttv, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const TableTypeVar& ttv) override
     {
         if (!visited.insert(ty).second)
             return false;
@@ -64,10 +66,10 @@ struct FindCyclicTypes
         if (ttv.name || ttv.syntheticName)
         {
             for (TypeId itp : ttv.instantiatedTypeParams)
-                visitTypeVar(itp, *this, seen);
+                traverse(itp);
 
             for (TypePackId itp : ttv.instantiatedTypePackParams)
-                visitTypeVar(itp, *this, seen);
+                traverse(itp);
 
             return exhaustive;
         }
@@ -75,15 +77,9 @@ struct FindCyclicTypes
         return true;
     }
 
-    bool operator()(TypeId, const ClassTypeVar&)
+    bool visit(TypeId ty, const ClassTypeVar&) override
     {
         return false;
-    }
-
-    template<typename T>
-    bool operator()(TypePackId tp, const T&)
-    {
-        return visitedPacks.insert(tp).second;
     }
 };
 
@@ -92,7 +88,7 @@ void findCyclicTypes(std::set<TypeId>& cycles, std::set<TypePackId>& cycleTPs, T
 {
     FindCyclicTypes fct;
     fct.exhaustive = exhaustive;
-    visitTypeVar(ty, fct);
+    fct.traverse(ty);
 
     cycles = std::move(fct.cycles);
     cycleTPs = std::move(fct.cycleTPs);
@@ -183,6 +179,8 @@ struct StringifierState
         return generateName(s);
     }
 
+    int previousNameIndex = 0;
+
     std::string getName(TypePackId ty)
     {
         const size_t s = result.nameMap.typePacks.size();
@@ -192,9 +190,10 @@ struct StringifierState
 
         for (int count = 0; count < 256; ++count)
         {
-            std::string candidate = generateName(usedNames.size() + count);
+            std::string candidate = generateName(previousNameIndex + count);
             if (!usedNames.count(candidate))
             {
+                previousNameIndex += count;
                 usedNames.insert(candidate);
                 n = candidate;
                 return candidate;
@@ -210,6 +209,13 @@ struct StringifierState
             return;
 
         result.name += s;
+    }
+
+    void emit(TypeLevel level)
+    {
+        emit(std::to_string(level.level));
+        emit("-");
+        emit(std::to_string(level.subLevel));
     }
 
     void emit(const char* s)
@@ -343,7 +349,7 @@ struct TypeVarStringifier
         if (FFlag::DebugLuauVerboseTypeNames)
         {
             state.emit("-");
-            state.emit(std::to_string(ftv.level.level));
+            state.emit(ftv.level);
         }
     }
 
@@ -356,6 +362,7 @@ struct TypeVarStringifier
     {
         if (gtv.explicitName)
         {
+            state.usedNames.insert(gtv.name);
             state.result.nameMap.typeVars[ty] = gtv.name;
             state.emit(gtv.name);
         }
@@ -367,7 +374,10 @@ struct TypeVarStringifier
     {
         state.result.invalid = true;
 
-        state.emit("[[");
+        state.emit("[");
+        if (FFlag::DebugLuauVerboseTypeNames)
+            state.emit(ctv.level);
+        state.emit("[");
 
         bool first = true;
         for (TypeId ty : ctv.parts)
@@ -699,7 +709,10 @@ struct TypeVarStringifier
         for (std::string& ss : results)
         {
             if (!first)
-                state.emit(" | ");
+            {
+                state.newline();
+                state.emit("| ");
+            }
             state.emit(ss);
             first = false;
         }
@@ -752,7 +765,10 @@ struct TypeVarStringifier
         for (std::string& ss : results)
         {
             if (!first)
-                state.emit(" & ");
+            {
+                state.newline();
+                state.emit("& ");
+            }
             state.emit(ss);
             first = false;
         }
@@ -891,6 +907,7 @@ struct TypePackStringifier
             state.emit("gen-");
         if (pack.explicitName)
         {
+            state.usedNames.insert(pack.name);
             state.result.nameMap.typePacks[tp] = pack.name;
             state.emit(pack.name);
         }
@@ -911,7 +928,7 @@ struct TypePackStringifier
         if (FFlag::DebugLuauVerboseTypeNames)
         {
             state.emit("-");
-            state.emit(std::to_string(pack.level.level));
+            state.emit(pack.level);
         }
 
         state.emit("...");
@@ -1184,6 +1201,14 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
         size_t idx = 0;
         while (argPackIter != end(ftv.argTypes))
         {
+            // ftv takes a self parameter as the first argument, skip it if specified in option
+            if (idx == 0 && ftv.hasSelf && opts.hideFunctionSelfArgument)
+            {
+                ++argPackIter;
+                ++idx;
+                continue;
+            }
+
             if (!first)
                 state.emit(", ");
             first = false;

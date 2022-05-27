@@ -184,8 +184,6 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_empty_union")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    ScopedFastFlag sff{"LuauSealExports", true};
-
     TypeVar ftv11{FreeTypeVar{TypeLevel{}}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
@@ -315,23 +313,33 @@ TEST_CASE("tagging_props")
     CHECK(Luau::hasTag(prop, "foo"));
 }
 
-struct VisitCountTracker
+struct VisitCountTracker final : TypeVarOnceVisitor
 {
     std::unordered_map<TypeId, unsigned> tyVisits;
     std::unordered_map<TypePackId, unsigned> tpVisits;
 
-    void cycle(TypeId) {}
-    void cycle(TypePackId) {}
+    void cycle(TypeId) override {}
+    void cycle(TypePackId) override {}
 
     template<typename T>
     bool operator()(TypeId ty, const T& t)
+    {
+        return visit(ty);
+    }
+
+    template<typename T>
+    bool operator()(TypePackId tp, const T&)
+    {
+        return visit(tp);
+    }
+
+    bool visit(TypeId ty) override
     {
         tyVisits[ty]++;
         return true;
     }
 
-    template<typename T>
-    bool operator()(TypePackId tp, const T&)
+    bool visit(TypePackId tp) override
     {
         tpVisits[tp]++;
         return true;
@@ -349,8 +357,7 @@ local b: (T, T, T) -> T
     TypeId bType = requireType("b");
 
     VisitCountTracker tester;
-    DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(bType, tester, seen);
+    tester.traverse(bType);
 
     for (auto [_, count] : tester.tyVisits)
         CHECK_EQ(count, 1);

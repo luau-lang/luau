@@ -15,12 +15,6 @@ This document tracks unimplemented RFCs.
 
 **Status**: Needs implementation
 
-## Sealed/unsealed typing changes
-
-[RFC: Only strip optional properties from unsealed tables during subtyping](https://github.com/Roblox/luau/blob/master/rfcs/unsealed-table-subtyping-strips-optional-properties.md)
-
-**Status**: Implemented but not fully rolled out yet.
-
 ## Safe navigation operator
 
 [RFC: Safe navigation postfix operator (?)](https://github.com/Roblox/luau/blob/master/rfcs/syntax-safe-navigation-operator.md)
@@ -39,10 +33,10 @@ This document tracks unimplemented RFCs.
 
 [RFC: Generalized iteration](https://github.com/Roblox/luau/blob/master/rfcs/generalized-iteration.md)
 
-**Status**: Needs implementation
+**Status**: Implemented but not fully rolled out yet.
 
 ## Lower Bounds Calculation
 
 [RFC: Lower bounds calculation](https://github.com/Roblox/luau/blob/master/rfcs/lower-bounds-calculation.md)
 
-**Status**: Needs implementation
+**Status**: Implemented but not fully rolled out yet.

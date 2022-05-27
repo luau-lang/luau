@@ -6,8 +6,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauParseLocationIgnoreCommentSkip, false)
-
 namespace Luau
 {
 
@@ -361,7 +359,7 @@ const Lexeme& Lexer::next(bool skipComments, bool updatePrevLocation)
         while (isSpace(peekch()))
             consume();
 
-        if (!FFlag::LuauParseLocationIgnoreCommentSkip || updatePrevLocation)
+        if (updatePrevLocation)
             prevLocation = lexeme.location;
 
         lexeme = readNext();

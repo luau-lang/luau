@@ -13,12 +13,9 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
-TEST_CASE_FIXTURE(Fixture, "function_returns_number_or_string")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_number_or_string")
 {
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true}
-    };
+    ScopedFastFlag sff[]{{"LuauReturnTypeInferenceInNonstrict", true}, {"LuauLowerBoundsCalculation", true}};
 
     CheckResult result = check(R"(
         --!nonstrict
@@ -150,8 +147,6 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -169,8 +164,6 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -224,7 +217,7 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     CHECK_MESSAGE(get<FunctionTypeVar>(ttv->props["three"].type), "Should be a function: " << *ttv->props["three"].type);
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_iterator_variables_are_any")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -243,7 +236,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_iterator_variables_are_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_dot_insert_and_recursive_calls")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_insert_and_recursive_calls")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -283,7 +276,6 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
     ScopedFastFlag sff[]{
         {"LuauReturnTypeInferenceInNonstrict", true},
         {"LuauLowerBoundsCalculation", true},
-        {"LuauSealExports", true},
     };
 
     CheckResult result = check(R"(

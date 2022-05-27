@@ -15,7 +15,6 @@
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
-LUAU_FASTFLAG(LuauEqConstraint)
 
 using namespace Luau;
 
@@ -161,7 +160,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_nearly_identical_recursive_types")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
+TEST_CASE_FIXTURE(BuiltinsFixture, "warn_on_lowercase_parent_property")
 {
     CheckResult result = check(R"(
         local M = require(script.parent.DoesNotMatter)
@@ -175,7 +174,7 @@ TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
     REQUIRE_EQ("parent", ed->symbol);
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_case")
+TEST_CASE_FIXTURE(BuiltinsFixture, "weird_case")
 {
     CheckResult result = check(R"(
         local function f() return 4 end
@@ -308,7 +307,6 @@ TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
     int limit = 600;
 #endif
 
-    ScopedFastFlag sff{"LuauTableUseCounterInstead", true};
     ScopedFastInt sfi{"LuauCheckRecursionLimit", limit};
 
     CheckResult result = check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end");
@@ -419,7 +417,7 @@ TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
     CHECK_EQ("any", toString(requireType("bar")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_do")
+TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_do")
 {
     CheckResult result = check(R"(
         do
@@ -534,7 +532,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_assert")
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_replacement_name_in_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_in_error")
 {
     {
         CheckResult result = check(R"(
@@ -587,7 +585,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_replacement_name_in_error
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "index_expr_should_be_checked")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_expr_should_be_checked")
 {
     CheckResult result = check(R"(
         local foo: any
@@ -683,7 +681,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
         _(nil)
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
@@ -695,7 +693,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
     CHECK(it != result.errors.end());
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_stack_overflow_from_isoptional2")
 {
     CheckResult result = check(R"(
         function _(l0:({})|(t0)):((((typeof((xpcall)))|(t96<t0>))|(t13))&(t96<t0>),()->typeof(...))
@@ -722,10 +720,10 @@ TEST_CASE_FIXTURE(Fixture, "no_infinite_loop_when_trying_to_unify_uh_this")
         _()
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -739,7 +737,7 @@ TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
@@ -768,7 +766,7 @@ b, c = {2, "s"}, {"b", 4}
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types_mutable_lval")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_assignment_value_types_mutable_lval")
 {
     CheckResult result = check(R"(
 local a = {}
@@ -836,7 +834,7 @@ local a: number? = if true then 1 else nil
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_3")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_if_else_expressions_expected_type_3")
 {
     CheckResult result = check(R"(
 local function times<T>(n: any, f: () -> T)
@@ -907,7 +905,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_found_this")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "recursive_metatable_crash")
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_crash")
 {
     CheckResult result = check(R"(
 local function getIt()
@@ -1011,8 +1009,6 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 
 TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
 {
-    ScopedFastFlag substituteFollowNewTypes{"LuauSubstituteFollowNewTypes", true};
-
     CheckResult result = check(R"(
         local obj = {}
 
@@ -1032,6 +1028,45 @@ TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+/**
+ * The problem we had here was that the type of q in B.h was initially inferring to {} | {prop: free} before we bound
+ * that second table to the enclosing union.
+ */
+TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_table")
+{
+    ScopedFastFlag flag[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local A = {}
+
+        function A:f()
+            local t = {}
+
+            for key, value in pairs(self) do
+                t[key] = value
+            end
+
+            return t
+        end
+
+        local B = A:f()
+
+        function B.g(t)
+            assert(type(t) == "table")
+            assert(t.prop ~= nil)
+        end
+
+        function B.h(q)
+            q = q or {}
+            return q or {}
+        end
+    )");
 }
 
 TEST_SUITE_END();

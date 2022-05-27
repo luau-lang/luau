@@ -196,3 +196,26 @@ local sign = if x < 0 then -1 elseif x > 0 then 1 else 0
 ```
 
 **Note:** In Luau, the `if-then-else` expression is preferred vs the standard Lua idiom of writing `a and b or c` (which roughly simulates a ternary operator).  However, the Lua idiom may return an unexpected result if `b` evaluates to false.  The `if-then-else` expression will behave as expected in all situations.
+
+## Generalized iteration
+
+Luau uses the standard Lua syntax for iterating through containers, `for vars in values`, but extends the semantics with support for generalized iteration. In Lua, to iterate over a table you need to use an iterator like `next` or a function that returns one like `pairs` or `ipairs`. In Luau, you can simply iterate over a table:
+
+```lua
+for k, v in {1, 4, 9} do
+    assert(k * k == v)
+end
+```
+
+This works for tables but can also be extended for tables or userdata by implementing `__iter` metamethod that is called before the iteration begins, and should return an iterator function like `next` (or a custom one):
+
+```lua
+local obj = { items = {1, 4, 9} }
+setmetatable(obj, { __iter = function(o) return next, o.items end })
+
+for k, v in obj do
+    assert(k * k == v)
+end
+```
+
+The default iteration order for tables is specified to be consecutive for elements `1..#t` and unordered after that, visiting every element; similarly to iteration using `pairs`, modifying the table entries for keys other than the current one results in unspecified behavior.

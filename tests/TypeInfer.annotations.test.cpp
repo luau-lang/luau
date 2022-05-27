@@ -221,8 +221,6 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_is_bidirectional")
 
 TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
 {
-    ScopedFastFlag sff2{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         local a = 55 :: string
     )");
@@ -407,8 +405,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         type A = B
         type B = A
@@ -532,7 +528,7 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
     CHECK_EQ(recordType, bType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "use_type_required_from_another_file")
+TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
 {
     addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
 
@@ -558,7 +554,7 @@ TEST_CASE_FIXTURE(Fixture, "use_type_required_from_another_file")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "cannot_use_nonexported_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
 {
     addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
 
@@ -584,7 +580,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_nonexported_type")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "builtin_types_are_not_exported")
+TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
 {
     addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
 
@@ -680,7 +676,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_print_is_magic_if_the_flag_is_set")
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
 {
     // Luau::resetPrintLine();
     ScopedFastFlag sffs{"DebugLuauMagicTypes", true};

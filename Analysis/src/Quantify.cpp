@@ -4,12 +4,12 @@
 
 #include "Luau/VisitTypeVar.h"
 
-LUAU_FASTFLAG(LuauTypecheckOptPass)
+LUAU_FASTFLAG(LuauAlwaysQuantify)
 
 namespace Luau
 {
 
-struct Quantifier
+struct Quantifier final : TypeVarOnceVisitor
 {
     TypeLevel level;
     std::vector<TypeId> generics;
@@ -17,26 +17,17 @@ struct Quantifier
     bool seenGenericType = false;
     bool seenMutableType = false;
 
-    Quantifier(TypeLevel level)
+    explicit Quantifier(TypeLevel level)
         : level(level)
     {
     }
 
-    void cycle(TypeId) {}
-    void cycle(TypePackId) {}
+    void cycle(TypeId) override {}
+    void cycle(TypePackId) override {}
 
     bool operator()(TypeId ty, const FreeTypeVar& ftv)
     {
-        if (FFlag::LuauTypecheckOptPass)
-            seenMutableType = true;
-
-        if (!level.subsumes(ftv.level))
-            return false;
-
-        *asMutable(ty) = GenericTypeVar{level};
-        generics.push_back(ty);
-
-        return false;
+        return visit(ty, ftv);
     }
 
     template<typename T>
@@ -56,24 +47,45 @@ struct Quantifier
         return true;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar&)
+    bool operator()(TypeId ty, const TableTypeVar& ttv)
     {
+        return visit(ty, ttv);
+    }
+
+    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    {
+        return visit(tp, ftp);
+    }
+
+    bool visit(TypeId ty, const FreeTypeVar& ftv) override
+    {
+        seenMutableType = true;
+
+        if (!level.subsumes(ftv.level))
+            return false;
+
+        *asMutable(ty) = GenericTypeVar{level};
+        generics.push_back(ty);
+
+        return false;
+    }
+
+    bool visit(TypeId ty, const TableTypeVar&) override
+    {
+        LUAU_ASSERT(getMutable<TableTypeVar>(ty));
         TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
 
-        if (FFlag::LuauTypecheckOptPass)
-        {
-            if (ttv.state == TableState::Generic)
-                seenGenericType = true;
+        if (ttv.state == TableState::Generic)
+            seenGenericType = true;
 
-            if (ttv.state == TableState::Free)
-                seenMutableType = true;
-        }
+        if (ttv.state == TableState::Free)
+            seenMutableType = true;
 
         if (ttv.state == TableState::Sealed || ttv.state == TableState::Generic)
             return false;
         if (!level.subsumes(ttv.level))
         {
-            if (FFlag::LuauTypecheckOptPass && ttv.state == TableState::Unsealed)
+            if (ttv.state == TableState::Unsealed)
                 seenMutableType = true;
             return false;
         }
@@ -81,9 +93,7 @@ struct Quantifier
         if (ttv.state == TableState::Free)
         {
             ttv.state = TableState::Generic;
-
-            if (FFlag::LuauTypecheckOptPass)
-                seenGenericType = true;
+            seenGenericType = true;
         }
         else if (ttv.state == TableState::Unsealed)
             ttv.state = TableState::Sealed;
@@ -93,10 +103,9 @@ struct Quantifier
         return true;
     }
 
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
+    bool visit(TypePackId tp, const FreeTypePack& ftp) override
     {
-        if (FFlag::LuauTypecheckOptPass)
-            seenMutableType = true;
+        seenMutableType = true;
 
         if (!level.subsumes(ftp.level))
             return false;
@@ -110,15 +119,22 @@ struct Quantifier
 void quantify(TypeId ty, TypeLevel level)
 {
     Quantifier q{level};
-    DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(ty, q, seen);
+    q.traverse(ty);
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
     LUAU_ASSERT(ftv);
-    ftv->generics = q.generics;
-    ftv->genericPacks = q.genericPacks;
+    if (FFlag::LuauAlwaysQuantify)
+    {
+        ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
+        ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
+    }
+    else
+    {
+        ftv->generics = q.generics;
+        ftv->genericPacks = q.genericPacks;
+    }
 
-    if (FFlag::LuauTypecheckOptPass && ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
+    if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
         ftv->hasNoGenerics = true;
 }
 

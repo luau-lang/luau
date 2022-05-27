@@ -12,9 +12,6 @@
 #include <vector>
 #include <optional>
 
-LUAU_FASTFLAG(LuauSeparateTypechecks)
-LUAU_FASTFLAG(LuauDirtySourceModule)
-
 namespace Luau
 {
 
@@ -60,17 +57,12 @@ struct SourceNode
 {
     bool hasDirtySourceModule() const
     {
-        LUAU_ASSERT(FFlag::LuauDirtySourceModule);
-
         return dirtySourceModule;
     }
 
     bool hasDirtyModule(bool forAutocomplete) const
     {
-        if (FFlag::LuauSeparateTypechecks)
-            return forAutocomplete ? dirtyModuleForAutocomplete : dirtyModule;
-        else
-            return dirtyModule;
+        return forAutocomplete ? dirtyModuleForAutocomplete : dirtyModule;
     }
 
     ModuleName name;
@@ -89,10 +81,6 @@ struct FrontendOptions
     // jobs where the type graph is not deeply inspected after typechecking
     // is complete.
     bool retainFullTypeGraphs = false;
-
-    // When true, we run typechecking twice, once in the regular mode, and once in strict mode
-    // in order to get more precise type information (e.g. for autocomplete).
-    bool typecheckTwice_DEPRECATED = false;
 
     // Run typechecking only in mode required for autocomplete (strict mode in order to get more precise type information)
     bool forAutocomplete = false;
@@ -145,7 +133,6 @@ struct Frontend
      */
     std::pair<SourceModule, LintResult> lintFragment(std::string_view source, std::optional<LintOptions> enabledLintWarnings = {});
 
-    CheckResult check(const SourceModule& module); // OLD.  TODO KILL
     LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
@@ -172,7 +159,7 @@ struct Frontend
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
 private:
-    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name, bool forAutocomplete_DEPRECATED);
+    std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 
     bool parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root, bool forAutocomplete);

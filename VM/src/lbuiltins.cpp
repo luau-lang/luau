@@ -1003,7 +1003,7 @@ static int luauF_tunpack(lua_State* L, StkId res, TValue* arg0, int nresults, St
         else if (nparams == 3 && ttisnumber(args) && ttisnumber(args + 1) && nvalue(args) == 1.0)
             n = int(nvalue(args + 1));
 
-        if (n >= 0 && n <= t->sizearray && cast_int(L->stack_last - res) >= n)
+        if (n >= 0 && n <= t->sizearray && cast_int(L->stack_last - res) >= n && n + nparams <= LUAI_MAXCSTACK)
         {
             TValue* array = t->array;
             for (int i = 0; i < n; ++i)

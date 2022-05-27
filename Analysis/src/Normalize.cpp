@@ -14,7 +14,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineIntersectionFix, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizeFlagIsConservative, false);
+LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineEqFix, false);
 
 namespace Luau
 {
@@ -261,8 +262,13 @@ static bool areNormal_(const T& t, const std::unordered_set<void*>& seen, Intern
         if (count >= FInt::LuauNormalizeIterationLimit)
             ice.ice("Luau::areNormal hit iteration limit");
 
-        // The follow is here because a bound type may not be normal, but the bound type is normal.
-        return ty->normal || follow(ty)->normal || seen.find(asMutable(ty)) != seen.end();
+        if (FFlag::LuauNormalizeFlagIsConservative)
+            return ty->normal;
+        else
+        {
+            // The follow is here because a bound type may not be normal, but the bound type is normal.
+            return ty->normal || follow(ty)->normal || seen.find(asMutable(ty)) != seen.end();
+        }
     };
 
     return std::all_of(begin(t), end(t), isNormal);
@@ -304,38 +310,29 @@ static bool areNormal(TypePackId tp, const std::unordered_set<void*>& seen, Inte
         ++iterationLimit; \
     } while (false)
 
-struct Normalize
+struct Normalize final : TypeVarVisitor
 {
+    using TypeVarVisitor::Set;
+
+    Normalize(TypeArena& arena, InternalErrorReporter& ice)
+        : arena(arena)
+        , ice(ice)
+    {
+    }
+
     TypeArena& arena;
     InternalErrorReporter& ice;
-
-    // Debug data. Types being normalized are invalidated but trying to see what's going on is painful.
-    // To actually see the original type, read it by using the pointer of the type being normalized.
-    // e.g. in lldb, `e dump(originalTys[ty])`.
-    SeenTypes originalTys;
-    SeenTypePacks originalTps;
 
     int iterationLimit = 0;
     bool limitExceeded = false;
 
-    template<typename T>
-    bool operator()(TypePackId, const T&)
-    {
-        return true;
-    }
-
-    template<typename TID>
-    void cycle(TID)
-    {
-    }
-
-    bool operator()(TypeId ty, const FreeTypeVar&)
+    bool visit(TypeId ty, const FreeTypeVar&) override
     {
         LUAU_ASSERT(!ty->normal);
         return false;
     }
 
-    bool operator()(TypeId ty, const BoundTypeVar& btv, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const BoundTypeVar& btv) override
     {
         // A type could be considered normal when it is in the stack, but we will eventually find out it is not normal as normalization progresses.
         // So we need to avoid eagerly saying that this bound type is normal if the thing it is bound to is in the stack.
@@ -349,13 +346,13 @@ struct Normalize
         return !ty->normal;
     }
 
-    bool operator()(TypeId ty, const PrimitiveTypeVar&)
+    bool visit(TypeId ty, const PrimitiveTypeVar&) override
     {
         LUAU_ASSERT(ty->normal);
         return false;
     }
 
-    bool operator()(TypeId ty, const GenericTypeVar&)
+    bool visit(TypeId ty, const GenericTypeVar&) override
     {
         if (!ty->normal)
             asMutable(ty)->normal = true;
@@ -363,14 +360,14 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const ErrorTypeVar&)
+    bool visit(TypeId ty, const ErrorTypeVar&) override
     {
         if (!ty->normal)
             asMutable(ty)->normal = true;
         return false;
     }
 
-    bool operator()(TypeId ty, const ConstrainedTypeVar& ctvRef, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const ConstrainedTypeVar& ctvRef) override
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -380,7 +377,7 @@ struct Normalize
 
         // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
         for (TypeId part : parts)
-            visit_detail::visit(part, *this, seen);
+            traverse(part);
 
         std::vector<TypeId> newParts = normalizeUnion(parts);
 
@@ -396,22 +393,22 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const FunctionTypeVar& ftv, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const FunctionTypeVar& ftv) override
     {
         CHECK_ITERATION_LIMIT(false);
 
         if (ty->normal)
             return false;
 
-        visit_detail::visit(ftv.argTypes, *this, seen);
-        visit_detail::visit(ftv.retType, *this, seen);
+        traverse(ftv.argTypes);
+        traverse(ftv.retType);
 
         asMutable(ty)->normal = areNormal(ftv.argTypes, seen, ice) && areNormal(ftv.retType, seen, ice);
 
         return false;
     }
 
-    bool operator()(TypeId ty, const TableTypeVar& ttv, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const TableTypeVar& ttv) override
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -429,22 +426,22 @@ struct Normalize
 
         if (ttv.boundTo)
         {
-            visit_detail::visit(*ttv.boundTo, *this, seen);
+            traverse(*ttv.boundTo);
             asMutable(ty)->normal = (*ttv.boundTo)->normal;
             return false;
         }
 
         for (const auto& [_name, prop] : ttv.props)
         {
-            visit_detail::visit(prop.type, *this, seen);
+            traverse(prop.type);
             checkNormal(prop.type);
         }
 
         if (ttv.indexer)
         {
-            visit_detail::visit(ttv.indexer->indexType, *this, seen);
+            traverse(ttv.indexer->indexType);
             checkNormal(ttv.indexer->indexType);
-            visit_detail::visit(ttv.indexer->indexResultType, *this, seen);
+            traverse(ttv.indexer->indexResultType);
             checkNormal(ttv.indexer->indexResultType);
         }
 
@@ -453,35 +450,35 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const MetatableTypeVar& mtv, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const MetatableTypeVar& mtv) override
     {
         CHECK_ITERATION_LIMIT(false);
 
         if (ty->normal)
             return false;
 
-        visit_detail::visit(mtv.table, *this, seen);
-        visit_detail::visit(mtv.metatable, *this, seen);
+        traverse(mtv.table);
+        traverse(mtv.metatable);
 
         asMutable(ty)->normal = mtv.table->normal && mtv.metatable->normal;
 
         return false;
     }
 
-    bool operator()(TypeId ty, const ClassTypeVar& ctv)
+    bool visit(TypeId ty, const ClassTypeVar& ctv) override
     {
         if (!ty->normal)
             asMutable(ty)->normal = true;
         return false;
     }
 
-    bool operator()(TypeId ty, const AnyTypeVar&)
+    bool visit(TypeId ty, const AnyTypeVar&) override
     {
         LUAU_ASSERT(ty->normal);
         return false;
     }
 
-    bool operator()(TypeId ty, const UnionTypeVar& utvRef, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const UnionTypeVar& utvRef) override
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -493,7 +490,7 @@ struct Normalize
 
         // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
         for (TypeId option : options)
-            visit_detail::visit(option, *this, seen);
+            traverse(option);
 
         std::vector<TypeId> newOptions = normalizeUnion(options);
 
@@ -511,7 +508,7 @@ struct Normalize
         return false;
     }
 
-    bool operator()(TypeId ty, const IntersectionTypeVar& itvRef, std::unordered_set<void*>& seen)
+    bool visit(TypeId ty, const IntersectionTypeVar& itvRef) override
     {
         CHECK_ITERATION_LIMIT(false);
 
@@ -523,7 +520,7 @@ struct Normalize
         std::vector<TypeId> oldParts = std::move(itv->parts);
 
         for (TypeId part : oldParts)
-            visit_detail::visit(part, *this, seen);
+            traverse(part);
 
         std::vector<TypeId> tables;
         for (TypeId part : oldParts)
@@ -567,11 +564,6 @@ struct Normalize
             *asMutable(ty) = BoundTypeVar{part};
         }
 
-        return false;
-    }
-
-    bool operator()(TypeId ty, const LazyTypeVar&)
-    {
         return false;
     }
 
@@ -638,7 +630,7 @@ struct Normalize
 
             TypeId theTable = result->parts.back();
 
-            if (!get<TableTypeVar>(FFlag::LuauNormalizeCombineIntersectionFix ? follow(theTable) : theTable))
+            if (!get<TableTypeVar>(follow(theTable)))
             {
                 result->parts.push_back(arena.addType(TableTypeVar{TableState::Sealed, TypeLevel{}}));
                 theTable = result->parts.back();
@@ -738,6 +730,9 @@ struct Normalize
      */
     TypeId combine(Replacer& replacer, TypeId a, TypeId b)
     {
+        if (FFlag::LuauNormalizeCombineEqFix)
+            b = follow(b);
+
         if (FFlag::LuauNormalizeCombineTableFix && a == b)
             return a;
 
@@ -756,7 +751,7 @@ struct Normalize
         }
         else if (auto ttv = getMutable<TableTypeVar>(a))
         {
-            if (FFlag::LuauNormalizeCombineTableFix && !get<TableTypeVar>(follow(b)))
+            if (FFlag::LuauNormalizeCombineTableFix && !get<TableTypeVar>(FFlag::LuauNormalizeCombineEqFix ? b : follow(b)))
                 return arena.addType(IntersectionTypeVar{{a, b}});
             combineIntoTable(replacer, ttv, b);
             return a;
@@ -778,9 +773,8 @@ std::pair<TypeId, bool> normalize(TypeId ty, TypeArena& arena, InternalErrorRepo
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(ty, arena, state);
 
-    Normalize n{arena, ice, std::move(state.seenTypes), std::move(state.seenTypePacks)};
-    std::unordered_set<void*> seen;
-    visitTypeVar(ty, n, seen);
+    Normalize n{arena, ice};
+    n.traverse(ty);
 
     return {ty, !n.limitExceeded};
 }
@@ -803,9 +797,8 @@ std::pair<TypePackId, bool> normalize(TypePackId tp, TypeArena& arena, InternalE
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(tp, arena, state);
 
-    Normalize n{arena, ice, std::move(state.seenTypes), std::move(state.seenTypePacks)};
-    std::unordered_set<void*> seen;
-    visitTypeVar(tp, n, seen);
+    Normalize n{arena, ice};
+    n.traverse(tp);
 
     return {tp, !n.limitExceeded};
 }

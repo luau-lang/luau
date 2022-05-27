@@ -478,18 +478,21 @@ lua_CFunction lua_tocfunction(lua_State* L, int idx)
     return (!iscfunction(o)) ? NULL : cast_to(lua_CFunction, clvalue(o)->c.f);
 }
 
+void* lua_tolightuserdata(lua_State* L, int idx)
+{
+    StkId o = index2addr(L, idx);
+    return (!ttislightuserdata(o)) ? NULL : pvalue(o);
+}
+
 void* lua_touserdata(lua_State* L, int idx)
 {
     StkId o = index2addr(L, idx);
-    switch (ttype(o))
-    {
-    case LUA_TUSERDATA:
-        return uvalue(o)->data;
-    case LUA_TLIGHTUSERDATA:
-        return pvalue(o);
-    default:
-        return NULL;
-    }
+    if (ttisuserdata(o))
+         return uvalue(o)->data;
+    else if (ttislightuserdata(o))
+         return pvalue(o);
+    else
+         return NULL;
 }
 
 void* lua_touserdatatagged(lua_State* L, int idx, int tag)
@@ -524,8 +527,9 @@ const void* lua_topointer(lua_State* L, int idx)
     case LUA_TTHREAD:
         return thvalue(o);
     case LUA_TUSERDATA:
+        return uvalue(o)->data;
     case LUA_TLIGHTUSERDATA:
-        return lua_touserdata(L, idx);
+        return pvalue(o);
     default:
         return NULL;
     }
@@ -1270,7 +1274,7 @@ const char* lua_setupvalue(lua_State* L, int funcindex, int n)
         L->top--;
         setobj(L, val, L->top);
         luaC_barrier(L, clvalue(fi), L->top);
-        luaC_upvalbarrier(L, NULL, val);
+        luaC_upvalbarrier(L, cast_to(UpVal*, NULL), val);
     }
     return name;
 }
@@ -1323,7 +1327,7 @@ void lua_unref(lua_State* L, int ref)
     return;
 }
 
-void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(void*))
+void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
     L->global->udatagc[tag] = dtor;
