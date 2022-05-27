@@ -9,109 +9,104 @@ open import Luau.TypeSaturation using (saturate)
 open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.DecSubtyping using (dec-subtyping; dec-subtypingⁿ; <:-impl-<:ᵒ)
 open import Properties.Functions using (_∘_)
-open import Properties.Subtyping using (<:-refl; <:-trans; <:-trans-≮:; ≮:-trans-<:; <:-∩-left; <:-∩-right; <:-∩-glb; <:-∪-right; <:-impl-¬≮:; <:-unknown; <:-function; function-≮:-never; <:-never; unknown-≮:-function; scalar-≮:-function; ≮:-∪-right; scalar-≮:-never)
+open import Properties.Subtyping using (<:-refl; <:-trans; <:-trans-≮:; ≮:-trans-<:; <:-∩-left; <:-∩-right; <:-∩-glb; <:-impl-¬≮:; <:-unknown; <:-function; function-≮:-never; <:-never; unknown-≮:-function; scalar-≮:-function; ≮:-∪-right; scalar-≮:-never; <:-∪-left; <:-∪-right)
 open import Properties.TypeNormalization using (Normal; FunType; normal; _⇒_; _∩_; _∪_; never; unknown; <:-normalize; normalize-<:; fun-≮:-never; unknown-≮:-fun; scalar-≮:-fun)
 open import Properties.TypeSaturation using (Overloads; Saturated; _⊆ᵒ_; _<:ᵒ_; normal-saturate; saturated; <:-saturate; saturate-<:; defn; here; left; right)
 
-data ResolvedTo F G R : Set where
+data ResolvedTo F G V : Set where
 
   yes : ∀ Sʳ Tʳ →
 
     Overloads F (Sʳ ⇒ Tʳ) →
-    (R <: Sʳ) → 
-    (∀ {S T} → Overloads G (S ⇒ T) → (R <: S) → (Tʳ <: T)) →
+    (V <: Sʳ) → 
+    (∀ {S T} → Overloads G (S ⇒ T) → (V <: S) → (Tʳ <: T)) →
     --------------------------------------------
-    ResolvedTo F G R
+    ResolvedTo F G V
 
   no :
 
-    (∀ {S T} → Overloads G (S ⇒ T) → (R ≮: S)) →
+    (∀ {S T} → Overloads G (S ⇒ T) → (V ≮: S)) →
     --------------------------------------------
-    ResolvedTo F G R
+    ResolvedTo F G V
 
 Resolved : Type → Type → Set
-Resolved F R = ResolvedTo F F R
+Resolved F V = ResolvedTo F F V
 
-target : ∀ {F R} → Resolved F R → Type
+target : ∀ {F V} → Resolved F V → Type
 target (yes _ T _ _ _) = T
 target (no _) = unknown
 
-resolveˢ : ∀ {F G R} → FunType G → Saturated F → Normal R → (G ⊆ᵒ F) → ResolvedTo F G R
-resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Rⁿ G⊆F with dec-subtypingⁿ Rⁿ Sⁿ
-resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Rⁿ G⊆F | Left R≮:S = no (λ { here → R≮:S })
-resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Rⁿ G⊆F | Right R<:S = yes _ _ (G⊆F here) R<:S (λ { here _ → <:-refl })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Rⁿ G⊆F with resolveˢ Gᶠ (defn sat-∩ sat-∪) Rⁿ (G⊆F ∘ left) | resolveˢ Hᶠ (defn sat-∩ sat-∪) Rⁿ (G⊆F ∘ right)
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Rⁿ G⊆F | yes S₁ T₁ o₁ R<:S₁ tgt₁ | yes S₂ T₂ o₂ R<:S₂ tgt₂ with sat-∩ o₁ o₂
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Rⁿ G⊆F | yes S₁ T₁ o₁ R<:S₁ tgt₁ | yes S₂ T₂ o₂ R<:S₂ tgt₂ | defn o p₁ p₂ =
-  yes _ _ o (<:-trans (<:-∩-glb R<:S₁ R<:S₂) p₁) (λ { (left o) p → <:-trans p₂ (<:-trans <:-∩-left (tgt₁ o p)) ; (right o) p → <:-trans p₂ (<:-trans <:-∩-right (tgt₂ o p)) })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Rⁿ G⊆F | yes S₁ T₁ o₁ R<:S₁ tgt₁ | no src₂ =
-  yes _ _ o₁ R<:S₁ (λ { (left o) p → tgt₁ o p ; (right o) p → CONTRADICTION (<:-impl-¬≮: p (src₂ o)) })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Rⁿ G⊆F | no src₁ | yes S₂ T₂ o₂ R<:S₂ tgt₂ =
-  yes _ _ o₂ R<:S₂ (λ { (left o) p → CONTRADICTION (<:-impl-¬≮: p (src₁ o)) ; (right o) p → tgt₂ o p })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Rⁿ G⊆F | no src₁ | no src₂ =
+resolveˢ : ∀ {F G V} → FunType G → Saturated F → Normal V → (G ⊆ᵒ F) → ResolvedTo F G V
+resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F with dec-subtypingⁿ Vⁿ Sⁿ
+resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F | Left V≮:S = no (λ { here → V≮:S })
+resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F | Right V<:S = yes _ _ (G⊆F here) V<:S (λ { here _ → <:-refl })
+resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F with resolveˢ Gᶠ (defn sat-∩ sat-∪) Vⁿ (G⊆F ∘ left) | resolveˢ Hᶠ (defn sat-∩ sat-∪) Vⁿ (G⊆F ∘ right)
+resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | yes S₁ T₁ o₁ V<:S₁ tgt₁ | yes S₂ T₂ o₂ V<:S₂ tgt₂ with sat-∩ o₁ o₂
+resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | yes S₁ T₁ o₁ V<:S₁ tgt₁ | yes S₂ T₂ o₂ V<:S₂ tgt₂ | defn o p₁ p₂ =
+  yes _ _ o (<:-trans (<:-∩-glb V<:S₁ V<:S₂) p₁) (λ { (left o) p → <:-trans p₂ (<:-trans <:-∩-left (tgt₁ o p)) ; (right o) p → <:-trans p₂ (<:-trans <:-∩-right (tgt₂ o p)) })
+resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | yes S₁ T₁ o₁ V<:S₁ tgt₁ | no src₂ =
+  yes _ _ o₁ V<:S₁ (λ { (left o) p → tgt₁ o p ; (right o) p → CONTRADICTION (<:-impl-¬≮: p (src₂ o)) })
+resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | no src₁ | yes S₂ T₂ o₂ V<:S₂ tgt₂ =
+  yes _ _ o₂ V<:S₂ (λ { (left o) p → CONTRADICTION (<:-impl-¬≮: p (src₁ o)) ; (right o) p → tgt₂ o p })
+resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | no src₁ | no src₂ =
   no (λ { (left o) → src₁ o ; (right o) → src₂ o })
 
-resolveᶠ : ∀ {F R} → FunType F → Normal R → Type
-resolveᶠ Fᶠ Rⁿ = target (resolveˢ (normal-saturate Fᶠ) (saturated Fᶠ) Rⁿ (λ o → o))
+resolveᶠ : ∀ {F V} → FunType F → Normal V → Type
+resolveᶠ Fᶠ Vⁿ = target (resolveˢ (normal-saturate Fᶠ) (saturated Fᶠ) Vⁿ (λ o → o))
 
-resolveⁿ : ∀ {F R} → Normal F → Normal R → Type
-resolveⁿ (Sⁿ ⇒ Tⁿ) Rⁿ = resolveᶠ (Sⁿ ⇒ Tⁿ) Rⁿ
-resolveⁿ (Fᶠ ∩ Gᶠ) Rⁿ = resolveᶠ (Fᶠ ∩ Gᶠ) Rⁿ
-resolveⁿ (Sⁿ ∪ Tˢ) Rⁿ = unknown
-resolveⁿ unknown Rⁿ = unknown
-resolveⁿ never Rⁿ = never
+resolveⁿ : ∀ {F V} → Normal F → Normal V → Type
+resolveⁿ (Sⁿ ⇒ Tⁿ) Vⁿ = resolveᶠ (Sⁿ ⇒ Tⁿ) Vⁿ
+resolveⁿ (Fᶠ ∩ Gᶠ) Vⁿ = resolveᶠ (Fᶠ ∩ Gᶠ) Vⁿ
+resolveⁿ (Sⁿ ∪ Tˢ) Vⁿ = unknown
+resolveⁿ unknown Vⁿ = unknown
+resolveⁿ never Vⁿ = never
 
 resolve : Type → Type → Type
-resolve F R = resolveⁿ (normal F) (normal R)
+resolve F V = resolveⁿ (normal F) (normal V)
 
-<:-target-⇒ : ∀ {R S T} → (r : Resolved (S ⇒ T) R) → (T <: target r)
-<:-target-⇒ (yes Sʳ Tʳ here x₁ x₂) = <:-refl
-<:-target-⇒ (no x) = <:-unknown
+resolveˢ-<:-⇒ : ∀ {F V U} → (FunType F) → (Saturated F) → (FunType (V ⇒ U)) → (r : Resolved F V) → (F <: (V ⇒ U)) → (target r <: U)
+resolveˢ-<:-⇒ Fᶠ Fˢ V⇒Uᶠ r F<:V⇒U with <:-impl-<:ᵒ Fᶠ Fˢ V⇒Uᶠ F<:V⇒U here
+resolveˢ-<:-⇒ Fᶠ Fˢ V⇒Uᶠ (yes Sʳ Tʳ oʳ V<:Sʳ tgtʳ) F<:V⇒U | defn o o₁ o₂ = <:-trans (tgtʳ o o₁) o₂
+resolveˢ-<:-⇒ Fᶠ Fˢ V⇒Uᶠ (no tgtʳ) F<:V⇒U | defn o o₁ o₂ = CONTRADICTION (<:-impl-¬≮: o₁ (tgtʳ o))
 
-<:-resolve-⇒ⁿ : ∀ {R S T} → (Fⁿ : Normal (S ⇒ T)) → (Rⁿ : Normal R) → T <: resolveⁿ Fⁿ Rⁿ
-<:-resolve-⇒ⁿ (Sⁿ ⇒ Tⁿ) Rⁿ = <:-target-⇒ (resolveˢ (Sⁿ ⇒ Tⁿ) (saturated (Sⁿ ⇒ Tⁿ)) Rⁿ (λ o → o))
+resolveⁿ-<:-⇒ : ∀ {F V U} → (Fⁿ : Normal F) → (Vⁿ : Normal V) → (Uⁿ : Normal U) → (F <: (V ⇒ U)) → (resolveⁿ Fⁿ Vⁿ <: U)
+resolveⁿ-<:-⇒ (Sⁿ ⇒ Tⁿ) Vⁿ Uⁿ F<:V⇒U = resolveˢ-<:-⇒ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) (Vⁿ ⇒ Uⁿ) (resolveˢ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) Vⁿ (λ o → o)) F<:V⇒U
+resolveⁿ-<:-⇒ (Fⁿ ∩ Gⁿ) Vⁿ Uⁿ F<:V⇒U = resolveˢ-<:-⇒ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) (Vⁿ ⇒ Uⁿ) (resolveˢ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) Vⁿ (λ o → o)) (<:-trans (saturate-<: (Fⁿ ∩ Gⁿ)) F<:V⇒U)
+resolveⁿ-<:-⇒ (Sⁿ ∪ Tˢ) Vⁿ Uⁿ F<:V⇒U = CONTRADICTION (<:-impl-¬≮: F<:V⇒U (<:-trans-≮: <:-∪-right (scalar-≮:-function Tˢ)))
+resolveⁿ-<:-⇒ never Vⁿ Uⁿ F<:V⇒U = <:-never
+resolveⁿ-<:-⇒ unknown Vⁿ Uⁿ F<:V⇒U = CONTRADICTION (<:-impl-¬≮: F<:V⇒U unknown-≮:-function)
 
-<:-resolve-⇒ : ∀ {R S T} → T <: resolve (S ⇒ T) R
-<:-resolve-⇒ {R} {S} {T} = <:-trans (<:-normalize T) (<:-resolve-⇒ⁿ (normal (S ⇒ T)) (normal R))
+resolve-<:-⇒ : ∀ {F V U} → (F <: (V ⇒ U)) → (resolve F V <: U)
+resolve-<:-⇒ {F} {V} {U} F<:V⇒U = <:-trans (resolveⁿ-<:-⇒ (normal F) (normal V) (normal U) (<:-trans (normalize-<: F) (<:-trans F<:V⇒U (<:-normalize (V ⇒ U))))) (normalize-<: U)
 
-resolveˢ-<:-⇒ : ∀ {F R U} → (FunType F) → (Saturated F) → (r : Resolved F R) → (F <: (R ⇒ U)) → (target r <: U)
-resolveˢ-<:-⇒ Fᶠ Fˢ r F<:R⇒U with <:-impl-<:ᵒ Fᶠ Fˢ F<:R⇒U
-resolveˢ-<:-⇒ Fᶠ Fˢ (yes Sʳ Tʳ oʳ R<:Sʳ tgtʳ) F<:R⇒U | defn o o₁ o₂ = <:-trans (tgtʳ o o₁) o₂
-resolveˢ-<:-⇒ Fᶠ Fˢ (no tgtʳ) F<:R⇒U | defn o o₁ o₂ = CONTRADICTION (<:-impl-¬≮: o₁ (tgtʳ o))
+resolve-≮:-⇒ : ∀ {F V U} → (resolve F V ≮: U) → (F ≮: (V ⇒ U))
+resolve-≮:-⇒ {F} {V} {U} FV≮:U with dec-subtyping F (V ⇒ U)
+resolve-≮:-⇒ {F} {V} {U} FV≮:U | Left F≮:V⇒U = F≮:V⇒U
+resolve-≮:-⇒ {F} {V} {U} FV≮:U | Right F<:V⇒U = CONTRADICTION (<:-impl-¬≮: (resolve-<:-⇒ F<:V⇒U) FV≮:U)
 
-resolveⁿ-<:-⇒ : ∀ {F R U} → (Fⁿ : Normal F) → (Rⁿ : Normal R) → (F <: (R ⇒ U)) → (resolveⁿ Fⁿ Rⁿ <: U)
-resolveⁿ-<:-⇒ (Sⁿ ⇒ Tⁿ) Rⁿ F<:R⇒U = resolveˢ-<:-⇒ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) (resolveˢ (normal-saturate (Sⁿ ⇒ Tⁿ)) (saturated (Sⁿ ⇒ Tⁿ)) Rⁿ (λ o → o)) F<:R⇒U
-resolveⁿ-<:-⇒ (Fⁿ ∩ Gⁿ) Rⁿ F<:R⇒U = resolveˢ-<:-⇒ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) (resolveˢ (normal-saturate (Fⁿ ∩ Gⁿ)) (saturated (Fⁿ ∩ Gⁿ)) Rⁿ (λ o → o)) (<:-trans (saturate-<: (Fⁿ ∩ Gⁿ)) F<:R⇒U)
-resolveⁿ-<:-⇒ (Sⁿ ∪ Tˢ) Rⁿ F<:R⇒U = CONTRADICTION (<:-impl-¬≮: F<:R⇒U (<:-trans-≮: <:-∪-right (scalar-≮:-function Tˢ)))
-resolveⁿ-<:-⇒ never Rⁿ F<:R⇒U = <:-never
-resolveⁿ-<:-⇒ unknown Rⁿ F<:R⇒U = CONTRADICTION (<:-impl-¬≮: F<:R⇒U unknown-≮:-function)
+<:-resolveˢ-⇒ : ∀ {S T V} → (r : Resolved (S ⇒ T) V) → (V <: S) → T <: target r
+<:-resolveˢ-⇒ (yes S T here _ _) V<:S = <:-refl
+<:-resolveˢ-⇒ (no _) V<:S = <:-unknown
 
-resolve-<:-⇒ : ∀ {F R U} → (F <: (R ⇒ U)) → (resolve F R <: U)
-resolve-<:-⇒ {F} {R} F<:R⇒U = resolveⁿ-<:-⇒ (normal F) (normal R) (<:-trans (normalize-<: F) (<:-trans F<:R⇒U (<:-function (normalize-<: R) <:-refl)))
+<:-resolveⁿ-⇒ : ∀ {S T V} → (Sⁿ : Normal S) → (Tⁿ : Normal T) → (Vⁿ : Normal V) → (V <: S) → T <: resolveⁿ (Sⁿ ⇒ Tⁿ) Vⁿ
+<:-resolveⁿ-⇒ Sⁿ Tⁿ Vⁿ V<:S = <:-resolveˢ-⇒ (resolveˢ (Sⁿ ⇒ Tⁿ) (saturated (Sⁿ ⇒ Tⁿ)) Vⁿ (λ o → o)) V<:S 
 
-resolve-≮:-⇒ : ∀ {F R U} → (resolve F R ≮: U) → (F ≮: (R ⇒ U))
-resolve-≮:-⇒ {F} {R} {U} FR≮:U with dec-subtyping F (R ⇒ U)
-resolve-≮:-⇒ {F} {R} {U} FR≮:U | Left F≮:R⇒U = F≮:R⇒U
-resolve-≮:-⇒ {F} {R} {U} FR≮:U | Right F<:R⇒U = CONTRADICTION (<:-impl-¬≮: (resolve-<:-⇒ F<:R⇒U) FR≮:U)
+<:-resolve-⇒ : ∀ {S T V} → (V <: S) → T <: resolve (S ⇒ T) V
+<:-resolve-⇒ {S} {T} {V} V<:S = <:-trans (<:-normalize T) (<:-resolveⁿ-⇒ (normal S) (normal T) (normal V) (<:-trans (normalize-<: V) (<:-trans V<:S (<:-normalize S))))
 
-⇒-<:-resolveⁿ : ∀ {F V U} → (Fⁿ : Normal F) → (Vⁿ : Normal V) → (resolveⁿ Fⁿ Vⁿ <: U) → (F <: (V ⇒ U))
-⇒-<:-resolveⁿ (Sⁿ ⇒ Tⁿ) Vⁿ FV<:U = {!!}
-⇒-<:-resolveⁿ (Fⁿ ∩ Gⁿ) Vⁿ FV<:U = {!!}
-⇒-<:-resolveⁿ (Fⁿ ∪ Tˢ) Vⁿ FV<:U = {!FV<:U!}
-⇒-<:-resolveⁿ never Vⁿ FV<:U = <:-never
-⇒-<:-resolveⁿ unknown Vⁿ FV<:U = {!FV<:U!}
-
-⇒-<:-resolve : ∀ {F V U} → (resolve F V <: U) → (F <: (V ⇒ U))
-⇒-<:-resolve {F} {V} {U} FV<:U = {!!}
-
-⇒-≮:-resolve : ∀ {F V U} → (F ≮: (V ⇒ U)) → (resolve F V ≮: U)
-⇒-≮:-resolve F≮:V⇒U = {!!}
-
-<:-resolveˢ : ∀ {F G V W} → (r : Resolved F V) → (s : Resolved G W) → (F <: G) → (V <: W) → target r <: target s
-<:-resolveˢ = {!!}
+<:-resolveˢ : ∀ {F G V W} → (r : Resolved F V) → (s : Resolved G W) → (F <:ᵒ G) → (V <: W) → target r <: target s
+<:-resolveˢ (yes Sʳ Tʳ oʳ V<:Sʳ tgtʳ) (yes Sˢ Tˢ oˢ  W<:Sˢ tgtˢ) F<:G V<:W with F<:G oˢ
+<:-resolveˢ (yes Sʳ Tʳ oʳ V<:Sʳ tgtʳ) (yes Sˢ Tˢ oˢ W<:Sˢ tgtˢ) F<:G V<:W | defn o o₁ o₂ = <:-trans (tgtʳ o (<:-trans (<:-trans V<:W W<:Sˢ) o₁)) o₂
+<:-resolveˢ (no r) (yes Sˢ Tˢ oˢ  W<:Sˢ tgtˢ) F<:G V<:W with F<:G oˢ
+<:-resolveˢ (no r) (yes Sˢ Tˢ oˢ  W<:Sˢ tgtˢ) F<:G V<:W | defn o o₁ o₂ = CONTRADICTION (<:-impl-¬≮: (<:-trans V<:W (<:-trans W<:Sˢ o₁)) (r o))
+<:-resolveˢ r (no s) F<:G V<:W = <:-unknown
 
 <:-resolveᶠ : ∀ {F G V W} → (Fᶠ : FunType F) → (Gᶠ : FunType G) → (Vⁿ : Normal V) → (Wⁿ : Normal W) → (F <: G) → (V <: W) → resolveᶠ Fᶠ Vⁿ <: resolveᶠ Gᶠ Wⁿ
-<:-resolveᶠ Fᶠ Gᶠ Vⁿ Wⁿ F<:G V<:W = <:-resolveˢ (resolveˢ (normal-saturate Fᶠ) (saturated Fᶠ) Vⁿ (λ o → o)) (resolveˢ (normal-saturate Gᶠ) (saturated Gᶠ) Wⁿ (λ o → o)) (<:-trans (saturate-<: Fᶠ) (<:-trans F<:G (<:-saturate Gᶠ))) V<:W
+<:-resolveᶠ Fᶠ Gᶠ Vⁿ Wⁿ F<:G V<:W = <:-resolveˢ
+  (resolveˢ (normal-saturate Fᶠ) (saturated Fᶠ) Vⁿ (λ o → o))
+  (resolveˢ (normal-saturate Gᶠ) (saturated Gᶠ) Wⁿ (λ o → o))
+  (<:-impl-<:ᵒ (normal-saturate Fᶠ) (saturated Fᶠ) (normal-saturate Gᶠ) (<:-trans (saturate-<: Fᶠ) (<:-trans F<:G (<:-saturate Gᶠ))))
+  V<:W
 
 <:-resolveⁿ : ∀ {F G V W} → (Fⁿ : Normal F) → (Gⁿ : Normal G) → (Vⁿ : Normal V) → (Wⁿ : Normal W) → (F <: G) → (V <: W) → resolveⁿ Fⁿ Vⁿ <: resolveⁿ Gⁿ Wⁿ
 <:-resolveⁿ (Rⁿ ⇒ Sⁿ) (Tⁿ ⇒ Uⁿ) Vⁿ Wⁿ F<:G V<:W = <:-resolveᶠ (Rⁿ ⇒ Sⁿ) (Tⁿ ⇒ Uⁿ) Vⁿ Wⁿ F<:G V<:W
@@ -131,5 +126,6 @@ resolve-≮:-⇒ {F} {R} {U} FR≮:U | Right F<:R⇒U = CONTRADICTION (<:-impl-�
 <:-resolveⁿ Fⁿ unknown Vⁿ Wⁿ F<:G V<:W = <:-unknown
 
 <:-resolve : ∀ {F G V W} → (F <: G) → (V <: W) → resolve F V <: resolve G W
-<:-resolve F<:G V<:W = {!!}
-
+<:-resolve {F} {G} {V} {W} F<:G V<:W = <:-resolveⁿ (normal F) (normal G) (normal V) (normal W)
+  (<:-trans (normalize-<: F) (<:-trans F<:G (<:-normalize G)))
+  (<:-trans (normalize-<: V) (<:-trans V<:W (<:-normalize W)))

@@ -152,6 +152,10 @@ data <:-Close (P : Type → Set) : Type → Set where
 _⊆ᵒ_ : Type → Type → Set
 F ⊆ᵒ G = ∀ {S T} → Overloads F (S ⇒ T) → Overloads G (S ⇒ T)
 
+-- F <:ᵒ G when every overload of G is a supertype of an overload of F
+_<:ᵒ_ : Type → Type → Set
+_<:ᵒ_ F G = ∀ {S T} → Overloads G (S ⇒ T) → <:-Close (Overloads F) (S ⇒ T)
+
 -- P ⊂: Q when any type in P is a subtype of some type in Q
 _⊂:_ : (Type → Set) → (Type → Set) → Set
 P ⊂: Q = ∀ {S T} → P (S ⇒ T) → <:-Close Q (S ⇒ T)
@@ -170,10 +174,6 @@ _>>=ˡ_ : ∀ {P R S T} → <:-Close P (S ⇒ T) → (R <: S) → <:-Close P (R 
 
 _>>=ʳ_ : ∀ {P S T U} → <:-Close P (S ⇒ T) → (T <: U) → <:-Close P (S ⇒ U)
 (defn p p₁ p₂) >>=ʳ q = defn p p₁ (<:-trans p₂ q)
-
--- F <:ᵒ (S ⇒ T) when (S ⇒ T) is a supertype of an overload of F
-_<:ᵒ_ : Type → Type → Set
-_<:ᵒ_ F = <:-Close (Overloads F)
 
 -- Properties of ⊂:
 ⊂:-refl : ∀ {P} → P ⊂: P
@@ -233,8 +233,10 @@ ov-<: F here p = p
 ov-<: (F ∩ G) (left o) p = <:-trans <:-∩-left (ov-<: F o p)
 ov-<: (F ∩ G) (right o) p = <:-trans <:-∩-right (ov-<: G o p)
 
-<:ᵒ-impl-<: : ∀ {F S T} → FunType F → F <:ᵒ (S ⇒ T) → F <: (S ⇒ T)
-<:ᵒ-impl-<: F (defn o o₁ o₂) = ov-<: F o (<:-function o₁ o₂)
+<:ᵒ-impl-<: : ∀ {F G} → FunType F → FunType G → (F <:ᵒ G) → (F <: G)
+<:ᵒ-impl-<: F (T ⇒ U) F<G with F<G here
+<:ᵒ-impl-<: F (T ⇒ U) F<G | defn o o₁ o₂ = ov-<: F o (<:-function o₁ o₂)
+<:ᵒ-impl-<: F (G ∩ H) F<G = <:-∩-glb (<:ᵒ-impl-<: F G (F<G ∘ left)) (<:ᵒ-impl-<: F H (F<G ∘ right))
 
 ⊂:-overloads-left : ∀ {F G} → Overloads F ⊂: Overloads (F ∩ G)
 ⊂:-overloads-left p = just (left p)
@@ -419,8 +421,8 @@ data Saturated (F : Type) : Set where
 
   defn : 
 
-    (∀ {R S T U} → Overloads F (R ⇒ S) → Overloads F (T ⇒ U) → F <:ᵒ ((R ∩ T) ⇒ (S ∩ U))) →
-    (∀ {R S T U} → Overloads F (R ⇒ S) → Overloads F (T ⇒ U) → F <:ᵒ ((R ∪ T) ⇒ (S ∪ U))) →
+    (∀ {R S T U} → Overloads F (R ⇒ S) → Overloads F (T ⇒ U) → <:-Close (Overloads F) ((R ∩ T) ⇒ (S ∩ U))) →
+    (∀ {R S T U} → Overloads F (R ⇒ S) → Overloads F (T ⇒ U) → <:-Close (Overloads F) ((R ∪ T) ⇒ (S ∪ U))) →
     -----------
     Saturated F
 

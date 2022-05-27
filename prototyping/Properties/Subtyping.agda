@@ -98,8 +98,17 @@ language-comp (function-tgt t) (function-tgt p) (function-tgt q) = language-comp
 ≮:-trans-≡ : ∀ {S T U} → (S ≮: T) → (T ≡ U) → (S ≮: U)
 ≮:-trans-≡ p refl = p
 
+<:-trans-≡ : ∀ {S T U} → (S <: T) → (T ≡ U) → (S <: U)
+<:-trans-≡ p refl = p
+
+≡-impl-<: : ∀ {T U} → (T ≡ U) → (T <: U)
+≡-impl-<: refl = <:-refl
+
 ≡-trans-≮: : ∀ {S T U} → (S ≡ T) → (T ≮: U) → (S ≮: U)
 ≡-trans-≮: refl p = p
+
+≡-trans-<: : ∀ {S T U} → (S ≡ T) → (T <: U) → (S <: U)
+≡-trans-<: refl p = p
 
 ≮:-trans : ∀ {S T U} → (S ≮: U) → Either (S ≮: T) (T ≮: U)
 ≮:-trans {T = T} (witness t p q) = mapLR (witness t p) (λ z → witness t z q) (dec-language T t)
