@@ -668,10 +668,10 @@ TEST_CASE("Reference")
     lua_State* L = globalState.get();
 
     // note, we push two userdata objects but only pin one of them (the first one)
-    lua_newuserdatadtor(L, 0, [](void*) {
+    lua_newuserdatadtor(L, 0, [](lua_State*, void*) {
         dtorhits++;
     });
-    lua_newuserdatadtor(L, 0, [](void*) {
+    lua_newuserdatadtor(L, 0, [](lua_State*, void*) {
         dtorhits++;
     });
 
@@ -1092,11 +1092,11 @@ TEST_CASE("UserdataApi")
     CHECK(lua_userdatatag(L, -1) == 42);
 
     // user data with inline dtor
-    void* ud3 = lua_newuserdatadtor(L, 4, [](void* data) {
+    void* ud3 = lua_newuserdatadtor(L, 4, [](lua_State*, void* data) {
         dtorhits += *(int*)data;
     });
 
-    void* ud4 = lua_newuserdatadtor(L, 1, [](void* data) {
+    void* ud4 = lua_newuserdatadtor(L, 1, [](lua_State*, void* data) {
         dtorhits += *(char*)data;
     });
 

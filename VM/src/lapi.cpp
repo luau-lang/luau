@@ -1213,7 +1213,7 @@ void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag)
     return u->data;
 }
 
-void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
+void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(lua_State*, void*))
 {
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);

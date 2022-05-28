@@ -31,10 +31,10 @@ void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
     }
     else if (u->tag == UTAG_IDTOR)
     {
-        void (*dtor)(void*) = nullptr;
+        void (*dtor)(lua_State*, void*) = nullptr;
         memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
         if (dtor)
-            dtor(u->data);
+            dtor(L, u->data);
     }
 
 
