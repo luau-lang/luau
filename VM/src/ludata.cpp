@@ -22,21 +22,15 @@ Udata* luaU_newudata(lua_State* L, size_t s, int tag)
 
 void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
 {
+    void (*dtor)(lua_State*, void*) = nullptr;
+ 
     if (u->tag < LUA_UTAG_LIMIT)
-    {
-        void (*dtor)(lua_State*, void*) = nullptr;
         dtor = L->global->udatagc[u->tag];
-        if (dtor)
-            dtor(L, u->data);
-    }
     else if (u->tag == UTAG_IDTOR)
-    {
-        void (*dtor)(lua_State*, void*) = nullptr;
         memcpy(&dtor, &u->data + u->len - sizeof(dtor), sizeof(dtor));
-        if (dtor)
-            dtor(L, u->data);
-    }
 
-
+    if (dtor)
+        dtor(L, u->data);
+ 
     luaM_freegco(L, u, sizeudata(u->len), u->memcat, page);
 }
