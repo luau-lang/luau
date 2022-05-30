@@ -1,18 +1,17 @@
 name: Luau Benchmarks (CacheGrind)
 
 on:
-  # pull_request:
-  #   paths-ignore:
-  #     - "docs/**"
-  #     - "papers/**"
-  #     - "rfcs/**"
-  #     - "*.md"
-  #     - "prototyping/**"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
 
   push:
     branches:
       - master
-      - feat/add-cachegrind
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -38,7 +37,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "test" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
