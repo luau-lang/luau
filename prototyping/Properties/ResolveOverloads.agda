@@ -3,67 +3,125 @@
 module Properties.ResolveOverloads where
 
 open import FFI.Data.Either using (Left; Right)
-open import Luau.Subtyping using (_<:_; _≮:_; Language; witness; scalar; unknown; never; function-ok)
-open import Luau.Type using (Type ; _⇒_; unknown; never)
+open import Luau.ResolveOverloads using (Resolved; src; srcⁿ; resolve; resolveⁿ; resolveᶠ; resolveˢ; target; yes; no)
+open import Luau.Subtyping using (_<:_; _≮:_; Language; ¬Language; witness; scalar; unknown; never; function; function-ok; function-err; function-tgt; function-scalar; function-ok₁; function-ok₂; scalar-scalar; scalar-function; scalar-function-ok; scalar-function-err; scalar-function-tgt; _,_; left; right)
+open import Luau.Type using (Type ; Scalar; _⇒_; _∩_; _∪_; nil; boolean; number; string; unknown; never)
 open import Luau.TypeSaturation using (saturate)
+open import Luau.TypeNormalization using (normalize)
 open import Properties.Contradiction using (CONTRADICTION)
 open import Properties.DecSubtyping using (dec-subtyping; dec-subtypingⁿ; <:-impl-<:ᵒ)
 open import Properties.Functions using (_∘_)
-open import Properties.Subtyping using (<:-refl; <:-trans; <:-trans-≮:; ≮:-trans-<:; <:-∩-left; <:-∩-right; <:-∩-glb; <:-impl-¬≮:; <:-unknown; <:-function; function-≮:-never; <:-never; unknown-≮:-function; scalar-≮:-function; ≮:-∪-right; scalar-≮:-never; <:-∪-left; <:-∪-right)
+open import Properties.Subtyping using (<:-refl; <:-trans; <:-trans-≮:; ≮:-trans-<:; <:-∩-left; <:-∩-right; <:-∩-glb; <:-impl-¬≮:; <:-unknown; <:-function; function-≮:-never; <:-never; unknown-≮:-function; scalar-≮:-function; ≮:-∪-right; scalar-≮:-never; <:-∪-left; <:-∪-right; <:-impl-⊇; language-comp)
 open import Properties.TypeNormalization using (Normal; FunType; normal; _⇒_; _∩_; _∪_; never; unknown; <:-normalize; normalize-<:; fun-≮:-never; unknown-≮:-fun; scalar-≮:-fun)
 open import Properties.TypeSaturation using (Overloads; Saturated; _⊆ᵒ_; _<:ᵒ_; normal-saturate; saturated; <:-saturate; saturate-<:; defn; here; left; right)
 
-data ResolvedTo F G V : Set where
+-- Properties of src
+function-err-srcⁿ : ∀ {T t} → (FunType T) → (¬Language (srcⁿ T) t) → Language T (function-err t)
+function-err-srcⁿ (S ⇒ T) p = function-err p
+function-err-srcⁿ (S ∩ T) (p₁ , p₂) = (function-err-srcⁿ S p₁ , function-err-srcⁿ T p₂)
 
-  yes : ∀ Sʳ Tʳ →
+¬function-err-srcᶠ : ∀ {T t} → (FunType T) → (Language (srcⁿ T) t) → ¬Language T (function-err t)
+¬function-err-srcᶠ (S ⇒ T) p = function-err p
+¬function-err-srcᶠ (S ∩ T) (left p) = left (¬function-err-srcᶠ S p)
+¬function-err-srcᶠ (S ∩ T) (right p) = right (¬function-err-srcᶠ T p)
 
-    Overloads F (Sʳ ⇒ Tʳ) →
-    (V <: Sʳ) → 
-    (∀ {S T} → Overloads G (S ⇒ T) → (V <: S) → (Tʳ <: T)) →
-    --------------------------------------------
-    ResolvedTo F G V
+¬function-err-srcⁿ : ∀ {T t} → (Normal T) → (Language (srcⁿ T) t) → ¬Language T (function-err t)
+¬function-err-srcⁿ never p = never
+¬function-err-srcⁿ unknown (scalar ())
+¬function-err-srcⁿ (S ⇒ T) p = function-err p
+¬function-err-srcⁿ (S ∩ T) (left p) = left (¬function-err-srcᶠ S p)
+¬function-err-srcⁿ (S ∩ T) (right p) = right (¬function-err-srcᶠ T p)
+¬function-err-srcⁿ (S ∪ T) (scalar ())
 
-  no :
+¬function-err-src : ∀ {T t} → (Language (src T) t) → ¬Language T (function-err t)
+¬function-err-src {T = S ⇒ T} p = function-err p
+¬function-err-src {T = nil} p = scalar-function-err nil
+¬function-err-src {T = never} p = never
+¬function-err-src {T = unknown} (scalar ())
+¬function-err-src {T = boolean} p = scalar-function-err boolean
+¬function-err-src {T = number} p = scalar-function-err number
+¬function-err-src {T = string} p = scalar-function-err string
+¬function-err-src {T = S ∪ T} p = <:-impl-⊇ (<:-normalize (S ∪ T)) _ (¬function-err-srcⁿ (normal (S ∪ T)) p)
+¬function-err-src {T = S ∩ T} p = <:-impl-⊇ (<:-normalize (S ∩ T)) _ (¬function-err-srcⁿ (normal (S ∩ T)) p)
 
-    (∀ {S T} → Overloads G (S ⇒ T) → (V ≮: S)) →
-    --------------------------------------------
-    ResolvedTo F G V
+src-¬function-errᶠ : ∀ {T t} → (FunType T) → Language T (function-err t) → (¬Language (srcⁿ T) t)
+src-¬function-errᶠ (S ⇒ T) (function-err p) = p
+src-¬function-errᶠ (S ∩ T) (p₁ , p₂) = (src-¬function-errᶠ S p₁ , src-¬function-errᶠ T p₂)
 
-Resolved : Type → Type → Set
-Resolved F V = ResolvedTo F F V
+src-¬function-errⁿ : ∀ {T t} → (Normal T) → Language T (function-err t) → (¬Language (srcⁿ T) t)
+src-¬function-errⁿ unknown p = never
+src-¬function-errⁿ (S ⇒ T) (function-err p) = p
+src-¬function-errⁿ (S ∩ T) (p₁ , p₂) = (src-¬function-errᶠ S p₁ , src-¬function-errᶠ T p₂)
+src-¬function-errⁿ (S ∪ T) p = never
 
-target : ∀ {F V} → Resolved F V → Type
-target (yes _ T _ _ _) = T
-target (no _) = unknown
+src-¬function-err : ∀ {T t} → Language T (function-err t) → (¬Language (src T) t)
+src-¬function-err {T = S ⇒ T} (function-err p) = p
+src-¬function-err {T = unknown} p = never
+src-¬function-err {T = S ∪ T} p = src-¬function-errⁿ (normal (S ∪ T)) (<:-normalize (S ∪ T) _ p)
+src-¬function-err {T = S ∩ T} p = src-¬function-errⁿ (normal (S ∩ T)) (<:-normalize (S ∩ T) _ p)
 
-resolveˢ : ∀ {F G V} → FunType G → Saturated F → Normal V → (G ⊆ᵒ F) → ResolvedTo F G V
-resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F with dec-subtypingⁿ Vⁿ Sⁿ
-resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F | Left V≮:S = no (λ { here → V≮:S })
-resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F | Right V<:S = yes _ _ (G⊆F here) V<:S (λ { here _ → <:-refl })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F with resolveˢ Gᶠ (defn sat-∩ sat-∪) Vⁿ (G⊆F ∘ left) | resolveˢ Hᶠ (defn sat-∩ sat-∪) Vⁿ (G⊆F ∘ right)
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | yes S₁ T₁ o₁ V<:S₁ tgt₁ | yes S₂ T₂ o₂ V<:S₂ tgt₂ with sat-∩ o₁ o₂
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | yes S₁ T₁ o₁ V<:S₁ tgt₁ | yes S₂ T₂ o₂ V<:S₂ tgt₂ | defn o p₁ p₂ =
-  yes _ _ o (<:-trans (<:-∩-glb V<:S₁ V<:S₂) p₁) (λ { (left o) p → <:-trans p₂ (<:-trans <:-∩-left (tgt₁ o p)) ; (right o) p → <:-trans p₂ (<:-trans <:-∩-right (tgt₂ o p)) })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | yes S₁ T₁ o₁ V<:S₁ tgt₁ | no src₂ =
-  yes _ _ o₁ V<:S₁ (λ { (left o) p → tgt₁ o p ; (right o) p → CONTRADICTION (<:-impl-¬≮: p (src₂ o)) })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | no src₁ | yes S₂ T₂ o₂ V<:S₂ tgt₂ =
-  yes _ _ o₂ V<:S₂ (λ { (left o) p → CONTRADICTION (<:-impl-¬≮: p (src₁ o)) ; (right o) p → tgt₂ o p })
-resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | no src₁ | no src₂ =
-  no (λ { (left o) → src₁ o ; (right o) → src₂ o })
+fun-¬scalar : ∀ {S T} (s : Scalar S) → FunType T → ¬Language T (scalar s)
+fun-¬scalar s (S ⇒ T) = function-scalar s
+fun-¬scalar s (S ∩ T) = left (fun-¬scalar s S)
 
-resolveᶠ : ∀ {F V} → FunType F → Normal V → Type
-resolveᶠ Fᶠ Vⁿ = target (resolveˢ (normal-saturate Fᶠ) (saturated Fᶠ) Vⁿ (λ o → o))
+¬fun-scalar : ∀ {S T t} (s : Scalar S) → FunType T → Language T t → ¬Language S t
+¬fun-scalar s (S ⇒ T) function = scalar-function s
+¬fun-scalar s (S ⇒ T) (function-ok₁ p) = scalar-function-ok s
+¬fun-scalar s (S ⇒ T) (function-ok₂ p) = scalar-function-ok s
+¬fun-scalar s (S ⇒ T) (function-err p) = scalar-function-err s
+¬fun-scalar s (S ⇒ T) (function-tgt p) = scalar-function-tgt s
+¬fun-scalar s (S ∩ T) (p₁ , p₂) = ¬fun-scalar s T p₂
 
-resolveⁿ : ∀ {F V} → Normal F → Normal V → Type
-resolveⁿ (Sⁿ ⇒ Tⁿ) Vⁿ = resolveᶠ (Sⁿ ⇒ Tⁿ) Vⁿ
-resolveⁿ (Fᶠ ∩ Gᶠ) Vⁿ = resolveᶠ (Fᶠ ∩ Gᶠ) Vⁿ
-resolveⁿ (Sⁿ ∪ Tˢ) Vⁿ = unknown
-resolveⁿ unknown Vⁿ = unknown
-resolveⁿ never Vⁿ = never
+fun-function : ∀ {T} → FunType T → Language T function
+fun-function (S ⇒ T) = function
+fun-function (S ∩ T) = (fun-function S , fun-function T)
 
-resolve : Type → Type → Type
-resolve F V = resolveⁿ (normal F) (normal V)
+srcⁿ-¬scalar : ∀ {S T t} (s : Scalar S) → Normal T → Language T (scalar s) → (¬Language (srcⁿ T) t)
+srcⁿ-¬scalar s never (scalar ())
+srcⁿ-¬scalar s unknown p = never
+srcⁿ-¬scalar s (S ⇒ T) (scalar ())
+srcⁿ-¬scalar s (S ∩ T) (p₁ , p₂) = CONTRADICTION (language-comp (scalar s) (fun-¬scalar s S) p₁)
+srcⁿ-¬scalar s (S ∪ T) p = never
 
+src-¬scalar : ∀ {S T t} (s : Scalar S) → Language T (scalar s) → (¬Language (src T) t)
+src-¬scalar {T = nil} s p = never
+src-¬scalar {T = T ⇒ U} s (scalar ())
+src-¬scalar {T = never} s (scalar ())
+src-¬scalar {T = unknown} s p = never
+src-¬scalar {T = boolean} s p = never
+src-¬scalar {T = number} s p = never
+src-¬scalar {T = string} s p = never
+src-¬scalar {T = T ∪ U} s p = srcⁿ-¬scalar s (normal (T ∪ U)) (<:-normalize (T ∪ U) (scalar s) p)
+src-¬scalar {T = T ∩ U} s p = srcⁿ-¬scalar s (normal (T ∩ U)) (<:-normalize (T ∩ U) (scalar s) p)
+
+srcⁿ-unknown-≮: : ∀ {T U} → (Normal U) → (T ≮: srcⁿ U) → (U ≮: (T ⇒ unknown))
+srcⁿ-unknown-≮: never (witness t p q) = CONTRADICTION (language-comp t q unknown)
+srcⁿ-unknown-≮: unknown (witness t p q) = witness (function-err t) unknown (function-err p)
+srcⁿ-unknown-≮: (U ⇒ V) (witness t p q) = witness (function-err t) (function-err q) (function-err p)
+srcⁿ-unknown-≮: (U ∩ V) (witness t p q) = witness (function-err t) (function-err-srcⁿ (U ∩ V) q) (function-err p)
+srcⁿ-unknown-≮: (U ∪ V) (witness t p q) = witness (scalar V) (right (scalar V)) (function-scalar V)
+
+src-unknown-≮: : ∀ {T U} → (T ≮: src U) → (U ≮: (T ⇒ unknown))
+src-unknown-≮: {U = nil} (witness t p q) = witness (scalar nil) (scalar nil) (function-scalar nil)
+src-unknown-≮: {U = T ⇒ U} (witness t p q) = witness (function-err t) (function-err q) (function-err p)
+src-unknown-≮: {U = never} (witness t p q) = CONTRADICTION (language-comp t q unknown)
+src-unknown-≮: {U = unknown} (witness t p q) = witness (function-err t) unknown (function-err p)
+src-unknown-≮: {U = boolean} (witness t p q) = witness (scalar boolean) (scalar boolean) (function-scalar boolean)
+src-unknown-≮: {U = number} (witness t p q) = witness (scalar number) (scalar number) (function-scalar number)
+src-unknown-≮: {U = string} (witness t p q) = witness (scalar string) (scalar string) (function-scalar string)
+src-unknown-≮: {U = T ∪ U} p = <:-trans-≮: (normalize-<: (T ∪ U)) (srcⁿ-unknown-≮: (normal (T ∪ U)) p)
+src-unknown-≮: {U = T ∩ U} p = <:-trans-≮: (normalize-<: (T ∩ U)) (srcⁿ-unknown-≮: (normal (T ∩ U)) p)
+
+unknown-src-≮: : ∀ {S T U} → (U ≮: S) → (T ≮: (U ⇒ unknown)) → (U ≮: src T)
+unknown-src-≮: (witness t x x₁) (witness (scalar s) p (function-scalar s)) = witness t x (src-¬scalar s p)
+unknown-src-≮: r (witness (function-ok s .(scalar s₁)) p (function-ok x (scalar-scalar s₁ () x₂)))
+unknown-src-≮: r (witness (function-ok s .function) p (function-ok x (scalar-function ())))
+unknown-src-≮: r (witness (function-ok s .(function-ok _ _)) p (function-ok x (scalar-function-ok ())))
+unknown-src-≮: r (witness (function-ok s .(function-err _)) p (function-ok x (scalar-function-err ())))
+unknown-src-≮: r (witness (function-err t) p (function-err q)) = witness t q (src-¬function-err p)
+unknown-src-≮: r (witness (function-tgt t) p (function-tgt (scalar-function-tgt ())))
+
+-- Properties of resolve
 resolveˢ-<:-⇒ : ∀ {F V U} → (FunType F) → (Saturated F) → (FunType (V ⇒ U)) → (r : Resolved F V) → (F <: (V ⇒ U)) → (target r <: U)
 resolveˢ-<:-⇒ Fᶠ Fˢ V⇒Uᶠ r F<:V⇒U with <:-impl-<:ᵒ Fᶠ Fˢ V⇒Uᶠ F<:V⇒U here
 resolveˢ-<:-⇒ Fᶠ Fˢ V⇒Uᶠ (yes Sʳ Tʳ oʳ V<:Sʳ tgtʳ) F<:V⇒U | defn o o₁ o₂ = <:-trans (tgtʳ o o₁) o₂

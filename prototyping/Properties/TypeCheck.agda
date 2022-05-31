@@ -6,9 +6,9 @@ open import Agda.Builtin.Equality using (_≡_; refl)
 open import Agda.Builtin.Bool using (Bool; true; false)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
 open import FFI.Data.Either using (Either)
+open import Luau.ResolveOverloads using (resolve)
 open import Luau.TypeCheck using (_⊢ᴱ_∈_; _⊢ᴮ_∈_; ⊢ᴼ_; ⊢ᴴ_; _⊢ᴴᴱ_▷_∈_; _⊢ᴴᴮ_▷_∈_; nil; var; addr; number; bool; string; app; function; block; binexp; done; return; local; nothing; orUnknown; tgtBinOp)
 open import Luau.Syntax using (Block; Expr; Value; BinaryOperator; yes; nil; addr; number; bool; string; val; var; binexp; _$_; function_is_end; block_is_end; _∙_; return; done; local_←_; _⟨_⟩; _⟨_⟩∈_; var_∈_; name; fun; arg; +; -; *; /; <; >; ==; ~=; <=; >=)
-open import Luau.FunctionTypes using (src; tgt)
 open import Luau.Type using (Type; nil; unknown; never; number; boolean; string; _⇒_)
 open import Luau.RuntimeType using (RuntimeType; nil; number; function; string; valueType)
 open import Luau.VarCtxt using (VarCtxt; ∅; _↦_; _⊕_↦_; _⋒_; _⊝_) renaming (_[_] to _[_]ⱽ)
@@ -20,7 +20,6 @@ open import Properties.Dec using (yes; no)
 open import Properties.Equality using (_≢_; sym; trans; cong)
 open import Properties.Product using (_×_; _,_)
 open import Properties.Remember using (Remember; remember; _,_)
-open import Properties.ResolveOverloads using (resolve)
 
 typeOfᴼ : Object yes → Type
 typeOfᴼ (function f ⟨ var x ∈ S ⟩∈ T is B end) = (S ⇒ T)
@@ -50,14 +49,6 @@ typeOfᴮ H Γ (function f ⟨ var x ∈ S ⟩∈ T is C end ∙ B) = typeOfᴮ 
 typeOfᴮ H Γ (local var x ∈ T ← M ∙ B) = typeOfᴮ H (Γ ⊕ x ↦ T) B
 typeOfᴮ H Γ (return M ∙ B) = typeOfᴱ H Γ M
 typeOfᴮ H Γ done = nil
-
-mustBeFunction : ∀ H Γ v → (never ≢ src (typeOfᴱ H Γ (val v))) → (function ≡ valueType(v))
-mustBeFunction H Γ nil p = CONTRADICTION (p refl)
-mustBeFunction H Γ (addr a) p = refl
-mustBeFunction H Γ (number n) p = CONTRADICTION (p refl)
-mustBeFunction H Γ (bool true) p = CONTRADICTION (p refl)
-mustBeFunction H Γ (bool false) p = CONTRADICTION (p refl)
-mustBeFunction H Γ (string x) p = CONTRADICTION (p refl)
 
 mustBeNumber : ∀ H Γ v → (typeOfᴱ H Γ (val v) ≡ number) → (valueType(v) ≡ number)
 mustBeNumber H Γ (addr a) p with remember (H [ a ]ᴴ)

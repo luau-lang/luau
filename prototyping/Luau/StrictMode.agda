@@ -5,8 +5,8 @@ module Luau.StrictMode where
 open import Agda.Builtin.Equality using (_≡_)
 open import FFI.Data.Maybe using (just; nothing)
 open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; var; binexp; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; local_←_; _∙_; done; return; name; +; -; *; /; <; >; <=; >=; ··)
-open import Luau.FunctionTypes using (src; tgt)
 open import Luau.Type using (Type; nil; number; string; boolean; _⇒_; _∪_; _∩_)
+open import Luau.ResolveOverloads using (src; resolve)
 open import Luau.Subtyping using (_≮:_)
 open import Luau.Heap using (Heap; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
@@ -14,7 +14,6 @@ open import Luau.TypeCheck using (_⊢ᴮ_∈_; _⊢ᴱ_∈_; ⊢ᴴ_; ⊢ᴼ_; 
 open import Properties.Contradiction using (¬)
 open import Properties.TypeCheck using (typeCheckᴮ)
 open import Properties.Product using (_,_)
-open import Properties.ResolveOverloads using (resolve)
 
 data Warningᴱ (H : Heap yes) {Γ} : ∀ {M T} → (Γ ⊢ᴱ M ∈ T) → Set
 data Warningᴮ (H : Heap yes) {Γ} : ∀ {B T} → (Γ ⊢ᴮ B ∈ T) → Set
