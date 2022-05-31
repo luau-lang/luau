@@ -32,6 +32,16 @@ src : Type → Type
 src (S ⇒ T) = S
 src T = srcⁿ(normalize T)
 
+-- Calculate the result of applying a function type `F` to an argument type `V`.
+-- We do this by finding an overload of `F` that has the most precise type,
+-- that is an overload `(Sʳ ⇒ Tʳ)` where `V <: Sʳ` and moreover
+-- for any other such overload `(S ⇒ T)` we have that `Tʳ <: T`.
+
+-- For example if `F` is `(number -> number) & (nil -> nil) & (number? -> number?)`
+-- then to resolve `F` with argument type `number`, we pick the `number -> number`
+-- overload, but if the argument is `number?`, we pick `number? -> number?`./
+
+-- Not all types have such a most precise overload, but saturated ones do.
 
 data ResolvedTo F G V : Set where
 
@@ -56,6 +66,7 @@ target : ∀ {F V} → Resolved F V → Type
 target (yes _ T _ _ _) = T
 target (no _) = unknown
 
+-- We can resolve any saturated function type
 resolveˢ : ∀ {F G V} → FunType G → Saturated F → Normal V → (G ⊆ᵒ F) → ResolvedTo F G V
 resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F with dec-subtypingⁿ Vⁿ Sⁿ
 resolveˢ (Sⁿ ⇒ Tⁿ) (defn sat-∩ sat-∪) Vⁿ G⊆F | Left V≮:S = no (λ { here → V≮:S })
@@ -71,6 +82,7 @@ resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | no src₁ | yes S�
 resolveˢ (Gᶠ ∩ Hᶠ) (defn sat-∩ sat-∪) Vⁿ G⊆F | no src₁ | no src₂ =
   no (λ { (left o) → src₁ o ; (right o) → src₂ o })
 
+-- Which means we can resolve any normalized type, by saturating it first
 resolveᶠ : ∀ {F V} → FunType F → Normal V → Type
 resolveᶠ Fᶠ Vⁿ = target (resolveˢ (normal-saturate Fᶠ) (saturated Fᶠ) Vⁿ (λ o → o))
 
@@ -81,5 +93,6 @@ resolveⁿ (Sⁿ ∪ Tˢ) Vⁿ = unknown
 resolveⁿ unknown Vⁿ = unknown
 resolveⁿ never Vⁿ = never
 
+-- Which means we can resolve any type, by normalizing it first
 resolve : Type → Type → Type
 resolve F V = resolveⁿ (normal F) (normal V)
