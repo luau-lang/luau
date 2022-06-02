@@ -394,8 +394,9 @@ end
 
 -- #region instanceOf
 
+-- ROBLOX note: Typed tbl as any to work with strict type analyze
 -- polyfill for https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/instanceof
-function instanceOf(tbl, class)
+function instanceOf(tbl: any, class)
 	assert(typeof(class) == "table", "Received a non-table as the second argument for instanceof")
 
 	if typeof(tbl) ~= "table" then
