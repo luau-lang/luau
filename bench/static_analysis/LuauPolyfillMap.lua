@@ -584,8 +584,365 @@ local function coerceToTable(mapLike: Map<any, any> | Table<any, any>): Table<an
 	end, {})
 end
 
-return {
-	Map = Map,
-	coerceToMap = coerceToMap,
-	coerceToTable = coerceToTable,
-}
+-- #region Tests to verify it works as expected
+local function it(description: string, fn: () -> ())
+	local ok, result = pcall(fn)
+
+	if not ok then
+		error("Failed test: " .. description .. "\n" .. result)
+	end
+end
+
+local AN_ITEM = "bar"
+local ANOTHER_ITEM = "baz"
+
+-- #region [Describe] "Map"
+-- #region [Child Describe] "constructors"
+it("creates an empty array", function()
+	local foo = Map.new()
+	assert(foo.size == 0)
+end)
+
+it("creates a Map from an array", function()
+	local foo = Map.new({
+		{ AN_ITEM, "foo" },
+		{ ANOTHER_ITEM, "val" },
+	})
+	assert(foo.size == 2)
+	assert(foo:has(AN_ITEM) == true)
+	assert(foo:has(ANOTHER_ITEM) == true)
+end)
+
+it("creates a Map from an array with duplicate keys", function()
+	local foo = Map.new({
+		{ AN_ITEM, "foo1" },
+		{ AN_ITEM, "foo2" },
+	})
+	assert(foo.size == 1)
+	assert(foo:get(AN_ITEM) == "foo2")
+
+	assert(#foo:keys() == 1 and foo:keys()[1] == AN_ITEM)
+	assert(#foo:values() == 1 and foo:values()[1] == "foo2")
+	assert(#foo:entries() == 1)
+	assert(#foo:entries()[1] == 2)
+
+	assert(foo:entries()[1][1] == AN_ITEM)
+	assert(foo:entries()[1][2] == "foo2")
+end)
+
+it("preserves the order of keys first assignment", function()
+	local foo = Map.new({
+		{ AN_ITEM, "foo1" },
+		{ ANOTHER_ITEM, "bar" },
+		{ AN_ITEM, "foo2" },
+	})
+	assert(foo.size == 2)
+	assert(foo:get(AN_ITEM) == "foo2")
+	assert(foo:get(ANOTHER_ITEM) == "bar")
+
+	assert(foo:keys()[1] == AN_ITEM)
+	assert(foo:keys()[2] == ANOTHER_ITEM)
+	assert(foo:values()[1] == "foo2")
+	assert(foo:values()[2] == "bar")
+	assert(foo:entries()[1][1] == AN_ITEM)
+	assert(foo:entries()[1][2] == "foo2")
+	assert(foo:entries()[2][1] == ANOTHER_ITEM)
+	assert(foo:entries()[2][2] == "bar")
+end)
+-- #endregion
+
+-- #region [Child Describe] "type"
+it("instanceOf return true for an actual Map object", function()
+	local foo = Map.new()
+	assert(instanceOf(foo, Map) == true)
+end)
+
+it("instanceOf return false for an regular plain object", function()
+	local foo = {}
+	assert(instanceOf(foo, Map) == false)
+end)
+-- #endregion
+
+-- #region [Child Describe] "set"
+it("returns the Map object", function()
+	local foo = Map.new()
+	assert(foo:set(1, "baz") == foo)
+end)
+
+it("increments the size if the element is added for the first time", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	assert(foo.size == 1)
+end)
+
+it("does not increment the size the second time an element is added", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:set(AN_ITEM, "val")
+	assert(foo.size == 1)
+end)
+
+it("sets values correctly to true/false", function()
+	-- Luau FIXME: Luau insists that arrays can't be mixed type
+	local foo = Map.new({ { AN_ITEM, false :: any } })
+	foo:set(AN_ITEM, false)
+	assert(foo.size == 1)
+	assert(foo:get(AN_ITEM) == false)
+
+	foo:set(AN_ITEM, true)
+	assert(foo.size == 1)
+	assert(foo:get(AN_ITEM) == true)
+
+	foo:set(AN_ITEM, false)
+	assert(foo.size == 1)
+	assert(foo:get(AN_ITEM) == false)
+end)
+
+-- #endregion
+
+-- #region [Child Describe] "get"
+it("returns value of item from provided key", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	assert(foo:get(AN_ITEM) == "foo")
+end)
+
+it("returns nil if the item is not in the Map", function()
+	local foo = Map.new()
+	assert(foo:get(AN_ITEM) == nil)
+end)
+-- #endregion
+
+-- #region [Child Describe] "clear"
+it("sets the size to zero", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:clear()
+	assert(foo.size == 0)
+end)
+
+it("removes the items from the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:clear()
+	assert(foo:has(AN_ITEM) == false)
+end)
+-- #endregion
+
+-- #region [Child Describe] "delete"
+it("removes the items from the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:delete(AN_ITEM)
+	assert(foo:has(AN_ITEM) == false)
+end)
+
+it("returns true if the item was in the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	assert(foo:delete(AN_ITEM) == true)
+end)
+
+it("returns false if the item was not in the Map", function()
+	local foo = Map.new()
+	assert(foo:delete(AN_ITEM) == false)
+end)
+
+it("decrements the size if the item was in the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:delete(AN_ITEM)
+	assert(foo.size == 0)
+end)
+
+it("does not decrement the size if the item was not in the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:delete(ANOTHER_ITEM)
+	assert(foo.size == 1)
+end)
+
+it("deletes value set to false", function()
+	-- Luau FIXME: Luau insists arrays can't be mixed type
+	local foo = Map.new({ { AN_ITEM, false :: any } })
+
+	foo:delete(AN_ITEM)
+
+	assert(foo.size == 0)
+	assert(foo:get(AN_ITEM) == nil)
+end)
+-- #endregion
+
+-- #region [Child Describe] "has"
+it("returns true if the item is in the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	assert(foo:has(AN_ITEM) == true)
+end)
+
+it("returns false if the item is not in the Map", function()
+	local foo = Map.new()
+	assert(foo:has(AN_ITEM) == false)
+end)
+
+it("returns correctly with value set to false", function()
+	-- Luau FIXME: Luau insists arrays can't be mixed type
+	local foo = Map.new({ { AN_ITEM, false :: any } })
+
+	assert(foo:has(AN_ITEM) == true)
+end)
+-- #endregion
+
+-- #region [Child Describe] "keys / values / entries"
+it("returns array of elements", function()
+	local myMap = Map.new()
+	myMap:set(AN_ITEM, "foo")
+	myMap:set(ANOTHER_ITEM, "val")
+
+	assert(myMap:keys()[1] == AN_ITEM)
+	assert(myMap:keys()[2] == ANOTHER_ITEM)
+
+	assert(myMap:values()[1] == "foo")
+	assert(myMap:values()[2] == "val")
+
+	assert(myMap:entries()[1][1] == AN_ITEM)
+	assert(myMap:entries()[1][2] == "foo")
+	assert(myMap:entries()[2][1] == ANOTHER_ITEM)
+	assert(myMap:entries()[2][2] == "val")
+end)
+-- #endregion
+
+-- #region [Child Describe] "__index"
+it("can access fields directly without using get", function()
+	local typeName = "size"
+
+	local foo = Map.new({
+		{ AN_ITEM, "foo" },
+		{ ANOTHER_ITEM, "val" },
+		{ typeName, "buzz" },
+	})
+
+	assert(foo.size == 3)
+	assert(foo[AN_ITEM] == "foo")
+	assert(foo[ANOTHER_ITEM] == "val")
+	assert(foo:get(typeName) == "buzz")
+end)
+-- #endregion
+
+-- #region [Child Describe] "__newindex"
+it("can set fields directly without using set", function()
+	local foo = Map.new()
+
+	assert(foo.size == 0)
+
+	foo[AN_ITEM] = "foo"
+	foo[ANOTHER_ITEM] = "val"
+	foo.fizz = "buzz"
+
+	assert(foo.size == 3)
+	assert(foo:get(AN_ITEM) == "foo")
+	assert(foo:get(ANOTHER_ITEM) == "val")
+	assert(foo:get("fizz") == "buzz")
+end)
+-- #endregion
+
+-- #region [Child Describe] "ipairs"
+local function makeArray(...)
+	local array = {}
+	for _, item in ... do
+		table.insert(array, item)
+	end
+	return array
+end
+
+it("iterates on the elements by their insertion order", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:set(ANOTHER_ITEM, "val")
+	assert(makeArray(foo:ipairs())[1][1] == AN_ITEM)
+	assert(makeArray(foo:ipairs())[1][2] == "foo")
+	assert(makeArray(foo:ipairs())[2][1] == ANOTHER_ITEM)
+	assert(makeArray(foo:ipairs())[2][2] == "val")
+end)
+
+it("does not iterate on removed elements", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:set(ANOTHER_ITEM, "val")
+	foo:delete(AN_ITEM)
+	assert(makeArray(foo:ipairs())[1][1] == ANOTHER_ITEM)
+	assert(makeArray(foo:ipairs())[1][2] == "val")
+end)
+
+it("iterates on elements if the added back to the Map", function()
+	local foo = Map.new()
+	foo:set(AN_ITEM, "foo")
+	foo:set(ANOTHER_ITEM, "val")
+	foo:delete(AN_ITEM)
+	foo:set(AN_ITEM, "food")
+	assert(makeArray(foo:ipairs())[1][1] == ANOTHER_ITEM)
+	assert(makeArray(foo:ipairs())[1][2] == "val")
+	assert(makeArray(foo:ipairs())[2][1] == AN_ITEM)
+	assert(makeArray(foo:ipairs())[2][2] == "food")
+end)
+-- #endregion
+
+-- #region [Child Describe] "Integration Tests"
+it("MDN Examples", function()
+	local myMap = Map.new() :: Map<string | Object | Function, string>
+
+	local keyString = "a string"
+	local keyObj = {}
+	local keyFunc = function() end
+
+	-- setting the values
+	myMap:set(keyString, "value associated with 'a string'")
+	myMap:set(keyObj, "value associated with keyObj")
+	myMap:set(keyFunc, "value associated with keyFunc")
+
+	assert(myMap.size == 3)
+
+	-- getting the values
+	assert(myMap:get(keyString) == "value associated with 'a string'")
+	assert(myMap:get(keyObj) == "value associated with keyObj")
+	assert(myMap:get(keyFunc) == "value associated with keyFunc")
+
+	assert(myMap:get("a string") == "value associated with 'a string'")
+
+	assert(myMap:get({}) == nil) -- nil, because keyObj !== {}
+	assert(myMap:get(function() -- nil because keyFunc !== function () {}
+	end) == nil)
+end)
+
+it("handles non-traditional keys", function()
+	local myMap = Map.new() :: Map<boolean | number | string, string>
+
+	local falseKey = false
+	local trueKey = true
+	local negativeKey = -1
+	local emptyKey = ""
+
+	myMap:set(falseKey, "apple")
+	myMap:set(trueKey, "bear")
+	myMap:set(negativeKey, "corgi")
+	myMap:set(emptyKey, "doge")
+
+	assert(myMap.size == 4)
+
+	assert(myMap:get(falseKey) == "apple")
+	assert(myMap:get(trueKey) == "bear")
+	assert(myMap:get(negativeKey) == "corgi")
+	assert(myMap:get(emptyKey) == "doge")
+
+	myMap:delete(falseKey)
+	myMap:delete(trueKey)
+	myMap:delete(negativeKey)
+	myMap:delete(emptyKey)
+
+	assert(myMap.size == 0)
+end)
+-- #endregion
+
+-- #endregion [Describe] "Map"
+
+-- #endregion Tests to verify it works as expected
