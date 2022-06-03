@@ -159,6 +159,8 @@ struct Frontend
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
 private:
+    ModulePtr check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope);
+
     std::pair<SourceNode*, SourceModule*> getSourceNode(CheckResult& checkResult, const ModuleName& name);
     SourceModule parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions);
 

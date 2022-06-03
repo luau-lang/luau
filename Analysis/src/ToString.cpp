@@ -18,7 +18,6 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation)
  * Fair warning: Setting this will break a lot of Luau unit tests.
  */
 LUAU_FASTFLAGVARIABLE(DebugLuauVerboseTypeNames, false)
-LUAU_FASTFLAGVARIABLE(LuauDocFuncParameters, false)
 
 namespace Luau
 {
@@ -1196,65 +1195,38 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
     auto argPackIter = begin(ftv.argTypes);
 
     bool first = true;
-    if (FFlag::LuauDocFuncParameters)
+    size_t idx = 0;
+    while (argPackIter != end(ftv.argTypes))
     {
-        size_t idx = 0;
-        while (argPackIter != end(ftv.argTypes))
+        // ftv takes a self parameter as the first argument, skip it if specified in option
+        if (idx == 0 && ftv.hasSelf && opts.hideFunctionSelfArgument)
         {
-            // ftv takes a self parameter as the first argument, skip it if specified in option
-            if (idx == 0 && ftv.hasSelf && opts.hideFunctionSelfArgument)
-            {
-                ++argPackIter;
-                ++idx;
-                continue;
-            }
-
-            if (!first)
-                state.emit(", ");
-            first = false;
-
-            // We don't respect opts.functionTypeArguments
-            if (idx < opts.namedFunctionOverrideArgNames.size())
-            {
-                state.emit(opts.namedFunctionOverrideArgNames[idx] + ": ");
-            }
-            else if (idx < ftv.argNames.size() && ftv.argNames[idx])
-            {
-                state.emit(ftv.argNames[idx]->name + ": ");
-            }
-            else
-            {
-                state.emit("_: ");
-            }
-            tvs.stringify(*argPackIter);
-
             ++argPackIter;
             ++idx;
+            continue;
         }
-    }
-    else
-    {
-        auto argNameIter = ftv.argNames.begin();
-        while (argPackIter != end(ftv.argTypes))
+
+        if (!first)
+            state.emit(", ");
+        first = false;
+
+        // We don't respect opts.functionTypeArguments
+        if (idx < opts.namedFunctionOverrideArgNames.size())
         {
-            if (!first)
-                state.emit(", ");
-            first = false;
-
-            // We don't currently respect opts.functionTypeArguments. I don't think this function should.
-            if (argNameIter != ftv.argNames.end())
-            {
-                state.emit((*argNameIter ? (*argNameIter)->name : "_") + ": ");
-                ++argNameIter;
-            }
-            else
-            {
-                state.emit("_: ");
-            }
-
-            tvs.stringify(*argPackIter);
-            ++argPackIter;
+            state.emit(opts.namedFunctionOverrideArgNames[idx] + ": ");
         }
+        else if (idx < ftv.argNames.size() && ftv.argNames[idx])
+        {
+            state.emit(ftv.argNames[idx]->name + ": ");
+        }
+        else
+        {
+            state.emit("_: ");
+        }
+        tvs.stringify(*argPackIter);
+
+        ++argPackIter;
+        ++idx;
     }
 
     if (argPackIter.tail())
@@ -1335,6 +1307,57 @@ std::string generateName(size_t i)
     if (i >= 26)
         n += std::to_string(i / 26);
     return n;
+}
+
+std::string toString(const Constraint& c, ToStringOptions& opts)
+{
+    if (const SubtypeConstraint* sc = Luau::get_if<SubtypeConstraint>(&c.c))
+    {
+        ToStringResult subStr = toStringDetailed(sc->subType, opts);
+        opts.nameMap = std::move(subStr.nameMap);
+        ToStringResult superStr = toStringDetailed(sc->superType, opts);
+        opts.nameMap = std::move(superStr.nameMap);
+        return subStr.name + " <: " + superStr.name;
+    }
+    else if (const PackSubtypeConstraint* psc = Luau::get_if<PackSubtypeConstraint>(&c.c))
+    {
+        ToStringResult subStr = toStringDetailed(psc->subPack, opts);
+        opts.nameMap = std::move(subStr.nameMap);
+        ToStringResult superStr = toStringDetailed(psc->superPack, opts);
+        opts.nameMap = std::move(superStr.nameMap);
+        return subStr.name + " <: " + superStr.name;
+    }
+    else if (const GeneralizationConstraint* gc = Luau::get_if<GeneralizationConstraint>(&c.c))
+    {
+        ToStringResult subStr = toStringDetailed(gc->subType, opts);
+        opts.nameMap = std::move(subStr.nameMap);
+        ToStringResult superStr = toStringDetailed(gc->superType, opts);
+        opts.nameMap = std::move(superStr.nameMap);
+        return subStr.name + " ~ gen " + superStr.name;
+    }
+    else if (const InstantiationConstraint* ic = Luau::get_if<InstantiationConstraint>(&c.c))
+    {
+        ToStringResult subStr = toStringDetailed(ic->subType, opts);
+        opts.nameMap = std::move(subStr.nameMap);
+        ToStringResult superStr = toStringDetailed(ic->superType, opts);
+        opts.nameMap = std::move(superStr.nameMap);
+        return subStr.name + " ~ inst " + superStr.name;
+    }
+    else
+    {
+        LUAU_ASSERT(false);
+        return "";
+    }
+}
+
+std::string dump(const Constraint& c)
+{
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    opts.functionTypeArguments = true;
+    std::string s = toString(c, opts);
+    printf("%s\n", s.c_str());
+    return s;
 }
 
 } // namespace Luau

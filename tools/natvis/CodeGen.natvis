@@ -2,7 +2,7 @@
 <AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
 
   <Type Name="Luau::CodeGen::RegisterX64">
-    <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 31">noreg</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 16">noreg</DisplayString>
     <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 0">rip</DisplayString>
     
     <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 0">al</DisplayString>
@@ -36,14 +36,20 @@
   </Type>
   
   <Type Name="Luau::CodeGen::OperandX64">
-    <DisplayString Condition="cat == 0">{reg}</DisplayString>
-    <DisplayString Condition="cat == 1">{mem.size,en} ptr[{mem.base} + {mem.index}*{(int)mem.scale,d} + {disp}]</DisplayString>
+    <DisplayString Condition="cat == 0">{base}</DisplayString>
+    <DisplayString Condition="cat == 1 &amp;&amp; base.size != 0 &amp;&amp; index.size != 0">{memSize,en} ptr[{base} + {index}*{(int)scale,d} + {imm}]</DisplayString>
+    <DisplayString Condition="cat == 1 &amp;&amp; index.size != 0">{memSize,en} ptr[{index}*{(int)scale,d} + {imm}]</DisplayString>
+    <DisplayString Condition="cat == 1 &amp;&amp; base.size != 0">{memSize,en} ptr[{base} + {imm}]</DisplayString>
+    <DisplayString Condition="cat == 1">{memSize,en} ptr[{imm}]</DisplayString>
     <DisplayString Condition="cat == 2">{imm}</DisplayString>
     <Expand>
-      <ExpandedItem Condition="cat == 0">reg</ExpandedItem>
-      <ExpandedItem Condition="cat == 1">mem</ExpandedItem>
+      <ExpandedItem Condition="cat == 0">base</ExpandedItem>
       <ExpandedItem Condition="cat == 2">imm</ExpandedItem>
-      <Item Condition="cat == 1" Name="disp">disp</Item>
+      <Item Condition="cat == 1" Name="memSize">memSize</Item>
+      <Item Condition="cat == 1" Name="base">base</Item>
+      <Item Condition="cat == 1" Name="index">index</Item>
+      <Item Condition="cat == 1" Name="scale">scale</Item>
+      <Item Condition="cat == 1" Name="imm">imm</Item>
     </Expand>
   </Type>
 

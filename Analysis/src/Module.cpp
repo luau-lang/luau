@@ -3,6 +3,7 @@
 
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
+#include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/Normalize.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
@@ -10,11 +11,13 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
+#include "Luau/ConstraintGraphBuilder.h" // FIXME: For Scope2 TODO pull out into its own header
 
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 namespace Luau
 {
@@ -97,38 +100,60 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     CloneState cloneState;
 
-    ScopePtr moduleScope = getModuleScope();
+    ScopePtr moduleScope = FFlag::DebugLuauDeferredConstraintResolution ? nullptr : getModuleScope();
+    Scope2* moduleScope2 = FFlag::DebugLuauDeferredConstraintResolution ? getModuleScope2() : nullptr;
 
-    moduleScope->returnType = clone(moduleScope->returnType, interfaceTypes, cloneState);
-    if (moduleScope->varargPack)
-        moduleScope->varargPack = clone(*moduleScope->varargPack, interfaceTypes, cloneState);
+    TypePackId returnType = FFlag::DebugLuauDeferredConstraintResolution ? moduleScope2->returnType : moduleScope->returnType;
+    std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
+    std::unordered_map<Name, TypeFun>* exportedTypeBindings =
+        FFlag::DebugLuauDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
+
+    returnType = clone(returnType, interfaceTypes, cloneState);
+
+    if (moduleScope)
+    {
+        moduleScope->returnType = returnType;
+        if (varargPack)
+        {
+            varargPack = clone(*varargPack, interfaceTypes, cloneState);
+            moduleScope->varargPack = varargPack;
+        }
+    }
+    else
+    {
+        LUAU_ASSERT(moduleScope2);
+        moduleScope2->returnType = returnType; // TODO varargPack
+    }
 
     if (FFlag::LuauLowerBoundsCalculation)
     {
-        normalize(moduleScope->returnType, interfaceTypes, ice);
-        if (moduleScope->varargPack)
-            normalize(*moduleScope->varargPack, interfaceTypes, ice);
+        normalize(returnType, interfaceTypes, ice);
+        if (varargPack)
+            normalize(*varargPack, interfaceTypes, ice);
     }
 
     ForceNormal forceNormal{&interfaceTypes};
 
-    for (auto& [name, tf] : moduleScope->exportedTypeBindings)
+    if (exportedTypeBindings)
     {
-        tf = clone(tf, interfaceTypes, cloneState);
-        if (FFlag::LuauLowerBoundsCalculation)
+        for (auto& [name, tf] : *exportedTypeBindings)
         {
-            normalize(tf.type, interfaceTypes, ice);
-
-            if (FFlag::LuauNormalizeFlagIsConservative)
+            tf = clone(tf, interfaceTypes, cloneState);
+            if (FFlag::LuauLowerBoundsCalculation)
             {
-                // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
-                // won't be marked normal.  If the types aren't normal by now, they never will be.
-                forceNormal.traverse(tf.type);
+                normalize(tf.type, interfaceTypes, ice);
+
+                if (FFlag::LuauNormalizeFlagIsConservative)
+                {
+                    // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
+                    // won't be marked normal.  If the types aren't normal by now, they never will be.
+                    forceNormal.traverse(tf.type);
+                }
             }
         }
     }
 
-    for (TypeId ty : moduleScope->returnType)
+    for (TypeId ty : returnType)
     {
         if (get<GenericTypeVar>(follow(ty)))
         {
@@ -153,6 +178,12 @@ ScopePtr Module::getModuleScope() const
 {
     LUAU_ASSERT(!scopes.empty());
     return scopes.front().second;
+}
+
+Scope2* Module::getModuleScope2() const
+{
+    LUAU_ASSERT(!scope2s.empty());
+    return scope2s.front().second.get();
 }
 
 } // namespace Luau

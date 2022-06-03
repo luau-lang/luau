@@ -2,6 +2,7 @@
 #include "Luau/Substitution.h"
 
 #include "Luau/Common.h"
+#include "Luau/Clone.h"
 #include "Luau/TxnLog.h"
 
 #include <algorithm>
@@ -362,63 +363,7 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
 TypeId Substitution::clone(TypeId ty)
 {
-    ty = log->follow(ty);
-
-    TypeId result = ty;
-
-    if (auto pty = log->pending(ty))
-        ty = &pty->pending;
-
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
-    {
-        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->argTypes, ftv->retType, ftv->definition, ftv->hasSelf};
-        clone.generics = ftv->generics;
-        clone.genericPacks = ftv->genericPacks;
-        clone.magicFunction = ftv->magicFunction;
-        clone.tags = ftv->tags;
-        clone.argNames = ftv->argNames;
-        result = addType(std::move(clone));
-    }
-    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
-    {
-        LUAU_ASSERT(!ttv->boundTo);
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
-        if (!FFlag::LuauNoMethodLocations)
-            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
-        clone.definitionModuleName = ttv->definitionModuleName;
-        clone.name = ttv->name;
-        clone.syntheticName = ttv->syntheticName;
-        clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
-        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
-        clone.tags = ttv->tags;
-        result = addType(std::move(clone));
-    }
-    else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
-    {
-        MetatableTypeVar clone = MetatableTypeVar{mtv->table, mtv->metatable};
-        clone.syntheticName = mtv->syntheticName;
-        result = addType(std::move(clone));
-    }
-    else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
-    {
-        UnionTypeVar clone;
-        clone.options = utv->options;
-        result = addType(std::move(clone));
-    }
-    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
-    {
-        IntersectionTypeVar clone;
-        clone.parts = itv->parts;
-        result = addType(std::move(clone));
-    }
-    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
-    {
-        ConstrainedTypeVar clone{ctv->level, ctv->parts};
-        result = addType(std::move(clone));
-    }
-
-    asMutable(result)->documentationSymbol = ty->documentationSymbol;
-    return result;
+    return shallowClone(ty, *arena, log);
 }
 
 TypePackId Substitution::clone(TypePackId tp)

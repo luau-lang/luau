@@ -24,7 +24,6 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
-LUAU_FASTFLAGVARIABLE(LuauClassDefinitionModuleInError, false)
 
 namespace Luau
 {
@@ -302,7 +301,7 @@ std::optional<ModuleName> getDefinitionModuleName(TypeId type)
         if (ftv->definition)
             return ftv->definition->definitionModuleName;
     }
-    else if (auto ctv = get<ClassTypeVar>(type); ctv && FFlag::LuauClassDefinitionModuleInError)
+    else if (auto ctv = get<ClassTypeVar>(type))
     {
         if (!ctv->definitionModuleName.empty())
             return ctv->definitionModuleName;
@@ -724,7 +723,7 @@ TypeId SingletonTypes::makeStringMetatable()
 
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
-        {"char", {arena->addType(FunctionTypeVar{arena->addTypePack(TypePack{{numberType}, numberVariadicList}), arena->addTypePack({stringType})})}},
+        {"char", {arena->addType(FunctionTypeVar{numberVariadicList, arena->addTypePack({stringType})})}},
         {"find", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber, optionalBoolean}, {}, {optionalNumber, optionalNumber})}},
         {"format", {formatFn}}, // FIXME
         {"gmatch", {gmatchFunc}},

@@ -5,6 +5,8 @@
 #include "Luau/Clone.h"
 #include "Luau/Config.h"
 #include "Luau/FileResolver.h"
+#include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/ConstraintSolver.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
@@ -22,6 +24,7 @@ LUAU_FASTFLAG(LuauInferInNoCheckMode)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
+LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 
 namespace Luau
 {
@@ -470,7 +473,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         typeChecker.requireCycles = requireCycles;
 
-        ModulePtr module = typeChecker.check(sourceModule, mode, environmentScope);
+        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, environmentScope)
+                                                                        : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
         stats.filesStrict += mode == Mode::Strict;
@@ -780,6 +784,23 @@ SourceModule* Frontend::getSourceModule(const ModuleName& moduleName)
 const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) const
 {
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
+}
+
+ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope)
+{
+    ModulePtr result = std::make_shared<Module>();
+
+    ConstraintGraphBuilder cgb{&result->internalTypes};
+    cgb.visit(sourceModule.root);
+
+    ConstraintSolver cs{&result->internalTypes, cgb.rootScope};
+    cs.run();
+
+    result->scope2s = std::move(cgb.scopes);
+
+    result->clonePublicInterface(iceHandler);
+
+    return result;
 }
 
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.

@@ -179,7 +179,7 @@ declare debug: {
 }
 
 declare utf8: {
-    char: (number, ...number) -> string,
+    char: (...number) -> string,
     charpattern: string,
     codes: (string) -> ((string, number) -> (number, number), string, number),
     -- FIXME

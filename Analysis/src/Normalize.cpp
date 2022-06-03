@@ -16,6 +16,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeFlagIsConservative, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineEqFix, false);
+LUAU_FASTFLAGVARIABLE(LuauReplaceReplacer, false);
 
 namespace Luau
 {
@@ -231,11 +232,30 @@ struct Replacer : Substitution
 
     TypeId smartClone(TypeId t)
     {
-        std::optional<TypeId> res = replace(t);
-        LUAU_ASSERT(res.has_value()); // TODO think about this
-        if (*res == t)
-            return clone(t);
-        return *res;
+        if (FFlag::LuauReplaceReplacer)
+        {
+            // The new smartClone is just a memoized clone()
+            // TODO: Remove the Substitution base class and all other methods from this struct.
+            // Add DenseHashMap<TypeId, TypeId> newTypes;
+            t = log->follow(t);
+            TypeId* res = newTypes.find(t);
+            if (res)
+                return *res;
+
+            TypeId result = shallowClone(t, *arena, TxnLog::empty());
+            newTypes[t] = result;
+            newTypes[result] = result;
+
+            return result;
+        }
+        else
+        {
+            std::optional<TypeId> res = replace(t);
+            LUAU_ASSERT(res.has_value()); // TODO think about this
+            if (*res == t)
+                return clone(t);
+            return *res;
+        }
     }
 };
 
