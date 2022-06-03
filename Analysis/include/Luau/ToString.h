@@ -3,6 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/TypeVar.h"
+#include "Luau/ConstraintGraphBuilder.h"
 
 #include <unordered_map>
 #include <optional>
@@ -53,6 +54,7 @@ ToStringResult toStringDetailed(TypePackId ty, const ToStringOptions& opts = {})
 
 std::string toString(TypeId ty, const ToStringOptions& opts);
 std::string toString(TypePackId ty, const ToStringOptions& opts);
+std::string toString(const Constraint& c, ToStringOptions& opts);
 
 // These are offered as overloads rather than a default parameter so that they can be easily invoked from within the MSVC debugger.
 // You can use them in watch expressions!
@@ -64,6 +66,11 @@ inline std::string toString(TypePackId ty)
 {
     return toString(ty, ToStringOptions{});
 }
+inline std::string toString(const Constraint& c)
+{
+    ToStringOptions opts;
+    return toString(c, opts);
+}
 
 std::string toString(const TypeVar& tv, const ToStringOptions& opts = {});
 std::string toString(const TypePackVar& tp, const ToStringOptions& opts = {});
@@ -74,6 +81,7 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
 // These functions will dump the type to stdout and can be evaluated in Watch/Immediate windows or as gdb/lldb expression
 std::string dump(TypeId ty);
 std::string dump(TypePackId ty);
+std::string dump(const Constraint& c);
 
 std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
 

@@ -30,7 +30,6 @@ LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
-LUAU_FASTFLAGVARIABLE(LuauDoNotRelyOnNextBinding, false)
 LUAU_FASTFLAGVARIABLE(LuauExpectedPropTypeFromIndexer, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
@@ -1182,12 +1181,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             unify(varTy, var, forin.location);
 
         if (!get<ErrorTypeVar>(iterTy) && !get<AnyTypeVar>(iterTy) && !get<FreeTypeVar>(iterTy))
-        {
-            if (FFlag::LuauDoNotRelyOnNextBinding)
-                reportError(firstValue->location, CannotCallNonFunction{iterTy});
-            else
-                reportError(TypeError{firstValue->location, TypeMismatch{globalScope->bindings[AstName{"next"}].typeId, iterTy}});
-        }
+            reportError(firstValue->location, CannotCallNonFunction{iterTy});
 
         return check(loopScope, *forin.body);
     }
@@ -3714,7 +3708,7 @@ ExprResult<TypePackId> TypeChecker::checkExprPack(const ScopePtr& scope, const A
         {
             retPack = freshTypePack(free->level);
             TypePackId freshArgPack = freshTypePack(free->level);
-            *asMutable(actualFunctionType) = FunctionTypeVar(free->level, freshArgPack, retPack);
+            asMutable(actualFunctionType)->ty.emplace<FunctionTypeVar>(free->level, freshArgPack, retPack);
         }
         else
             retPack = freshTypePack(scope->level);

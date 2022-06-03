@@ -13,6 +13,25 @@ struct Foo
     int x = 42;
 };
 
+struct Bar
+{
+    explicit Bar(int x)
+        : prop(x * 2)
+    {
+        ++count;
+    }
+
+    ~Bar()
+    {
+        --count;
+    }
+
+    int prop;
+    static int count;
+};
+
+int Bar::count = 0;
+
 TEST_SUITE_BEGIN("Variant");
 
 TEST_CASE("DefaultCtor")
@@ -44,6 +63,29 @@ TEST_CASE("Create")
 
     REQUIRE(get_if<Foo>(&v3));
     CHECK(get_if<Foo>(&v3)->x == 3);
+}
+
+TEST_CASE("Emplace")
+{
+    {
+        Variant<int, Bar> v1;
+
+        CHECK(0 == Bar::count);
+        int& i = v1.emplace<int>(5);
+        CHECK(5 == i);
+
+        CHECK(0 == Bar::count);
+
+        CHECK(get_if<int>(&v1) == &i);
+
+        Bar& bar = v1.emplace<Bar>(11);
+        CHECK(22 == bar.prop);
+        CHECK(1 == Bar::count);
+
+        CHECK(get_if<Bar>(&v1) == &bar);
+    }
+
+    CHECK(0 == Bar::count);
 }
 
 TEST_CASE("NonPOD")

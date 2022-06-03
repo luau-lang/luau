@@ -65,9 +65,12 @@ target_sources(Luau.CodeGen PRIVATE
 target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/AstQuery.h
     Analysis/include/Luau/Autocomplete.h
+    Analysis/include/Luau/NotNull.h
     Analysis/include/Luau/BuiltinDefinitions.h
-    Analysis/include/Luau/Config.h
     Analysis/include/Luau/Clone.h
+    Analysis/include/Luau/Config.h
+    Analysis/include/Luau/ConstraintGraphBuilder.h
+    Analysis/include/Luau/ConstraintSolver.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
@@ -108,8 +111,10 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/AstQuery.cpp
     Analysis/src/Autocomplete.cpp
     Analysis/src/BuiltinDefinitions.cpp
-    Analysis/src/Config.cpp
     Analysis/src/Clone.cpp
+    Analysis/src/Config.cpp
+    Analysis/src/ConstraintGraphBuilder.cpp
+    Analysis/src/ConstraintSolver.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
     Analysis/src/Instantiation.cpp
@@ -240,6 +245,7 @@ if(TARGET Luau.UnitTest)
         tests/AstQuery.test.cpp
         tests/AstVisitor.test.cpp
         tests/Autocomplete.test.cpp
+        tests/NotNull.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
@@ -252,6 +258,8 @@ if(TARGET Luau.UnitTest)
         tests/Module.test.cpp
         tests/NonstrictMode.test.cpp
         tests/Normalize.test.cpp
+        tests/ConstraintGraphBuilder.test.cpp
+        tests/ConstraintSolver.test.cpp
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp

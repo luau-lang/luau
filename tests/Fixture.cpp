@@ -17,6 +17,8 @@
 
 static const char* mainModuleName = "MainModule";
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 namespace Luau
 {
 
@@ -249,7 +251,10 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
     ModulePtr module = getMainModule();
     REQUIRE(module);
 
-    return lookupName(module->getModuleScope(), name);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return linearSearchForBinding(module->getModuleScope2(), name.c_str());
+    else
+        return lookupName(module->getModuleScope(), name);
 }
 
 TypeId Fixture::requireType(const std::string& name)
@@ -421,6 +426,12 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
     Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 }
 
+ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
+    : Fixture()
+    , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
+{
+}
+
 ModuleName fromString(std::string_view name)
 {
     return ModuleName(name);
@@ -458,6 +469,29 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name)
         return binding->typeId;
     else
         return std::nullopt;
+}
+
+std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name)
+{
+    while (scope)
+    {
+        for (const auto& [n, ty] : scope->bindings)
+        {
+            if (n.astName() == name)
+                return ty;
+        }
+
+        scope = scope->parent;
+    }
+
+    return std::nullopt;
+}
+
+void dump(const std::vector<Constraint>& constraints)
+{
+    ToStringOptions opts;
+    for (const auto& c : constraints)
+        printf("%s\n", toString(c, opts).c_str());
 }
 
 } // namespace Luau

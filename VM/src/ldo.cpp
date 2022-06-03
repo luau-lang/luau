@@ -213,7 +213,7 @@ CallInfo* luaD_growCI(lua_State* L)
     return ++L->ci;
 }
 
-void luaD_checkCstack(lua_State *L)
+void luaD_checkCstack(lua_State* L)
 {
     if (L->nCcalls == LUAI_MAXCCALLS)
         luaG_runerror(L, "C stack overflow");
