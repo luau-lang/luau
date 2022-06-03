@@ -95,6 +95,20 @@ public:
         return *this;
     }
 
+    template<typename T, typename... Args>
+    T& emplace(Args&&... args)
+    {
+        using TT = std::decay_t<T>;
+        constexpr int tid = getTypeId<T>();
+        static_assert(tid >= 0, "unsupported T");
+
+        tableDtor[typeId](&storage);
+        typeId = tid;
+        new (&storage) TT(std::forward<Args>(args)...);
+
+        return *reinterpret_cast<T*>(&storage);
+    }
+
     template<typename T>
     const T* get_if() const
     {

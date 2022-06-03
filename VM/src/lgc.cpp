@@ -13,10 +13,7 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauGcWorkTrackFix, false)
-LUAU_FASTFLAGVARIABLE(LuauGcSweepCostFix, false)
-
-#define GC_SWEEPPAGESTEPCOST (FFlag::LuauGcSweepCostFix ? 16 : 4)
+#define GC_SWEEPPAGESTEPCOST 16
 
 #define GC_INTERRUPT(state) \
     { \
@@ -881,7 +878,7 @@ size_t luaC_step(lua_State* L, bool assist)
 {
     global_State* g = L->global;
 
-    int lim = FFlag::LuauGcWorkTrackFix ? g->gcstepsize * g->gcstepmul / 100 : (g->gcstepsize / 100) * g->gcstepmul; /* how much to work */
+    int lim = g->gcstepsize * g->gcstepmul / 100; /* how much to work */
     LUAU_ASSERT(g->totalbytes >= g->GCthreshold);
     size_t debt = g->totalbytes - g->GCthreshold;
 
@@ -927,10 +924,10 @@ size_t luaC_step(lua_State* L, bool assist)
     }
     else
     {
-        g->GCthreshold = g->totalbytes + (FFlag::LuauGcWorkTrackFix ? actualstepsize : g->gcstepsize);
+        g->GCthreshold = g->totalbytes + actualstepsize;
 
         // compensate if GC is "behind schedule" (has some debt to pay)
-        if (FFlag::LuauGcWorkTrackFix ? g->GCthreshold >= debt : g->GCthreshold > debt)
+        if (g->GCthreshold >= debt)
             g->GCthreshold -= debt;
     }
 

@@ -4471,7 +4471,6 @@ end
 RETURN R0 0
 RETURN R0 0
 )");
-
 }
 
 TEST_CASE("LoopUnrollNestedClosure")

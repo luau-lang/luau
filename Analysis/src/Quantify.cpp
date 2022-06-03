@@ -3,8 +3,10 @@
 #include "Luau/Quantify.h"
 
 #include "Luau/VisitTypeVar.h"
+#include "Luau/ConstraintGraphBuilder.h" // TODO for Scope2; move to separate header
 
-LUAU_FASTFLAG(LuauAlwaysQuantify)
+LUAU_FASTFLAG(LuauAlwaysQuantify);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 namespace Luau
 {
@@ -14,12 +16,20 @@ struct Quantifier final : TypeVarOnceVisitor
     TypeLevel level;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
+    Scope2* scope = nullptr;
     bool seenGenericType = false;
     bool seenMutableType = false;
 
     explicit Quantifier(TypeLevel level)
         : level(level)
     {
+        LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+    }
+
+    explicit Quantifier(Scope2* scope)
+        : scope(scope)
+    {
+        LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     }
 
     void cycle(TypeId) override {}
@@ -57,14 +67,31 @@ struct Quantifier final : TypeVarOnceVisitor
         return visit(tp, ftp);
     }
 
+    /// @return true if outer encloses inner
+    bool subsumes(Scope2* outer, Scope2* inner)
+    {
+        while (inner)
+        {
+            if (inner == outer)
+                return true;
+            inner = inner->parent;
+        }
+
+        return false;
+    }
+
     bool visit(TypeId ty, const FreeTypeVar& ftv) override
     {
         seenMutableType = true;
 
-        if (!level.subsumes(ftv.level))
+        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ftv.scope) : !level.subsumes(ftv.level))
             return false;
 
-        *asMutable(ty) = GenericTypeVar{level};
+        if (FFlag::DebugLuauDeferredConstraintResolution)
+            *asMutable(ty) = GenericTypeVar{scope};
+        else
+            *asMutable(ty) = GenericTypeVar{level};
+
         generics.push_back(ty);
 
         return false;
@@ -83,7 +110,7 @@ struct Quantifier final : TypeVarOnceVisitor
 
         if (ttv.state == TableState::Sealed || ttv.state == TableState::Generic)
             return false;
-        if (!level.subsumes(ttv.level))
+        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ttv.scope) : !level.subsumes(ttv.level))
         {
             if (ttv.state == TableState::Unsealed)
                 seenMutableType = true;
@@ -107,7 +134,7 @@ struct Quantifier final : TypeVarOnceVisitor
     {
         seenMutableType = true;
 
-        if (!level.subsumes(ftp.level))
+        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ftp.scope) : !level.subsumes(ftp.level))
             return false;
 
         *asMutable(tp) = GenericTypePack{level};
@@ -136,6 +163,32 @@ void quantify(TypeId ty, TypeLevel level)
 
     if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
         ftv->hasNoGenerics = true;
+
+    ftv->generalized = true;
+}
+
+void quantify(TypeId ty, Scope2* scope)
+{
+    Quantifier q{scope};
+    q.traverse(ty);
+
+    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
+    LUAU_ASSERT(ftv);
+    if (FFlag::LuauAlwaysQuantify)
+    {
+        ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
+        ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
+    }
+    else
+    {
+        ftv->generics = q.generics;
+        ftv->genericPacks = q.genericPacks;
+    }
+
+    if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
+        ftv->hasNoGenerics = true;
+
+    ftv->generalized = true;
 }
 
 } // namespace Luau

@@ -24,6 +24,7 @@ namespace Luau
 {
 
 struct TypeArena;
+struct Scope2;
 
 /**
  * There are three kinds of type variables:
@@ -124,6 +125,7 @@ struct ConstrainedTypeVar
 
     std::vector<TypeId> parts;
     TypeLevel level;
+    Scope2* scope = nullptr;
 };
 
 // Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
@@ -255,6 +257,7 @@ struct FunctionTypeVar
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     TypeLevel level;
+    Scope2* scope = nullptr;
     /// These should all be generic
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
@@ -266,6 +269,7 @@ struct FunctionTypeVar
     bool hasSelf;
     Tags tags;
     bool hasNoGenerics = false;
+    bool generalized = false;
 };
 
 enum class TableState
@@ -323,6 +327,7 @@ struct TableTypeVar
 
     TableState state = TableState::Unsealed;
     TypeLevel level;
+    Scope2* scope = nullptr;
     std::optional<std::string> name;
 
     // Sometimes we throw a type on a name to make for nicer error messages, but without creating any entry in the type namespace
