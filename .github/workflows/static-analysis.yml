@@ -3,7 +3,7 @@ name: Luau Analyze (CacheGrind)
 on:
   push:
     branches:
-      - "feat/add-stastic-file-luau-analyze"
+      - "feat/add-static-file-luau-analyze"
   pull_request:
     paths-ignore:
       - "docs/**"
