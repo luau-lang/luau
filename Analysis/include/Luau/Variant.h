@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <initializer_list>
 #include <stddef.h>
+#include <utility>
 
 namespace Luau
 {
