@@ -9,6 +9,16 @@ on:
       - "*.md"
       - "prototyping/**"
 
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
+
 jobs:
   benchmarks-run:
     name: Run ${{ matrix.bench.title }}
@@ -26,28 +36,26 @@ jobs:
               cachegrindTitle: "Performance",
               cachegrindIterCount: 20,
             }
+        benchResultsRepo:
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: "./.github/workflows/setup-luau"
+      - name: Checkout Luau
+        uses: actions/checkout@v3
+
+      - name: Build Luau
+        run: make config=release luau luau-analyze
+
+      - uses: actions/setup-python@v3
         with:
-          runsOn: ${{ matrix.os }}
-      # - uses: actions/checkout@v3
-      #   with:
-      #     token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
+          python-version: "3.9"
+          architecture: "x64"
 
-      # - name: Build Luau
-      #   run: make config=release luau luau-analyze
-
-      # - uses: actions/setup-python@v3
-      #   with:
-      #     python-version: "3.9"
-      #     architecture: "x64"
-
-      # - name: Install python dependencies
-      #   run: |
-      #     python -m pip install requests
-      #     python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+      - name: Install python dependencies
+        run: |
+          python -m pip install requests
+          python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
 
       - name: Install valgrind
         run: |
@@ -59,12 +67,12 @@ jobs:
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
-      - name: Switch to & checkout benchmark results (gh-pages) repo
+      - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
         with:
-          repository: AllanJeremy/luau-benchmark-results
-          ref: "main"
-          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
+          repository: ${{ matrix.benchResultsRepo.name }}
+          ref: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
 
       - name: Store ${{ matrix.bench.title }} result
@@ -79,4 +87,16 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: github.event_name == 'push'
+        run: |
+          echo "Pushing benchmark results..."
+          cd gh-pages
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git add ./dev/bench/data.json
+          git commit -m "Add benchmarks results for ${{ github.sha }}"
+          git push
+          cd ..
