@@ -1,4 +1,4 @@
---!strict
+--!nonstrict
 -- #region Array
 -- Array related
 local Array = {}
@@ -572,17 +572,17 @@ local function coerceToMap(mapLike: Map<any, any> | Table<any, any>): Map<any, a
 		or Map.new(Object.entries(mapLike)) -- ROBLOX: order is not preserved
 end
 
-local function coerceToTable(mapLike: Map<any, any> | Table<any, any>): Table<any, any>
-	if not instanceOf(mapLike, Map) then
-		return mapLike
-	end
+-- local function coerceToTable(mapLike: Map<any, any> | Table<any, any>): Table<any, any>
+-- 	if not instanceOf(mapLike, Map) then
+-- 		return mapLike
+-- 	end
 
-	-- create table from map
-	return Array.reduce(mapLike:entries(), function(tbl, entry)
-		tbl[entry[1]] = entry[2]
-		return tbl
-	end, {})
-end
+-- 	-- create table from map
+-- 	return Array.reduce(mapLike:entries(), function(tbl, entry)
+-- 		tbl[entry[1]] = entry[2]
+-- 		return tbl
+-- 	end, {})
+-- end
 
 -- #region Tests to verify it works as expected
 local function it(description: string, fn: () -> ())
@@ -888,31 +888,31 @@ end)
 -- #endregion
 
 -- #region [Child Describe] "Integration Tests"
-it("MDN Examples", function()
-	local myMap = Map.new() :: Map<string | Object | Function, string>
+-- it("MDN Examples", function()
+-- 	local myMap = Map.new() :: Map<string | Object | Function, string>
 
-	local keyString = "a string"
-	local keyObj = {}
-	local keyFunc = function() end
+-- 	local keyString = "a string"
+-- 	local keyObj = {}
+-- 	local keyFunc = function() end
 
-	-- setting the values
-	myMap:set(keyString, "value associated with 'a string'")
-	myMap:set(keyObj, "value associated with keyObj")
-	myMap:set(keyFunc, "value associated with keyFunc")
+-- 	-- setting the values
+-- 	myMap:set(keyString, "value associated with 'a string'")
+-- 	myMap:set(keyObj, "value associated with keyObj")
+-- 	myMap:set(keyFunc, "value associated with keyFunc")
 
-	assert(myMap.size == 3)
+-- 	assert(myMap.size == 3)
 
-	-- getting the values
-	assert(myMap:get(keyString) == "value associated with 'a string'")
-	assert(myMap:get(keyObj) == "value associated with keyObj")
-	assert(myMap:get(keyFunc) == "value associated with keyFunc")
+-- 	-- getting the values
+-- 	assert(myMap:get(keyString) == "value associated with 'a string'")
+-- 	assert(myMap:get(keyObj) == "value associated with keyObj")
+-- 	assert(myMap:get(keyFunc) == "value associated with keyFunc")
 
-	assert(myMap:get("a string") == "value associated with 'a string'")
+-- 	assert(myMap:get("a string") == "value associated with 'a string'")
 
-	assert(myMap:get({}) == nil) -- nil, because keyObj !== {}
-	assert(myMap:get(function() -- nil because keyFunc !== function () {}
-	end) == nil)
-end)
+-- 	assert(myMap:get({}) == nil) -- nil, because keyObj !== {}
+-- 	assert(myMap:get(function() -- nil because keyFunc !== function () {}
+-- 	end) == nil)
+-- end)
 
 it("handles non-traditional keys", function()
 	local myMap = Map.new() :: Map<boolean | number | string, string>
