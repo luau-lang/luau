@@ -56,11 +56,9 @@ jobs:
         run: |
           python -m pip install requests
           python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
-
       - name: Install valgrind
         run: |
           sudo apt-get install valgrind
-
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee ${{ matrix.bench.script }}-output.txt
 
