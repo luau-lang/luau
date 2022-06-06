@@ -1,0 +1,57 @@
+name: Luau Analyze (CacheGrind)
+
+on:
+  push:
+    branches:
+      - "feat/add-stastic-file-luau-analyze"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
+
+jobs:
+  benchmarks-run:
+    name: Run ${{ matrix.bench.title }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        engine:
+          - { channel: stable, version: latest }
+        bench:
+          - {
+              script: "run-benchmarks",
+              timeout: 12,
+              title: "Luau Benchmarks (CacheGrind)",
+              cachegrindTitle: "Performance",
+              cachegrindIterCount: 20,
+            }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: "./.github/workflows/setup-luau"
+        with:
+          runsOn: ${{ matrix.os }}
+      - uses: actions/checkout@v3
+        with:
+          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
+
+      - name: Build Luau
+        run: make config=release luau luau-analyze
+
+      - uses: actions/setup-python@v3
+        with:
+          python-version: "3.9"
+          architecture: "x64"
+
+      - name: Install python dependencies
+        run: |
+          python -m pip install requests
+          python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+
+      # Run Luau Analyze
+      - name: Run Luau Analyze on static file
+        run: python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua
