@@ -11,14 +11,13 @@ duration_list = []
 for i in range(1,10):
   start = time.perf_counter()
 
-  print(sys.argv[1])
 
   os.system(sys.argv[1])
 
   end = time.perf_counter()
 
   duration_ms = (end - start) * 1000
-
+  print("SUCCESS: {} : {:.2f}ms +/- {:.2f}% on luau ".format('duration', duration_ms,0))
   duration_list.append(duration_ms)
 
 
@@ -26,4 +25,5 @@ for i in range(1,10):
 mean = np.mean(duration_list)
 std_err = stats.sem(duration_list)
 
+print("--------------------------------------------------------------------------------")
 print("SUCCESS: {} : {:.2f}ms +/- {:.2f}% on luau ".format('duration', mean,std_err))
