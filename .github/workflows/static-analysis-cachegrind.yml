@@ -4,13 +4,13 @@ on:
   push:
     branches:
       - "feat/add-static-file-luau-analyze"
-  pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "papers/**"
-      - "rfcs/**"
-      - "*.md"
-      - "prototyping/**"
+  # pull_request:
+  #   paths-ignore:
+  #     - "docs/**"
+  #     - "papers/**"
+  #     - "rfcs/**"
+  #     - "*.md"
+  #     - "prototyping/**"
 
 jobs:
   benchmarks-run:
@@ -54,7 +54,7 @@ jobs:
           sudo apt-get install valgrind
 
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
-        run: sudo bash ./scripts/run-with-cachegrind.sh python (./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua) "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee ${{ matrix.bench.script }}-output.txt
+        run: sudo bash ./scripts/run-with-cachegrind.sh python "./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua" "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee ${{ matrix.bench.script }}-output.txt
 
       # - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
       #   run: sudo bash ./scripts/run-with-cachegrind.sh python "./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua" "${{ matrix.bench.cachegrindTitle}}" 2  | tee ${{ matrix.bench.script }}-output.txt
