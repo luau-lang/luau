@@ -1,4 +1,4 @@
-name: Luau Analyze (CacheGrind)
+name: Luau static file analysis
 
 on:
   push:
@@ -23,13 +23,14 @@ jobs:
           - { channel: stable, version: latest }
         bench:
           - {
-              script: "run-benchmarks",
+              script: "run-analyze",
               timeout: 12,
-              title: "Luau Benchmarks (CacheGrind)",
+              title: "Luau Analyze",
               cachegrindTitle: "Performance",
               cachegrindIterCount: 20,
             }
-
+        benchResultsRepo:
+          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
@@ -51,4 +52,40 @@ jobs:
 
       # Run Luau Analyze
       - name: Run Luau Analyze on static file
-        run: python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua
+        run: python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
+
+      - name: Checkout Benchmark Results repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ matrix.benchResultsRepo.name }}
+          ref: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+          path: "./gh-pages"
+
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }}
+          tool: "benchmarkluau"
+
+          gh-pages-branch: "main"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          alert-threshold: 150%
+          fail-threshold: 200%
+          fail-on-alert: true
+          comment-on-alert: true
+          comment-always: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: github.event_name == 'push'
+        run: |
+          echo "Pushing benchmark results..."
+          cd gh-pages
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git add ./dev/bench/data.json
+          git commit -m "Add benchmarks results for ${{ github.sha }}"
+          git push
+          cd ..
