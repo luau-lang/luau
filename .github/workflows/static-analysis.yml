@@ -50,7 +50,6 @@ jobs:
           python -m pip install requests
           python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
 
-      # Run Luau Analyze
       - name: Run Luau Analyze on static file
         run: python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
 
