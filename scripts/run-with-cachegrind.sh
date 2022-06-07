@@ -28,7 +28,7 @@ START_TIME=$(now_ms)
 valgrind \
     --quiet \
     --tool=cachegrind \
-    "$1" "$2" >/dev/null
+    "$1" $2 >/dev/null
 
 TIME_ELAPSED=$(bc <<< "$(now_ms) - ${START_TIME}")
 
