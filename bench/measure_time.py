@@ -39,4 +39,4 @@ for i in range(1,cycles_to_run):
 mean = np.mean(duration_list)
 std_err = stats.sem(duration_list)
 
-print("SUCCESS: {} : {:.2f}ms +/- {:.2f}% on luau ".format('duration', mean,std_err))
+print("SUCCESS: {} : {:.2f} ms +/- {:.2f}% on luau ".format('duration', mean,std_err))
