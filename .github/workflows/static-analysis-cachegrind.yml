@@ -47,7 +47,7 @@ jobs:
       - name: Install python dependencies
         run: |
           python -m pip install requests
-          python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+          python -m pip install numpy scipy matplotlib ipython jupyter pandas sympy nose
 
       - name: Install valgrind
         run: |
