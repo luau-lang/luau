@@ -62,6 +62,7 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
 
 TEST_CASE_FIXTURE(Fixture, "empty_table")
 {
+    ScopedFastFlag LuauToStringTableBracesNewlines("LuauToStringTableBracesNewlines", true);
     CheckResult result = check(R"(
         local a: {}
     )");
@@ -76,6 +77,7 @@ TEST_CASE_FIXTURE(Fixture, "empty_table")
 
 TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 {
+    ScopedFastFlag LuauToStringTableBracesNewlines("LuauToStringTableBracesNewlines", true);
     CheckResult result = check(R"(
         local a: { prop: string, anotherProp: number, thirdProp: boolean }
     )");
