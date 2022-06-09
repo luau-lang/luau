@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+      - feat/add-cachegrind
+
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -27,11 +29,11 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          - { name: "luau-lang/benchmark-data", branch: "main" }
+          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout Luau repository
+      - name: Checkout Luau
         uses: actions/checkout@v3
 
       - name: Build Luau
@@ -47,9 +49,19 @@ jobs:
           python -m pip install requests
           python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
 
+      - name: Install valgrind
+        run: |
+          sudo apt-get install valgrind
+
       - name: Run benchmark
         run: |
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
+
+      - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee -a ${{ matrix.bench.script }}-output.txt
+
+      - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
@@ -67,13 +79,26 @@ jobs:
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
           alert-threshold: 150%
-          fail-threshold: 200%
-          fail-on-alert: true
+          fail-threshold: 1000%
+          fail-on-alert: false
           comment-on-alert: true
-          comment-always: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }} (CacheGrind)
+          tool: "roblox"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          alert-threshold: 150%
+          fail-threshold: 1000%
+          fail-on-alert: false
+          comment-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push benchmark results
+
         run: |
           echo "Pushing benchmark results..."
           cd gh-pages
