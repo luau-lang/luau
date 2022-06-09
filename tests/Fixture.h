@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Config.h"
+#include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
 #include "Luau/IostreamHelpers.h"
@@ -156,6 +157,16 @@ struct BuiltinsFixture : Fixture
     BuiltinsFixture(bool freeze = true, bool prepareAutocomplete = false);
 };
 
+struct ConstraintGraphBuilderFixture : Fixture
+{
+    TypeArena arena;
+    ConstraintGraphBuilder cgb{&arena};
+
+    ScopedFastFlag forceTheFlag;
+
+    ConstraintGraphBuilderFixture();
+};
+
 ModuleName fromString(std::string_view name);
 
 template<typename T>
@@ -175,8 +186,11 @@ bool isInArena(TypeId t, const TypeArena& arena);
 void dumpErrors(const ModulePtr& module);
 void dumpErrors(const Module& module);
 void dump(const std::string& name, TypeId ty);
+void dump(const std::vector<Constraint>& constraints);
 
 std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Warning: This function runs in O(n**2)
+
+std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name);
 
 } // namespace Luau
 

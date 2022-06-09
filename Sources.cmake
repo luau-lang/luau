@@ -1,7 +1,15 @@
+# Luau.Common Sources
+# Note: Until 3.19, INTERFACE targets couldn't have SOURCES property set
+if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
+    target_sources(Luau.Common PRIVATE
+        Common/include/Luau/Common.h
+        Common/include/Luau/Bytecode.h
+    )
+endif()
+
 # Luau.Ast Sources
 target_sources(Luau.Ast PRIVATE
     Ast/include/Luau/Ast.h
-    Ast/include/Luau/Common.h
     Ast/include/Luau/Confusables.h
     Ast/include/Luau/DenseHash.h
     Ast/include/Luau/Lexer.h
@@ -23,7 +31,6 @@ target_sources(Luau.Ast PRIVATE
 
 # Luau.Compiler Sources
 target_sources(Luau.Compiler PRIVATE
-    Compiler/include/Luau/Bytecode.h
     Compiler/include/Luau/BytecodeBuilder.h
     Compiler/include/Luau/Compiler.h
     Compiler/include/luacode.h
@@ -43,17 +50,32 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/ValueTracking.h
 )
 
+# Luau.CodeGen Sources
+target_sources(Luau.CodeGen PRIVATE
+    CodeGen/include/Luau/AssemblyBuilderX64.h
+    CodeGen/include/Luau/Condition.h
+    CodeGen/include/Luau/Label.h
+    CodeGen/include/Luau/OperandX64.h
+    CodeGen/include/Luau/RegisterX64.h
+
+    CodeGen/src/AssemblyBuilderX64.cpp
+)
+
 # Luau.Analysis Sources
 target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/AstQuery.h
     Analysis/include/Luau/Autocomplete.h
+    Analysis/include/Luau/NotNull.h
     Analysis/include/Luau/BuiltinDefinitions.h
-    Analysis/include/Luau/Config.h
     Analysis/include/Luau/Clone.h
+    Analysis/include/Luau/Config.h
+    Analysis/include/Luau/ConstraintGraphBuilder.h
+    Analysis/include/Luau/ConstraintSolver.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
     Analysis/include/Luau/Frontend.h
+    Analysis/include/Luau/Instantiation.h
     Analysis/include/Luau/IostreamHelpers.h
     Analysis/include/Luau/JsonEncoder.h
     Analysis/include/Luau/Linter.h
@@ -73,6 +95,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/ToString.h
     Analysis/include/Luau/Transpiler.h
     Analysis/include/Luau/TxnLog.h
+    Analysis/include/Luau/TypeArena.h
     Analysis/include/Luau/TypeAttach.h
     Analysis/include/Luau/TypedAllocator.h
     Analysis/include/Luau/TypeInfer.h
@@ -88,10 +111,13 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/AstQuery.cpp
     Analysis/src/Autocomplete.cpp
     Analysis/src/BuiltinDefinitions.cpp
-    Analysis/src/Config.cpp
     Analysis/src/Clone.cpp
+    Analysis/src/Config.cpp
+    Analysis/src/ConstraintGraphBuilder.cpp
+    Analysis/src/ConstraintSolver.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
+    Analysis/src/Instantiation.cpp
     Analysis/src/IostreamHelpers.cpp
     Analysis/src/JsonEncoder.cpp
     Analysis/src/Linter.cpp
@@ -108,6 +134,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/ToString.cpp
     Analysis/src/Transpiler.cpp
     Analysis/src/TxnLog.cpp
+    Analysis/src/TypeArena.cpp
     Analysis/src/TypeAttach.cpp
     Analysis/src/TypedAllocator.cpp
     Analysis/src/TypeInfer.cpp
@@ -218,6 +245,7 @@ if(TARGET Luau.UnitTest)
         tests/AstQuery.test.cpp
         tests/AstVisitor.test.cpp
         tests/Autocomplete.test.cpp
+        tests/NotNull.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
@@ -230,6 +258,8 @@ if(TARGET Luau.UnitTest)
         tests/Module.test.cpp
         tests/NonstrictMode.test.cpp
         tests/Normalize.test.cpp
+        tests/ConstraintGraphBuilder.test.cpp
+        tests/ConstraintSolver.test.cpp
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
@@ -265,6 +295,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
         tests/VisitTypeVar.test.cpp
+        tests/AssemblyBuilderX64.test.cpp
         tests/main.cpp)
 endif()
 

@@ -2,6 +2,7 @@
 #include "Luau/Substitution.h"
 
 #include "Luau/Common.h"
+#include "Luau/Clone.h"
 #include "Luau/TxnLog.h"
 
 #include <algorithm>
@@ -9,9 +10,6 @@
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(LuauTypecheckOptPass)
-LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowNewTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauSubstituteFollowPossibleMutations, false)
 LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
@@ -19,26 +17,20 @@ namespace Luau
 
 void Tarjan::visitChildren(TypeId ty, int index)
 {
-    if (FFlag::LuauTypecheckOptPass)
-        LUAU_ASSERT(ty == log->follow(ty));
-    else
-        ty = log->follow(ty);
+    LUAU_ASSERT(ty == log->follow(ty));
 
     if (ignoreChildren(ty))
         return;
 
-    if (FFlag::LuauTypecheckOptPass)
-    {
-        if (auto pty = log->pending(ty))
-            ty = &pty->pending;
-    }
+    if (auto pty = log->pending(ty))
+        ty = &pty->pending;
 
-    if (const FunctionTypeVar* ftv = FFlag::LuauTypecheckOptPass ? get<FunctionTypeVar>(ty) : log->getMutable<FunctionTypeVar>(ty))
+    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
     {
         visitChild(ftv->argTypes);
         visitChild(ftv->retType);
     }
-    else if (const TableTypeVar* ttv = FFlag::LuauTypecheckOptPass ? get<TableTypeVar>(ty) : log->getMutable<TableTypeVar>(ty))
+    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
         LUAU_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
@@ -55,17 +47,17 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypePackId itp : ttv->instantiatedTypePackParams)
             visitChild(itp);
     }
-    else if (const MetatableTypeVar* mtv = FFlag::LuauTypecheckOptPass ? get<MetatableTypeVar>(ty) : log->getMutable<MetatableTypeVar>(ty))
+    else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
         visitChild(mtv->table);
         visitChild(mtv->metatable);
     }
-    else if (const UnionTypeVar* utv = FFlag::LuauTypecheckOptPass ? get<UnionTypeVar>(ty) : log->getMutable<UnionTypeVar>(ty))
+    else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
     {
         for (TypeId opt : utv->options)
             visitChild(opt);
     }
-    else if (const IntersectionTypeVar* itv = FFlag::LuauTypecheckOptPass ? get<IntersectionTypeVar>(ty) : log->getMutable<IntersectionTypeVar>(ty))
+    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
     {
         for (TypeId part : itv->parts)
             visitChild(part);
@@ -79,28 +71,22 @@ void Tarjan::visitChildren(TypeId ty, int index)
 
 void Tarjan::visitChildren(TypePackId tp, int index)
 {
-    if (FFlag::LuauTypecheckOptPass)
-        LUAU_ASSERT(tp == log->follow(tp));
-    else
-        tp = log->follow(tp);
+    LUAU_ASSERT(tp == log->follow(tp));
 
     if (ignoreChildren(tp))
         return;
 
-    if (FFlag::LuauTypecheckOptPass)
-    {
-        if (auto ptp = log->pending(tp))
-            tp = &ptp->pending;
-    }
+    if (auto ptp = log->pending(tp))
+        tp = &ptp->pending;
 
-    if (const TypePack* tpp = FFlag::LuauTypecheckOptPass ? get<TypePack>(tp) : log->getMutable<TypePack>(tp))
+    if (const TypePack* tpp = get<TypePack>(tp))
     {
         for (TypeId tv : tpp->head)
             visitChild(tv);
         if (tpp->tail)
             visitChild(*tpp->tail);
     }
-    else if (const VariadicTypePack* vtp = FFlag::LuauTypecheckOptPass ? get<VariadicTypePack>(tp) : log->getMutable<VariadicTypePack>(tp))
+    else if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
     {
         visitChild(vtp->ty);
     }
@@ -108,10 +94,7 @@ void Tarjan::visitChildren(TypePackId tp, int index)
 
 std::pair<int, bool> Tarjan::indexify(TypeId ty)
 {
-    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
-        LUAU_ASSERT(ty == log->follow(ty));
-    else
-        ty = log->follow(ty);
+    ty = log->follow(ty);
 
     bool fresh = !typeToIndex.contains(ty);
     int& index = typeToIndex[ty];
@@ -129,10 +112,7 @@ std::pair<int, bool> Tarjan::indexify(TypeId ty)
 
 std::pair<int, bool> Tarjan::indexify(TypePackId tp)
 {
-    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
-        LUAU_ASSERT(tp == log->follow(tp));
-    else
-        tp = log->follow(tp);
+    tp = log->follow(tp);
 
     bool fresh = !packToIndex.contains(tp);
     int& index = packToIndex[tp];
@@ -150,8 +130,7 @@ std::pair<int, bool> Tarjan::indexify(TypePackId tp)
 
 void Tarjan::visitChild(TypeId ty)
 {
-    if (!FFlag::LuauSubstituteFollowPossibleMutations)
-        ty = log->follow(ty);
+    ty = log->follow(ty);
 
     edgesTy.push_back(ty);
     edgesTp.push_back(nullptr);
@@ -159,8 +138,7 @@ void Tarjan::visitChild(TypeId ty)
 
 void Tarjan::visitChild(TypePackId tp)
 {
-    if (!FFlag::LuauSubstituteFollowPossibleMutations)
-        tp = log->follow(tp);
+    tp = log->follow(tp);
 
     edgesTy.push_back(nullptr);
     edgesTp.push_back(tp);
@@ -385,86 +363,24 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
 TypeId Substitution::clone(TypeId ty)
 {
-    ty = log->follow(ty);
-
-    TypeId result = ty;
-
-    if (FFlag::LuauTypecheckOptPass)
-    {
-        if (auto pty = log->pending(ty))
-            ty = &pty->pending;
-    }
-
-    if (const FunctionTypeVar* ftv = FFlag::LuauTypecheckOptPass ? get<FunctionTypeVar>(ty) : log->getMutable<FunctionTypeVar>(ty))
-    {
-        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->argTypes, ftv->retType, ftv->definition, ftv->hasSelf};
-        clone.generics = ftv->generics;
-        clone.genericPacks = ftv->genericPacks;
-        clone.magicFunction = ftv->magicFunction;
-        clone.tags = ftv->tags;
-        clone.argNames = ftv->argNames;
-        result = addType(std::move(clone));
-    }
-    else if (const TableTypeVar* ttv = FFlag::LuauTypecheckOptPass ? get<TableTypeVar>(ty) : log->getMutable<TableTypeVar>(ty))
-    {
-        LUAU_ASSERT(!ttv->boundTo);
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
-        if (!FFlag::LuauNoMethodLocations)
-            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
-        clone.definitionModuleName = ttv->definitionModuleName;
-        clone.name = ttv->name;
-        clone.syntheticName = ttv->syntheticName;
-        clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
-        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
-        clone.tags = ttv->tags;
-        result = addType(std::move(clone));
-    }
-    else if (const MetatableTypeVar* mtv = FFlag::LuauTypecheckOptPass ? get<MetatableTypeVar>(ty) : log->getMutable<MetatableTypeVar>(ty))
-    {
-        MetatableTypeVar clone = MetatableTypeVar{mtv->table, mtv->metatable};
-        clone.syntheticName = mtv->syntheticName;
-        result = addType(std::move(clone));
-    }
-    else if (const UnionTypeVar* utv = FFlag::LuauTypecheckOptPass ? get<UnionTypeVar>(ty) : log->getMutable<UnionTypeVar>(ty))
-    {
-        UnionTypeVar clone;
-        clone.options = utv->options;
-        result = addType(std::move(clone));
-    }
-    else if (const IntersectionTypeVar* itv = FFlag::LuauTypecheckOptPass ? get<IntersectionTypeVar>(ty) : log->getMutable<IntersectionTypeVar>(ty))
-    {
-        IntersectionTypeVar clone;
-        clone.parts = itv->parts;
-        result = addType(std::move(clone));
-    }
-    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
-    {
-        ConstrainedTypeVar clone{ctv->level, ctv->parts};
-        result = addType(std::move(clone));
-    }
-
-    asMutable(result)->documentationSymbol = ty->documentationSymbol;
-    return result;
+    return shallowClone(ty, *arena, log);
 }
 
 TypePackId Substitution::clone(TypePackId tp)
 {
     tp = log->follow(tp);
 
-    if (FFlag::LuauTypecheckOptPass)
-    {
-        if (auto ptp = log->pending(tp))
-            tp = &ptp->pending;
-    }
+    if (auto ptp = log->pending(tp))
+        tp = &ptp->pending;
 
-    if (const TypePack* tpp = FFlag::LuauTypecheckOptPass ? get<TypePack>(tp) : log->getMutable<TypePack>(tp))
+    if (const TypePack* tpp = get<TypePack>(tp))
     {
         TypePack clone;
         clone.head = tpp->head;
         clone.tail = tpp->tail;
         return addTypePack(std::move(clone));
     }
-    else if (const VariadicTypePack* vtp = FFlag::LuauTypecheckOptPass ? get<VariadicTypePack>(tp) : log->getMutable<VariadicTypePack>(tp))
+    else if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
     {
         VariadicTypePack clone;
         clone.ty = vtp->ty;
@@ -476,28 +392,22 @@ TypePackId Substitution::clone(TypePackId tp)
 
 void Substitution::foundDirty(TypeId ty)
 {
-    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
-        LUAU_ASSERT(ty == log->follow(ty));
-    else
-        ty = log->follow(ty);
+    ty = log->follow(ty);
 
     if (isDirty(ty))
-        newTypes[ty] = FFlag::LuauSubstituteFollowNewTypes ? follow(clean(ty)) : clean(ty);
+        newTypes[ty] = follow(clean(ty));
     else
-        newTypes[ty] = FFlag::LuauSubstituteFollowNewTypes ? follow(clone(ty)) : clone(ty);
+        newTypes[ty] = follow(clone(ty));
 }
 
 void Substitution::foundDirty(TypePackId tp)
 {
-    if (FFlag::LuauTypecheckOptPass && !FFlag::LuauSubstituteFollowPossibleMutations)
-        LUAU_ASSERT(tp == log->follow(tp));
-    else
-        tp = log->follow(tp);
+    tp = log->follow(tp);
 
     if (isDirty(tp))
-        newPacks[tp] = FFlag::LuauSubstituteFollowNewTypes ? follow(clean(tp)) : clean(tp);
+        newPacks[tp] = follow(clean(tp));
     else
-        newPacks[tp] = FFlag::LuauSubstituteFollowNewTypes ? follow(clone(tp)) : clone(tp);
+        newPacks[tp] = follow(clone(tp));
 }
 
 TypeId Substitution::replace(TypeId ty)
@@ -525,10 +435,7 @@ void Substitution::replaceChildren(TypeId ty)
     if (BoundTypeVar* btv = log->getMutable<BoundTypeVar>(ty); FFlag::LuauLowerBoundsCalculation && btv)
         btv->boundTo = replace(btv->boundTo);
 
-    if (FFlag::LuauTypecheckOptPass)
-        LUAU_ASSERT(ty == log->follow(ty));
-    else
-        ty = log->follow(ty);
+    LUAU_ASSERT(ty == log->follow(ty));
 
     if (ignoreChildren(ty))
         return;
@@ -579,10 +486,7 @@ void Substitution::replaceChildren(TypeId ty)
 
 void Substitution::replaceChildren(TypePackId tp)
 {
-    if (FFlag::LuauTypecheckOptPass)
-        LUAU_ASSERT(tp == log->follow(tp));
-    else
-        tp = log->follow(tp);
+    LUAU_ASSERT(tp == log->follow(tp));
 
     if (ignoreChildren(tp))
         return;

@@ -6,6 +6,7 @@
 #include <type_traits>
 #include <initializer_list>
 #include <stddef.h>
+#include <utility>
 
 namespace Luau
 {
@@ -93,6 +94,20 @@ public:
             tableMove[typeId](&storage, &other.storage); // nothrow
         }
         return *this;
+    }
+
+    template<typename T, typename... Args>
+    T& emplace(Args&&... args)
+    {
+        using TT = std::decay_t<T>;
+        constexpr int tid = getTypeId<T>();
+        static_assert(tid >= 0, "unsupported T");
+
+        tableDtor[typeId](&storage);
+        typeId = tid;
+        new (&storage) TT(std::forward<Args>(args)...);
+
+        return *reinterpret_cast<T*>(&storage);
     }
 
     template<typename T>

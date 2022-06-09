@@ -24,9 +24,6 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
-LUAU_FASTFLAG(LuauDiscriminableUnions2)
-LUAU_FASTFLAGVARIABLE(LuauAnyInIsOptionalIsOptional, false)
-LUAU_FASTFLAGVARIABLE(LuauClassDefinitionModuleInError, false)
 
 namespace Luau
 {
@@ -204,14 +201,14 @@ bool isOptional(TypeId ty)
 
     ty = follow(ty);
 
-    if (FFlag::LuauAnyInIsOptionalIsOptional && get<AnyTypeVar>(ty))
+    if (get<AnyTypeVar>(ty))
         return true;
 
     auto utv = get<UnionTypeVar>(ty);
     if (!utv)
         return false;
 
-    return std::any_of(begin(utv), end(utv), FFlag::LuauAnyInIsOptionalIsOptional ? isOptional : isNil);
+    return std::any_of(begin(utv), end(utv), isOptional);
 }
 
 bool isTableIntersection(TypeId ty)
@@ -304,7 +301,7 @@ std::optional<ModuleName> getDefinitionModuleName(TypeId type)
         if (ftv->definition)
             return ftv->definition->definitionModuleName;
     }
-    else if (auto ctv = get<ClassTypeVar>(type); ctv && FFlag::LuauClassDefinitionModuleInError)
+    else if (auto ctv = get<ClassTypeVar>(type))
     {
         if (!ctv->definitionModuleName.empty())
             return ctv->definitionModuleName;
@@ -378,8 +375,7 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     if (seen.contains(ty))
         return true;
 
-    bool isStr = FFlag::LuauDiscriminableUnions2 ? isString(ty) : isPrim(ty, PrimitiveTypeVar::String);
-    if (isStr || get<AnyTypeVar>(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty))
+    if (isString(ty) || get<AnyTypeVar>(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty))
         return true;
 
     if (auto uty = get<UnionTypeVar>(ty))
@@ -727,7 +723,7 @@ TypeId SingletonTypes::makeStringMetatable()
 
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
-        {"char", {arena->addType(FunctionTypeVar{arena->addTypePack(TypePack{{numberType}, numberVariadicList}), arena->addTypePack({stringType})})}},
+        {"char", {arena->addType(FunctionTypeVar{numberVariadicList, arena->addTypePack({stringType})})}},
         {"find", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber, optionalBoolean}, {}, {optionalNumber, optionalNumber})}},
         {"format", {formatFn}}, // FIXME
         {"gmatch", {gmatchFunc}},

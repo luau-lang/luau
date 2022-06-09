@@ -2622,4 +2622,15 @@ type Z<T> = { a: string | T..., b: number }
     REQUIRE_EQ(3, result.errors.size());
 }
 
+TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
+{
+    ScopedFastFlag sff{"LuauParserFunctionKeywordAsTypeHelp", true};
+    ParseResult result = tryParse(R"(
+        type Foo = function
+    )");
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> ...any'",
+        result.errors[0].getMessage());
+}
+
 TEST_SUITE_END();

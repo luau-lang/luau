@@ -1,16 +1,14 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/Clone.h"
-#include "Luau/Module.h"
 #include "Luau/RecursionCounter.h"
+#include "Luau/TxnLog.h"
 #include "Luau/TypePack.h"
 #include "Luau/Unifiable.h"
 
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
-LUAU_FASTFLAG(LuauTypecheckOptPass)
-LUAU_FASTFLAGVARIABLE(LuauLosslessClone, false)
 LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
@@ -89,20 +87,8 @@ struct TypePackCloner
 
     void operator()(const Unifiable::Free& t)
     {
-        if (FFlag::LuauLosslessClone)
-        {
-            defaultClone(t);
-        }
-        else
-        {
-            cloneState.encounteredFreeType = true;
-
-            TypePackId err = getSingletonTypes().errorRecoveryTypePack(getSingletonTypes().anyTypePack);
-            TypePackId cloned = dest.addTypePack(*err);
-            seenTypePacks[typePackId] = cloned;
-        }
+        defaultClone(t);
     }
-
     void operator()(const Unifiable::Generic& t)
     {
         defaultClone(t);
@@ -152,18 +138,7 @@ void TypeCloner::defaultClone(const T& t)
 
 void TypeCloner::operator()(const Unifiable::Free& t)
 {
-    if (FFlag::LuauLosslessClone)
-    {
-        defaultClone(t);
-    }
-    else
-    {
-        cloneState.encounteredFreeType = true;
-
-        TypeId err = getSingletonTypes().errorRecoveryType(getSingletonTypes().anyType);
-        TypeId cloned = dest.addType(*err);
-        seenTypes[typeId] = cloned;
-    }
+    defaultClone(t);
 }
 
 void TypeCloner::operator()(const Unifiable::Generic& t)
@@ -191,9 +166,6 @@ void TypeCloner::operator()(const PrimitiveTypeVar& t)
 
 void TypeCloner::operator()(const ConstrainedTypeVar& t)
 {
-    if (!FFlag::LuauLosslessClone)
-        cloneState.encounteredFreeType = true;
-
     TypeId res = dest.addType(ConstrainedTypeVar{t.level});
     ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(res);
     LUAU_ASSERT(ctv);
@@ -230,9 +202,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
     ftv->argTypes = clone(t.argTypes, dest, cloneState);
     ftv->argNames = t.argNames;
     ftv->retType = clone(t.retType, dest, cloneState);
-
-    if (FFlag::LuauTypecheckOptPass)
-        ftv->hasNoGenerics = t.hasNoGenerics;
+    ftv->hasNoGenerics = t.hasNoGenerics;
 }
 
 void TypeCloner::operator()(const TableTypeVar& t)
@@ -269,13 +239,6 @@ void TypeCloner::operator()(const TableTypeVar& t)
 
     for (TypePackId& arg : ttv->instantiatedTypePackParams)
         arg = clone(arg, dest, cloneState);
-
-    if (!FFlag::LuauLosslessClone && ttv->state == TableState::Free)
-    {
-        cloneState.encounteredFreeType = true;
-
-        ttv->state = TableState::Sealed;
-    }
 
     ttv->definitionModuleName = t.definitionModuleName;
     if (!FFlag::LuauNoMethodLocations)
@@ -417,6 +380,69 @@ TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
 
     result.type = clone(typeFun.type, dest, cloneState);
 
+    return result;
+}
+
+TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
+{
+    ty = log->follow(ty);
+
+    TypeId result = ty;
+
+    if (auto pty = log->pending(ty))
+        ty = &pty->pending;
+
+    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+    {
+        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->argTypes, ftv->retType, ftv->definition, ftv->hasSelf};
+        clone.generics = ftv->generics;
+        clone.genericPacks = ftv->genericPacks;
+        clone.magicFunction = ftv->magicFunction;
+        clone.tags = ftv->tags;
+        clone.argNames = ftv->argNames;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+    {
+        LUAU_ASSERT(!ttv->boundTo);
+        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
+        if (!FFlag::LuauNoMethodLocations)
+            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
+        clone.definitionModuleName = ttv->definitionModuleName;
+        clone.name = ttv->name;
+        clone.syntheticName = ttv->syntheticName;
+        clone.instantiatedTypeParams = ttv->instantiatedTypeParams;
+        clone.instantiatedTypePackParams = ttv->instantiatedTypePackParams;
+        clone.tags = ttv->tags;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+    {
+        MetatableTypeVar clone = MetatableTypeVar{mtv->table, mtv->metatable};
+        clone.syntheticName = mtv->syntheticName;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    {
+        UnionTypeVar clone;
+        clone.options = utv->options;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+    {
+        IntersectionTypeVar clone;
+        clone.parts = itv->parts;
+        result = dest.addType(std::move(clone));
+    }
+    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
+    {
+        ConstrainedTypeVar clone{ctv->level, ctv->parts};
+        result = dest.addType(std::move(clone));
+    }
+    else
+        return result;
+
+    asMutable(result)->documentationSymbol = ty->documentationSymbol;
     return result;
 }
 

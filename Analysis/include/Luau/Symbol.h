@@ -30,6 +30,9 @@ struct Symbol
     {
     }
 
+    template<typename T>
+    Symbol(const T&) = delete;
+
     AstLocal* local;
     AstName global;
 

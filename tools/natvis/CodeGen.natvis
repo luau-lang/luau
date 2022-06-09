@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <Type Name="Luau::CodeGen::RegisterX64">
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 16">noreg</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::none &amp;&amp; index == 0">rip</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 0">al</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 1">cl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 2">dl</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::byte &amp;&amp; index == 3">bl</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 0">eax</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 1">ecx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 2">edx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 3">ebx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 4">esp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 5">ebp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 6">esi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index == 7">edi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::dword &amp;&amp; index >= 8">e{(int)index,d}d</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 0">rax</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 1">rcx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 2">rdx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 3">rbx</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 4">rsp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 5">rbp</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 6">rsi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index == 7">rdi</DisplayString>
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::qword &amp;&amp; index >= 8">r{(int)index,d}</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::xmmword">xmm{(int)index,d}</DisplayString>
+    
+    <DisplayString Condition="size == Luau::CodeGen::SizeX64::ymmword">ymm{(int)index,d}</DisplayString>
+  </Type>
+  
+  <Type Name="Luau::CodeGen::OperandX64">
+    <DisplayString Condition="cat == 0">{base}</DisplayString>
+    <DisplayString Condition="cat == 1 &amp;&amp; base.size != 0 &amp;&amp; index.size != 0">{memSize,en} ptr[{base} + {index}*{(int)scale,d} + {imm}]</DisplayString>
+    <DisplayString Condition="cat == 1 &amp;&amp; index.size != 0">{memSize,en} ptr[{index}*{(int)scale,d} + {imm}]</DisplayString>
+    <DisplayString Condition="cat == 1 &amp;&amp; base.size != 0">{memSize,en} ptr[{base} + {imm}]</DisplayString>
+    <DisplayString Condition="cat == 1">{memSize,en} ptr[{imm}]</DisplayString>
+    <DisplayString Condition="cat == 2">{imm}</DisplayString>
+    <Expand>
+      <ExpandedItem Condition="cat == 0">base</ExpandedItem>
+      <ExpandedItem Condition="cat == 2">imm</ExpandedItem>
+      <Item Condition="cat == 1" Name="memSize">memSize</Item>
+      <Item Condition="cat == 1" Name="base">base</Item>
+      <Item Condition="cat == 1" Name="index">index</Item>
+      <Item Condition="cat == 1" Name="scale">scale</Item>
+      <Item Condition="cat == 1" Name="imm">imm</Item>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

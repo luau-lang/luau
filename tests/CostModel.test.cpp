@@ -136,7 +136,7 @@ function test(a)
     while a < 0 do
         a += 1
     end
-    for i=1,2 do
+    for i=10,1,-1 do
         a += 1
     end
     for i in pairs({}) do
@@ -154,8 +154,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(50, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(49, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(82, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(79, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("Conditional")

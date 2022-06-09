@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauDiscriminableUnions2)
-LUAU_FASTFLAG(LuauWeakEqConstraint)
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 using namespace Luau;
@@ -78,6 +76,10 @@ struct RefinementClassFixture : Fixture
         typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
         typeChecker.globalScope->exportedTypeBindings["Folder"] = TypeFun{{}, folder};
         typeChecker.globalScope->exportedTypeBindings["Part"] = TypeFun{{}, part};
+
+        for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+            persist(ty.type);
+
         freeze(typeChecker.globalTypes);
     }
 };
@@ -268,18 +270,10 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_only_look_up_types_from_global_scope")
         end
     )");
 
-    if (FFlag::LuauDiscriminableUnions2)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
 
-        CHECK_EQ("*unknown*", toString(requireTypeAtPosition({8, 44})));
-        CHECK_EQ("*unknown*", toString(requireTypeAtPosition({9, 38})));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Type 'number' has no overlap with 'string'", toString(result.errors[0]));
-    }
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({8, 44})));
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({9, 38})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
@@ -378,8 +372,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_another_lvalue")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: (string | number)?, b: boolean?)
             if a == b then
@@ -392,28 +384,15 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_another_lvalue")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "(number | string)?"); // a == b
-        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?");           // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "(number | string)?"); // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?");           // a == b
 
-        CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "(number | string)?"); // a ~= b
-        CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?");           // a ~= b
-    }
-    else
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "nil"); // a == b
-        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "nil"); // a == b
-
-        CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "(number | string)?"); // a ~= b
-        CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?");           // a ~= b
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "(number | string)?"); // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?");           // a ~= b
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: (string | number)?)
             if a == 1 then
@@ -426,24 +405,12 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1
-        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
-    }
-    else
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number");             // a == 1
-        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1
+    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
 }
 
 TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(a: (string | number)?)
             if "hello" == a then
@@ -462,8 +429,6 @@ TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: (string | number)?)
             if a ~= nil then
@@ -476,23 +441,12 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
-        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
-    }
-    else
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string"); // a ~= nil
-        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "nil");             // a == nil
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
+    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 {
-    ScopedFastFlag sff{"LuauDiscriminableUnions2", true};
-    ScopedFastFlag sff2{"LuauWeakEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a, b: string?)
             if a == b then
@@ -509,8 +463,6 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 
 TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_equal")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: any, b: {x: number}?)
             if a ~= b then
@@ -521,22 +473,12 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
-        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
-    }
-    else
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");             // a ~= b
-        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}"); // a ~= b
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local t: {string} = {"hello"}
 
@@ -554,18 +496,8 @@ TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
     CHECK_EQ(toString(requireTypeAtPosition({6, 29})), "string");  // a ~= b
     CHECK_EQ(toString(requireTypeAtPosition({6, 32})), "string?"); // a ~= b
 
-    if (FFlag::LuauWeakEqConstraint)
-    {
-        CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
-        CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
-    }
-    else
-    {
-        // This is technically not wrong, but it's also wrong at the same time.
-        // The refinement code is none the wiser about the fact we pulled a string out of an array, so it has no choice but to narrow as just string.
-        CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string"); // a == b
-        CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string"); // a == b
-    }
+    CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
 }
 
 TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
@@ -594,16 +526,7 @@ TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
         end
     )");
 
-    if (FFlag::LuauDiscriminableUnions2)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        // This is kinda weird to see, but this actually only happens in Luau without Roblox type bindings because we don't have a Vector3 type.
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ("Unknown type 'Vector3'", toString(result.errors[0]));
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("*unknown*", toString(requireTypeAtPosition({3, 28})));
 }
@@ -1009,10 +932,6 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
 
@@ -1033,10 +952,6 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         type Cat = {tag: "Cat", name: string, catfood: string}
         type Dog = {tag: "Dog", name: string, dogfood: string}
@@ -1070,11 +985,6 @@ TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
 
 TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-        {"LuauAssertStripsFalsyTypes", true},
-    };
-
     CheckResult result = check(R"(
         local function is_true(b: true) end
         local function is_false(b: false) end
@@ -1093,11 +1003,6 @@ TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_that_property_is_true_or_false")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-        {"LuauAssertStripsFalsyTypes", true},
-    };
-
     CheckResult result = check(R"(
         type Ok<T> = { ok: true, value: T }
         type Err<E> = { ok: false, error: E }
@@ -1117,8 +1022,6 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_
 
 TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersection_table")
 {
-    ScopedFastFlag sff{"LuauDoNotTryToReduce", true};
-
     CheckResult result = check(R"(
         type T = {} & {f: ((string) -> string)?}
         local function f(t: T, x)
@@ -1133,10 +1036,6 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersect
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         type T = {tag: "Part", x: Part} | {tag: "Folder", x: Folder}
 
@@ -1171,14 +1070,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
         end
     )");
 
-    if (FFlag::LuauDiscriminableUnions2)
-        LUAU_REQUIRE_NO_ERRORS(result);
-    else
-    {
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK_EQ("Type '{+ X: a, Y: b, Z: c +}' could not be converted into 'Instance'", toString(result.errors[0]));
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28}))); // type(vec) == "vector"
 

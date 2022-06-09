@@ -1001,7 +1001,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
         type t0 = t0 | {}
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
@@ -1119,6 +1119,80 @@ TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics1")
+{
+    ScopedFastFlag sff{"LuauApplyTypeFunctionFix", true};
+
+    // https://github.com/Roblox/luau/issues/484
+    CheckResult result = check(R"(
+--!strict
+type MyObject = {
+	getReturnValue: <V>(cb: () -> V) -> V
+}
+local object: MyObject = {
+	getReturnValue = function<U>(cb: () -> U): U
+		return cb()
+	end,
+}
+
+type ComplexObject<T> = {
+	id: T,
+	nested: MyObject
+}
+
+local complex: ComplexObject<string> = {
+	id = "Foo",
+	nested = object,
+}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics2")
+{
+    ScopedFastFlag sff{"LuauApplyTypeFunctionFix", true};
+
+    // https://github.com/Roblox/luau/issues/484
+    CheckResult result = check(R"(
+--!strict
+type MyObject = {
+	getReturnValue: <V>(cb: () -> V) -> V
+}
+type ComplexObject<T> = {
+	id: T,
+	nested: MyObject
+}
+
+local complex2: ComplexObject<string> = nil
+
+local x = complex2.nested.getReturnValue(function(): string
+	return ""
+end)
+
+local y = complex2.nested.getReturnValue(function()
+	return 3
+end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauAlwaysQuantify", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo<X>(f, x: X)
+            return f(x)
+        end
+    )");
+
+    CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
 }
 
 TEST_SUITE_END();

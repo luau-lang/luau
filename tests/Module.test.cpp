@@ -198,10 +198,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_class")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 {
-    ScopedFastFlag sff[]{
-        {"LuauLosslessClone", true},
-    };
-
     TypeVar freeTy(FreeTypeVar{TypeLevel{}});
     TypePackVar freeTp(FreeTypePack{TypeLevel{}});
 
@@ -218,8 +214,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_types")
 
 TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
 {
-    ScopedFastFlag sff{"LuauLosslessClone", true};
-
     TypeVar tableTy{TableTypeVar{}};
     TableTypeVar* ttv = getMutable<TableTypeVar>(&tableTy);
     ttv->state = TableState::Free;
@@ -252,8 +246,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     fileResolver.source["Module/A"] = R"(
         --!nonstrict
         local a = {}

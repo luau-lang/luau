@@ -7,7 +7,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauEqConstraint)
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 using namespace Luau;
@@ -183,8 +182,6 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
 // We'll need to not only report an error on `a == b`, but also to refine both operands as `never` in the `==` branch.
 TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: string, b: boolean?)
             if a == b then
@@ -208,8 +205,6 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 // Just needs to fully support equality refinement. Which is annoying without type states.
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 {
-    ScopedFastFlag sff{"LuauDiscriminableUnions2", true};
-
     CheckResult result = check(R"(
         type T = {x: string, y: number} | {x: nil, y: nil}
 
@@ -414,14 +409,15 @@ TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_table
 }
 
 // Belongs in TypeInfer.builtins.test.cpp.
-TEST_CASE_FIXTURE(Fixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
+TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
 {
     CheckResult result = check(R"(
         local function f(): () end
         local ok, res = pcall(f)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Function only returns 1 value. 2 are required here", toString(result.errors[0]));
     // LUAU_REQUIRE_NO_ERRORS(result);
     // CHECK_EQ("boolean", toString(requireType("ok")));
     // CHECK_EQ("any", toString(requireType("res")));
@@ -469,6 +465,37 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_many_things_but_first_of_it
     // CHECK_EQ("any", toString(requireType("res")));
     CHECK_EQ("string", toString(requireType("s")));
     CHECK_EQ("boolean", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(o)
+            local t = {}
+            t[o] = true
+
+            local function foo(o)
+                o:m1()
+                t[o] = nil
+            end
+
+            local function bar(o)
+                o:m2()
+                t[o] = true
+            end
+
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // TODO: We're missing generics a... and b...
+    CHECK_EQ("(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

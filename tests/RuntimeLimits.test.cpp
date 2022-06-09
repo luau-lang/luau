@@ -22,11 +22,9 @@ struct LimitFixture : BuiltinsFixture
 #if defined(_NOOPT) || defined(_DEBUG)
     ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
 #endif
-
-    ScopedFastFlag LuauJustOneCallFrameForHaveSeen{"LuauJustOneCallFrameForHaveSeen", true};
 };
 
-template <typename T>
+template<typename T>
 bool hasError(const CheckResult& result, T* = nullptr)
 {
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](const TypeError& a) {

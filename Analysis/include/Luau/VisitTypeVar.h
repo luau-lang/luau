@@ -8,8 +8,8 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 
-LUAU_FASTFLAG(LuauUseVisitRecursionLimit)
 LUAU_FASTINT(LuauVisitRecursionLimit)
+LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 
 namespace Luau
 {
@@ -59,168 +59,6 @@ inline void unsee(std::unordered_set<void*>& seen, const void* tv)
 inline void unsee(DenseHashSet<void*>& seen, const void* tv)
 {
     // When DenseHashSet is used for 'visitTypeVarOnce', where don't forget visited elements
-}
-
-template<typename F, typename Set>
-void visit(TypePackId tp, F& f, Set& seen);
-
-template<typename F, typename Set>
-void visit(TypeId ty, F& f, Set& seen)
-{
-    if (visit_detail::hasSeen(seen, ty))
-    {
-        f.cycle(ty);
-        return;
-    }
-
-    if (auto btv = get<BoundTypeVar>(ty))
-    {
-        if (apply(ty, *btv, seen, f))
-            visit(btv->boundTo, f, seen);
-    }
-
-    else if (auto ftv = get<FreeTypeVar>(ty))
-        apply(ty, *ftv, seen, f);
-
-    else if (auto gtv = get<GenericTypeVar>(ty))
-        apply(ty, *gtv, seen, f);
-
-    else if (auto etv = get<ErrorTypeVar>(ty))
-        apply(ty, *etv, seen, f);
-
-    else if (auto ctv = get<ConstrainedTypeVar>(ty))
-    {
-        if (apply(ty, *ctv, seen, f))
-        {
-            for (TypeId part : ctv->parts)
-                visit(part, f, seen);
-        }
-    }
-
-    else if (auto ptv = get<PrimitiveTypeVar>(ty))
-        apply(ty, *ptv, seen, f);
-
-    else if (auto ftv = get<FunctionTypeVar>(ty))
-    {
-        if (apply(ty, *ftv, seen, f))
-        {
-            visit(ftv->argTypes, f, seen);
-            visit(ftv->retType, f, seen);
-        }
-    }
-
-    else if (auto ttv = get<TableTypeVar>(ty))
-    {
-        // Some visitors want to see bound tables, that's why we visit the original type
-        if (apply(ty, *ttv, seen, f))
-        {
-            if (ttv->boundTo)
-            {
-                visit(*ttv->boundTo, f, seen);
-            }
-            else
-            {
-                for (auto& [_name, prop] : ttv->props)
-                    visit(prop.type, f, seen);
-
-                if (ttv->indexer)
-                {
-                    visit(ttv->indexer->indexType, f, seen);
-                    visit(ttv->indexer->indexResultType, f, seen);
-                }
-            }
-        }
-    }
-
-    else if (auto mtv = get<MetatableTypeVar>(ty))
-    {
-        if (apply(ty, *mtv, seen, f))
-        {
-            visit(mtv->table, f, seen);
-            visit(mtv->metatable, f, seen);
-        }
-    }
-
-    else if (auto ctv = get<ClassTypeVar>(ty))
-    {
-        if (apply(ty, *ctv, seen, f))
-        {
-            for (const auto& [name, prop] : ctv->props)
-                visit(prop.type, f, seen);
-
-            if (ctv->parent)
-                visit(*ctv->parent, f, seen);
-
-            if (ctv->metatable)
-                visit(*ctv->metatable, f, seen);
-        }
-    }
-
-    else if (auto atv = get<AnyTypeVar>(ty))
-        apply(ty, *atv, seen, f);
-
-    else if (auto utv = get<UnionTypeVar>(ty))
-    {
-        if (apply(ty, *utv, seen, f))
-        {
-            for (TypeId optTy : utv->options)
-                visit(optTy, f, seen);
-        }
-    }
-
-    else if (auto itv = get<IntersectionTypeVar>(ty))
-    {
-        if (apply(ty, *itv, seen, f))
-        {
-            for (TypeId partTy : itv->parts)
-                visit(partTy, f, seen);
-        }
-    }
-
-    visit_detail::unsee(seen, ty);
-}
-
-template<typename F, typename Set>
-void visit(TypePackId tp, F& f, Set& seen)
-{
-    if (visit_detail::hasSeen(seen, tp))
-    {
-        f.cycle(tp);
-        return;
-    }
-
-    if (auto btv = get<BoundTypePack>(tp))
-    {
-        if (apply(tp, *btv, seen, f))
-            visit(btv->boundTo, f, seen);
-    }
-
-    else if (auto ftv = get<Unifiable::Free>(tp))
-        apply(tp, *ftv, seen, f);
-
-    else if (auto gtv = get<Unifiable::Generic>(tp))
-        apply(tp, *gtv, seen, f);
-
-    else if (auto etv = get<Unifiable::Error>(tp))
-        apply(tp, *etv, seen, f);
-
-    else if (auto pack = get<TypePack>(tp))
-    {
-        apply(tp, *pack, seen, f);
-
-        for (TypeId ty : pack->head)
-            visit(ty, f, seen);
-
-        if (pack->tail)
-            visit(*pack->tail, f, seen);
-    }
-    else if (auto pack = get<VariadicTypePack>(tp))
-    {
-        apply(tp, *pack, seen, f);
-        visit(pack->ty, f, seen);
-    }
-
-    visit_detail::unsee(seen, tp);
 }
 
 } // namespace visit_detail
@@ -471,18 +309,21 @@ struct GenericTypeVarVisitor
 
         else if (auto pack = get<TypePack>(tp))
         {
-            visit(tp, *pack);
+            bool res = visit(tp, *pack);
+            if (!FFlag::LuauNormalizeFlagIsConservative || res)
+            {
+                for (TypeId ty : pack->head)
+                    traverse(ty);
 
-            for (TypeId ty : pack->head)
-                traverse(ty);
-
-            if (pack->tail)
-                traverse(*pack->tail);
+                if (pack->tail)
+                    traverse(*pack->tail);
+            }
         }
         else if (auto pack = get<VariadicTypePack>(tp))
         {
-            visit(tp, *pack);
-            traverse(pack->ty);
+            bool res = visit(tp, *pack);
+            if (!FFlag::LuauNormalizeFlagIsConservative || res)
+                traverse(pack->ty);
         }
         else
             LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypePackId) is not exhaustive!");
@@ -508,38 +349,5 @@ struct TypeVarOnceVisitor : GenericTypeVarVisitor<DenseHashSet<void*>>
     {
     }
 };
-
-// Clip with FFlagLuauUseVisitRecursionLimit
-template<typename TID, typename F>
-void DEPRECATED_visitTypeVar(TID ty, F& f, std::unordered_set<void*>& seen)
-{
-    visit_detail::visit(ty, f, seen);
-}
-
-// Delete and inline when clipping FFlagLuauUseVisitRecursionLimit
-template<typename TID, typename F>
-void DEPRECATED_visitTypeVar(TID ty, F& f)
-{
-    if (FFlag::LuauUseVisitRecursionLimit)
-        f.traverse(ty);
-    else
-    {
-        std::unordered_set<void*> seen;
-        visit_detail::visit(ty, f, seen);
-    }
-}
-
-// Delete and inline when clipping FFlagLuauUseVisitRecursionLimit
-template<typename TID, typename F>
-void DEPRECATED_visitTypeVarOnce(TID ty, F& f, DenseHashSet<void*>& seen)
-{
-    if (FFlag::LuauUseVisitRecursionLimit)
-        f.traverse(ty);
-    else
-    {
-        seen.clear();
-        visit_detail::visit(ty, f, seen);
-    }
-}
 
 } // namespace Luau

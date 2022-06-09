@@ -5,6 +5,7 @@
 #include "Luau/Location.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Variant.h"
+#include "Luau/TypeArena.h"
 
 namespace Luau
 {
@@ -108,9 +109,6 @@ struct FunctionDoesNotTakeSelf
 
 struct FunctionRequiresSelf
 {
-    // TODO: Delete with LuauAnyInIsOptionalIsOptional
-    int requiredExtraNils = 0;
-
     bool operator==(const FunctionRequiresSelf& rhs) const;
 };
 

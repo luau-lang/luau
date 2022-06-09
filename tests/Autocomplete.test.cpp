@@ -14,7 +14,6 @@
 
 LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
 LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
-LUAU_FASTFLAG(LuauSeparateTypechecks)
 
 using namespace Luau;
 
@@ -83,20 +82,13 @@ struct ACFixtureImpl : BaseType
 
     LoadDefinitionFileResult loadDefinition(const std::string& source)
     {
-        if (FFlag::LuauSeparateTypechecks)
-        {
-            TypeChecker& typeChecker = this->frontend.typeCheckerForAutocomplete;
-            unfreeze(typeChecker.globalTypes);
-            LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
-            freeze(typeChecker.globalTypes);
+        TypeChecker& typeChecker = this->frontend.typeCheckerForAutocomplete;
+        unfreeze(typeChecker.globalTypes);
+        LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
+        freeze(typeChecker.globalTypes);
 
-            REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
-            return result;
-        }
-        else
-        {
-            return BaseType::loadDefinition(source);
-        }
+        REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
+        return result;
     }
 
     const Position& getPosition(char marker) const
@@ -2772,6 +2764,8 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocomplete_on_string_singletons")
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
 {
+    ScopedFastFlag sff{"LuauTwoPassAliasDefinitionFix", true};
+
     check(R"(
         type tag = "cat" | "dog"
         local function f(a: tag) end
@@ -2844,6 +2838,8 @@ f(@1)
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_escape")
 {
+    ScopedFastFlag sff{"LuauTwoPassAliasDefinitionFix", true};
+
     check(R"(
         type tag = "strange\t\"cat\"" | 'nice\t"dog"'
         local function f(x: tag) end

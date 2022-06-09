@@ -15,10 +15,7 @@ TEST_SUITE_BEGIN("NonstrictModeTests");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_number_or_string")
 {
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true}
-    };
+    ScopedFastFlag sff[]{{"LuauReturnTypeInferenceInNonstrict", true}, {"LuauLowerBoundsCalculation", true}};
 
     CheckResult result = check(R"(
         --!nonstrict
@@ -150,8 +147,6 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -169,8 +164,6 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
