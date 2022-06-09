@@ -1,13 +1,6 @@
 name: Luau Benchmarks
 
 on:
-  pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "papers/**"
-      - "rfcs/**"
-      - "*.md"
-      - "prototyping/**"
   push:
     branches:
       - master
@@ -83,7 +76,6 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push benchmark results
-        if: github.event_name == 'push'
         run: |
           echo "Pushing benchmark results..."
           cd gh-pages
