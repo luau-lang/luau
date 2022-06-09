@@ -18,8 +18,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        engine:
-          - { channel: stable, version: latest }
         bench:
           - {
               script: "run-benchmarks",
