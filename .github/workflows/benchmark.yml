@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-      - feat/add-cachegrind
 
     paths-ignore:
       - "docs/**"
@@ -29,7 +28,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
