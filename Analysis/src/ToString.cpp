@@ -11,6 +11,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauToStringTableBracesNewlines)
 
 /*
  * Prefix generic typenames with gen-
@@ -594,22 +595,54 @@ struct TypeVarStringifier
         {
         case TableState::Sealed:
             state.result.invalid = true;
-            openbrace = "{|";
-            closedbrace = "|}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{|";
+                closedbrace = "|}";
+            }
+            else
+            {
+                openbrace = "{| ";
+                closedbrace = " |}";
+            }
             break;
         case TableState::Unsealed:
-            openbrace = "{";
-            closedbrace = "}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{";
+                closedbrace = "}";
+            }
+            else
+            {
+                openbrace = "{ ";
+                closedbrace = " }";
+            }
             break;
         case TableState::Free:
             state.result.invalid = true;
-            openbrace = "{-";
-            closedbrace = "-}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{-";
+                closedbrace = "-}";
+            }
+            else
+            {
+                openbrace = "{- ";
+                closedbrace = " -}";
+            }
             break;
         case TableState::Generic:
             state.result.invalid = true;
-            openbrace = "{+";
-            closedbrace = "+}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{+";
+                closedbrace = "+}";
+            }
+            else
+            {
+                openbrace = "{+ ";
+                closedbrace = " +}";
+            }
             break;
         }
 
@@ -628,7 +661,8 @@ struct TypeVarStringifier
         bool comma = false;
         if (ttv.indexer)
         {
-            state.newline();
+            if (FFlag::LuauToStringTableBracesNewlines)
+                state.newline();
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");
@@ -645,7 +679,7 @@ struct TypeVarStringifier
                 state.emit(",");
                 state.newline();
             }
-            else
+            else if (FFlag::LuauToStringTableBracesNewlines)
             {
                 state.newline();
             }
@@ -675,10 +709,13 @@ struct TypeVarStringifier
         }
 
         state.dedent();
-        if (comma)
-            state.newline();
-        else
-            state.emit("  ");        
+        if (FFlag::LuauToStringTableBracesNewlines)
+        {
+            if (comma)
+                state.newline();
+            else
+                state.emit("  ");
+        }
         state.emit(closedbrace);
 
         state.unsee(&ttv);
