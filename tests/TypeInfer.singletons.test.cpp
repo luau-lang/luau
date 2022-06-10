@@ -139,8 +139,6 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
 {
-    ScopedFastFlag sff{"LuauTwoPassAliasDefinitionFix", true};
-
     CheckResult result = check(R"(
         type MyEnum = "foo" | "bar" | "baz"
         local a : MyEnum = "bang"

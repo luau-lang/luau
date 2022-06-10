@@ -10,7 +10,6 @@
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
 {

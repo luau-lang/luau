@@ -615,8 +615,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
  */
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any")
 {
-    ScopedFastFlag sff[] = {{"LuauTwoPassAliasDefinitionFix", true}};
-
     CheckResult result = check(R"(
         local function x()
             local y: FutureType = {}::any
@@ -633,10 +631,6 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
 
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauTwoPassAliasDefinitionFix", true},
-    };
-
     CheckResult result = check(R"(
         local B = {}
         B.bar = 4

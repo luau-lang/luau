@@ -741,7 +741,7 @@ TEST_CASE("ApiTables")
     lua_pop(L, 1);
 }
 
-TEST_CASE("ApiFunctionCalls")
+TEST_CASE("ApiCalls")
 {
     StateRef globalState = runConformance("apicalls.lua");
     lua_State* L = globalState.get();
@@ -789,6 +789,58 @@ TEST_CASE("ApiFunctionCalls")
 
         CHECK(lua_equal(L2, -1, -2) == 1);
         lua_pop(L2, 2);
+    }
+
+    // lua_clonefunction + fenv
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "getpi");
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 3.1415926);
+        lua_pop(L, 1);
+
+        lua_getfield(L, LUA_GLOBALSINDEX, "getpi");
+
+        // clone & override env
+        lua_clonefunction(L, -1);
+        lua_newtable(L);
+        lua_pushnumber(L, 42);
+        lua_setfield(L, -2, "pi");
+        lua_setfenv(L, -2);
+
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 42);
+        lua_pop(L, 1);
+
+        // this one calls original function again
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 3.1415926);
+        lua_pop(L, 1);
+    }
+
+    // lua_clonefunction + upvalues
+    {
+        lua_getfield(L, LUA_GLOBALSINDEX, "incuv");
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 1);
+        lua_pop(L, 1);
+
+        lua_getfield(L, LUA_GLOBALSINDEX, "incuv");
+        // two clones
+        lua_clonefunction(L, -1);
+        lua_clonefunction(L, -2);
+
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 2);
+        lua_pop(L, 1);
+
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 3);
+        lua_pop(L, 1);
+
+        // this one calls original function again
+        lua_call(L, 0, 1);
+        CHECK(lua_tonumber(L, -1) == 4);
+        lua_pop(L, 1);
     }
 }
 
@@ -1113,11 +1165,6 @@ TEST_CASE("UserdataApi")
 
 TEST_CASE("Iter")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauCompileIter", true},
-        {"LuauIter", true},
-    };
-
     runConformance("iter.lua");
 }
 

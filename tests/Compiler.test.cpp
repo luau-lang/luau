@@ -261,7 +261,6 @@ L1: RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
-    ScopedFastFlag sff("LuauCompileIter", true);
     ScopedFastFlag sff2("LuauCompileIterNoPairs", false);
 
     // basic for loop: variable directly refers to internal iteration index (R2)
@@ -350,8 +349,6 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
-    ScopedFastFlag sff("LuauCompileIter", true);
-
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
 GETIMPORT R0 1
@@ -2323,8 +2320,6 @@ return result
 
 TEST_CASE("DebugLineInfoFor")
 {
-    ScopedFastFlag sff("LuauCompileIter", true);
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -4355,8 +4350,6 @@ L1: RETURN R0 0
 
 TEST_CASE("LoopUnrollControlFlow")
 {
-    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
-
     ScopedFastInt sfis[] = {
         {"LuauCompileLoopUnrollThreshold", 50},
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
@@ -4475,8 +4468,6 @@ RETURN R0 0
 
 TEST_CASE("LoopUnrollNestedClosure")
 {
-    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
-
     // if the body has functions that refer to loop variables, we unroll the loop and use MOVE+CAPTURE for upvalues
     CHECK_EQ("\n" + compileFunction(R"(
 for i=1,2 do
@@ -4756,8 +4747,6 @@ RETURN R1 1
 
 TEST_CASE("InlineBasicProhibited")
 {
-    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
-
     // we can't inline variadic functions
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(...)
@@ -4833,8 +4822,6 @@ RETURN R1 1
 
 TEST_CASE("InlineNestedClosures")
 {
-    ScopedFastFlag sff("LuauCompileNestedClosureO2", true);
-
     // we can inline functions that contain/return functions
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(x)
