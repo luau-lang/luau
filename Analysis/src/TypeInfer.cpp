@@ -33,21 +33,20 @@ LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTFLAGVARIABLE(LuauExpectedPropTypeFromIndexer, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
-LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix, false)
+LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix2, false)
 LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
-LUAU_FASTFLAGVARIABLE(LuauTwoPassAliasDefinitionFix, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
 LUAU_FASTFLAGVARIABLE(LuauRecursionLimitException, false);
 LUAU_FASTFLAGVARIABLE(LuauApplyTypeFunctionFix, false);
-LUAU_FASTFLAGVARIABLE(LuauTypecheckIter, false);
 LUAU_FASTFLAGVARIABLE(LuauSuccessTypingForEqualityOperations, false)
-LUAU_FASTFLAGVARIABLE(LuauNoMethodLocations, false);
 LUAU_FASTFLAGVARIABLE(LuauAlwaysQuantify, false);
 LUAU_FASTFLAGVARIABLE(LuauReportErrorsOnIndexerKeyMismatch, false)
+LUAU_FASTFLAGVARIABLE(LuauFalsyPredicateReturnsNilInstead, false)
+LUAU_FASTFLAGVARIABLE(LuauNonCopyableTypeVarFields, false)
 
 namespace Luau
 {
@@ -358,8 +357,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     unifierState.cachedUnifyError.clear();
     unifierState.skipCacheForType.clear();
 
-    if (FFlag::LuauTwoPassAliasDefinitionFix)
-        duplicateTypeAliases.clear();
+    duplicateTypeAliases.clear();
 
     return std::move(currentModule);
 }
@@ -610,7 +608,7 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
     {
         if (const auto& typealias = stat->as<AstStatTypeAlias>())
         {
-            if (FFlag::LuauTwoPassAliasDefinitionFix && typealias->name == kParseNameError)
+            if (typealias->name == kParseNameError)
                 continue;
 
             auto& bindings = typealias->exported ? scope->exportedTypeBindings : scope->privateTypeBindings;
@@ -619,7 +617,16 @@ LUAU_NOINLINE void TypeChecker::checkBlockTypeAliases(const ScopePtr& scope, std
             TypeId type = bindings[name].type;
             if (get<FreeTypeVar>(follow(type)))
             {
-                *asMutable(type) = *errorRecoveryType(anyType);
+                if (FFlag::LuauNonCopyableTypeVarFields)
+                {
+                    TypeVar* mty = asMutable(follow(type));
+                    mty->reassign(*errorRecoveryType(anyType));
+                }
+                else
+                {
+                    *asMutable(type) = *errorRecoveryType(anyType);
+                }
+
                 reportError(TypeError{typealias->location, OccursCheckFailed{}});
             }
         }
@@ -1131,45 +1138,43 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         iterTy = instantiate(scope, checkExpr(scope, *firstValue).type, firstValue->location);
     }
 
-    if (FFlag::LuauTypecheckIter)
+    if (std::optional<TypeId> iterMM = findMetatableEntry(iterTy, "__iter", firstValue->location))
     {
-        if (std::optional<TypeId> iterMM = findMetatableEntry(iterTy, "__iter", firstValue->location))
+        // if __iter metamethod is present, it will be called and the results are going to be called as if they are functions
+        // TODO: this needs to typecheck all returned values by __iter as if they were for loop arguments
+        // the structure of the function makes it difficult to do this especially since we don't have actual expressions, only types
+        for (TypeId var : varTypes)
+            unify(anyType, var, forin.location);
+
+        return check(loopScope, *forin.body);
+    }
+
+    if (const TableTypeVar* iterTable = get<TableTypeVar>(iterTy))
+    {
+        // TODO: note that this doesn't cleanly handle iteration over mixed tables and tables without an indexer
+        // this behavior is more or less consistent with what we do for pairs(), but really both are pretty wrong and need revisiting
+        if (iterTable->indexer)
         {
-            // if __iter metamethod is present, it will be called and the results are going to be called as if they are functions
-            // TODO: this needs to typecheck all returned values by __iter as if they were for loop arguments
-            // the structure of the function makes it difficult to do this especially since we don't have actual expressions, only types
+            if (varTypes.size() > 0)
+                unify(iterTable->indexer->indexType, varTypes[0], forin.location);
+
+            if (varTypes.size() > 1)
+                unify(iterTable->indexer->indexResultType, varTypes[1], forin.location);
+
+            for (size_t i = 2; i < varTypes.size(); ++i)
+                unify(nilType, varTypes[i], forin.location);
+        }
+        else
+        {
+            TypeId varTy = errorRecoveryType(loopScope);
+
             for (TypeId var : varTypes)
-                unify(anyType, var, forin.location);
+                unify(varTy, var, forin.location);
 
-            return check(loopScope, *forin.body);
+            reportError(firstValue->location, GenericError{"Cannot iterate over a table without indexer"});
         }
-        else if (const TableTypeVar* iterTable = get<TableTypeVar>(iterTy))
-        {
-            // TODO: note that this doesn't cleanly handle iteration over mixed tables and tables without an indexer
-            // this behavior is more or less consistent with what we do for pairs(), but really both are pretty wrong and need revisiting
-            if (iterTable->indexer)
-            {
-                if (varTypes.size() > 0)
-                    unify(iterTable->indexer->indexType, varTypes[0], forin.location);
 
-                if (varTypes.size() > 1)
-                    unify(iterTable->indexer->indexResultType, varTypes[1], forin.location);
-
-                for (size_t i = 2; i < varTypes.size(); ++i)
-                    unify(nilType, varTypes[i], forin.location);
-            }
-            else
-            {
-                TypeId varTy = errorRecoveryType(loopScope);
-
-                for (TypeId var : varTypes)
-                    unify(varTy, var, forin.location);
-
-                reportError(firstValue->location, GenericError{"Cannot iterate over a table without indexer"});
-            }
-
-            return check(loopScope, *forin.body);
-        }
+        return check(loopScope, *forin.body);
     }
 
     const FunctionTypeVar* iterFunc = get<FunctionTypeVar>(iterTy);
@@ -1334,7 +1339,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
     Name name = typealias.name.value;
 
     // If the alias is missing a name, we can't do anything with it.  Ignore it.
-    if (FFlag::LuauTwoPassAliasDefinitionFix && name == kParseNameError)
+    if (name == kParseNameError)
         return;
 
     std::optional<TypeFun> binding;
@@ -1353,8 +1358,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
             reportError(TypeError{typealias.location, DuplicateTypeDefinition{name, location}});
 
             bindingsMap[name] = TypeFun{binding->typeParams, binding->typePackParams, errorRecoveryType(anyType)};
-            if (FFlag::LuauTwoPassAliasDefinitionFix)
-                duplicateTypeAliases.insert({typealias.exported, name});
+            duplicateTypeAliases.insert({typealias.exported, name});
         }
         else
         {
@@ -1378,7 +1382,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
     {
         // If the first pass failed (this should mean a duplicate definition), the second pass isn't going to be
         // interesting.
-        if (FFlag::LuauTwoPassAliasDefinitionFix && duplicateTypeAliases.find({typealias.exported, name}))
+        if (duplicateTypeAliases.find({typealias.exported, name}))
             return;
 
         if (!binding)
@@ -1422,9 +1426,6 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
                 {
                     // This is a shallow clone, original recursive links to self are not updated
                     TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
-
-                    if (!FFlag::LuauNoMethodLocations)
-                        clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
                     clone.definitionModuleName = ttv->definitionModuleName;
                     clone.name = name;
 
@@ -1462,9 +1463,8 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
         }
 
         TypeId& bindingType = bindingsMap[name].type;
-        bool ok = unify(ty, bindingType, typealias.location);
 
-        if (FFlag::LuauTwoPassAliasDefinitionFix && ok)
+        if (unify(ty, bindingType, typealias.location))
             bindingType = ty;
 
         if (FFlag::LuauLowerBoundsCalculation)
@@ -1532,7 +1532,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
 
-                if (FFlag::LuauSelfCallAutocompleteFix)
+                if (FFlag::LuauSelfCallAutocompleteFix2)
                     ftv->hasSelf = true;
             }
         }
@@ -3099,8 +3099,6 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
 
         property.type = freshTy();
         property.location = indexName->indexLocation;
-        if (!FFlag::LuauNoMethodLocations)
-            ttv->methodDefinitionLocations[name] = funName.location;
         return property.type;
     }
     else if (funName.is<AstExprError>())
@@ -4393,8 +4391,6 @@ TypeId Anyification::clean(TypeId ty)
     if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
     {
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, TableState::Sealed};
-        if (!FFlag::LuauNoMethodLocations)
-            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;
@@ -4705,8 +4701,11 @@ TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense)
         if (isNil(ty))
             return sense ? std::nullopt : std::optional<TypeId>(ty);
 
-        // at this point, anything else is kept if sense is true, or eliminated otherwise
-        return sense ? std::optional<TypeId>(ty) : std::nullopt;
+        // at this point, anything else is kept if sense is true, or replaced by nil
+        if (FFlag::LuauFalsyPredicateReturnsNilInstead)
+            return sense ? ty : nilType;
+        else
+            return sense ? std::optional<TypeId>(ty) : std::nullopt;
     };
 }
 

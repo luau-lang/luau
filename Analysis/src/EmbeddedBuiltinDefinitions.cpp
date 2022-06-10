@@ -7,7 +7,10 @@ namespace Luau
 static const std::string kBuiltinDefinitionLuaSrc = R"BUILTIN_SRC(
 
 declare bit32: {
-    -- band, bor, bxor, and btest are declared in C++
+    band: (...number) -> number,
+    bor: (...number) -> number,
+    bxor: (...number) -> number,
+    btest: (number, ...number) -> boolean,
     rrotate: (number, number) -> number,
     lrotate: (number, number) -> number,
     lshift: (number, number) -> number,
@@ -50,7 +53,8 @@ declare math: {
     asin: (number) -> number,
     atan2: (number, number) -> number,
 
-    -- min and max are declared in C++.
+    min: (number, ...number) -> number,
+    max: (number, ...number) -> number,
 
     pi: number,
     huge: number,

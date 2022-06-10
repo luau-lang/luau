@@ -2,8 +2,6 @@
 
 #include "Luau/Scope.h"
 
-LUAU_FASTFLAG(LuauTwoPassAliasDefinitionFix);
-
 namespace Luau
 {
 
@@ -19,8 +17,7 @@ Scope::Scope(const ScopePtr& parent, int subLevel)
     , returnType(parent->returnType)
     , level(parent->level.incr())
 {
-    if (FFlag::LuauTwoPassAliasDefinitionFix)
-        level = level.incr();
+    level = level.incr();
     level.subLevel = subLevel;
 }
 

@@ -48,13 +48,24 @@ struct TypePackVar
     explicit TypePackVar(const TypePackVariant& ty);
     explicit TypePackVar(TypePackVariant&& ty);
     TypePackVar(TypePackVariant&& ty, bool persistent);
+
     bool operator==(const TypePackVar& rhs) const;
+
     TypePackVar& operator=(TypePackVariant&& tp);
 
+    TypePackVar& operator=(const TypePackVar& rhs);
+
+    // Re-assignes the content of the pack, but doesn't change the owning arena and can't make pack persistent.
+    void reassign(const TypePackVar& rhs)
+    {
+        ty = rhs.ty;
+    }
+
     TypePackVariant ty;
+
     bool persistent = false;
 
-    // Pointer to the type arena that allocated this type.
+    // Pointer to the type arena that allocated this pack.
     TypeArena* owningArena = nullptr;
 };
 

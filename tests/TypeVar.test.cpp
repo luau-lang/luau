@@ -416,4 +416,24 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
     CHECK(!isBoolean(&union_));
 }
 
+TEST_CASE("content_reassignment")
+{
+    ScopedFastFlag luauNonCopyableTypeVarFields{"LuauNonCopyableTypeVarFields", true};
+
+    TypeVar myAny{AnyTypeVar{}, /*presistent*/ true};
+    myAny.normal = true;
+    myAny.documentationSymbol = "@global/any";
+
+    TypeArena arena;
+
+    TypeId futureAny = arena.addType(FreeTypeVar{TypeLevel{}});
+    asMutable(futureAny)->reassign(myAny);
+
+    CHECK(get<AnyTypeVar>(futureAny) != nullptr);
+    CHECK(!futureAny->persistent);
+    CHECK(futureAny->normal);
+    CHECK(futureAny->documentationSymbol == "@global/any");
+    CHECK(futureAny->owningArena == &arena);
+}
+
 TEST_SUITE_END();

@@ -334,7 +334,6 @@ struct TableTypeVar
     // We need to know which is which when we stringify types.
     std::optional<std::string> syntheticName;
 
-    std::map<Name, Location> methodDefinitionLocations; // TODO: Remove with FFlag::LuauNoMethodLocations
     std::vector<TypeId> instantiatedTypeParams;
     std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;
@@ -465,6 +464,14 @@ struct TypeVar final
     {
     }
 
+    // Re-assignes the content of the type, but doesn't change the owning arena and can't make type persistent.
+    void reassign(const TypeVar& rhs)
+    {
+        ty = rhs.ty;
+        normal = rhs.normal;
+        documentationSymbol = rhs.documentationSymbol;
+    }
+
     TypeVariant ty;
 
     // Kludge: A persistent TypeVar is one that belongs to the global scope.
@@ -486,6 +493,8 @@ struct TypeVar final
 
     TypeVar& operator=(const TypeVariant& rhs);
     TypeVar& operator=(TypeVariant&& rhs);
+
+    TypeVar& operator=(const TypeVar& rhs);
 };
 
 using SeenSet = std::set<std::pair<const void*, const void*>>;
