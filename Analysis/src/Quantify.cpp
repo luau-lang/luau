@@ -32,41 +32,6 @@ struct Quantifier final : TypeVarOnceVisitor
         LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     }
 
-    void cycle(TypeId) override {}
-    void cycle(TypePackId) override {}
-
-    bool operator()(TypeId ty, const FreeTypeVar& ftv)
-    {
-        return visit(ty, ftv);
-    }
-
-    template<typename T>
-    bool operator()(TypeId ty, const T& t)
-    {
-        return true;
-    }
-
-    template<typename T>
-    bool operator()(TypePackId, const T&)
-    {
-        return true;
-    }
-
-    bool operator()(TypeId ty, const ConstrainedTypeVar&)
-    {
-        return true;
-    }
-
-    bool operator()(TypeId ty, const TableTypeVar& ttv)
-    {
-        return visit(ty, ttv);
-    }
-
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
-    {
-        return visit(tp, ftp);
-    }
-
     /// @return true if outer encloses inner
     bool subsumes(Scope2* outer, Scope2* inner)
     {

@@ -202,22 +202,29 @@ void luaD_growstack(lua_State* L, int n)
 
 CallInfo* luaD_growCI(lua_State* L)
 {
-    if (L->size_ci > LUAI_MAXCALLS) /* overflow while handling overflow? */
-        luaD_throw(L, LUA_ERRERR);
-    else
-    {
-        luaD_reallocCI(L, 2 * L->size_ci);
-        if (L->size_ci > LUAI_MAXCALLS)
-            luaG_runerror(L, "stack overflow");
-    }
+    /* allow extra stack space to handle stack overflow in xpcall */
+    const int hardlimit = LUAI_MAXCALLS + (LUAI_MAXCALLS >> 3);
+
+    if (L->size_ci >= hardlimit)
+        luaD_throw(L, LUA_ERRERR); /* error while handling stack error */
+
+    int request = L->size_ci * 2;
+    luaD_reallocCI(L, L->size_ci >= LUAI_MAXCALLS ? hardlimit : request < LUAI_MAXCALLS ? request : LUAI_MAXCALLS);
+
+    if (L->size_ci > LUAI_MAXCALLS)
+        luaG_runerror(L, "stack overflow");
+
     return ++L->ci;
 }
 
 void luaD_checkCstack(lua_State* L)
 {
+    /* allow extra stack space to handle stack overflow in xpcall */
+    const int hardlimit = LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3);
+
     if (L->nCcalls == LUAI_MAXCCALLS)
         luaG_runerror(L, "C stack overflow");
-    else if (L->nCcalls >= (LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3)))
+    else if (L->nCcalls >= hardlimit)
         luaD_throw(L, LUA_ERRERR); /* error while handling stack error */
 }
 

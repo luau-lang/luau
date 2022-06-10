@@ -16,8 +16,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauIter, false)
-
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -2214,7 +2212,7 @@ static void luau_execute(lua_State* L)
                 {
                     /* will be called during FORGLOOP */
                 }
-                else if (FFlag::LuauIter)
+                else
                 {
                     Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
 
@@ -2258,17 +2256,6 @@ static void luau_execute(lua_State* L)
                 Instruction insn = *pc++;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
                 uint32_t aux = *pc;
-
-                if (!FFlag::LuauIter)
-                {
-                    bool stop;
-                    VM_PROTECT(stop = luau_loopFORG(L, LUAU_INSN_A(insn), aux));
-
-                    // note that we need to increment pc by 1 to exit the loop since we need to skip over aux
-                    pc += stop ? 1 : LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
-                    VM_NEXT();
-                }
 
                 // fast-path: builtin table iteration
                 if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
@@ -2362,7 +2349,7 @@ static void luau_execute(lua_State* L)
                     /* ra+1 is already the table */
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
-                else if (FFlag::LuauIter && !ttisfunction(ra))
+                else if (!ttisfunction(ra))
                 {
                     VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
                 }
@@ -2434,7 +2421,7 @@ static void luau_execute(lua_State* L)
                     /* ra+1 is already the table */
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
-                else if (FFlag::LuauIter && !ttisfunction(ra))
+                else if (!ttisfunction(ra))
                 {
                     VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
                 }

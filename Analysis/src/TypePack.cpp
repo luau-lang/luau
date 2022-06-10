@@ -5,6 +5,8 @@
 
 #include <stdexcept>
 
+LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
+
 namespace Luau
 {
 
@@ -33,6 +35,25 @@ bool TypePackVar::operator==(const TypePackVar& rhs) const
 TypePackVar& TypePackVar::operator=(TypePackVariant&& tp)
 {
     ty = std::move(tp);
+    return *this;
+}
+
+TypePackVar& TypePackVar::operator=(const TypePackVar& rhs)
+{
+    if (FFlag::LuauNonCopyableTypeVarFields)
+    {
+        LUAU_ASSERT(owningArena == rhs.owningArena);
+        LUAU_ASSERT(!rhs.persistent);
+
+        reassign(rhs);
+    }
+    else
+    {
+        ty = rhs.ty;
+        persistent = rhs.persistent;
+        owningArena = rhs.owningArena;
+    }
+
     return *this;
 }
 

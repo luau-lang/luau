@@ -300,4 +300,24 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
 }
 
+TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
+{
+    ScopedFastFlag luauNonCopyableTypeVarFields{"LuauNonCopyableTypeVarFields", true};
+
+    fileResolver.source["Module/A"] = R"(
+export type A = B
+type B = A
+    )";
+
+    FrontendOptions opts;
+    opts.retainFullTypeGraphs = false;
+    CheckResult result = frontend.check("Module/A", opts);
+    LUAU_REQUIRE_ERRORS(result);
+
+    auto mod = frontend.moduleResolver.getModule("Module/A");
+    auto it = mod->getModuleScope()->exportedTypeBindings.find("A");
+    REQUIRE(it != mod->getModuleScope()->exportedTypeBindings.end());
+    CHECK(toString(it->second.type) == "any");
+}
+
 TEST_SUITE_END();
