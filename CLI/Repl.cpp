@@ -225,6 +225,10 @@ std::string runCode(lua_State* L, const std::string& source)
             lua_pcall(T, n, 0, 0);
         }
     }
+    else if (status == LUA_SIGINT)
+    {
+        fputs("\nExecution interrupted\n", stdout);
+    }
     else
     {
         std::string error;

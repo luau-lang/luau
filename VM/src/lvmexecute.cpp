@@ -13,6 +13,7 @@
 #include "lbuiltins.h"
 #include "lnumutils.h"
 #include "lbytecode.h"
+#include <csignal>
 
 #include <string.h>
 
@@ -124,13 +125,24 @@
  * VM_CONTINUE() Use an opcode override to dispatch with computed goto or
  * switch statement to skip a LOP_BREAK instruction.
  */
+volatile sig_atomic_t sigint_received = 0;
+static void handle_sig(int signum) {
+    sigint_received = 1;
+}
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
-#define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
+
+#define VM_NEXT() \
+    if (sigint_received)\
+     { sigint_received = 0; L->status = LUA_SIGINT; goto exit; } \
+    else goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else
 #define VM_CASE(op) case op:
-#define VM_NEXT() goto dispatch
+#define VM_NEXT() \
+    if (sigint_received)\
+     { sigint_received = 0; } \
+    else goto dispatch
 #define VM_CONTINUE(op) \
     dispatchOp = uint8_t(op); \
     goto dispatchContinue
@@ -319,6 +331,8 @@ static void luau_execute(lua_State* L)
     cl = clvalue(L->ci->func);
     base = L->base;
     k = cl->l.p->k;
+
+    signal(SIGINT, handle_sig);
 
     VM_NEXT(); // starts the interpreter "loop"
 

@@ -33,6 +33,7 @@ enum lua_Status
     LUA_ERRMEM,
     LUA_ERRERR,
     LUA_BREAK, /* yielded for a debug breakpoint */
+    LUA_SIGINT, /* thread stopped after receiving a SIGINT */
 };
 
 typedef struct lua_State lua_State;
