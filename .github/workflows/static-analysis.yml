@@ -40,10 +40,14 @@ jobs:
       - name: Build Luau
         run: make config=release luau luau-analyze
 
-      - uses: actions/setup-python@v3
-        with:
-          python-version: "3.9"
-          architecture: "x64"
+      - name: Setup python
+        run: |
+          sudo apt-get install python3
+
+      # - uses: actions/setup-python@v3
+      #   with:
+      #     python-version: "3.9"
+      #     architecture: "x64"
 
       - name: Install python dependencies
         run: |
