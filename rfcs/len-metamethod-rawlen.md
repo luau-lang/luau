@@ -35,6 +35,8 @@ and even when it is, using the existing metamethod-absence-caching approach we u
 statistically significant difference on existing benchmark suite. This does complicate the `#` computation a little more which may affect JIT as well, but even if the
 table doesn't have a metatable the process of computing `#` involves a series of condition checks and as such will likely require slow paths anyway.
 
+This is technically changing semantics of `#` when called on tables with an existing `__len` metamethod, and as such has a potential to change behavior of an existing valid program. That said, it's unlikely that any table would have a metatable with `__len` metamethod as outside of userdata these do not do anything.
+
 ## Alternatives
 
 Do not implement `__len`.
