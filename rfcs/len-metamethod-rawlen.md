@@ -20,7 +20,7 @@ Supporting `__len` would make it possible to implement a custom integer based co
 
 ## Design
 
-`#v` will call `__len` metamethod if the object is a table and the metamethod exists; the result of the metamethod will be returned.
+`#v` will call `__len` metamethod if the object is a table and the metamethod exists; the result of the metamethod will be returned if it's a number (an error will be raised otherwise).
 
 `table.` functions that implicitly compute table length, such as `table.getn`, `table.insert`, will continue using the actual table length. This is consistent with the
 general policy that Luau doesn't support metamethods in `table.` functions.
