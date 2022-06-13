@@ -1,5 +1,5 @@
 import os, sys, time
-import numpy as np
+import numpy 
 from scipy import mean, stats
 
 
@@ -32,7 +32,7 @@ for i in range(1,cycles_to_run):
   duration_list.append(duration_ms)
 
 # Stats
-mean = np.mean(duration_list)
+mean = numpy.mean(duration_list)
 std_err = stats.sem(duration_list)
 
 print("SUCCESS: {} : {:.2f}ms +/- {:.2f}% on luau ".format('duration', mean,std_err))
