@@ -44,14 +44,14 @@ jobs:
         run: |
           sudo apt-get install python3
 
-      # - uses: actions/setup-python@v3
-      #   with:
-      #     python-version: "3.9"
-      #     architecture: "x64"
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          architecture: "x64"
 
       - name: Install python dependencies
         run: |
-          python -m pip install requests numpy scipy matplotlib ipython jupyter pandas sympy nose
+          pip install requests numpy scipy matplotlib ipython jupyter pandas sympy nose
 
       - name: Install valgrind
         run: |
