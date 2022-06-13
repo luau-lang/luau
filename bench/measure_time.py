@@ -1,5 +1,4 @@
-import os, sys, time
-import numpy 
+import os, sys, time, numpy 
 from scipy import mean, stats
 
 
