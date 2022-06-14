@@ -100,10 +100,10 @@ for i in "${!TOTALS_ARRAY[@]}"; do
     if [[ $OPS_PER_SEC =~ ^[+-]?[0-9]*$ ]]
     then # $OPS_PER_SEC is integer
         printf "%s#%s x %.0f %s ±%s (%d runs sampled)\n" \
-            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS" 
+            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS"
     else # $OPS_PER_SEC is float
         printf "%s#%s x %.10f %s ±%s (%d runs sampled)\n" \
-            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS" 
+            "$3" "$EVENT_NAME" "$OPS_PER_SEC" "$UNIT" "$STD_DEV" "$RUNS"
     fi
-    
+
 done
