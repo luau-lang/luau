@@ -47,7 +47,7 @@ jobs:
 
       - name: Install python dependencies
         run: |
-          pip install requests numpy scipy matplotlib ipython jupyter pandas sympy nose
+          sudo pip install requests numpy scipy matplotlib ipython jupyter pandas sympy nose
 
       - name: Install valgrind
         run: |
@@ -57,7 +57,7 @@ jobs:
       #   run: python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
-        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
+        run: sudo ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
 
       # - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
       #   run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}" 1  ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
