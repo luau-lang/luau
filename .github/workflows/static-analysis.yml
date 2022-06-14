@@ -57,10 +57,10 @@ jobs:
         run: python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
-        run: sudo ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
+        run: sudo ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee ${{ matrix.bench.script }}-cachegrind-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
-        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}" 1  ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}" 1  ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-cachegrind-output.txt
 
       - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
@@ -78,6 +78,22 @@ jobs:
 
           gh-pages-branch: "main"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          alert-threshold: 150%
+          fail-threshold: 200%
+          fail-on-alert: true
+          comment-on-alert: true
+          comment-always: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Store ${{ matrix.bench.title }} result (CacheGrind)
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }}
+          tool: "benchmarkluau"
+
+          gh-pages-branch: "main"
+          output-file-path: ./${{ matrix.bench.script }}-cachegrind-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
           alert-threshold: 150%
           fail-threshold: 200%
