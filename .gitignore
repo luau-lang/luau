@@ -8,3 +8,4 @@
 /default.prof*
 /fuzz-*
 /luau
+cachegrind.out.*
