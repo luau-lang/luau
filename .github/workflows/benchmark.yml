@@ -13,7 +13,7 @@ on:
 
 jobs:
   windows:
-    name: Run ${{ matrix.bench.title }} (Windows)
+    name: Run ${{ matrix.bench.title }} (Windows ${{matrix.arch}})
     strategy:
       fail-fast: false
       matrix:
