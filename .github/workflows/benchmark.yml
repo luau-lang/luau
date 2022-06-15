@@ -37,13 +37,33 @@ jobs:
       - name: Checkout Luau repository
         uses: actions/checkout@v3
 
-      - name: Build Luau
+      # - name: Build Luau
+      #   shell: bash # necessary for fail-fast
+      #   run: |
+      #     mkdir build && cd build
+      #     cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      #     cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
+      #     cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
+      - name: cmake configure
+        run: cmake . -A ${{matrix.arch}} -DLUAU_WERROR=ON
+
+      - name: cmake test
         shell: bash # necessary for fail-fast
         run: |
-          mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
-          cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
+          cmake --build . --target Luau.UnitTest Luau.Conformance --config Debug
+          Debug/Luau.UnitTest.exe
+          Debug/Luau.Conformance.exe
+      - name: cmake test w/flags
+        shell: bash # necessary for fail-fast
+        run: |
+          Debug/Luau.UnitTest.exe --fflags=true
+          Debug/Luau.Conformance.exe --fflags=true
+      - name: cmake cli
+        shell: bash # necessary for fail-fast
+        run: |
+          cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Debug # match config with tests to improve build time
+          Debug/luau tests/conformance/assert.lua
+          Debug/luau-analyze tests/conformance/assert.lua
 
       - name: Check dir structure
         run: |
