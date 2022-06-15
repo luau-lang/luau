@@ -4,7 +4,7 @@ module Luau.StrictMode.ToString where
 
 open import Agda.Builtin.Nat using (Nat; suc)
 open import FFI.Data.String using (String; _++_)
-open import Luau.Subtyping using (_≮:_; Tree; witness; scalar; function; function-ok; function-err)
+open import Luau.Subtyping using (_≮:_; Tree; witness; scalar; function; function-ok; function-err; function-tgt)
 open import Luau.StrictMode using (Warningᴱ; Warningᴮ; UnallocatedAddress; UnboundVariable; FunctionCallMismatch; FunctionDefnMismatch; BlockMismatch; app₁; app₂; BinOpMismatch₁; BinOpMismatch₂; bin₁; bin₂; block₁; return; LocalVarMismatch; local₁; local₂; function₁; function₂; heap; expr; block; addr)
 open import Luau.Syntax using (Expr; val; yes; var; var_∈_; _⟨_⟩∈_; _$_; addr; number; binexp; nil; function_is_end; block_is_end; done; return; local_←_; _∙_; fun; arg; name)
 open import Luau.Type using (number; boolean; string; nil)
@@ -27,8 +27,9 @@ treeToString (scalar boolean) n v = v ++ " is a boolean"
 treeToString (scalar string) n v = v ++ " is a string"
 treeToString (scalar nil) n v = v ++ " is nil"
 treeToString function n v = v ++ " is a function"
-treeToString (function-ok t) n v = treeToString t n (v ++ "()")
+treeToString (function-ok s t) n v = treeToString t (suc n) (v ++ "(" ++ w ++ ")") ++ " when\n  " ++ treeToString s (suc n) w where w = tmp n
 treeToString (function-err t) n v = v ++ "(" ++ w ++ ") can error when\n  " ++ treeToString t (suc n) w where w = tmp n
+treeToString (function-tgt t) n v = treeToString t n (v ++ "()")
 
 subtypeWarningToString : ∀ {T U} → (T ≮: U) → String
 subtypeWarningToString (witness t p q) = "\n  because provided type contains v, where " ++ treeToString t 0 "v"
