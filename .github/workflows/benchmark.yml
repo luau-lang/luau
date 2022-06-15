@@ -62,10 +62,6 @@ jobs:
           python -m pip install requests
           python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
 
-      - name: Install valgrind
-        run: |
-          sudo apt-get install valgrind
-
       - name: Run benchmark
         run: |
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
