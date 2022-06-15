@@ -51,7 +51,7 @@ jobs:
 
       - name: Check dir structure
         run: |
-          ls build
+          ls build/RelWithDebInfo
           ls
 
       - uses: actions/setup-python@v3
