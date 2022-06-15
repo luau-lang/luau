@@ -47,7 +47,7 @@ jobs:
       - name: Check dir structure
         run: |
           ls
-          ls build
+          ls Win32
 
       - uses: actions/setup-python@v3
         with:
