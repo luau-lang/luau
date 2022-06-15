@@ -74,6 +74,12 @@
 #else
 #define VM_INTERRUPT() \
     { \
+        if (sigint_received)\
+        { \
+            sigint_received = 0; \
+            L->status = LUA_SIGINT; \
+            goto exit; \
+        } \
         void (*interrupt)(lua_State*, int) = L->global->cb.interrupt; \
         if (LUAU_UNLIKELY(!!interrupt)) \
         { /* the interrupt hook is called right before we advance pc */ \
@@ -132,17 +138,11 @@ static void handle_sig(int signum) {
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
 
-#define VM_NEXT() \
-    if (sigint_received)\
-     { sigint_received = 0; L->status = LUA_SIGINT; goto exit; } \
-    else goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
+#define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else
 #define VM_CASE(op) case op:
-#define VM_NEXT() \
-    if (sigint_received)\
-     { sigint_received = 0; } \
-    else goto dispatch
+#define VM_NEXT() goto dispatch
 #define VM_CONTINUE(op) \
     dispatchOp = uint8_t(op); \
     goto dispatchContinue
