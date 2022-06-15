@@ -47,7 +47,7 @@ jobs:
 
       - name: Check dir structure
         run: |
-          ls build
+          ls build/Luau.Repl.CLI.dir
 
       - uses: actions/setup-python@v3
         with:
