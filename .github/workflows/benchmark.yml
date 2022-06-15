@@ -44,6 +44,11 @@ jobs:
           cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
           cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
 
+      - name: Check dir structure
+        run: |
+          ls
+          ls build
+
       - uses: actions/setup-python@v3
         with:
           python-version: "3.9"
