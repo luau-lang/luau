@@ -40,15 +40,14 @@ jobs:
       - name: Build Luau
         shell: bash # necessary for fail-fast
         run: |
-          mkdir cmake && cd cmake
+          mkdir build && cd build
           cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
           cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
 
       - name: Check dir structure
         run: |
-          ls
-          ls Win32
+          ls build
 
       - uses: actions/setup-python@v3
         with:
