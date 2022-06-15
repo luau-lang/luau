@@ -42,12 +42,12 @@ jobs:
         run: |
           mkdir build && cd build
           cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build . --target Luau.Repl.CLI
-          cmake --build . --target Luau.Analyze.CLI
+          cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
+          cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
 
       - name: Check dir structure
         run: |
-          ls build
+          ls build/RelWithDebInfo
 
       - uses: actions/setup-python@v3
         with:
