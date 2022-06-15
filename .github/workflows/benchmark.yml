@@ -47,7 +47,8 @@ jobs:
 
       - name: Move build files to root
         run: |
-          move build/RelWithDebInfo/* ../../
+          echo %cd%
+          move build/RelWithDebInfo/* .
 
       - name: Check dir structure
         run: |
