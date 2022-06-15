@@ -104,7 +104,7 @@ jobs:
           cd ..
 
   unix:
-    name: Run ${{ matrix.bench.title }} (Unix)
+    name: Run ${{ matrix.bench.title }} (${{ matrix.os}})
     strategy:
       fail-fast: false
       matrix:
