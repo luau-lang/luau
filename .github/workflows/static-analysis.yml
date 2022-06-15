@@ -91,7 +91,6 @@ jobs:
         with:
           name: ${{ matrix.bench.title }}
           tool: "roblox"
-
           gh-pages-branch: "main"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
