@@ -324,13 +324,6 @@ local a: Animal = if true then { tag = 'cat', catfood = 'something' } else { tag
 
 TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_singleton")
 {
-    ScopedFastFlag sff[]{
-        {"LuauEqConstraint", true},
-        {"LuauDiscriminableUnions2", true},
-        {"LuauWidenIfSupertypeIsFree2", true},
-        {"LuauWeakEqConstraint", false},
-    };
-
     CheckResult result = check(R"(
         local function foo(f, x)
             if x == "hi" then
@@ -349,14 +342,6 @@ TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_si
 
 TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-        {"LuauEqConstraint", true},
-        {"LuauWidenIfSupertypeIsFree2", true},
-        {"LuauWeakEqConstraint", false},
-        {"LuauDoNotAccidentallyDependOnPointerOrdering", true},
-    };
-
     CheckResult result = check(R"(
         local function foo(f, x): "hello"? -- anyone there?
             return if x == "hi"
@@ -374,10 +359,6 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
 
 TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
 {
-    ScopedFastFlag sff[]{
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         local foo: "foo" = "foo"
         local copy = foo
@@ -389,11 +370,6 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
 
 TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         type Cat = {tag: "Cat", meows: boolean}
         type Dog = {tag: "Dog", barks: boolean}
@@ -415,11 +391,9 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_with_a_singleton_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
-    ScopedFastFlag sff[]{
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
 
     CheckResult result = check(R"(
         local function foo(t, x)
@@ -441,10 +415,6 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_with_a_singleton_argument")
 
 TEST_CASE_FIXTURE(Fixture, "functions_are_not_to_be_widened")
 {
-    ScopedFastFlag sff[]{
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         local function foo(my_enum: "A" | "B") end
     )");
@@ -456,10 +426,6 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_not_to_be_widened")
 
 TEST_CASE_FIXTURE(Fixture, "indexing_on_string_singletons")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local a: string = "hi"
         if a == "hi" then
@@ -474,10 +440,6 @@ TEST_CASE_FIXTURE(Fixture, "indexing_on_string_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "indexing_on_union_of_string_singletons")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local a: string = "hi"
         if a == "hi" or a == "bye" then
@@ -492,10 +454,6 @@ TEST_CASE_FIXTURE(Fixture, "indexing_on_union_of_string_singletons")
 
 TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local a: string = "hi"
         if a == "hi" then
@@ -510,10 +468,6 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
 
 TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
 {
-    ScopedFastFlag sff[]{
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local a: string = "hi"
         if a == "hi" or a == "bye" then

@@ -148,6 +148,7 @@ LUA_API const char* lua_tostringatom(lua_State* L, int idx, int* atom);
 LUA_API const char* lua_namecallatom(lua_State* L, int* atom);
 LUA_API int lua_objlen(lua_State* L, int idx);
 LUA_API lua_CFunction lua_tocfunction(lua_State* L, int idx);
+LUA_API void* lua_tolightuserdata(lua_State* L, int idx);
 LUA_API void* lua_touserdata(lua_State* L, int idx);
 LUA_API void* lua_touserdatatagged(lua_State* L, int idx, int tag);
 LUA_API int lua_userdatatag(lua_State* L, int idx);

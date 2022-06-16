@@ -44,6 +44,9 @@ void createSomeClasses(TypeChecker& typeChecker)
     addGlobalBinding(typeChecker, "Unrelated", {unrelatedType});
     typeChecker.globalScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
 
+    for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+        persist(ty.type);
+
     freeze(arena);
 }
 
@@ -681,9 +684,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 {
-    ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-    };
+    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", false}};
 
     check(R"(
         type Fiber = {
@@ -695,6 +696,23 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 
     TypeId t = requireType("f");
     CHECK(t->normal);
+}
+
+// Unfortunately, getting this right in the general case is difficult.
+TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
+{
+    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", true}};
+
+    check(R"(
+        type Fiber = {
+            return_: Fiber?
+        }
+
+        local f: Fiber
+    )");
+
+    TypeId t = requireType("f");
+    CHECK(!t->normal);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_tail_is_marked_normal")
@@ -739,7 +757,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
     CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
 }
 
-TEST_CASE_FIXTURE(Fixture, "union_of_distinct_free_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
@@ -760,7 +778,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_distinct_free_types")
     CHECK("<a, b>(a, b) -> a | b" == toString(requireType("fussy")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "constrained_intersection_of_intersections")
+TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_intersection_of_intersections")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
@@ -951,7 +969,7 @@ TEST_CASE_FIXTURE(Fixture, "nested_table_normalization_with_non_table__no_ice")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "visiting_a_type_twice_is_not_considered_normal")
+TEST_CASE_FIXTURE(BuiltinsFixture, "visiting_a_type_twice_is_not_considered_normal")
 {
     ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
 
@@ -976,7 +994,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_failure_instersection_combine_must_follow")
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeCombineIntersectionFix", true},
     };
 
     CheckResult result = check(R"(
@@ -993,6 +1010,53 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_failure_bound_type_is_normal_but_not_its_bounde
     CheckResult result = check(R"(
         type t252 = ((t0<t252...>)|(any))|(any)
         type t0 = t252<t0<any,t24...>,t24...>
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+// We had an issue where a normal BoundTypeVar might point at a non-normal BoundTypeVar if it in turn pointed to a
+// normal TypeVar because we were calling follow() in an improper place.
+TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their_pointee_is_normal")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true},
+    };
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T:M()
+            local function f(a)
+                print(self.prop)
+                self:g(a)
+                self.prop = a
+            end
+        end
+
+        return T
+    )");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
+{
+    createSomeClasses(typeChecker);
+
+    CheckResult result = check(R"(
+export type t0 = { a: Child }
+export type t1 = { a: typeof(string.byte) }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersection_combine_on_bound_self")
+{
+    ScopedFastFlag luauNormalizeCombineEqFix{"LuauNormalizeCombineEqFix", true};
+
+    CheckResult result = check(R"(
+export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))
     )");
 
     LUAU_REQUIRE_ERRORS(result);

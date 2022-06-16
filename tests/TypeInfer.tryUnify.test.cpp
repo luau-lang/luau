@@ -196,7 +196,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
     CHECK_EQ(toString(tm->wantedType), "string");
 }
 
-TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unification")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
     CheckResult result = check(R"(
         --!strict

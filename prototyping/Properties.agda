@@ -7,7 +7,6 @@ import Properties.Dec
 import Properties.DecSubtyping
 import Properties.Equality
 import Properties.Functions
-import Properties.FunctionTypes
 import Properties.Remember
 import Properties.Step
 import Properties.StrictMode

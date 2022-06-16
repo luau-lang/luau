@@ -575,6 +575,7 @@ ic_private const char* parse_tag_value( tag_t* tag, char* idbuf, const char* s, 
   }  
   // limit name and attr to 128 bytes
   char valbuf[128];
+  valbuf[0] = 0; // fixes gcc uninitialized warning
   ic_strncpy( idbuf, 128, id, idend - id);
   ic_strncpy( valbuf, 128, val, valend - val);
   ic_str_tolower(idbuf);

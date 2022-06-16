@@ -7,8 +7,6 @@
 #include "Luau/TypeVar.h"
 #include "Luau/TypePack.h"
 
-LUAU_FASTFLAG(LuauTypecheckOptPass)
-
 namespace Luau
 {
 
@@ -91,15 +89,6 @@ struct TxnLog
         , typePackChanges(nullptr)
         , sharedSeen(sharedSeen)
     {
-    }
-
-    TxnLog(TxnLog* parent, std::vector<std::pair<TypeOrPackId, TypeOrPackId>>* sharedSeen)
-        : typeVarChanges(nullptr)
-        , typePackChanges(nullptr)
-        , parent(parent)
-        , sharedSeen(sharedSeen)
-    {
-        LUAU_ASSERT(!FFlag::LuauTypecheckOptPass);
     }
 
     TxnLog(const TxnLog&) = delete;

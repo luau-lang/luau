@@ -10,7 +10,7 @@
 using namespace Luau;
 using std::nullopt;
 
-struct ClassFixture : Fixture
+struct ClassFixture : BuiltinsFixture
 {
     ClassFixture()
     {
@@ -470,8 +470,6 @@ caused by:
 
 TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")
 {
-    ScopedFastFlag luauClassDefinitionModuleInError{"LuauClassDefinitionModuleInError", true};
-
     CheckResult result = check(R"(
 local i = ChildClass.New()
 type ChildClass = { x: number }

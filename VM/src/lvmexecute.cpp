@@ -16,11 +16,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauIter, false)
-LUAU_DYNAMIC_FASTFLAGVARIABLE(LuauIterCallTelemetry, false)
-
-void (*lua_iter_call_telemetry)(lua_State* L);
-
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -157,17 +152,6 @@ LUAU_NOINLINE static bool luau_loopFORG(lua_State* L, int a, int c)
     StkId ra = &L->base[a];
     LUAU_ASSERT(ra + 3 <= L->top);
 
-    if (DFFlag::LuauIterCallTelemetry)
-    {
-        /* TODO: we might be able to stop supporting this depending on whether it's used in practice */
-        void (*telemetrycb)(lua_State* L) = lua_iter_call_telemetry;
-
-        if (telemetrycb && ttistable(ra) && fasttm(L, hvalue(ra)->metatable, TM_CALL))
-            telemetrycb(L);
-        if (telemetrycb && ttisuserdata(ra) && fasttm(L, uvalue(ra)->metatable, TM_CALL))
-            telemetrycb(L);
-    }
-
     setobjs2s(L, ra + 3 + 2, ra + 2);
     setobjs2s(L, ra + 3 + 1, ra + 1);
     setobjs2s(L, ra + 3, ra);
@@ -195,7 +179,7 @@ LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
     ++L->nCcalls;
 
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        luaG_runerror(L, "C stack overflow");
+        luaD_checkCstack(L);
 
     luaD_checkstack(L, LUA_MINSTACK);
 
@@ -708,7 +692,7 @@ static void luau_execute(lua_State* L)
                     }
                     else
                     {
-                        // slow-path, may invoke Lua calls via __index metamethod
+                        // slow-path, may invoke Lua calls via __newindex metamethod
                         L->cachedslot = slot;
                         VM_PROTECT(luaV_settable(L, rb, kv, ra));
                         // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
@@ -718,7 +702,7 @@ static void luau_execute(lua_State* L)
                 }
                 else
                 {
-                    // fast-path: user data with C __index TM
+                    // fast-path: user data with C __newindex TM
                     const TValue* fn = 0;
                     if (ttisuserdata(rb) && (fn = fasttm(L, uvalue(rb)->metatable, TM_NEWINDEX)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
@@ -739,7 +723,7 @@ static void luau_execute(lua_State* L)
                     }
                     else
                     {
-                        // slow-path, may invoke Lua calls via __index metamethod
+                        // slow-path, may invoke Lua calls via __newindex metamethod
                         VM_PROTECT(luaV_settable(L, rb, kv, ra));
                         VM_NEXT();
                     }
@@ -2228,7 +2212,7 @@ static void luau_execute(lua_State* L)
                 {
                     /* will be called during FORGLOOP */
                 }
-                else if (FFlag::LuauIter)
+                else
                 {
                     Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
 
@@ -2272,17 +2256,6 @@ static void luau_execute(lua_State* L)
                 Instruction insn = *pc++;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
                 uint32_t aux = *pc;
-
-                if (!FFlag::LuauIter)
-                {
-                    bool stop;
-                    VM_PROTECT(stop = luau_loopFORG(L, LUAU_INSN_A(insn), aux));
-
-                    // note that we need to increment pc by 1 to exit the loop since we need to skip over aux
-                    pc += stop ? 1 : LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
-                    VM_NEXT();
-                }
 
                 // fast-path: builtin table iteration
                 if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
@@ -2372,12 +2345,11 @@ static void luau_execute(lua_State* L)
                 // fast-path: ipairs/inext
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
                 {
-                    if (FFlag::LuauIter)
-                        setnilvalue(ra);
-
+                    setnilvalue(ra);
+                    /* ra+1 is already the table */
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
-                else if (FFlag::LuauIter && !ttisfunction(ra))
+                else if (!ttisfunction(ra))
                 {
                     VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
                 }
@@ -2394,7 +2366,7 @@ static void luau_execute(lua_State* L)
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: ipairs/inext
-                if (ttistable(ra + 1) && ttislightuserdata(ra + 2))
+                if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
                 {
                     Table* h = hvalue(ra + 1);
                     int index = int(reinterpret_cast<uintptr_t>(pvalue(ra + 2)));
@@ -2445,12 +2417,11 @@ static void luau_execute(lua_State* L)
                 // fast-path: pairs/next
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
                 {
-                    if (FFlag::LuauIter)
-                        setnilvalue(ra);
-
+                    setnilvalue(ra);
+                    /* ra+1 is already the table */
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
-                else if (FFlag::LuauIter && !ttisfunction(ra))
+                else if (!ttisfunction(ra))
                 {
                     VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
                 }
@@ -2467,7 +2438,7 @@ static void luau_execute(lua_State* L)
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
                 // fast-path: pairs/next
-                if (ttistable(ra + 1) && ttislightuserdata(ra + 2))
+                if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
                 {
                     Table* h = hvalue(ra + 1);
                     int index = int(reinterpret_cast<uintptr_t>(pvalue(ra + 2)));

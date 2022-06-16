@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauJustOneCallFrameForHaveSeen, false)
+LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
 
 namespace Luau
 {
@@ -82,18 +82,32 @@ void TxnLog::commit()
 {
     for (auto& [ty, rep] : typeVarChanges)
     {
-        TypeArena* owningArena = ty->owningArena;
-        TypeVar* mtv = asMutable(ty);
-        *mtv = rep.get()->pending;
-        mtv->owningArena = owningArena;
+        if (FFlag::LuauNonCopyableTypeVarFields)
+        {
+            asMutable(ty)->reassign(rep.get()->pending);
+        }
+        else
+        {
+            TypeArena* owningArena = ty->owningArena;
+            TypeVar* mtv = asMutable(ty);
+            *mtv = rep.get()->pending;
+            mtv->owningArena = owningArena;
+        }
     }
 
     for (auto& [tp, rep] : typePackChanges)
     {
-        TypeArena* owningArena = tp->owningArena;
-        TypePackVar* mpv = asMutable(tp);
-        *mpv = rep.get()->pending;
-        mpv->owningArena = owningArena;
+        if (FFlag::LuauNonCopyableTypeVarFields)
+        {
+            asMutable(tp)->reassign(rep.get()->pending);
+        }
+        else
+        {
+            TypeArena* owningArena = tp->owningArena;
+            TypePackVar* mpv = asMutable(tp);
+            *mpv = rep.get()->pending;
+            mpv->owningArena = owningArena;
+        }
     }
 
     clear();
@@ -150,37 +164,13 @@ void TxnLog::popSeen(TypePackId lhs, TypePackId rhs)
 
 bool TxnLog::haveSeen(TypeOrPackId lhs, TypeOrPackId rhs) const
 {
-    if (FFlag::LuauJustOneCallFrameForHaveSeen && !FFlag::LuauTypecheckOptPass)
+    const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
+    if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
     {
-        // This function will technically work if `this` is nullptr, but this
-        // indicates a bug, so we explicitly assert.
-        LUAU_ASSERT(static_cast<const void*>(this) != nullptr);
-
-        const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-
-        for (const TxnLog* current = this; current; current = current->parent)
-        {
-            if (current->sharedSeen->end() != std::find(current->sharedSeen->begin(), current->sharedSeen->end(), sortedPair))
-                return true;
-        }
-
-        return false;
+        return true;
     }
-    else
-    {
-        const std::pair<TypeOrPackId, TypeOrPackId> sortedPair = (lhs > rhs) ? std::make_pair(lhs, rhs) : std::make_pair(rhs, lhs);
-        if (sharedSeen->end() != std::find(sharedSeen->begin(), sharedSeen->end(), sortedPair))
-        {
-            return true;
-        }
 
-        if (!FFlag::LuauTypecheckOptPass && parent)
-        {
-            return parent->haveSeen(lhs, rhs);
-        }
-
-        return false;
-    }
+    return false;
 }
 
 void TxnLog::pushSeen(TypeOrPackId lhs, TypeOrPackId rhs)
@@ -204,7 +194,12 @@ PendingType* TxnLog::queue(TypeId ty)
     // about this type, we don't want to mutate the parent's state.
     auto& pending = typeVarChanges[ty];
     if (!pending)
+    {
         pending = std::make_unique<PendingType>(*ty);
+
+        if (FFlag::LuauNonCopyableTypeVarFields)
+            pending->pending.owningArena = nullptr;
+    }
 
     return pending.get();
 }
@@ -217,7 +212,12 @@ PendingTypePack* TxnLog::queue(TypePackId tp)
     // about this type, we don't want to mutate the parent's state.
     auto& pending = typePackChanges[tp];
     if (!pending)
+    {
         pending = std::make_unique<PendingTypePack>(*tp);
+
+        if (FFlag::LuauNonCopyableTypeVarFields)
+            pending->pending.owningArena = nullptr;
+    }
 
     return pending.get();
 }
@@ -255,14 +255,24 @@ PendingTypePack* TxnLog::pending(TypePackId tp) const
 PendingType* TxnLog::replace(TypeId ty, TypeVar replacement)
 {
     PendingType* newTy = queue(ty);
-    newTy->pending = replacement;
+
+    if (FFlag::LuauNonCopyableTypeVarFields)
+        newTy->pending.reassign(replacement);
+    else
+        newTy->pending = replacement;
+
     return newTy;
 }
 
 PendingTypePack* TxnLog::replace(TypePackId tp, TypePackVar replacement)
 {
     PendingTypePack* newTp = queue(tp);
-    newTp->pending = replacement;
+
+    if (FFlag::LuauNonCopyableTypeVarFields)
+        newTp->pending.reassign(replacement);
+    else
+        newTp->pending = replacement;
+
     return newTp;
 }
 

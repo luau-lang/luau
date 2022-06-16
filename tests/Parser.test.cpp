@@ -1618,8 +1618,6 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
 
 TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
 {
-    ScopedFastFlag luauParseLocationIgnoreCommentSkipInCapture{"LuauParseLocationIgnoreCommentSkipInCapture", true};
-
     // Same should hold when comments are captured
     ParseOptions opts;
     opts.captureComments = true;
@@ -2622,6 +2620,34 @@ type Y<T> = { a: T..., b: number }
 type Z<T> = { a: string | T..., b: number }
     )");
     REQUIRE_EQ(3, result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "recover_function_return_type_annotations")
+{
+    ScopedFastFlag sff{"LuauReturnTypeTokenConfusion", true};
+    ParseResult result = tryParse(R"(
+type Custom<A, B, C> = { x: A, y: B, z: C }
+type Packed<A...> = { x: (A...) -> () }
+type F = (number): Custom<boolean, number, string>
+type G = Packed<(number): (string, number, boolean)>
+local function f(x: number) -> Custom<string, boolean, number>
+end
+    )");
+    REQUIRE_EQ(3, result.errors.size());
+    CHECK_EQ(result.errors[0].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
+    CHECK_EQ(result.errors[1].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
+    CHECK_EQ(result.errors[2].getMessage(), "Function return type annotations are written after ':' instead of '->'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
+{
+    ScopedFastFlag sff{"LuauParserFunctionKeywordAsTypeHelp", true};
+    ParseResult result = tryParse(R"(
+        type Foo = function
+    )");
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> ...any'",
+        result.errors[0].getMessage());
 }
 
 TEST_SUITE_END();

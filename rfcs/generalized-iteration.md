@@ -1,5 +1,7 @@
 # Generalized iteration
 
+**Status**: Implemented
+
 ## Summary
 
 Introduce support for iterating over tables without using `pairs`/`ipairs` as well as a generic customization point for iteration via `__iter` metamethod.

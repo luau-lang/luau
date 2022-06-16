@@ -23,6 +23,12 @@ public:
         currentBlockSize = kBlockSize;
     }
 
+    TypedAllocator(const TypedAllocator&) = delete;
+    TypedAllocator& operator=(const TypedAllocator&) = delete;
+
+    TypedAllocator(TypedAllocator&&) = default;
+    TypedAllocator& operator=(TypedAllocator&&) = default;
+
     ~TypedAllocator()
     {
         if (frozen)

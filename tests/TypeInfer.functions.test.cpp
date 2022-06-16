@@ -85,7 +85,7 @@ TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "vararg_function_is_quantified")
+TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 {
     CheckResult result = check(R"(
         local T = {}
@@ -555,7 +555,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
     CHECK(bool(argType->indexer));
 }
 
-TEST_CASE_FIXTURE(Fixture, "higher_order_function_4")
+TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
 {
     CheckResult result = check(R"(
         function bottomupmerge(comp, a, b, left, mid, right)
@@ -620,7 +620,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_4")
     CHECK_EQ(*arg0->indexer->indexResultType, *arg1Args[1]);
 }
 
-TEST_CASE_FIXTURE(Fixture, "mutual_recursion")
+TEST_CASE_FIXTURE(BuiltinsFixture, "mutual_recursion")
 {
     CheckResult result = check(R"(
         --!strict
@@ -639,7 +639,7 @@ TEST_CASE_FIXTURE(Fixture, "mutual_recursion")
     dumpErrors(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
+TEST_CASE_FIXTURE(BuiltinsFixture, "toposort_doesnt_break_mutual_recursion")
 {
     CheckResult result = check(R"(
         --!strict
@@ -676,7 +676,7 @@ TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "it_is_ok_to_oversaturate_a_higher_order_function_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_oversaturate_a_higher_order_function_argument")
 {
     CheckResult result = check(R"(
         function onerror() end
@@ -794,7 +794,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
                                                                                       }}));
 }
 
-TEST_CASE_FIXTURE(Fixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
 {
     ScopedFastFlag sff[]{
         {"LuauReturnTypeInferenceInNonstrict", true},
@@ -966,7 +966,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
     CHECK_EQ("string", toString(requireType("z")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
 {
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
@@ -1068,7 +1068,7 @@ f(function(x) return x * 2 end)
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
 {
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
@@ -1287,10 +1287,8 @@ caused by:
   Return #2 type is not compatible. Type 'string' could not be converted into 'boolean')");
 }
 
-TEST_CASE_FIXTURE(Fixture, "function_decl_quantify_right_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_quantify_right_type")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-
     fileResolver.source["game/isAMagicMock"] = R"(
 --!nonstrict
 return function(value)
@@ -1311,10 +1309,8 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-
     CheckResult result = check(R"(
 function string.len(): number
     return 1
@@ -1333,11 +1329,8 @@ print(string.len('hello'))
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite_2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-    ScopedFastFlag inferStatFunction{"LuauInferStatFunction", true};
-
     CheckResult result = check(R"(
 local t: { f: ((x: number) -> number)? } = {}
 
@@ -1477,11 +1470,8 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_unsealed_overwrite")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_unsealed_overwrite")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-    ScopedFastFlag inferStatFunction{"LuauInferStatFunction", true};
-
     CheckResult result = check(R"(
 local t = { f = nil :: ((x: number) -> number)? }
 
@@ -1506,8 +1496,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         local function f(x: any) end
         f()
@@ -1518,8 +1506,6 @@ TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "function_statement_sealed_table_assignment_through_indexer")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify4", true};
-
     CheckResult result = check(R"(
 local t: {[string]: () -> number} = {}
 
@@ -1580,7 +1566,7 @@ wrapper(test)
     CHECK(acm->isVariadic);
 }
 
-TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "too_few_arguments_variadic_generic2")
 {
     CheckResult result = check(R"(
 function test(a: number, b: string, ...)

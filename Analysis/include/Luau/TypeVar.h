@@ -24,6 +24,7 @@ namespace Luau
 {
 
 struct TypeArena;
+struct Scope2;
 
 /**
  * There are three kinds of type variables:
@@ -124,6 +125,7 @@ struct ConstrainedTypeVar
 
     std::vector<TypeId> parts;
     TypeLevel level;
+    Scope2* scope = nullptr;
 };
 
 // Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
@@ -255,6 +257,7 @@ struct FunctionTypeVar
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     TypeLevel level;
+    Scope2* scope = nullptr;
     /// These should all be generic
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
@@ -266,6 +269,7 @@ struct FunctionTypeVar
     bool hasSelf;
     Tags tags;
     bool hasNoGenerics = false;
+    bool generalized = false;
 };
 
 enum class TableState
@@ -323,13 +327,13 @@ struct TableTypeVar
 
     TableState state = TableState::Unsealed;
     TypeLevel level;
+    Scope2* scope = nullptr;
     std::optional<std::string> name;
 
     // Sometimes we throw a type on a name to make for nicer error messages, but without creating any entry in the type namespace
     // We need to know which is which when we stringify types.
     std::optional<std::string> syntheticName;
 
-    std::map<Name, Location> methodDefinitionLocations;
     std::vector<TypeId> instantiatedTypeParams;
     std::vector<TypePackId> instantiatedTypePackParams;
     ModuleName definitionModuleName;
@@ -460,6 +464,14 @@ struct TypeVar final
     {
     }
 
+    // Re-assignes the content of the type, but doesn't change the owning arena and can't make type persistent.
+    void reassign(const TypeVar& rhs)
+    {
+        ty = rhs.ty;
+        normal = rhs.normal;
+        documentationSymbol = rhs.documentationSymbol;
+    }
+
     TypeVariant ty;
 
     // Kludge: A persistent TypeVar is one that belongs to the global scope.
@@ -481,6 +493,8 @@ struct TypeVar final
 
     TypeVar& operator=(const TypeVariant& rhs);
     TypeVar& operator=(TypeVariant&& rhs);
+
+    TypeVar& operator=(const TypeVar& rhs);
 };
 
 using SeenSet = std::set<std::pair<const void*, const void*>>;

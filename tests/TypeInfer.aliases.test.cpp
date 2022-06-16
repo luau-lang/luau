@@ -279,7 +279,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
     CHECK_EQ("Node<T>", toString(e->wantedType));
 }
 
-TEST_CASE_FIXTURE(Fixture, "general_require_multi_assign")
+TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_multi_assign")
 {
     fileResolver.source["workspace/A"] = R"(
         export type myvec2 = {x: number, y: number}
@@ -317,7 +317,7 @@ TEST_CASE_FIXTURE(Fixture, "general_require_multi_assign")
     REQUIRE(bType->props.size() == 3);
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_import_mutation")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
 {
     CheckResult result = check("type t10<x> = typeof(table)");
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -385,7 +385,7 @@ type Cool = typeof(c)
     CHECK_EQ(ttv->name, "Cool");
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_of_an_imported_recursive_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_type")
 {
     fileResolver.source["game/A"] = R"(
 export type X = { a: number, b: X? }
@@ -410,7 +410,7 @@ type X = Import.X
     CHECK_EQ(follow(*ty1), follow(*ty2));
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_of_an_imported_recursive_generic_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_generic_type")
 {
     fileResolver.source["game/A"] = R"(
 export type X<T, U> = { a: T, b: U, C: X<T, U>? }
@@ -564,7 +564,7 @@ TEST_CASE_FIXTURE(Fixture, "non_recursive_aliases_that_reuse_a_generic_name")
  *
  * We solved this by ascribing a unique subLevel to each prototyped alias.
  */
-TEST_CASE_FIXTURE(Fixture, "do_not_quantify_unresolved_aliases")
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_quantify_unresolved_aliases")
 {
     CheckResult result = check(R"(
         --!strict
@@ -615,8 +615,6 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
  */
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any")
 {
-    ScopedFastFlag sff[] = {{"LuauTwoPassAliasDefinitionFix", true}};
-
     CheckResult result = check(R"(
         local function x()
             local y: FutureType = {}::any
@@ -633,10 +631,6 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
 
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauTwoPassAliasDefinitionFix", true},
-    };
-
     CheckResult result = check(R"(
         local B = {}
         B.bar = 4

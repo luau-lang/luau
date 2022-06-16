@@ -237,7 +237,7 @@ TEST_CASE_FIXTURE(Fixture, "chain_calling_error_type_yields_error")
     CHECK_EQ("*unknown*", toString(requireType("a")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "replace_every_free_type_when_unifying_a_complex_function_with_any")
+TEST_CASE_FIXTURE(BuiltinsFixture, "replace_every_free_type_when_unifying_a_complex_function_with_any")
 {
     CheckResult result = check(R"(
         local a: any
@@ -285,7 +285,7 @@ end
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "metatable_of_any_can_be_a_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable_of_any_can_be_a_table")
 {
     CheckResult result = check(R"(
 --!strict

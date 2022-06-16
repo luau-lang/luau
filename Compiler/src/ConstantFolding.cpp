@@ -3,8 +3,6 @@
 
 #include <math.h>
 
-LUAU_FASTFLAG(LuauCompileSupportInlining)
-
 namespace Luau
 {
 namespace Compile
@@ -195,12 +193,16 @@ struct ConstantVisitor : AstVisitor
     DenseHashMap<AstLocal*, Variable>& variables;
     DenseHashMap<AstLocal*, Constant>& locals;
 
+    bool wasEmpty = false;
+
     ConstantVisitor(
         DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstLocal*, Constant>& locals)
         : constants(constants)
         , variables(variables)
         , locals(locals)
     {
+        // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
+        wasEmpty = constants.empty() && locals.empty();
     }
 
     Constant analyze(AstExpr* node)
@@ -326,7 +328,7 @@ struct ConstantVisitor : AstVisitor
     {
         if (value.type != Constant::Type_Unknown)
             map[key] = value;
-        else if (!FFlag::LuauCompileSupportInlining)
+        else if (wasEmpty)
             ;
         else if (Constant* old = map.find(key))
             old->type = Constant::Type_Unknown;

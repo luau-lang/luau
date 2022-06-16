@@ -3,16 +3,18 @@
 module Luau.TypeCheck where
 
 open import Agda.Builtin.Equality using (_≡_)
+open import FFI.Data.Either using (Either; Left; Right)
 open import FFI.Data.Maybe using (Maybe; just)
+open import Luau.ResolveOverloads using (resolve)
 open import Luau.Syntax using (Expr; Stat; Block; BinaryOperator; yes; nil; addr; number; bool; string; val; var; var_∈_; _⟨_⟩∈_; function_is_end; _$_; block_is_end; binexp; local_←_; _∙_; done; return; name; +; -; *; /; <; >; ==; ~=; <=; >=; ··)
 open import Luau.Var using (Var)
 open import Luau.Addr using (Addr)
-open import Luau.FunctionTypes using (src; tgt)
 open import Luau.Heap using (Heap; Object; function_is_end) renaming (_[_] to _[_]ᴴ)
 open import Luau.Type using (Type; nil; unknown; number; boolean; string; _⇒_)
 open import Luau.VarCtxt using (VarCtxt; ∅; _⋒_; _↦_; _⊕_↦_; _⊝_) renaming (_[_] to _[_]ⱽ)
 open import FFI.Data.Vector using (Vector)
 open import FFI.Data.Maybe using (Maybe; just; nothing)
+open import Properties.DecSubtyping using (dec-subtyping)
 open import Properties.Product using (_×_; _,_)
 
 orUnknown : Maybe Type → Type
@@ -113,8 +115,8 @@ data _⊢ᴱ_∈_ where
 
     Γ ⊢ᴱ M ∈ T →
     Γ ⊢ᴱ N ∈ U →
-    ----------------------
-    Γ ⊢ᴱ (M $ N) ∈ (tgt T)
+    ----------------------------
+    Γ ⊢ᴱ (M $ N) ∈ (resolve T U)
 
   function : ∀ {f x B T U V Γ} →
 

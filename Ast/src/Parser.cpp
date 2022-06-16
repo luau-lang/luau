@@ -10,7 +10,9 @@
 // See docs/SyntaxChanges.md for an explanation.
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
-LUAU_FASTFLAGVARIABLE(LuauParseLocationIgnoreCommentSkipInCapture, false)
+
+LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
+LUAU_FASTFLAGVARIABLE(LuauReturnTypeTokenConfusion, false)
 
 namespace Luau
 {
@@ -1117,8 +1119,12 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
 
 std::optional<AstTypeList> Parser::parseOptionalReturnTypeAnnotation()
 {
-    if (options.allowTypeAnnotations && lexer.current().type == ':')
+    if (options.allowTypeAnnotations &&
+        (lexer.current().type == ':' || (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)))
     {
+        if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)
+            report(lexer.current().location, "Function return type annotations are written after ':' instead of '->'");
+
         nextLexeme();
 
         unsigned int oldRecursionCount = recursionCounter;
@@ -1349,8 +1355,12 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
 
     AstArray<AstType*> paramTypes = copy(params);
 
+    bool returnTypeIntroducer =
+        FFlag::LuauReturnTypeTokenConfusion ? lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':' : false;
+
     // Not a function at all. Just a parenthesized type. Or maybe a type pack with a single element
-    if (params.size() == 1 && !varargAnnotation && monomorphic && lexer.current().type != Lexeme::SkinnyArrow)
+    if (params.size() == 1 && !varargAnnotation && monomorphic &&
+        (FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow))
     {
         if (allowPack)
             return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr})};
@@ -1358,7 +1368,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
             return {params[0], {}};
     }
 
-    if (lexer.current().type != Lexeme::SkinnyArrow && monomorphic && allowPack)
+    if ((FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow) && monomorphic && allowPack)
         return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation})};
 
     AstArray<std::optional<AstArgumentName>> paramNames = copy(names);
@@ -1372,8 +1382,13 @@ AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<A
 {
     incrementRecursionCounter("type annotation");
 
+    if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == ':')
+    {
+        report(lexer.current().location, "Return types in function type annotations are written after '->' instead of ':'");
+        lexer.next();
+    }
     // Users occasionally write '()' as the 'unit' type when they actually want to use 'nil', here we'll try to give a more specific error
-    if (lexer.current().type != Lexeme::SkinnyArrow && generics.size == 0 && genericPacks.size == 0 && params.size == 0)
+    else if (lexer.current().type != Lexeme::SkinnyArrow && generics.size == 0 && genericPacks.size == 0 && params.size == 0)
     {
         report(Location(begin.location, lexer.previousLocation()), "Expected '->' after '()' when parsing function type; did you mean 'nil'?");
 
@@ -1589,6 +1604,17 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionTypeAnnotation(allowPack);
+    }
+    else if (FFlag::LuauParserFunctionKeywordAsTypeHelp && lexer.current().type == Lexeme::ReservedFunction)
+    {
+        Location location = lexer.current().location;
+
+        nextLexeme();
+
+        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false,
+                    "Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> "
+                    "...any'"),
+            {}};
     }
     else
     {
@@ -2821,7 +2847,7 @@ void Parser::nextLexeme()
                 hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
             }
 
-            type = lexer.next(/* skipComments= */ false, !FFlag::LuauParseLocationIgnoreCommentSkipInCapture).type;
+            type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
         }
     }
     else

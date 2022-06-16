@@ -224,6 +224,7 @@ private:
 
     DenseHashMap<ConstantKey, int32_t, ConstantKeyHash> constantMap;
     DenseHashMap<TableShape, int32_t, TableShapeHash> tableShapeMap;
+    DenseHashMap<uint32_t, int16_t> protoMap;
 
     int debugLine = 0;
 
@@ -246,7 +247,7 @@ private:
     void validate() const;
 
     std::string dumpCurrentFunction() const;
-    const uint32_t* dumpInstruction(const uint32_t* opcode, std::string& output) const;
+    void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
     void writeFunction(std::string& ss, uint32_t id) const;
     void writeLineInfo(std::string& ss) const;

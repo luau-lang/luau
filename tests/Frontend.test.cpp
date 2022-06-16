@@ -77,7 +77,7 @@ struct NaiveFileResolver : NullFileResolver
 
 } // namespace
 
-struct FrontendFixture : Fixture
+struct FrontendFixture : BuiltinsFixture
 {
     FrontendFixture()
     {
@@ -1031,8 +1031,6 @@ return false;
 
 TEST_CASE("check_without_builtin_next")
 {
-    ScopedFastFlag luauDoNotRelyOnNextBinding{"LuauDoNotRelyOnNextBinding", true};
-
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
     Frontend frontend(&fileResolver, &configResolver);
