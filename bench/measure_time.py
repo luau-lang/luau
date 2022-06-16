@@ -2,12 +2,10 @@ import os, sys, time, numpy
 
 try:
   import scipy
-  
   from scipy import mean, stats
 except ModuleNotFoundError:
   print("Warning: scipy package is not installed, confidence values will not be available")
   stats = None
-
 
 duration_list = []
 
