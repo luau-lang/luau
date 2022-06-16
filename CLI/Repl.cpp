@@ -501,6 +501,7 @@ static void runReplImpl(lua_State* L)
     }
 }
 
+#ifndef _WIN32
 void ihandler(lua_State* L, int k) {
     if (sigint_received) {
         // when VM_INTERRUPT sees that the status is non-zero it will
@@ -509,6 +510,7 @@ void ihandler(lua_State* L, int k) {
         sigint_received = 0;
     }
 };
+#ifndef _WIN32
 
 static void runRepl()
 {
