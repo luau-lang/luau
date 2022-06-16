@@ -47,10 +47,12 @@ enum class CompileFormat
 constexpr int MaxTraversalLimit = 50;
 
 // Ctrl-C handling
+#ifndef _WIN32
 volatile sig_atomic_t sigint_received = 0;
 static void handle_sig(int signum) {
     sigint_received = 1;
 }
+#endif
 
 struct GlobalOptions
 {
@@ -504,6 +506,7 @@ void ihandler(lua_State* L, int k) {
         // when VM_INTERRUPT sees that the status is non-zero it will
         // exit the interpreter loop
         lua_setstatus(L,LUA_SIGINT);
+        sigint_received = 0;
     }
 };
 
