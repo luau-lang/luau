@@ -31,7 +31,7 @@ REST_ARGS="${ARGS[@]:4}"
 valgrind \
     --quiet \
     --tool=cachegrind \
-    "$1" "$2" "$REST_ARGS">/dev/null
+    "$1" "$2" $REST_ARGS>/dev/null
 
 ARGS=( "$@" )
 REST_ARGS="${ARGS[@]:4}"
