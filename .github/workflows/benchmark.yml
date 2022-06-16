@@ -3,7 +3,7 @@ name: Luau Benchmarks
 on:
   push:
     branches:
-      - feat/benchmarks-multi-os
+      - master
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -30,7 +30,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -116,7 +116,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
