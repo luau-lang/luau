@@ -17,7 +17,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest]
         arch: [Win32, x64]
         bench:
           - {
@@ -30,7 +29,7 @@ jobs:
         benchResultsRepo:
           - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
 
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - name: Checkout Luau
         uses: actions/checkout@v3
