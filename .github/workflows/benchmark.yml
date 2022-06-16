@@ -89,17 +89,17 @@ jobs:
           comment-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push benchmark results
-        if: github.event_name == 'push'
-        run: |
-          echo "Pushing benchmark results..."
-          cd gh-pages
-          git config user.name github-actions
-          git config user.email github@users.noreply.github.com
-          git add ./dev/bench/data.json
-          git commit -m "Add benchmarks results for ${{ github.sha }}"
-          git push
-          cd ..
+      # - name: Push benchmark results
+      #   if: github.event_name == 'push'
+      #   run: |
+      #     echo "Pushing benchmark results..."
+      #     cd gh-pages
+      #     git config user.name github-actions
+      #     git config user.email github@users.noreply.github.com
+      #     git add ./dev/bench/data.json
+      #     git commit -m "Add benchmarks results for ${{ github.sha }}"
+      #     git push
+      #     cd ..
 
   unix:
     name: Run ${{ matrix.bench.title }} (${{ matrix.os}})
@@ -189,14 +189,14 @@ jobs:
           comment-on-alert: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push benchmark results
-        if: github.event_name == 'push'
-        run: |
-          echo "Pushing benchmark results..."
-          cd gh-pages
-          git config user.name github-actions
-          git config user.email github@users.noreply.github.com
-          git add ./dev/bench/data.json
-          git commit -m "Add benchmarks results for ${{ github.sha }}"
-          git push
-          cd ..
+      # - name: Push benchmark results
+      #   if: github.event_name == 'push'
+      #   run: |
+      #     echo "Pushing benchmark results..."
+      #     cd gh-pages
+      #     git config user.name github-actions
+      #     git config user.email github@users.noreply.github.com
+      #     git add ./dev/bench/data.json
+      #     git commit -m "Add benchmarks results for ${{ github.sha }}"
+      #     git push
+      #     cd ..
