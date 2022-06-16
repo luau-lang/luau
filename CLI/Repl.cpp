@@ -510,7 +510,7 @@ void ihandler(lua_State* L, int k) {
         sigint_received = 0;
     }
 };
-#ifndef _WIN32
+#endif
 
 static void runRepl()
 {
