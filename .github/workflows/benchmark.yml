@@ -141,16 +141,16 @@ jobs:
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
       - name: Install valgrind
-        if: matrix.os == ubuntu-latest
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get install valgrind
 
       - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
-        if: matrix.os == ubuntu-latest
+        if: matrix.os == 'ubuntu-latest'
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
-        if: matrix.os == ubuntu-latest
+        if: matrix.os == 'ubuntu-latest'
         run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
 
       - name: Checkout Benchmark Results repository
@@ -176,7 +176,7 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Store ${{ matrix.bench.title }} result (CacheGrind)
-        if: matrix.os == ubuntu-latest
+        if: matrix.os == 'ubuntu-latest'
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
           name: ${{ matrix.bench.title }} (CacheGrind)
