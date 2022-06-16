@@ -74,12 +74,6 @@
 #else
 #define VM_INTERRUPT() \
     { \
-        if (sigint_received)\
-        { \
-            sigint_received = 0; \
-            L->status = LUA_SIGINT; \
-            goto exit; \
-        } \
         void (*interrupt)(lua_State*, int) = L->global->cb.interrupt; \
         if (LUAU_UNLIKELY(!!interrupt)) \
         { /* the interrupt hook is called right before we advance pc */ \
@@ -131,10 +125,6 @@
  * VM_CONTINUE() Use an opcode override to dispatch with computed goto or
  * switch statement to skip a LOP_BREAK instruction.
  */
-volatile sig_atomic_t sigint_received = 0;
-static void handle_sig(int signum) {
-    sigint_received = 1;
-}
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
 
@@ -331,8 +321,6 @@ static void luau_execute(lua_State* L)
     cl = clvalue(L->ci->func);
     base = L->base;
     k = cl->l.p->k;
-
-    signal(SIGINT, handle_sig);
 
     VM_NEXT(); // starts the interpreter "loop"
 

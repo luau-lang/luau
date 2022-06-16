@@ -811,6 +811,16 @@ void lua_getfenv(lua_State* L, int idx)
 ** set functions (stack -> Lua)
 */
 
+void lua_setstatus(lua_State* L, int status) {
+    L->status = status;
+    return;
+}
+
+void lua_setinterrupt(lua_State* L, void (*interrupt)(lua_State* Lp, int k)) {
+    L->global->cb.interrupt = interrupt;
+    return;
+}
+
 void lua_settable(lua_State* L, int idx)
 {
     api_checknelems(L, 2);

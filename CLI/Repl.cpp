@@ -21,6 +21,10 @@
 #include <fcntl.h>
 #endif
 
+#ifndef _WIN32
+#include <csignal>
+#endif
+
 #include <locale.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
@@ -41,6 +45,12 @@ enum class CompileFormat
 };
 
 constexpr int MaxTraversalLimit = 50;
+
+// Ctrl-C handling
+volatile sig_atomic_t sigint_received = 0;
+static void handle_sig(int signum) {
+    sigint_received = 1;
+}
 
 struct GlobalOptions
 {
@@ -489,12 +499,27 @@ static void runReplImpl(lua_State* L)
     }
 }
 
+void ihandler(lua_State* L, int k) {
+    if (sigint_received) {
+        // when VM_INTERRUPT sees that the status is non-zero it will
+        // exit the interpreter loop
+        lua_setstatus(L,LUA_SIGINT);
+    }
+};
+
 static void runRepl()
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
     setupState(L);
+
+    // FIXME: add corresponding windows functionality
+    #ifndef _WIN32
+    signal(SIGINT, handle_sig);
+    lua_setinterrupt(L, &ihandler);
+    #endif
+
     luaL_sandboxthread(L);
     runReplImpl(L);
 }
