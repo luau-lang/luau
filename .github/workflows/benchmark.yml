@@ -42,7 +42,11 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
           cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
+          ls build/RelWithDebInfo
           move build/RelWithDebInfo/* .
+
+      # - name: Move build files to root
+      #   run:
 
       - name: Check dir structure
         run: |
