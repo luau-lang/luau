@@ -78,7 +78,7 @@ jobs:
       - name: Store ${{ matrix.bench.title }} result
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
-          name: ${{ matrix.bench.title }}
+          name: ${{ matrix.bench.title }} (Windows ${{matrix.arch}})
           tool: "benchmarkluau"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
