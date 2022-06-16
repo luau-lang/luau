@@ -44,10 +44,11 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
           cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
+
       - name: Move build files to root
         run: |
-          echo %cd%
           move build/RelWithDebInfo/* .
+
       - name: Check dir structure
         run: |
           ls build/RelWithDebInfo
@@ -61,9 +62,11 @@ jobs:
         run: |
           python -m pip install requests
           python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+
       - name: Run benchmark
         run: |
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
+
       - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
         with:
