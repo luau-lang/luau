@@ -13,7 +13,6 @@
 #include "lbuiltins.h"
 #include "lnumutils.h"
 #include "lbytecode.h"
-#include <csignal>
 
 #include <string.h>
 
@@ -127,7 +126,6 @@
  */
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
-
 #define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else

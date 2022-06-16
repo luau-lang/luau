@@ -290,9 +290,6 @@ static void resume_continue(lua_State* L)
 
         Closure* cl = curr_func(L);
 
-        if (L->status == LUA_SIGINT)
-            break;
-
         if (cl->isC)
         {
             LUAU_ASSERT(cl->c.cont);
