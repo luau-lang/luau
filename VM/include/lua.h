@@ -33,7 +33,6 @@ enum lua_Status
     LUA_ERRMEM,
     LUA_ERRERR,
     LUA_BREAK, /* yielded for a debug breakpoint */
-    LUA_SIGINT, /* thread stopped after receiving a SIGINT */
 };
 
 typedef struct lua_State lua_State;
@@ -206,8 +205,6 @@ LUA_API void lua_rawset(lua_State* L, int idx);
 LUA_API void lua_rawseti(lua_State* L, int idx, int n);
 LUA_API int lua_setmetatable(lua_State* L, int objindex);
 LUA_API int lua_setfenv(lua_State* L, int idx);
-LUA_API void lua_setstatus(lua_State* L, int status);
-LUA_API void lua_setinterrupt(lua_State* L, void (*interrupt)(lua_State* Lp, int k));
 
 /*
 ** `load' and `call' functions (load and run Luau bytecode)
