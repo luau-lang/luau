@@ -502,12 +502,12 @@ static void runReplImpl(lua_State* L)
 }
 
 #ifndef _WIN32
+#include <stdexcept>
 void ihandler(lua_State* L, int k) {
     if (sigint_received) {
-        // when VM_INTERRUPT sees that the status is non-zero it will
-        // exit the interpreter loop
-        lua_setstatus(L,LUA_SIGINT);
         sigint_received = 0;
+        std::runtime_error error("Execution interrupted");
+        throw error;
     }
 };
 #endif
@@ -522,7 +522,7 @@ static void runRepl()
     // FIXME: add corresponding windows functionality
     #ifndef _WIN32
     signal(SIGINT, handle_sig);
-    lua_setinterrupt(L, &ihandler);
+    lua_callbacks(L)->interrupt = &ihandler;
     #endif
 
     luaL_sandboxthread(L);
