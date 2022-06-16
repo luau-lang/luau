@@ -17,7 +17,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        os: [windows-latest]
         arch: [Win32, x64]
+        engine:
+          - { channel: stable, version: latest }
         bench:
           - {
               script: "run-benchmarks",
@@ -29,9 +32,9 @@ jobs:
         benchResultsRepo:
           - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
 
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os }}
     steps:
-      - name: Checkout Luau
+      - name: Checkout Luau repository
         uses: actions/checkout@v3
 
       - name: Build Luau
@@ -41,17 +44,14 @@ jobs:
           cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
           cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
           cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
-          ls build/RelWithDebInfo
+      - name: Move build files to root
+        run: |
+          echo %cd%
           move build/RelWithDebInfo/* .
-
-      # - name: Move build files to root
-      #   run:
-
       - name: Check dir structure
         run: |
           ls build/RelWithDebInfo
           ls
-
       - uses: actions/setup-python@v3
         with:
           python-version: "3.9"
@@ -61,11 +61,9 @@ jobs:
         run: |
           python -m pip install requests
           python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
-
       - name: Run benchmark
         run: |
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
-
       - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
         with:
@@ -82,13 +80,14 @@ jobs:
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
           alert-threshold: 150%
-          fail-threshold: 1000%
-          fail-on-alert: false
+          fail-threshold: 200%
+          fail-on-alert: true
           comment-on-alert: true
+          comment-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push benchmark results
-
+        if: github.event_name == 'push'
         run: |
           echo "Pushing benchmark results..."
           cd gh-pages
