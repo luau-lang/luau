@@ -48,9 +48,15 @@ constexpr int MaxTraversalLimit = 50;
 
 // Ctrl-C handling
 #ifndef _WIN32
-volatile sig_atomic_t sigint_received = 0;
+void sigint_callback(lua_State* L, int k) {
+    lua_callbacks(L)->interrupt = NULL;    
+    luaL_error(L, "Execution interrupted");
+};
+lua_State* repl_lua_state = NULL;
 static void handle_sig(int signum) {
-    sigint_received = 1;
+    if(repl_lua_state != NULL) {
+        lua_callbacks(repl_lua_state)->interrupt = &sigint_callback;
+    }
 }
 #endif
 
@@ -497,17 +503,6 @@ static void runReplImpl(lua_State* L)
     }
 }
 
-#ifndef _WIN32
-#include <stdexcept>
-void ihandler(lua_State* L, int k) {
-    if (sigint_received) {
-        sigint_received = 0;
-        std::runtime_error error("Execution interrupted");
-        throw error;
-    }
-};
-#endif
-
 static void runRepl()
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
@@ -517,8 +512,8 @@ static void runRepl()
 
     // FIXME: add corresponding windows functionality
     #ifndef _WIN32
+    repl_lua_state = L;
     signal(SIGINT, handle_sig);
-    lua_callbacks(L)->interrupt = &ihandler;
     #endif
 
     luaL_sandboxthread(L);
