@@ -3,12 +3,12 @@
 module Properties.TypeNormalization where
 
 open import Luau.Type using (Type; Scalar; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
-open import Luau.Subtyping using (scalar-function-err)
+open import Luau.Subtyping using (Tree; Language; ¬Language; function; scalar; unknown; left; right; function-ok₁; function-ok₂; function-err; function-tgt; scalar-function; scalar-function-ok; scalar-function-err; scalar-function-tgt; function-scalar; _,_)
 open import Luau.TypeNormalization using (_∪ⁿ_; _∩ⁿ_; _∪ᶠ_; _∪ⁿˢ_; _∩ⁿˢ_; normalize)
-open import Luau.Subtyping using (_<:_)
+open import Luau.Subtyping using (_<:_; _≮:_; witness; never)
 open import Properties.Subtyping using (<:-trans; <:-refl; <:-unknown; <:-never; <:-∪-left; <:-∪-right; <:-∪-lub; <:-∩-left; <:-∩-right; <:-∩-glb; <:-∩-symm; <:-function; <:-function-∪-∩; <:-function-∩-∪; <:-function-∪; <:-everything; <:-union; <:-∪-assocl; <:-∪-assocr; <:-∪-symm; <:-intersect;  ∪-distl-∩-<:; ∪-distr-∩-<:; <:-∪-distr-∩; <:-∪-distl-∩; ∩-distl-∪-<:; <:-∩-distl-∪; <:-∩-distr-∪; scalar-∩-function-<:-never; scalar-≢-∩-<:-never)
 
--- Notmal forms for types
+-- Normal forms for types
 data FunType : Type → Set
 data Normal : Type → Set
 
@@ -17,11 +17,11 @@ data FunType where
   _∩_ : ∀ {F G} → FunType F → FunType G → FunType (F ∩ G)
 
 data Normal where
-  never : Normal never
-  unknown : Normal unknown
   _⇒_ : ∀ {S T} → Normal S → Normal T → Normal (S ⇒ T)
   _∩_ : ∀ {F G} → FunType F → FunType G → Normal (F ∩ G)
   _∪_ : ∀ {S T} → Normal S → Scalar T → Normal (S ∪ T)
+  never : Normal never
+  unknown : Normal unknown
 
 data OptScalar : Type → Set where
   never : OptScalar never
@@ -29,6 +29,38 @@ data OptScalar : Type → Set where
   boolean : OptScalar boolean
   string : OptScalar string
   nil : OptScalar nil
+
+-- Top function type
+fun-top : ∀ {F} → (FunType F) → (F <: (never ⇒ unknown))
+fun-top (S ⇒ T) = <:-function <:-never <:-unknown
+fun-top (F ∩ G) = <:-trans <:-∩-left (fun-top F)
+
+-- function types are inhabited
+fun-function : ∀ {F} → FunType F → Language F function
+fun-function (S ⇒ T) = function
+fun-function (F ∩ G) = (fun-function F , fun-function G)
+
+fun-≮:-never : ∀ {F} → FunType F → (F ≮: never)
+fun-≮:-never F = witness function (fun-function F) never
+
+-- function types aren't scalars
+fun-¬scalar : ∀ {F S t} → (s : Scalar S) → FunType F → Language F t → ¬Language S t
+fun-¬scalar s (S ⇒ T) function = scalar-function s
+fun-¬scalar s (S ⇒ T) (function-ok₁ p) = scalar-function-ok s
+fun-¬scalar s (S ⇒ T) (function-ok₂ p) = scalar-function-ok s
+fun-¬scalar s (S ⇒ T) (function-err p) = scalar-function-err s
+fun-¬scalar s (S ⇒ T) (function-tgt p) = scalar-function-tgt s
+fun-¬scalar s (F ∩ G) (p₁ , p₂) = fun-¬scalar s G p₂
+
+¬scalar-fun : ∀ {F S} → FunType F → (s : Scalar S) → ¬Language F (scalar s)
+¬scalar-fun (S ⇒ T) s = function-scalar s
+¬scalar-fun (F ∩ G) s = left (¬scalar-fun F s)
+
+scalar-≮:-fun : ∀ {F S} → FunType F → Scalar S → S ≮: F
+scalar-≮:-fun F s = witness (scalar s) (scalar s) (¬scalar-fun F s)
+
+unknown-≮:-fun : ∀ {F} → FunType F → unknown ≮: F
+unknown-≮:-fun F = witness (scalar nil) unknown (¬scalar-fun F nil)
 
 -- Normalization produces normal types
 normal : ∀ T → Normal (normalize T)
@@ -40,7 +72,7 @@ normal-∩ⁿˢ : ∀ {S T} → Normal S → Scalar T → OptScalar (S ∩ⁿˢ 
 normal-∪ᶠ : ∀ {F G} → FunType F → FunType G → FunType (F ∪ᶠ G)
 
 normal nil = never ∪ nil
-normal (S ⇒ T) = normalᶠ ((normal S) ⇒ (normal T))
+normal (S ⇒ T) = (normal S) ⇒ (normal T)
 normal never = never
 normal unknown = unknown
 normal boolean = never ∪ boolean
@@ -338,7 +370,7 @@ flipper = <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) <:-∪
 ∪-<:-∪ⁿ unknown (T ⇒ U) = <:-unknown
 ∪-<:-∪ⁿ (R ⇒ S) (T ⇒ U) = ∪-<:-∪ᶠ (R ⇒ S) (T ⇒ U)
 ∪-<:-∪ⁿ (R ∩ S) (T ⇒ U) = ∪-<:-∪ᶠ (R ∩ S) (T ⇒ U)
-∪-<:-∪ⁿ (R ∪ S) (T ⇒ U) =  <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) (<:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ R (T ⇒ U)) <:-refl)))
+∪-<:-∪ⁿ (R ∪ S) (T ⇒ U) = <:-trans <:-∪-assocr (<:-trans (<:-union <:-refl <:-∪-symm) (<:-trans <:-∪-assocl (<:-union (∪-<:-∪ⁿ R (T ⇒ U)) <:-refl)))
 ∪-<:-∪ⁿ never (T ∩ U) = <:-∪-lub <:-never <:-refl
 ∪-<:-∪ⁿ unknown (T ∩ U) = <:-unknown
 ∪-<:-∪ⁿ (R ⇒ S) (T ∩ U) = ∪-<:-∪ᶠ (R ⇒ S) (T ∩ U)

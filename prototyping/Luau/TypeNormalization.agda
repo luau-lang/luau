@@ -2,11 +2,7 @@ module Luau.TypeNormalization where
 
 open import Luau.Type using (Type; nil; number; string; boolean; never; unknown; _⇒_; _∪_; _∩_)
 
--- The top non-function type
-¬function : Type
-¬function = number ∪ (string ∪ (nil ∪ boolean))
-
--- Unions and intersections of normalized types
+-- Operations on normalized types
 _∪ᶠ_ : Type → Type → Type
 _∪ⁿˢ_ : Type → Type → Type
 _∩ⁿˢ_ : Type → Type → Type
@@ -23,8 +19,8 @@ F ∪ᶠ G = F ∪ G
 S ∪ⁿ (T₁ ∪ T₂) = (S ∪ⁿ T₁) ∪ T₂
 S ∪ⁿ unknown = unknown
 S ∪ⁿ never = S
-unknown ∪ⁿ T = unknown
 never ∪ⁿ T = T
+unknown ∪ⁿ T = unknown
 (S₁ ∪ S₂) ∪ⁿ G = (S₁ ∪ⁿ G) ∪ S₂
 F ∪ⁿ G = F ∪ᶠ G
 

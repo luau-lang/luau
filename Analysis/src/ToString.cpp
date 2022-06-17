@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation)
  * Fair warning: Setting this will break a lot of Luau unit tests.
  */
 LUAU_FASTFLAGVARIABLE(DebugLuauVerboseTypeNames, false)
+LUAU_FASTFLAGVARIABLE(LuauToStringTableBracesNewlines, false)
 
 namespace Luau
 {
@@ -283,7 +284,8 @@ struct TypeVarStringifier
         }
 
         Luau::visit(
-            [this, tv](auto&& t) {
+            [this, tv](auto&& t)
+            {
                 return (*this)(tv, t);
             },
             tv->ty);
@@ -557,22 +559,54 @@ struct TypeVarStringifier
         {
         case TableState::Sealed:
             state.result.invalid = true;
-            openbrace = "{| ";
-            closedbrace = " |}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{|";
+                closedbrace = "|}";
+            }
+            else
+            {
+                openbrace = "{| ";
+                closedbrace = " |}";
+            }
             break;
         case TableState::Unsealed:
-            openbrace = "{ ";
-            closedbrace = " }";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{";
+                closedbrace = "}";
+            }
+            else
+            {
+                openbrace = "{ ";
+                closedbrace = " }";
+            }
             break;
         case TableState::Free:
             state.result.invalid = true;
-            openbrace = "{- ";
-            closedbrace = " -}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{-";
+                closedbrace = "-}";
+            }
+            else
+            {
+                openbrace = "{- ";
+                closedbrace = " -}";
+            }
             break;
         case TableState::Generic:
             state.result.invalid = true;
-            openbrace = "{+ ";
-            closedbrace = " +}";
+            if (FFlag::LuauToStringTableBracesNewlines)
+            {
+                openbrace = "{+";
+                closedbrace = "+}";
+            }
+            else
+            {
+                openbrace = "{+ ";
+                closedbrace = " +}";
+            }
             break;
         }
 
@@ -591,6 +625,8 @@ struct TypeVarStringifier
         bool comma = false;
         if (ttv.indexer)
         {
+            if (FFlag::LuauToStringTableBracesNewlines)
+                state.newline();
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");
@@ -605,6 +641,10 @@ struct TypeVarStringifier
             if (comma)
             {
                 state.emit(",");
+                state.newline();
+            }
+            else if (FFlag::LuauToStringTableBracesNewlines)
+            {
                 state.newline();
             }
 
@@ -633,6 +673,13 @@ struct TypeVarStringifier
         }
 
         state.dedent();
+        if (FFlag::LuauToStringTableBracesNewlines)
+        {
+            if (comma)
+                state.newline();
+            else
+                state.emit("  ");
+        }
         state.emit(closedbrace);
 
         state.unsee(&ttv);
@@ -833,7 +880,8 @@ struct TypePackStringifier
         }
 
         Luau::visit(
-            [this, tp](auto&& t) {
+            [this, tp](auto&& t)
+            {
                 return (*this)(tp, t);
             },
             tp->ty);
@@ -964,9 +1012,11 @@ static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<Type
         if (auto ttv = get<TableTypeVar>(follow(cycleTy)); !exhaustive && ttv && (ttv->syntheticName || ttv->name))
         {
             // If we have a cycle type in type parameters, assign a cycle name for this named table
-            if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(), [&](auto&& el) {
-                    return cycles.count(follow(el));
-                }) != ttv->instantiatedTypeParams.end())
+            if (std::find_if(ttv->instantiatedTypeParams.begin(), ttv->instantiatedTypeParams.end(),
+                    [&](auto&& el)
+                    {
+                        return cycles.count(follow(el));
+                    }) != ttv->instantiatedTypeParams.end())
                 cycleNames[cycleTy] = ttv->name ? *ttv->name : *ttv->syntheticName;
 
             continue;
@@ -1062,9 +1112,11 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
     state.exhaustive = true;
 
     std::vector<std::pair<TypeId, std::string>> sortedCycleNames{state.cycleNames.begin(), state.cycleNames.end()};
-    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(), [](const auto& a, const auto& b) {
-        return a.second < b.second;
-    });
+    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(),
+        [](const auto& a, const auto& b)
+        {
+            return a.second < b.second;
+        });
 
     bool semi = false;
     for (const auto& [cycleTy, name] : sortedCycleNames)
@@ -1075,7 +1127,8 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
         state.emit(name);
         state.emit(" = ");
         Luau::visit(
-            [&tvs, cycleTy = cycleTy](auto&& t) {
+            [&tvs, cycleTy = cycleTy](auto&& t)
+            {
                 return tvs(cycleTy, t);
             },
             cycleTy->ty);
@@ -1132,9 +1185,11 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
     state.exhaustive = true;
 
     std::vector<std::pair<TypeId, std::string>> sortedCycleNames{state.cycleNames.begin(), state.cycleNames.end()};
-    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(), [](const auto& a, const auto& b) {
-        return a.second < b.second;
-    });
+    std::sort(sortedCycleNames.begin(), sortedCycleNames.end(),
+        [](const auto& a, const auto& b)
+        {
+            return a.second < b.second;
+        });
 
     bool semi = false;
     for (const auto& [cycleTy, name] : sortedCycleNames)
@@ -1145,7 +1200,8 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
         state.emit(name);
         state.emit(" = ");
         Luau::visit(
-            [&tvs, cycleTy = cycleTy](auto t) {
+            [&tvs, cycleTy = cycleTy](auto t)
+            {
                 return tvs(cycleTy, t);
             },
             cycleTy->ty);
