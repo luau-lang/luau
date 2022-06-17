@@ -13,8 +13,8 @@ using namespace Luau;
 
 namespace
 {
-std::optional<ExprResult<TypePackId>> magicFunctionInstanceIsA(
-    TypeChecker& typeChecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
+    TypeChecker& typeChecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
     if (expr.args.size != 1)
         return std::nullopt;
@@ -32,7 +32,7 @@ std::optional<ExprResult<TypePackId>> magicFunctionInstanceIsA(
     unfreeze(typeChecker.globalTypes);
     TypePackId booleanPack = typeChecker.globalTypes.addTypePack({typeChecker.booleanType});
     freeze(typeChecker.globalTypes);
-    return ExprResult<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
+    return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
 }
 
 struct RefinementClassFixture : Fixture

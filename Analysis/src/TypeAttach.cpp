@@ -94,6 +94,11 @@ public:
         }
     }
 
+    AstType* operator()(const BlockedTypeVar& btv)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*blocked*"));
+    }
+
     AstType* operator()(const ConstrainedTypeVar& ctv)
     {
         AstArray<AstType*> types;
@@ -271,7 +276,7 @@ public:
         }
 
         AstArray<AstType*> returnTypes;
-        const auto& [retVector, retTail] = flatten(ftv.retType);
+        const auto& [retVector, retTail] = flatten(ftv.retTypes);
         returnTypes.size = retVector.size();
         returnTypes.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * returnTypes.size));
         for (size_t i = 0; i < returnTypes.size; ++i)

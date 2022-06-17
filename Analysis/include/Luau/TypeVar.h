@@ -84,6 +84,24 @@ using Tags = std::vector<std::string>;
 
 using ModuleName = std::string;
 
+/** A TypeVar that cannot be computed.
+ *
+ * BlockedTypeVars essentially serve as a way to encode partial ordering on the
+ * constraint graph. Until a BlockedTypeVar is unblocked by its owning
+ * constraint, nothing at all can be said about it. Constraints that need to
+ * process a BlockedTypeVar cannot be dispatched.
+ *
+ * Whenever a BlockedTypeVar is added to the graph, we also record a constraint
+ * that will eventually unblock it.
+ */
+struct BlockedTypeVar
+{
+    BlockedTypeVar();
+    int index;
+
+    static int nextIndex;
+};
+
 struct PrimitiveTypeVar
 {
     enum Type
@@ -231,29 +249,29 @@ struct FunctionDefinition
 // TODO: Do we actually need this? We'll find out later if we can delete this.
 // Does not exactly belong in TypeVar.h, but this is the only way to appease the compiler.
 template<typename T>
-struct ExprResult
+struct WithPredicate
 {
     T type;
     PredicateVec predicates;
 };
 
-using MagicFunction = std::function<std::optional<ExprResult<TypePackId>>(
-    struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, ExprResult<TypePackId>)>;
+using MagicFunction = std::function<std::optional<WithPredicate<TypePackId>>(
+    struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>)>;
 
 struct FunctionTypeVar
 {
     // Global monomorphic function
-    FunctionTypeVar(TypePackId argTypes, TypePackId retType, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
+    FunctionTypeVar(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Global polymorphic function
-    FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retType,
+    FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Local monomorphic function
-    FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retType, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
+    FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Local polymorphic function
-    FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retType,
+    FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     TypeLevel level;
@@ -263,7 +281,7 @@ struct FunctionTypeVar
     std::vector<TypePackId> genericPacks;
     TypePackId argTypes;
     std::vector<std::optional<FunctionArgument>> argNames;
-    TypePackId retType;
+    TypePackId retTypes;
     std::optional<FunctionDefinition> definition;
     MagicFunction magicFunction = nullptr; // Function pointer, can be nullptr.
     bool hasSelf;
@@ -442,7 +460,7 @@ struct LazyTypeVar
 
 using ErrorTypeVar = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, ConstrainedTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
+using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, ConstrainedTypeVar, BlockedTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
     MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar>;
 
 struct TypeVar final
@@ -555,7 +573,6 @@ struct SingletonTypes
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;
-    const TypeId optionalNumberType;
 
     const TypePackId anyTypePack;
 

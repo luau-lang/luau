@@ -418,7 +418,7 @@ typedef struct Table
     CommonHeader;
 
 
-    uint8_t flags;      /* 1<<p means tagmethod(p) is not present */
+    uint8_t tmcache;    /* 1<<p means tagmethod(p) is not present */
     uint8_t readonly;   /* sandboxing feature to prohibit writes to table */
     uint8_t safeenv;    /* environment doesn't share globals with other scripts */
     uint8_t lsizenode;  /* log2 of size of `node' array */

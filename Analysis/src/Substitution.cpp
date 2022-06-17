@@ -27,7 +27,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
     {
         visitChild(ftv->argTypes);
-        visitChild(ftv->retType);
+        visitChild(ftv->retTypes);
     }
     else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
@@ -442,7 +442,7 @@ void Substitution::replaceChildren(TypeId ty)
     if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
     {
         ftv->argTypes = replace(ftv->argTypes);
-        ftv->retType = replace(ftv->retType);
+        ftv->retTypes = replace(ftv->retTypes);
     }
     else if (TableTypeVar* ttv = getMutable<TableTypeVar>(ty))
     {

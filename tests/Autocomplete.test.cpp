@@ -1992,6 +1992,7 @@ local fp: @1= f
 
     auto ac = autocomplete('1');
 
+    REQUIRE_EQ("({| x: number, y: number |}) -> number", toString(requireType("f")));
     CHECK(ac.entryMap.count("({ x: number, y: number }) -> number"));
 }
 
@@ -2620,7 +2621,6 @@ a = if temp then even elseif true then temp else e@9
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_if_else_regression")
 {
-    ScopedFastFlag FFlagLuauIfElseExprFixCompletionIssue("LuauIfElseExprFixCompletionIssue", true);
     check(R"(
 local abcdef = 0;
 local temp = false

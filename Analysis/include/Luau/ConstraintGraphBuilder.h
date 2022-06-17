@@ -4,78 +4,18 @@
 
 #include <memory>
 #include <vector>
+#include <unordered_map>
 
 #include "Luau/Ast.h"
+#include "Luau/Constraint.h"
 #include "Luau/Module.h"
+#include "Luau/NotNull.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Variant.h"
 
 namespace Luau
 {
-
-struct Scope2;
-
-// subType <: superType
-struct SubtypeConstraint
-{
-    TypeId subType;
-    TypeId superType;
-};
-
-// subPack <: superPack
-struct PackSubtypeConstraint
-{
-    TypePackId subPack;
-    TypePackId superPack;
-};
-
-// subType ~ gen superType
-struct GeneralizationConstraint
-{
-    TypeId subType;
-    TypeId superType;
-    Scope2* scope;
-};
-
-// subType ~ inst superType
-struct InstantiationConstraint
-{
-    TypeId subType;
-    TypeId superType;
-};
-
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint>;
-using ConstraintPtr = std::unique_ptr<struct Constraint>;
-
-struct Constraint
-{
-    Constraint(ConstraintV&& c);
-    Constraint(ConstraintV&& c, std::vector<Constraint*> dependencies);
-
-    Constraint(const Constraint&) = delete;
-    Constraint& operator=(const Constraint&) = delete;
-
-    ConstraintV c;
-    std::vector<Constraint*> dependencies;
-};
-
-inline Constraint& asMutable(const Constraint& c)
-{
-    return const_cast<Constraint&>(c);
-}
-
-template<typename T>
-T* getMutable(Constraint& c)
-{
-    return ::Luau::get_if<T>(&c.c);
-}
-
-template<typename T>
-const T* get(const Constraint& c)
-{
-    return getMutable<T>(asMutable(c));
-}
 
 struct Scope2
 {
@@ -102,6 +42,11 @@ struct ConstraintGraphBuilder
     TypeArena* const arena;
     // The root scope of the module we're generating constraints for.
     Scope2* rootScope;
+    // A mapping of AST node to TypeId.
+    DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
+    // A mapping of AST node to TypePackId.
+    DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
+    DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
 
     explicit ConstraintGraphBuilder(TypeArena* arena);
 
@@ -128,8 +73,9 @@ struct ConstraintGraphBuilder
      * Adds a new constraint with no dependencies to a given scope.
      * @param scope the scope to add the constraint to. Must not be null.
      * @param cv the constraint variant to add.
+     * @param location the location to attribute to the constraint.
      */
-    void addConstraint(Scope2* scope, ConstraintV cv);
+    void addConstraint(Scope2* scope, ConstraintV cv, Location location);
 
     /**
      * Adds a constraint to a given scope.
@@ -148,15 +94,48 @@ struct ConstraintGraphBuilder
     void visit(Scope2* scope, AstStat* stat);
     void visit(Scope2* scope, AstStatBlock* block);
     void visit(Scope2* scope, AstStatLocal* local);
-    void visit(Scope2* scope, AstStatLocalFunction* local);
-    void visit(Scope2* scope, AstStatReturn* local);
+    void visit(Scope2* scope, AstStatLocalFunction* function);
+    void visit(Scope2* scope, AstStatFunction* function);
+    void visit(Scope2* scope, AstStatReturn* ret);
+    void visit(Scope2* scope, AstStatAssign* assign);
+    void visit(Scope2* scope, AstStatIf* ifStatement);
+
+    TypePackId checkExprList(Scope2* scope, const AstArray<AstExpr*>& exprs);
 
     TypePackId checkPack(Scope2* scope, AstArray<AstExpr*> exprs);
     TypePackId checkPack(Scope2* scope, AstExpr* expr);
 
+    /**
+     * Checks an expression that is expected to evaluate to one type.
+     * @param scope the scope the expression is contained within.
+     * @param expr the expression to check.
+     * @return the type of the expression.
+     */
     TypeId check(Scope2* scope, AstExpr* expr);
+
+    TypeId checkExprTable(Scope2* scope, AstExprTable* expr);
+    TypeId check(Scope2* scope, AstExprIndexName* indexName);
+
+    std::pair<TypeId, Scope2*> checkFunctionSignature(Scope2* parent, AstExprFunction* fn);
+
+    /**
+     * Checks the body of a function expression.
+     * @param scope the interior scope of the body of the function.
+     * @param fn the function expression to check.
+     */
+    void checkFunctionBody(Scope2* scope, AstExprFunction* fn);
 };
 
-std::vector<const Constraint*> collectConstraints(Scope2* rootScope);
+/**
+ * Collects a vector of borrowed constraints from the scope and all its child
+ * scopes. It is important to only call this function when you're done adding
+ * constraints to the scope or its descendants, lest the borrowed pointers
+ * become invalid due to a container reallocation.
+ * @param rootScope the root scope of the scope graph to collect constraints
+ * from.
+ * @return a list of pointers to constraints contained within the scope graph.
+ * None of these pointers should be null.
+ */
+std::vector<NotNull<Constraint>> collectConstraints(Scope2* rootScope);
 
 } // namespace Luau

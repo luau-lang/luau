@@ -642,7 +642,7 @@ TEST_CASE_FIXTURE(Fixture, "indexers_quantification_2")
     const TableTypeVar* argType = get<TableTypeVar>(follow(argVec[0]));
     REQUIRE(argType != nullptr);
 
-    std::vector<TypeId> retVec = flatten(ftv->retType).first;
+    std::vector<TypeId> retVec = flatten(ftv->retTypes).first;
 
     const TableTypeVar* retType = get<TableTypeVar>(follow(retVec[0]));
     REQUIRE(retType != nullptr);
@@ -691,7 +691,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_from_value_property_in_literal")
     const FunctionTypeVar* fType = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fType != nullptr);
 
-    auto retType_ = first(fType->retType);
+    auto retType_ = first(fType->retTypes);
     REQUIRE(bool(retType_));
 
     auto retType = get<TableTypeVar>(follow(*retType_));
@@ -1881,7 +1881,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
     REQUIRE(prop.type);
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(prop.type));
     REQUIRE(ftv);
-    const TypePack* res = get<TypePack>(follow(ftv->retType));
+    const TypePack* res = get<TypePack>(follow(ftv->retTypes));
     REQUIRE(res);
     REQUIRE(res->head.size() == 1);
     const MetatableTypeVar* mtv = get<MetatableTypeVar>(follow(res->head[0]));
@@ -2584,7 +2584,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
     const FunctionTypeVar* newType = get<FunctionTypeVar>(follow(counterType->props["new"].type));
     REQUIRE(newType);
 
-    std::optional<TypeId> newRetType = *first(newType->retType);
+    std::optional<TypeId> newRetType = *first(newType->retTypes);
     REQUIRE(newRetType);
 
     const MetatableTypeVar* newRet = get<MetatableTypeVar>(follow(*newRetType));
@@ -2977,7 +2977,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
 
 TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra")
 {
-    ScopedFastFlag luauExpectedPropTypeFromIndexer{"LuauExpectedPropTypeFromIndexer", true};
     ScopedFastFlag luauSubtypingAddOptPropsToUnsealedTables{"LuauSubtypingAddOptPropsToUnsealedTables", true};
 
     CheckResult result = check(R"(
@@ -2992,8 +2991,6 @@ TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra")
 
 TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra_2")
 {
-    ScopedFastFlag luauExpectedPropTypeFromIndexer{"LuauExpectedPropTypeFromIndexer", true};
-
     CheckResult result = check(R"(
         type X = {[any]: string | boolean}
 

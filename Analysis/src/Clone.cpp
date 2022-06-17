@@ -47,6 +47,7 @@ struct TypeCloner
     void operator()(const Unifiable::Generic& t);
     void operator()(const Unifiable::Bound<TypeId>& t);
     void operator()(const Unifiable::Error& t);
+    void operator()(const BlockedTypeVar& t);
     void operator()(const PrimitiveTypeVar& t);
     void operator()(const ConstrainedTypeVar& t);
     void operator()(const SingletonTypeVar& t);
@@ -158,6 +159,11 @@ void TypeCloner::operator()(const Unifiable::Error& t)
     defaultClone(t);
 }
 
+void TypeCloner::operator()(const BlockedTypeVar& t)
+{
+    defaultClone(t);
+}
+
 void TypeCloner::operator()(const PrimitiveTypeVar& t)
 {
     defaultClone(t);
@@ -200,7 +206,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
     ftv->tags = t.tags;
     ftv->argTypes = clone(t.argTypes, dest, cloneState);
     ftv->argNames = t.argNames;
-    ftv->retType = clone(t.retType, dest, cloneState);
+    ftv->retTypes = clone(t.retTypes, dest, cloneState);
     ftv->hasNoGenerics = t.hasNoGenerics;
 }
 
@@ -391,7 +397,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
 
     if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
     {
-        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->argTypes, ftv->retType, ftv->definition, ftv->hasSelf};
+        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
         clone.generics = ftv->generics;
         clone.genericPacks = ftv->genericPacks;
         clone.magicFunction = ftv->magicFunction;

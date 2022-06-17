@@ -2282,7 +2282,7 @@ private:
     size_t getReturnCount(TypeId ty)
     {
         if (auto ftv = get<FunctionTypeVar>(ty))
-            return size(ftv->retType);
+            return size(ftv->retTypes);
 
         if (auto itv = get<IntersectionTypeVar>(ty))
         {
@@ -2291,7 +2291,7 @@ private:
 
             for (TypeId part : itv->parts)
                 if (auto ftv = get<FunctionTypeVar>(follow(part)))
-                    result = std::max(result, size(ftv->retType));
+                    result = std::max(result, size(ftv->retTypes));
 
             return result;
         }

@@ -90,7 +90,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 
     const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("add"));
 
-    std::optional<TypeId> retType = first(functionType->retType);
+    std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType.has_value());
     CHECK_EQ(typeChecker.numberType, follow(*retType));
     CHECK_EQ(requireType("n"), typeChecker.numberType);
@@ -777,8 +777,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_branch_succeeds")
 {
-    ScopedFastFlag sff("LuauSuccessTypingForEqualityOperations", true);
-
     CheckResult result = check(R"(
         local mm = {}
         type Foo = typeof(setmetatable({}, mm))

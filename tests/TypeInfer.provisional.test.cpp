@@ -472,6 +472,7 @@ TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
         {"LuauNormalizeFlagIsConservative", true},
+        {"LuauQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(
@@ -494,8 +495,8 @@ TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    // TODO: We're missing generics a... and b...
-    CHECK_EQ("(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
+    // TODO: We're missing generics b...
+    CHECK_EQ("<a...>(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

@@ -138,25 +138,25 @@ struct TypeChecker
     void checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& statement);
     void checkBlockTypeAliases(const ScopePtr& scope, std::vector<AstStat*>& sorted);
 
-    ExprResult<TypeId> checkExpr(
+    WithPredicate<TypeId> checkExpr(
         const ScopePtr& scope, const AstExpr& expr, std::optional<TypeId> expectedType = std::nullopt, bool forceSingleton = false);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprLocal& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprGlobal& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprVarargs& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprCall& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIndexName& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIndexExpr& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprFunction& expr, std::optional<TypeId> expectedType = std::nullopt);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprTable& expr, std::optional<TypeId> expectedType = std::nullopt);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprUnary& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprLocal& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprGlobal& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprVarargs& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprCall& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIndexName& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIndexExpr& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprFunction& expr, std::optional<TypeId> expectedType = std::nullopt);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprTable& expr, std::optional<TypeId> expectedType = std::nullopt);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprUnary& expr);
     TypeId checkRelationalOperation(
         const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates = {});
     TypeId checkBinaryOperation(
         const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates = {});
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprBinary& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
-    ExprResult<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprBinary& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
 
     TypeId checkExprTable(const ScopePtr& scope, const AstExprTable& expr, const std::vector<std::pair<TypeId, TypeId>>& fieldTypes,
         std::optional<TypeId> expectedType);
@@ -179,11 +179,11 @@ struct TypeChecker
     void checkArgumentList(
         const ScopePtr& scope, Unifier& state, TypePackId paramPack, TypePackId argPack, const std::vector<Location>& argLocations);
 
-    ExprResult<TypePackId> checkExprPack(const ScopePtr& scope, const AstExpr& expr);
-    ExprResult<TypePackId> checkExprPack(const ScopePtr& scope, const AstExprCall& expr);
+    WithPredicate<TypePackId> checkExprPack(const ScopePtr& scope, const AstExpr& expr);
+    WithPredicate<TypePackId> checkExprPack(const ScopePtr& scope, const AstExprCall& expr);
     std::vector<std::optional<TypeId>> getExpectedTypesForCall(const std::vector<TypeId>& overloads, size_t argumentCount, bool selfCall);
-    std::optional<ExprResult<TypePackId>> checkCallOverload(const ScopePtr& scope, const AstExprCall& expr, TypeId fn, TypePackId retPack,
-        TypePackId argPack, TypePack* args, const std::vector<Location>* argLocations, const ExprResult<TypePackId>& argListResult,
+    std::optional<WithPredicate<TypePackId>> checkCallOverload(const ScopePtr& scope, const AstExprCall& expr, TypeId fn, TypePackId retPack,
+        TypePackId argPack, TypePack* args, const std::vector<Location>* argLocations, const WithPredicate<TypePackId>& argListResult,
         std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<TypeId>& overloadsThatDont, std::vector<OverloadErrorEntry>& errors);
     bool handleSelfCallMismatch(const ScopePtr& scope, const AstExprCall& expr, TypePack* args, const std::vector<Location>& argLocations,
         const std::vector<OverloadErrorEntry>& errors);
@@ -191,7 +191,7 @@ struct TypeChecker
         const std::vector<Location>& argLocations, const std::vector<TypeId>& overloads, const std::vector<TypeId>& overloadsThatMatchArgCount,
         const std::vector<OverloadErrorEntry>& errors);
 
-    ExprResult<TypePackId> checkExprList(const ScopePtr& scope, const Location& location, const AstArray<AstExpr*>& exprs,
+    WithPredicate<TypePackId> checkExprList(const ScopePtr& scope, const Location& location, const AstArray<AstExpr*>& exprs,
         bool substituteFreeForNil = false, const std::vector<bool>& lhsAnnotations = {},
         const std::vector<std::optional<TypeId>>& expectedTypes = {});
 
@@ -234,7 +234,7 @@ struct TypeChecker
     ErrorVec canUnify(TypeId subTy, TypeId superTy, const Location& location);
     ErrorVec canUnify(TypePackId subTy, TypePackId superTy, const Location& location);
 
-    void unifyLowerBound(TypePackId subTy, TypePackId superTy, const Location& location);
+    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const Location& location);
 
     std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location);
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location);
@@ -412,7 +412,6 @@ public:
     const TypeId booleanType;
     const TypeId threadType;
     const TypeId anyType;
-    const TypeId optionalNumberType;
 
     const TypePackId anyTypePack;
 

@@ -4992,6 +4992,147 @@ RETURN R1 1
 )");
 }
 
+TEST_CASE("InlineCapture")
+{
+    // if the argument is captured by a nested closure, normally we can rely on capture by value
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return function() return a end
+end
+
+local x = ...
+local y = foo(x)
+return y
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+NEWCLOSURE R2 P1
+CAPTURE VAL R1
+RETURN R2 1
+)");
+
+    // if the argument is a constant, we move it to a register so that capture by value can happen
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return function() return a end
+end
+
+local y = foo(42)
+return y
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R2 42
+NEWCLOSURE R1 P1
+CAPTURE VAL R2
+RETURN R1 1
+)");
+
+    // if the argument is an externally mutated variable, we copy it to an argument and capture it by value
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return function() return a end
+end
+
+local x x = 42
+local y = foo(x)
+return y
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADNIL R1
+LOADN R1 42
+MOVE R3 R1
+NEWCLOSURE R2 P1
+CAPTURE VAL R3
+RETURN R2 1
+)");
+
+    // finally, if the argument is mutated internally, we must capture it by reference and close the upvalue
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    a = a or 42
+    return function() return a end
+end
+
+local y = foo()
+return y
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADNIL R2
+ORK R2 R2 K1
+NEWCLOSURE R1 P1
+CAPTURE REF R2
+CLOSEUPVALS R2
+RETURN R1 1
+)");
+
+    // note that capture might need to be performed during the fallthrough block
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    a = a or 42
+    print(function() return a end)
+end
+
+local x = ...
+local y = foo(x)
+return y
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+MOVE R3 R1
+ORK R3 R3 K1
+GETIMPORT R4 3
+NEWCLOSURE R5 P1
+CAPTURE REF R3
+CALL R4 1 0
+LOADNIL R2
+CLOSEUPVALS R3
+RETURN R2 1
+)");
+
+    // note that mutation and capture might be inside internal control flow
+    // TODO: this has an oddly redundant CLOSEUPVALS after JUMP; it's not due to inlining, and is an artifact of how StatBlock/StatReturn interact
+    // fixing this would reduce the number of redundant CLOSEUPVALS a bit but it only affects bytecode size as these instructions aren't executed
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    if not a then
+        local b b = 42
+        return function() return b end
+    end
+end
+
+local x = ...
+local y = foo(x)
+return y, x
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+GETVARARGS R1 1
+JUMPIF R1 L0
+LOADNIL R3
+LOADN R3 42
+NEWCLOSURE R2 P1
+CAPTURE REF R3
+CLOSEUPVALS R3
+JUMP L1
+CLOSEUPVALS R3
+L0: LOADNIL R2
+L1: MOVE R3 R2
+MOVE R4 R1
+RETURN R3 2
+)");
+}
+
 TEST_CASE("InlineFallthrough")
 {
     // if the function doesn't return, we still fill the results with nil
@@ -5041,27 +5182,6 @@ DUPCLOSURE R0 K0
 MOVE R1 R0
 CALL R1 0 -1
 RETURN R1 -1
-)");
-}
-
-TEST_CASE("InlineCapture")
-{
-    // can't inline function with nested functions that capture locals because they might be constants
-    CHECK_EQ("\n" + compileFunction(R"(
-local function foo(a)
-    local function bar()
-        return a
-    end
-    return bar()
-end
-)",
-                        1, 2),
-        R"(
-NEWCLOSURE R1 P0
-CAPTURE VAL R0
-MOVE R2 R1
-CALL R2 0 -1
-RETURN R2 -1
 )");
 }
 
@@ -5488,6 +5608,96 @@ CALL R4 0 0
 MOVE R2 R3
 CLOSEUPVALS R1
 RETURN R2 1
+)");
+}
+
+TEST_CASE("InlineMultret")
+{
+    // inlining a function in multret context is prohibited since we can't adjust L->top outside of CALL/GETVARARGS
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a()
+end
+
+return foo(42)
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+LOADN R2 42
+CALL R1 1 -1
+RETURN R1 -1
+)");
+
+    // however, if we can deduce statically that a function always returns a single value, the inlining will work
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+return foo(42)
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R1 42
+RETURN R1 1
+)");
+
+    // this analysis will also propagate through other functions
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+local function bar(a)
+    return foo(a)
+end
+
+return bar(42)
+)",
+                        2, 2),
+        R"(
+DUPCLOSURE R0 K0
+DUPCLOSURE R1 K1
+LOADN R2 42
+RETURN R2 1
+)");
+
+    // we currently don't do this analysis fully for recursive functions since they can't be inlined anyway
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return foo(a)
+end
+
+return foo(42)
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+CAPTURE VAL R0
+MOVE R1 R0
+LOADN R2 42
+CALL R1 1 -1
+RETURN R1 -1
+)");
+
+    // and unfortunately we can't do this analysis for builtins or method calls due to getfenv
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return math.abs(a)
+end
+
+return foo(42)
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+LOADN R2 42
+CALL R1 1 -1
+RETURN R1 -1
 )");
 }
 

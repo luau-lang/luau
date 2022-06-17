@@ -26,7 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
     const FunctionTypeVar* takeTwoType = get<FunctionTypeVar>(requireType("take_two"));
     REQUIRE(takeTwoType != nullptr);
 
-    const auto& [returns, tail] = flatten(takeTwoType->retType);
+    const auto& [returns, tail] = flatten(takeTwoType->retTypes);
 
     CHECK_EQ(2, returns.size());
     CHECK_EQ(typeChecker.numberType, follow(returns[0]));
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
     const FunctionTypeVar* takeOneMoreType = get<FunctionTypeVar>(requireType("take_three"));
     REQUIRE(takeOneMoreType != nullptr);
 
-    const auto& [rets, tail] = flatten(takeOneMoreType->retType);
+    const auto& [rets, tail] = flatten(takeOneMoreType->retTypes);
 
     REQUIRE_EQ(3, rets.size());
     CHECK_EQ(typeChecker.numberType, follow(rets[0]));
@@ -105,10 +105,10 @@ TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")
     LUAU_REQUIRE_NO_ERRORS(result);
     const FunctionTypeVar* fTy = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fTy != nullptr);
-    CHECK_EQ(0, size(fTy->retType));
+    CHECK_EQ(0, size(fTy->retTypes));
     const FunctionTypeVar* gTy = get<FunctionTypeVar>(requireType("g"));
     REQUIRE(gTy != nullptr);
-    CHECK_EQ(0, size(gTy->retType));
+    CHECK_EQ(0, size(gTy->retTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
@@ -125,15 +125,15 @@ TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
 
     const FunctionTypeVar* fTy = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fTy != nullptr);
-    CHECK_EQ(1, size(follow(fTy->retType)));
+    CHECK_EQ(1, size(follow(fTy->retTypes)));
 
     const FunctionTypeVar* gTy = get<FunctionTypeVar>(requireType("g"));
     REQUIRE(gTy != nullptr);
-    CHECK_EQ(0, size(gTy->retType));
+    CHECK_EQ(0, size(gTy->retTypes));
 
     const FunctionTypeVar* hTy = get<FunctionTypeVar>(requireType("h"));
     REQUIRE(hTy != nullptr);
-    CHECK_EQ(0, size(hTy->retType));
+    CHECK_EQ(0, size(hTy->retTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "varargs_inference_through_multiple_scopes")

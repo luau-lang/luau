@@ -226,6 +226,11 @@ struct StringifierState
         result.name += s;
     }
 
+    void emit(int i)
+    {
+        emit(std::to_string(i).c_str());
+    }
+
     void indent()
     {
         indentation += 4;
@@ -394,6 +399,13 @@ struct TypeVarStringifier
         state.emit("]]");
     }
 
+    void operator()(TypeId, const BlockedTypeVar& btv)
+    {
+        state.emit("*blocked-");
+        state.emit(btv.index);
+        state.emit("*");
+    }
+
     void operator()(TypeId, const PrimitiveTypeVar& ptv)
     {
         switch (ptv.type)
@@ -480,8 +492,8 @@ struct TypeVarStringifier
 
         if (FFlag::LuauLowerBoundsCalculation)
         {
-            auto retBegin = begin(ftv.retType);
-            auto retEnd = end(ftv.retType);
+            auto retBegin = begin(ftv.retTypes);
+            auto retEnd = end(ftv.retTypes);
             if (retBegin != retEnd)
             {
                 ++retBegin;
@@ -491,7 +503,7 @@ struct TypeVarStringifier
         }
         else
         {
-            if (auto retPack = get<TypePack>(follow(ftv.retType)))
+            if (auto retPack = get<TypePack>(follow(ftv.retTypes)))
             {
                 if (retPack->head.size() == 1 && !retPack->tail)
                     plural = false;
@@ -501,7 +513,7 @@ struct TypeVarStringifier
         if (plural)
             state.emit("(");
 
-        stringify(ftv.retType);
+        stringify(ftv.retTypes);
 
         if (plural)
             state.emit(")");
@@ -1303,14 +1315,14 @@ std::string toStringNamedFunction(const std::string& funcName, const FunctionTyp
 
     state.emit("): ");
 
-    size_t retSize = size(ftv.retType);
-    bool hasTail = !finite(ftv.retType);
-    bool wrap = get<TypePack>(follow(ftv.retType)) && (hasTail ? retSize != 0 : retSize != 1);
+    size_t retSize = size(ftv.retTypes);
+    bool hasTail = !finite(ftv.retTypes);
+    bool wrap = get<TypePack>(follow(ftv.retTypes)) && (hasTail ? retSize != 0 : retSize != 1);
 
     if (wrap)
         state.emit("(");
 
-    tvs.stringify(ftv.retType);
+    tvs.stringify(ftv.retTypes);
 
     if (wrap)
         state.emit(")");
@@ -1385,9 +1397,9 @@ std::string toString(const Constraint& c, ToStringOptions& opts)
     }
     else if (const GeneralizationConstraint* gc = Luau::get_if<GeneralizationConstraint>(&c.c))
     {
-        ToStringResult subStr = toStringDetailed(gc->subType, opts);
+        ToStringResult subStr = toStringDetailed(gc->generalizedType, opts);
         opts.nameMap = std::move(subStr.nameMap);
-        ToStringResult superStr = toStringDetailed(gc->superType, opts);
+        ToStringResult superStr = toStringDetailed(gc->sourceType, opts);
         opts.nameMap = std::move(superStr.nameMap);
         return subStr.name + " ~ gen " + superStr.name;
     }

@@ -1075,6 +1075,8 @@ void BytecodeBuilder::validate() const
         LUAU_ASSERT(i <= insns.size());
     }
 
+    std::vector<uint8_t> openCaptures;
+
     // second pass: validate the rest of the bytecode
     for (size_t i = 0; i < insns.size();)
     {
@@ -1121,6 +1123,8 @@ void BytecodeBuilder::validate() const
 
         case LOP_CLOSEUPVALS:
             VREG(LUAU_INSN_A(insn));
+            while (openCaptures.size() && openCaptures.back() >= LUAU_INSN_A(insn))
+                openCaptures.pop_back();
             break;
 
         case LOP_GETIMPORT:
@@ -1388,8 +1392,12 @@ void BytecodeBuilder::validate() const
             switch (LUAU_INSN_A(insn))
             {
             case LCT_VAL:
+                VREG(LUAU_INSN_B(insn));
+                break;
+
             case LCT_REF:
                 VREG(LUAU_INSN_B(insn));
+                openCaptures.push_back(LUAU_INSN_B(insn));
                 break;
 
             case LCT_UPVAL:
@@ -1408,6 +1416,12 @@ void BytecodeBuilder::validate() const
         i += getOpLength(LuauOpcode(op));
         LUAU_ASSERT(i <= insns.size());
     }
+
+    // all CAPTURE REF instructions must have a CLOSEUPVALS instruction after them in the bytecode stream
+    // this doesn't guarantee safety as it doesn't perform basic block based analysis, but if this fails
+    // then the bytecode is definitely unsafe to run since the compiler won't generate backwards branches
+    // except for loop edges
+    LUAU_ASSERT(openCaptures.empty());
 
 #undef VREG
 #undef VREGEND

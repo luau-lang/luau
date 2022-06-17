@@ -41,10 +41,10 @@ typedef enum
 } TMS;
 // clang-format on
 
-#define gfasttm(g, et, e) ((et) == NULL ? NULL : ((et)->flags & (1u << (e))) ? NULL : luaT_gettm(et, e, (g)->tmname[e]))
+#define gfasttm(g, et, e) ((et) == NULL ? NULL : ((et)->tmcache & (1u << (e))) ? NULL : luaT_gettm(et, e, (g)->tmname[e]))
 
 #define fasttm(l, et, e) gfasttm(l->global, et, e)
-#define fastnotm(et, e) ((et) == NULL || ((et)->flags & (1u << (e))))
+#define fastnotm(et, e) ((et) == NULL || ((et)->tmcache & (1u << (e))))
 
 LUAI_DATA const char* const luaT_typenames[];
 LUAI_DATA const char* const luaT_eventname[];

@@ -69,6 +69,7 @@ struct Module
     std::vector<std::pair<Location, std::unique_ptr<Scope2>>> scope2s; // never empty
 
     DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
+    DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
     DenseHashMap<const AstExpr*, TypeId> astExpectedTypes{nullptr};
     DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
     DenseHashMap<const AstExpr*, TypeId> astOverloadResolvedTypes{nullptr};
