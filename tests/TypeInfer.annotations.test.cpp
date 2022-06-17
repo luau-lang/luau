@@ -70,7 +70,7 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotations_are_checked")
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fiftyType);
     REQUIRE(ftv != nullptr);
 
-    TypePackId retPack = ftv->retType;
+    TypePackId retPack = ftv->retTypes;
     const TypePack* tp = get<TypePack>(retPack);
     REQUIRE(tp != nullptr);
 

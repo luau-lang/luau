@@ -17,6 +17,7 @@ LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeFlagIsConservative, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineEqFix, false);
 LUAU_FASTFLAGVARIABLE(LuauReplaceReplacer, false);
+LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
 {
@@ -273,6 +274,18 @@ bool isSubtype(TypeId subTy, TypeId superTy, InternalErrorReporter& ice)
     return ok;
 }
 
+bool isSubtype(TypePackId subPack, TypePackId superPack, InternalErrorReporter& ice)
+{
+    UnifierSharedState sharedState{&ice};
+    TypeArena arena;
+    Unifier u{&arena, Mode::Strict, Location{}, Covariant, sharedState};
+    u.anyIsTop = true;
+
+    u.tryUnify(subPack, superPack);
+    const bool ok = u.errors.empty() && u.log.empty();
+    return ok;
+}
+
 template<typename T>
 static bool areNormal_(const T& t, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
 {
@@ -390,6 +403,7 @@ struct Normalize final : TypeVarVisitor
     bool visit(TypeId ty, const ConstrainedTypeVar& ctvRef) override
     {
         CHECK_ITERATION_LIMIT(false);
+        LUAU_ASSERT(!ty->normal);
 
         ConstrainedTypeVar* ctv = const_cast<ConstrainedTypeVar*>(&ctvRef);
 
@@ -401,14 +415,21 @@ struct Normalize final : TypeVarVisitor
 
         std::vector<TypeId> newParts = normalizeUnion(parts);
 
-        const bool normal = areNormal(newParts, seen, ice);
-
-        if (newParts.size() == 1)
-            *asMutable(ty) = BoundTypeVar{newParts[0]};
+        if (FFlag::LuauQuantifyConstrained)
+        {
+            ctv->parts = std::move(newParts);
+        }
         else
-            *asMutable(ty) = UnionTypeVar{std::move(newParts)};
+        {
+            const bool normal = areNormal(newParts, seen, ice);
 
-        asMutable(ty)->normal = normal;
+            if (newParts.size() == 1)
+                *asMutable(ty) = BoundTypeVar{newParts[0]};
+            else
+                *asMutable(ty) = UnionTypeVar{std::move(newParts)};
+
+            asMutable(ty)->normal = normal;
+        }
 
         return false;
     }
@@ -421,9 +442,9 @@ struct Normalize final : TypeVarVisitor
             return false;
 
         traverse(ftv.argTypes);
-        traverse(ftv.retType);
+        traverse(ftv.retTypes);
 
-        asMutable(ty)->normal = areNormal(ftv.argTypes, seen, ice) && areNormal(ftv.retType, seen, ice);
+        asMutable(ty)->normal = areNormal(ftv.argTypes, seen, ice) && areNormal(ftv.retTypes, seen, ice);
 
         return false;
     }
@@ -465,7 +486,14 @@ struct Normalize final : TypeVarVisitor
             checkNormal(ttv.indexer->indexResultType);
         }
 
-        asMutable(ty)->normal = normal;
+        // An unsealed table can never be normal, ditto for free tables iff the type it is bound to is also not normal.
+        if (FFlag::LuauQuantifyConstrained)
+        {
+            if (ttv.state == TableState::Generic || ttv.state == TableState::Sealed || (ttv.state == TableState::Free && follow(ty)->normal))
+                asMutable(ty)->normal = normal;
+        }
+        else
+            asMutable(ty)->normal = normal;
 
         return false;
     }

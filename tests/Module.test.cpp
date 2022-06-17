@@ -102,7 +102,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(methodType);
     REQUIRE(ftv != nullptr);
 
-    std::optional<TypeId> methodReturnType = first(ftv->retType);
+    std::optional<TypeId> methodReturnType = first(ftv->retTypes);
     REQUIRE(methodReturnType);
 
     CHECK_EQ(methodReturnType, counterCopy);

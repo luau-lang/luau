@@ -110,7 +110,7 @@ private:
     void tryUnifyWithConstrainedSuperTypeVar(TypeId subTy, TypeId superTy);
 
 public:
-    void unifyLowerBound(TypePackId subTy, TypePackId superTy);
+    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel);
 
     // Report an "infinite type error" if the type "needle" already occurs within "haystack"
     void occursCheck(TypeId needle, TypeId haystack);

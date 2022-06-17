@@ -28,7 +28,7 @@ struct RequireTracer : AstVisitor
         AstExprGlobal* global = expr->func->as<AstExprGlobal>();
 
         if (global && global->name == "require" && expr->args.size >= 1)
-            requires.push_back(expr);
+            requireCalls.push_back(expr);
 
         return true;
     }
@@ -84,9 +84,9 @@ struct RequireTracer : AstVisitor
         ModuleInfo moduleContext{currentModuleName};
 
         // seed worklist with require arguments
-        work.reserve(requires.size());
+        work.reserve(requireCalls.size());
 
-        for (AstExprCall* require : requires)
+        for (AstExprCall* require : requireCalls)
             work.push_back(require->args.data[0]);
 
         // push all dependent expressions to the work stack; note that the vector is modified during traversal
@@ -125,15 +125,15 @@ struct RequireTracer : AstVisitor
         }
 
         // resolve all requires according to their argument
-        result.requires.reserve(requires.size());
+        result.requireList.reserve(requireCalls.size());
 
-        for (AstExprCall* require : requires)
+        for (AstExprCall* require : requireCalls)
         {
             AstExpr* arg = require->args.data[0];
 
             if (const ModuleInfo* info = result.exprs.find(arg))
             {
-                result.requires.push_back({info->name, require->location});
+                result.requireList.push_back({info->name, require->location});
 
                 ModuleInfo infoCopy = *info; // copy *info out since next line invalidates info!
                 result.exprs[require] = std::move(infoCopy);
@@ -151,7 +151,7 @@ struct RequireTracer : AstVisitor
 
     DenseHashMap<AstLocal*, AstExpr*> locals;
     std::vector<AstExpr*> work;
-    std::vector<AstExprCall*> requires;
+    std::vector<AstExprCall*> requireCalls;
 };
 
 RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root, const ModuleName& currentModuleName)

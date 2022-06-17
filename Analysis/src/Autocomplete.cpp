@@ -13,7 +13,6 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAGVARIABLE(LuauIfElseExprFixCompletionIssue, false);
 LUAU_FASTFLAG(LuauSelfCallAutocompleteFix2)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
@@ -268,14 +267,14 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
     auto checkFunctionType = [typeArena, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
         if (FFlag::LuauSelfCallAutocompleteFix2)
         {
-            if (std::optional<TypeId> firstRetTy = first(ftv->retType))
+            if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
                 return checkTypeMatch(typeArena, *firstRetTy, expectedType);
 
             return false;
         }
         else
         {
-            auto [retHead, retTail] = flatten(ftv->retType);
+            auto [retHead, retTail] = flatten(ftv->retTypes);
 
             if (!retHead.empty() && canUnify(retHead.front(), expectedType))
                 return true;
@@ -454,7 +453,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             }
             else if (auto indexFunction = get<FunctionTypeVar>(followed))
             {
-                std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
+                std::optional<TypeId> indexFunctionResult = first(indexFunction->retTypes);
                 if (indexFunctionResult)
                     autocompleteProps(module, typeArena, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
             }
@@ -493,7 +492,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
                     autocompleteProps(module, typeArena, rootTy, followed, indexType, nodes, result, seen);
                 else if (auto indexFunction = get<FunctionTypeVar>(followed))
                 {
-                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retType);
+                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retTypes);
                     if (indexFunctionResult)
                         autocompleteProps(module, typeArena, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
                 }
@@ -742,7 +741,7 @@ static std::optional<TypeId> findTypeElementAt(AstType* astType, TypeId ty, Posi
         if (auto element = findTypeElementAt(type->argTypes, ftv->argTypes, position))
             return element;
 
-        if (auto element = findTypeElementAt(type->returnTypes, ftv->retType, position))
+        if (auto element = findTypeElementAt(type->returnTypes, ftv->retTypes, position))
             return element;
     }
 
@@ -958,7 +957,7 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
                     {
                         if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*it)))
                         {
-                            if (auto ty = tryGetTypePackTypeAt(ftv->retType, tailPos))
+                            if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, tailPos))
                                 inferredType = *ty;
                         }
                     }
@@ -1050,7 +1049,7 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
             {
                 if (const FunctionTypeVar* ftv = tryGetExpectedFunctionType(module, node))
                 {
-                    if (auto ty = tryGetTypePackTypeAt(ftv->retType, i))
+                    if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, i))
                         tryAddTypeCorrectSuggestion(result, startScope, topType, *ty, position);
                 }
 
@@ -1067,7 +1066,7 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
                 {
                     if (const FunctionTypeVar* ftv = tryGetExpectedFunctionType(module, node))
                     {
-                        if (auto ty = tryGetTypePackTypeAt(ftv->retType, ~0u))
+                        if (auto ty = tryGetTypePackTypeAt(ftv->retTypes, ~0u))
                             tryAddTypeCorrectSuggestion(result, startScope, topType, *ty, position);
                     }
                 }
@@ -1266,7 +1265,7 @@ static bool autocompleteIfElseExpression(
     if (!parent)
         return false;
 
-    if (FFlag::LuauIfElseExprFixCompletionIssue && node->is<AstExprIfElse>())
+    if (node->is<AstExprIfElse>())
     {
         // Don't try to complete when the current node is an if-else expression (i.e. only try to complete when the node is a child of an if-else
         // expression.

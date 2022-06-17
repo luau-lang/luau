@@ -66,7 +66,7 @@ std::optional<TypeId> findTablePropertyRespectingMeta(ErrorVec& errors, TypeId t
         }
         else if (const auto& itf = get<FunctionTypeVar>(index))
         {
-            std::optional<TypeId> r = first(follow(itf->retType));
+            std::optional<TypeId> r = first(follow(itf->retTypes));
             if (!r)
                 return getSingletonTypes().nilType;
             else

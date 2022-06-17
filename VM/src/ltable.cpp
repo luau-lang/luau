@@ -45,7 +45,7 @@ static_assert(TKey{{NULL}, {0}, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not
 static_assert(TKey{{NULL}, {0}, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
 
 // reset cache of absent metamethods, cache is updated in luaT_gettm
-#define invalidateTMcache(t) t->flags = 0
+#define invalidateTMcache(t) t->tmcache = 0
 
 // empty hash data points to dummynode so that we can always dereference it
 const LuaNode luaH_dummynode = {
@@ -479,7 +479,7 @@ Table* luaH_new(lua_State* L, int narray, int nhash)
     Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
     luaC_init(L, t, LUA_TTABLE);
     t->metatable = NULL;
-    t->flags = cast_byte(~0);
+    t->tmcache = cast_byte(~0);
     t->array = NULL;
     t->sizearray = 0;
     t->lastfree = 0;
@@ -778,7 +778,7 @@ Table* luaH_clone(lua_State* L, Table* tt)
     Table* t = luaM_newgco(L, Table, sizeof(Table), L->activememcat);
     luaC_init(L, t, LUA_TTABLE);
     t->metatable = tt->metatable;
-    t->flags = tt->flags;
+    t->tmcache = tt->tmcache;
     t->array = NULL;
     t->sizearray = 0;
     t->lsizenode = 0;
@@ -835,5 +835,5 @@ void luaH_clear(Table* tt)
     }
 
     /* back to empty -> no tag methods present */
-    tt->flags = cast_byte(~0);
+    tt->tmcache = cast_byte(~0);
 }

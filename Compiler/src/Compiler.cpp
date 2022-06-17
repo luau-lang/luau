@@ -246,6 +246,14 @@ struct Compiler
             f.canInline = true;
             f.stackSize = stackSize;
             f.costModel = modelCost(func->body, func->args.data, func->args.size);
+
+            // track functions that only ever return a single value so that we can convert multret calls to fixedret calls
+            if (allPathsEndWithReturn(func->body))
+            {
+                ReturnVisitor returnVisitor(this);
+                stat->visit(&returnVisitor);
+                f.returnsOne = returnVisitor.returnsOne;
+            }
         }
 
         upvals.clear(); // note: instead of std::move above, we copy & clear to preserve capacity for future pushes
@@ -260,6 +268,19 @@ struct Compiler
     {
         if (AstExprCall* expr = node->as<AstExprCall>())
         {
+            // Optimization: convert multret calls to functions that always return one value to fixedret calls; this facilitates inlining
+            if (options.optimizationLevel >= 2)
+            {
+                AstExprFunction* func = getFunctionExpr(expr->func);
+                Function* fi = func ? functions.find(func) : nullptr;
+
+                if (fi && fi->returnsOne)
+                {
+                    compileExprTemp(node, target);
+                    return false;
+                }
+            }
+
             // We temporarily swap out regTop to have targetTop work correctly...
             // This is a crude hack but it's necessary for correctness :(
             RegScope rs(this, target);
@@ -447,7 +468,9 @@ struct Compiler
                 return false;
             }
 
-        // TODO: we can compile multret functions if all returns of the function are multret as well
+        // we can't inline multret functions because the caller expects L->top to be adjusted:
+        // - inlined return compiles to a JUMP, and we don't have an instruction that adjusts L->top arbitrarily
+        // - even if we did, right now all L->top adjustments are immediately consumed by the next instruction, and for now we want to preserve that
         if (multRet)
         {
             bytecode.addDebugRemark("inlining failed: can't convert fixed returns to multret");
@@ -492,7 +515,7 @@ struct Compiler
         size_t oldLocals = localStack.size();
 
         // note that we push the frame early; this is needed to block recursive inline attempts
-        inlineFrames.push_back({func, target, targetCount});
+        inlineFrames.push_back({func, oldLocals, target, targetCount});
 
         // evaluate all arguments; note that we don't emit code for constant arguments (relying on constant folding)
         for (size_t i = 0; i < func->args.size; ++i)
@@ -593,6 +616,8 @@ struct Compiler
         {
             for (size_t i = 0; i < targetCount; ++i)
                 bytecode.emitABC(LOP_LOADNIL, uint8_t(target + i), 0, 0);
+
+            closeLocals(oldLocals);
         }
 
         popLocals(oldLocals);
@@ -2355,6 +2380,8 @@ struct Compiler
 
         compileExprListTemp(stat->list, frame.target, frame.targetCount, /* targetTop= */ false);
 
+        closeLocals(frame.localOffset);
+
         if (!fallthrough)
         {
             size_t jumpLabel = bytecode.emitLabel();
@@ -3316,6 +3343,48 @@ struct Compiler
         std::vector<AstLocal*> upvals;
     };
 
+    struct ReturnVisitor: AstVisitor
+    {
+        Compiler* self;
+        bool returnsOne = true;
+
+        ReturnVisitor(Compiler* self)
+            : self(self)
+        {
+        }
+
+        bool visit(AstExpr* expr) override
+        {
+            return false;
+        }
+
+        bool visit(AstStatReturn* stat) override
+        {
+            if (stat->list.size == 1)
+            {
+                AstExpr* value = stat->list.data[0];
+
+                if (AstExprCall* expr = value->as<AstExprCall>())
+                {
+                    AstExprFunction* func = self->getFunctionExpr(expr->func);
+                    Function* fi = func ? self->functions.find(func) : nullptr;
+
+                    returnsOne &= fi && fi->returnsOne;
+                }
+                else if (value->is<AstExprVarargs>())
+                {
+                    returnsOne = false;
+                }
+            }
+            else
+            {
+                returnsOne = false;
+            }
+
+            return false;
+        }
+    };
+
     struct RegScope
     {
         RegScope(Compiler* self)
@@ -3351,6 +3420,7 @@ struct Compiler
         uint64_t costModel = 0;
         unsigned int stackSize = 0;
         bool canInline = false;
+        bool returnsOne = false;
     };
 
     struct Local
@@ -3383,6 +3453,8 @@ struct Compiler
     struct InlineFrame
     {
         AstExprFunction* func;
+
+        size_t localOffset;
 
         uint8_t target;
         uint8_t targetCount;

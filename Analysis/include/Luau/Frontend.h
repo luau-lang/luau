@@ -66,7 +66,7 @@ struct SourceNode
     }
 
     ModuleName name;
-    std::unordered_set<ModuleName> requires;
+    std::unordered_set<ModuleName> requireSet;
     std::vector<std::pair<ModuleName, Location>> requireLocations;
     bool dirtySourceModule = true;
     bool dirtyModule = true;
@@ -186,7 +186,7 @@ public:
 
     std::unordered_map<ModuleName, SourceNode> sourceNodes;
     std::unordered_map<ModuleName, SourceModule> sourceModules;
-    std::unordered_map<ModuleName, RequireTraceResult> requires;
+    std::unordered_map<ModuleName, RequireTraceResult> requireTrace;
 
     Stats stats = {};
 };

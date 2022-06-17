@@ -209,7 +209,7 @@ struct GenericTypeVarVisitor
             if (visit(ty, *ftv))
             {
                 traverse(ftv->argTypes);
-                traverse(ftv->retType);
+                traverse(ftv->retTypes);
             }
         }
 

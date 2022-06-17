@@ -1,16 +1,17 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Frontend.h"
 
-#include "Luau/Common.h"
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
 #include "Luau/Config.h"
-#include "Luau/FileResolver.h"
 #include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/FileResolver.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
 #include "Luau/StringUtils.h"
 #include "Luau/TimeTrace.h"
+#include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
 
@@ -216,7 +217,7 @@ ErrorVec accumulateErrors(
             continue;
 
         const SourceNode& sourceNode = it->second;
-        queue.insert(queue.end(), sourceNode.requires.begin(), sourceNode.requires.end());
+        queue.insert(queue.end(), sourceNode.requireSet.begin(), sourceNode.requireSet.end());
 
         // FIXME: If a module has a syntax error, we won't be able to re-report it here.
         // The solution is probably to move errors from Module to SourceNode
@@ -586,7 +587,7 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& chec
             path.push_back(top);
 
             // push children
-            for (const ModuleName& dep : top->requires)
+            for (const ModuleName& dep : top->requireSet)
             {
                 auto it = sourceNodes.find(dep);
                 if (it != sourceNodes.end())
@@ -738,7 +739,7 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
     std::unordered_map<ModuleName, std::vector<ModuleName>> reverseDeps;
     for (const auto& module : sourceNodes)
     {
-        for (const auto& dep : module.second.requires)
+        for (const auto& dep : module.second.requireSet)
             reverseDeps[dep].push_back(module.first);
     }
 
@@ -797,8 +798,13 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
     cs.run();
 
     result->scope2s = std::move(cgb.scopes);
+    result->astTypes = std::move(cgb.astTypes);
+    result->astTypePacks = std::move(cgb.astTypePacks);
+    result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
 
     result->clonePublicInterface(iceHandler);
+
+    Luau::check(sourceModule, result.get());
 
     return result;
 }
@@ -841,8 +847,8 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
     SourceModule result = parse(name, source->source, opts);
     result.type = source->type;
 
-    RequireTraceResult& requireTrace = requires[name];
-    requireTrace = traceRequires(fileResolver, result.root, name);
+    RequireTraceResult& require = requireTrace[name];
+    require = traceRequires(fileResolver, result.root, name);
 
     SourceNode& sourceNode = sourceNodes[name];
     SourceModule& sourceModule = sourceModules[name];
@@ -851,7 +857,7 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
     sourceModule.environmentName = environmentName;
 
     sourceNode.name = name;
-    sourceNode.requires.clear();
+    sourceNode.requireSet.clear();
     sourceNode.requireLocations.clear();
     sourceNode.dirtySourceModule = false;
 
@@ -861,10 +867,10 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
         sourceNode.dirtyModuleForAutocomplete = true;
     }
 
-    for (const auto& [moduleName, location] : requireTrace.requires)
-        sourceNode.requires.insert(moduleName);
+    for (const auto& [moduleName, location] : require.requireList)
+        sourceNode.requireSet.insert(moduleName);
 
-    sourceNode.requireLocations = requireTrace.requires;
+    sourceNode.requireLocations = require.requireList;
 
     return {&sourceNode, &sourceModule};
 }
@@ -925,8 +931,8 @@ SourceModule Frontend::parse(const ModuleName& name, std::string_view src, const
 std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr)
 {
     // FIXME I think this can be pushed into the FileResolver.
-    auto it = frontend->requires.find(currentModuleName);
-    if (it == frontend->requires.end())
+    auto it = frontend->requireTrace.find(currentModuleName);
+    if (it == frontend->requireTrace.end())
     {
         // CLI-43699
         // If we can't find the current module name, that's because we bypassed the frontend's initializer
@@ -1025,7 +1031,7 @@ void Frontend::clear()
     sourceModules.clear();
     moduleResolver.modules.clear();
     moduleResolverForAutocomplete.modules.clear();
-    requires.clear();
+    requireTrace.clear();
 }
 
 } // namespace Luau

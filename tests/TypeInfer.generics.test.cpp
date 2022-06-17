@@ -224,7 +224,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
     const FunctionTypeVar* idFun = get<FunctionTypeVar>(idType);
     REQUIRE(idFun);
     auto [args, varargs] = flatten(idFun->argTypes);
-    auto [rets, varrets] = flatten(idFun->retType);
+    auto [rets, varrets] = flatten(idFun->retTypes);
 
     CHECK_EQ(idFun->generics.size(), 1);
     CHECK_EQ(idFun->genericPacks.size(), 0);
@@ -247,7 +247,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
     const FunctionTypeVar* idFun = get<FunctionTypeVar>(idType);
     REQUIRE(idFun);
     auto [args, varargs] = flatten(idFun->argTypes);
-    auto [rets, varrets] = flatten(idFun->retType);
+    auto [rets, varrets] = flatten(idFun->retTypes);
 
     CHECK_EQ(idFun->generics.size(), 1);
     CHECK_EQ(idFun->genericPacks.size(), 0);
@@ -882,7 +882,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
     const FunctionTypeVar* foo = get<FunctionTypeVar>(follow(fooProp->type));
     REQUIRE(bool(foo));
 
-    std::optional<TypeId> ret_ = first(foo->retType);
+    std::optional<TypeId> ret_ = first(foo->retTypes);
     REQUIRE(bool(ret_));
     TypeId ret = follow(*ret_);
 
