@@ -24,6 +24,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
+LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
 
 namespace Luau
 {
@@ -641,6 +642,26 @@ TypeVar& TypeVar::operator=(const TypeVariant& rhs)
 TypeVar& TypeVar::operator=(TypeVariant&& rhs)
 {
     ty = std::move(rhs);
+    return *this;
+}
+
+TypeVar& TypeVar::operator=(const TypeVar& rhs)
+{
+    if (FFlag::LuauNonCopyableTypeVarFields)
+    {
+        LUAU_ASSERT(owningArena == rhs.owningArena);
+        LUAU_ASSERT(!rhs.persistent);
+
+        reassign(rhs);
+    }
+    else
+    {
+        ty = rhs.ty;
+        persistent = rhs.persistent;
+        normal = rhs.normal;
+        owningArena = rhs.owningArena;
+    }
+
     return *this;
 }
 

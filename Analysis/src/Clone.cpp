@@ -9,7 +9,6 @@
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
-LUAU_FASTFLAG(LuauNoMethodLocations)
 
 namespace Luau
 {
@@ -241,8 +240,6 @@ void TypeCloner::operator()(const TableTypeVar& t)
         arg = clone(arg, dest, cloneState);
 
     ttv->definitionModuleName = t.definitionModuleName;
-    if (!FFlag::LuauNoMethodLocations)
-        ttv->methodDefinitionLocations = t.methodDefinitionLocations;
     ttv->tags = t.tags;
 }
 
@@ -406,8 +403,6 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
     {
         LUAU_ASSERT(!ttv->boundTo);
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
-        if (!FFlag::LuauNoMethodLocations)
-            clone.methodDefinitionLocations = ttv->methodDefinitionLocations;
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;

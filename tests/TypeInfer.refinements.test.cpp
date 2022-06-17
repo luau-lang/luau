@@ -932,6 +932,8 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
+    ScopedFastFlag sff{"LuauFalsyPredicateReturnsNilInstead", true};
+
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
 
@@ -947,7 +949,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"({| tag: "exists", x: string |})", toString(requireTypeAtPosition({5, 28})));
-    CHECK_EQ(R"({| tag: "missing", x: nil |})", toString(requireTypeAtPosition({7, 28})));
+    CHECK_EQ(R"({| tag: "exists", x: string |} | {| tag: "missing", x: nil |})", toString(requireTypeAtPosition({7, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
@@ -1191,7 +1193,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
 
 TEST_CASE_FIXTURE(Fixture, "typeguard_doesnt_leak_to_elseif")
 {
-    const std::string code = R"(
+    CheckResult result = check(R"(
         function f(a)
            if type(a) == "boolean" then
                 local a1 = a
@@ -1201,10 +1203,30 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_doesnt_leak_to_elseif")
                 local a3 = a
             end
         end
-    )";
-    CheckResult result = check(code);
+    )");
+
     LUAU_REQUIRE_NO_ERRORS(result);
-    dumpErrors(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_nil")
+{
+    ScopedFastFlag sff{"LuauFalsyPredicateReturnsNilInstead", true};
+
+    CheckResult result = check(R"(
+        local function f(t: {number})
+            local x = t[1]
+            if not x then
+                local foo = x
+            else
+                local bar = x
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
+    CHECK_EQ("number", toString(requireTypeAtPosition({6, 28})));
 }
 
 TEST_SUITE_END();

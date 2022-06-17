@@ -486,8 +486,6 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 {
-    ScopedFastFlag sff{"LuauTypecheckIter", true};
-
     CheckResult result = check(R"(
         local t: {string} = {}
         local key
@@ -506,8 +504,6 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 {
-    ScopedFastFlag sff{"LuauTypecheckIter", true};
-
     CheckResult result = check(R"(
         local t: {string} = {}
         local extra
@@ -522,8 +518,6 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
 
 TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
 {
-    ScopedFastFlag sff{"LuauTypecheckIter", true};
-
     CheckResult result = check(R"(
         local t = {}
         for k, v in t do
@@ -539,8 +533,6 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")
 {
-    ScopedFastFlag sff{"LuauTypecheckIter", true};
-
     CheckResult result = check(R"(
         local t = {}
         setmetatable(t, { __iter = function(o) return next, o.children end })

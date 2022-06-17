@@ -16,7 +16,6 @@
 #include <bitset>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileIter, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileIterNoPairs, false)
 
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
@@ -25,8 +24,6 @@ LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
-
-LUAU_FASTFLAGVARIABLE(LuauCompileNestedClosureO2, false)
 
 namespace Luau
 {
@@ -172,30 +169,6 @@ struct Compiler
             return node->as<AstExprFunction>();
     }
 
-    bool canInlineFunctionBody(AstStat* stat)
-    {
-        if (FFlag::LuauCompileNestedClosureO2)
-            return true; // TODO: remove this function
-
-        struct CanInlineVisitor : AstVisitor
-        {
-            bool result = true;
-
-            bool visit(AstExprFunction* node) override
-            {
-                result = false;
-
-                // short-circuit to avoid analyzing nested closure bodies
-                return false;
-            }
-        };
-
-        CanInlineVisitor canInline;
-        stat->visit(&canInline);
-
-        return canInline.result;
-    }
-
     uint32_t compileFunction(AstExprFunction* func)
     {
         LUAU_TIMETRACE_SCOPE("Compiler::compileFunction", "Compiler");
@@ -268,7 +241,7 @@ struct Compiler
         f.upvals = upvals;
 
         // record information for inlining
-        if (options.optimizationLevel >= 2 && !func->vararg && canInlineFunctionBody(func->body) && !getfenvUsed && !setfenvUsed)
+        if (options.optimizationLevel >= 2 && !func->vararg && !getfenvUsed && !setfenvUsed)
         {
             f.canInline = true;
             f.stackSize = stackSize;
@@ -827,110 +800,62 @@ struct Compiler
         if (pid < 0)
             CompileError::raise(expr->location, "Exceeded closure limit; simplify the code to compile");
 
-        if (FFlag::LuauCompileNestedClosureO2)
-        {
-            captures.clear();
-            captures.reserve(f->upvals.size());
-
-            for (AstLocal* uv : f->upvals)
-            {
-                LUAU_ASSERT(uv->functionDepth < expr->functionDepth);
-
-                if (int reg = getLocalReg(uv); reg >= 0)
-                {
-                    // note: we can't check if uv is an upvalue in the current frame because inlining can migrate from upvalues to locals
-                    Variable* ul = variables.find(uv);
-                    bool immutable = !ul || !ul->written;
-
-                    captures.push_back({immutable ? LCT_VAL : LCT_REF, uint8_t(reg)});
-                }
-                else if (const Constant* uc = locstants.find(uv); uc && uc->type != Constant::Type_Unknown)
-                {
-                    // inlining can result in an upvalue capture of a constant, in which case we can't capture without a temporary register
-                    uint8_t reg = allocReg(expr, 1);
-                    compileExprConstant(expr, uc, reg);
-
-                    captures.push_back({LCT_VAL, reg});
-                }
-                else
-                {
-                    LUAU_ASSERT(uv->functionDepth < expr->functionDepth - 1);
-
-                    // get upvalue from parent frame
-                    // note: this will add uv to the current upvalue list if necessary
-                    uint8_t uid = getUpval(uv);
-
-                    captures.push_back({LCT_UPVAL, uid});
-                }
-            }
-
-            // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
-            // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
-            // is used)
-            int16_t shared = -1;
-
-            if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
-            {
-                int32_t cid = bytecode.addConstantClosure(f->id);
-
-                if (cid >= 0 && cid < 32768)
-                    shared = int16_t(cid);
-            }
-
-            if (shared >= 0)
-                bytecode.emitAD(LOP_DUPCLOSURE, target, shared);
-            else
-                bytecode.emitAD(LOP_NEWCLOSURE, target, pid);
-
-            for (const Capture& c : captures)
-                bytecode.emitABC(LOP_CAPTURE, uint8_t(c.type), c.data, 0);
-
-            return;
-        }
-
-        bool shared = false;
-
-        // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
-        // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
-        // is used)
-        if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
-        {
-            int32_t cid = bytecode.addConstantClosure(f->id);
-
-            if (cid >= 0 && cid < 32768)
-            {
-                bytecode.emitAD(LOP_DUPCLOSURE, target, int16_t(cid));
-                shared = true;
-            }
-        }
-
-        if (!shared)
-            bytecode.emitAD(LOP_NEWCLOSURE, target, pid);
+        // we use a scratch vector to reduce allocations; this is safe since compileExprFunction is not reentrant
+        captures.clear();
+        captures.reserve(f->upvals.size());
 
         for (AstLocal* uv : f->upvals)
         {
             LUAU_ASSERT(uv->functionDepth < expr->functionDepth);
 
-            Variable* ul = variables.find(uv);
-            bool immutable = !ul || !ul->written;
-
-            if (uv->functionDepth == expr->functionDepth - 1)
+            if (int reg = getLocalReg(uv); reg >= 0)
             {
-                // get local variable
-                int reg = getLocalReg(uv);
-                LUAU_ASSERT(reg >= 0);
+                // note: we can't check if uv is an upvalue in the current frame because inlining can migrate from upvalues to locals
+                Variable* ul = variables.find(uv);
+                bool immutable = !ul || !ul->written;
 
-                bytecode.emitABC(LOP_CAPTURE, uint8_t(immutable ? LCT_VAL : LCT_REF), uint8_t(reg), 0);
+                captures.push_back({immutable ? LCT_VAL : LCT_REF, uint8_t(reg)});
+            }
+            else if (const Constant* uc = locstants.find(uv); uc && uc->type != Constant::Type_Unknown)
+            {
+                // inlining can result in an upvalue capture of a constant, in which case we can't capture without a temporary register
+                uint8_t reg = allocReg(expr, 1);
+                compileExprConstant(expr, uc, reg);
+
+                captures.push_back({LCT_VAL, reg});
             }
             else
             {
+                LUAU_ASSERT(uv->functionDepth < expr->functionDepth - 1);
+
                 // get upvalue from parent frame
                 // note: this will add uv to the current upvalue list if necessary
                 uint8_t uid = getUpval(uv);
 
-                bytecode.emitABC(LOP_CAPTURE, LCT_UPVAL, uid, 0);
+                captures.push_back({LCT_UPVAL, uid});
             }
         }
+
+        // Optimization: when closure has no upvalues, or upvalues are safe to share, instead of allocating it every time we can share closure
+        // objects (this breaks assumptions about function identity which can lead to setfenv not working as expected, so we disable this when it
+        // is used)
+        int16_t shared = -1;
+
+        if (options.optimizationLevel >= 1 && shouldShareClosure(expr) && !setfenvUsed)
+        {
+            int32_t cid = bytecode.addConstantClosure(f->id);
+
+            if (cid >= 0 && cid < 32768)
+                shared = int16_t(cid);
+        }
+
+        if (shared >= 0)
+            bytecode.emitAD(LOP_DUPCLOSURE, target, shared);
+        else
+            bytecode.emitAD(LOP_NEWCLOSURE, target, pid);
+
+        for (const Capture& c : captures)
+            bytecode.emitABC(LOP_CAPTURE, uint8_t(c.type), c.data, 0);
     }
 
     LuauOpcode getUnaryOp(AstExprUnary::Op op)
@@ -2511,30 +2436,6 @@ struct Compiler
             pushLocal(stat->vars.data[i], uint8_t(vars + i));
     }
 
-    bool canUnrollForBody(AstStatFor* stat)
-    {
-        if (FFlag::LuauCompileNestedClosureO2)
-            return true; // TODO: remove this function
-
-        struct CanUnrollVisitor : AstVisitor
-        {
-            bool result = true;
-
-            bool visit(AstExprFunction* node) override
-            {
-                result = false;
-
-                // short-circuit to avoid analyzing nested closure bodies
-                return false;
-            }
-        };
-
-        CanUnrollVisitor canUnroll;
-        stat->body->visit(&canUnroll);
-
-        return canUnroll.result;
-    }
-
     bool tryCompileUnrolledFor(AstStatFor* stat, int thresholdBase, int thresholdMaxBoost)
     {
         Constant one = {Constant::Type_Number};
@@ -2557,12 +2458,6 @@ struct Compiler
         if (tripCount > thresholdBase)
         {
             bytecode.addDebugRemark("loop unroll failed: too many iterations (%d)", tripCount);
-            return false;
-        }
-
-        if (!canUnrollForBody(stat))
-        {
-            bytecode.addDebugRemark("loop unroll failed: unsupported loop body");
             return false;
         }
 
@@ -2730,12 +2625,12 @@ struct Compiler
         uint8_t vars = allocReg(stat, std::max(unsigned(stat->vars.size), 2u));
         LUAU_ASSERT(vars == regs + 3);
 
-        // Optimization: when we iterate through pairs/ipairs, we generate special bytecode that optimizes the traversal using internal iteration
-        // index These instructions dynamically check if generator is equal to next/inext and bail out They assume that the generator produces 2
-        // variables, which is why we allocate at least 2 above (see vars assignment)
-        LuauOpcode skipOp = FFlag::LuauCompileIter ? LOP_FORGPREP : LOP_JUMP;
+        LuauOpcode skipOp = LOP_FORGPREP;
         LuauOpcode loopOp = LOP_FORGLOOP;
 
+        // Optimization: when we iterate via pairs/ipairs, we generate special bytecode that optimizes the traversal using internal iteration index
+        // These instructions dynamically check if generator is equal to next/inext and bail out
+        // They assume that the generator produces 2 variables, which is why we allocate at least 2 above (see vars assignment)
         if (options.optimizationLevel >= 1 && stat->vars.size <= 2)
         {
             if (stat->values.size == 1 && stat->values.data[0]->is<AstExprCall>())

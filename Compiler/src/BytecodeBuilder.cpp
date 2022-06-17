@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAG(LuauCompileNestedClosureO2)
-
 namespace Luau
 {
 
@@ -390,17 +388,15 @@ int32_t BytecodeBuilder::addConstantClosure(uint32_t fid)
 
 int16_t BytecodeBuilder::addChildFunction(uint32_t fid)
 {
-    if (FFlag::LuauCompileNestedClosureO2)
-        if (int16_t* cache = protoMap.find(fid))
-            return *cache;
+    if (int16_t* cache = protoMap.find(fid))
+        return *cache;
 
     uint32_t id = uint32_t(protos.size());
 
     if (id >= kMaxClosureCount)
         return -1;
 
-    if (FFlag::LuauCompileNestedClosureO2)
-        protoMap[fid] = int16_t(id);
+    protoMap[fid] = int16_t(id);
     protos.push_back(fid);
 
     return int16_t(id);
