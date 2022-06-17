@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
 LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
+LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
 {
@@ -1288,13 +1289,13 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
             reportError(TypeError{location, TypeMismatch{superTy, subTy, "", innerState.errors.front()}});
 
         innerState.ctx = CountMismatch::Result;
-        innerState.tryUnify_(subFunction->retType, superFunction->retType);
+        innerState.tryUnify_(subFunction->retTypes, superFunction->retTypes);
 
         if (!reported)
         {
             if (auto e = hasUnificationTooComplex(innerState.errors))
                 reportError(*e);
-            else if (!innerState.errors.empty() && size(superFunction->retType) == 1 && finite(superFunction->retType))
+            else if (!innerState.errors.empty() && size(superFunction->retTypes) == 1 && finite(superFunction->retTypes))
                 reportError(TypeError{location, TypeMismatch{superTy, subTy, "Return type is not compatible.", innerState.errors.front()}});
             else if (!innerState.errors.empty() && innerState.firstPackErrorPos)
                 reportError(
@@ -1312,7 +1313,7 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         tryUnify_(superFunction->argTypes, subFunction->argTypes, isFunctionCall);
 
         ctx = CountMismatch::Result;
-        tryUnify_(subFunction->retType, superFunction->retType);
+        tryUnify_(subFunction->retTypes, superFunction->retTypes);
     }
 
     if (FFlag::LuauTxnLogRefreshFunctionPointers)
@@ -2177,7 +2178,7 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
         else if (auto fun = state.log.getMutable<FunctionTypeVar>(ty))
         {
             queueTypePack(queue, seenTypePacks, state, fun->argTypes, anyTypePack);
-            queueTypePack(queue, seenTypePacks, state, fun->retType, anyTypePack);
+            queueTypePack(queue, seenTypePacks, state, fun->retTypes, anyTypePack);
         }
         else if (auto table = state.log.getMutable<TableTypeVar>(ty))
         {
@@ -2322,7 +2323,7 @@ void Unifier::tryUnifyWithConstrainedSuperTypeVar(TypeId subTy, TypeId superTy)
     superC->parts.push_back(subTy);
 }
 
-void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy)
+void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel)
 {
     // The duplication between this and regular typepack unification is tragic.
 
@@ -2357,7 +2358,7 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy)
             if (!freeTailPack)
                 return;
 
-            TypeLevel level = freeTailPack->level;
+            TypeLevel level = FFlag::LuauQuantifyConstrained ? demotedLevel : freeTailPack->level;
 
             TypePack* tp = getMutable<TypePack>(log.replace(tailPack, TypePack{}));
 

@@ -6,40 +6,40 @@
   </Type>
 
   <Type Name="Luau::Variant&lt;*&gt;">
-    <DisplayString Condition="typeId == 0" Optional="true">{{ index=0, value={*($T1*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 1" Optional="true">{{ index=1, value={*($T2*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 2" Optional="true">{{ index=2, value={*($T3*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 3" Optional="true">{{ index=3, value={*($T4*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 4" Optional="true">{{ index=4, value={*($T5*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 5" Optional="true">{{ index=5, value={*($T6*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 6" Optional="true">{{ index=6, value={*($T7*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 7" Optional="true">{{ index=7, value={*($T8*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 8" Optional="true">{{ index=8, value={*($T9*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 9" Optional="true">{{ index=9, value={*($T10*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 10" Optional="true">{{ index=10, value={*($T11*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 11" Optional="true">{{ index=11, value={*($T12*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 12" Optional="true">{{ index=12, value={*($T13*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 13" Optional="true">{{ index=13, value={*($T14*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 14" Optional="true">{{ index=14, value={*($T15*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 15" Optional="true">{{ index=15, value={*($T16*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 16" Optional="true">{{ index=16, value={*($T17*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 17" Optional="true">{{ index=17, value={*($T18*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 18" Optional="true">{{ index=18, value={*($T19*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 19" Optional="true">{{ index=19, value={*($T20*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 20" Optional="true">{{ index=20, value={*($T21*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 21" Optional="true">{{ index=21, value={*($T22*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 22" Optional="true">{{ index=22, value={*($T23*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 23" Optional="true">{{ index=23, value={*($T24*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 24" Optional="true">{{ index=24, value={*($T25*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 25" Optional="true">{{ index=25, value={*($T26*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 26" Optional="true">{{ index=26, value={*($T27*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 27" Optional="true">{{ index=27, value={*($T28*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 28" Optional="true">{{ index=28, value={*($T29*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 29" Optional="true">{{ index=29, value={*($T30*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 30" Optional="true">{{ index=30, value={*($T31*)storage} }}</DisplayString>
-    <DisplayString Condition="typeId == 31" Optional="true">{{ index=31, value={*($T32*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 0" Optional="true">{{ typeId=0, value={*($T1*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 1" Optional="true">{{ typeId=1, value={*($T2*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 2" Optional="true">{{ typeId=2, value={*($T3*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 3" Optional="true">{{ typeId=3, value={*($T4*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 4" Optional="true">{{ typeId=4, value={*($T5*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 5" Optional="true">{{ typeId=5, value={*($T6*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 6" Optional="true">{{ typeId=6, value={*($T7*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 7" Optional="true">{{ typeId=7, value={*($T8*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 8" Optional="true">{{ typeId=8, value={*($T9*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 9" Optional="true">{{ typeId=9, value={*($T10*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 10" Optional="true">{{ typeId=10, value={*($T11*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 11" Optional="true">{{ typeId=11, value={*($T12*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 12" Optional="true">{{ typeId=12, value={*($T13*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 13" Optional="true">{{ typeId=13, value={*($T14*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 14" Optional="true">{{ typeId=14, value={*($T15*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 15" Optional="true">{{ typeId=15, value={*($T16*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 16" Optional="true">{{ typeId=16, value={*($T17*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 17" Optional="true">{{ typeId=17, value={*($T18*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 18" Optional="true">{{ typeId=18, value={*($T19*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 19" Optional="true">{{ typeId=19, value={*($T20*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 20" Optional="true">{{ typeId=20, value={*($T21*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 21" Optional="true">{{ typeId=21, value={*($T22*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 22" Optional="true">{{ typeId=22, value={*($T23*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 23" Optional="true">{{ typeId=23, value={*($T24*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 24" Optional="true">{{ typeId=24, value={*($T25*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 25" Optional="true">{{ typeId=25, value={*($T26*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 26" Optional="true">{{ typeId=26, value={*($T27*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 27" Optional="true">{{ typeId=27, value={*($T28*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 28" Optional="true">{{ typeId=28, value={*($T29*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 29" Optional="true">{{ typeId=29, value={*($T30*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 30" Optional="true">{{ typeId=30, value={*($T31*)storage} }}</DisplayString>
+    <DisplayString Condition="typeId == 31" Optional="true">{{ typeId=31, value={*($T32*)storage} }}</DisplayString>
     <Expand>
-      <Item Name="index">typeId</Item>
+      <Item Name="typeId">typeId</Item>
       <Item Name="[value]" Condition="typeId == 0" Optional="true">*($T1*)storage</Item>
       <Item Name="[value]" Condition="typeId == 1" Optional="true">*($T2*)storage</Item>
       <Item Name="[value]" Condition="typeId == 2" Optional="true">*($T3*)storage</Item>

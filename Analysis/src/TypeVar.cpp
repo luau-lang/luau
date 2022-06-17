@@ -29,8 +29,8 @@ LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
 namespace Luau
 {
 
-std::optional<ExprResult<TypePackId>> magicFunctionFormat(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
+std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
 
 TypeId follow(TypeId t)
 {
@@ -408,41 +408,48 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
     return false;
 }
 
-FunctionTypeVar::FunctionTypeVar(TypePackId argTypes, TypePackId retType, std::optional<FunctionDefinition> defn, bool hasSelf)
+BlockedTypeVar::BlockedTypeVar()
+    : index(++nextIndex)
+{
+}
+
+int BlockedTypeVar::nextIndex = 0;
+
+FunctionTypeVar::FunctionTypeVar(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
     : argTypes(argTypes)
-    , retType(retType)
+    , retTypes(retTypes)
     , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
-FunctionTypeVar::FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retType, std::optional<FunctionDefinition> defn, bool hasSelf)
+FunctionTypeVar::FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
     : level(level)
     , argTypes(argTypes)
-    , retType(retType)
+    , retTypes(retTypes)
     , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
-FunctionTypeVar::FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retType,
+FunctionTypeVar::FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
     std::optional<FunctionDefinition> defn, bool hasSelf)
     : generics(generics)
     , genericPacks(genericPacks)
     , argTypes(argTypes)
-    , retType(retType)
+    , retTypes(retTypes)
     , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
 FunctionTypeVar::FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
-    TypePackId retType, std::optional<FunctionDefinition> defn, bool hasSelf)
+    TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
     : level(level)
     , generics(generics)
     , genericPacks(genericPacks)
     , argTypes(argTypes)
-    , retType(retType)
+    , retTypes(retTypes)
     , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
@@ -488,7 +495,7 @@ bool areEqual(SeenSet& seen, const FunctionTypeVar& lhs, const FunctionTypeVar& 
     if (!areEqual(seen, *lhs.argTypes, *rhs.argTypes))
         return false;
 
-    if (!areEqual(seen, *lhs.retType, *rhs.retType))
+    if (!areEqual(seen, *lhs.retTypes, *rhs.retTypes))
         return false;
 
     return true;
@@ -678,7 +685,6 @@ static TypeVar trueType_{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*
 static TypeVar falseType_{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true};
 static TypeVar anyType_{AnyTypeVar{}, /*persistent*/ true};
 static TypeVar errorType_{ErrorTypeVar{}, /*persistent*/ true};
-static TypeVar optionalNumberType_{UnionTypeVar{{&numberType_, &nilType_}}, /*persistent*/ true};
 
 static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, true};
 static TypePackVar errorTypePack_{Unifiable::Error{}};
@@ -692,7 +698,6 @@ SingletonTypes::SingletonTypes()
     , trueType(&trueType_)
     , falseType(&falseType_)
     , anyType(&anyType_)
-    , optionalNumberType(&optionalNumberType_)
     , anyTypePack(&anyTypePack_)
     , arena(new TypeArena)
 {
@@ -825,7 +830,7 @@ void persist(TypeId ty)
         else if (auto ftv = get<FunctionTypeVar>(t))
         {
             persist(ftv->argTypes);
-            persist(ftv->retType);
+            persist(ftv->retTypes);
         }
         else if (auto ttv = get<TableTypeVar>(t))
         {
@@ -1100,10 +1105,10 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
     return result;
 }
 
-std::optional<ExprResult<TypePackId>> magicFunctionFormat(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    auto [paramPack, _predicates] = exprResult;
+    auto [paramPack, _predicates] = withPredicate;
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
@@ -1142,7 +1147,7 @@ std::optional<ExprResult<TypePackId>> magicFunctionFormat(
     if (expected.size() != actualParamSize && (!tail || expected.size() < actualParamSize))
         typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), actualParamSize}});
 
-    return ExprResult<TypePackId>{arena.addTypePack({typechecker.stringType})};
+    return WithPredicate<TypePackId>{arena.addTypePack({typechecker.stringType})};
 }
 
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)

@@ -345,7 +345,7 @@ void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)
         if (error.location.begin.line >= lines.size())
         {
             os << "\tSource not available?" << std::endl;
-            return;
+            continue;
         }
 
         std::string_view theLine = lines[error.location.begin.line];
@@ -430,6 +430,7 @@ ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
+    BlockedTypeVar::nextIndex = 0;
 }
 
 ModuleName fromString(std::string_view name)

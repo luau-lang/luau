@@ -97,8 +97,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "find_a_require")
     NaiveFileResolver naiveFileResolver;
 
     auto res = traceRequires(&naiveFileResolver, program, "");
-    CHECK_EQ(1, res.requires.size());
-    CHECK_EQ(res.requires[0].first, "Modules/Foo/Bar");
+    CHECK_EQ(1, res.requireList.size());
+    CHECK_EQ(res.requireList[0].first, "Modules/Foo/Bar");
 }
 
 // It could be argued that this should not work.
@@ -113,7 +113,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "find_a_require_inside_a_function")
     NaiveFileResolver naiveFileResolver;
 
     auto res = traceRequires(&naiveFileResolver, program, "");
-    CHECK_EQ(1, res.requires.size());
+    CHECK_EQ(1, res.requireList.size());
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "real_source")
@@ -138,7 +138,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "real_source")
     NaiveFileResolver naiveFileResolver;
 
     auto res = traceRequires(&naiveFileResolver, program, "");
-    CHECK_EQ(8, res.requires.size());
+    CHECK_EQ(8, res.requireList.size());
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")

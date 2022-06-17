@@ -7,6 +7,7 @@
 #include "Luau/Unifier.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 
 namespace Luau
 {
@@ -58,11 +59,11 @@ ConstraintSolver::ConstraintSolver(TypeArena* arena, Scope2* rootScope)
     , constraints(collectConstraints(rootScope))
     , rootScope(rootScope)
 {
-    for (const Constraint* c : constraints)
+    for (NotNull<Constraint> c : constraints)
     {
-        unsolvedConstraints.insert(c);
+        unsolvedConstraints.push_back(c);
 
-        for (const Constraint* dep : c->dependencies)
+        for (NotNull<const Constraint> dep : c->dependencies)
         {
             block(dep, c);
         }
@@ -74,8 +75,6 @@ void ConstraintSolver::run()
     if (done())
         return;
 
-    bool progress = false;
-
     ToStringOptions opts;
 
     if (FFlag::DebugLuauLogSolver)
@@ -84,44 +83,80 @@ void ConstraintSolver::run()
         dump(this, opts);
     }
 
-    do
+    if (FFlag::DebugLuauLogSolverToJson)
     {
-        progress = false;
+        logger.captureBoundarySnapshot(rootScope, unsolvedConstraints);
+    }
 
-        auto it = begin(unsolvedConstraints);
-        auto endIt = end(unsolvedConstraints);
+    auto runSolverPass = [&](bool force) {
+        bool progress = false;
 
-        while (it != endIt)
+        size_t i = 0;
+        while (i < unsolvedConstraints.size())
         {
-            if (isBlocked(*it))
+            NotNull<const Constraint> c = unsolvedConstraints[i];
+            if (!force && isBlocked(c))
             {
-                ++it;
+                ++i;
                 continue;
             }
 
-            std::string saveMe = FFlag::DebugLuauLogSolver ? toString(**it, opts) : std::string{};
+            std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
 
-            bool success = tryDispatch(*it);
-            progress = progress || success;
+            if (FFlag::DebugLuauLogSolverToJson)
+            {
+                logger.prepareStepSnapshot(rootScope, c, unsolvedConstraints);
+            }
 
-            auto saveIt = it;
-            ++it;
+            bool success = tryDispatch(c, force);
+
+            progress |= success;
+
             if (success)
             {
-                unsolvedConstraints.erase(saveIt);
+                unsolvedConstraints.erase(unsolvedConstraints.begin() + i);
+
+                if (FFlag::DebugLuauLogSolverToJson)
+                {
+                    logger.commitPreparedStepSnapshot();
+                }
+
                 if (FFlag::DebugLuauLogSolver)
                 {
+                    if (force)
+                        printf("Force ");
                     printf("Dispatched\n\t%s\n", saveMe.c_str());
                     dump(this, opts);
                 }
             }
+            else
+                ++i;
+
+            if (force && success)
+                return true;
         }
+
+        return progress;
+    };
+
+    bool progress = false;
+    do
+    {
+        progress = runSolverPass(false);
+        if (!progress)
+            progress |= runSolverPass(true);
     } while (progress);
 
     if (FFlag::DebugLuauLogSolver)
+    {
         dumpBindings(rootScope, opts);
+    }
 
-    LUAU_ASSERT(done());
+    if (FFlag::DebugLuauLogSolverToJson)
+    {
+        logger.captureBoundarySnapshot(rootScope, unsolvedConstraints);
+        printf("Logger output:\n%s\n", logger.compileOutput().c_str());
+    }
 }
 
 bool ConstraintSolver::done()
@@ -129,21 +164,21 @@ bool ConstraintSolver::done()
     return unsolvedConstraints.empty();
 }
 
-bool ConstraintSolver::tryDispatch(const Constraint* constraint)
+bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool force)
 {
-    if (isBlocked(constraint))
+    if (!force && isBlocked(constraint))
         return false;
 
     bool success = false;
 
     if (auto sc = get<SubtypeConstraint>(*constraint))
-        success = tryDispatch(*sc);
+        success = tryDispatch(*sc, constraint, force);
     else if (auto psc = get<PackSubtypeConstraint>(*constraint))
-        success = tryDispatch(*psc);
+        success = tryDispatch(*psc, constraint, force);
     else if (auto gc = get<GeneralizationConstraint>(*constraint))
-        success = tryDispatch(*gc);
+        success = tryDispatch(*gc, constraint, force);
     else if (auto ic = get<InstantiationConstraint>(*constraint))
-        success = tryDispatch(*ic, constraint);
+        success = tryDispatch(*ic, constraint, force);
     else
         LUAU_ASSERT(0);
 
@@ -155,65 +190,66 @@ bool ConstraintSolver::tryDispatch(const Constraint* constraint)
     return success;
 }
 
-bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c)
+bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    unify(c.subType, c.superType);
+    if (isBlocked(c.subType))
+        return block(c.subType, constraint);
+    else if (isBlocked(c.superType))
+        return block(c.superType, constraint);
+
+    unify(c.subType, c.superType, constraint->location);
+
     unblock(c.subType);
     unblock(c.superType);
 
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c)
+bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    unify(c.subPack, c.superPack);
+    unify(c.subPack, c.superPack, constraint->location);
     unblock(c.subPack);
     unblock(c.superPack);
 
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& constraint)
+bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    unify(constraint.subType, constraint.superType);
+    if (isBlocked(c.sourceType))
+        return block(c.sourceType, constraint);
 
-    quantify(constraint.superType, constraint.scope);
-    unblock(constraint.subType);
-    unblock(constraint.superType);
+    if (isBlocked(c.generalizedType))
+        asMutable(c.generalizedType)->ty.emplace<BoundTypeVar>(c.sourceType);
+    else
+        unify(c.generalizedType, c.sourceType, constraint->location);
+
+    TypeId generalized = quantify(arena, c.sourceType, c.scope);
+    *asMutable(c.sourceType) = *generalized;
+
+    unblock(c.generalizedType);
+    unblock(c.sourceType);
 
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, const Constraint* constraint)
+bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    TypeId superType = follow(c.superType);
-    if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(superType))
-    {
-        if (!ftv->generalized)
-        {
-            block(superType, constraint);
-            return false;
-        }
-    }
-    else if (get<FreeTypeVar>(superType))
-    {
-        block(superType, constraint);
-        return false;
-    }
-    // TODO: Error if it's a primitive or something
+    if (isBlocked(c.superType))
+        return block(c.superType, constraint);
 
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{});
 
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
     LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
-    unify(c.subType, *instantiated);
+    unify(c.subType, *instantiated, constraint->location);
     unblock(c.subType);
 
     return true;
 }
 
-void ConstraintSolver::block_(BlockedConstraintId target, const Constraint* constraint)
+void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)
 {
     blocked[target].push_back(constraint);
 
@@ -221,19 +257,21 @@ void ConstraintSolver::block_(BlockedConstraintId target, const Constraint* cons
     count += 1;
 }
 
-void ConstraintSolver::block(const Constraint* target, const Constraint* constraint)
+void ConstraintSolver::block(NotNull<const Constraint> target, NotNull<const Constraint> constraint)
 {
     block_(target, constraint);
 }
 
-void ConstraintSolver::block(TypeId target, const Constraint* constraint)
+bool ConstraintSolver::block(TypeId target, NotNull<const Constraint> constraint)
 {
     block_(target, constraint);
+    return false;
 }
 
-void ConstraintSolver::block(TypePackId target, const Constraint* constraint)
+bool ConstraintSolver::block(TypePackId target, NotNull<const Constraint> constraint)
 {
     block_(target, constraint);
+    return false;
 }
 
 void ConstraintSolver::unblock_(BlockedConstraintId progressed)
@@ -243,7 +281,7 @@ void ConstraintSolver::unblock_(BlockedConstraintId progressed)
         return;
 
     // unblocked should contain a value always, because of the above check
-    for (const Constraint* unblockedConstraint : it->second)
+    for (NotNull<const Constraint> unblockedConstraint : it->second)
     {
         auto& count = blockedConstraints[unblockedConstraint];
         // This assertion being hit indicates that `blocked` and
@@ -257,7 +295,7 @@ void ConstraintSolver::unblock_(BlockedConstraintId progressed)
     blocked.erase(it);
 }
 
-void ConstraintSolver::unblock(const Constraint* progressed)
+void ConstraintSolver::unblock(NotNull<const Constraint> progressed)
 {
     return unblock_(progressed);
 }
@@ -272,35 +310,33 @@ void ConstraintSolver::unblock(TypePackId progressed)
     return unblock_(progressed);
 }
 
-bool ConstraintSolver::isBlocked(const Constraint* constraint)
+bool ConstraintSolver::isBlocked(TypeId ty)
+{
+    return nullptr != get<BlockedTypeVar>(follow(ty));
+}
+
+bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
 {
     auto blockedIt = blockedConstraints.find(constraint);
     return blockedIt != blockedConstraints.end() && blockedIt->second > 0;
 }
 
-void ConstraintSolver::reportErrors(const std::vector<TypeError>& errors)
-{
-    this->errors.insert(end(this->errors), begin(errors), end(errors));
-}
-
-void ConstraintSolver::unify(TypeId subType, TypeId superType)
+void ConstraintSolver::unify(TypeId subType, TypeId superType, Location location)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, Location{}, Covariant, sharedState};
+    Unifier u{arena, Mode::Strict, location, Covariant, sharedState};
 
     u.tryUnify(subType, superType);
     u.log.commit();
-    reportErrors(u.errors);
 }
 
-void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack)
+void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, Location location)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, Location{}, Covariant, sharedState};
+    Unifier u{arena, Mode::Strict, location, Covariant, sharedState};
 
     u.tryUnify(subPack, superPack);
     u.log.commit();
-    reportErrors(u.errors);
 }
 
 } // namespace Luau

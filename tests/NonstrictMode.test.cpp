@@ -13,6 +13,57 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
+TEST_CASE_FIXTURE(Fixture, "globals")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = true
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals2")
+{
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = function() return 1 end
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("() -> number", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
+    CHECK_EQ("() -> number", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = 1
+
+        if true then
+            bar = 2
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("any", toString(requireType("foo")));
+    CHECK_EQ("any", toString(requireType("bar")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_number_or_string")
 {
     ScopedFastFlag sff[]{{"LuauReturnTypeInferenceInNonstrict", true}, {"LuauLowerBoundsCalculation", true}};
@@ -51,7 +102,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
     REQUIRE_EQ("any", toString(args[0]));
     REQUIRE_EQ("any", toString(args[1]));
 
-    auto rets = flatten(ftv->retType).first;
+    auto rets = flatten(ftv->retTypes).first;
     REQUIRE_EQ(0, rets.size());
 }
 

@@ -45,7 +45,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_return_type")
     const FunctionTypeVar* takeFiveType = get<FunctionTypeVar>(requireType("take_five"));
     REQUIRE(takeFiveType != nullptr);
 
-    std::vector<TypeId> retVec = flatten(takeFiveType->retType).first;
+    std::vector<TypeId> retVec = flatten(takeFiveType->retTypes).first;
     REQUIRE(!retVec.empty());
 
     REQUIRE_EQ(*follow(retVec[0]), *typeChecker.numberType);
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "local_function")
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(h);
     REQUIRE(ftv != nullptr);
 
-    std::optional<TypeId> rt = first(ftv->retType);
+    std::optional<TypeId> rt = first(ftv->retTypes);
     REQUIRE(bool(rt));
 
     TypeId retType = follow(*rt);
@@ -361,7 +361,7 @@ TEST_CASE_FIXTURE(Fixture, "func_expr_doesnt_leak_free")
     LUAU_REQUIRE_NO_ERRORS(result);
     const Luau::FunctionTypeVar* fn = get<FunctionTypeVar>(requireType("p"));
     REQUIRE(fn);
-    auto ret = first(fn->retType);
+    auto ret = first(fn->retTypes);
     REQUIRE(ret);
     REQUIRE(get<GenericTypeVar>(follow(*ret)));
 }
@@ -460,7 +460,7 @@ TEST_CASE_FIXTURE(Fixture, "complicated_return_types_require_an_explicit_annotat
 
     const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("most_of_the_natural_numbers"));
 
-    std::optional<TypeId> retType = first(functionType->retType);
+    std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType);
     CHECK(get<UnionTypeVar>(*retType));
 }
@@ -1617,6 +1617,58 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauQuantifyConstrained", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function foo(f)
+            f(5)
+            f("hi")
+            local function g()
+                return f
+            end
+            local h = g()
+            h(true)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<a...>((boolean | number | string) -> (a...)) -> ()", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantified")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauQuantifyConstrained", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(o)
+            local t = {}
+            t[o] = true
+
+            local function foo(o)
+                o.m1(5)
+                t[o] = nil
+            end
+
+            o.m1("hi")
+
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // TODO: check the normalized type of f
 }
 
 TEST_SUITE_END();

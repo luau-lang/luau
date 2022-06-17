@@ -13,8 +13,9 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 using namespace Luau;
 
@@ -43,10 +44,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_error")
     CheckResult result = check("local a = 7   local b = 'hi'   a = b");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{
-                                                                                          requireType("a"),
-                                                                                          requireType("b"),
-                                                                                      }}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error_2")
@@ -86,6 +84,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
 TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
     ScopedFastFlag sff[]{
+        {"DebugLuauDeferredConstraintResolution", false},
         {"LuauReturnTypeInferenceInNonstrict", true},
         {"LuauLowerBoundsCalculation", true},
     };
@@ -236,10 +235,14 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     CHECK_EQ("boolean", toString(err->table));
     CHECK_EQ("x", err->key);
 
-    CHECK_EQ("*unknown*", toString(requireType("c")));
-    CHECK_EQ("*unknown*", toString(requireType("d")));
-    CHECK_EQ("*unknown*", toString(requireType("e")));
-    CHECK_EQ("*unknown*", toString(requireType("f")));
+    // TODO: Should we assert anything about these tests when DCR is being used?
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("*unknown*", toString(requireType("c")));
+        CHECK_EQ("*unknown*", toString(requireType("d")));
+        CHECK_EQ("*unknown*", toString(requireType("e")));
+        CHECK_EQ("*unknown*", toString(requireType("f")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowing")
@@ -352,40 +355,6 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "globals")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = true
-        foo = "now i'm a string!"
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("any", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "globals2")
-{
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = function() return 1 end
-        foo = "now i'm a string!"
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ("() -> number", toString(tm->wantedType));
-    CHECK_EQ("string", toString(tm->givenType));
-    CHECK_EQ("() -> number", toString(requireType("foo")));
-}
-
 TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
 {
     CheckResult result = check(R"(
@@ -398,23 +367,6 @@ TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
     UnknownSymbol* us = get<UnknownSymbol>(result.errors[0]);
     REQUIRE(us);
     CHECK_EQ("foo", us->name);
-}
-
-TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = 1
-
-        if true then
-            bar = 2
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("any", toString(requireType("foo")));
-    CHECK_EQ("any", toString(requireType("bar")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_do")
@@ -446,21 +398,6 @@ TEST_CASE_FIXTURE(Fixture, "checking_should_not_ice")
 
     CHECK_EQ("any", toString(requireType("value")));
 }
-
-// TEST_CASE_FIXTURE(Fixture, "infer_method_signature_of_argument")
-// {
-//     CheckResult result = check(R"(
-//         function f(a)
-//             if a.cond then
-//                 return a.method()
-//             end
-//         end
-//     )");
-
-//     LUAU_REQUIRE_NO_ERRORS(result);
-
-//     CHECK_EQ("A", toString(requireType("f")));
-// }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_follow")
 {

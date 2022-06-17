@@ -154,7 +154,7 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNode();
 
         visitChild(ftv->argTypes, index, "arg");
-        visitChild(ftv->retType, index, "ret");
+        visitChild(ftv->retTypes, index, "ret");
     }
     else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
