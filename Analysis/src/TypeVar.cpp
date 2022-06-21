@@ -750,7 +750,8 @@ TypeId SingletonTypes::makeStringMetatable()
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
         {"char", {arena->addType(FunctionTypeVar{numberVariadicList, arena->addTypePack({stringType})})}},
-        {"find", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber, optionalBoolean}, {}, {optionalNumber, optionalNumber})}},
+        {"find", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber, optionalBoolean}),
+                     arena->addTypePack(TypePack{{optionalNumber, optionalNumber}, stringVariadicList})})}},
         {"format", {formatFn}}, // FIXME
         {"gmatch", {gmatchFunc}},
         {"gsub", {gsubFunc}},
