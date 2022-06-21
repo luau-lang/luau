@@ -19,6 +19,7 @@
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
+#include <windows.h>
 #endif
 
 #ifndef _WIN32
@@ -47,16 +48,23 @@ enum class CompileFormat
 constexpr int MaxTraversalLimit = 50;
 
 // Ctrl-C handling
-#ifndef _WIN32
 void sigint_callback(lua_State* L, int k) {
     lua_callbacks(L)->interrupt = NULL;    
     luaL_error(L, "Execution interrupted");
 };
 lua_State* repl_lua_state = NULL;
+#ifndef _WIN32
 static void handle_sig(int signum) {
-    if(repl_lua_state != NULL) {
+    if(signum == SIGINT && repl_lua_state != NULL) {
         lua_callbacks(repl_lua_state)->interrupt = &sigint_callback;
     }
+}
+#else
+BOOL WINAPI handle_sig(DWORD signal) {
+    if(signal == CTRL_C_EVENT && repl_lua_state != NULL) {
+        lua_callbacks(repl_lua_state)->interrupt = &sigint_callback;
+    }
+    return TRUE;
 }
 #endif
 
@@ -510,10 +518,11 @@ static void runRepl()
 
     setupState(L);
 
-    // FIXME: add corresponding windows functionality
-    #ifndef _WIN32
     repl_lua_state = L;
+    #ifndef _WIN32
     signal(SIGINT, handle_sig);
+    #else
+    SetConsoleCtrlHandler(handle_sig, TRUE);
     #endif
 
     luaL_sandboxthread(L);
