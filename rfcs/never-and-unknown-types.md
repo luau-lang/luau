@@ -1,4 +1,4 @@
-# Add never and unknown types
+# never and unknown types
 
 ## Summary
 
