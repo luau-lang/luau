@@ -19,8 +19,6 @@ jobs:
       matrix:
         os: [windows-latest]
         arch: [Win32, x64]
-        engine:
-          - { channel: stable, version: latest }
         bench:
           - {
               script: "run-benchmarks",
