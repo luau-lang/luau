@@ -1,10 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Location.h"
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -47,18 +47,24 @@ struct InstantiationConstraint
     TypeId superType;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint>;
+// name(namedType) = name
+struct NameConstraint
+{
+    TypeId namedType;
+    std::string name;
+};
+
+using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, NameConstraint>;
 using ConstraintPtr = std::unique_ptr<struct Constraint>;
 
 struct Constraint
 {
-    Constraint(ConstraintV&& c, Location location);
+    explicit Constraint(ConstraintV&& c);
 
     Constraint(const Constraint&) = delete;
     Constraint& operator=(const Constraint&) = delete;
 
     ConstraintV c;
-    Location location;
     std::vector<NotNull<Constraint>> dependencies;
 };
 

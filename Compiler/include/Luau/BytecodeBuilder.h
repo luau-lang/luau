@@ -119,6 +119,8 @@ public:
 
     static std::string getError(const std::string& message);
 
+    static uint8_t getVersion();
+
 private:
     struct Constant
     {

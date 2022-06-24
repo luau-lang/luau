@@ -17,20 +17,7 @@
 namespace Luau
 {
 
-struct Scope2
-{
-    // The parent scope of this scope. Null if there is no parent (i.e. this
-    // is the module-level scope).
-    Scope2* parent = nullptr;
-    // All the children of this scope.
-    std::vector<Scope2*> children;
-    std::unordered_map<Symbol, TypeId> bindings; // TODO: I think this can be a DenseHashMap
-    TypePackId returnType;
-    // All constraints belonging to this scope.
-    std::vector<ConstraintPtr> constraints;
-
-    std::optional<TypeId> lookup(Symbol sym);
-};
+struct Scope2;
 
 struct ConstraintGraphBuilder
 {
@@ -47,6 +34,10 @@ struct ConstraintGraphBuilder
     // A mapping of AST node to TypePackId.
     DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
     DenseHashMap<const AstExpr*, TypeId> astOriginalCallTypes{nullptr};
+    // Types resolved from type annotations. Analogous to astTypes.
+    DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
+    // Type packs resolved from type annotations. Analogous to astTypePacks.
+    DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
 
     explicit ConstraintGraphBuilder(TypeArena* arena);
 
@@ -73,9 +64,8 @@ struct ConstraintGraphBuilder
      * Adds a new constraint with no dependencies to a given scope.
      * @param scope the scope to add the constraint to. Must not be null.
      * @param cv the constraint variant to add.
-     * @param location the location to attribute to the constraint.
      */
-    void addConstraint(Scope2* scope, ConstraintV cv, Location location);
+    void addConstraint(Scope2* scope, ConstraintV cv);
 
     /**
      * Adds a constraint to a given scope.
@@ -99,6 +89,7 @@ struct ConstraintGraphBuilder
     void visit(Scope2* scope, AstStatReturn* ret);
     void visit(Scope2* scope, AstStatAssign* assign);
     void visit(Scope2* scope, AstStatIf* ifStatement);
+    void visit(Scope2* scope, AstStatTypeAlias* alias);
 
     TypePackId checkExprList(Scope2* scope, const AstArray<AstExpr*>& exprs);
 
@@ -124,6 +115,24 @@ struct ConstraintGraphBuilder
      * @param fn the function expression to check.
      */
     void checkFunctionBody(Scope2* scope, AstExprFunction* fn);
+
+    /**
+     * Resolves a type from its AST annotation.
+     * @param scope the scope that the type annotation appears within.
+     * @param ty the AST annotation to resolve.
+     * @return the type of the AST annotation.
+     **/
+    TypeId resolveType(Scope2* scope, AstType* ty);
+
+    /**
+     * Resolves a type pack from its AST annotation.
+     * @param scope the scope that the type annotation appears within.
+     * @param tp the AST annotation to resolve.
+     * @return the type pack of the AST annotation.
+     **/
+    TypePackId resolveTypePack(Scope2* scope, AstTypePack* tp);
+
+    TypePackId resolveTypePack(Scope2* scope, const AstTypeList& list);
 };
 
 /**

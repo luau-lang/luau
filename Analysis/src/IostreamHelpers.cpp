@@ -111,6 +111,8 @@ static void errorToString(std::ostream& stream, const T& err)
     }
     else if constexpr (std::is_same_v<T, GenericError>)
         stream << "GenericError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, InternalError>)
+        stream << "InternalError { " << err.message << " }";
     else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
         stream << "CannotCallNonFunction { " << toString(err.ty) << " }";
     else if constexpr (std::is_same_v<T, ExtraInformation>)

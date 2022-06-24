@@ -23,7 +23,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
 LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
 
 namespace Luau
@@ -172,22 +171,15 @@ bool isString(TypeId ty)
 // Returns true when ty is a supertype of string
 bool maybeString(TypeId ty)
 {
-    if (FFlag::LuauSubtypingAddOptPropsToUnsealedTables)
-    {
-        ty = follow(ty);
+    ty = follow(ty);
 
-        if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
-            return true;
+    if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
+        return true;
 
-        if (auto utv = get<UnionTypeVar>(ty))
-            return std::any_of(begin(utv), end(utv), maybeString);
+    if (auto utv = get<UnionTypeVar>(ty))
+        return std::any_of(begin(utv), end(utv), maybeString);
 
-        return false;
-    }
-    else
-    {
-        return isString(ty);
-    }
+    return false;
 }
 
 bool isThread(TypeId ty)
@@ -369,7 +361,7 @@ bool maybeSingleton(TypeId ty)
 
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 {
-    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit, "hasLength");
+    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
 
     ty = follow(ty);
 

@@ -7,6 +7,9 @@
 
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleNameResolution, false)
+LUAU_FASTFLAGVARIABLE(LuauUseInternalCompilerErrorException, false)
+
 static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
     std::string s = "expects ";
@@ -49,6 +52,8 @@ namespace Luau
 
 struct ErrorConverter
 {
+    FileResolver* fileResolver = nullptr;
+
     std::string operator()(const Luau::TypeMismatch& tm) const
     {
         std::string givenTypeName = Luau::toString(tm.givenType);
@@ -62,8 +67,18 @@ struct ErrorConverter
             {
                 if (auto wantedDefinitionModule = getDefinitionModuleName(tm.wantedType))
                 {
-                    result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" + wantedTypeName +
-                             "' from '" + *wantedDefinitionModule + "'";
+                    if (FFlag::LuauTypeMismatchModuleNameResolution && fileResolver != nullptr)
+                    {
+                        std::string givenModuleName = fileResolver->getHumanReadableModuleName(*givenDefinitionModule);
+                        std::string wantedModuleName = fileResolver->getHumanReadableModuleName(*wantedDefinitionModule);
+                        result = "Type '" + givenTypeName + "' from '" + givenModuleName + "' could not be converted into '" + wantedTypeName +
+                                 "' from '" + wantedModuleName + "'";
+                    }
+                    else
+                    {
+                        result = "Type '" + givenTypeName + "' from '" + *givenDefinitionModule + "' could not be converted into '" + wantedTypeName +
+                                 "' from '" + *wantedDefinitionModule + "'";
+                    }
                 }
             }
         }
@@ -78,7 +93,14 @@ struct ErrorConverter
             if (!tm.reason.empty())
                 result += tm.reason + " ";
 
-            result += Luau::toString(*tm.error);
+            if (FFlag::LuauTypeMismatchModuleNameResolution)
+            {
+                result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
+            }
+            else
+            {
+                result += Luau::toString(*tm.error);
+            }
         }
         else if (!tm.reason.empty())
         {
@@ -276,6 +298,11 @@ struct ErrorConverter
     }
 
     std::string operator()(const Luau::GenericError& e) const
+    {
+        return e.message;
+    }
+
+    std::string operator()(const Luau::InternalError& e) const
     {
         return e.message;
     }
@@ -598,6 +625,11 @@ bool GenericError::operator==(const GenericError& rhs) const
     return message == rhs.message;
 }
 
+bool InternalError::operator==(const InternalError& rhs) const
+{
+    return message == rhs.message;
+}
+
 bool CannotCallNonFunction::operator==(const CannotCallNonFunction& rhs) const
 {
     return ty == rhs.ty;
@@ -685,7 +717,12 @@ bool TypesAreUnrelated::operator==(const TypesAreUnrelated& rhs) const
 
 std::string toString(const TypeError& error)
 {
-    ErrorConverter converter;
+    return toString(error, TypeErrorToStringOptions{});
+}
+
+std::string toString(const TypeError& error, TypeErrorToStringOptions options)
+{
+    ErrorConverter converter{options.fileResolver};
     return Luau::visit(converter, error.data);
 }
 
@@ -773,6 +810,9 @@ void copyError(T& e, TypeArena& destArena, CloneState cloneState)
     else if constexpr (std::is_same_v<T, GenericError>)
     {
     }
+    else if constexpr (std::is_same_v<T, InternalError>)
+    {
+    }
     else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
     {
         e.ty = clone(e.ty);
@@ -847,22 +887,51 @@ void copyErrors(ErrorVec& errors, TypeArena& destArena)
 
 void InternalErrorReporter::ice(const std::string& message, const Location& location)
 {
-    std::runtime_error error("Internal error in " + moduleName + " at " + toString(location) + ": " + message);
+    if (FFlag::LuauUseInternalCompilerErrorException)
+    {
+        InternalCompilerError error(message, moduleName, location);
 
-    if (onInternalError)
-        onInternalError(error.what());
+        if (onInternalError)
+            onInternalError(error.what());
 
-    throw error;
+        throw error;
+    }
+    else
+    {
+        std::runtime_error error("Internal error in " + moduleName + " at " + toString(location) + ": " + message);
+
+        if (onInternalError)
+            onInternalError(error.what());
+
+        throw error;
+    }
 }
 
 void InternalErrorReporter::ice(const std::string& message)
 {
-    std::runtime_error error("Internal error in " + moduleName + ": " + message);
+    if (FFlag::LuauUseInternalCompilerErrorException)
+    {
+        InternalCompilerError error(message, moduleName);
 
-    if (onInternalError)
-        onInternalError(error.what());
+        if (onInternalError)
+            onInternalError(error.what());
 
-    throw error;
+        throw error;
+    }
+    else
+    {
+        std::runtime_error error("Internal error in " + moduleName + ": " + message);
+
+        if (onInternalError)
+            onInternalError(error.what());
+
+        throw error;
+    }
+}
+
+const char* InternalCompilerError::what() const throw()
+{
+    return this->message.data();
 }
 
 } // namespace Luau

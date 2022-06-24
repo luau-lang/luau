@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/Constraint.h"
+#include "Luau/NotNull.h"
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 
 #include <optional>

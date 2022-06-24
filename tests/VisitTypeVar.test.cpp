@@ -10,14 +10,9 @@ using namespace Luau;
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 
-struct VisitTypeVarFixture : Fixture
-{
-    ScopedFastFlag flag2 = {"LuauRecursionLimitException", true};
-};
-
 TEST_SUITE_BEGIN("VisitTypeVar");
 
-TEST_CASE_FIXTURE(VisitTypeVarFixture, "throw_when_limit_is_exceeded")
+TEST_CASE_FIXTURE(Fixture, "throw_when_limit_is_exceeded")
 {
     ScopedFastInt sfi{"LuauVisitRecursionLimit", 3};
 
@@ -30,7 +25,7 @@ TEST_CASE_FIXTURE(VisitTypeVarFixture, "throw_when_limit_is_exceeded")
     CHECK_THROWS_AS(toString(tType), RecursionLimitException);
 }
 
-TEST_CASE_FIXTURE(VisitTypeVarFixture, "dont_throw_when_limit_is_high_enough")
+TEST_CASE_FIXTURE(Fixture, "dont_throw_when_limit_is_high_enough")
 {
     ScopedFastInt sfi{"LuauVisitRecursionLimit", 8};
 

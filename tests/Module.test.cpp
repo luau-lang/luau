@@ -279,7 +279,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     int limit = 400;
 #endif
     ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
-    ScopedFastFlag sff{"LuauRecursionLimitException", true};
 
     TypeArena src;
 

@@ -7,7 +7,7 @@
 // Creating the bytecode is outside the scope of this file and is handled by bytecode builder (BytecodeBuilder.h) and bytecode compiler (Compiler.h)
 // Note that ALL enums declared in this file are order-sensitive since the values are baked into bytecode that needs to be processed by legacy clients.
 
-// Bytecode definitions
+// # Bytecode definitions
 // Bytecode instructions are using "word code" - each instruction is one or many 32-bit words.
 // The first word in the instruction is always the instruction header, and *must* contain the opcode (enum below) in the least significant byte.
 //
@@ -19,7 +19,7 @@
 // Instruction word is sometimes followed by one extra word, indicated as AUX - this is just a 32-bit word and is decoded according to the specification for each opcode.
 // For each opcode the encoding is *static* - that is, based on the opcode you know a-priory how large the instruction is, with the exception of NEWCLOSURE
 
-// Bytecode indices
+// # Bytecode indices
 // Bytecode instructions commonly refer to integer values that define offsets or indices for various entities. For each type, there's a maximum encodable value.
 // Note that in some cases, the compiler will set a lower limit than the maximum encodable value is to prevent fragile code into bumping against the limits whenever we change the compilation details.
 // Additionally, in some specific instructions such as ANDK, the limit on the encoded value is smaller; this means that if a value is larger, a different instruction must be selected.
@@ -29,6 +29,15 @@
 // Constants: 0-2^23-1. Constants are stored in a table allocated with each proto; to allow for future bytecode tweaks the encodable value is limited to 23 bits.
 // Closures: 0-2^15-1. Closures are created from child protos via a child index; the limit is for the number of closures immediately referenced in each function.
 // Jumps: -2^23..2^23. Jump offsets are specified in word increments, so jumping over an instruction may sometimes require an offset of 2 or more.
+
+// # Bytecode versions
+// Bytecode serialized format embeds a version number, that dictates both the serialized form as well as the allowed instructions. As long as the bytecode version falls into supported
+// range (indicated by LBC_BYTECODE_MIN / LBC_BYTECODE_MAX) and was produced by Luau compiler, it should load and execute correctly.
+//
+// Note that Luau runtime doesn't provide indefinite bytecode compatibility: support for older versions gets removed over time. As such, bytecode isn't a durable storage format and it's expected
+// that Luau users can recompile bytecode from source on Luau version upgrades if necessary.
+
+// Bytecode opcode, part of the instruction header
 enum LuauOpcode
 {
     // NOP: noop
@@ -380,8 +389,10 @@ enum LuauOpcode
 // Bytecode tags, used internally for bytecode encoded as a string
 enum LuauBytecodeTag
 {
-    // Bytecode version
-    LBC_VERSION = 2,
+    // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
+    LBC_VERSION_MIN = 2,
+    LBC_VERSION_MAX = 2,
+    LBC_VERSION_TARGET = 2,
     // Types of constant table entries
     LBC_CONSTANT_NIL = 0,
     LBC_CONSTANT_BOOLEAN,

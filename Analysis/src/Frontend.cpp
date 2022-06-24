@@ -801,6 +801,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
+    result->astResolvedTypes = std::move(cgb.astResolvedTypes);
+    result->astResolvedTypePacks = std::move(cgb.astResolvedTypePacks);
 
     result->clonePublicInterface(iceHandler);
 
