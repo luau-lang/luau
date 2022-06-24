@@ -287,7 +287,6 @@ struct FunctionTypeVar
     bool hasSelf;
     Tags tags;
     bool hasNoGenerics = false;
-    bool generalized = false;
 };
 
 enum class TableState

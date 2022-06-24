@@ -17,11 +17,8 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
-LUAU_FASTFLAGVARIABLE(LuauTableSubtypingVariance2, false);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
-LUAU_FASTFLAGVARIABLE(LuauSubtypingAddOptPropsToUnsealedTables, false)
-LUAU_FASTFLAGVARIABLE(LuauTxnLogRefreshFunctionPointers, false)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
@@ -354,7 +351,7 @@ void Unifier::tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall, bool i
 void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection)
 {
     RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit, "TypeId tryUnify_");
+        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
 
     ++sharedState.counters.iterationCount;
 
@@ -983,7 +980,7 @@ void Unifier::tryUnify(TypePackId subTp, TypePackId superTp, bool isFunctionCall
 void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCall)
 {
     RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit, "TypePackId tryUnify_");
+        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
 
     ++sharedState.counters.iterationCount;
 
@@ -1316,12 +1313,9 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         tryUnify_(subFunction->retTypes, superFunction->retTypes);
     }
 
-    if (FFlag::LuauTxnLogRefreshFunctionPointers)
-    {
-        // Updating the log may have invalidated the function pointers
-        superFunction = log.getMutable<FunctionTypeVar>(superTy);
-        subFunction = log.getMutable<FunctionTypeVar>(subTy);
-    }
+    // Updating the log may have invalidated the function pointers
+    superFunction = log.getMutable<FunctionTypeVar>(superTy);
+    subFunction = log.getMutable<FunctionTypeVar>(subTy);
 
     ctx = context;
 
@@ -1360,9 +1354,6 @@ struct Resetter
 
 void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 {
-    if (!FFlag::LuauTableSubtypingVariance2)
-        return DEPRECATED_tryUnifyTables(subTy, superTy, isIntersection);
-
     TableTypeVar* superTable = log.getMutable<TableTypeVar>(superTy);
     TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
 
@@ -1379,8 +1370,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         {
             auto subIter = subTable->props.find(propName);
 
-            if (subIter == subTable->props.end() && (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) &&
-                !isOptional(superProp.type))
+            if (subIter == subTable->props.end() && subTable->state == TableState::Unsealed && !isOptional(superProp.type))
                 missingProperties.push_back(propName);
         }
 
@@ -1398,7 +1388,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         {
             auto superIter = superTable->props.find(propName);
 
-            if (superIter == superTable->props.end() && (FFlag::LuauSubtypingAddOptPropsToUnsealedTables || !isOptional(subProp.type)))
+            if (superIter == superTable->props.end())
                 extraProperties.push_back(propName);
         }
 
@@ -1443,7 +1433,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             if (innerState.errors.empty())
                 log.concat(std::move(innerState.log));
         }
-        else if ((!FFlag::LuauSubtypingAddOptPropsToUnsealedTables || subTable->state == TableState::Unsealed) && isOptional(prop.type))
+        else if (subTable->state == TableState::Unsealed && isOptional(prop.type))
         // This is sound because unsealed table types are precise, so `{ p : T } <: { p : T, q : U? }`
         // since if `t : { p : T }` then we are guaranteed that `t.q` is `nil`.
         // TODO: if the supertype is written to, the subtype may no longer be precise (alias analysis?)
@@ -1510,9 +1500,6 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             superTable = pendingSuperTtv;
         }
         else if (variance == Covariant)
-        {
-        }
-        else if (!FFlag::LuauSubtypingAddOptPropsToUnsealedTables && isOptional(prop.type))
         {
         }
         else if (superTable->state == TableState::Free)
@@ -1637,296 +1624,6 @@ TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> see
     }
     else
         return types->addType(UnionTypeVar{{getSingletonTypes().nilType, ty}});
-}
-
-void Unifier::DEPRECATED_tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
-{
-    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
-    Resetter resetter{&variance};
-    variance = Invariant;
-
-    TableTypeVar* superTable = log.getMutable<TableTypeVar>(superTy);
-    TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
-
-    if (!superTable || !subTable)
-        ice("passed non-table types to unifyTables");
-
-    if (superTable->state == TableState::Sealed && subTable->state == TableState::Sealed)
-        return tryUnifySealedTables(subTy, superTy, isIntersection);
-    else if ((superTable->state == TableState::Sealed && subTable->state == TableState::Unsealed) ||
-             (superTable->state == TableState::Unsealed && subTable->state == TableState::Sealed))
-        return tryUnifySealedTables(subTy, superTy, isIntersection);
-    else if ((superTable->state == TableState::Sealed && subTable->state == TableState::Generic) ||
-             (superTable->state == TableState::Generic && subTable->state == TableState::Sealed))
-        reportError(TypeError{location, TypeMismatch{superTy, subTy}});
-    else if ((superTable->state == TableState::Free) != (subTable->state == TableState::Free)) // one table is free and the other is not
-    {
-        TypeId freeTypeId = subTable->state == TableState::Free ? subTy : superTy;
-        TypeId otherTypeId = subTable->state == TableState::Free ? superTy : subTy;
-
-        return tryUnifyFreeTable(otherTypeId, freeTypeId);
-    }
-    else if (superTable->state == TableState::Free && subTable->state == TableState::Free)
-    {
-        tryUnifyFreeTable(subTy, superTy);
-
-        // avoid creating a cycle when the types are already pointing at each other
-        if (follow(superTy) != follow(subTy))
-        {
-            log.bindTable(superTy, subTy);
-        }
-        return;
-    }
-    else if (superTable->state != TableState::Sealed && subTable->state != TableState::Sealed)
-    {
-        // All free tables are checked in one of the branches above
-        LUAU_ASSERT(superTable->state != TableState::Free);
-        LUAU_ASSERT(subTable->state != TableState::Free);
-
-        // Tables must have exactly the same props and their types must all unify
-        // I honestly have no idea if this is remotely close to reasonable.
-        for (const auto& [name, prop] : superTable->props)
-        {
-            const auto& r = subTable->props.find(name);
-            if (r == subTable->props.end())
-                reportError(TypeError{location, UnknownProperty{subTy, name}});
-            else
-                tryUnify_(r->second.type, prop.type);
-        }
-
-        if (superTable->indexer && subTable->indexer)
-            tryUnifyIndexer(*subTable->indexer, *superTable->indexer);
-        else if (superTable->indexer)
-        {
-            // passing/assigning a table without an indexer to something that has one
-            // e.g. table.insert(t, 1) where t is a non-sealed table and doesn't have an indexer.
-            if (subTable->state == TableState::Unsealed)
-            {
-                log.changeIndexer(subTy, superTable->indexer);
-            }
-            else
-                reportError(TypeError{location, CannotExtendTable{subTy, CannotExtendTable::Indexer}});
-        }
-    }
-    else if (superTable->state == TableState::Sealed)
-    {
-        // lt is sealed and so it must be possible for rt to have precisely the same shape
-        // Verify that this is the case, then bind rt to lt.
-        ice("unsealed tables are not working yet", location);
-    }
-    else if (subTable->state == TableState::Sealed)
-        return tryUnifyTables(superTy, subTy, isIntersection);
-    else
-        ice("tryUnifyTables");
-}
-
-void Unifier::tryUnifyFreeTable(TypeId subTy, TypeId superTy)
-{
-    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
-    TableTypeVar* freeTable = log.getMutable<TableTypeVar>(superTy);
-    TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
-
-    if (!freeTable || !subTable)
-        ice("passed non-table types to tryUnifyFreeTable");
-
-    // Any properties in freeTable must unify with those in otherTable.
-    // Then bind freeTable to otherTable.
-    for (const auto& [freeName, freeProp] : freeTable->props)
-    {
-        if (auto subProp = findTablePropertyRespectingMeta(subTy, freeName))
-        {
-            tryUnify_(*subProp, freeProp.type);
-
-            /*
-             * TypeVars are commonly cyclic, so it is entirely possible
-             * for unifying a property of a table to change the table itself!
-             * We need to check for this and start over if we notice this occurring.
-             *
-             * I believe this is guaranteed to terminate eventually because this will
-             * only happen when a free table is bound to another table.
-             */
-            if (!log.getMutable<TableTypeVar>(superTy) || !log.getMutable<TableTypeVar>(subTy))
-                return tryUnify_(subTy, superTy);
-
-            if (TableTypeVar* pendingFreeTtv = log.getMutable<TableTypeVar>(superTy); pendingFreeTtv && pendingFreeTtv->boundTo)
-                return tryUnify_(subTy, superTy);
-        }
-        else
-        {
-            // If the other table is also free, then we are learning that it has more
-            // properties than we previously thought.  Else, it is an error.
-            if (subTable->state == TableState::Free)
-            {
-                PendingType* pendingSub = log.queue(subTy);
-                TableTypeVar* pendingSubTtv = getMutable<TableTypeVar>(pendingSub);
-                LUAU_ASSERT(pendingSubTtv);
-                pendingSubTtv->props.insert({freeName, freeProp});
-            }
-            else
-                reportError(TypeError{location, UnknownProperty{subTy, freeName}});
-        }
-    }
-
-    if (freeTable->indexer && subTable->indexer)
-    {
-        Unifier innerState = makeChildUnifier();
-        innerState.tryUnifyIndexer(*subTable->indexer, *freeTable->indexer);
-
-        checkChildUnifierTypeMismatch(innerState.errors, superTy, subTy);
-
-        log.concat(std::move(innerState.log));
-    }
-    else if (subTable->state == TableState::Free && freeTable->indexer)
-    {
-        log.changeIndexer(superTy, subTable->indexer);
-    }
-
-    if (!freeTable->boundTo && subTable->state != TableState::Free)
-    {
-        log.bindTable(superTy, subTy);
-    }
-}
-
-void Unifier::tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersection)
-{
-    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
-    TableTypeVar* superTable = log.getMutable<TableTypeVar>(superTy);
-    TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
-
-    if (!superTable || !subTable)
-        ice("passed non-table types to unifySealedTables");
-
-    std::vector<std::string> missingPropertiesInSuper;
-    bool isUnnamedTable = subTable->name == std::nullopt && subTable->syntheticName == std::nullopt;
-    bool errorReported = false;
-
-    // Optimization: First test that the property sets are compatible without doing any recursive unification
-    if (!subTable->indexer)
-    {
-        for (const auto& [propName, superProp] : superTable->props)
-        {
-            auto subIter = subTable->props.find(propName);
-            if (subIter == subTable->props.end() && !isOptional(superProp.type))
-                missingPropertiesInSuper.push_back(propName);
-        }
-
-        if (!missingPropertiesInSuper.empty())
-        {
-            reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(missingPropertiesInSuper)}});
-            return;
-        }
-    }
-
-    Unifier innerState = makeChildUnifier();
-
-    // Tables must have exactly the same props and their types must all unify
-    for (const auto& it : superTable->props)
-    {
-        const auto& r = subTable->props.find(it.first);
-        if (r == subTable->props.end())
-        {
-            if (isOptional(it.second.type))
-                continue;
-
-            missingPropertiesInSuper.push_back(it.first);
-
-            innerState.reportError(TypeError{location, TypeMismatch{superTy, subTy}});
-        }
-        else
-        {
-            if (isUnnamedTable && r->second.location)
-            {
-                size_t oldErrorSize = innerState.errors.size();
-                Location old = innerState.location;
-                innerState.location = *r->second.location;
-                innerState.tryUnify_(r->second.type, it.second.type);
-                innerState.location = old;
-
-                if (oldErrorSize != innerState.errors.size() && !errorReported)
-                {
-                    errorReported = true;
-                    reportError(innerState.errors.back());
-                }
-            }
-            else
-            {
-                innerState.tryUnify_(r->second.type, it.second.type);
-            }
-        }
-    }
-
-    if (superTable->indexer || subTable->indexer)
-    {
-        if (superTable->indexer && subTable->indexer)
-            innerState.tryUnifyIndexer(*subTable->indexer, *superTable->indexer);
-        else if (subTable->state == TableState::Unsealed)
-        {
-            if (superTable->indexer && !subTable->indexer)
-            {
-                log.changeIndexer(subTy, superTable->indexer);
-            }
-        }
-        else if (superTable->state == TableState::Unsealed)
-        {
-            if (subTable->indexer && !superTable->indexer)
-            {
-                log.changeIndexer(superTy, subTable->indexer);
-            }
-        }
-        else if (superTable->indexer)
-        {
-            innerState.tryUnify_(getSingletonTypes().stringType, superTable->indexer->indexType);
-            for (const auto& [name, type] : subTable->props)
-            {
-                const auto& it = superTable->props.find(name);
-                if (it == superTable->props.end())
-                    innerState.tryUnify_(type.type, superTable->indexer->indexResultType);
-            }
-        }
-        else
-            innerState.reportError(TypeError{location, TypeMismatch{superTy, subTy}});
-    }
-
-    if (!errorReported)
-        log.concat(std::move(innerState.log));
-    else
-        return;
-
-    if (!missingPropertiesInSuper.empty())
-    {
-        reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(missingPropertiesInSuper)}});
-        return;
-    }
-
-    // If the superTy is an immediate part of an intersection type, do not do extra-property check.
-    // Otherwise, we would falsely generate an extra-property-error for 's' in this code:
-    // local a: {n: number} & {s: string} = {n=1, s=""}
-    // When checking against the table '{n: number}'.
-    if (!isIntersection && superTable->state != TableState::Unsealed && !superTable->indexer)
-    {
-        // Check for extra properties in the subTy
-        std::vector<std::string> extraPropertiesInSub;
-
-        for (const auto& [subKey, subProp] : subTable->props)
-        {
-            const auto& superIt = superTable->props.find(subKey);
-            if (superIt == superTable->props.end())
-            {
-                if (isOptional(subProp.type))
-                    continue;
-
-                extraPropertiesInSub.push_back(subKey);
-            }
-        }
-
-        if (!extraPropertiesInSub.empty())
-        {
-            reportError(TypeError{location, MissingProperties{superTy, subTy, std::move(extraPropertiesInSub), MissingProperties::Extra}});
-            return;
-        }
-    }
-
-    checkChildUnifierTypeMismatch(innerState.errors, superTy, subTy);
 }
 
 void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
@@ -2066,14 +1763,6 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
     }
     else
         return fail();
-}
-
-void Unifier::tryUnifyIndexer(const TableIndexer& subIndexer, const TableIndexer& superIndexer)
-{
-    LUAU_ASSERT(!FFlag::LuauTableSubtypingVariance2);
-
-    tryUnify_(subIndexer.indexType, superIndexer.indexType);
-    tryUnify_(subIndexer.indexResultType, superIndexer.indexResultType);
 }
 
 static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)
@@ -2435,7 +2124,7 @@ void Unifier::occursCheck(TypeId needle, TypeId haystack)
 void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
     RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit, "occursCheck for TypeId");
+        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
 
     auto check = [&](TypeId tv) {
         occursCheck(seen, needle, tv);
@@ -2506,7 +2195,7 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
         ice("Expected needle pack to be free");
 
     RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit, "occursCheck for TypePackId");
+        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
 
     while (!log.getMutable<ErrorTypeVar>(haystack))
     {

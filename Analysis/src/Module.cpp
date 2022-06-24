@@ -11,7 +11,6 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
-#include "Luau/ConstraintGraphBuilder.h" // FIXME: For Scope2 TODO pull out into its own header
 
 #include <algorithm>
 

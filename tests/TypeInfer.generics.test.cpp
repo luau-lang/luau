@@ -700,11 +700,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
 --!strict
 -- At one point this produced a UAF
@@ -979,8 +974,6 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 {
-    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
-
     // Mutability in type function application right now can create strange recursive types
     CheckResult result = check(R"(
 type Table = { a: number }
@@ -1015,8 +1008,6 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
-    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
-
     CheckResult result = check(R"(
         local function sum<a>(x: a, y: a, f: (a, a) -> a)
             return f(x, y)
@@ -1123,8 +1114,6 @@ TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 
 TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics1")
 {
-    ScopedFastFlag sff{"LuauApplyTypeFunctionFix", true};
-
     // https://github.com/Roblox/luau/issues/484
     CheckResult result = check(R"(
 --!strict
@@ -1153,8 +1142,6 @@ local complex: ComplexObject<string> = {
 
 TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics2")
 {
-    ScopedFastFlag sff{"LuauApplyTypeFunctionFix", true};
-
     // https://github.com/Roblox/luau/issues/484
     CheckResult result = check(R"(
 --!strict

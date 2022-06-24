@@ -428,12 +428,6 @@ y = x
 
 TEST_CASE_FIXTURE(Fixture, "unify_sealed_table_union_check")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauUnsealedTableLiteral", true},
-        {"LuauSubtypingAddOptPropsToUnsealedTables", true},
-    };
-
     CheckResult result = check(R"(
  -- the difference between this and unify_unsealed_table_union_check is the type annotation on x
 local t = { x = 3, y = true }

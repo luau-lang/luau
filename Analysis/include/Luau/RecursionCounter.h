@@ -6,8 +6,6 @@
 #include <stdexcept>
 #include <exception>
 
-LUAU_FASTFLAG(LuauRecursionLimitException);
-
 namespace Luau
 {
 
@@ -39,21 +37,12 @@ private:
 
 struct RecursionLimiter : RecursionCounter
 {
-    // TODO: remove ctx after LuauRecursionLimitException is removed
-    RecursionLimiter(int* count, int limit, const char* ctx)
+    RecursionLimiter(int* count, int limit)
         : RecursionCounter(count)
     {
-        LUAU_ASSERT(ctx);
         if (limit > 0 && *count > limit)
         {
-            if (FFlag::LuauRecursionLimitException)
-                throw RecursionLimitException();
-            else
-            {
-                std::string m = "Internal recursion counter limit exceeded: ";
-                m += ctx;
-                throw std::runtime_error(m);
-            }
+            throw RecursionLimitException();
         }
     }
 };

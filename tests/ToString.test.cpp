@@ -409,8 +409,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
-    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
-
     CheckResult result = check(R"(
         local base = {}
         function base:one() return 1 end

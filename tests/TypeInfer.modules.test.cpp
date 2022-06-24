@@ -12,8 +12,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauTableSubtypingVariance2)
-
 TEST_SUITE_BEGIN("TypeInferModules");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "require")
@@ -326,16 +324,9 @@ local b: B.T = a
     CheckResult result = frontend.check("game/C");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauTableSubtypingVariance2)
-    {
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
 caused by:
   Property 'x' is not compatible. Type 'number' could not be converted into 'string')");
-    }
-    else
-    {
-        CHECK_EQ(toString(result.errors[0]), "Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'");
-    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "module_type_conflict_instantiated")
@@ -367,16 +358,9 @@ local b: B.T = a
     CheckResult result = frontend.check("game/D");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauTableSubtypingVariance2)
-    {
-        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
 caused by:
   Property 'x' is not compatible. Type 'number' could not be converted into 'string')");
-    }
-    else
-    {
-        CHECK_EQ(toString(result.errors[0]), "Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'");
-    }
 }
 
 TEST_SUITE_END();

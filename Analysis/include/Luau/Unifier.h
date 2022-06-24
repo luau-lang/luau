@@ -79,12 +79,8 @@ private:
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);
     void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false);
-    void DEPRECATED_tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false);
-    void tryUnifyFreeTable(TypeId subTy, TypeId superTy);
-    void tryUnifySealedTables(TypeId subTy, TypeId superTy, bool isIntersection);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
-    void tryUnifyIndexer(const TableIndexer& subIndexer, const TableIndexer& superIndexer);
 
     TypeId widen(TypeId ty);
     TypePackId widen(TypePackId tp);

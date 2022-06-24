@@ -7,7 +7,20 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 TEST_SUITE_BEGIN("TypeAliases");
+
+TEST_CASE_FIXTURE(Fixture, "basic_alias")
+{
+    CheckResult result = check(R"(
+        type T = number
+        local x: T = 1
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("x")));
+}
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
 {
@@ -22,6 +35,63 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1?", toString(requireType("g")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "names_are_ascribed")
+{
+    CheckResult result = check(R"(
+        type T = { x: number }
+        local x: T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("T", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
+{
+    // This is a tricky case. In order to support recursive type aliases,
+    // we first walk the block and generate free types as placeholders.
+    // We then walk the AST as normal. If we declare a type alias as below,
+    // we generate a free type. We then begin our normal walk, examining
+    // local x: T = "foo", which establishes two constraints:
+    // a <: b
+    // string <: a
+    // We then visit the type alias, and establish that
+    // b <: number
+    // Then, when solving these constraints, we dispatch them in the order
+    // they appear above. This means that a ~ b, and a ~ string, thus
+    // b ~ string. This means the b <: number constraint has no effect.
+    // Essentially we've "stolen" the alias's type out from under it.
+    // This test ensures that we don't actually do this.
+    CheckResult result = check(R"(
+        local x: T = "foo"
+        type T = number
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK(result.errors[0] == TypeError{
+            Location{{1, 21}, {1, 26}},
+            getMainSourceModule()->name,
+            TypeMismatch{
+                getSingletonTypes().numberType,
+                getSingletonTypes().stringType,
+            },
+        });
+    }
+    else
+    {
+        CHECK(result.errors[0] == TypeError{
+            Location{{1, 8}, {1, 26}},
+            getMainSourceModule()->name,
+            TypeMismatch{
+                getSingletonTypes().numberType,
+                getSingletonTypes().stringType,
+            },
+        });
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_when_stringified")
@@ -41,7 +111,22 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_whe
     CHECK_EQ(typeChecker.numberType, tm->givenType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types")
+TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
+{
+    CheckResult result = check(R"(
+        --!strict
+        type T = { f: number, g: U }
+        type U = { h: number, i: T? }
+        local x: T = { f = 37, g = { h = 5, i = nil } }
+        x.g.i = x
+        local y: T = { f = 3, g = { h = 5, i = nil } }
+        y.g.i = y
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
 {
     CheckResult result = check(R"(
         --!strict

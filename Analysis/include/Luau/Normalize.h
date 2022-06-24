@@ -9,8 +9,8 @@ namespace Luau
 
 struct InternalErrorReporter;
 
-bool isSubtype(TypeId superTy, TypeId subTy, InternalErrorReporter& ice);
-bool isSubtype(TypePackId superTy, TypePackId subTy, InternalErrorReporter& ice);
+bool isSubtype(TypeId subTy, TypeId superTy, InternalErrorReporter& ice);
+bool isSubtype(TypePackId subTy, TypePackId superTy, InternalErrorReporter& ice);
 
 std::pair<TypeId, bool> normalize(TypeId ty, TypeArena& arena, InternalErrorReporter& ice);
 std::pair<TypeId, bool> normalize(TypeId ty, const ModulePtr& module, InternalErrorReporter& ice);

@@ -53,6 +53,14 @@ Generic::Generic(TypeLevel level, const Name& name)
 {
 }
 
+Generic::Generic(Scope2* scope, const Name& name)
+    : index(++nextIndex)
+    , scope(scope)
+    , name(name)
+    , explicitName(true)
+{
+}
+
 int Generic::nextIndex = 0;
 
 Error::Error()

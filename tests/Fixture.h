@@ -2,13 +2,13 @@
 #pragma once
 
 #include "Luau/Config.h"
-#include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Frontend.h"
 #include "Luau/IostreamHelpers.h"
 #include "Luau/Linter.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"

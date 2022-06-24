@@ -55,6 +55,7 @@ struct ConstraintSolver
     bool tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const GeneralizationConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const InstantiationConstraint& c, NotNull<const Constraint> constraint, bool force);
+    bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**
@@ -85,7 +86,7 @@ struct ConstraintSolver
      * @param subType the sub-type to unify.
      * @param superType the super-type to unify.
      */
-    void unify(TypeId subType, TypeId superType, Location location);
+    void unify(TypeId subType, TypeId superType);
 
     /**
      * Creates a new Unifier and performs a single unification operation. Commits
@@ -93,7 +94,7 @@ struct ConstraintSolver
      * @param subPack the sub-type pack to unify.
      * @param superPack the super-type pack to unify.
      */
-    void unify(TypePackId subPack, TypePackId superPack, Location location);
+    void unify(TypePackId subPack, TypePackId superPack);
 
 private:
     /**

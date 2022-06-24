@@ -887,8 +887,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
-    ScopedFastFlag subtypingVariance{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         --!strict
         --!nolint
@@ -928,7 +926,6 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 {
     ScopedFastInt sfi("LuauTypeInferRecursionLimit", 2);
-    ScopedFastFlag sff{"LuauRecursionLimitException", true};
 
     CheckResult result = check(R"(
         function complex()

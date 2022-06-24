@@ -2,11 +2,10 @@
 
 #include "Luau/Quantify.h"
 
-#include "Luau/ConstraintGraphBuilder.h" // TODO for Scope2; move to separate header
-#include "Luau/TxnLog.h"
+#include "Luau/Scope.h"
 #include "Luau/Substitution.h"
+#include "Luau/TxnLog.h"
 #include "Luau/VisitTypeVar.h"
-#include "Luau/ConstraintGraphBuilder.h" // TODO for Scope2; move to separate header
 
 LUAU_FASTFLAG(LuauAlwaysQuantify);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
@@ -177,8 +176,6 @@ void quantify(TypeId ty, TypeLevel level)
 
     if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
         ftv->hasNoGenerics = true;
-
-    ftv->generalized = true;
 }
 
 void quantify(TypeId ty, Scope2* scope)
@@ -201,8 +198,6 @@ void quantify(TypeId ty, Scope2* scope)
 
     if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
         ftv->hasNoGenerics = true;
-
-    ftv->generalized = true;
 }
 
 struct PureQuantifier : Substitution

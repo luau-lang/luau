@@ -9,6 +9,9 @@
 namespace Luau
 {
 
+static_assert(LBC_VERSION_TARGET >= LBC_VERSION_MIN && LBC_VERSION_TARGET <= LBC_VERSION_MAX, "Invalid bytecode version setup");
+static_assert(LBC_VERSION_MAX <= 127, "Bytecode version should be 7-bit so that we can extend the serialization to use varint transparently");
+
 static const uint32_t kMaxConstantCount = 1 << 23;
 static const uint32_t kMaxClosureCount = 1 << 15;
 
@@ -572,7 +575,10 @@ void BytecodeBuilder::finalize()
     bytecode.reserve(capacity);
 
     // assemble final bytecode blob
-    bytecode = char(LBC_VERSION);
+    uint8_t version = getVersion();
+    LUAU_ASSERT(version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX);
+
+    bytecode = char(version);
 
     writeStringTable(bytecode);
 
@@ -1040,12 +1046,18 @@ void BytecodeBuilder::expandJumps()
 
 std::string BytecodeBuilder::getError(const std::string& message)
 {
-    // 0 acts as a special marker for error bytecode (it's equal to LBC_VERSION for valid bytecode blobs)
+    // 0 acts as a special marker for error bytecode (it's equal to LBC_VERSION_TARGET for valid bytecode blobs)
     std::string result;
     result += char(0);
     result += message;
 
     return result;
+}
+
+uint8_t BytecodeBuilder::getVersion()
+{
+    // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
+    return LBC_VERSION_TARGET;
 }
 
 #ifdef LUAU_ASSERTENABLED

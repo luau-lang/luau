@@ -12,7 +12,6 @@ using namespace Luau;
 struct NormalizeFixture : Fixture
 {
     ScopedFastFlag sff1{"LuauLowerBoundsCalculation", true};
-    ScopedFastFlag sff2{"LuauTableSubtypingVariance2", true};
 };
 
 void createSomeClasses(TypeChecker& typeChecker)

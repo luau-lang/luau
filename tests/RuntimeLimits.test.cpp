@@ -264,10 +264,13 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
         }
     )LUA";
 
+    CheckResult result = check(src);
+    CodeTooComplex ctc;
+
     if (FFlag::LuauLowerBoundsCalculation)
-        (void)check(src);
+        LUAU_REQUIRE_ERRORS(result);
     else
-        CHECK_THROWS_AS(check(src), std::exception);
+        CHECK(hasError(result, &ctc));
 }
 
 TEST_SUITE_END();

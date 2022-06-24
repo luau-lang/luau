@@ -30,6 +30,7 @@ std::ostream& operator<<(std::ostream& lhs, const OccursCheckFailed& error);
 std::ostream& operator<<(std::ostream& lhs, const UnknownRequire& error);
 std::ostream& operator<<(std::ostream& lhs, const UnknownPropButFoundLikeProp& e);
 std::ostream& operator<<(std::ostream& lhs, const GenericError& error);
+std::ostream& operator<<(std::ostream& lhs, const InternalError& error);
 std::ostream& operator<<(std::ostream& lhs, const FunctionExitsWithoutReturning& error);
 std::ostream& operator<<(std::ostream& lhs, const MissingProperties& error);
 std::ostream& operator<<(std::ostream& lhs, const IllegalRequire& error);
