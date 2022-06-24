@@ -39,9 +39,9 @@ jobs:
         shell: bash # necessary for fail-fast
         run: |
           mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          cmake --build . --target Luau.Repl.CLI --config RelWithDebInfo
-          cmake --build . --target Luau.Analyze.CLI --config RelWithDebInfo
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --target Luau.Repl.CLI --config Release
+          cmake --build . --target Luau.Analyze.CLI --config Release
 
       - name: Move build files to root
         run: |
