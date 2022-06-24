@@ -750,13 +750,15 @@ TypeId SingletonTypes::makeStringMetatable()
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
         {"char", {arena->addType(FunctionTypeVar{numberVariadicList, arena->addTypePack({stringType})})}},
-        {"find", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber, optionalBoolean}, {}, {optionalNumber, optionalNumber})}},
+        {"find", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber, optionalBoolean}),
+                     arena->addTypePack(TypePack{{optionalNumber, optionalNumber}, stringVariadicList})})}},
         {"format", {formatFn}}, // FIXME
         {"gmatch", {gmatchFunc}},
         {"gsub", {gsubFunc}},
         {"len", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType})}},
         {"lower", {stringToStringType}},
-        {"match", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber}, {}, {optionalString})}},
+        {"match", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}),
+                      arena->addTypePack(TypePackVar{VariadicTypePack{optionalString}})})}},
         {"rep", {makeFunction(*arena, stringType, {}, {}, {numberType}, {}, {stringType})}},
         {"reverse", {stringToStringType}},
         {"sub", {makeFunction(*arena, stringType, {}, {}, {numberType, optionalNumber}, {}, {stringType})}},

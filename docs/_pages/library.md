@@ -488,7 +488,7 @@ function string.char(args: ...number): string
 Returns the string that contains a byte for every input number; all inputs must be integers in `[0..255]` range.
 
 ```
-function string.find(s: string, p: string, init: number?, plain: boolean?): (number?, number?)
+function string.find(s: string, p: string, init: number?, plain: boolean?): (number?, number?, ...string)
 ```
 
 Tries to find an instance of pattern `p` in the string `s`, starting from position `init` (defaults to 1). When `plain` is true, the search is using raw case-insensitive string equality, otherwise `p` should be a [string pattern](https://www.lua.org/manual/5.3/manual.html#6.4.1). If a match is found, returns the position of the match and the length of the match, followed by the pattern captures; otherwise returns `nil`.
@@ -536,7 +536,7 @@ function string.lower(s: string): string
 Returns a string where each byte corresponds to the lower-case ASCII version of the input byte in the source string.
 
 ```
-function string.match(s: string, p: string, init: number?): (number?, number?)
+function string.match(s: string, p: string, init: number?): ...string?
 ```
 
 Tries to find an instance of pattern `p` in the string `s`, starting from position `init` (defaults to 1). `p` should be a [string pattern](https://www.lua.org/manual/5.3/manual.html#6.4.1). If a match is found, returns all pattern captures, or entire matching substring if no captures are present, otherwise returns `nil`.
