@@ -14,7 +14,7 @@ DEFAULT_CYCLES_TO_RUN = 100
 cycles_to_run = DEFAULT_CYCLES_TO_RUN
 
 try:
-  cycles_to_run = sys.argv[3] if(sys.argv[3]) else DEFAULT_CYCLES_TO_RUN
+  cycles_to_run = sys.argv[3] if sys.argv[3] else DEFAULT_CYCLES_TO_RUN
   cycles_to_run = int(cycles_to_run)
 except IndexError:
   pass
