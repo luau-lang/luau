@@ -35,13 +35,9 @@ LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix2, false)
 LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
-LUAU_FASTFLAGVARIABLE(LuauOnlyMutateInstantiatedTables, false)
-LUAU_FASTFLAGVARIABLE(LuauUnsealedTableLiteral, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
-LUAU_FASTFLAGVARIABLE(LuauRecursionLimitException, false);
-LUAU_FASTFLAGVARIABLE(LuauApplyTypeFunctionFix, false);
 LUAU_FASTFLAGVARIABLE(LuauAlwaysQuantify, false);
 LUAU_FASTFLAGVARIABLE(LuauReportErrorsOnIndexerKeyMismatch, false)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
@@ -275,21 +271,14 @@ TypeChecker::TypeChecker(ModuleResolver* resolver, InternalErrorReporter* iceHan
 
 ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope)
 {
-    if (FFlag::LuauRecursionLimitException)
-    {
-        try
-        {
-            return checkWithoutRecursionCheck(module, mode, environmentScope);
-        }
-        catch (const RecursionLimitException&)
-        {
-            reportErrorCodeTooComplex(module.root->location);
-            return std::move(currentModule);
-        }
-    }
-    else
+    try
     {
         return checkWithoutRecursionCheck(module, mode, environmentScope);
+    }
+    catch (const RecursionLimitException&)
+    {
+        reportErrorCodeTooComplex(module.root->location);
+        return std::move(currentModule);
     }
 }
 
@@ -445,21 +434,14 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         reportErrorCodeTooComplex(block.location);
         return;
     }
-    if (FFlag::LuauRecursionLimitException)
-    {
-        try
-        {
-            checkBlockWithoutRecursionCheck(scope, block);
-        }
-        catch (const RecursionLimitException&)
-        {
-            reportErrorCodeTooComplex(block.location);
-            return;
-        }
-    }
-    else
+    try
     {
         checkBlockWithoutRecursionCheck(scope, block);
+    }
+    catch (const RecursionLimitException&)
+    {
+        reportErrorCodeTooComplex(block.location);
+        return;
     }
 }
 
@@ -1917,7 +1899,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
 
         for (TypeId t : utv)
         {
-            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit, "getIndexTypeForType unions");
+            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
 
             // Not needed when we normalize types.
             if (get<AnyTypeVar>(follow(t)))
@@ -1967,7 +1949,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
 
         for (TypeId t : itv->parts)
         {
-            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit, "getIndexTypeFromType intersections");
+            RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
 
             if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, false))
                 parts.push_back(*ty);
@@ -2190,7 +2172,7 @@ TypeId TypeChecker::checkExprTable(
         }
     }
 
-    TableState state = (expr.items.size == 0 || isNonstrictMode() || FFlag::LuauUnsealedTableLiteral) ? TableState::Unsealed : TableState::Sealed;
+    TableState state = TableState::Unsealed;
     TableTypeVar table = TableTypeVar{std::move(props), indexer, scope->level, state};
     table.definitionModuleName = currentModuleName;
     return addType(table);
@@ -5175,9 +5157,7 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
 
 bool ApplyTypeFunction::isDirty(TypeId ty)
 {
-    if (FFlag::LuauApplyTypeFunctionFix && typeArguments.count(ty))
-        return true;
-    else if (!FFlag::LuauApplyTypeFunctionFix && get<GenericTypeVar>(ty))
+    if (typeArguments.count(ty))
         return true;
     else if (const FreeTypeVar* ftv = get<FreeTypeVar>(ty))
     {
@@ -5191,9 +5171,7 @@ bool ApplyTypeFunction::isDirty(TypeId ty)
 
 bool ApplyTypeFunction::isDirty(TypePackId tp)
 {
-    if (FFlag::LuauApplyTypeFunctionFix && typePackArguments.count(tp))
-        return true;
-    else if (!FFlag::LuauApplyTypeFunctionFix && get<GenericTypePack>(tp))
+    if (typePackArguments.count(tp))
         return true;
     else
         return false;
@@ -5218,29 +5196,15 @@ bool ApplyTypeFunction::ignoreChildren(TypePackId tp)
 TypeId ApplyTypeFunction::clean(TypeId ty)
 {
     TypeId& arg = typeArguments[ty];
-    if (FFlag::LuauApplyTypeFunctionFix)
-    {
-        LUAU_ASSERT(arg);
-        return arg;
-    }
-    else if (arg)
-        return arg;
-    else
-        return addType(FreeTypeVar{level});
+    LUAU_ASSERT(arg);
+    return arg;
 }
 
 TypePackId ApplyTypeFunction::clean(TypePackId tp)
 {
     TypePackId& arg = typePackArguments[tp];
-    if (FFlag::LuauApplyTypeFunctionFix)
-    {
-        LUAU_ASSERT(arg);
-        return arg;
-    }
-    else if (arg)
-        return arg;
-    else
-        return addTypePack(FreeTypePack{level});
+    LUAU_ASSERT(arg);
+    return arg;
 }
 
 TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams,
@@ -5273,7 +5237,7 @@ TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf,
 
     TypeId target = follow(instantiated);
     bool needsClone = follow(tf.type) == target;
-    bool shouldMutate = (!FFlag::LuauOnlyMutateInstantiatedTables || getTableType(tf.type));
+    bool shouldMutate = getTableType(tf.type);
     TableTypeVar* ttv = getMutableTableType(target);
 
     if (shouldMutate && ttv && needsClone)

@@ -261,8 +261,6 @@ L1: RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
-    ScopedFastFlag sff2("LuauCompileIterNoPairs", false);
-
     // basic for loop: variable directly refers to internal iteration index (R2)
     CHECK_EQ("\n" + compileFunction0("for i=1,5 do print(i) end"), R"(
 LOADN R2 1
@@ -329,7 +327,7 @@ L0: GETIMPORT R5 3
 MOVE R6 R3
 MOVE R7 R4
 CALL R5 2 0
-L1: FORGLOOP_NEXT R0 L0
+L1: FORGLOOP R0 L0 2
 RETURN R0 0
 )");
 
@@ -342,7 +340,7 @@ L0: GETIMPORT R5 3
 MOVE R6 R3
 MOVE R7 R4
 CALL R5 2 0
-L1: FORGLOOP_NEXT R0 L0
+L1: FORGLOOP R0 L0 2
 RETURN R0 0
 )");
 }
@@ -2262,8 +2260,6 @@ TEST_CASE("TypeAliasing")
 
 TEST_CASE("DebugLineInfo")
 {
-    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
-
     Luau::BytecodeBuilder bcb;
     bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
     Luau::compileOrThrow(bcb, R"(
@@ -2313,7 +2309,7 @@ return result
 15: L0: MOVE R7 R1
 15: MOVE R8 R5
 15: CONCAT R1 R7 R8
-14: L1: FORGLOOP_NEXT R2 L0
+14: L1: FORGLOOP R2 L0 1
 17: RETURN R1 1
 )");
 }
@@ -2545,8 +2541,6 @@ a
 
 TEST_CASE("DebugSource")
 {
-    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
-
     const char* source = R"(
 local kSelectedBiomes = {
     ['Mountains'] = true,
@@ -2614,7 +2608,7 @@ L0: MOVE R7 R1
 MOVE R8 R5
 CONCAT R1 R7 R8
    14: for k in pairs(kSelectedBiomes) do
-L1: FORGLOOP_NEXT R2 L0
+L1: FORGLOOP R2 L0 1
    17: return result
 RETURN R1 1
 )");
@@ -2622,8 +2616,6 @@ RETURN R1 1
 
 TEST_CASE("DebugLocals")
 {
-    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
-
     const char* source = R"(
 function foo(e, f)
     local a = 1
@@ -2661,12 +2653,12 @@ end
 local 0: reg 5, start pc 5 line 5, end pc 8 line 5
 local 1: reg 6, start pc 14 line 8, end pc 18 line 8
 local 2: reg 7, start pc 14 line 8, end pc 18 line 8
-local 3: reg 3, start pc 21 line 12, end pc 24 line 12
-local 4: reg 3, start pc 26 line 16, end pc 30 line 16
-local 5: reg 0, start pc 0 line 3, end pc 34 line 21
-local 6: reg 1, start pc 0 line 3, end pc 34 line 21
-local 7: reg 2, start pc 1 line 4, end pc 34 line 21
-local 8: reg 3, start pc 34 line 21, end pc 34 line 21
+local 3: reg 3, start pc 22 line 12, end pc 25 line 12
+local 4: reg 3, start pc 27 line 16, end pc 31 line 16
+local 5: reg 0, start pc 0 line 3, end pc 35 line 21
+local 6: reg 1, start pc 0 line 3, end pc 35 line 21
+local 7: reg 2, start pc 1 line 4, end pc 35 line 21
+local 8: reg 3, start pc 35 line 21, end pc 35 line 21
 3: LOADN R2 1
 4: LOADN R5 1
 4: LOADN R3 3
@@ -2683,7 +2675,7 @@ local 8: reg 3, start pc 34 line 21, end pc 34 line 21
 8: MOVE R9 R6
 8: MOVE R10 R7
 8: CALL R8 2 0
-7: L3: FORGLOOP_NEXT R3 L2
+7: L3: FORGLOOP R3 L2 2
 11: LOADN R3 2
 12: GETIMPORT R4 1
 12: LOADN R5 2
@@ -3795,8 +3787,6 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
-    ScopedFastFlag sff("LuauCompileIterNoPairs", false);
-
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -3939,7 +3929,7 @@ L2: GETIMPORT R5 1
 NEWCLOSURE R6 P1
 CAPTURE VAL R3
 CALL R5 1 0
-L3: FORGLOOP_NEXT R0 L2
+L3: FORGLOOP R0 L2 2
 LOADN R2 1
 LOADN R0 10
 LOADN R1 1

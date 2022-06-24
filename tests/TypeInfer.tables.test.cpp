@@ -276,8 +276,6 @@ TEST_CASE_FIXTURE(Fixture, "open_table_unification")
 
 TEST_CASE_FIXTURE(Fixture, "open_table_unification_2")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         local a = {}
         a.x = 99
@@ -347,8 +345,6 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_1")
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         --!strict
         function foo(o)
@@ -370,8 +366,6 @@ TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_2")
 
 TEST_CASE_FIXTURE(Fixture, "table_param_row_polymorphism_3")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         local T = {}
         T.bar = 'hello'
@@ -477,8 +471,6 @@ TEST_CASE_FIXTURE(Fixture, "ok_to_add_property_to_free_table")
 
 TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_assignment")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         --!strict
         local t = { u = {} }
@@ -512,8 +504,6 @@ TEST_CASE_FIXTURE(Fixture, "okay_to_add_property_to_unsealed_tables_by_function_
 
 TEST_CASE_FIXTURE(Fixture, "width_subtyping")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         --!strict
         function f(x : { q : number })
@@ -772,8 +762,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_indexer_for_left_unsealed_table_from_right_han
 
 TEST_CASE_FIXTURE(Fixture, "sealed_table_value_can_infer_an_indexer")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         local t: { a: string, [number]: string } = { a = "foo" }
     )");
@@ -783,8 +771,6 @@ TEST_CASE_FIXTURE(Fixture, "sealed_table_value_can_infer_an_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "array_factory_function")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         function empty() return {} end
         local array: {string} = empty()
@@ -1175,8 +1161,6 @@ TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_local_sealed_table_must
 
 TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_local_unsealed_table_is_ok")
 {
-    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
-
     CheckResult result = check(R"(
         local t = {x = 1}
         function t.m() end
@@ -1187,8 +1171,6 @@ TEST_CASE_FIXTURE(Fixture, "defining_a_method_for_a_local_unsealed_table_is_ok")
 
 TEST_CASE_FIXTURE(Fixture, "defining_a_self_method_for_a_local_unsealed_table_is_ok")
 {
-    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
-
     CheckResult result = check(R"(
         local t = {x = 1}
         function t:m() end
@@ -1468,11 +1450,6 @@ TEST_CASE_FIXTURE(Fixture, "right_table_missing_key2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_unsealed_tables_with_props_into_table_with_indexer")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
         type StringToStringMap = { [string]: string }
         local rt: StringToStringMap = { ["foo"] = 1 }
@@ -1518,11 +1495,6 @@ TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer2")
 
 TEST_CASE_FIXTURE(Fixture, "casting_tables_with_props_into_table_with_indexer3")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
         local function foo(a: {[string]: number, a: string}) end
         foo({ a = 1 })
@@ -1609,8 +1581,6 @@ TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_dont_report_multipl
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_with_extra_props_is_ok")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         local vec3 = {x = 1, y = 2, z = 3}
         local vec1 = {x = 1}
@@ -1998,8 +1968,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_properties_in_strict")
 {
-    ScopedFastFlag sff{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         --!strict
         local buttons = {}
@@ -2013,8 +1981,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_should_cope_with_optional_prope
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop")
 {
-    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-
     CheckResult result = check(R"(
 type A = { x: number, y: number }
 type B = { x: number, y: string }
@@ -2031,8 +1997,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_prop_nested")
 {
-    ScopedFastFlag LuauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-
     CheckResult result = check(R"(
 type AS = { x: number, y: number }
 type BS = { x: number, y: string }
@@ -2054,11 +2018,6 @@ caused by:
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "error_detailed_metatable_prop")
 {
-    ScopedFastFlag sff[]{
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
 local a1 = setmetatable({ x = 2, y = 3 }, { __call = function(s) end });
 local b1 = setmetatable({ x = 2, y = "hello" }, { __call = function(s) end });
@@ -2085,8 +2044,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
 {
-    ScopedFastFlag luauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-
     CheckResult result = check(R"(
         type A = { [number]: string }
         type B = { [string]: string }
@@ -2103,8 +2060,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
 {
-    ScopedFastFlag luauTableSubtypingVariance2{"LuauTableSubtypingVariance2", true}; // Only for new path
-
     CheckResult result = check(R"(
         type A = { [number]: number }
         type B = { [number]: string }
@@ -2121,10 +2076,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauTableSubtypingVariance2", true},
-    };
-
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -2140,11 +2091,6 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_error")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -2166,10 +2112,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "explicitly_typed_table_with_indexer")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauTableSubtypingVariance2", true},
-    };
-
     CheckResult result = check(R"(
 --!strict
 type Super = { x : number }
@@ -2185,10 +2127,6 @@ a.p = { x = 9 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_type_call")
 {
-    ScopedFastFlag sff[]{
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
 local b
 b = setmetatable({}, {__call = b})
@@ -2201,11 +2139,6 @@ b()
 
 TEST_CASE_FIXTURE(Fixture, "table_subtyping_shouldn't_add_optional_properties_to_sealed_tables")
 {
-    ScopedFastFlag sffs[] = {
-        {"LuauTableSubtypingVariance2", true},
-        {"LuauSubtypingAddOptPropsToUnsealedTables", true},
-    };
-
     CheckResult result = check(R"(
         --!strict
         local function setNumber(t: { p: number? }, x:number) t.p = x end
@@ -2706,8 +2639,6 @@ type t0<t32> = any
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_table_cloning_2")
 {
-    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
-
     CheckResult result = check(R"(
 type X<T> = T
 type K = X<typeof(math)>
@@ -2725,8 +2656,6 @@ type K = X<typeof(math)>
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_table_cloning_3")
 {
-    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
-
     CheckResult result = check(R"(
 type X<T> = T
 local a = {}
@@ -2977,8 +2906,6 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
 
 TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra")
 {
-    ScopedFastFlag luauSubtypingAddOptPropsToUnsealedTables{"LuauSubtypingAddOptPropsToUnsealedTables", true};
-
     CheckResult result = check(R"(
         type X = { { x: boolean?, y: boolean? } }
 

@@ -23,7 +23,6 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauSubtypingAddOptPropsToUnsealedTables)
 LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
 
 namespace Luau
@@ -172,22 +171,15 @@ bool isString(TypeId ty)
 // Returns true when ty is a supertype of string
 bool maybeString(TypeId ty)
 {
-    if (FFlag::LuauSubtypingAddOptPropsToUnsealedTables)
-    {
-        ty = follow(ty);
+    ty = follow(ty);
 
-        if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
-            return true;
+    if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
+        return true;
 
-        if (auto utv = get<UnionTypeVar>(ty))
-            return std::any_of(begin(utv), end(utv), maybeString);
+    if (auto utv = get<UnionTypeVar>(ty))
+        return std::any_of(begin(utv), end(utv), maybeString);
 
-        return false;
-    }
-    else
-    {
-        return isString(ty);
-    }
+    return false;
 }
 
 bool isThread(TypeId ty)
@@ -369,7 +361,7 @@ bool maybeSingleton(TypeId ty)
 
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 {
-    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit, "hasLength");
+    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
 
     ty = follow(ty);
 
@@ -750,13 +742,15 @@ TypeId SingletonTypes::makeStringMetatable()
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
         {"char", {arena->addType(FunctionTypeVar{numberVariadicList, arena->addTypePack({stringType})})}},
-        {"find", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber, optionalBoolean}, {}, {optionalNumber, optionalNumber})}},
+        {"find", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber, optionalBoolean}),
+                     arena->addTypePack(TypePack{{optionalNumber, optionalNumber}, stringVariadicList})})}},
         {"format", {formatFn}}, // FIXME
         {"gmatch", {gmatchFunc}},
         {"gsub", {gsubFunc}},
         {"len", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType})}},
         {"lower", {stringToStringType}},
-        {"match", {makeFunction(*arena, stringType, {}, {}, {stringType, optionalNumber}, {}, {optionalString})}},
+        {"match", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}),
+                      arena->addTypePack(TypePackVar{VariadicTypePack{optionalString}})})}},
         {"rep", {makeFunction(*arena, stringType, {}, {}, {numberType}, {}, {stringType})}},
         {"reverse", {stringToStringType}},
         {"sub", {makeFunction(*arena, stringType, {}, {}, {numberType, optionalNumber}, {}, {stringType})}},

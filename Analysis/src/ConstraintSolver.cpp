@@ -2,6 +2,7 @@
 
 #include "Luau/ConstraintSolver.h"
 #include "Luau/Instantiation.h"
+#include "Luau/Location.h"
 #include "Luau/Quantify.h"
 #include "Luau/ToString.h"
 #include "Luau/Unifier.h"
@@ -179,6 +180,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*gc, constraint, force);
     else if (auto ic = get<InstantiationConstraint>(*constraint))
         success = tryDispatch(*ic, constraint, force);
+    else if (auto nc = get<NameConstraint>(*constraint))
+        success = tryDispatch(*nc, constraint);
     else
         LUAU_ASSERT(0);
 
@@ -197,7 +200,7 @@ bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Con
     else if (isBlocked(c.superType))
         return block(c.superType, constraint);
 
-    unify(c.subType, c.superType, constraint->location);
+    unify(c.subType, c.superType);
 
     unblock(c.subType);
     unblock(c.superType);
@@ -207,7 +210,7 @@ bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Con
 
 bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    unify(c.subPack, c.superPack, constraint->location);
+    unify(c.subPack, c.superPack);
     unblock(c.subPack);
     unblock(c.superPack);
 
@@ -222,7 +225,7 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     if (isBlocked(c.generalizedType))
         asMutable(c.generalizedType)->ty.emplace<BoundTypeVar>(c.sourceType);
     else
-        unify(c.generalizedType, c.sourceType, constraint->location);
+        unify(c.generalizedType, c.sourceType);
 
     TypeId generalized = quantify(arena, c.sourceType, c.scope);
     *asMutable(c.sourceType) = *generalized;
@@ -243,8 +246,24 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
     LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
-    unify(c.subType, *instantiated, constraint->location);
+    unify(c.subType, *instantiated);
     unblock(c.subType);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint)
+{
+    if (isBlocked(c.namedType))
+        return block(c.namedType, constraint);
+
+    TypeId target = follow(c.namedType);
+    if (TableTypeVar* ttv = getMutable<TableTypeVar>(target))
+        ttv->name = c.name;
+    else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(target))
+        mtv->syntheticName = c.name;
+    else
+        return block(c.namedType, constraint);
 
     return true;
 }
@@ -321,19 +340,19 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
     return blockedIt != blockedConstraints.end() && blockedIt->second > 0;
 }
 
-void ConstraintSolver::unify(TypeId subType, TypeId superType, Location location)
+void ConstraintSolver::unify(TypeId subType, TypeId superType)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, location, Covariant, sharedState};
+    Unifier u{arena, Mode::Strict, Location{}, Covariant, sharedState};
 
     u.tryUnify(subType, superType);
     u.log.commit();
 }
 
-void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, Location location)
+void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, location, Covariant, sharedState};
+    Unifier u{arena, Mode::Strict, Location{}, Covariant, sharedState};
 
     u.tryUnify(subPack, superPack);
     u.log.commit();

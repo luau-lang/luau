@@ -16,8 +16,6 @@
 #include <bitset>
 #include <math.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileIterNoPairs, false)
-
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThresholdMaxBoost, 300)
 
@@ -2672,7 +2670,7 @@ struct Compiler
                 else if (builtin.isGlobal("pairs")) // for .. in pairs(t)
                 {
                     skipOp = LOP_FORGPREP_NEXT;
-                    loopOp = FFlag::LuauCompileIterNoPairs ? LOP_FORGLOOP : LOP_FORGLOOP_NEXT;
+                    loopOp = LOP_FORGLOOP;
                 }
             }
             else if (stat->values.size == 2)
@@ -2682,7 +2680,7 @@ struct Compiler
                 if (builtin.isGlobal("next")) // for .. in next,t
                 {
                     skipOp = LOP_FORGPREP_NEXT;
-                    loopOp = FFlag::LuauCompileIterNoPairs ? LOP_FORGLOOP : LOP_FORGLOOP_NEXT;
+                    loopOp = LOP_FORGLOOP;
                 }
             }
         }

@@ -26,6 +26,8 @@ void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
     {
         void (*dtor)(lua_State*, void*) = nullptr;
         dtor = L->global->udatagc[u->tag];
+        // TODO: access to L here is highly unsafe since this is called during internal GC traversal
+        // certain operations such as lua_getthreaddata are okay, but by and large this risks crashes on improper use
         if (dtor)
             dtor(L, u->data);
     }

@@ -260,10 +260,6 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_alias_or_parens_is_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
-    ScopedFastFlag sffs[]{
-        {"LuauUnsealedTableLiteral", true},
-    };
-
     CheckResult result = check(R"(
         --!strict
         local x: { ["<>"] : number } 

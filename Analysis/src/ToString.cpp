@@ -1401,6 +1401,12 @@ std::string toString(const Constraint& c, ToStringOptions& opts)
         opts.nameMap = std::move(superStr.nameMap);
         return subStr.name + " ~ inst " + superStr.name;
     }
+    else if (const NameConstraint* nc = Luau::get<NameConstraint>(c))
+    {
+        ToStringResult namedStr = toStringDetailed(nc->namedType, opts);
+        opts.nameMap = std::move(namedStr.nameMap);
+        return "@name(" + namedStr.name + ") = " + nc->name;
+    }
     else
     {
         LUAU_ASSERT(false);

@@ -117,6 +117,7 @@ struct Generic
     explicit Generic(const Name& name);
     explicit Generic(Scope2* scope);
     Generic(TypeLevel level, const Name& name);
+    Generic(Scope2* scope, const Name& name);
 
     int index;
     TypeLevel level;

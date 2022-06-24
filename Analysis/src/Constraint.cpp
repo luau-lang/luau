@@ -5,9 +5,8 @@
 namespace Luau
 {
 
-Constraint::Constraint(ConstraintV&& c, Location location)
+Constraint::Constraint(ConstraintV&& c)
     : c(std::move(c))
-    , location(location)
 {
 }
 
