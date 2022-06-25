@@ -45,12 +45,8 @@ jobs:
 
       - name: Move build files to root
         run: |
-          move build/RelWithDebInfo/* .
+          move build/Release/* .
 
-      - name: Check dir structure
-        run: |
-          ls build/RelWithDebInfo
-          ls
       - uses: actions/setup-python@v3
         with:
           python-version: "3.9"
@@ -171,7 +167,7 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Store ${{ matrix.bench.title }} result (CacheGrind)
         if: matrix.os == 'ubuntu-latest'
@@ -185,7 +181,7 @@ jobs:
           fail-threshold: 1000%
           fail-on-alert: false
           comment-on-alert: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
         if: github.event_name == 'push'
@@ -205,8 +201,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        engine:
-          - { channel: stable, version: latest }
         bench:
           - {
               script: "run-analyze",
@@ -270,7 +264,7 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Store ${{ matrix.bench.title }} result (CacheGrind)
         uses: Roblox/rhysd-github-action-benchmark@v-luau
@@ -285,7 +279,7 @@ jobs:
           fail-on-alert: true
           comment-on-alert: true
           comment-always: true
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
         if: github.event_name == 'push'
