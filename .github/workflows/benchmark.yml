@@ -1,3 +1,5 @@
+name: benchmark
+
 on:
   push:
     branches:
@@ -11,7 +13,7 @@ on:
 
 jobs:
   windows:
-    name: Run ${{ matrix.bench.title }} (Windows ${{matrix.arch}})
+    name: windows-${{matrix.arch}}
     strategy:
       fail-fast: false
       matrix:
@@ -89,7 +91,7 @@ jobs:
           cd ..
 
   unix:
-    name: Run ${{ matrix.bench.title }} (${{ matrix.os}})
+    name: ${{matrix.os}}
     strategy:
       fail-fast: false
       matrix:
@@ -180,7 +182,7 @@ jobs:
           cd ..
 
   static-analysis:
-    name: Run ${{ matrix.bench.title }}
+    name: luau-analyze
     strategy:
       fail-fast: false
       matrix:
