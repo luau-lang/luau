@@ -1,5 +1,3 @@
-name: Luau Benchmarks
-
 on:
   push:
     branches:
@@ -76,11 +74,6 @@ jobs:
           tool: "benchmarkluau"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
-          alert-threshold: 150%
-          fail-threshold: 200%
-          fail-on-alert: true
-          comment-on-alert: true
-          comment-always: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Push benchmark results
@@ -162,11 +155,6 @@ jobs:
           tool: "benchmarkluau"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
-          alert-threshold: 150%
-          fail-threshold: 200%
-          fail-on-alert: true
-          comment-on-alert: true
-          comment-always: true
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Store ${{ matrix.bench.title }} result (CacheGrind)
@@ -177,10 +165,6 @@ jobs:
           tool: "roblox"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
-          alert-threshold: 150%
-          fail-threshold: 1000%
-          fail-on-alert: false
-          comment-on-alert: true
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
@@ -259,11 +243,6 @@ jobs:
           gh-pages-branch: "main"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
-          alert-threshold: 150%
-          fail-threshold: 200%
-          fail-on-alert: true
-          comment-on-alert: true
-          comment-always: true
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Store ${{ matrix.bench.title }} result (CacheGrind)
@@ -274,11 +253,6 @@ jobs:
           gh-pages-branch: "main"
           output-file-path: ./${{ matrix.bench.script }}-output.txt
           external-data-json-path: ./gh-pages/dev/bench/data.json
-          alert-threshold: 150%
-          fail-threshold: 200%
-          fail-on-alert: true
-          comment-on-alert: true
-          comment-always: true
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
