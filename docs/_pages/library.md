@@ -647,7 +647,7 @@ All functions in the `bit32` library treat input numbers as 32-bit unsigned inte
 function bit32.arshift(n: number, i: number): number
 ```
 
-Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift.
+Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift. When `i` is larger than 31, returns an integer with all bits set to the sign bit of `n`. When `i` is smaller than `-31`, 0 is returned.
 
 ```
 function bit32.band(args: ...number): number
@@ -695,7 +695,7 @@ Rotates `n` to the left by `i` bits (if `i` is negative, a right rotate is perfo
 function bit32.lshift(n: number, i: number): number
 ```
 
-Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead).
+Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead). When `i` is outside of `[-31..31]` range, returns 0.
 
 ```
 function bit32.replace(n: number, r: number, f: number, w: number?): number
@@ -713,7 +713,7 @@ Rotates `n` to the right by `i` bits (if `i` is negative, a left rotate is perfo
 function bit32.rshift(n: number, i: number): number
 ```
 
-Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead).
+Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead). When `i` is outside of `[-31..31]` range, returns 0.
 
 ```
 function bit32.countlz(n: number): number
