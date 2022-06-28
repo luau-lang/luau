@@ -32,3 +32,9 @@ This document tracks unimplemented RFCs.
 [RFC: never and unknown types](https://github.com/Roblox/luau/blob/master/rfcs/never-and-unknown-types.md)
 
 **Status**: Needs implementation
+
+## __len metamethod for tables and rawlen function
+
+[RFC: Support __len metamethod for tables and rawlen function](https://github.com/Roblox/luau/blob/master/rfcs/len-metamethod-rawlen.md)
+
+**Status**: Needs implementation
