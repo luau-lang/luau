@@ -1117,6 +1117,27 @@ static int luauF_select(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
     return -1;
 }
 
+static int luauF_rawlen(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1)
+    {
+        if (ttistable(arg0))
+        {
+            Table* h = hvalue(arg0);
+            setnvalue(res, double(luaH_getn(h)));
+            return 1;
+        }
+        else if (ttisstring(arg0))
+        {
+            TString* ts = tsvalue(arg0);
+            setnvalue(res, double(ts->len));
+            return 1;
+        }
+    }
+
+    return -1;
+}
+
 luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -1188,4 +1209,6 @@ luau_FastFunction luauF_table[256] = {
     luauF_countrz,
 
     luauF_select,
+
+    luauF_rawlen,
 };

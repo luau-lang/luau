@@ -1367,51 +1367,74 @@ std::string generateName(size_t i)
     return n;
 }
 
-std::string toString(const Constraint& c, ToStringOptions& opts)
+std::string toString(const Constraint& constraint, ToStringOptions& opts)
 {
-    if (const SubtypeConstraint* sc = Luau::get_if<SubtypeConstraint>(&c.c))
-    {
-        ToStringResult subStr = toStringDetailed(sc->subType, opts);
-        opts.nameMap = std::move(subStr.nameMap);
-        ToStringResult superStr = toStringDetailed(sc->superType, opts);
-        opts.nameMap = std::move(superStr.nameMap);
-        return subStr.name + " <: " + superStr.name;
-    }
-    else if (const PackSubtypeConstraint* psc = Luau::get_if<PackSubtypeConstraint>(&c.c))
-    {
-        ToStringResult subStr = toStringDetailed(psc->subPack, opts);
-        opts.nameMap = std::move(subStr.nameMap);
-        ToStringResult superStr = toStringDetailed(psc->superPack, opts);
-        opts.nameMap = std::move(superStr.nameMap);
-        return subStr.name + " <: " + superStr.name;
-    }
-    else if (const GeneralizationConstraint* gc = Luau::get_if<GeneralizationConstraint>(&c.c))
-    {
-        ToStringResult subStr = toStringDetailed(gc->generalizedType, opts);
-        opts.nameMap = std::move(subStr.nameMap);
-        ToStringResult superStr = toStringDetailed(gc->sourceType, opts);
-        opts.nameMap = std::move(superStr.nameMap);
-        return subStr.name + " ~ gen " + superStr.name;
-    }
-    else if (const InstantiationConstraint* ic = Luau::get_if<InstantiationConstraint>(&c.c))
-    {
-        ToStringResult subStr = toStringDetailed(ic->subType, opts);
-        opts.nameMap = std::move(subStr.nameMap);
-        ToStringResult superStr = toStringDetailed(ic->superType, opts);
-        opts.nameMap = std::move(superStr.nameMap);
-        return subStr.name + " ~ inst " + superStr.name;
-    }
-    else if (const NameConstraint* nc = Luau::get<NameConstraint>(c))
-    {
-        ToStringResult namedStr = toStringDetailed(nc->namedType, opts);
-        opts.nameMap = std::move(namedStr.nameMap);
-        return "@name(" + namedStr.name + ") = " + nc->name;
-    }
-    else
-    {
-        LUAU_ASSERT(false);
-        return "";
-    }
+    auto go = [&opts](auto&& c) {
+        using T = std::decay_t<decltype(c)>;
+
+        if constexpr (std::is_same_v<T, SubtypeConstraint>)
+        {
+            ToStringResult subStr = toStringDetailed(c.subType, opts);
+            opts.nameMap = std::move(subStr.nameMap);
+            ToStringResult superStr = toStringDetailed(c.superType, opts);
+            opts.nameMap = std::move(superStr.nameMap);
+            return subStr.name + " <: " + superStr.name;
+        }
+        else if constexpr (std::is_same_v<T, PackSubtypeConstraint>)
+        {
+            ToStringResult subStr = toStringDetailed(c.subPack, opts);
+            opts.nameMap = std::move(subStr.nameMap);
+            ToStringResult superStr = toStringDetailed(c.superPack, opts);
+            opts.nameMap = std::move(superStr.nameMap);
+            return subStr.name + " <: " + superStr.name;
+        }
+        else if constexpr (std::is_same_v<T, GeneralizationConstraint>)
+        {
+            ToStringResult subStr = toStringDetailed(c.generalizedType, opts);
+            opts.nameMap = std::move(subStr.nameMap);
+            ToStringResult superStr = toStringDetailed(c.sourceType, opts);
+            opts.nameMap = std::move(superStr.nameMap);
+            return subStr.name + " ~ gen " + superStr.name;
+        }
+        else if constexpr (std::is_same_v<T, InstantiationConstraint>)
+        {
+            ToStringResult subStr = toStringDetailed(c.subType, opts);
+            opts.nameMap = std::move(subStr.nameMap);
+            ToStringResult superStr = toStringDetailed(c.superType, opts);
+            opts.nameMap = std::move(superStr.nameMap);
+            return subStr.name + " ~ inst " + superStr.name;
+        }
+        else if constexpr (std::is_same_v<T, UnaryConstraint>)
+        {
+            ToStringResult resultStr = toStringDetailed(c.resultType, opts);
+            opts.nameMap = std::move(resultStr.nameMap);
+            ToStringResult operandStr = toStringDetailed(c.operandType, opts);
+            opts.nameMap = std::move(operandStr.nameMap);
+
+            return resultStr.name + " ~ Unary<" + toString(c.op) + ", " + operandStr.name + ">";
+        }
+        else if constexpr (std::is_same_v<T, BinaryConstraint>)
+        {
+            ToStringResult resultStr = toStringDetailed(c.resultType);
+            opts.nameMap = std::move(resultStr.nameMap);
+            ToStringResult leftStr = toStringDetailed(c.leftType);
+            opts.nameMap = std::move(leftStr.nameMap);
+            ToStringResult rightStr = toStringDetailed(c.rightType);
+            opts.nameMap = std::move(rightStr.nameMap);
+
+            return resultStr.name + " ~ Binary<" + toString(c.op) + ", " + leftStr.name + ", " + rightStr.name + ">";
+        }
+        else if constexpr (std::is_same_v<T, NameConstraint>)
+        {
+            ToStringResult namedStr = toStringDetailed(c.namedType, opts);
+            opts.nameMap = std::move(namedStr.nameMap);
+            return "@name(" + namedStr.name + ") = " + c.name;
+        }
+        else
+            static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
+    };
+
+    return visit(go, constraint.c);
 }
 
 std::string dump(const Constraint& c)

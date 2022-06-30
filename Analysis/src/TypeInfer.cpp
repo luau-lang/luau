@@ -38,11 +38,13 @@ LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
+LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false);
 LUAU_FASTFLAGVARIABLE(LuauAlwaysQuantify, false);
 LUAU_FASTFLAGVARIABLE(LuauReportErrorsOnIndexerKeyMismatch, false)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 LUAU_FASTFLAGVARIABLE(LuauFalsyPredicateReturnsNilInstead, false)
 LUAU_FASTFLAGVARIABLE(LuauNonCopyableTypeVarFields, false)
+LUAU_FASTFLAGVARIABLE(LuauCheckLenMT, false)
 
 namespace Luau
 {
@@ -238,7 +240,7 @@ static bool isMetamethod(const Name& name)
 {
     return name == "__index" || name == "__newindex" || name == "__call" || name == "__concat" || name == "__unm" || name == "__add" ||
            name == "__sub" || name == "__mul" || name == "__div" || name == "__mod" || name == "__pow" || name == "__tostring" ||
-           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode";
+           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len";
 }
 
 size_t HashBoolNamePair::operator()(const std::pair<bool, Name>& pair) const
@@ -327,10 +329,19 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
         currentModule->timeout = true;
     }
 
+    if (FFlag::DebugLuauSharedSelf)
+    {
+        for (auto& [ty, scope] : deferredQuantification)
+            Luau::quantify(ty, scope->level);
+        deferredQuantification.clear();
+    }
+
     if (get<FreeTypePack>(follow(moduleScope->returnType)))
         moduleScope->returnType = addTypePack(TypePack{{}, std::nullopt});
     else
+    {
         moduleScope->returnType = anyify(moduleScope, moduleScope->returnType, Location{});
+    }
 
     for (auto& [_, typeFun] : moduleScope->exportedTypeBindings)
         typeFun.type = anyify(moduleScope, typeFun.type, Location{});
@@ -537,18 +548,43 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
         }
         else if (auto fun = (*protoIter)->as<AstStatFunction>())
         {
+            std::optional<TypeId> selfType;
             std::optional<TypeId> expectedType;
 
-            if (!fun->func->self)
+            if (FFlag::DebugLuauSharedSelf)
             {
                 if (auto name = fun->name->as<AstExprIndexName>())
                 {
-                    TypeId exprTy = checkExpr(scope, *name->expr).type;
-                    expectedType = getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, false);
+                    TypeId baseTy = checkExpr(scope, *name->expr).type;
+                    tablify(baseTy);
+
+                    if (!fun->func->self)
+                        expectedType = getIndexTypeFromType(scope, baseTy, name->index.value, name->indexLocation, false);
+                    else if (auto ttv = getMutableTableType(baseTy))
+                    {
+                        if (!baseTy->persistent && ttv->state != TableState::Sealed && !ttv->selfTy)
+                        {
+                            ttv->selfTy = anyIfNonstrict(freshType(ttv->level));
+                            deferredQuantification.push_back({baseTy, scope});
+                        }
+
+                        selfType = ttv->selfTy;
+                    }
+                }
+            }
+            else
+            {
+                if (!fun->func->self)
+                {
+                    if (auto name = fun->name->as<AstExprIndexName>())
+                    {
+                        TypeId exprTy = checkExpr(scope, *name->expr).type;
+                        expectedType = getIndexTypeFromType(scope, exprTy, name->index.value, name->indexLocation, false);
+                    }
                 }
             }
 
-            auto pair = checkFunctionSignature(scope, subLevel, *fun->func, fun->name->location, expectedType);
+            auto pair = checkFunctionSignature(scope, subLevel, *fun->func, fun->name->location, selfType, expectedType);
             auto [funTy, funScope] = pair;
 
             functionDecls[*protoIter] = pair;
@@ -560,7 +596,7 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
         }
         else if (auto fun = (*protoIter)->as<AstStatLocalFunction>())
         {
-            auto pair = checkFunctionSignature(scope, subLevel, *fun->func, fun->name->location, std::nullopt);
+            auto pair = checkFunctionSignature(scope, subLevel, *fun->func, fun->name->location, std::nullopt, std::nullopt);
             auto [funTy, funScope] = pair;
 
             functionDecls[*protoIter] = pair;
@@ -2076,7 +2112,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
 WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprFunction& expr, std::optional<TypeId> expectedType)
 {
-    auto [funTy, funScope] = checkFunctionSignature(scope, 0, expr, std::nullopt, expectedType);
+    auto [funTy, funScope] = checkFunctionSignature(scope, 0, expr, std::nullopt, std::nullopt, expectedType);
 
     checkFunctionBody(funScope, funTy, expr);
 
@@ -2296,6 +2332,8 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
                 state.log.commit();
 
+                reportErrors(state.errors);
+
                 TypeId retType = first(retTypePack).value_or(nilType);
                 if (!state.errors.empty())
                     retType = errorRecoveryType(retType);
@@ -2321,6 +2359,23 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
             return {errorRecoveryType(scope)};
 
         DenseHashSet<TypeId> seen{nullptr};
+
+        if (FFlag::LuauCheckLenMT && typeCouldHaveMetatable(operandType))
+        {
+            if (auto fnt = findMetatableEntry(operandType, "__len", expr.location))
+            {
+                TypeId actualFunctionType = instantiate(scope, *fnt, expr.location);
+                TypePackId arguments = addTypePack({operandType});
+                TypePackId retTypePack = addTypePack({numberType});
+                TypeId expectedFunctionType = addType(FunctionTypeVar(scope->level, arguments, retTypePack));
+
+                Unifier state = mkUnifier(expr.location);
+                state.tryUnify(actualFunctionType, expectedFunctionType, /*isFunctionCall*/ true);
+                state.log.commit();
+
+                reportErrors(state.errors);
+            }
+        }
 
         if (!hasLength(operandType, seen, &recursionCount))
             reportError(TypeError{expr.location, NotATable{operandType}});
@@ -2530,16 +2585,14 @@ TypeId TypeChecker::checkRelationalOperation(
                 }
             }
 
-
             if (!matches)
             {
                 reportError(
                     expr.location, GenericError{format("Types %s and %s cannot be compared with %s because they do not have the same metatable",
-                                        toString(lhsType).c_str(), toString(rhsType).c_str(), toString(expr.op).c_str())});
+                                       toString(lhsType).c_str(), toString(rhsType).c_str(), toString(expr.op).c_str())});
                 return errorRecoveryType(booleanType);
             }
         }
-
 
         if (leftMetatable)
         {
@@ -3139,8 +3192,8 @@ TypeId TypeChecker::checkFunctionName(const ScopePtr& scope, AstExpr& funName, T
 // `(X) -> Y...`, but after typechecking the body, we cam unify `Y...` with `X`
 // to get type `(X) -> X`, then we quantify the free types to get the final
 // generic type `<a>(a) -> a`.
-std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
-    const ScopePtr& scope, int subLevel, const AstExprFunction& expr, std::optional<Location> originalName, std::optional<TypeId> expectedType)
+std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(const ScopePtr& scope, int subLevel, const AstExprFunction& expr,
+    std::optional<Location> originalName, std::optional<TypeId> selfType, std::optional<TypeId> expectedType)
 {
     ScopePtr funScope = childFunctionScope(scope, expr.location, subLevel);
 
@@ -3241,12 +3294,25 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(
 
     funScope->returnType = retPack;
 
-    if (expr.self)
+    if (FFlag::DebugLuauSharedSelf)
     {
-        // TODO: generic self types: CLI-39906
-        TypeId selfType = anyIfNonstrict(freshType(funScope));
-        funScope->bindings[expr.self] = {selfType, expr.self->location};
-        argTypes.push_back(selfType);
+        if (expr.self)
+        {
+            // TODO: generic self types: CLI-39906
+            TypeId selfTy = anyIfNonstrict(selfType ? *selfType : freshType(funScope));
+            funScope->bindings[expr.self] = {selfTy, expr.self->location};
+            argTypes.push_back(selfTy);
+        }
+    }
+    else
+    {
+        if (expr.self)
+        {
+            // TODO: generic self types: CLI-39906
+            TypeId selfType = anyIfNonstrict(freshType(funScope));
+            funScope->bindings[expr.self] = {selfType, expr.self->location};
+            argTypes.push_back(selfType);
+        }
     }
 
     // Prepare expected argument type iterators if we have an expected function type
@@ -4457,25 +4523,43 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
 {
     ty = follow(ty);
 
-    const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
-
-    if (FFlag::LuauAlwaysQuantify)
+    if (FFlag::DebugLuauSharedSelf)
     {
-        if (ftv)
+        if (auto ftv = get<FunctionTypeVar>(ty))
             Luau::quantify(ty, scope->level);
+        else if (auto ttv = getTableType(ty); ttv && ttv->selfTy)
+            Luau::quantify(ty, scope->level);
+
+        if (FFlag::LuauLowerBoundsCalculation)
+        {
+            auto [t, ok] = Luau::normalize(ty, currentModule, *iceHandler);
+            if (!ok)
+                reportError(location, NormalizationTooComplex{});
+            return t;
+        }
     }
     else
     {
-        if (ftv && ftv->generics.empty() && ftv->genericPacks.empty())
-            Luau::quantify(ty, scope->level);
-    }
+        const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
 
-    if (FFlag::LuauLowerBoundsCalculation && ftv)
-    {
-        auto [t, ok] = Luau::normalize(ty, currentModule, *iceHandler);
-        if (!ok)
-            reportError(location, NormalizationTooComplex{});
-        return t;
+        if (FFlag::LuauAlwaysQuantify)
+        {
+            if (ftv)
+                Luau::quantify(ty, scope->level);
+        }
+        else
+        {
+            if (ftv && ftv->generics.empty() && ftv->genericPacks.empty())
+                Luau::quantify(ty, scope->level);
+        }
+
+        if (FFlag::LuauLowerBoundsCalculation && ftv)
+        {
+            auto [t, ok] = Luau::normalize(ty, currentModule, *iceHandler);
+            if (!ok)
+                reportError(location, NormalizationTooComplex{});
+            return t;
+        }
     }
 
     return ty;

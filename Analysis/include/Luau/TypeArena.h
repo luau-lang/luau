@@ -34,6 +34,12 @@ struct TypeArena
     TypePackId addTypePack(std::vector<TypeId> types);
     TypePackId addTypePack(TypePack pack);
     TypePackId addTypePack(TypePackVar pack);
+
+    template<typename T>
+    TypePackId addTypePack(T tp)
+    {
+        return addTypePack(TypePackVar(std::move(tp)));
+    }
 };
 
 void freeze(TypeArena& arena);

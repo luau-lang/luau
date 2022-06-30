@@ -9,7 +9,7 @@
 
 using namespace Luau;
 
-static TypeId requireBinding(Scope2* scope, const char* name)
+static TypeId requireBinding(NotNull<Scope2> scope, const char* name)
 {
     auto b = linearSearchForBinding(scope, name);
     LUAU_ASSERT(b.has_value());
@@ -26,12 +26,13 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
     )");
 
     cgb.visit(block);
+    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
 
-    ConstraintSolver cs{&arena, cgb.rootScope};
+    ConstraintSolver cs{&arena, rootScope};
 
     cs.run();
 
-    TypeId bType = requireBinding(cgb.rootScope, "b");
+    TypeId bType = requireBinding(rootScope, "b");
 
     CHECK("number" == toString(bType));
 }
@@ -45,12 +46,13 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     )");
 
     cgb.visit(block);
+    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
 
-    ConstraintSolver cs{&arena, cgb.rootScope};
+    ConstraintSolver cs{&arena, rootScope};
 
     cs.run();
 
-    TypeId idType = requireBinding(cgb.rootScope, "id");
+    TypeId idType = requireBinding(rootScope, "id");
 
     CHECK("<a>(a) -> a" == toString(idType));
 }
@@ -71,14 +73,15 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
     )");
 
     cgb.visit(block);
+    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
 
     ToStringOptions opts;
 
-    ConstraintSolver cs{&arena, cgb.rootScope};
+    ConstraintSolver cs{&arena, rootScope};
 
     cs.run();
 
-    TypeId idType = requireBinding(cgb.rootScope, "b");
+    TypeId idType = requireBinding(rootScope, "b");
 
     CHECK("<a>(a) -> number" == toString(idType, opts));
 }

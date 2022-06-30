@@ -39,6 +39,7 @@ const char* const luaT_eventname[] = {
     "__namecall",
     "__call",
     "__iter",
+    "__len",
 
     "__eq",
 
@@ -52,7 +53,6 @@ const char* const luaT_eventname[] = {
     "__unm",
 
     
-    "__len",
     "__lt",
     "__le",
     "__concat",

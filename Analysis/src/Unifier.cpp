@@ -740,7 +740,7 @@ void Unifier::tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const I
     std::optional<TypeError> unificationTooComplex;
     std::optional<TypeError> firstFailedOption;
 
-    // T <: A & B if A <: T and B <: T
+    // T <: A & B if T <: A and T <: B
     for (TypeId type : uv->parts)
     {
         Unifier innerState = makeChildUnifier();
@@ -765,7 +765,7 @@ void Unifier::tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const I
 
 void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeVar* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall)
 {
-    // A & B <: T if T <: A or T <: B
+    // A & B <: T if A <: T or B <: T
     bool found = false;
     std::optional<TypeError> unificationTooComplex;
 

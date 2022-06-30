@@ -30,23 +30,23 @@ struct Test
 
 int Test::count = 0;
 
-}
+} // namespace
 
 int foo(NotNull<int> p)
 {
     return *p;
 }
 
-void bar(int* q)
-{}
+void bar(int* q) {}
 
 TEST_SUITE_BEGIN("NotNull");
 
 TEST_CASE("basic_stuff")
 {
-    NotNull<int> a = NotNull{new int(55)};    // Does runtime test
-    NotNull<int> b{new int(55)};             // As above
-    // NotNull<int> c = new int(55);         // Nope. Mildly regrettable, but implicit conversion from T* to NotNull<T> in the general case is not good.
+    NotNull<int> a = NotNull{new int(55)}; // Does runtime test
+    NotNull<int> b{new int(55)};           // As above
+    // NotNull<int> c = new int(55);         // Nope. Mildly regrettable, but implicit conversion from T* to NotNull<T> in the general case is not
+    // good.
 
     // a = nullptr; // nope
 

@@ -17,7 +17,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello_world")
     )");
 
     cgb.visit(block);
-    auto constraints = collectConstraints(cgb.rootScope);
+    auto constraints = collectConstraints(NotNull(cgb.rootScope));
 
     REQUIRE(2 == constraints.size());
 
@@ -36,7 +36,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "primitives")
     )");
 
     cgb.visit(block);
-    auto constraints = collectConstraints(cgb.rootScope);
+    auto constraints = collectConstraints(NotNull(cgb.rootScope));
 
     REQUIRE(3 == constraints.size());
 
@@ -54,15 +54,15 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "nil_primitive")
     )");
 
     cgb.visit(block);
-    auto constraints = collectConstraints(cgb.rootScope);
+    auto constraints = collectConstraints(NotNull(cgb.rootScope));
 
     ToStringOptions opts;
     REQUIRE(5 <= constraints.size());
 
     CHECK("*blocked-1* ~ gen () -> (a...)" == toString(*constraints[0], opts));
-    CHECK("b ~ inst *blocked-1*" == toString(*constraints[1], opts));
-    CHECK("() -> (c...) <: b" == toString(*constraints[2], opts));
-    CHECK("c... <: d" == toString(*constraints[3], opts));
+    CHECK("*blocked-2* ~ inst *blocked-1*" == toString(*constraints[1], opts));
+    CHECK("() -> (b...) <: *blocked-2*" == toString(*constraints[2], opts));
+    CHECK("b... <: c" == toString(*constraints[3], opts));
     CHECK("nil <: a..." == toString(*constraints[4], opts));
 }
 
@@ -74,15 +74,15 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "function_application")
     )");
 
     cgb.visit(block);
-    auto constraints = collectConstraints(cgb.rootScope);
+    auto constraints = collectConstraints(NotNull(cgb.rootScope));
 
     REQUIRE(4 == constraints.size());
 
     ToStringOptions opts;
     CHECK("string <: a" == toString(*constraints[0], opts));
-    CHECK("b ~ inst a" == toString(*constraints[1], opts));
-    CHECK("(string) -> (c...) <: b" == toString(*constraints[2], opts));
-    CHECK("c... <: d" == toString(*constraints[3], opts));
+    CHECK("*blocked-1* ~ inst a" == toString(*constraints[1], opts));
+    CHECK("(string) -> (b...) <: *blocked-1*" == toString(*constraints[2], opts));
+    CHECK("b... <: c" == toString(*constraints[3], opts));
 }
 
 TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "local_function_definition")
@@ -94,7 +94,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "local_function_definition")
     )");
 
     cgb.visit(block);
-    auto constraints = collectConstraints(cgb.rootScope);
+    auto constraints = collectConstraints(NotNull(cgb.rootScope));
 
     REQUIRE(2 == constraints.size());
 
@@ -112,15 +112,15 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "recursive_function")
     )");
 
     cgb.visit(block);
-    auto constraints = collectConstraints(cgb.rootScope);
+    auto constraints = collectConstraints(NotNull(cgb.rootScope));
 
     REQUIRE(4 == constraints.size());
 
     ToStringOptions opts;
     CHECK("*blocked-1* ~ gen (a) -> (b...)" == toString(*constraints[0], opts));
-    CHECK("c ~ inst (a) -> (b...)" == toString(*constraints[1], opts));
-    CHECK("(a) -> (d...) <: c" == toString(*constraints[2], opts));
-    CHECK("d... <: b..." == toString(*constraints[3], opts));
+    CHECK("*blocked-2* ~ inst (a) -> (b...)" == toString(*constraints[1], opts));
+    CHECK("(a) -> (c...) <: *blocked-2*" == toString(*constraints[2], opts));
+    CHECK("c... <: b..." == toString(*constraints[3], opts));
 }
 
 TEST_SUITE_END();

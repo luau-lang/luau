@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+LUAU_FASTFLAG(LuauLenTM)
+
 static void writestring(const char* s, size_t l)
 {
     fwrite(s, 1, l, stdout);
@@ -175,6 +177,18 @@ static int luaB_rawset(lua_State* L)
     luaL_checkany(L, 3);
     lua_settop(L, 3);
     lua_rawset(L, 1);
+    return 1;
+}
+
+static int luaB_rawlen(lua_State* L)
+{
+    if (!FFlag::LuauLenTM)
+        luaL_error(L, "'rawlen' is not available");
+
+    int tt = lua_type(L, 1);
+    luaL_argcheck(L, tt == LUA_TTABLE || tt == LUA_TSTRING, 1, "table or string expected");
+    int len = lua_objlen(L, 1);
+    lua_pushinteger(L, len);
     return 1;
 }
 
@@ -428,6 +442,7 @@ static const luaL_Reg base_funcs[] = {
     {"rawequal", luaB_rawequal},
     {"rawget", luaB_rawget},
     {"rawset", luaB_rawset},
+    {"rawlen", luaB_rawlen},
     {"select", luaB_select},
     {"setfenv", luaB_setfenv},
     {"setmetatable", luaB_setmetatable},

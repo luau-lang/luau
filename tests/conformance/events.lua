@@ -386,4 +386,42 @@ do
   assert(t.X) -- fails if table flags are set incorrectly
 end
 
+do
+  -- verify __len behavior & error handling
+  local t = {1}
+
+  setmetatable(t, {})
+  assert(#t == 1)
+
+  setmetatable(t, { __len = rawlen })
+  assert(#t == 1)
+
+  setmetatable(t, { __len = function() return 42 end })
+  assert(#t == 42)
+
+  setmetatable(t, { __len = 42 })
+  local ok, err = pcall(function() return #t end)
+  assert(not ok and err:match("attempt to call a number value"))
+
+  setmetatable(t, { __len = function() end })
+  local ok, err = pcall(function() return #t end)
+  assert(not ok and err:match("'__len' must return a number"))
+
+  setmetatable(t, { __len = error })
+  local ok, err = pcall(function() return #t end)
+  assert(not ok and err == t)
+end
+
+-- verify rawlen behavior
+do
+  local t = {1}
+  setmetatable(t, { __len = 42 })
+
+  assert(rawlen(t) == 1)
+  assert(rawlen("foo") == 3)
+
+  local ok, err = pcall(function() return rawlen(42) end)
+  assert(not ok and err:match("table or string expected"))
+end
+
 return 'OK'

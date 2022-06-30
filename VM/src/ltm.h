@@ -18,6 +18,7 @@ typedef enum
     TM_NAMECALL,
     TM_CALL,
     TM_ITER,
+    TM_LEN,
 
     TM_EQ, /* last tag method with `fast' access */
 
@@ -31,7 +32,6 @@ typedef enum
     TM_UNM,
 
     
-    TM_LEN,
     TM_LT,
     TM_LE,
     TM_CONCAT,

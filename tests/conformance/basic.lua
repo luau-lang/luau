@@ -118,9 +118,11 @@ assert((function() return #_G end)() == 0)
 assert((function() return #{1,2} end)() == 2)
 assert((function() return #'g' end)() == 1)
 
-assert((function() local ud = newproxy(true) getmetatable(ud).__len = function() return 42 end return #ud end)() == 42)
-
 assert((function() local a = 1 a = -a return a end)() == -1)
+
+-- __len metamethod
+assert((function() local ud = newproxy(true) getmetatable(ud).__len = function() return 42 end return #ud end)() == 42)
+assert((function() local t = {} setmetatable(t, { __len = function() return 42 end }) return #t end)() == 42)
 
 -- while/repeat
 assert((function() local a = 10 local b = 1 while a > 1 do b = b * 2 a = a - 1 end return b end)() == 512)
@@ -888,6 +890,10 @@ assert((function()
 
     return table.concat(res, ',')
 end)() == "6,8,10")
+
+-- typeof and type require an argument
+assert(pcall(typeof) == false)
+assert(pcall(type) == false)
 
 -- typeof == type in absence of custom userdata
 assert(concat(typeof(5), typeof(nil), typeof({}), typeof(newproxy())) == "number,nil,table,userdata")

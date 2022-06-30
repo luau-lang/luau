@@ -195,12 +195,15 @@ ParseResult Fixture::matchParseError(const std::string& source, const std::strin
     sourceModule.reset(new SourceModule);
     ParseResult result = Parser::parse(source.c_str(), source.length(), *sourceModule->names, *sourceModule->allocator, options);
 
-    REQUIRE_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
+    CHECK_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
 
-    CHECK_EQ(result.errors.front().getMessage(), message);
+    if (!result.errors.empty())
+    {
+        CHECK_EQ(result.errors.front().getMessage(), message);
 
-    if (location)
-        CHECK_EQ(result.errors.front().getLocation(), *location);
+        if (location)
+            CHECK_EQ(result.errors.front().getLocation(), *location);
+    }
 
     return result;
 }
@@ -213,11 +216,14 @@ ParseResult Fixture::matchParseErrorPrefix(const std::string& source, const std:
     sourceModule.reset(new SourceModule);
     ParseResult result = Parser::parse(source.c_str(), source.length(), *sourceModule->names, *sourceModule->allocator, options);
 
-    REQUIRE_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
+    CHECK_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
 
-    const std::string& message = result.errors.front().getMessage();
-    CHECK_GE(message.length(), prefix.length());
-    CHECK_EQ(prefix, message.substr(0, prefix.size()));
+    if (!result.errors.empty())
+    {
+        const std::string& message = result.errors.front().getMessage();
+        CHECK_GE(message.length(), prefix.length());
+        CHECK_EQ(prefix, message.substr(0, prefix.size()));
+    }
 
     return result;
 }
@@ -428,6 +434,7 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
 
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
+    , cgb(mainModuleName, &arena, NotNull(&ice), frontend.getGlobalScope2())
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;

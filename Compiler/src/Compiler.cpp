@@ -23,6 +23,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
+LUAU_FASTFLAGVARIABLE(LuauCompileNoIpairs, false)
+
 namespace Luau
 {
 
@@ -2665,7 +2667,7 @@ struct Compiler
                 if (builtin.isGlobal("ipairs")) // for .. in ipairs(t)
                 {
                     skipOp = LOP_FORGPREP_INEXT;
-                    loopOp = LOP_FORGLOOP_INEXT;
+                    loopOp = FFlag::LuauCompileNoIpairs ? LOP_FORGLOOP : LOP_FORGLOOP_INEXT;
                 }
                 else if (builtin.isGlobal("pairs")) // for .. in pairs(t)
                 {
@@ -2709,8 +2711,16 @@ struct Compiler
 
         bytecode.emitAD(loopOp, regs, 0);
 
+        if (FFlag::LuauCompileNoIpairs)
+        {
+            // TODO: remove loopOp as it's a constant now
+            LUAU_ASSERT(loopOp == LOP_FORGLOOP);
+
+            // FORGLOOP uses aux to encode variable count and fast path flag for ipairs traversal in the high bit
+            bytecode.emitAux((skipOp == LOP_FORGPREP_INEXT ? 0x80000000 : 0) | uint32_t(stat->vars.size));
+        }
         // note: FORGLOOP needs variable count encoded in AUX field, other loop instructions assume a fixed variable count
-        if (loopOp == LOP_FORGLOOP)
+        else if (loopOp == LOP_FORGLOOP)
             bytecode.emitAux(uint32_t(stat->vars.size));
 
         size_t endLabel = bytecode.emitLabel();
@@ -3341,7 +3351,7 @@ struct Compiler
         std::vector<AstLocal*> upvals;
     };
 
-    struct ReturnVisitor: AstVisitor
+    struct ReturnVisitor : AstVisitor
     {
         Compiler* self;
         bool returnsOne = true;

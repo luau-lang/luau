@@ -5,7 +5,6 @@
 #include <algorithm>
 
 #include "Luau/Clone.h"
-#include "Luau/Substitution.h"
 #include "Luau/Unifier.h"
 #include "Luau/VisitTypeVar.h"
 
@@ -16,7 +15,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeFlagIsConservative, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineEqFix, false);
-LUAU_FASTFLAGVARIABLE(LuauReplaceReplacer, false);
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
@@ -25,238 +23,33 @@ namespace Luau
 namespace
 {
 
-struct Replacer : Substitution
+struct Replacer
 {
+    TypeArena* arena;
     TypeId sourceType;
     TypeId replacedType;
-    DenseHashMap<TypeId, TypeId> replacedTypes{nullptr};
-    DenseHashMap<TypePackId, TypePackId> replacedPacks{nullptr};
+    DenseHashMap<TypeId, TypeId> newTypes;
 
     Replacer(TypeArena* arena, TypeId sourceType, TypeId replacedType)
-        : Substitution(TxnLog::empty(), arena)
+        : arena(arena)
         , sourceType(sourceType)
         , replacedType(replacedType)
+        , newTypes(nullptr)
     {
-    }
-
-    bool isDirty(TypeId ty) override
-    {
-        if (!sourceType)
-            return false;
-
-        auto vecHasSourceType = [sourceType = sourceType](const auto& vec) {
-            return end(vec) != std::find(begin(vec), end(vec), sourceType);
-        };
-
-        // Walk every kind of TypeVar and find pointers to sourceType
-        if (auto t = get<FreeTypeVar>(ty))
-            return false;
-        else if (auto t = get<GenericTypeVar>(ty))
-            return false;
-        else if (auto t = get<ErrorTypeVar>(ty))
-            return false;
-        else if (auto t = get<PrimitiveTypeVar>(ty))
-            return false;
-        else if (auto t = get<ConstrainedTypeVar>(ty))
-            return vecHasSourceType(t->parts);
-        else if (auto t = get<SingletonTypeVar>(ty))
-            return false;
-        else if (auto t = get<FunctionTypeVar>(ty))
-        {
-            if (vecHasSourceType(t->generics))
-                return true;
-
-            return false;
-        }
-        else if (auto t = get<TableTypeVar>(ty))
-        {
-            if (t->boundTo)
-                return *t->boundTo == sourceType;
-
-            for (const auto& [_name, prop] : t->props)
-            {
-                if (prop.type == sourceType)
-                    return true;
-            }
-
-            if (auto indexer = t->indexer)
-            {
-                if (indexer->indexType == sourceType || indexer->indexResultType == sourceType)
-                    return true;
-            }
-
-            if (vecHasSourceType(t->instantiatedTypeParams))
-                return true;
-
-            return false;
-        }
-        else if (auto t = get<MetatableTypeVar>(ty))
-            return t->table == sourceType || t->metatable == sourceType;
-        else if (auto t = get<ClassTypeVar>(ty))
-            return false;
-        else if (auto t = get<AnyTypeVar>(ty))
-            return false;
-        else if (auto t = get<UnionTypeVar>(ty))
-            return vecHasSourceType(t->options);
-        else if (auto t = get<IntersectionTypeVar>(ty))
-            return vecHasSourceType(t->parts);
-        else if (auto t = get<LazyTypeVar>(ty))
-            return false;
-
-        LUAU_ASSERT(!"Luau::Replacer::isDirty internal error: Unknown TypeVar type");
-        LUAU_UNREACHABLE();
-    }
-
-    bool isDirty(TypePackId tp) override
-    {
-        if (auto it = replacedPacks.find(tp))
-            return false;
-
-        if (auto pack = get<TypePack>(tp))
-        {
-            for (TypeId ty : pack->head)
-            {
-                if (ty == sourceType)
-                    return true;
-            }
-            return false;
-        }
-        else if (auto vtp = get<VariadicTypePack>(tp))
-            return vtp->ty == sourceType;
-        else
-            return false;
-    }
-
-    TypeId clean(TypeId ty) override
-    {
-        LUAU_ASSERT(sourceType && replacedType);
-
-        // Walk every kind of TypeVar and create a copy with sourceType replaced by replacedType
-        // Before returning, memoize the result for later use.
-
-        // Helpfully, Substitution::clone() only shallow-clones the kinds of types that we care to work with.  This
-        // function returns the identity for things like primitives.
-        TypeId res = clone(ty);
-
-        if (auto t = get<FreeTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = get<GenericTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = get<ErrorTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = get<PrimitiveTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = getMutable<ConstrainedTypeVar>(res))
-        {
-            for (TypeId& part : t->parts)
-            {
-                if (part == sourceType)
-                    part = replacedType;
-            }
-        }
-        else if (auto t = get<SingletonTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = getMutable<FunctionTypeVar>(res))
-        {
-            // The constituent typepacks are cleaned separately.  We just need to walk the generics array.
-            for (TypeId& g : t->generics)
-            {
-                if (g == sourceType)
-                    g = replacedType;
-            }
-        }
-        else if (auto t = getMutable<TableTypeVar>(res))
-        {
-            for (auto& [_key, prop] : t->props)
-            {
-                if (prop.type == sourceType)
-                    prop.type = replacedType;
-            }
-        }
-        else if (auto t = getMutable<MetatableTypeVar>(res))
-        {
-            if (t->table == sourceType)
-                t->table = replacedType;
-            if (t->metatable == sourceType)
-                t->table = replacedType;
-        }
-        else if (auto t = get<ClassTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = get<AnyTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else if (auto t = getMutable<UnionTypeVar>(res))
-        {
-            for (TypeId& option : t->options)
-            {
-                if (option == sourceType)
-                    option = replacedType;
-            }
-        }
-        else if (auto t = getMutable<IntersectionTypeVar>(res))
-        {
-            for (TypeId& part : t->parts)
-            {
-                if (part == sourceType)
-                    part = replacedType;
-            }
-        }
-        else if (auto t = get<LazyTypeVar>(res))
-            LUAU_ASSERT(!"Impossible");
-        else
-            LUAU_ASSERT(!"Luau::Replacer::clean internal error: Unknown TypeVar type");
-
-        replacedTypes[ty] = res;
-        return res;
-    }
-
-    TypePackId clean(TypePackId tp) override
-    {
-        TypePackId res = clone(tp);
-
-        if (auto pack = getMutable<TypePack>(res))
-        {
-            for (TypeId& type : pack->head)
-            {
-                if (type == sourceType)
-                    type = replacedType;
-            }
-        }
-        else if (auto vtp = getMutable<VariadicTypePack>(res))
-        {
-            if (vtp->ty == sourceType)
-                vtp->ty = replacedType;
-        }
-
-        replacedPacks[tp] = res;
-        return res;
     }
 
     TypeId smartClone(TypeId t)
     {
-        if (FFlag::LuauReplaceReplacer)
-        {
-            // The new smartClone is just a memoized clone()
-            // TODO: Remove the Substitution base class and all other methods from this struct.
-            // Add DenseHashMap<TypeId, TypeId> newTypes;
-            t = log->follow(t);
-            TypeId* res = newTypes.find(t);
-            if (res)
-                return *res;
-
-            TypeId result = shallowClone(t, *arena, TxnLog::empty());
-            newTypes[t] = result;
-            newTypes[result] = result;
-
-            return result;
-        }
-        else
-        {
-            std::optional<TypeId> res = replace(t);
-            LUAU_ASSERT(res.has_value()); // TODO think about this
-            if (*res == t)
-                return clone(t);
+        t = follow(t);
+        TypeId* res = newTypes.find(t);
+        if (res)
             return *res;
-        }
+
+        TypeId result = shallowClone(t, *arena, TxnLog::empty());
+        newTypes[t] = result;
+        newTypes[result] = result;
+
+        return result;
     }
 };
 

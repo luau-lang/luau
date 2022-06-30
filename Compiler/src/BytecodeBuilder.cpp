@@ -1302,20 +1302,22 @@ void BytecodeBuilder::validate() const
 
         case LOP_FORNPREP:
         case LOP_FORNLOOP:
-            VREG(LUAU_INSN_A(insn) + 2); // for loop protocol: A, A+1, A+2 are used for iteration
+            // for loop protocol: A, A+1, A+2 are used for iteration
+            VREG(LUAU_INSN_A(insn) + 2);
             VJUMP(LUAU_INSN_D(insn));
             break;
 
         case LOP_FORGPREP:
-            VREG(LUAU_INSN_A(insn) + 2 + 1); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+            // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+            VREG(LUAU_INSN_A(insn) + 2 + 1);
             VJUMP(LUAU_INSN_D(insn));
             break;
 
         case LOP_FORGLOOP:
-            VREG(
-                LUAU_INSN_A(insn) + 2 + insns[i + 1]); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+            // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
+            VREG(LUAU_INSN_A(insn) + 2 + uint8_t(insns[i + 1]));
             VJUMP(LUAU_INSN_D(insn));
-            LUAU_ASSERT(insns[i + 1] >= 1);
+            LUAU_ASSERT(uint8_t(insns[i + 1]) >= 1);
             break;
 
         case LOP_FORGPREP_INEXT:
@@ -1679,7 +1681,8 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_FORGLOOP:
-        formatAppend(result, "FORGLOOP R%d L%d %d\n", LUAU_INSN_A(insn), targetLabel, *code++);
+        formatAppend(result, "FORGLOOP R%d L%d %d%s\n", LUAU_INSN_A(insn), targetLabel, uint8_t(*code), int(*code) < 0 ? " [inext]" : "");
+        code++;
         break;
 
     case LOP_FORGPREP_INEXT:
