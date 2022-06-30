@@ -48,7 +48,7 @@ local b2: B = a1 -- not ok
 
 ## Primitive types
 
-Lua VM supports 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax), and `userdata` is represented by [concrete types](#Roblox-types); other types can be specified by their name.
+Lua VM supports 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax), and `userdata` is represented by [concrete types](#roblox-types); other types can be specified by their name.
 
 Additionally, we also have `any` which is a special built-in type. It effectively disables all type checking, and thus should be used as last resort.
 

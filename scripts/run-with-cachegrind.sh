@@ -25,10 +25,17 @@ now_ms() {
 ITERATION_COUNT=$4
 START_TIME=$(now_ms)
 
+ARGS=( "$@" )
+REST_ARGS="${ARGS[@]:4}"
+
 valgrind \
     --quiet \
     --tool=cachegrind \
-    "$1" "$2" >/dev/null
+    "$1" "$2" $REST_ARGS>/dev/null
+
+ARGS=( "$@" )
+REST_ARGS="${ARGS[@]:4}"
+
 
 TIME_ELAPSED=$(bc <<< "$(now_ms) - ${START_TIME}")
 
