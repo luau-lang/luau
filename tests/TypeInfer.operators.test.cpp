@@ -461,6 +461,61 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
     REQUIRE_EQ(gen->message, "Unary operator '-' not supported by type 'bar'");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
+{
+    CheckResult result = check(R"(
+        --!strict
+        local foo = {
+            value = 10
+        }
+
+        local mt = {}
+        setmetatable(foo, mt)
+
+        mt.__unm = function(val: boolean): string
+            return "test"
+        end
+
+        local a = -foo
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("string", toString(requireType("a")));
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE_EQ(*tm->wantedType, *typeChecker.booleanType);
+    // given type is the typeof(foo) which is complex to compare against
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
+{
+    ScopedFastFlag sff("LuauCheckLenMT", true);
+
+    CheckResult result = check(R"(
+        --!strict
+        local foo = {
+            value = 10
+        }
+        local mt = {}
+        setmetatable(foo, mt)
+
+        mt.__len = function(val: any): string
+            return "test"
+        end
+
+        local a = #foo
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK_EQ("number", toString(requireType("a")));
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE_EQ(*tm->wantedType, *typeChecker.numberType);
+    REQUIRE_EQ(*tm->givenType, *typeChecker.stringType);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "unary_not_is_boolean")
 {
     CheckResult result = check(R"(

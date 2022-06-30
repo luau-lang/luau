@@ -37,6 +37,27 @@ TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
                                                                                       }}));
 }
 
+TEST_CASE_FIXTURE(Fixture, "cannot_hoist_interior_defns_into_signature")
+{
+    // This test verifies that the signature does not have access to types
+    // declared within the body. Under DCR, if the function's inner scope
+    // encompasses the entire function expression, it would be possible for this
+    // to type check (but the solver output is somewhat undefined). This test
+    // ensures that this isn't the case.
+    CheckResult result = check(R"(
+        local function f(x: T)
+            type T = number
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(result.errors[0] == TypeError{Location{{1, 28}, {1, 29}}, getMainSourceModule()->name,
+                                  UnknownSymbol{
+                                      "T",
+                                      UnknownSymbol::Context::Type,
+                                  }});
+}
+
 TEST_CASE_FIXTURE(Fixture, "infer_return_type")
 {
     CheckResult result = check("function take_five() return 5 end");

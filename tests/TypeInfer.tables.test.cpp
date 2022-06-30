@@ -1863,6 +1863,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "less_exponential_blowup_please")
 {
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
     CheckResult result = check(R"(
         --!strict
 
@@ -1890,7 +1892,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "less_exponential_blowup_please")
         newData:First()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "common_table_element_union_in_call")
@@ -2868,6 +2870,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
+        {"DebugLuauSharedSelf", true},
     };
 
     check(R"(
@@ -2887,7 +2890,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
         end
     )");
 
-    CHECK_EQ("<a...>(t1) -> {| Byte: <b>(b) -> (a...), PeekByte: <c>(c) -> (a...) |} where t1 = {+ byte: (t1, number) -> (a...) +}",
+    CHECK_EQ("<a, b...>(t1) -> {| Byte: (a) -> (b...), PeekByte: (a) -> (b...) |} where t1 = {+ byte: (t1, number) -> (b...) +}",
         toString(requireType("Base64FileReader")));
 }
 
@@ -2902,6 +2905,66 @@ TEST_CASE_FIXTURE(Fixture, "mixed_tables_with_implicit_numbered_keys")
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[2]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "shared_selfs")
+{
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
+    CheckResult result = check(R"(
+        local t = {}
+        t.x = 5
+
+        function t:m1() return self.x end
+        function t:m2() return self.y end
+
+        return t
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    CHECK_EQ("{| m1: <a, b>({+ x: a, y: b +}) -> a, m2: <a, b>({+ x: a, y: b +}) -> b, x: number |}", toString(requireType("t"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "shared_selfs_from_free_param")
+{
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
+    CheckResult result = check(R"(
+        local function f(t)
+            function t:m1() return self.x end
+            function t:m2() return self.y end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<a, b>({+ m1: ({+ x: a, y: b +}) -> a, m2: ({+ x: a, y: b +}) -> b +}) -> ()", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "shared_selfs_through_metatables")
+{
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
+    CheckResult result = check(R"(
+        local t = {}
+        t.__index = t
+        setmetatable({}, t)
+
+        function t:m1() return self.x end
+        function t:m2() return self.y end
+
+        return t
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    CHECK_EQ(
+        toString(requireType("t"), opts), "t1 where t1 = {| __index: t1, m1: <a, b>({+ x: a, y: b +}) -> a, m2: <a, b>({+ x: a, y: b +}) -> b |}");
 }
 
 TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra")
@@ -2951,6 +3014,60 @@ TEST_CASE_FIXTURE(Fixture, "prop_access_on_unions_of_indexers_where_key_whose_ty
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type '{number} | {| [boolean]: number |}' does not have key 'x'", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "quantify_metatables_of_metatables_of_table")
+{
+    ScopedFastFlag sff[]{
+        {"DebugLuauSharedSelf", true},
+    };
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T:m()
+            return self.x, self.y
+        end
+
+        function T:n()
+        end
+
+        local U = setmetatable({}, {__index = T})
+
+        local V = setmetatable({}, {__index = U})
+
+        return V
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    CHECK_EQ(toString(requireType("V"), opts), "{ @metatable { __index: { @metatable { __index: {| m: <a, b>({+ x: a, y: b +}) -> (a, b), n: <a, "
+                                               "b>({+ x: a, y: b +}) -> () |} }, {  } } }, {  } }");
+}
+
+TEST_CASE_FIXTURE(Fixture, "quantify_even_that_table_was_never_exported_at_all")
+{
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
+    CheckResult result = check(R"(
+        local T = {}
+
+        function T:m()
+            return self.x
+        end
+
+        function T:n()
+            return self.y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ToStringOptions opts;
+    opts.exhaustive = true;
+    CHECK_EQ("{| m: <a, b>({+ x: a, y: b +}) -> a, n: <a, b>({+ x: a, y: b +}) -> b |}", toString(requireType("T"), opts));
 }
 
 TEST_SUITE_END();

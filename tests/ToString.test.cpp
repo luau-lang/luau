@@ -409,6 +409,8 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
+    ScopedFastFlag sff2{"DebugLuauSharedSelf", true};
+
     CheckResult result = check(R"(
         local base = {}
         function base:one() return 1 end
@@ -424,7 +426,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 
     TypeId tType = requireType("inst");
     ToStringResult r = toStringDetailed(tType);
-    CHECK_EQ("{ @metatable { __index: { @metatable { __index: base }, child } }, inst }", r.name);
+    CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
     CHECK_EQ(0, r.nameMap.typeVars.size());
 
     ToStringOptions opts;
@@ -455,10 +457,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 
     std::string twoResult = toString(tMeta6->props["two"].type, opts);
 
-    REQUIRE_EQ("<a>(a) -> number", oneResult.name);
-    REQUIRE_EQ("<b>(b) -> number", twoResult);
+    CHECK_EQ("<a>(a) -> number", oneResult.name);
+    CHECK_EQ("<b>(b) -> number", twoResult);
 }
-
 
 TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
 {
@@ -688,6 +689,10 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 {
+    ScopedFastFlag sff[]{
+        {"DebugLuauSharedSelf", true},
+    };
+
     CheckResult result = check(R"(
         local foo = {}
         function foo:method(arg: string): ()
@@ -701,9 +706,12 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
     CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
 }
 
-
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
 {
+    ScopedFastFlag sff[]{
+        {"DebugLuauSharedSelf", true},
+    };
+
     CheckResult result = check(R"(
         local foo = {}
         function foo:method(arg: string): ()

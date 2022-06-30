@@ -276,7 +276,7 @@ enum LuauOpcode
     // FORGLOOP: adjust loop variables for one iteration of a generic for loop, jump back to the loop header if loop needs to continue
     // A: target register; generic for loops assume a register layout [generator, state, index, variables...]
     // D: jump offset (-32768..32767)
-    // AUX: variable count (1..255)
+    // AUX: variable count (1..255) in the low 8 bits, high bit indicates whether to use ipairs-style traversal in the fast path
     // loop variables are adjusted by calling generator(state, index) and expecting it to return a tuple that's copied to the user variables
     // the first variable is then copied into index; generator/state are immutable, index isn't visible to user code
     LOP_FORGLOOP,
@@ -490,6 +490,9 @@ enum LuauBuiltinFunction
 
     // select(_, ...)
     LBF_SELECT_VARARG,
+
+    // rawlen
+    LBF_RAWLEN,
 };
 
 // Capture type, used in LOP_CAPTURE

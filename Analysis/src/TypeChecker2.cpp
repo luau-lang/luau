@@ -6,8 +6,10 @@
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/Clone.h"
+#include "Luau/Instantiation.h"
 #include "Luau/Normalize.h"
-#include "Luau/ConstraintGraphBuilder.h" // FIXME move Scope2 into its own header
+#include "Luau/TxnLog.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/Unifier.h"
 #include "Luau/ToString.h"
 
@@ -19,10 +21,12 @@ struct TypeChecker2 : public AstVisitor
     const SourceModule* sourceModule;
     Module* module;
     InternalErrorReporter ice; // FIXME accept a pointer from Frontend
+    SingletonTypes& singletonTypes;
 
     TypeChecker2(const SourceModule* sourceModule, Module* module)
         : sourceModule(sourceModule)
         , module(module)
+        , singletonTypes(getSingletonTypes())
     {
     }
 
@@ -30,16 +34,30 @@ struct TypeChecker2 : public AstVisitor
 
     TypePackId lookupPack(AstExpr* expr)
     {
+        // If a type isn't in the type graph, it probably means that a recursion limit was exceeded.
+        // We'll just return anyType in these cases.  Typechecking against any is very fast and this
+        // allows us not to think about this very much in the actual typechecking logic.
         TypePackId* tp = module->astTypePacks.find(expr);
-        LUAU_ASSERT(tp);
-        return follow(*tp);
+        if (tp)
+            return follow(*tp);
+        else
+            return singletonTypes.anyTypePack;
     }
 
     TypeId lookupType(AstExpr* expr)
     {
+        // If a type isn't in the type graph, it probably means that a recursion limit was exceeded.
+        // We'll just return anyType in these cases.  Typechecking against any is very fast and this
+        // allows us not to think about this very much in the actual typechecking logic.
         TypeId* ty = module->astTypes.find(expr);
-        LUAU_ASSERT(ty);
-        return follow(*ty);
+        if (ty)
+            return follow(*ty);
+
+        TypePackId* tp = module->astTypePacks.find(expr);
+        if (tp)
+            return flattenPack(*tp);
+
+        return singletonTypes.anyType;
     }
 
     TypeId lookupAnnotation(AstType* annotation)
@@ -78,7 +96,7 @@ struct TypeChecker2 : public AstVisitor
                     bestLocation = scopeBounds;
                 }
             }
-            else
+            else if (scopeBounds.begin > location.end)
             {
                 // TODO: Is this sound? This relies on the fact that scopes are inserted
                 // into the scope list in the order that they appear in the AST.
@@ -147,16 +165,14 @@ struct TypeChecker2 : public AstVisitor
         for (size_t i = 0; i < count; ++i)
         {
             AstExpr* lhs = assign->vars.data[i];
-            TypeId* lhsType = module->astTypes.find(lhs);
-            LUAU_ASSERT(lhsType);
+            TypeId lhsType = lookupType(lhs);
 
             AstExpr* rhs = assign->values.data[i];
-            TypeId* rhsType = module->astTypes.find(rhs);
-            LUAU_ASSERT(rhsType);
+            TypeId rhsType = lookupType(rhs);
 
-            if (!isSubtype(*rhsType, *lhsType, ice))
+            if (!isSubtype(rhsType, lhsType, ice))
             {
-                reportError(TypeMismatch{*lhsType, *rhsType}, rhs->location);
+                reportError(TypeMismatch{lhsType, rhsType}, rhs->location);
             }
         }
 
@@ -181,7 +197,7 @@ struct TypeChecker2 : public AstVisitor
         if (!ok)
         {
             for (const TypeError& e : u.errors)
-                module->errors.push_back(e);
+                reportError(e);
         }
 
         return true;
@@ -189,10 +205,14 @@ struct TypeChecker2 : public AstVisitor
 
     bool visit(AstExprCall* call) override
     {
+        TypeArena arena;
+        Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}};
+
         TypePackId expectedRetType = lookupPack(call);
         TypeId functionType = lookupType(call->func);
+        TypeId instantiatedFunctionType = instantiation.substitute(functionType).value_or(nullptr);
+        LUAU_ASSERT(functionType);
 
-        TypeArena arena;
         TypePack args;
         for (const auto& arg : call->args)
         {
@@ -204,7 +224,7 @@ struct TypeChecker2 : public AstVisitor
         TypePackId argsTp = arena.addTypePack(args);
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);
-        if (!isSubtype(expectedType, functionType, ice))
+        if (!isSubtype(expectedType, instantiatedFunctionType, ice))
         {
             unfreeze(module->interfaceTypes);
             CloneState cloneState;
@@ -252,16 +272,12 @@ struct TypeChecker2 : public AstVisitor
 
         // leftType must have a property called indexName->index
 
-        if (auto ttv = get<TableTypeVar>(leftType))
+        std::optional<TypeId> t = findTablePropertyRespectingMeta(module->errors, leftType, indexName->index.value, indexName->location);
+        if (t)
         {
-            auto it = ttv->props.find(indexName->index.value);
-            if (it == ttv->props.end())
+            if (!isSubtype(resultType, *t, ice))
             {
-                reportError(UnknownProperty{leftType, indexName->index.value}, indexName->location);
-            }
-            else if (!isSubtype(resultType, it->second.type, ice))
-            {
-                reportError(TypeMismatch{resultType, it->second.type}, indexName->location);
+                reportError(TypeMismatch{resultType, *t}, indexName->location);
             }
         }
         else
@@ -277,7 +293,7 @@ struct TypeChecker2 : public AstVisitor
         TypeId actualType = lookupType(number);
         TypeId numberType = getSingletonTypes().numberType;
 
-        if (!isSubtype(actualType, numberType, ice))
+        if (!isSubtype(numberType, actualType, ice))
         {
             reportError(TypeMismatch{actualType, numberType}, number->location);
         }
@@ -290,12 +306,47 @@ struct TypeChecker2 : public AstVisitor
         TypeId actualType = lookupType(string);
         TypeId stringType = getSingletonTypes().stringType;
 
-        if (!isSubtype(actualType, stringType, ice))
+        if (!isSubtype(stringType, actualType, ice))
         {
             reportError(TypeMismatch{actualType, stringType}, string->location);
         }
 
         return true;
+    }
+
+    /** Extract a TypeId for the first type of the provided pack.
+     *
+     * Note that this may require modifying some types.  I hope this doesn't cause problems!
+     */
+    TypeId flattenPack(TypePackId pack)
+    {
+        pack = follow(pack);
+
+        while (auto tp = get<TypePack>(pack))
+        {
+            if (tp->head.empty() && tp->tail)
+                pack = *tp->tail;
+        }
+
+        if (auto ty = first(pack))
+            return *ty;
+        else if (auto vtp = get<VariadicTypePack>(pack))
+            return vtp->ty;
+        else if (auto ftp = get<FreeTypePack>(pack))
+        {
+            TypeId result = module->internalTypes.addType(FreeTypeVar{ftp->scope});
+            TypePackId freeTail = module->internalTypes.addTypePack(FreeTypePack{ftp->scope});
+
+            TypePack& resultPack = asMutable(pack)->ty.emplace<TypePack>();
+            resultPack.head.assign(1, result);
+            resultPack.tail = freeTail;
+
+            return result;
+        }
+        else if (get<Unifiable::Error>(pack))
+            return singletonTypes.errorRecoveryType();
+        else
+            ice.ice("flattenPack got a weird pack!");
     }
 
     bool visit(AstType* ty) override
@@ -320,6 +371,11 @@ struct TypeChecker2 : public AstVisitor
     void reportError(TypeErrorData&& data, const Location& location)
     {
         module->errors.emplace_back(location, sourceModule->name, std::move(data));
+    }
+
+    void reportError(TypeError e)
+    {
+        module->errors.emplace_back(std::move(e));
     }
 };
 

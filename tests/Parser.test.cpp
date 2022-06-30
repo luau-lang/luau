@@ -6,6 +6,8 @@
 
 #include "doctest.h"
 
+#include <limits.h>
+
 using namespace Luau;
 
 namespace
@@ -786,33 +788,46 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
 {
-    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff");
+    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff, 0xffffffffffffffff");
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-    CHECK(str->list.size == 3);
+    CHECK(str->list.size == 4);
     CHECK_EQ(str->list.data[0]->as<AstExprConstantNumber>()->value, 0xab);
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0xAB05);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 0xFFFF);
+    CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 {
-    AstStat* stat = parse("return 0b1, 0b0, 0b101010");
+    AstStat* stat = parse("return 0b1, 0b0, 0b101010, 0b1111111111111111111111111111111111111111111111111111111111111111");
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
-    CHECK(str->list.size == 3);
+    CHECK(str->list.size == 4);
     CHECK_EQ(str->list.data[0]->as<AstExprConstantNumber>()->value, 1);
     CHECK_EQ(str->list.data[1]->as<AstExprConstantNumber>()->value, 0);
     CHECK_EQ(str->list.data[2]->as<AstExprConstantNumber>()->value, 42);
+    CHECK_EQ(str->list.data[3]->as<AstExprConstantNumber>()->value, double(ULLONG_MAX));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
+    ScopedFastFlag luauErrorParseIntegerIssues{"LuauErrorParseIntegerIssues", true};
+
     CHECK_EQ(getParseError("return 0b123"), "Malformed number");
     CHECK_EQ(getParseError("return 123x"), "Malformed number");
     CHECK_EQ(getParseError("return 0xg"), "Malformed number");
+    CHECK_EQ(getParseError("return 0x0x123"), "Malformed number");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_numbers_range_error")
+{
+    ScopedFastFlag luauErrorParseIntegerIssues{"LuauErrorParseIntegerIssues", true};
+
+    CHECK_EQ(getParseError("return 0x10000000000000000"), "Integer number value is out of range");
+    CHECK_EQ(getParseError("return 0b10000000000000000000000000000000000000000000000000000000000000000"), "Integer number value is out of range");
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
@@ -2109,6 +2124,15 @@ type B<X...> = Packed<...number>
 type C<X...> = Packed<(number, X...)>
     )");
     REQUIRE(stat != nullptr);
+}
+
+TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
+{
+    ScopedFastFlag luauFixNamedFunctionParse{"LuauFixNamedFunctionParse", true};
+
+    matchParseError("type A = (b: number)", "Expected '->' when parsing function type, got <eof>");
+    matchParseError("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'");
+    matchParseError("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'");
 }
 
 TEST_SUITE_END();

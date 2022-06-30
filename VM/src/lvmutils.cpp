@@ -10,6 +10,9 @@
 #include "lnumutils.h"
 
 #include <string.h>
+#include <stdio.h>
+
+LUAU_FASTFLAG(LuauLenTM)
 
 /* limit for table tag-method chains (to avoid loops) */
 #define MAXTAGLOOP 100
@@ -51,7 +54,7 @@ const float* luaV_tovector(const TValue* obj)
     return nullptr;
 }
 
-static void callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1, const TValue* p2)
+static StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1, const TValue* p2)
 {
     ptrdiff_t result = savestack(L, res);
     // using stack room beyond top is technically safe here, but for very complicated reasons:
@@ -71,6 +74,7 @@ static void callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p1
     res = restorestack(L, result);
     L->top--;
     setobjs2s(L, res, L->top);
+    return res;
 }
 
 static void callTM(lua_State* L, const TValue* f, const TValue* p1, const TValue* p2, const TValue* p3)
@@ -472,22 +476,56 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
 
 void luaV_dolen(lua_State* L, StkId ra, const TValue* rb)
 {
+    if (!FFlag::LuauLenTM)
+    {
+        switch (ttype(rb))
+        {
+        case LUA_TTABLE:
+        {
+            setnvalue(ra, cast_num(luaH_getn(hvalue(rb))));
+            break;
+        }
+        case LUA_TSTRING:
+        {
+            setnvalue(ra, cast_num(tsvalue(rb)->len));
+            break;
+        }
+        default:
+        { /* try metamethod */
+            if (!call_binTM(L, rb, luaO_nilobject, ra, TM_LEN))
+                luaG_typeerror(L, rb, "get length of");
+        }
+        }
+        return;
+    }
+
+    const TValue* tm = NULL;
     switch (ttype(rb))
     {
     case LUA_TTABLE:
     {
-        setnvalue(ra, cast_num(luaH_getn(hvalue(rb))));
+        Table* h = hvalue(rb);
+        if ((tm = fasttm(L, h->metatable, TM_LEN)) == NULL)
+        {
+            setnvalue(ra, cast_num(luaH_getn(h)));
+            return;
+        }
         break;
     }
     case LUA_TSTRING:
     {
-        setnvalue(ra, cast_num(tsvalue(rb)->len));
-        break;
+        TString* ts = tsvalue(rb);
+        setnvalue(ra, cast_num(ts->len));
+        return;
     }
     default:
-    { /* try metamethod */
-        if (!call_binTM(L, rb, luaO_nilobject, ra, TM_LEN))
-            luaG_typeerror(L, rb, "get length of");
+        tm = luaT_gettmbyobj(L, rb, TM_LEN);
     }
-    }
+
+    if (ttisnil(tm))
+        luaG_typeerror(L, rb, "get length of");
+
+    StkId res = callTMres(L, ra, tm, rb, luaO_nilobject);
+    if (!ttisnumber(res))
+        luaG_runerror(L, "'__len' must return a number"); /* note, we can't access rb since stack may have been reallocated */
 }

@@ -271,13 +271,16 @@ TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
 {
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
     CheckResult result = check(R"(
         local x = {}
         function x:id(x) return x end
         function x:f(): string return self:id("hello") end
         function x:g(): number return self:id(37) end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    // TODO: Quantification should be doing the conversion, not normalization.
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")

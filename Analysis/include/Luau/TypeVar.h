@@ -357,6 +357,9 @@ struct TableTypeVar
 
     std::optional<TypeId> boundTo;
     Tags tags;
+
+    // Methods of this table that have an untyped self will use the same shared self type.
+    std::optional<TypeId> selfTy;
 };
 
 // Represents a metatable attached to a table typevar. Somewhat analogous to a bound typevar.

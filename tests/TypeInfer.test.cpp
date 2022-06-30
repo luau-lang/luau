@@ -369,14 +369,14 @@ TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
     CHECK_EQ("foo", us->name);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_do")
+TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_do")
 {
     CheckResult result = check(R"(
         do
             local a = 1
         end
 
-        print(a) -- oops!
+        local b = a -- oops!
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
