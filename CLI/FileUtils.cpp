@@ -240,7 +240,7 @@ std::optional<std::string> getParentPath(const std::string& path)
         return std::nullopt;
 #endif
 
-    std::string::size_type slash = path.find_last_of("\\/", path.size() - 1);
+    size_t slash = path.find_last_of("\\/", path.size() - 1);
 
     if (slash == 0)
         return "/";
@@ -253,7 +253,7 @@ std::optional<std::string> getParentPath(const std::string& path)
 
 static std::string getExtension(const std::string& path)
 {
-    std::string::size_type dot = path.find_last_of(".\\/");
+    size_t dot = path.find_last_of(".\\/");
 
     if (dot == std::string::npos || path[dot] != '.')
         return "";

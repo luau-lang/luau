@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Constraint.h"
 #include "Luau/Location.h"
 #include "Luau/TypeVar.h"
 
@@ -62,6 +63,23 @@ struct Scope
     // we need that the generic type `T` in both cases is the same, so we use a cache.
     std::unordered_map<Name, TypeId> typeAliasTypeParameters;
     std::unordered_map<Name, TypePackId> typeAliasTypePackParameters;
+};
+
+struct Scope2
+{
+    // The parent scope of this scope. Null if there is no parent (i.e. this
+    // is the module-level scope).
+    Scope2* parent = nullptr;
+    // All the children of this scope.
+    std::vector<Scope2*> children;
+    std::unordered_map<Symbol, TypeId> bindings; // TODO: I think this can be a DenseHashMap
+    std::unordered_map<Name, TypeId> typeBindings;
+    TypePackId returnType;
+    // All constraints belonging to this scope.
+    std::vector<ConstraintPtr> constraints;
+
+    std::optional<TypeId> lookup(Symbol sym);
+    std::optional<TypeId> lookupTypeBinding(const Name& name);
 };
 
 } // namespace Luau

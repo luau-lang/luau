@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("TypePackTests");
 
 TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
@@ -24,11 +26,11 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
     const FunctionTypeVar* takeTwoType = get<FunctionTypeVar>(requireType("take_two"));
     REQUIRE(takeTwoType != nullptr);
 
-    const auto& [returns, tail] = flatten(takeTwoType->retType);
+    const auto& [returns, tail] = flatten(takeTwoType->retTypes);
 
     CHECK_EQ(2, returns.size());
-    CHECK_EQ(typeChecker.numberType, returns[0]);
-    CHECK_EQ(typeChecker.numberType, returns[1]);
+    CHECK_EQ(typeChecker.numberType, follow(returns[0]));
+    CHECK_EQ(typeChecker.numberType, follow(returns[1]));
 
     CHECK(!tail);
 }
@@ -71,12 +73,12 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
     const FunctionTypeVar* takeOneMoreType = get<FunctionTypeVar>(requireType("take_three"));
     REQUIRE(takeOneMoreType != nullptr);
 
-    const auto& [rets, tail] = flatten(takeOneMoreType->retType);
+    const auto& [rets, tail] = flatten(takeOneMoreType->retTypes);
 
     REQUIRE_EQ(3, rets.size());
-    CHECK_EQ(typeChecker.numberType, rets[0]);
-    CHECK_EQ(typeChecker.numberType, rets[1]);
-    CHECK_EQ(typeChecker.numberType, rets[2]);
+    CHECK_EQ(typeChecker.numberType, follow(rets[0]));
+    CHECK_EQ(typeChecker.numberType, follow(rets[1]));
+    CHECK_EQ(typeChecker.numberType, follow(rets[2]));
 
     CHECK(!tail);
 }
@@ -91,26 +93,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const FunctionTypeVar* applyType = get<FunctionTypeVar>(requireType("apply"));
-    REQUIRE(applyType != nullptr);
-
-    std::vector<TypeId> applyArgs = flatten(applyType->argTypes).first;
-    REQUIRE_EQ(3, applyArgs.size());
-
-    const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(applyArgs[0]));
-    REQUIRE(fType != nullptr);
-
-    const FunctionTypeVar* gType = get<FunctionTypeVar>(follow(applyArgs[1]));
-    REQUIRE(gType != nullptr);
-
-    std::vector<TypeId> gArgs = flatten(gType->argTypes).first;
-    REQUIRE_EQ(1, gArgs.size());
-
-    // function(function(t1, T2...): (t3, T4...), function(t5): (t1, T2...), t5): (t3, T4...)
-
-    REQUIRE_EQ(*gArgs[0], *applyArgs[2]);
-    REQUIRE_EQ(toString(fType->argTypes), toString(gType->retType));
-    REQUIRE_EQ(toString(fType->retType), toString(applyType->retType));
+    CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")
@@ -122,10 +105,10 @@ TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")
     LUAU_REQUIRE_NO_ERRORS(result);
     const FunctionTypeVar* fTy = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fTy != nullptr);
-    CHECK_EQ(0, size(fTy->retType));
+    CHECK_EQ(0, size(fTy->retTypes));
     const FunctionTypeVar* gTy = get<FunctionTypeVar>(requireType("g"));
     REQUIRE(gTy != nullptr);
-    CHECK_EQ(0, size(gTy->retType));
+    CHECK_EQ(0, size(gTy->retTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
@@ -142,15 +125,15 @@ TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
 
     const FunctionTypeVar* fTy = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fTy != nullptr);
-    CHECK_EQ(1, size(follow(fTy->retType)));
+    CHECK_EQ(1, size(follow(fTy->retTypes)));
 
     const FunctionTypeVar* gTy = get<FunctionTypeVar>(requireType("g"));
     REQUIRE(gTy != nullptr);
-    CHECK_EQ(0, size(gTy->retType));
+    CHECK_EQ(0, size(gTy->retTypes));
 
     const FunctionTypeVar* hTy = get<FunctionTypeVar>(requireType("h"));
     REQUIRE(hTy != nullptr);
-    CHECK_EQ(0, size(hTy->retType));
+    CHECK_EQ(0, size(hTy->retTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "varargs_inference_through_multiple_scopes")
@@ -328,7 +311,10 @@ local c: Packed<string, number, boolean>
     auto ttvA = get<TableTypeVar>(requireType("a"));
     REQUIRE(ttvA);
     CHECK_EQ(toString(requireType("a")), "Packed<number>");
-    CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
+    else
+        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
@@ -353,7 +339,7 @@ local c: Packed<string, number, boolean>
     CHECK_EQ(toString(ttvC->instantiatedTypePackParams[0], {true}), "number, boolean");
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_import")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_type_packs_import")
 {
     fileResolver.source["game/A"] = R"(
 export type Packed<T, U...> = { a: T, b: (U...) -> () }
@@ -383,7 +369,7 @@ local d: { a: typeof(c) }
     CHECK_EQ(toString(requireType("d")), "{| a: Packed<string, number, boolean> |}");
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_pack_type_parameters")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_pack_type_parameters")
 {
     fileResolver.source["game/A"] = R"(
 export type Packed<T, U...> = { a: T, b: (U...) -> () }
@@ -798,7 +784,7 @@ local a: Y<...number>
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_alias_default_export")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_default_export")
 {
     fileResolver.source["Module/Types"] = R"(
 export type A<T, U = string> = { a: T, b: U }
@@ -953,7 +939,7 @@ until _
 )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks")
+TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks")
 {
     CheckResult result = check(R"(
         type ( ... ) ( ) ;
@@ -963,10 +949,10 @@ TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks")
         ( ... ) ""
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 {
     CheckResult result = check(R"(
         function _(l0:((typeof((pcall)))|((((t0)->())|(typeof(-67108864)))|(any)))|(any),...):(((typeof(0))|(any))|(any),typeof(-67108864),any)
@@ -975,7 +961,7 @@ TEST_CASE_FIXTURE(Fixture, "detect_cyclic_typepacks2")
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

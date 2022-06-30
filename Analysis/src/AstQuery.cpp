@@ -71,9 +71,11 @@ struct FindFullAncestry final : public AstVisitor
 {
     std::vector<AstNode*> nodes;
     Position pos;
+    Position documentEnd;
 
-    explicit FindFullAncestry(Position pos)
+    explicit FindFullAncestry(Position pos, Position documentEnd)
         : pos(pos)
+        , documentEnd(documentEnd)
     {
     }
 
@@ -84,6 +86,16 @@ struct FindFullAncestry final : public AstVisitor
             nodes.push_back(node);
             return true;
         }
+
+        // Edge case: If we ask for the node at the position that is the very end of the document
+        // return the innermost AST element that ends at that position.
+
+        if (node->location.end == documentEnd && pos >= documentEnd)
+        {
+            nodes.push_back(node);
+            return true;
+        }
+
         return false;
     }
 };
@@ -92,7 +104,11 @@ struct FindFullAncestry final : public AstVisitor
 
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos)
 {
-    FindFullAncestry finder(pos);
+    const Position end = source.root->location.end;
+    if (pos > end)
+        pos = end;
+
+    FindFullAncestry finder(pos, end);
     source.root->visit(&finder);
     return std::move(finder.nodes);
 }

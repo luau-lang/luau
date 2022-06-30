@@ -94,6 +94,21 @@ public:
         }
     }
 
+    AstType* operator()(const BlockedTypeVar& btv)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*blocked*"));
+    }
+
+    AstType* operator()(const ConstrainedTypeVar& ctv)
+    {
+        AstArray<AstType*> types;
+        types.size = ctv.parts.size();
+        types.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * ctv.parts.size()));
+        for (size_t i = 0; i < ctv.parts.size(); ++i)
+            types.data[i] = Luau::visit(*this, ctv.parts[i]->ty);
+        return allocator->alloc<AstTypeIntersection>(Location(), types);
+    }
+
     AstType* operator()(const SingletonTypeVar& stv)
     {
         if (const BooleanSingleton* bs = get<BooleanSingleton>(&stv))
@@ -261,7 +276,7 @@ public:
         }
 
         AstArray<AstType*> returnTypes;
-        const auto& [retVector, retTail] = flatten(ftv.retType);
+        const auto& [retVector, retTail] = flatten(ftv.retTypes);
         returnTypes.size = retVector.size();
         returnTypes.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * returnTypes.size));
         for (size_t i = 0; i < returnTypes.size; ++i)
@@ -364,6 +379,9 @@ public:
 
     AstTypePack* operator()(const VariadicTypePack& vtp) const
     {
+        if (vtp.hidden)
+            return nullptr;
+
         return allocator->alloc<AstTypePackVariadic>(Location(), Luau::visit(*typeVisitor, vtp.ty->ty));
     }
 
@@ -466,6 +484,20 @@ public:
     {
         return visitLocal(al->local);
     }
+
+    virtual bool visit(AstStatFor* stat) override
+    {
+        visitLocal(stat->var);
+        return true;
+    }
+
+    virtual bool visit(AstStatForIn* stat) override
+    {
+        for (size_t i = 0; i < stat->vars.size; ++i)
+            visitLocal(stat->vars.data[i]);
+        return true;
+    }
+
     virtual bool visit(AstExprFunction* fn) override
     {
         // TODO: add generics if the inferred type of the function is generic CLI-39908

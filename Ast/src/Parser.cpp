@@ -11,6 +11,9 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
+LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
+LUAU_FASTFLAGVARIABLE(LuauReturnTypeTokenConfusion, false)
+
 namespace Luau
 {
 
@@ -165,6 +168,7 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     Function top;
     top.vararg = true;
 
+    functionStack.reserve(8);
     functionStack.push_back(top);
 
     nameSelf = names.addStatic("self");
@@ -184,6 +188,13 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
 
     // all hot comments parsed after the first non-comment lexeme are special in that they don't affect type checking / linting mode
     hotcommentHeader = false;
+
+    // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
+    localStack.reserve(16);
+    scratchStat.reserve(16);
+    scratchExpr.reserve(16);
+    scratchLocal.reserve(16);
+    scratchBinding.reserve(16);
 }
 
 bool Parser::blockFollow(const Lexeme& l)
@@ -1108,8 +1119,12 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
 
 std::optional<AstTypeList> Parser::parseOptionalReturnTypeAnnotation()
 {
-    if (options.allowTypeAnnotations && lexer.current().type == ':')
+    if (options.allowTypeAnnotations &&
+        (lexer.current().type == ':' || (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)))
     {
+        if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)
+            report(lexer.current().location, "Function return type annotations are written after ':' instead of '->'");
+
         nextLexeme();
 
         unsigned int oldRecursionCount = recursionCounter;
@@ -1340,8 +1355,12 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
 
     AstArray<AstType*> paramTypes = copy(params);
 
+    bool returnTypeIntroducer =
+        FFlag::LuauReturnTypeTokenConfusion ? lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':' : false;
+
     // Not a function at all. Just a parenthesized type. Or maybe a type pack with a single element
-    if (params.size() == 1 && !varargAnnotation && monomorphic && lexer.current().type != Lexeme::SkinnyArrow)
+    if (params.size() == 1 && !varargAnnotation && monomorphic &&
+        (FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow))
     {
         if (allowPack)
             return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr})};
@@ -1349,7 +1368,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
             return {params[0], {}};
     }
 
-    if (lexer.current().type != Lexeme::SkinnyArrow && monomorphic && allowPack)
+    if ((FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow) && monomorphic && allowPack)
         return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation})};
 
     AstArray<std::optional<AstArgumentName>> paramNames = copy(names);
@@ -1363,8 +1382,13 @@ AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<A
 {
     incrementRecursionCounter("type annotation");
 
+    if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == ':')
+    {
+        report(lexer.current().location, "Return types in function type annotations are written after '->' instead of ':'");
+        lexer.next();
+    }
     // Users occasionally write '()' as the 'unit' type when they actually want to use 'nil', here we'll try to give a more specific error
-    if (lexer.current().type != Lexeme::SkinnyArrow && generics.size == 0 && genericPacks.size == 0 && params.size == 0)
+    else if (lexer.current().type != Lexeme::SkinnyArrow && generics.size == 0 && genericPacks.size == 0 && params.size == 0)
     {
         report(Location(begin.location, lexer.previousLocation()), "Expected '->' after '()' when parsing function type; did you mean 'nil'?");
 
@@ -1419,6 +1443,11 @@ AstType* Parser::parseTypeAnnotation(TempVector<AstType*>& parts, const Location
             nextLexeme();
             parts.push_back(parseSimpleTypeAnnotation(/* allowPack= */ false).type);
             isIntersection = true;
+        }
+        else if (c == Lexeme::Dot3)
+        {
+            report(lexer.current().location, "Unexpected '...' after type annotation");
+            nextLexeme();
         }
         else
             break;
@@ -1536,6 +1565,11 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
             prefix = name.name;
             name = parseIndexName("field name", pointPosition);
         }
+        else if (lexer.current().type == Lexeme::Dot3)
+        {
+            report(lexer.current().location, "Unexpected '...' after type name; type pack is not allowed in this context");
+            nextLexeme();
+        }
         else if (name.name == "typeof")
         {
             Lexeme typeofBegin = lexer.current();
@@ -1570,6 +1604,17 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     else if (lexer.current().type == '(' || lexer.current().type == '<')
     {
         return parseFunctionTypeAnnotation(allowPack);
+    }
+    else if (FFlag::LuauParserFunctionKeywordAsTypeHelp && lexer.current().type == Lexeme::ReservedFunction)
+    {
+        Location location = lexer.current().location;
+
+        nextLexeme();
+
+        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false,
+                    "Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> "
+                    "...any'"),
+            {}};
     }
     else
     {
@@ -2778,7 +2823,7 @@ void Parser::nextLexeme()
 {
     if (options.captureComments)
     {
-        Lexeme::Type type = lexer.next(/* skipComments= */ false).type;
+        Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
 
         while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
         {
@@ -2802,7 +2847,7 @@ void Parser::nextLexeme()
                 hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
             }
 
-            type = lexer.next(/* skipComments= */ false).type;
+            type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
         }
     }
     else

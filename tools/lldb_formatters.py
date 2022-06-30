@@ -37,7 +37,7 @@ def getType(target, typeName):
     return ty
 
 def luau_variant_summary(valobj, internal_dict, options):
-    type_id = valobj.GetChildMemberWithName("typeid").GetValueAsUnsigned()
+    type_id = valobj.GetChildMemberWithName("typeId").GetValueAsUnsigned()
     storage = valobj.GetChildMemberWithName("storage")
     params = templateParams(valobj.GetType().GetCanonicalType().GetName())
     stored_type = params[type_id]
@@ -89,7 +89,7 @@ class LuauVariantSyntheticChildrenProvider:
             return None
 
     def update(self):
-        self.type_index = self.valobj.GetChildMemberWithName("typeid").GetValueAsSigned()
+        self.type_index = self.valobj.GetChildMemberWithName("typeId").GetValueAsSigned()
         self.type_params = templateParams(self.valobj.GetType().GetCanonicalType().GetName())
 
         if len(self.type_params) > self.type_index:
@@ -97,7 +97,7 @@ class LuauVariantSyntheticChildrenProvider:
 
             if self.current_type:
                 storage = self.valobj.GetChildMemberWithName("storage")
-                self.stored_value = storage.Cast(self.current_type.GetPointerType()).Dereference()
+                self.stored_value = storage.Cast(self.current_type)
             else:
                 self.stored_value = None
         else:

@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+
 using namespace Luau;
 
 struct ToDotClassFixture : Fixture
@@ -19,17 +21,20 @@ struct ToDotClassFixture : Fixture
 
         TypeId baseClassMetaType = arena.addType(TableTypeVar{});
 
-        TypeId baseClassInstanceType = arena.addType(ClassTypeVar{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}});
+        TypeId baseClassInstanceType = arena.addType(ClassTypeVar{"BaseClass", {}, std::nullopt, baseClassMetaType, {}, {}, "Test"});
         getMutable<ClassTypeVar>(baseClassInstanceType)->props = {
             {"BaseField", {typeChecker.numberType}},
         };
         typeChecker.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
 
-        TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}});
+        TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, std::nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(childClassInstanceType)->props = {
             {"ChildField", {typeChecker.stringType}},
         };
         typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
+
+        for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+            persist(ty.type);
 
         freeze(arena);
     }
@@ -101,9 +106,34 @@ local function f(a, ...: string) return a end
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
+    CHECK_EQ("<a>(a, ...string) -> a", toString(requireType("f")));
+
     ToDotOptions opts;
     opts.showPointers = false;
-    CHECK_EQ(R"(digraph graphname {
+
+    if (FFlag::LuauLowerBoundsCalculation)
+    {
+        CHECK_EQ(R"(digraph graphname {
+n1 [label="FunctionTypeVar 1"];
+n1 -> n2 [label="arg"];
+n2 [label="TypePack 2"];
+n2 -> n3;
+n3 [label="GenericTypeVar 3"];
+n2 -> n4 [label="tail"];
+n4 [label="VariadicTypePack 4"];
+n4 -> n5;
+n5 [label="string"];
+n1 -> n6 [label="ret"];
+n6 [label="TypePack 6"];
+n6 -> n7;
+n7 [label="BoundTypeVar 7"];
+n7 -> n3;
+})",
+            toDot(requireType("f"), opts));
+    }
+    else
+    {
+        CHECK_EQ(R"(digraph graphname {
 n1 [label="FunctionTypeVar 1"];
 n1 -> n2 [label="arg"];
 n2 [label="TypePack 2"];
@@ -119,7 +149,8 @@ n6 -> n7;
 n7 [label="TypePack 7"];
 n7 -> n3;
 })",
-        toDot(requireType("f"), opts));
+            toDot(requireType("f"), opts));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "union")
@@ -196,7 +227,7 @@ n1 -> n4 [label="typePackParam"];
     (void)toDot(requireType("a"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "metatable")
+TEST_CASE_FIXTURE(BuiltinsFixture, "metatable")
 {
     CheckResult result = check(R"(
 local a: typeof(setmetatable({}, {}))
@@ -359,6 +390,52 @@ n2 -> n3 [label="x"];
 n3 [label="number"];
 })",
         toDot(*ty, opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "constrained")
+{
+    // ConstrainedTypeVars never appear in the final type graph, so we have to create one directly
+    // to dotify it.
+    TypeVar t{ConstrainedTypeVar{TypeLevel{}, {typeChecker.numberType, typeChecker.stringType, typeChecker.nilType}}};
+
+    ToDotOptions opts;
+    opts.showPointers = false;
+
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="ConstrainedTypeVar 1"];
+n1 -> n2;
+n2 [label="number"];
+n1 -> n3;
+n3 [label="string"];
+n1 -> n4;
+n4 [label="nil"];
+})",
+        toDot(&t, opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "singletontypes")
+{
+    CheckResult result = check(R"(
+        local x: "hi" | "\"hello\"" | true | false
+    )");
+
+    ToDotOptions opts;
+    opts.showPointers = false;
+
+    CHECK_EQ(R"(digraph graphname {
+n1 [label="UnionTypeVar 1"];
+n1 -> n2;
+n2 [label="SingletonTypeVar string: hi"];
+n1 -> n3;
+)"
+             "n3 [label=\"SingletonTypeVar string: \\\"hello\\\"\"];"
+             R"(
+n1 -> n4;
+n4 [label="SingletonTypeVar boolean: true"];
+n1 -> n5;
+n5 [label="SingletonTypeVar boolean: false"];
+})",
+        toDot(requireType("x"), opts));
 }
 
 TEST_SUITE_END();

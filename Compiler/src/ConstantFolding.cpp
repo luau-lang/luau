@@ -191,14 +191,18 @@ struct ConstantVisitor : AstVisitor
 {
     DenseHashMap<AstExpr*, Constant>& constants;
     DenseHashMap<AstLocal*, Variable>& variables;
+    DenseHashMap<AstLocal*, Constant>& locals;
 
-    DenseHashMap<AstLocal*, Constant> locals;
+    bool wasEmpty = false;
 
-    ConstantVisitor(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables)
+    ConstantVisitor(
+        DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstLocal*, Constant>& locals)
         : constants(constants)
         , variables(variables)
-        , locals(nullptr)
+        , locals(locals)
     {
+        // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
+        wasEmpty = constants.empty() && locals.empty();
     }
 
     Constant analyze(AstExpr* node)
@@ -290,7 +294,8 @@ struct ConstantVisitor : AstVisitor
             Constant la = analyze(expr->left);
             Constant ra = analyze(expr->right);
 
-            if (la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown)
+            // note: ra doesn't need to be constant to fold and/or
+            if (la.type != Constant::Type_Unknown)
                 foldBinary(result, expr->op, la, ra);
         }
         else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
@@ -313,10 +318,33 @@ struct ConstantVisitor : AstVisitor
             LUAU_ASSERT(!"Unknown expression type");
         }
 
-        if (result.type != Constant::Type_Unknown)
-            constants[node] = result;
+        recordConstant(constants, node, result);
 
         return result;
+    }
+
+    template<typename T>
+    void recordConstant(DenseHashMap<T, Constant>& map, T key, const Constant& value)
+    {
+        if (value.type != Constant::Type_Unknown)
+            map[key] = value;
+        else if (wasEmpty)
+            ;
+        else if (Constant* old = map.find(key))
+            old->type = Constant::Type_Unknown;
+    }
+
+    void recordValue(AstLocal* local, const Constant& value)
+    {
+        // note: we rely on trackValues to have been run before us
+        Variable* v = variables.find(local);
+        LUAU_ASSERT(v);
+
+        if (!v->written)
+        {
+            v->constant = (value.type != Constant::Type_Unknown);
+            recordConstant(locals, local, value);
+        }
     }
 
     bool visit(AstExpr* node) override
@@ -335,18 +363,7 @@ struct ConstantVisitor : AstVisitor
         {
             Constant arg = analyze(node->values.data[i]);
 
-            if (arg.type != Constant::Type_Unknown)
-            {
-                // note: we rely on trackValues to have been run before us
-                Variable* v = variables.find(node->vars.data[i]);
-                LUAU_ASSERT(v);
-
-                if (!v->written)
-                {
-                    locals[node->vars.data[i]] = arg;
-                    v->constant = true;
-                }
-            }
+            recordValue(node->vars.data[i], arg);
         }
 
         if (node->vars.size > node->values.size)
@@ -360,15 +377,8 @@ struct ConstantVisitor : AstVisitor
             {
                 for (size_t i = node->values.size; i < node->vars.size; ++i)
                 {
-                    // note: we rely on trackValues to have been run before us
-                    Variable* v = variables.find(node->vars.data[i]);
-                    LUAU_ASSERT(v);
-
-                    if (!v->written)
-                    {
-                        locals[node->vars.data[i]].type = Constant::Type_Nil;
-                        v->constant = true;
-                    }
+                    Constant nil = {Constant::Type_Nil};
+                    recordValue(node->vars.data[i], nil);
                 }
             }
         }
@@ -384,9 +394,10 @@ struct ConstantVisitor : AstVisitor
     }
 };
 
-void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, AstNode* root)
+void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
+    DenseHashMap<AstLocal*, Constant>& locals, AstNode* root)
 {
-    ConstantVisitor visitor{constants, variables};
+    ConstantVisitor visitor{constants, variables, locals};
     root->visit(&visitor);
 }
 

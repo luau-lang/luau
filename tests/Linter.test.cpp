@@ -75,7 +75,7 @@ _ = 6
     CHECK_EQ(result.warnings.size(), 0);
 }
 
-TEST_CASE_FIXTURE(Fixture, "BuiltinGlobalWrite")
+TEST_CASE_FIXTURE(BuiltinsFixture, "BuiltinGlobalWrite")
 {
     LintResult result = lint(R"(
 math = {}
@@ -309,7 +309,7 @@ print(arg)
     CHECK_EQ(result.warnings[0].text, "Variable 'arg' shadows previous declaration at line 2");
 }
 
-TEST_CASE_FIXTURE(Fixture, "LocalShadowGlobal")
+TEST_CASE_FIXTURE(BuiltinsFixture, "LocalShadowGlobal")
 {
     LintResult result = lint(R"(
 local math = math
@@ -597,8 +597,6 @@ return foo1
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
 {
-    ScopedFastFlag sff("LuauLintNoRobloxBits", true);
-
     unfreeze(typeChecker.globalTypes);
     TableTypeVar::Props instanceProps{
         {"ClassName", {typeChecker.anyType}},
@@ -1438,7 +1436,8 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
 TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
 {
     unfreeze(typeChecker.globalTypes);
-    TypeId instanceType = typeChecker.globalTypes.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, {}});
+    TypeId instanceType = typeChecker.globalTypes.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, {}, "Test"});
+    persist(instanceType);
     typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     getMutable<ClassTypeVar>(instanceType)->props = {
@@ -1471,7 +1470,7 @@ end
     CHECK_EQ(result.warnings[2].text, "Member 'Instance.DataCost' is deprecated");
 }
 
-TEST_CASE_FIXTURE(Fixture, "TableOperations")
+TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")
 {
     LintResult result = lintTyped(R"(
 local t = {}

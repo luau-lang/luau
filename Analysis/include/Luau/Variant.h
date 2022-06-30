@@ -2,45 +2,15 @@
 #pragma once
 
 #include "Luau/Common.h"
-
-#ifndef LUAU_USE_STD_VARIANT
-#define LUAU_USE_STD_VARIANT 0
-#endif
-
-#if LUAU_USE_STD_VARIANT
-#include <variant>
-#else
 #include <new>
 #include <type_traits>
 #include <initializer_list>
 #include <stddef.h>
-#endif
+#include <utility>
 
 namespace Luau
 {
 
-#if LUAU_USE_STD_VARIANT
-template<typename... Ts>
-using Variant = std::variant<Ts...>;
-
-template<class Visitor, class Variant>
-auto visit(Visitor&& vis, Variant&& var)
-{
-    // This change resolves the ABI issues with std::variant on libc++; std::visit normally throws bad_variant_access
-    // but it requires an update to libc++.dylib which ships with macOS 10.14. To work around this, we assert on valueless
-    // variants since we will never generate them and call into a libc++ function that doesn't throw.
-    LUAU_ASSERT(!var.valueless_by_exception());
-
-#ifdef __APPLE__
-    // See https://stackoverflow.com/a/53868971/503215
-    return std::__variant_detail::__visitation::__variant::__visit_value(vis, var);
-#else
-    return std::visit(vis, var);
-#endif
-}
-
-using std::get_if;
-#else
 template<typename... Ts>
 class Variant
 {
@@ -124,6 +94,20 @@ public:
             tableMove[typeId](&storage, &other.storage); // nothrow
         }
         return *this;
+    }
+
+    template<typename T, typename... Args>
+    T& emplace(Args&&... args)
+    {
+        using TT = std::decay_t<T>;
+        constexpr int tid = getTypeId<T>();
+        static_assert(tid >= 0, "unsupported T");
+
+        tableDtor[typeId](&storage);
+        typeId = tid;
+        new (&storage) TT(std::forward<Args>(args)...);
+
+        return *reinterpret_cast<T*>(&storage);
     }
 
     template<typename T>
@@ -248,6 +232,8 @@ static void fnVisitV(Visitor& vis, std::conditional_t<std::is_const_v<T>, const 
 template<class Visitor, typename... Ts>
 auto visit(Visitor&& vis, const Variant<Ts...>& var)
 {
+    static_assert(std::conjunction_v<std::is_invocable<Visitor, Ts>...>, "visitor must accept every alternative as an argument");
+
     using Result = std::invoke_result_t<Visitor, typename Variant<Ts...>::first_alternative>;
     static_assert(std::conjunction_v<std::is_same<Result, std::invoke_result_t<Visitor, Ts>>...>,
         "visitor result type must be consistent between alternatives");
@@ -273,6 +259,8 @@ auto visit(Visitor&& vis, const Variant<Ts...>& var)
 template<class Visitor, typename... Ts>
 auto visit(Visitor&& vis, Variant<Ts...>& var)
 {
+    static_assert(std::conjunction_v<std::is_invocable<Visitor, Ts&>...>, "visitor must accept every alternative as an argument");
+
     using Result = std::invoke_result_t<Visitor, typename Variant<Ts...>::first_alternative&>;
     static_assert(std::conjunction_v<std::is_same<Result, std::invoke_result_t<Visitor, Ts&>>...>,
         "visitor result type must be consistent between alternatives");
@@ -294,7 +282,6 @@ auto visit(Visitor&& vis, Variant<Ts...>& var)
         return res;
     }
 }
-#endif
 
 template<class>
 inline constexpr bool always_false_v = false;

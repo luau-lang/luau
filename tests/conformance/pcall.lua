@@ -144,4 +144,21 @@ coroutine.resume(co)
 resumeerror(co, "fail")
 checkresults({ true, false, "fail" }, coroutine.resume(co))
 
+-- stack overflow needs to happen at the call limit
+local calllimit = 20000
+function recurse(n) return n <= 1 and 1 or recurse(n-1) + 1 end
+
+-- we use one frame for top-level function and one frame is the service frame for coroutines
+assert(recurse(calllimit - 2) == calllimit - 2)
+
+-- note that when calling through pcall, pcall eats one more frame
+checkresults({ true, calllimit - 3 }, pcall(recurse, calllimit - 3))
+checkerror(pcall(recurse, calllimit - 2))
+
+-- xpcall handler runs in context of the stack frame, but this works just fine since we allow extra stack consumption past stack overflow
+checkresults({ false, "ok" }, xpcall(recurse, function() return string.reverse("ko") end, calllimit - 2))
+
+-- however, if xpcall handler itself runs out of extra stack space, we get "error in error handling"
+checkresults({ false, "error in error handling" }, xpcall(recurse, function() return recurse(calllimit) end, calllimit - 2))
+
 return 'OK'

@@ -4,9 +4,18 @@
 #include "Luau/Common.h"
 
 #include <stdexcept>
+#include <exception>
 
 namespace Luau
 {
+
+struct RecursionLimitException : public std::exception
+{
+    const char* what() const noexcept
+    {
+        return "Internal recursion counter limit exceeded";
+    }
+};
 
 struct RecursionCounter
 {
@@ -32,7 +41,9 @@ struct RecursionLimiter : RecursionCounter
         : RecursionCounter(count)
     {
         if (limit > 0 && *count > limit)
-            throw std::runtime_error("Internal recursion counter limit exceeded");
+        {
+            throw RecursionLimitException();
+        }
     }
 };
 

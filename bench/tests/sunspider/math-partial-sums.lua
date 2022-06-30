@@ -7,7 +7,7 @@ local bench = script and require(script.Parent.bench_support) or require("bench_
 
 function test()
 
-function partial(n)
+local function partial(n)
     local a1, a2, a3, a4, a5, a6, a7, a8, a9 = 0, 0, 0, 0, 0, 0, 0, 0, 0;
     local twothirds = 2.0/3.0;
     local alt = -1.0;

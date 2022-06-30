@@ -1,7 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Common.h"
+#include "Luau/Common.h"
 
 #include <vector>
 
@@ -9,14 +9,21 @@
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
+namespace Luau
+{
+namespace TimeTrace
+{
+double getClock();
+uint32_t getClockMicroseconds();
+} // namespace TimeTrace
+} // namespace Luau
+
 #if defined(LUAU_ENABLE_TIME_TRACE)
 
 namespace Luau
 {
 namespace TimeTrace
 {
-uint32_t getClockMicroseconds();
-
 struct Token
 {
     const char* name;
@@ -130,8 +137,8 @@ ThreadContext& getThreadContext();
 
 struct Scope
 {
-    explicit Scope(ThreadContext& context, uint16_t token)
-        : context(context)
+    explicit Scope(uint16_t token)
+        : context(getThreadContext())
     {
         if (!FFlag::DebugLuauTimeTracing)
             return;
@@ -152,8 +159,8 @@ struct Scope
 
 struct OptionalTailScope
 {
-    explicit OptionalTailScope(ThreadContext& context, uint16_t token, uint32_t threshold)
-        : context(context)
+    explicit OptionalTailScope(uint16_t token, uint32_t threshold)
+        : context(getThreadContext())
         , token(token)
         , threshold(threshold)
     {
@@ -188,27 +195,27 @@ struct OptionalTailScope
     uint32_t pos;
 };
 
-LUAU_NOINLINE std::pair<uint16_t, Luau::TimeTrace::ThreadContext&> createScopeData(const char* name, const char* category);
+LUAU_NOINLINE uint16_t createScopeData(const char* name, const char* category);
 
 } // namespace TimeTrace
 } // namespace Luau
 
 // Regular scope
 #define LUAU_TIMETRACE_SCOPE(name, category) \
-    static auto lttScopeStatic = Luau::TimeTrace::createScopeData(name, category); \
-    Luau::TimeTrace::Scope lttScope(lttScopeStatic.second, lttScopeStatic.first)
+    static uint16_t lttScopeStatic = Luau::TimeTrace::createScopeData(name, category); \
+    Luau::TimeTrace::Scope lttScope(lttScopeStatic)
 
 // A scope without nested scopes that may be skipped if the time it took is less than the threshold
 #define LUAU_TIMETRACE_OPTIONAL_TAIL_SCOPE(name, category, microsec) \
-    static auto lttScopeStaticOptTail = Luau::TimeTrace::createScopeData(name, category); \
-    Luau::TimeTrace::OptionalTailScope lttScope(lttScopeStaticOptTail.second, lttScopeStaticOptTail.first, microsec)
+    static uint16_t lttScopeStaticOptTail = Luau::TimeTrace::createScopeData(name, category); \
+    Luau::TimeTrace::OptionalTailScope lttScope(lttScopeStaticOptTail, microsec)
 
 // Extra key/value data can be added to regular scopes
 #define LUAU_TIMETRACE_ARGUMENT(name, value) \
     do \
     { \
         if (FFlag::DebugLuauTimeTracing) \
-            lttScopeStatic.second.eventArgument(name, value); \
+            lttScope.context.eventArgument(name, value); \
     } while (false)
 
 #else

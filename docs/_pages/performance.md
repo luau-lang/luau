@@ -92,11 +92,21 @@ As a result, builtin calls are very fast in Luau - they are still slightly slowe
 
 ## Optimized table iteration
 
-Luau implements a fully generic iteration protocol; however, for iteration through tables it recognizes three common idioms (`for .. in ipairs(t)`, `for .. in pairs(t)` and `for .. in next, t`) and emits specialized bytecode that is carefully optimized using custom internal iterators.
+Luau implements a fully generic iteration protocol; however, for iteration through tables in addition to generalized iteration (`for .. in t`) it recognizes three common idioms (`for .. in ipairs(t)`, `for .. in pairs(t)` and `for .. in next, t`) and emits specialized bytecode that is carefully optimized using custom internal iterators.
 
-As a result, iteration through tables typically doesn't result in function calls for every iteration; the performance of iteration using `pairs` and `ipairs` is comparable, so it's recommended to pick the iteration style based on readability instead of performance.
+As a result, iteration through tables typically doesn't result in function calls for every iteration; the performance of iteration using generalized iteration, `pairs` and `ipairs` is comparable, so generalized iteration (without the use of `pairs`/`ipairs`) is recommended unless the code needs to be compatible with vanilla Lua or the specific semantics of `ipairs` (which stops at the first `nil` element) is required. Additionally, using generalized iteration avoids calling `pairs` when the loop starts which can be noticeable when the table is very short.
 
 Iterating through array-like tables using `for i=1,#t` tends to be slightly slower because of extra cost incurred when reading elements from the table.
+
+## Optimized table length
+
+Luau tables use a hybrid array/hash storage, like in Lua; in some sense "arrays" don't truly exist and are an internal optimization, but some operations, notably `#t` and functions that depend on it, like `table.insert`, are defined by the Luau/Lua language to allow internal optimizations. Luau takes advantage of that fact.
+
+Unlike Lua, Luau guarantees that the element at index `#t` is stored in the array part of the table. This can accelerate various table operations that use indices limited by `#t`, and this makes `#t` worst-case complexity O(logN), unlike Lua where the worst case complexity is O(N). This also accelerates computation of this value for small tables like `{ [1] = 1 }` since we never need to look at the hash part.
+
+The "default" implementation of `#t` in both Lua and Luau is a binary search. Luau uses a special branch-free (depending on the compiler...) implementation of the binary search which results in 50+% faster computation of table length when it needs to be computed from scratch.
+
+Additionally, Luau can cache the length of the table and adjust it following operations like `table.insert`/`table.remove`; this means that in practice, `#t` is almost always a constant time operation.
 
 ## Creating and modifying tables
 
@@ -112,7 +122,7 @@ v.z = 3
 return v
 ```
 
-When appending elements to tables, it's recommended to use `table.insert` (which is the fastest method to append an element to a table if the table size is not known). In cases when a table is filled sequentially, however, it's much more efficient to use a known index for insertion - together with preallocating tables using `table.create` this can result in much faster code, for example this is the fastest way to build a table of squares:
+When appending elements to tables, it's recommended to use `table.insert` (which is the fastest method to append an element to a table if the table size is not known). In cases when a table is filled sequentially, however, it can be more efficient to use a known index for insertion - together with preallocating tables using `table.create` this can result in much faster code, for example this is the fastest way to build a table of squares:
 
 ```lua
 local t = table.create(N)
@@ -175,3 +185,13 @@ While large tables can be a problem for incremental GC in general since currentl
 The incremental garbage collector in Luau runs three phases for each cycle: mark, atomic and sweep. Mark incrementally traverses all live objects, atomic finishes various operations that need to happen without mutator intervention (see previous section), and sweep traverses all objects in the heap, reclaiming memory used by dead objects and performing minor fixup for live objects. While objects allocated during the mark phase are traversed in the same cycle and thus may get reclaimed, objects allocated during the sweep phase are considered live. Because of this, the faster the sweep phase completes, the less garbage will accumulate; and, of course, the less time sweeping takes the less overhead there is from this phase of garbage collection on the process.
 
 Since sweeping traverses the whole heap, we maximize the efficiency of this traversal by allocating garbage-collected objects of the same size in 16 KB pages, and traversing each page at a time, which is otherwise known as a paged sweeper. This ensures good locality of reference as consecutively swept objects are contiugous in memory, and allows us to spend no memory for each object on sweep-related data or allocation metadata, since paged sweeper doesn't need to be able to free objects without knowing which page they are in. Compared to linked list based sweeping that Lua/LuaJIT implement, paged sweeper is 2-3x faster, and saves 16 bytes per object on 64-bit platforms.
+
+## Function inlining and loop unrolling
+
+By default, the bytecode compiler performs a series of optimizations that result in faster execution of the code, but they preserve both execution semantics and debuggability. For example, a function call is compiled as a function call, which may be observable via `debug.traceback`; a loop is compiled as a loop, which may be observable via `lua_getlocal`. To help improve performance in cases where these restrictions can be relaxed, the bytecode compiler implements additional optimizations when optimization level 2 is enabled (which requires using `-O2` switch when using Luau CLI), namely function inlining and loop unrolling.
+
+Only loops with loop bounds known at compile time, such as `for i=1,4 do`, can be unrolled. The loop body must be simple enough for the optimization to be profitable; compiler uses heuristics to estimate the performance benefit and automatically decide if unrolling should be performed.
+
+Only local functions (defined either as `local function foo` or `local foo = function`) can be inlined. The function body must be simple enough for the optimization to be profitable; compiler uses heuristics to estimate the performance benefit and automatically decide if each call to the function should be inlined instead. Additionally recursive invocations of a function can’t be inlined at this time, and inlining is completely disabled for modules that use `getfenv`/`setfenv` functions.
+
+In both cases, in addition to removing the overhead associated with function calls or loop iteration, these optimizations can additionally benefit by enabling additional optimizations, such as constant folding of expressions dependent on loop iteration variable or constant function arguments, or using more efficient instructions for certain expressions when the inputs to these instructions are constants.

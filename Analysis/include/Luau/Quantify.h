@@ -6,6 +6,10 @@
 namespace Luau
 {
 
+struct TypeArena;
+struct Scope2;
+
 void quantify(TypeId ty, TypeLevel level);
+TypeId quantify(TypeArena* arena, TypeId ty, Scope2* scope);
 
 } // namespace Luau

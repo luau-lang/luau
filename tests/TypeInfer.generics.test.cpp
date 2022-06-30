@@ -11,8 +11,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauFixArgumentCountMismatchAmountWithGenericTypes)
-
 TEST_SUITE_BEGIN("GenericsTests");
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
@@ -69,7 +67,7 @@ TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_polytypes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "inferred_local_vars_can_be_polytypes")
+TEST_CASE_FIXTURE(BuiltinsFixture, "inferred_local_vars_can_be_polytypes")
 {
     CheckResult result = check(R"(
         local function id(x) return x end
@@ -81,7 +79,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_local_vars_can_be_polytypes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_instantiated_polytypes")
+TEST_CASE_FIXTURE(BuiltinsFixture, "local_vars_can_be_instantiated_polytypes")
 {
     CheckResult result = check(R"(
         local function id(x) return x end
@@ -226,12 +224,12 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
     const FunctionTypeVar* idFun = get<FunctionTypeVar>(idType);
     REQUIRE(idFun);
     auto [args, varargs] = flatten(idFun->argTypes);
-    auto [rets, varrets] = flatten(idFun->retType);
+    auto [rets, varrets] = flatten(idFun->retTypes);
 
     CHECK_EQ(idFun->generics.size(), 1);
     CHECK_EQ(idFun->genericPacks.size(), 0);
-    CHECK_EQ(args[0], idFun->generics[0]);
-    CHECK_EQ(rets[0], idFun->generics[0]);
+    CHECK_EQ(follow(args[0]), follow(idFun->generics[0]));
+    CHECK_EQ(follow(rets[0]), follow(idFun->generics[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
@@ -249,12 +247,12 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
     const FunctionTypeVar* idFun = get<FunctionTypeVar>(idType);
     REQUIRE(idFun);
     auto [args, varargs] = flatten(idFun->argTypes);
-    auto [rets, varrets] = flatten(idFun->retType);
+    auto [rets, varrets] = flatten(idFun->retTypes);
 
     CHECK_EQ(idFun->generics.size(), 1);
     CHECK_EQ(idFun->genericPacks.size(), 0);
-    CHECK_EQ(args[0], idFun->generics[0]);
-    CHECK_EQ(rets[0], idFun->generics[0]);
+    CHECK_EQ(follow(args[0]), follow(idFun->generics[0]));
+    CHECK_EQ(follow(rets[0]), follow(idFun->generics[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
@@ -611,7 +609,7 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
     CHECK(requireType("y1") == requireType("y2"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "bound_tables_do_not_clone_original_fields")
+TEST_CASE_FIXTURE(BuiltinsFixture, "bound_tables_do_not_clone_original_fields")
 {
     CheckResult result = check(R"(
 local exports = {}
@@ -677,10 +675,8 @@ local d: D = c
         R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
 }
 
-TEST_CASE_FIXTURE(Fixture, "generic_functions_dont_cache_type_parameters")
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_functions_dont_cache_type_parameters")
 {
-    ScopedFastFlag sff{"LuauGenericFunctionsDontCacheTypeParams", true};
-
     CheckResult result = check(R"(
 -- See https://github.com/Roblox/luau/issues/332
 -- This function has a type parameter with the same name as clones,
@@ -704,13 +700,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
 {
-    ScopedFastFlag sffs[] = {
-        { "LuauTableSubtypingVariance2", true },
-        { "LuauUnsealedTableLiteral", true },
-        { "LuauPropertiesGetExpectedType", true },
-        { "LuauRecursiveTypeParameterRestriction", true },
-    };
-
     CheckResult result = check(R"(
 --!strict
 -- At one point this produced a UAF
@@ -733,8 +722,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")
 {
-    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
-
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -753,8 +740,6 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification2")
 {
-    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
-
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -773,8 +758,6 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification3")
 {
-    ScopedFastFlag sff{"LuauTxnLogSeesTypePacks2", true};
-
     CheckResult result = check(R"(
 --!strict
 type Dispatcher = {
@@ -805,11 +788,7 @@ wrapper(test)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 1 argument, but 1 is specified)");
+    CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
@@ -826,11 +805,7 @@ wrapper(test2, 1, "", 3)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    if (FFlag::LuauFixArgumentCountMismatchAmountWithGenericTypes)
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 3 arguments, but 4 are specified)");
-    else
-        CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 1 argument, but 4 are specified)");
+    CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 3 arguments, but 4 are specified)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
@@ -843,6 +818,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
+    CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
     CHECK_EQ(*typeChecker.nilType, *requireType("b"));
 }
@@ -901,7 +877,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
     const FunctionTypeVar* foo = get<FunctionTypeVar>(follow(fooProp->type));
     REQUIRE(bool(foo));
 
-    std::optional<TypeId> ret_ = first(foo->retType);
+    std::optional<TypeId> ret_ = first(foo->retTypes);
     REQUIRE(bool(ret_));
     TypeId ret = follow(*ret_);
 
@@ -998,8 +974,6 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 {
-    ScopedFastFlag sff{"LuauOnlyMutateInstantiatedTables", true};
-
     // Mutability in type function application right now can create strange recursive types
     CheckResult result = check(R"(
 type Table = { a: number }
@@ -1020,7 +994,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
         type t0 = t0 | {}
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
@@ -1032,30 +1006,42 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
     CHECK(it != result.errors.end());
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
 {
-    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
-
     CheckResult result = check(R"(
-local function sum<a>(x: a, y: a, f: (a, a) -> a) return f(x, y) end
-return sum(2, 3, function(a, b) return a + b end)
+        local function sum<a>(x: a, y: a, f: (a, a) -> a)
+            return f(x, y)
+        end
+        return sum(2, 3, function(a, b) return a + b end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
-local function map<a, b>(arr: {a}, f: (a) -> b) local r = {} for i,v in ipairs(arr) do table.insert(r, f(v)) end return r end
-local a = {1, 2, 3}
-local r = map(a, function(a) return a + a > 100 end)
+        local function map<a, b>(arr: {a}, f: (a) -> b)
+            local r = {}
+            for i,v in ipairs(arr) do
+                table.insert(r, f(v))
+            end
+            return r
+        end
+        local a = {1, 2, 3}
+        local r = map(a, function(a) return a + a > 100 end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
     REQUIRE_EQ("{boolean}", toString(requireType("r")));
 
     check(R"(
-local function foldl<a, b>(arr: {a}, init: b, f: (b, a) -> b) local r = init for i,v in ipairs(arr) do r = f(r, v) end return r end
-local a = {1, 2, 3}
-local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
+        local function foldl<a, b>(arr: {a}, init: b, f: (b, a) -> b)
+            local r = init
+            for i,v in ipairs(arr) do
+                r = f(r, v)
+            end
+            return r
+        end
+        local a = {1, 2, 3}
+        local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -1065,31 +1051,25 @@ local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} e
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded")
 {
     CheckResult result = check(R"(
-local function g1<T>(a: T, f: (T) -> T) return f(a) end
-local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
+        local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
-local g12: typeof(g1) & typeof(g2)
-
-g12(1, function(x) return x + x end)
-g12(1, 2, function(x, y) return x + y end)
+        g12(1, function(x) return x + x end)
+        g12(1, 2, function(x, y) return x + y end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
-local function g1<T>(a: T, f: (T) -> T) return f(a) end
-local function g2<T>(a: T, b: T, f: (T, T) -> T) return f(a, b) end
+        local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
 
-local g12: typeof(g1) & typeof(g2)
-
-g12({x=1}, function(x) return {x=-x.x} end)
-g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
+        g12({x=1}, function(x) return {x=-x.x} end)
+        g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_generic_lib_function_function_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
 {
     CheckResult result = check(R"(
 local a = {{x=4}, {x=7}, {x=1}}
@@ -1121,15 +1101,85 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
 {
     CheckResult result = check(R"(
-type A = { x: number }
-local a: A = { x = 1 }
-local b = a
-type B = typeof(b)
-type X<T> = T
-local c: X<B>
+        type A = { x: number }
+        local a: A = { x = 1 }
+        local b = a
+        type B = typeof(b)
+        type X<T> = T
+        local c: X<B>
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics1")
+{
+    // https://github.com/Roblox/luau/issues/484
+    CheckResult result = check(R"(
+--!strict
+type MyObject = {
+	getReturnValue: <V>(cb: () -> V) -> V
+}
+local object: MyObject = {
+	getReturnValue = function<U>(cb: () -> U): U
+		return cb()
+	end,
+}
+
+type ComplexObject<T> = {
+	id: T,
+	nested: MyObject
+}
+
+local complex: ComplexObject<string> = {
+	id = "Foo",
+	nested = object,
+}
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics2")
+{
+    // https://github.com/Roblox/luau/issues/484
+    CheckResult result = check(R"(
+--!strict
+type MyObject = {
+	getReturnValue: <V>(cb: () -> V) -> V
+}
+type ComplexObject<T> = {
+	id: T,
+	nested: MyObject
+}
+
+local complex2: ComplexObject<string> = nil
+
+local x = complex2.nested.getReturnValue(function(): string
+	return ""
+end)
+
+local y = complex2.nested.getReturnValue(function()
+	return 3
+end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauAlwaysQuantify", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo<X>(f, x: X)
+            return f(x)
+        end
+    )");
+
+    CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
 }
 
 TEST_SUITE_END();

@@ -8,9 +8,11 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("BuiltinTests");
 
-TEST_CASE_FIXTURE(Fixture, "math_things_are_defined")
+TEST_CASE_FIXTURE(BuiltinsFixture, "math_things_are_defined")
 {
     CheckResult result = check(R"(
         local a00 = math.frexp
@@ -48,7 +50,7 @@ TEST_CASE_FIXTURE(Fixture, "math_things_are_defined")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "next_iterator_should_infer_types_and_type_check")
+TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_check")
 {
     CheckResult result = check(R"(
         local a: string, b: number = next({ 1 })
@@ -61,7 +63,7 @@ TEST_CASE_FIXTURE(Fixture, "next_iterator_should_infer_types_and_type_check")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "pairs_iterator_should_infer_types_and_type_check")
+TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_check")
 {
     CheckResult result = check(R"(
         type Map<K, V> = { [K]: V }
@@ -73,7 +75,7 @@ TEST_CASE_FIXTURE(Fixture, "pairs_iterator_should_infer_types_and_type_check")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "ipairs_iterator_should_infer_types_and_type_check")
+TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_iterator_should_infer_types_and_type_check")
 {
     CheckResult result = check(R"(
         type Map<K, V> = { [K]: V }
@@ -85,7 +87,7 @@ TEST_CASE_FIXTURE(Fixture, "ipairs_iterator_should_infer_types_and_type_check")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_dot_remove_optionally_returns_generic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_remove_optionally_returns_generic")
 {
     CheckResult result = check(R"(
         local t = { 1 }
@@ -96,7 +98,7 @@ TEST_CASE_FIXTURE(Fixture, "table_dot_remove_optionally_returns_generic")
     CHECK_EQ(toString(requireType("n")), "number?");
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_concat_returns_string")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_concat_returns_string")
 {
     CheckResult result = check(R"(
         local r = table.concat({1,2,3,4}, ",", 2);
@@ -106,7 +108,7 @@ TEST_CASE_FIXTURE(Fixture, "table_concat_returns_string")
     CHECK_EQ(*typeChecker.stringType, *requireType("r"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "sort")
+TEST_CASE_FIXTURE(BuiltinsFixture, "sort")
 {
     CheckResult result = check(R"(
         local t = {1, 2, 3};
@@ -116,7 +118,7 @@ TEST_CASE_FIXTURE(Fixture, "sort")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "sort_with_predicate")
+TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
 {
     CheckResult result = check(R"(
         --!strict
@@ -128,7 +130,7 @@ TEST_CASE_FIXTURE(Fixture, "sort_with_predicate")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "sort_with_bad_predicate")
+TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
 {
     CheckResult result = check(R"(
         --!strict
@@ -138,6 +140,12 @@ TEST_CASE_FIXTURE(Fixture, "sort_with_bad_predicate")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(R"(Type '(number, number) -> boolean' could not be converted into '((a, a) -> boolean)?'
+caused by:
+  None of the union options are compatible. For example: Type '(number, number) -> boolean' could not be converted into '(a, a) -> boolean'
+caused by:
+  Argument #1 type is not compatible. Type 'string' could not be converted into 'number')",
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "strings_have_methods")
@@ -150,7 +158,7 @@ TEST_CASE_FIXTURE(Fixture, "strings_have_methods")
     CHECK_EQ(*typeChecker.stringType, *requireType("s"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "math_max_variatic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_variatic")
 {
     CheckResult result = check(R"(
         local n = math.max(1,2,3,4,5,6,7,8,9,0)
@@ -160,16 +168,17 @@ TEST_CASE_FIXTURE(Fixture, "math_max_variatic")
     CHECK_EQ(*typeChecker.numberType, *requireType("n"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "math_max_checks_for_numbers")
+TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_checks_for_numbers")
 {
     CheckResult result = check(R"(
         local n = math.max(1,2,"3")
     )");
 
     CHECK(!result.errors.empty());
+    CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "builtin_tables_sealed")
+TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
 {
     CheckResult result = check(R"LUA(
         local b = bit32
@@ -181,7 +190,7 @@ TEST_CASE_FIXTURE(Fixture, "builtin_tables_sealed")
     CHECK_EQ(bit32t->state, TableState::Sealed);
 }
 
-TEST_CASE_FIXTURE(Fixture, "lua_51_exported_globals_all_exist")
+TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
 {
     // Extracted from lua5.1
     CheckResult result = check(R"(
@@ -338,7 +347,7 @@ TEST_CASE_FIXTURE(Fixture, "lua_51_exported_globals_all_exist")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "setmetatable_unpacks_arg_types_correctly")
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
 {
     CheckResult result = check(R"(
         setmetatable({}, setmetatable({}, {}))
@@ -346,7 +355,7 @@ TEST_CASE_FIXTURE(Fixture, "setmetatable_unpacks_arg_types_correctly")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -358,7 +367,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_correctly_infers_type_of_array_2_args_o
     CHECK_EQ(typeChecker.stringType, requireType("s"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_insert_correctly_infers_type_of_array_3_args_overload")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_3_args_overload")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -370,7 +379,7 @@ TEST_CASE_FIXTURE(Fixture, "table_insert_correctly_infers_type_of_array_3_args_o
     CHECK_EQ("string", toString(requireType("s")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_pack")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
 {
     CheckResult result = check(R"(
         local t = table.pack(1, "foo", true)
@@ -380,7 +389,7 @@ TEST_CASE_FIXTURE(Fixture, "table_pack")
     CHECK_EQ("{| [number]: boolean | number | string, n: number |}", toString(requireType("t")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_pack_variadic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
 {
     CheckResult result = check(R"(
 --!strict
@@ -395,7 +404,7 @@ local t = table.pack(f())
     CHECK_EQ("{| [number]: number | string, n: number |}", toString(requireType("t")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_pack_reduce")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
 {
     CheckResult result = check(R"(
         local t = table.pack(1, 2, true)
@@ -412,7 +421,7 @@ TEST_CASE_FIXTURE(Fixture, "table_pack_reduce")
     CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "gcinfo")
+TEST_CASE_FIXTURE(BuiltinsFixture, "gcinfo")
 {
     CheckResult result = check(R"(
         local n = gcinfo()
@@ -422,12 +431,12 @@ TEST_CASE_FIXTURE(Fixture, "gcinfo")
     CHECK_EQ(*typeChecker.numberType, *requireType("n"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "getfenv")
+TEST_CASE_FIXTURE(BuiltinsFixture, "getfenv")
 {
     LUAU_REQUIRE_NO_ERRORS(check("getfenv(1)"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "os_time_takes_optional_date_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
 {
     CheckResult result = check(R"(
         local n1 = os.time()
@@ -441,7 +450,7 @@ TEST_CASE_FIXTURE(Fixture, "os_time_takes_optional_date_table")
     CHECK_EQ(*typeChecker.numberType, *requireType("n3"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "thread_is_a_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
 {
     CheckResult result = check(R"(
         local co = coroutine.create(function() end)
@@ -451,7 +460,7 @@ TEST_CASE_FIXTURE(Fixture, "thread_is_a_type")
     CHECK_EQ(*typeChecker.threadType, *requireType("co"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "coroutine_resume_anything_goes")
+TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
 {
     CheckResult result = check(R"(
         local function nifty(x, y)
@@ -469,7 +478,7 @@ TEST_CASE_FIXTURE(Fixture, "coroutine_resume_anything_goes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "coroutine_wrap_anything_goes")
+TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_wrap_anything_goes")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -488,7 +497,7 @@ TEST_CASE_FIXTURE(Fixture, "coroutine_wrap_anything_goes")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "setmetatable_should_not_mutate_persisted_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_should_not_mutate_persisted_types")
 {
     CheckResult result = check(R"(
         local string = string
@@ -503,7 +512,7 @@ TEST_CASE_FIXTURE(Fixture, "setmetatable_should_not_mutate_persisted_types")
     REQUIRE(ttv);
 }
 
-TEST_CASE_FIXTURE(Fixture, "string_format_arg_types_inference")
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
 {
     CheckResult result = check(R"(
         --!strict
@@ -516,7 +525,7 @@ TEST_CASE_FIXTURE(Fixture, "string_format_arg_types_inference")
     CHECK_EQ("(number, number, string) -> string", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "string_format_arg_count_mismatch")
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_count_mismatch")
 {
     CheckResult result = check(R"(
         --!strict
@@ -532,7 +541,7 @@ TEST_CASE_FIXTURE(Fixture, "string_format_arg_count_mismatch")
     CHECK_EQ(result.errors[2].location.begin.line, 4);
 }
 
-TEST_CASE_FIXTURE(Fixture, "string_format_correctly_ordered_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
 {
     CheckResult result = check(R"(
         --!strict
@@ -546,7 +555,7 @@ TEST_CASE_FIXTURE(Fixture, "string_format_correctly_ordered_types")
     CHECK_EQ(tm->givenType, typeChecker.numberType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "xpcall")
+TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall")
 {
     CheckResult result = check(R"(
         --!strict
@@ -557,12 +566,12 @@ TEST_CASE_FIXTURE(Fixture, "xpcall")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    REQUIRE_EQ("boolean", toString(requireType("a")));
-    REQUIRE_EQ("number", toString(requireType("b")));
-    REQUIRE_EQ("boolean", toString(requireType("c")));
+    CHECK_EQ("boolean", toString(requireType("a")));
+    CHECK_EQ("number", toString(requireType("b")));
+    CHECK_EQ("boolean", toString(requireType("c")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "see_thru_select")
+TEST_CASE_FIXTURE(BuiltinsFixture, "see_thru_select")
 {
     CheckResult result = check(R"(
         local a:number, b:boolean = select(2,"hi", 10, true)
@@ -571,7 +580,7 @@ TEST_CASE_FIXTURE(Fixture, "see_thru_select")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "see_thru_select_count")
+TEST_CASE_FIXTURE(BuiltinsFixture, "see_thru_select_count")
 {
     CheckResult result = check(R"(
         local a = select("#","hi", 10, true)
@@ -581,7 +590,7 @@ TEST_CASE_FIXTURE(Fixture, "see_thru_select_count")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "select_with_decimal_argument_is_rounded_down")
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_decimal_argument_is_rounded_down")
 {
     CheckResult result = check(R"(
         local a: number, b: boolean = select(2.9, "foo", 1, true)
@@ -591,7 +600,7 @@ TEST_CASE_FIXTURE(Fixture, "select_with_decimal_argument_is_rounded_down")
 }
 
 // Could be flaky if the fix has regressed.
-TEST_CASE_FIXTURE(Fixture, "bad_select_should_not_crash")
+TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
 {
     CheckResult result = check(R"(
         do end
@@ -603,10 +612,12 @@ TEST_CASE_FIXTURE(Fixture, "bad_select_should_not_crash")
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[0]));
+    CHECK_EQ("Argument count mismatch. Function expects 1 argument, but none are specified", toString(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "select_way_out_of_range")
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
 {
     CheckResult result = check(R"(
         select(5432598430953240958)
@@ -617,7 +628,7 @@ TEST_CASE_FIXTURE(Fixture, "select_way_out_of_range")
     CHECK_EQ("bad argument #1 to select (index out of range)", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "select_slightly_out_of_range")
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_slightly_out_of_range")
 {
     CheckResult result = check(R"(
         select(3, "a", 1)
@@ -628,7 +639,7 @@ TEST_CASE_FIXTURE(Fixture, "select_slightly_out_of_range")
     CHECK_EQ("bad argument #1 to select (index out of range)", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "select_with_variadic_typepack_tail")
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -647,7 +658,7 @@ TEST_CASE_FIXTURE(Fixture, "select_with_variadic_typepack_tail")
     CHECK_EQ("any", toString(requireType("quux")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "select_with_variadic_typepack_tail_and_string_head")
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_string_head")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -701,7 +712,7 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "debug_traceback_is_crazy")
+TEST_CASE_FIXTURE(BuiltinsFixture, "debug_traceback_is_crazy")
 {
     CheckResult result = check(R"(
 local co: thread = ...
@@ -718,7 +729,7 @@ debug.traceback(co, "msg", 1)
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "debug_info_is_crazy")
+TEST_CASE_FIXTURE(BuiltinsFixture, "debug_info_is_crazy")
 {
     CheckResult result = check(R"(
 local co: thread, f: ()->() = ...
@@ -732,7 +743,7 @@ debug.info(f, "n")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "aliased_string_format")
+TEST_CASE_FIXTURE(BuiltinsFixture, "aliased_string_format")
 {
     CheckResult result = check(R"(
         local fmt = string.format
@@ -743,7 +754,7 @@ TEST_CASE_FIXTURE(Fixture, "aliased_string_format")
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "string_lib_self_noself")
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_lib_self_noself")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -762,7 +773,7 @@ TEST_CASE_FIXTURE(Fixture, "string_lib_self_noself")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "gmatch_definition")
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_definition")
 {
     CheckResult result = check(R"_(
 local a, b, c = ("hey"):gmatch("(.)(.)(.)")()
@@ -775,7 +786,7 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "select_on_variadic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "select_on_variadic")
 {
     CheckResult result = check(R"(
         local function f(): (number, ...(boolean | number))
@@ -791,7 +802,7 @@ TEST_CASE_FIXTURE(Fixture, "select_on_variadic")
     CHECK_EQ("any", toString(requireType("c")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "string_format_report_all_type_errors_at_correct_positions")
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_report_all_type_errors_at_correct_positions")
 {
     CheckResult result = check(R"(
         ("%s%d%s"):format(1, "hello", true)
@@ -823,7 +834,7 @@ TEST_CASE_FIXTURE(Fixture, "string_format_report_all_type_errors_at_correct_posi
     CHECK_EQ(TypeErrorData(TypeMismatch{stringType, booleanType}), result.errors[5].data);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
 {
     CheckResult result = check(R"(
         --!strict
@@ -834,7 +845,7 @@ TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type")
     CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type2")
 {
     CheckResult result = check(R"(
         --!strict
@@ -844,7 +855,7 @@ TEST_CASE_FIXTURE(Fixture, "tonumber_returns_optional_number_type2")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "dont_add_definitions_to_persistent_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "dont_add_definitions_to_persistent_types")
 {
     CheckResult result = check(R"(
         local f = math.sin
@@ -866,14 +877,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_add_definitions_to_persistent_types")
     REQUIRE(gtv->definition);
 }
 
-TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
 {
-    ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: (number | boolean)?)
             return assert(x)
@@ -881,17 +886,14 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
+    if (FFlag::LuauLowerBoundsCalculation)
+        CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
+    else
+        CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
 {
-    ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
-        {"LuauWidenIfSupertypeIsFree2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: (number | boolean)?): number | true
             return assert(x)
@@ -902,13 +904,8 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types2")
     CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types_even_from_type_pack_tail_but_only_for_the_first_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pack_tail_but_only_for_the_first_type")
 {
-    ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(...: number?)
             return assert(...)
@@ -919,13 +916,8 @@ TEST_CASE_FIXTURE(Fixture, "assert_removes_falsy_types_even_from_type_pack_tail_
     CHECK_EQ("(...number?) -> (number, ...number?)", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "assert_returns_false_and_string_iff_it_knows_the_first_argument_cannot_be_truthy")
+TEST_CASE_FIXTURE(BuiltinsFixture, "assert_returns_false_and_string_iff_it_knows_the_first_argument_cannot_be_truthy")
 {
-    ScopedFastFlag sff[]{
-        {"LuauAssertStripsFalsyTypes", true},
-        {"LuauDiscriminableUnions2", true},
-    };
-
     CheckResult result = check(R"(
         local function f(x: nil)
             return assert(x, "hmm")
@@ -936,7 +928,7 @@ TEST_CASE_FIXTURE(Fixture, "assert_returns_false_and_string_iff_it_knows_the_fir
     CHECK_EQ("(nil) -> nil", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_freeze_is_generic")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 {
     CheckResult result = check(R"(
         local t1: {a: number} = {a = 42}
@@ -963,7 +955,7 @@ TEST_CASE_FIXTURE(Fixture, "table_freeze_is_generic")
     CHECK_EQ("*unknown*", toString(requireType("d")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "set_metatable_needs_arguments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
     ScopedFastFlag sff{"LuauSetMetaTableArgsCheck", true};
     CheckResult result = check(R"(
@@ -986,7 +978,7 @@ local function f(a: typeof(f)) end
     CHECK_EQ("Unknown global 'f'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_persistent_typelevel_change")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
 {
     TypeId mathTy = requireType(typeChecker.globalScope, "math");
     REQUIRE(mathTy);
@@ -1003,7 +995,7 @@ TEST_CASE_FIXTURE(Fixture, "no_persistent_typelevel_change")
     CHECK(ftv->level.subLevel == original.subLevel);
 }
 
-TEST_CASE_FIXTURE(Fixture, "global_singleton_types_are_sealed")
+TEST_CASE_FIXTURE(BuiltinsFixture, "global_singleton_types_are_sealed")
 {
     CheckResult result = check(R"(
 local function f(x: string)

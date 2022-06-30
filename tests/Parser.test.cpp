@@ -1604,6 +1604,35 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_of_functions_unions_and_intersections")
     CHECK_EQ((Position{3, 42}), block->body.data[2]->location.end);
 }
 
+TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments")
+{
+    AstStatBlock* block = parse(R"(
+        type F = number
+        --comment
+        print('hello')
+    )");
+
+    REQUIRE_EQ(2, block->body.size);
+    CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
+}
+
+TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture")
+{
+    // Same should hold when comments are captured
+    ParseOptions opts;
+    opts.captureComments = true;
+
+    AstStatBlock* block = parse(R"(
+        type F = number
+        --comment
+        print('hello')
+    )",
+        opts);
+
+    REQUIRE_EQ(2, block->body.size);
+    CHECK_EQ((Position{1, 23}), block->body.data[0]->location.end);
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_error_loop_control")
 {
     matchParseError("break", "break statement must be inside a loop");
@@ -2006,6 +2035,13 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type_errors")
     matchParseError("type Y<T = number, U> = {}", "Expected default type after type name", Location{{0, 20}, {0, 21}});
     matchParseError("type Y<T... = ...number, U...> = {}", "Expected default type pack after type pack name", Location{{0, 29}, {0, 30}});
     matchParseError("type Y<T... = (string) -> number> = {}", "Expected type pack after '=', got type", Location{{0, 14}, {0, 32}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_type_pack_errors")
+{
+    matchParseError("type Y<T...> = {a: T..., b: number}", "Unexpected '...' after type name; type pack is not allowed in this context",
+        Location{{0, 20}, {0, 23}});
+    matchParseError("type Y<T...> = {a: (number | string)...", "Unexpected '...' after type annotation", Location{{0, 36}, {0, 39}});
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
@@ -2574,6 +2610,44 @@ TEST_CASE_FIXTURE(Fixture, "recover_expected_type_pack")
 type Y<T..., U = T...> = (T...) -> U...
     )");
     CHECK_EQ(1, result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "recover_unexpected_type_pack")
+{
+    ParseResult result = tryParse(R"(
+type X<T...> = { a: T..., b: number }
+type Y<T> = { a: T..., b: number }
+type Z<T> = { a: string | T..., b: number }
+    )");
+    REQUIRE_EQ(3, result.errors.size());
+}
+
+TEST_CASE_FIXTURE(Fixture, "recover_function_return_type_annotations")
+{
+    ScopedFastFlag sff{"LuauReturnTypeTokenConfusion", true};
+    ParseResult result = tryParse(R"(
+type Custom<A, B, C> = { x: A, y: B, z: C }
+type Packed<A...> = { x: (A...) -> () }
+type F = (number): Custom<boolean, number, string>
+type G = Packed<(number): (string, number, boolean)>
+local function f(x: number) -> Custom<string, boolean, number>
+end
+    )");
+    REQUIRE_EQ(3, result.errors.size());
+    CHECK_EQ(result.errors[0].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
+    CHECK_EQ(result.errors[1].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
+    CHECK_EQ(result.errors[2].getMessage(), "Function return type annotations are written after ':' instead of '->'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
+{
+    ScopedFastFlag sff{"LuauParserFunctionKeywordAsTypeHelp", true};
+    ParseResult result = tryParse(R"(
+        type Foo = function
+    )");
+    REQUIRE_EQ(1, result.errors.size());
+    CHECK_EQ("Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> ...any'",
+        result.errors[0].getMessage());
 }
 
 TEST_SUITE_END();

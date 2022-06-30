@@ -10,8 +10,10 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("BuiltinDefinitionsTest");
 
-TEST_CASE_FIXTURE(Fixture, "lib_documentation_symbols")
+TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
 {
+    CHECK(!typeChecker.globalScope->bindings.empty());
+
     for (const auto& [name, binding] : typeChecker.globalScope->bindings)
     {
         std::string nameString(name.c_str());

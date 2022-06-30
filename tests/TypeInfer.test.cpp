@@ -13,8 +13,9 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr)
-LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 
 using namespace Luau;
 
@@ -43,10 +44,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_error")
     CheckResult result = check("local a = 7   local b = 'hi'   a = b");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{
-                                                                                          requireType("a"),
-                                                                                          requireType("b"),
-                                                                                      }}));
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error_2")
@@ -85,16 +83,22 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
 
 TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
+    ScopedFastFlag sff[]{
+        {"DebugLuauDeferredConstraintResolution", false},
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nocheck
         function f(x)
-            return x
+            return 5
         end
          -- we get type information even if there's type errors
         f(1, 2)
     )");
 
-    CHECK_EQ("(any) -> (...any)", toString(requireType("f")));
+    CHECK_EQ("(any) -> number", toString(requireType("f")));
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -155,7 +159,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_nearly_identical_recursive_types")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
+TEST_CASE_FIXTURE(BuiltinsFixture, "warn_on_lowercase_parent_property")
 {
     CheckResult result = check(R"(
         local M = require(script.parent.DoesNotMatter)
@@ -169,7 +173,7 @@ TEST_CASE_FIXTURE(Fixture, "warn_on_lowercase_parent_property")
     REQUIRE_EQ("parent", ed->symbol);
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_case")
+TEST_CASE_FIXTURE(BuiltinsFixture, "weird_case")
 {
     CheckResult result = check(R"(
         local function f() return 4 end
@@ -177,7 +181,6 @@ TEST_CASE_FIXTURE(Fixture, "weird_case")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    dumpErrors(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_ice_when_failing_the_occurs_check")
@@ -232,10 +235,14 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     CHECK_EQ("boolean", toString(err->table));
     CHECK_EQ("x", err->key);
 
-    CHECK_EQ("*unknown*", toString(requireType("c")));
-    CHECK_EQ("*unknown*", toString(requireType("d")));
-    CHECK_EQ("*unknown*", toString(requireType("e")));
-    CHECK_EQ("*unknown*", toString(requireType("f")));
+    // TODO: Should we assert anything about these tests when DCR is being used?
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("*unknown*", toString(requireType("c")));
+        CHECK_EQ("*unknown*", toString(requireType("d")));
+        CHECK_EQ("*unknown*", toString(requireType("e")));
+        CHECK_EQ("*unknown*", toString(requireType("f")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowing")
@@ -293,7 +300,7 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
 
 // In these tests, a successful parse is required, so we need the parser to return the AST and then we can test the recursion depth limit in type
 // checker. We also want it to somewhat match up with production values, so we push up the parser recursion limit a little bit instead.
-TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_limit")
+TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
 {
 #if defined(LUAU_ENABLE_ASAN)
     int limit = 250;
@@ -302,12 +309,13 @@ TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_limit")
 #else
     int limit = 600;
 #endif
-    ScopedFastInt luauRecursionLimit{"LuauRecursionLimit", limit + 100};
-    ScopedFastInt luauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", limit - 100};
-    ScopedFastInt luauCheckRecursionLimit{"LuauCheckRecursionLimit", 0};
 
-    CHECK_NOTHROW(check("print('Hello!')"));
-    CHECK_THROWS_AS(check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end"), std::runtime_error);
+    ScopedFastInt sfi{"LuauCheckRecursionLimit", limit};
+
+    CheckResult result = check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
@@ -347,35 +355,6 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "globals")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = true
-        foo = "now i'm a string!"
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("any", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "globals2")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = function() return 1 end
-        foo = "now i'm a string!"
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ("() -> (...any)", toString(tm->wantedType));
-    CHECK_EQ("string", toString(tm->givenType));
-    CHECK_EQ("() -> (...any)", toString(requireType("foo")));
-}
-
 TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
 {
     CheckResult result = check(R"(
@@ -390,24 +369,7 @@ TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
     CHECK_EQ("foo", us->name);
 }
 
-TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = 1
-
-        if true then
-            bar = 2
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("any", toString(requireType("foo")));
-    CHECK_EQ("any", toString(requireType("bar")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_do")
+TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_do")
 {
     CheckResult result = check(R"(
         do
@@ -436,21 +398,6 @@ TEST_CASE_FIXTURE(Fixture, "checking_should_not_ice")
 
     CHECK_EQ("any", toString(requireType("value")));
 }
-
-// TEST_CASE_FIXTURE(Fixture, "infer_method_signature_of_argument")
-// {
-//     CheckResult result = check(R"(
-//         function f(a)
-//             if a.cond then
-//                 return a.method()
-//             end
-//         end
-//     )");
-
-//     LUAU_REQUIRE_NO_ERRORS(result);
-
-//     CHECK_EQ("A", toString(requireType("f")));
-// }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_follow")
 {
@@ -522,7 +469,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_assert")
     LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_replacement_name_in_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_in_error")
 {
     {
         CheckResult result = check(R"(
@@ -575,7 +522,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_replacement_name_in_error
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "index_expr_should_be_checked")
+TEST_CASE_FIXTURE(BuiltinsFixture, "index_expr_should_be_checked")
 {
     CheckResult result = check(R"(
         local foo: any
@@ -671,7 +618,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
         _(nil)
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
@@ -683,7 +630,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
     CHECK(it != result.errors.end());
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_stack_overflow_from_isoptional2")
 {
     CheckResult result = check(R"(
         function _(l0:({})|(t0)):((((typeof((xpcall)))|(t96<t0>))|(t13))&(t96<t0>),()->typeof(...))
@@ -710,10 +657,10 @@ TEST_CASE_FIXTURE(Fixture, "no_infinite_loop_when_trying_to_unify_uh_this")
         _()
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
+TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -721,13 +668,13 @@ TEST_CASE_FIXTURE(Fixture, "no_heap_use_after_free_error")
         local l0
         do end
         while _ do
-        function _:_()
-        _ += _(_._(_:n0(xpcall,_)))
-        end
+            function _:_()
+                _ += _(_._(_:n0(xpcall,_)))
+            end
         end
     )");
 
-    CHECK_LE(0, result.errors.size());
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
@@ -756,7 +703,7 @@ b, c = {2, "s"}, {"b", 4}
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types_mutable_lval")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_assignment_value_types_mutable_lval")
 {
     CheckResult result = check(R"(
 local a = {}
@@ -824,7 +771,7 @@ local a: number? = if true then 1 else nil
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_3")
+TEST_CASE_FIXTURE(BuiltinsFixture, "tc_if_else_expressions_expected_type_3")
 {
     CheckResult result = check(R"(
 local function times<T>(n: any, f: () -> T)
@@ -895,7 +842,7 @@ TEST_CASE_FIXTURE(Fixture, "fuzzer_found_this")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "recursive_metatable_crash")
+TEST_CASE_FIXTURE(BuiltinsFixture, "recursive_metatable_crash")
 {
     CheckResult result = check(R"(
 local function getIt()
@@ -940,8 +887,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
 {
-    ScopedFastFlag subtypingVariance{"LuauTableSubtypingVariance2", true};
-
     CheckResult result = check(R"(
         --!strict
         --!nolint
@@ -976,6 +921,86 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
+{
+    ScopedFastInt sfi("LuauTypeInferRecursionLimit", 2);
+
+    CheckResult result = check(R"(
+        function complex()
+          function _(l0:t0): (any, ()->())
+              return 0,_
+          end
+          type t0 = t0 | {}
+          _(nil)
+        end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
+{
+    CheckResult result = check(R"(
+        local obj = {}
+
+        function obj:Method()
+            self.fieldA = function(object)
+                if object.a then
+                    self.arr[object] = true
+                elseif object.b then
+                    self.fieldB[object] = object:Connect(function(arg)
+                        self.arr[arg] = nil
+                    end)
+                end
+            end
+        end
+
+        return obj
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+/**
+ * The problem we had here was that the type of q in B.h was initially inferring to {} | {prop: free} before we bound
+ * that second table to the enclosing union.
+ */
+TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_table")
+{
+    ScopedFastFlag flag[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local A = {}
+
+        function A:f()
+            local t = {}
+
+            for key, value in pairs(self) do
+                t[key] = value
+            end
+
+            return t
+        end
+
+        local B = A:f()
+
+        function B.g(t)
+            assert(type(t) == "table")
+            assert(t.prop ~= nil)
+        end
+
+        function B.h(q)
+            q = q or {}
+            return q or {}
+        end
+    )");
 }
 
 TEST_SUITE_END();

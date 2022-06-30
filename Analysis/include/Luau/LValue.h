@@ -34,8 +34,8 @@ const LValue* baseof(const LValue& lvalue);
 
 std::optional<LValue> tryGetLValue(const class AstExpr& expr);
 
-// Utility function: breaks down an LValue to get at the Symbol, and reverses the vector of keys.
-std::pair<Symbol, std::vector<std::string>> getFullName(const LValue& lvalue);
+// Utility function: breaks down an LValue to get at the Symbol
+Symbol getBaseSymbol(const LValue& lvalue);
 
 template<typename T>
 const T* get(const LValue& lvalue)

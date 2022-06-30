@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
+
 TEST_SUITE_BEGIN("ToString");
 
 TEST_CASE_FIXTURE(Fixture, "primitive")
@@ -58,7 +60,43 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
     CHECK_EQ("TheTable", toString(&table));
 }
 
-TEST_CASE_FIXTURE(Fixture, "exhaustive_toString_of_cyclic_table")
+TEST_CASE_FIXTURE(Fixture, "empty_table")
+{
+    ScopedFastFlag LuauToStringTableBracesNewlines("LuauToStringTableBracesNewlines", true);
+    CheckResult result = check(R"(
+        local a: {}
+    )");
+
+    CHECK_EQ("{|  |}", toString(requireType("a")));
+
+    // Should stay the same with useLineBreaks enabled
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+    CHECK_EQ("{|  |}", toString(requireType("a"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
+{
+    ScopedFastFlag LuauToStringTableBracesNewlines("LuauToStringTableBracesNewlines", true);
+    CheckResult result = check(R"(
+        local a: { prop: string, anotherProp: number, thirdProp: boolean }
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+    opts.indent = true;
+
+    //clang-format off
+    CHECK_EQ("{|\n"
+             "    anotherProp: number,\n"
+             "    prop: string,\n"
+             "    thirdProp: boolean\n"
+             "|}",
+        toString(requireType("a"), opts));
+    //clang-format on
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 {
     CheckResult result = check(R"(
         --!strict
@@ -122,6 +160,39 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_inte
 
     CHECK_EQ(toString(&utv), "((number, string) -> (string, number)) | ((string, number) -> (number, string))");
     CHECK_EQ(toString(&itv), "((number, string) -> (string, number)) & ((string, number) -> (number, string))");
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersections_respects_use_line_breaks")
+{
+    CheckResult result = check(R"(
+        local a: ((string) -> string) & ((number) -> number)
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+
+    //clang-format off
+    CHECK_EQ("((number) -> number)\n"
+             "& ((string) -> string)",
+        toString(requireType("a"), opts));
+    //clang-format on
+}
+
+TEST_CASE_FIXTURE(Fixture, "unions_respects_use_line_breaks")
+{
+    CheckResult result = check(R"(
+        local a: string | number | boolean
+    )");
+
+    ToStringOptions opts;
+    opts.useLineBreaks = true;
+
+    //clang-format off
+    CHECK_EQ("boolean\n"
+             "| number\n"
+             "| string",
+        toString(requireType("a"), opts));
+    //clang-format on
 }
 
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded")
@@ -336,10 +407,8 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     REQUIRE_EQ("c", toString(params[2], opts));
 }
 
-TEST_CASE_FIXTURE(Fixture, "toStringDetailed2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
-    ScopedFastFlag sff{"LuauUnsealedTableLiteral", true};
-
     CheckResult result = check(R"(
         local base = {}
         function base:one() return 1 end
@@ -470,7 +539,6 @@ TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function id(x) return x end
     )");
@@ -483,7 +551,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function map(arr, fn)
             local t = {}
@@ -502,7 +569,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function f(a: number, b: string) end
         local function test<T..., U...>(...: T...): U...
@@ -519,7 +585,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
 
 TEST_CASE("toStringNamedFunction_unit_f")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     TypePackVar empty{TypePack{}};
     FunctionTypeVar ftv{&empty, &empty, {}, false};
     CHECK_EQ("f(): ()", toStringNamedFunction("f", ftv));
@@ -527,7 +592,6 @@ TEST_CASE("toStringNamedFunction_unit_f")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function f<a, b...>(x: a, ...): (a, a, b...)
             return x, x, ...
@@ -542,7 +606,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics2")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function f(): ...number
             return 1, 2, 3
@@ -557,7 +620,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics2")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics3")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function f(): (string, ...number)
             return 'a', 1, 2, 3
@@ -572,7 +634,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics3")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_type_annotation_has_partial_argnames")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local f: (number, y: number) -> number
     )");
@@ -585,7 +646,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_type_annotation_has_partial_ar
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_type_params")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
     CheckResult result = check(R"(
         local function f<T>(x: T, g: <U>(T) -> U)): ()
         end
@@ -601,8 +661,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_type_params")
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 {
-    ScopedFastFlag flag{"LuauDocFuncParameters", true};
-
     CheckResult result = check(R"(
         local function test(a, b : string, ... : number) return a end
     )");
@@ -613,6 +671,52 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
     ToStringOptions opts;
     opts.namedFunctionOverrideArgNames = {"first", "second", "third"};
     CHECK_EQ("test<a>(first: a, second: string, ...: number): a", toStringNamedFunction("test", *ftv, opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauAlwaysQuantify", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo<a>(x: a, y) end
+    )");
+
+    CHECK("<a, b>(a, b) -> ()" == toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
+{
+    CheckResult result = check(R"(
+        local foo = {}
+        function foo:method(arg: string): ()
+        end
+    )");
+
+    TypeId parentTy = requireType("foo");
+    auto ttv = get<TableTypeVar>(follow(parentTy));
+    auto ftv = get<FunctionTypeVar>(ttv->props.at("method").type);
+
+    CHECK_EQ("foo:method<a>(self: a, arg: string): ()", toStringNamedFunction("foo:method", *ftv));
+}
+
+
+TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
+{
+    CheckResult result = check(R"(
+        local foo = {}
+        function foo:method(arg: string): ()
+        end
+    )");
+
+    TypeId parentTy = requireType("foo");
+    auto ttv = get<TableTypeVar>(follow(parentTy));
+    auto ftv = get<FunctionTypeVar>(ttv->props.at("method").type);
+
+    ToStringOptions opts;
+    opts.hideFunctionSelfArgument = true;
+    CHECK_EQ("foo:method<a>(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
 }
 
 TEST_SUITE_END();

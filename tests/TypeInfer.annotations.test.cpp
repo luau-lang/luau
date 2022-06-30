@@ -30,11 +30,21 @@ TEST_CASE_FIXTURE(Fixture, "successful_check")
     dumpErrors(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "variable_type_is_supertype")
+{
+    CheckResult result = check(R"(
+        local x: number = 1
+        local y: number? = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "function_parameters_can_have_annotations")
 {
     CheckResult result = check(R"(
         function double(x: number)
-            return x * 2
+            return 2
         end
 
         local four = double(2)
@@ -47,7 +57,7 @@ TEST_CASE_FIXTURE(Fixture, "function_parameter_annotations_are_checked")
 {
     CheckResult result = check(R"(
         function double(x: number)
-            return x * 2
+            return 2
         end
 
         local four = double("two")
@@ -70,13 +80,13 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotations_are_checked")
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fiftyType);
     REQUIRE(ftv != nullptr);
 
-    TypePackId retPack = ftv->retType;
+    TypePackId retPack = follow(ftv->retTypes);
     const TypePack* tp = get<TypePack>(retPack);
     REQUIRE(tp != nullptr);
 
     REQUIRE_EQ(1, tp->head.size());
 
-    REQUIRE_EQ(typeChecker.anyType, tp->head[0]);
+    REQUIRE_EQ(typeChecker.anyType, follow(tp->head[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_multret_annotations_are_checked")
@@ -114,6 +124,23 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotation_should_continuously_parse
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
+{
+    CheckResult result = check(R"(
+        local x: IDoNotExist
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(result.errors[0] == TypeError{
+        Location{{1, 17}, {1, 28}},
+        getMainSourceModule()->name,
+        UnknownSymbol{
+            "IDoNotExist",
+            UnknownSymbol::Context::Type,
+        },
+    });
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_variable_type_annotation_should_return_its_type")
@@ -221,8 +248,6 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_is_bidirectional")
 
 TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
 {
-    ScopedFastFlag sff2{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         local a = 55 :: string
     )");
@@ -407,8 +432,6 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         type A = B
         type B = A
@@ -532,7 +555,7 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
     CHECK_EQ(recordType, bType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "use_type_required_from_another_file")
+TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
 {
     addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
 
@@ -558,7 +581,7 @@ TEST_CASE_FIXTURE(Fixture, "use_type_required_from_another_file")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "cannot_use_nonexported_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
 {
     addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
 
@@ -584,7 +607,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_use_nonexported_type")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "builtin_types_are_not_exported")
+TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
 {
     addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
 
@@ -636,7 +659,10 @@ int AssertionCatcher::tripped;
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+    ScopedFastFlag sffs[] = {
+        {"DebugLuauMagicTypes", true},
+        {"LuauUseInternalCompilerErrorException", false},
+    };
 
     AssertionCatcher ac;
 
@@ -650,9 +676,10 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice")
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_handler")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
-
-    AssertionCatcher ac;
+    ScopedFastFlag sffs[] = {
+        {"DebugLuauMagicTypes", true},
+        {"LuauUseInternalCompilerErrorException", false},
+    };
 
     bool caught = false;
 
@@ -666,8 +693,44 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_handler")
         std::runtime_error);
 
     CHECK_EQ(true, caught);
+}
 
-    frontend.iceHandler.onInternalError = {};
+TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
+{
+    ScopedFastFlag sffs[] = {
+        {"DebugLuauMagicTypes", true},
+        {"LuauUseInternalCompilerErrorException", true},
+    };
+
+    AssertionCatcher ac;
+
+    CHECK_THROWS_AS(check(R"(
+            local a: _luau_ice = 55
+        )"),
+        InternalCompilerError);
+
+    LUAU_ASSERT(1 == AssertionCatcher::tripped);
+}
+
+TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler")
+{
+    ScopedFastFlag sffs[] = {
+        {"DebugLuauMagicTypes", true},
+        {"LuauUseInternalCompilerErrorException", true},
+    };
+
+    bool caught = false;
+
+    frontend.iceHandler.onInternalError = [&](const char*) {
+        caught = true;
+    };
+
+    CHECK_THROWS_AS(check(R"(
+            local a: _luau_ice = 55
+        )"),
+        InternalCompilerError);
+
+    CHECK_EQ(true, caught);
 }
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
@@ -680,7 +743,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_print_is_magic_if_the_flag_is_set")
+TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
 {
     // Luau::resetPrintLine();
     ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
@@ -751,6 +814,16 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_on_cyclic_intersection_typevar")
 
     OccursCheckFailed* ocf = get<OccursCheckFailed>(result.errors[0]);
     REQUIRE(ocf);
+}
+
+TEST_CASE_FIXTURE(Fixture, "instantiation_clone_has_to_follow")
+{
+    CheckResult result = check(R"(
+        export type t8<t8> = (t0)&(<t0...>((true)|(any))->"")
+        export type t0<t0> = ({})&({_:{[any]:number},})
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -85,8 +85,6 @@ TEST_CASE_FIXTURE(Fixture, "string_function_other")
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
 local x: number = 9999
 function x:y(z: number)
@@ -95,6 +93,8 @@ end
 )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
+    CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
 }
 
 TEST_SUITE_END();

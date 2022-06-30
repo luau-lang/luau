@@ -13,6 +13,77 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("NonstrictModeTests");
 
+TEST_CASE_FIXTURE(Fixture, "globals")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = true
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals2")
+{
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = function() return 1 end
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("() -> number", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
+    CHECK_EQ("() -> number", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = 1
+
+        if true then
+            bar = 2
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("any", toString(requireType("foo")));
+    CHECK_EQ("any", toString(requireType("bar")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_number_or_string")
+{
+    ScopedFastFlag sff[]{{"LuauReturnTypeInferenceInNonstrict", true}, {"LuauLowerBoundsCalculation", true}};
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        local function f()
+            if math.random() > 0.5 then
+                return 5
+            else
+                return "hi"
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("() -> number | string" == toString(requireType("f")));
+}
+
 TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 {
     CheckResult result = check(R"(
@@ -31,12 +102,17 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
     REQUIRE_EQ("any", toString(args[0]));
     REQUIRE_EQ("any", toString(args[1]));
 
-    auto rets = flatten(ftv->retType).first;
+    auto rets = flatten(ftv->retTypes).first;
     REQUIRE_EQ(0, rets.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_could_return")
+TEST_CASE_FIXTURE(Fixture, "first_return_type_dictates_number_of_return_types")
 {
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
         function getMinCardCountForWidth(width)
@@ -51,22 +127,18 @@ TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_coul
     TypeId t = requireType("getMinCardCountForWidth");
     REQUIRE(t);
 
-    REQUIRE_EQ("(any) -> (...any)", toString(t));
+    REQUIRE_EQ("(any) -> number", toString(t));
 }
 
-#if 0
-// Maybe we want this?
 TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 {
     CheckResult result = check(R"(
+        --!nonstrict
         function foo(x): number return 'hello' end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    REQUIRE_NE(*typeChecker.anyType, *requireType("foo"));
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
 {
@@ -126,8 +198,6 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -145,8 +215,6 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
 
 TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         --!nonstrict
         local T = {}
@@ -200,7 +268,7 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
     CHECK_MESSAGE(get<FunctionTypeVar>(ttv->props["three"].type), "Should be a function: " << *ttv->props["three"].type);
 }
 
-TEST_CASE_FIXTURE(Fixture, "for_in_iterator_variables_are_any")
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -219,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_iterator_variables_are_any")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "table_dot_insert_and_recursive_calls")
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_insert_and_recursive_calls")
 {
     CheckResult result = check(R"(
         --!nonstrict
@@ -256,6 +324,11 @@ TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_retu
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 {
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -272,7 +345,41 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("any", toString(getMainModule()->getModuleScope()->returnType));
+    REQUIRE_EQ("((any) -> string) | {| foo: any |}", toString(getMainModule()->getModuleScope()->returnType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        function foo(): (boolean, string?)
+            if true then
+                return true, "hello"
+            else
+                return false
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+
+        function foo(): boolean
+            if true then
+                return true, "hello"
+            else
+                return false
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

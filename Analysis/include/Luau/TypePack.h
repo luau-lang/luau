@@ -40,6 +40,7 @@ struct TypePack
 struct VariadicTypePack
 {
     TypeId ty;
+    bool hidden = false; // if true, we don't display this when toString()ing a pack with this variadic as its tail.
 };
 
 struct TypePackVar
@@ -47,13 +48,24 @@ struct TypePackVar
     explicit TypePackVar(const TypePackVariant& ty);
     explicit TypePackVar(TypePackVariant&& ty);
     TypePackVar(TypePackVariant&& ty, bool persistent);
+
     bool operator==(const TypePackVar& rhs) const;
+
     TypePackVar& operator=(TypePackVariant&& tp);
 
+    TypePackVar& operator=(const TypePackVar& rhs);
+
+    // Re-assignes the content of the pack, but doesn't change the owning arena and can't make pack persistent.
+    void reassign(const TypePackVar& rhs)
+    {
+        ty = rhs.ty;
+    }
+
     TypePackVariant ty;
+
     bool persistent = false;
 
-    // Pointer to the type arena that allocated this type.
+    // Pointer to the type arena that allocated this pack.
     TypeArena* owningArena = nullptr;
 };
 
@@ -109,10 +121,10 @@ private:
 };
 
 TypePackIterator begin(TypePackId tp);
-TypePackIterator begin(TypePackId tp, TxnLog* log);
+TypePackIterator begin(TypePackId tp, const TxnLog* log);
 TypePackIterator end(TypePackId tp);
 
-using SeenSet = std::set<std::pair<void*, void*>>;
+using SeenSet = std::set<std::pair<const void*, const void*>>;
 
 bool areEqual(SeenSet& seen, const TypePackVar& lhs, const TypePackVar& rhs);
 
@@ -122,7 +134,7 @@ TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper);
 size_t size(TypePackId tp, TxnLog* log = nullptr);
 bool finite(TypePackId tp, TxnLog* log = nullptr);
 size_t size(const TypePack& tp, TxnLog* log = nullptr);
-std::optional<TypeId> first(TypePackId tp);
+std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics = true);
 
 TypePackVar* asMutable(TypePackId tp);
 TypePack* asMutable(const TypePack* tp);
@@ -154,5 +166,12 @@ bool isEmpty(TypePackId tp);
 
 /// Flattens out a type pack.  Also returns a valid TypePackId tail if the type pack's full size is not known
 std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp);
+std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp, const TxnLog& log);
+
+/// Returs true if the type pack arose from a function that is declared to be variadic.
+/// Returns *false* for function argument packs that are inferred to be safe to oversaturate!
+bool isVariadic(TypePackId tp);
+bool isVariadic(TypePackId tp, const TxnLog& log);
+
 
 } // namespace Luau

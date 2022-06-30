@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauEqConstraint)
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 
 using namespace Luau;
 
@@ -52,7 +52,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
     CHECK_EQ(expected, decorateWithTypes(code));
 }
 
-TEST_CASE_FIXTURE(Fixture, "xpcall_returns_what_f_returns")
+TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
 {
     const std::string code = R"(
         local a, b, c = xpcall(function() return 1, "foo" end, function() return "foo", 1 end)
@@ -104,7 +104,7 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 
 // Ideally setmetatable's second argument would be an optional free table.
 // For now, infer it as just a free table.
-TEST_CASE_FIXTURE(Fixture, "setmetatable_constrains_free_type_into_free_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_table")
 {
     CheckResult result = check(R"(
         local a = {}
@@ -145,7 +145,7 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 // Originally from TypeInfer.test.cpp.
 // I dont think type checking the metamethod at every site of == is the correct thing to do.
 // We should be type checking the metamethod at the call site of setmetatable.
-TEST_CASE_FIXTURE(Fixture, "error_on_eq_metamethod_returning_a_type_other_than_boolean")
+TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_other_than_boolean")
 {
     CheckResult result = check(R"(
         local tab = {a = 1}
@@ -182,8 +182,6 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
 // We'll need to not only report an error on `a == b`, but also to refine both operands as `never` in the `==` branch.
 TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 {
-    ScopedFastFlag sff1{"LuauEqConstraint", true};
-
     CheckResult result = check(R"(
         local function f(a: string, b: boolean?)
             if a == b then
@@ -207,8 +205,6 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 // Just needs to fully support equality refinement. Which is annoying without type states.
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
 {
-    ScopedFastFlag sff{"LuauDiscriminableUnions2", true};
-
     CheckResult result = check(R"(
         type T = {x: string, y: number} | {x: nil, y: nil}
 
@@ -267,242 +263,6 @@ TEST_CASE_FIXTURE(Fixture, "bail_early_if_unification_is_too_complicated" * doct
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "bail_early_on_typescript_port_of_Result_type" * doctest::timeout(1.0))
-{
-    ScopedFastInt sffi{"LuauTarjanChildLimit", 400};
-
-    CheckResult result = check(R"LUA(
-        --!strict
-        local TS = _G[script]
-        local lazyGet = TS.import(script, script.Parent.Parent, "util", "lazyLoad").lazyGet
-        local unit = TS.import(script, script.Parent.Parent, "util", "Unit").unit
-        local Iterator
-        lazyGet("Iterator", function(c)
-            Iterator = c
-        end)
-        local Option
-        lazyGet("Option", function(c)
-            Option = c
-        end)
-        local Vec
-        lazyGet("Vec", function(c)
-            Vec = c
-        end)
-        local Result
-        do
-            Result = setmetatable({}, {
-                __tostring = function()
-                    return "Result"
-                end,
-            })
-            Result.__index = Result
-            function Result.new(...)
-                local self = setmetatable({}, Result)
-                self:constructor(...)
-                return self
-            end
-            function Result:constructor(okValue, errValue)
-                self.okValue = okValue
-                self.errValue = errValue
-            end
-            function Result:ok(val)
-                return Result.new(val, nil)
-            end
-            function Result:err(val)
-                return Result.new(nil, val)
-            end
-            function Result:fromCallback(c)
-                local _0 = c
-                local _1, _2 = pcall(_0)
-                local result = _1 and {
-                    success = true,
-                    value = _2,
-                } or {
-                    success = false,
-                    error = _2,
-                }
-                return result.success and Result:ok(result.value) or Result:err(Option:wrap(result.error))
-            end
-            function Result:fromVoidCallback(c)
-                local _0 = c
-                local _1, _2 = pcall(_0)
-                local result = _1 and {
-                    success = true,
-                    value = _2,
-                } or {
-                    success = false,
-                    error = _2,
-                }
-                return result.success and Result:ok(unit()) or Result:err(Option:wrap(result.error))
-            end
-            Result.fromPromise = TS.async(function(self, p)
-                local _0, _1 = TS.try(function()
-                    return TS.TRY_RETURN, { Result:ok(TS.await(p)) }
-                end, function(e)
-                    return TS.TRY_RETURN, { Result:err(Option:wrap(e)) }
-                end)
-                if _0 then
-                    return unpack(_1)
-                end
-            end)
-            Result.fromVoidPromise = TS.async(function(self, p)
-                local _0, _1 = TS.try(function()
-                    TS.await(p)
-                    return TS.TRY_RETURN, { Result:ok(unit()) }
-                end, function(e)
-                    return TS.TRY_RETURN, { Result:err(Option:wrap(e)) }
-                end)
-                if _0 then
-                    return unpack(_1)
-                end
-            end)
-            function Result:isOk()
-                return self.okValue ~= nil
-            end
-            function Result:isErr()
-                return self.errValue ~= nil
-            end
-            function Result:contains(x)
-                return self.okValue == x
-            end
-            function Result:containsErr(x)
-                return self.errValue == x
-            end
-            function Result:okOption()
-                return Option:wrap(self.okValue)
-            end
-            function Result:errOption()
-                return Option:wrap(self.errValue)
-            end
-            function Result:map(func)
-                return self:isOk() and Result:ok(func(self.okValue)) or Result:err(self.errValue)
-            end
-            function Result:mapOr(def, func)
-                local _0
-                if self:isOk() then
-                    _0 = func(self.okValue)
-                else
-                    _0 = def
-                end
-                return _0
-            end
-            function Result:mapOrElse(def, func)
-                local _0
-                if self:isOk() then
-                    _0 = func(self.okValue)
-                else
-                    _0 = def(self.errValue)
-                end
-                return _0
-            end
-            function Result:mapErr(func)
-                return self:isErr() and Result:err(func(self.errValue)) or Result:ok(self.okValue)
-            end
-            Result["and"] = function(self, other)
-                return self:isErr() and Result:err(self.errValue) or other
-            end
-            function Result:andThen(func)
-                return self:isErr() and Result:err(self.errValue) or func(self.okValue)
-            end
-            Result["or"] = function(self, other)
-                return self:isOk() and Result:ok(self.okValue) or other
-            end
-            function Result:orElse(other)
-                return self:isOk() and Result:ok(self.okValue) or other(self.errValue)
-            end
-            function Result:expect(msg)
-                if self:isOk() then
-                    return self.okValue
-                else
-                    error(msg)
-                end
-            end
-            function Result:unwrap()
-                return self:expect("called `Result.unwrap()` on an `Err` value: " .. tostring(self.errValue))
-            end
-            function Result:unwrapOr(def)
-                local _0
-                if self:isOk() then
-                    _0 = self.okValue
-                else
-                    _0 = def
-                end
-                return _0
-            end
-            function Result:unwrapOrElse(gen)
-                local _0
-                if self:isOk() then
-                    _0 = self.okValue
-                else
-                    _0 = gen(self.errValue)
-                end
-                return _0
-            end
-            function Result:expectErr(msg)
-                if self:isErr() then
-                    return self.errValue
-                else
-                    error(msg)
-                end
-            end
-            function Result:unwrapErr()
-                return self:expectErr("called `Result.unwrapErr()` on an `Ok` value: " .. tostring(self.okValue))
-            end
-            function Result:transpose()
-                return self:isOk() and self.okValue:map(function(some)
-                    return Result:ok(some)
-                end) or Option:some(Result:err(self.errValue))
-            end
-            function Result:flatten()
-                return self:isOk() and Result.new(self.okValue.okValue, self.okValue.errValue) or Result:err(self.errValue)
-            end
-            function Result:match(ifOk, ifErr)
-                local _0
-                if self:isOk() then
-                    _0 = ifOk(self.okValue)
-                else
-                    _0 = ifErr(self.errValue)
-                end
-                return _0
-            end
-            function Result:asPtr()
-                local _0 = (self.okValue)
-                if _0 == nil then
-                    _0 = (self.errValue)
-                end
-                return _0
-            end
-        end
-        local resultMeta = Result
-        resultMeta.__eq = function(a, b)
-            return b:match(function(ok)
-                return a:contains(ok)
-            end, function(err)
-                return a:containsErr(err)
-            end)
-        end
-        resultMeta.__tostring = function(result)
-            return result:match(function(ok)
-                return "Result.ok(" .. tostring(ok) .. ")"
-            end, function(err)
-                return "Result.err(" .. tostring(err) .. ")"
-            end)
-        end
-        return {
-            Result = Result,
-        }
-    )LUA");
-
-    auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& a) {
-        return nullptr != get<UnificationTooComplex>(a);
-    });
-    if (it == result.errors.end())
-    {
-        dumpErrors(result);
-        FAIL("Expected a UnificationTooComplex error");
-    }
-}
-
 // Should be in TypeInfer.tables.test.cpp
 // It's unsound to instantiate tables containing generic methods,
 // since mutating properties means table properties should be invariant.
@@ -527,6 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+// FIXME: Move this test to another source file when removing FFlag::LuauLowerBoundsCalculation
 TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
 {
     ScopedFastFlag sff[]{
@@ -556,10 +317,19 @@ TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // f and g should have the type () -> ()
-    CHECK_EQ("() -> (a...)", toString(requireType("f")));
-    CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
-    CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
+    if (FFlag::LuauLowerBoundsCalculation)
+    {
+        CHECK_EQ("() -> ()", toString(requireType("f")));
+        CHECK_EQ("() -> ()", toString(requireType("g")));
+        CHECK_EQ("nil", toString(requireType("x")));
+    }
+    else
+    {
+        // f and g should have the type () -> ()
+        CHECK_EQ("() -> (a...)", toString(requireType("f")));
+        CHECK_EQ("<a...>() -> (a...)", toString(requireType("g")));
+        CHECK_EQ("any", toString(requireType("x"))); // any is returned instead of ICE for now
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
@@ -573,18 +343,12 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
-{
-    CheckResult result = check(R"(
-        local function f() return end
-        local g = function() return f() end
-    )");
-
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", false},
+    };
+
     CheckResult result = check(R"(
         --!strict
         local function f(...) return ... end
@@ -592,6 +356,147 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
     )");
 
     LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
+}
+
+TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_overloaded_higher_order_functions")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo(f)
+            f(5, 'a')
+            f('b', 6)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // We incorrectly infer that the argument to foo could be called with (number, number) or (string, string)
+    // even though that is strictly more permissive than the actual source text shows.
+    CHECK("<a...>((number | string, number | string) -> (a...)) -> ()" == toString(requireType("foo")));
+}
+
+// Once fixed, move this to Normalize.test.cpp
+TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_tables")
+{
+#if defined(_DEBUG) || defined(_NOOPT)
+    ScopedFastInt sfi("LuauNormalizeIterationLimit", 500);
+#endif
+
+    ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
+    // This exposes a bug where the type of y is mutated.
+    CheckResult result = check(R"(
+        function strange(x, y)
+            x.x = y
+            y.x = x
+
+            type R = {x: typeof(x)} & {x: typeof(y)}
+            local r: R
+
+            return r
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(nullptr != get<NormalizationTooComplex>(result.errors[0]));
+}
+
+// Belongs in TypeInfer.builtins.test.cpp.
+TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_function_returns_nothing")
+{
+    CheckResult result = check(R"(
+        local function f(): () end
+        local ok, res = pcall(f)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Function only returns 1 value. 2 are required here", toString(result.errors[0]));
+    // LUAU_REQUIRE_NO_ERRORS(result);
+    // CHECK_EQ("boolean", toString(requireType("ok")));
+    // CHECK_EQ("any", toString(requireType("res")));
+}
+
+// Belongs in TypeInfer.builtins.test.cpp.
+TEST_CASE_FIXTURE(BuiltinsFixture, "choose_the_right_overload_for_pcall")
+{
+    CheckResult result = check(R"(
+        local function f(): number
+            if math.random() > 0.5 then
+                return 5
+            else
+                error("something")
+            end
+        end
+
+        local ok, res = pcall(f)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("boolean", toString(requireType("ok")));
+    CHECK_EQ("number", toString(requireType("res")));
+    // CHECK_EQ("any", toString(requireType("res")));
+}
+
+// Belongs in TypeInfer.builtins.test.cpp.
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_many_things_but_first_of_it_is_forgotten")
+{
+    CheckResult result = check(R"(
+        local function f(): (number, string, boolean)
+            if math.random() > 0.5 then
+                return 5, "hello", true
+            else
+                error("something")
+            end
+        end
+
+        local ok, res, s, b = pcall(f)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("boolean", toString(requireType("ok")));
+    CHECK_EQ("number", toString(requireType("res")));
+    // CHECK_EQ("any", toString(requireType("res")));
+    CHECK_EQ("string", toString(requireType("s")));
+    CHECK_EQ("boolean", toString(requireType("b")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true},
+        {"LuauQuantifyConstrained", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(o)
+            local t = {}
+            t[o] = true
+
+            local function foo(o)
+                o:m1()
+                t[o] = nil
+            end
+
+            local function bar(o)
+                o:m2()
+                t[o] = true
+            end
+
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // TODO: We're missing generics b...
+    CHECK_EQ("<a...>(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

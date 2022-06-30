@@ -126,8 +126,6 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_u
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_constrained")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         function f(arg: number) return arg end
         local a
@@ -198,7 +196,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
     CHECK_EQ(toString(tm->wantedType), "string");
 }
 
-TEST_CASE_FIXTURE(TryUnifyFixture, "cli_41095_concat_log_in_sealed_table_unification")
+TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
 {
     CheckResult result = check(R"(
         --!strict
@@ -240,6 +238,28 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "cli_50320_follow_in_any_unification")
     state.tryUnify(&free, &target);
     // Shouldn't assert or error.
     state.tryUnify(&func, typeChecker.anyType);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_type_owner")
+{
+    TypeId a = arena.addType(TypeVar{FreeTypeVar{TypeLevel{}}});
+    TypeId b = typeChecker.numberType;
+
+    state.tryUnify(a, b);
+    state.log.commit();
+
+    CHECK_EQ(a->owningArena, &arena);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
+{
+    TypePackId a = arena.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}});
+    TypePackId b = typeChecker.anyTypePack;
+
+    state.tryUnify(a, b);
+    state.log.commit();
+
+    CHECK_EQ(a->owningArena, &arena);
 }
 
 TEST_SUITE_END();

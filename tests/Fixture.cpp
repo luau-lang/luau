@@ -17,6 +17,8 @@
 
 static const char* mainModuleName = "MainModule";
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+
 namespace Luau
 {
 
@@ -83,7 +85,7 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
     return std::nullopt;
 }
 
-Fixture::Fixture(bool freeze)
+Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
     , frontend(&fileResolver, &configResolver, {/* retainFullTypeGraphs= */ true})
     , typeChecker(frontend.typeChecker)
@@ -92,9 +94,8 @@ Fixture::Fixture(bool freeze)
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
     configResolver.defaultConfig.parseOptions.captureComments = true;
 
-    registerBuiltinTypes(frontend.typeChecker);
-    registerTestTypes();
     Luau::freeze(frontend.typeChecker.globalTypes);
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 
     Luau::setPrintLine([](auto s) {});
 }
@@ -228,7 +229,7 @@ ModulePtr Fixture::getMainModule()
 
 SourceModule* Fixture::getMainSourceModule()
 {
-    return frontend.getSourceModule(fromString("MainModule"));
+    return frontend.getSourceModule(fromString(mainModuleName));
 }
 
 std::optional<PrimitiveTypeVar::Type> Fixture::getPrimitiveType(TypeId ty)
@@ -250,13 +251,16 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
     ModulePtr module = getMainModule();
     REQUIRE(module);
 
-    return lookupName(module->getModuleScope(), name);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        return linearSearchForBinding(module->getModuleScope2(), name.c_str());
+    else
+        return lookupName(module->getModuleScope(), name);
 }
 
 TypeId Fixture::requireType(const std::string& name)
 {
     std::optional<TypeId> ty = getType(name);
-    REQUIRE(bool(ty));
+    REQUIRE_MESSAGE(bool(ty), "Unable to requireType \"" << name << "\"");
     return follow(*ty);
 }
 
@@ -341,7 +345,7 @@ void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)
         if (error.location.begin.line >= lines.size())
         {
             os << "\tSource not available?" << std::endl;
-            return;
+            continue;
         }
 
         std::string_view theLine = lines[error.location.begin.line];
@@ -407,6 +411,28 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
     return result;
 }
 
+BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
+    : Fixture(freeze, prepareAutocomplete)
+{
+    Luau::unfreeze(frontend.typeChecker.globalTypes);
+    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+
+    registerBuiltinTypes(frontend.typeChecker);
+    if (prepareAutocomplete)
+        registerBuiltinTypes(frontend.typeCheckerForAutocomplete);
+    registerTestTypes();
+
+    Luau::freeze(frontend.typeChecker.globalTypes);
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+}
+
+ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
+    : Fixture()
+    , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
+{
+    BlockedTypeVar::nextIndex = 0;
+}
+
 ModuleName fromString(std::string_view name)
 {
     return ModuleName(name);
@@ -444,6 +470,29 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name)
         return binding->typeId;
     else
         return std::nullopt;
+}
+
+std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name)
+{
+    while (scope)
+    {
+        for (const auto& [n, ty] : scope->bindings)
+        {
+            if (n.astName() == name)
+                return ty;
+        }
+
+        scope = scope->parent;
+    }
+
+    return std::nullopt;
+}
+
+void dump(const std::vector<Constraint>& constraints)
+{
+    ToStringOptions opts;
+    for (const auto& c : constraints)
+        printf("%s\n", toString(c, opts).c_str());
 }
 
 } // namespace Luau

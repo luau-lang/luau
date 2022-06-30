@@ -7,7 +7,7 @@
 
 using namespace Luau;
 
-struct DocumentationSymbolFixture : Fixture
+struct DocumentationSymbolFixture : BuiltinsFixture
 {
     std::optional<DocumentationSymbol> getDocSymbol(const std::string& source, Position position)
     {
@@ -90,6 +90,19 @@ bar(foo())
     auto expectedOty = findExpectedTypeAtPosition(Position(3, 7));
     REQUIRE(expectedOty);
     CHECK_EQ("number", toString(*expectedOty));
+}
+
+TEST_CASE_FIXTURE(Fixture, "ast_ancestry_at_eof")
+{
+    check(R"(
+if true then
+    )");
+
+    std::vector<AstNode*> ancestry = findAstAncestryOfPosition(*getMainSourceModule(), Position(2, 4));
+    REQUIRE_GE(ancestry.size(), 2);
+    AstStat* parentStat = ancestry[ancestry.size() - 2]->asStat();
+    REQUIRE(bool(parentStat));
+    REQUIRE(parentStat->is<AstStatIf>());
 }
 
 TEST_SUITE_END();

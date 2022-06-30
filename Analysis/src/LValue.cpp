@@ -77,19 +77,15 @@ std::optional<LValue> tryGetLValue(const AstExpr& node)
     return std::nullopt;
 }
 
-std::pair<Symbol, std::vector<std::string>> getFullName(const LValue& lvalue)
+Symbol getBaseSymbol(const LValue& lvalue)
 {
     const LValue* current = &lvalue;
-    std::vector<std::string> keys;
     while (auto field = get<Field>(*current))
-    {
-        keys.push_back(field->key);
         current = baseof(*current);
-    }
 
     const Symbol* symbol = get<Symbol>(*current);
     LUAU_ASSERT(symbol);
-    return {*symbol, std::vector<std::string>(keys.rbegin(), keys.rend())};
+    return *symbol;
 }
 
 void merge(RefinementMap& l, const RefinementMap& r, std::function<TypeId(TypeId, TypeId)> f)

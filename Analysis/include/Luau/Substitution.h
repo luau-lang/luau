@@ -1,8 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Module.h"
-#include "Luau/ModuleResolver.h"
+#include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
 #include "Luau/DenseHash.h"
@@ -90,6 +89,7 @@ struct Tarjan
     std::vector<int> lowlink;
 
     int childCount = 0;
+    int childLimit = 0;
 
     // This should never be null; ensure you initialize it before calling
     // substitution methods.

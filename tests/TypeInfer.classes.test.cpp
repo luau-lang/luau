@@ -10,7 +10,7 @@
 using namespace Luau;
 using std::nullopt;
 
-struct ClassFixture : Fixture
+struct ClassFixture : BuiltinsFixture
 {
     ClassFixture()
     {
@@ -19,13 +19,13 @@ struct ClassFixture : Fixture
 
         unfreeze(arena);
 
-        TypeId baseClassInstanceType = arena.addType(ClassTypeVar{"BaseClass", {}, nullopt, nullopt, {}, {}});
+        TypeId baseClassInstanceType = arena.addType(ClassTypeVar{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(baseClassInstanceType)->props = {
             {"BaseMethod", {makeFunction(arena, baseClassInstanceType, {numberType}, {})}},
             {"BaseField", {numberType}},
         };
 
-        TypeId baseClassType = arena.addType(ClassTypeVar{"BaseClass", {}, nullopt, nullopt, {}, {}});
+        TypeId baseClassType = arena.addType(ClassTypeVar{"BaseClass", {}, nullopt, nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(baseClassType)->props = {
             {"StaticMethod", {makeFunction(arena, nullopt, {}, {numberType})}},
             {"Clone", {makeFunction(arena, nullopt, {baseClassInstanceType}, {baseClassInstanceType})}},
@@ -34,39 +34,39 @@ struct ClassFixture : Fixture
         typeChecker.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
         addGlobalBinding(typeChecker, "BaseClass", baseClassType, "@test");
 
-        TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}});
+        TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
         getMutable<ClassTypeVar>(childClassInstanceType)->props = {
             {"Method", {makeFunction(arena, childClassInstanceType, {}, {typeChecker.stringType})}},
         };
 
-        TypeId childClassType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassType, nullopt, {}, {}});
+        TypeId childClassType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassType, nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(childClassType)->props = {
             {"New", {makeFunction(arena, nullopt, {}, {childClassInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
         addGlobalBinding(typeChecker, "ChildClass", childClassType, "@test");
 
-        TypeId grandChildInstanceType = arena.addType(ClassTypeVar{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}});
+        TypeId grandChildInstanceType = arena.addType(ClassTypeVar{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}, "Test"});
 
         getMutable<ClassTypeVar>(grandChildInstanceType)->props = {
             {"Method", {makeFunction(arena, grandChildInstanceType, {}, {typeChecker.stringType})}},
         };
 
-        TypeId grandChildType = arena.addType(ClassTypeVar{"GrandChild", {}, baseClassType, nullopt, {}, {}});
+        TypeId grandChildType = arena.addType(ClassTypeVar{"GrandChild", {}, baseClassType, nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(grandChildType)->props = {
             {"New", {makeFunction(arena, nullopt, {}, {grandChildInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["GrandChild"] = TypeFun{{}, grandChildInstanceType};
         addGlobalBinding(typeChecker, "GrandChild", childClassType, "@test");
 
-        TypeId anotherChildInstanceType = arena.addType(ClassTypeVar{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}});
+        TypeId anotherChildInstanceType = arena.addType(ClassTypeVar{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
         getMutable<ClassTypeVar>(anotherChildInstanceType)->props = {
             {"Method", {makeFunction(arena, anotherChildInstanceType, {}, {typeChecker.stringType})}},
         };
 
-        TypeId anotherChildType = arena.addType(ClassTypeVar{"AnotherChild", {}, baseClassType, nullopt, {}, {}});
+        TypeId anotherChildType = arena.addType(ClassTypeVar{"AnotherChild", {}, baseClassType, nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(anotherChildType)->props = {
             {"New", {makeFunction(arena, nullopt, {}, {anotherChildInstanceType})}},
         };
@@ -75,13 +75,13 @@ struct ClassFixture : Fixture
 
         TypeId vector2MetaType = arena.addType(TableTypeVar{});
 
-        TypeId vector2InstanceType = arena.addType(ClassTypeVar{"Vector2", {}, nullopt, vector2MetaType, {}, {}});
+        TypeId vector2InstanceType = arena.addType(ClassTypeVar{"Vector2", {}, nullopt, vector2MetaType, {}, {}, "Test"});
         getMutable<ClassTypeVar>(vector2InstanceType)->props = {
             {"X", {numberType}},
             {"Y", {numberType}},
         };
 
-        TypeId vector2Type = arena.addType(ClassTypeVar{"Vector2", {}, nullopt, nullopt, {}, {}});
+        TypeId vector2Type = arena.addType(ClassTypeVar{"Vector2", {}, nullopt, nullopt, {}, {}, "Test"});
         getMutable<ClassTypeVar>(vector2Type)->props = {
             {"New", {makeFunction(arena, nullopt, {numberType, numberType}, {vector2InstanceType})}},
         };
@@ -90,6 +90,9 @@ struct ClassFixture : Fixture
         };
         typeChecker.globalScope->exportedTypeBindings["Vector2"] = TypeFun{{}, vector2InstanceType};
         addGlobalBinding(typeChecker, "Vector2", vector2Type, "@test");
+
+        for (const auto& [name, tf] : typeChecker.globalScope->exportedTypeBindings)
+            persist(tf.type);
 
         freeze(arena);
     }
@@ -463,6 +466,18 @@ b(a)
 caused by:
   Property 'Y' is not compatible. Type 'number' could not be converted into 'string')",
         toString(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "class_type_mismatch_with_name_conflict")
+{
+    CheckResult result = check(R"(
+local i = ChildClass.New()
+type ChildClass = { x: number }
+local a: ChildClass = i
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Type 'ChildClass' from 'Test' could not be converted into 'ChildClass' from 'MainModule'", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

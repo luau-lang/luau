@@ -23,249 +23,187 @@ std::ostream& operator<<(std::ostream& stream, const AstName& name)
         return stream << "<empty>";
 }
 
-std::ostream& operator<<(std::ostream& stream, const TypeMismatch& tm)
+template<typename T>
+static void errorToString(std::ostream& stream, const T& err)
 {
-    return stream << "TypeMismatch { " << toString(tm.wantedType) << ", " << toString(tm.givenType) << " }";
+    if constexpr (false)
+    {
+    }
+    else if constexpr (std::is_same_v<T, TypeMismatch>)
+        stream << "TypeMismatch { " << toString(err.wantedType) << ", " << toString(err.givenType) << " }";
+    else if constexpr (std::is_same_v<T, UnknownSymbol>)
+        stream << "UnknownSymbol { " << err.name << " , context " << err.context << " }";
+    else if constexpr (std::is_same_v<T, UnknownProperty>)
+        stream << "UnknownProperty { " << toString(err.table) << ", key = " << err.key << " }";
+    else if constexpr (std::is_same_v<T, NotATable>)
+        stream << "NotATable { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, CannotExtendTable>)
+        stream << "CannotExtendTable { " << toString(err.tableType) << ", context " << err.context << ", prop \"" << err.prop << "\" }";
+    else if constexpr (std::is_same_v<T, OnlyTablesCanHaveMethods>)
+        stream << "OnlyTablesCanHaveMethods { " << toString(err.tableType) << " }";
+    else if constexpr (std::is_same_v<T, DuplicateTypeDefinition>)
+        stream << "DuplicateTypeDefinition { " << err.name << " }";
+    else if constexpr (std::is_same_v<T, CountMismatch>)
+        stream << "CountMismatch { expected " << err.expected << ", got " << err.actual << ", context " << err.context << " }";
+    else if constexpr (std::is_same_v<T, FunctionDoesNotTakeSelf>)
+        stream << "FunctionDoesNotTakeSelf { }";
+    else if constexpr (std::is_same_v<T, FunctionRequiresSelf>)
+        stream << "FunctionRequiresSelf { }";
+    else if constexpr (std::is_same_v<T, OccursCheckFailed>)
+        stream << "OccursCheckFailed { }";
+    else if constexpr (std::is_same_v<T, UnknownRequire>)
+        stream << "UnknownRequire { " << err.modulePath << " }";
+    else if constexpr (std::is_same_v<T, IncorrectGenericParameterCount>)
+    {
+        stream << "IncorrectGenericParameterCount { name = " << err.name;
+
+        if (!err.typeFun.typeParams.empty() || !err.typeFun.typePackParams.empty())
+        {
+            stream << "<";
+            bool first = true;
+            for (auto param : err.typeFun.typeParams)
+            {
+                if (first)
+                    first = false;
+                else
+                    stream << ", ";
+
+                stream << toString(param.ty);
+            }
+
+            for (auto param : err.typeFun.typePackParams)
+            {
+                if (first)
+                    first = false;
+                else
+                    stream << ", ";
+
+                stream << toString(param.tp);
+            }
+
+            stream << ">";
+        }
+
+        stream << ", typeFun = " << toString(err.typeFun.type) << ", actualCount = " << err.actualParameters << " }";
+    }
+    else if constexpr (std::is_same_v<T, SyntaxError>)
+        stream << "SyntaxError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, CodeTooComplex>)
+        stream << "CodeTooComplex {}";
+    else if constexpr (std::is_same_v<T, UnificationTooComplex>)
+        stream << "UnificationTooComplex {}";
+    else if constexpr (std::is_same_v<T, UnknownPropButFoundLikeProp>)
+    {
+        stream << "UnknownPropButFoundLikeProp { key = '" << err.key << "', suggested = { ";
+
+        bool first = true;
+        for (Name name : err.candidates)
+        {
+            if (first)
+                first = false;
+            else
+                stream << ", ";
+
+            stream << "'" << name << "'";
+        }
+
+        stream << " }, table = " << toString(err.table) << " } ";
+    }
+    else if constexpr (std::is_same_v<T, GenericError>)
+        stream << "GenericError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, InternalError>)
+        stream << "InternalError { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, CannotCallNonFunction>)
+        stream << "CannotCallNonFunction { " << toString(err.ty) << " }";
+    else if constexpr (std::is_same_v<T, ExtraInformation>)
+        stream << "ExtraInformation { " << err.message << " }";
+    else if constexpr (std::is_same_v<T, DeprecatedApiUsed>)
+        stream << "DeprecatedApiUsed { " << err.symbol << ", useInstead = " << err.useInstead << " }";
+    else if constexpr (std::is_same_v<T, ModuleHasCyclicDependency>)
+    {
+        stream << "ModuleHasCyclicDependency {";
+
+        bool first = true;
+        for (const ModuleName& name : err.cycle)
+        {
+            if (first)
+                first = false;
+            else
+                stream << ", ";
+
+            stream << name;
+        }
+
+        stream << "}";
+    }
+    else if constexpr (std::is_same_v<T, IllegalRequire>)
+        stream << "IllegalRequire { " << err.moduleName << ", reason = " << err.reason << " }";
+    else if constexpr (std::is_same_v<T, FunctionExitsWithoutReturning>)
+        stream << "FunctionExitsWithoutReturning {" << toString(err.expectedReturnType) << "}";
+    else if constexpr (std::is_same_v<T, DuplicateGenericParameter>)
+        stream << "DuplicateGenericParameter { " + err.parameterName + " }";
+    else if constexpr (std::is_same_v<T, CannotInferBinaryOperation>)
+        stream << "CannotInferBinaryOperation { op = " + toString(err.op) + ", suggested = '" +
+                      (err.suggestedToAnnotate ? *err.suggestedToAnnotate : "") + "', kind "
+               << err.kind << "}";
+    else if constexpr (std::is_same_v<T, MissingProperties>)
+    {
+        stream << "MissingProperties { superType = '" << toString(err.superType) << "', subType = '" << toString(err.subType) << "', properties = { ";
+
+        bool first = true;
+        for (Name name : err.properties)
+        {
+            if (first)
+                first = false;
+            else
+                stream << ", ";
+
+            stream << "'" << name << "'";
+        }
+
+        stream << " }, context " << err.context << " } ";
+    }
+    else if constexpr (std::is_same_v<T, SwappedGenericTypeParameter>)
+        stream << "SwappedGenericTypeParameter { name = '" + err.name + "', kind = " + std::to_string(err.kind) + " }";
+    else if constexpr (std::is_same_v<T, OptionalValueAccess>)
+        stream << "OptionalValueAccess { optional = '" + toString(err.optional) + "' }";
+    else if constexpr (std::is_same_v<T, MissingUnionProperty>)
+    {
+        stream << "MissingUnionProperty { type = '" + toString(err.type) + "', missing = { ";
+
+        bool first = true;
+        for (auto ty : err.missing)
+        {
+            if (first)
+                first = false;
+            else
+                stream << ", ";
+
+            stream << "'" << toString(ty) << "'";
+        }
+
+        stream << " }, key = '" + err.key + "' }";
+    }
+    else if constexpr (std::is_same_v<T, TypesAreUnrelated>)
+        stream << "TypesAreUnrelated { left = '" + toString(err.left) + "', right = '" + toString(err.right) + "' }";
+    else if constexpr (std::is_same_v<T, NormalizationTooComplex>)
+        stream << "NormalizationTooComplex { }";
+    else
+        static_assert(always_false_v<T>, "Non-exhaustive type switch");
+}
+
+std::ostream& operator<<(std::ostream& stream, const TypeErrorData& data)
+{
+    auto cb = [&](const auto& e) {
+        return errorToString(stream, e);
+    };
+    visit(cb, data);
+    return stream;
 }
 
 std::ostream& operator<<(std::ostream& stream, const TypeError& error)
 {
     return stream << "TypeError { \"" << error.moduleName << "\", " << error.location << ", " << error.data << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const UnknownSymbol& error)
-{
-    return stream << "UnknownSymbol { " << error.name << " , context " << error.context << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const UnknownProperty& error)
-{
-    return stream << "UnknownProperty { " << toString(error.table) << ", key = " << error.key << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const NotATable& ge)
-{
-    return stream << "NotATable { " << toString(ge.ty) << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const CannotExtendTable& error)
-{
-    return stream << "CannotExtendTable { " << toString(error.tableType) << ", context " << error.context << ", prop \"" << error.prop << "\" }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const OnlyTablesCanHaveMethods& error)
-{
-    return stream << "OnlyTablesCanHaveMethods { " << toString(error.tableType) << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const DuplicateTypeDefinition& error)
-{
-    return stream << "DuplicateTypeDefinition { " << error.name << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const CountMismatch& error)
-{
-    return stream << "CountMismatch { expected " << error.expected << ", got " << error.actual << ", context " << error.context << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const FunctionDoesNotTakeSelf&)
-{
-    return stream << "FunctionDoesNotTakeSelf { }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const FunctionRequiresSelf& error)
-{
-    return stream << "FunctionRequiresSelf { extraNils " << error.requiredExtraNils << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const OccursCheckFailed&)
-{
-    return stream << "OccursCheckFailed { }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const UnknownRequire& error)
-{
-    return stream << "UnknownRequire { " << error.modulePath << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const IncorrectGenericParameterCount& error)
-{
-    stream << "IncorrectGenericParameterCount { name = " << error.name;
-
-    if (!error.typeFun.typeParams.empty() || !error.typeFun.typePackParams.empty())
-    {
-        stream << "<";
-        bool first = true;
-        for (auto param : error.typeFun.typeParams)
-        {
-            if (first)
-                first = false;
-            else
-                stream << ", ";
-
-            stream << toString(param.ty);
-        }
-
-        for (auto param : error.typeFun.typePackParams)
-        {
-            if (first)
-                first = false;
-            else
-                stream << ", ";
-
-            stream << toString(param.tp);
-        }
-
-        stream << ">";
-    }
-
-    stream << ", typeFun = " << toString(error.typeFun.type) << ", actualCount = " << error.actualParameters << " }";
-    return stream;
-}
-
-std::ostream& operator<<(std::ostream& stream, const SyntaxError& ge)
-{
-    return stream << "SyntaxError { " << ge.message << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const CodeTooComplex&)
-{
-    return stream << "CodeTooComplex {}";
-}
-
-std::ostream& operator<<(std::ostream& stream, const UnificationTooComplex&)
-{
-    return stream << "UnificationTooComplex {}";
-}
-
-std::ostream& operator<<(std::ostream& stream, const UnknownPropButFoundLikeProp& e)
-{
-    stream << "UnknownPropButFoundLikeProp { key = '" << e.key << "', suggested = { ";
-
-    bool first = true;
-    for (Name name : e.candidates)
-    {
-        if (first)
-            first = false;
-        else
-            stream << ", ";
-
-        stream << "'" << name << "'";
-    }
-
-    return stream << " }, table = " << toString(e.table) << " } ";
-}
-
-std::ostream& operator<<(std::ostream& stream, const GenericError& ge)
-{
-    return stream << "GenericError { " << ge.message << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const CannotCallNonFunction& e)
-{
-    return stream << "CannotCallNonFunction { " << toString(e.ty) << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const FunctionExitsWithoutReturning& error)
-{
-    return stream << "FunctionExitsWithoutReturning {" << toString(error.expectedReturnType) << "}";
-}
-
-std::ostream& operator<<(std::ostream& stream, const ExtraInformation& e)
-{
-    return stream << "ExtraInformation { " << e.message << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const DeprecatedApiUsed& e)
-{
-    return stream << "DeprecatedApiUsed { " << e.symbol << ", useInstead = " << e.useInstead << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const ModuleHasCyclicDependency& e)
-{
-    stream << "ModuleHasCyclicDependency {";
-
-    bool first = true;
-    for (const ModuleName& name : e.cycle)
-    {
-        if (first)
-            first = false;
-        else
-            stream << ", ";
-
-        stream << name;
-    }
-
-    return stream << "}";
-}
-
-std::ostream& operator<<(std::ostream& stream, const IllegalRequire& e)
-{
-    return stream << "IllegalRequire { " << e.moduleName << ", reason = " << e.reason << " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const MissingProperties& e)
-{
-    stream << "MissingProperties { superType = '" << toString(e.superType) << "', subType = '" << toString(e.subType) << "', properties = { ";
-
-    bool first = true;
-    for (Name name : e.properties)
-    {
-        if (first)
-            first = false;
-        else
-            stream << ", ";
-
-        stream << "'" << name << "'";
-    }
-
-    return stream << " }, context " << e.context << " } ";
-}
-
-std::ostream& operator<<(std::ostream& stream, const DuplicateGenericParameter& error)
-{
-    return stream << "DuplicateGenericParameter { " + error.parameterName + " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const CannotInferBinaryOperation& error)
-{
-    return stream << "CannotInferBinaryOperation { op = " + toString(error.op) + ", suggested = '" +
-                         (error.suggestedToAnnotate ? *error.suggestedToAnnotate : "") + "', kind "
-                  << error.kind << "}";
-}
-
-std::ostream& operator<<(std::ostream& stream, const SwappedGenericTypeParameter& error)
-{
-    return stream << "SwappedGenericTypeParameter { name = '" + error.name + "', kind = " + std::to_string(error.kind) + " }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const OptionalValueAccess& error)
-{
-    return stream << "OptionalValueAccess { optional = '" + toString(error.optional) + "' }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const MissingUnionProperty& error)
-{
-    stream << "MissingUnionProperty { type = '" + toString(error.type) + "', missing = { ";
-
-    bool first = true;
-    for (auto ty : error.missing)
-    {
-        if (first)
-            first = false;
-        else
-            stream << ", ";
-
-        stream << "'" << toString(ty) << "'";
-    }
-
-    return stream << " }, key = '" + error.key + "' }";
-}
-
-std::ostream& operator<<(std::ostream& stream, const TypesAreUnrelated& error)
-{
-    stream << "TypesAreUnrelated { left = '" + toString(error.left) + "', right = '" + toString(error.right) + "' }";
-    return stream;
 }
 
 std::ostream& operator<<(std::ostream& stream, const TableState& tv)
@@ -281,17 +219,6 @@ std::ostream& operator<<(std::ostream& stream, const TypeVar& tv)
 std::ostream& operator<<(std::ostream& stream, const TypePackVar& tv)
 {
     return stream << toString(tv);
-}
-
-std::ostream& operator<<(std::ostream& lhs, const TypeErrorData& ted)
-{
-    Luau::visit(
-        [&](const auto& a) {
-            lhs << a;
-        },
-        ted);
-
-    return lhs;
 }
 
 } // namespace Luau

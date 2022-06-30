@@ -8,6 +8,7 @@
 #include "Luau/Linter.h"
 #include "Luau/Location.h"
 #include "Luau/ModuleResolver.h"
+#include "Luau/Scope.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
@@ -91,7 +92,7 @@ struct TestConfigResolver : ConfigResolver
 
 struct Fixture
 {
-    explicit Fixture(bool freeze = true);
+    explicit Fixture(bool freeze = true, bool prepareAutocomplete = false);
     ~Fixture();
 
     // Throws Luau::ParseErrors if the parse fails.
@@ -151,6 +152,21 @@ struct Fixture
     LoadDefinitionFileResult loadDefinition(const std::string& source);
 };
 
+struct BuiltinsFixture : Fixture
+{
+    BuiltinsFixture(bool freeze = true, bool prepareAutocomplete = false);
+};
+
+struct ConstraintGraphBuilderFixture : Fixture
+{
+    TypeArena arena;
+    ConstraintGraphBuilder cgb{&arena};
+
+    ScopedFastFlag forceTheFlag;
+
+    ConstraintGraphBuilderFixture();
+};
+
 ModuleName fromString(std::string_view name);
 
 template<typename T>
@@ -170,8 +186,11 @@ bool isInArena(TypeId t, const TypeArena& arena);
 void dumpErrors(const ModulePtr& module);
 void dumpErrors(const Module& module);
 void dump(const std::string& name, TypeId ty);
+void dump(const std::vector<Constraint>& constraints);
 
 std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Warning: This function runs in O(n**2)
+
+std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name);
 
 } // namespace Luau
 

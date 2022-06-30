@@ -15,35 +15,26 @@ This document tracks unimplemented RFCs.
 
 **Status**: Needs implementation
 
-## Sealed/unsealed typing changes
-
-[RFC: Unsealed table literals](https://github.com/Roblox/luau/blob/master/rfcs/unsealed-table-literals.md) |
-[RFC: Only strip optional properties from unsealed tables during subtyping](https://github.com/Roblox/luau/blob/master/rfcs/unsealed-table-subtyping-strips-optional-properties.md)
-
-**Status**: Implemented but not fully rolled out yet.
-
-## Singleton types
-
-[RFC: Singleton types](https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md)
-
-**Status**: Implemented but not fully rolled out yet.
-
-## Safe navigation operator
-
-[RFC: Safe navigation postfix operator (?)](https://github.com/Roblox/luau/blob/master/rfcs/syntax-safe-navigation-operator.md)
-
-**Status**: Needs implementation.
-
-**Notes**: We have unresolved issues with interaction between this feature and Roblox instance hierarchy. This may affect the viability of this proposal.
-
 ## String interpolation
 
 [RFC: String interpolation](https://github.com/Roblox/luau/blob/master/rfcs/syntax-string-interpolation.md)
 
 **Status**: Needs implementation
 
-## Generalized iteration
+## Lower Bounds Calculation
 
-[RFC: Generalized iteration](https://github.com/Roblox/luau/blob/master/rfcs/generalized-iteration.md)
+[RFC: Lower bounds calculation](https://github.com/Roblox/luau/blob/master/rfcs/lower-bounds-calculation.md)
+
+**Status**: Implemented but not fully rolled out yet.
+
+## never and unknown types
+
+[RFC: never and unknown types](https://github.com/Roblox/luau/blob/master/rfcs/never-and-unknown-types.md)
+
+**Status**: Needs implementation
+
+## __len metamethod for tables and rawlen function
+
+[RFC: Support __len metamethod for tables and rawlen function](https://github.com/Roblox/luau/blob/master/rfcs/len-metamethod-rawlen.md)
 
 **Status**: Needs implementation

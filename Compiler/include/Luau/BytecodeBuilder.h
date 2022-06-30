@@ -3,6 +3,7 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/DenseHash.h"
+#include "Luau/StringUtils.h"
 
 #include <string>
 
@@ -80,6 +81,8 @@ public:
     void pushDebugUpval(StringRef name);
     uint32_t getDebugPC() const;
 
+    void addDebugRemark(const char* format, ...) LUAU_PRINTF_ATTR(2, 3);
+
     void finalize();
 
     enum DumpFlags
@@ -88,6 +91,7 @@ public:
         Dump_Lines = 1 << 1,
         Dump_Source = 1 << 2,
         Dump_Locals = 1 << 3,
+        Dump_Remarks = 1 << 4,
     };
 
     void setDumpFlags(uint32_t flags)
@@ -114,6 +118,8 @@ public:
     static uint32_t getStringHash(StringRef key);
 
     static std::string getError(const std::string& message);
+
+    static uint8_t getVersion();
 
 private:
     struct Constant
@@ -220,6 +226,7 @@ private:
 
     DenseHashMap<ConstantKey, int32_t, ConstantKeyHash> constantMap;
     DenseHashMap<TableShape, int32_t, TableShapeHash> tableShapeMap;
+    DenseHashMap<uint32_t, int16_t> protoMap;
 
     int debugLine = 0;
 
@@ -227,6 +234,9 @@ private:
     std::vector<DebugUpval> debugUpvals;
 
     DenseHashMap<StringRef, unsigned int, StringRefHash> stringTable;
+
+    std::vector<std::pair<uint32_t, uint32_t>> debugRemarks;
+    std::string debugRemarkBuffer;
 
     BytecodeEncoder* encoder = nullptr;
     std::string bytecode;
@@ -239,7 +249,7 @@ private:
     void validate() const;
 
     std::string dumpCurrentFunction() const;
-    const uint32_t* dumpInstruction(const uint32_t* opcode, std::string& output) const;
+    void dumpInstruction(const uint32_t* opcode, std::string& output, int targetLabel) const;
 
     void writeFunction(std::string& ss, uint32_t id) const;
     void writeLineInfo(std::string& ss) const;

@@ -1,0 +1,270 @@
+name: benchmark
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "docs/**"
+      - "papers/**"
+      - "rfcs/**"
+      - "*.md"
+      - "prototyping/**"
+
+jobs:
+  windows:
+    name: windows-${{matrix.arch}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        arch: [Win32, x64]
+        bench:
+          - {
+              script: "run-benchmarks",
+              timeout: 12,
+              title: "Luau Benchmarks",
+              cachegrindTitle: "Performance",
+              cachegrindIterCount: 20,
+            }
+        benchResultsRepo:
+          - { name: "luau-lang/benchmark-data", branch: "main" }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Luau repository
+        uses: actions/checkout@v3
+
+      - name: Build Luau
+        shell: bash # necessary for fail-fast
+        run: |
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          cmake --build . --target Luau.Repl.CLI --config Release
+          cmake --build . --target Luau.Analyze.CLI --config Release
+
+      - name: Move build files to root
+        run: |
+          move build/Release/* .
+
+      - uses: actions/setup-python@v3
+        with:
+          python-version: "3.9"
+          architecture: "x64"
+
+      - name: Install python dependencies
+        run: |
+          python -m pip install requests
+          python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+
+      - name: Run benchmark
+        run: |
+          python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
+
+      - name: Checkout Benchmark Results repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ matrix.benchResultsRepo.name }}
+          ref: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+          path: "./gh-pages"
+
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }} (Windows ${{matrix.arch}})
+          tool: "benchmarkluau"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: github.event_name == 'push'
+        run: |
+          echo "Pushing benchmark results..."
+          cd gh-pages
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git add ./dev/bench/data.json
+          git commit -m "Add benchmarks results for ${{ github.sha }}"
+          git push
+          cd ..
+
+  unix:
+    name: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        bench:
+          - {
+              script: "run-benchmarks",
+              timeout: 12,
+              title: "Luau Benchmarks",
+              cachegrindTitle: "Performance",
+              cachegrindIterCount: 20,
+            }
+        benchResultsRepo:
+          - { name: "luau-lang/benchmark-data", branch: "main" }
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Luau repository
+        uses: actions/checkout@v3
+
+      - name: Build Luau
+        run: make config=release luau luau-analyze
+
+      - uses: actions/setup-python@v3
+        with:
+          python-version: "3.9"
+          architecture: "x64"
+
+      - name: Install python dependencies
+        run: |
+          python -m pip install requests
+          python -m pip install --user numpy scipy matplotlib ipython jupyter pandas sympy nose
+
+      - name: Run benchmark
+        run: |
+          python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
+
+      - name: Install valgrind
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install valgrind
+
+      - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 | tee -a ${{ matrix.bench.script }}-output.txt
+
+      - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/bench.py "${{ matrix.bench.cachegrindTitle }}" ${{ matrix.bench.cachegrindIterCount }} | tee -a ${{ matrix.bench.script }}-output.txt
+
+      - name: Checkout Benchmark Results repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ matrix.benchResultsRepo.name }}
+          ref: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+          path: "./gh-pages"
+
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }}
+          tool: "benchmarkluau"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+
+      - name: Store ${{ matrix.bench.title }} result (CacheGrind)
+        if: matrix.os == 'ubuntu-latest'
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }} (CacheGrind)
+          tool: "roblox"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: github.event_name == 'push'
+        run: |
+          echo "Pushing benchmark results..."
+          cd gh-pages
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git add ./dev/bench/data.json
+          git commit -m "Add benchmarks results for ${{ github.sha }}"
+          git push
+          cd ..
+
+  static-analysis:
+    name: luau-analyze
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        bench:
+          - {
+              script: "run-analyze",
+              timeout: 12,
+              title: "Luau Analyze",
+              cachegrindTitle: "Performance",
+              cachegrindIterCount: 20,
+            }
+        benchResultsRepo:
+          - { name: "luau-lang/benchmark-data", branch: "main" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          token: "${{ secrets.BENCH_GITHUB_TOKEN }}"
+
+      - name: Build Luau
+        run: make config=release luau luau-analyze
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+          architecture: "x64"
+
+      - name: Install python dependencies
+        run: |
+          sudo pip install requests numpy scipy matplotlib ipython jupyter pandas sympy nose
+
+      - name: Install valgrind
+        run: |
+          sudo apt-get install valgrind
+
+      - name: Run Luau Analyze on static file
+        run: sudo python ./bench/measure_time.py ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee ${{ matrix.bench.script }}-output.txt
+
+      - name: Run ${{ matrix.bench.title }} (Cold Cachegrind)
+        run: sudo ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}Cold" 1 ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
+
+      - name: Run ${{ matrix.bench.title }} (Warm Cachegrind)
+        run: sudo bash ./scripts/run-with-cachegrind.sh python ./bench/measure_time.py "${{ matrix.bench.cachegrindTitle}}" 1  ./build/release/luau-analyze bench/static_analysis/LuauPolyfillMap.lua | tee -a ${{ matrix.bench.script }}-output.txt
+
+      - name: Checkout Benchmark Results repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ matrix.benchResultsRepo.name }}
+          ref: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+          path: "./gh-pages"
+
+      - name: Store ${{ matrix.bench.title }} result
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }}
+          tool: "benchmarkluau"
+
+          gh-pages-branch: "main"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+
+      - name: Store ${{ matrix.bench.title }} result (CacheGrind)
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: ${{ matrix.bench.title }}
+          tool: "roblox"
+          gh-pages-branch: "main"
+          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          external-data-json-path: ./gh-pages/dev/bench/data.json
+          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+
+      - name: Push benchmark results
+        if: github.event_name == 'push'
+        run: |
+          echo "Pushing benchmark results..."
+          cd gh-pages
+          git config user.name github-actions
+          git config user.email github@users.noreply.github.com
+          git add ./dev/bench/data.json
+          git commit -m "Add benchmarks results for ${{ github.sha }}"
+          git push
+          cd ..

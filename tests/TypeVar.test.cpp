@@ -184,8 +184,6 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_empty_union")
 
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
-    ScopedFastFlag sff{"LuauSealExports", true};
-
     TypeVar ftv11{FreeTypeVar{TypeLevel{}}};
 
     TypePackVar tp24{TypePack{{&ftv11}}};
@@ -275,7 +273,7 @@ TEST_CASE("tagging_tables")
 
 TEST_CASE("tagging_classes")
 {
-    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr}};
+    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
     CHECK(!Luau::hasTag(&base, "foo"));
     Luau::attachTag(&base, "foo");
     CHECK(Luau::hasTag(&base, "foo"));
@@ -283,8 +281,8 @@ TEST_CASE("tagging_classes")
 
 TEST_CASE("tagging_subclasses")
 {
-    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr}};
-    TypeVar derived{ClassTypeVar{"Derived", {}, &base, std::nullopt, {}, nullptr}};
+    TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
+    TypeVar derived{ClassTypeVar{"Derived", {}, &base, std::nullopt, {}, nullptr, "Test"}};
 
     CHECK(!Luau::hasTag(&base, "foo"));
     CHECK(!Luau::hasTag(&derived, "foo"));
@@ -315,23 +313,33 @@ TEST_CASE("tagging_props")
     CHECK(Luau::hasTag(prop, "foo"));
 }
 
-struct VisitCountTracker
+struct VisitCountTracker final : TypeVarOnceVisitor
 {
     std::unordered_map<TypeId, unsigned> tyVisits;
     std::unordered_map<TypePackId, unsigned> tpVisits;
 
-    void cycle(TypeId) {}
-    void cycle(TypePackId) {}
+    void cycle(TypeId) override {}
+    void cycle(TypePackId) override {}
 
     template<typename T>
     bool operator()(TypeId ty, const T& t)
+    {
+        return visit(ty);
+    }
+
+    template<typename T>
+    bool operator()(TypePackId tp, const T&)
+    {
+        return visit(tp);
+    }
+
+    bool visit(TypeId ty) override
     {
         tyVisits[ty]++;
         return true;
     }
 
-    template<typename T>
-    bool operator()(TypePackId tp, const T&)
+    bool visit(TypePackId tp) override
     {
         tpVisits[tp]++;
         return true;
@@ -349,8 +357,7 @@ local b: (T, T, T) -> T
     TypeId bType = requireType("b");
 
     VisitCountTracker tester;
-    DenseHashSet<void*> seen{nullptr};
-    visitTypeVarOnce(bType, tester, seen);
+    tester.traverse(bType);
 
     for (auto [_, count] : tester.tyVisits)
         CHECK_EQ(count, 1);
@@ -407,6 +414,26 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
     TypeVar union_{UnionTypeVar{{&trueBool, &falseBool, &stringType}}};
 
     CHECK(!isBoolean(&union_));
+}
+
+TEST_CASE("content_reassignment")
+{
+    ScopedFastFlag luauNonCopyableTypeVarFields{"LuauNonCopyableTypeVarFields", true};
+
+    TypeVar myAny{AnyTypeVar{}, /*presistent*/ true};
+    myAny.normal = true;
+    myAny.documentationSymbol = "@global/any";
+
+    TypeArena arena;
+
+    TypeId futureAny = arena.addType(FreeTypeVar{TypeLevel{}});
+    asMutable(futureAny)->reassign(myAny);
+
+    CHECK(get<AnyTypeVar>(futureAny) != nullptr);
+    CHECK(!futureAny->persistent);
+    CHECK(futureAny->normal);
+    CHECK(futureAny->documentationSymbol == "@global/any");
+    CHECK(futureAny->owningArena == &arena);
 }
 
 TEST_SUITE_END();

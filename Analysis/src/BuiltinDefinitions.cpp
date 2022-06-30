@@ -8,8 +8,6 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauAssertStripsFalsyTypes)
-LUAU_FASTFLAGVARIABLE(LuauTableCloneType, false)
 LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
@@ -21,16 +19,16 @@ LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 namespace Luau
 {
 
-static std::optional<ExprResult<TypePackId>> magicFunctionSelect(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
-static std::optional<ExprResult<TypePackId>> magicFunctionSetMetaTable(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
-static std::optional<ExprResult<TypePackId>> magicFunctionAssert(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
-static std::optional<ExprResult<TypePackId>> magicFunctionPack(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
-static std::optional<ExprResult<TypePackId>> magicFunctionRequire(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult);
+static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
+static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
+static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
+static std::optional<WithPredicate<TypePackId>> magicFunctionPack(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
+static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
 {
@@ -181,43 +179,12 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     LUAU_ASSERT(!typeChecker.globalTypes.typeVars.isFrozen());
     LUAU_ASSERT(!typeChecker.globalTypes.typePacks.isFrozen());
 
-    TypeId numberType = typeChecker.numberType;
-    TypeId booleanType = typeChecker.booleanType;
     TypeId nilType = typeChecker.nilType;
 
     TypeArena& arena = typeChecker.globalTypes;
 
-    TypePackId oneNumberPack = arena.addTypePack({numberType});
-    TypePackId oneBooleanPack = arena.addTypePack({booleanType});
-
-    TypePackId numberVariadicList = arena.addTypePack(TypePackVar{VariadicTypePack{numberType}});
-    TypePackId listOfAtLeastOneNumber = arena.addTypePack(TypePack{{numberType}, numberVariadicList});
-
-    TypeId listOfAtLeastOneNumberToNumberType = arena.addType(FunctionTypeVar{
-        listOfAtLeastOneNumber,
-        oneNumberPack,
-    });
-
-    TypeId listOfAtLeastZeroNumbersToNumberType = arena.addType(FunctionTypeVar{numberVariadicList, oneNumberPack});
-
     LoadDefinitionFileResult loadResult = Luau::loadDefinitionFile(typeChecker, typeChecker.globalScope, getBuiltinDefinitionSource(), "@luau");
     LUAU_ASSERT(loadResult.success);
-
-    TypeId mathLibType = getGlobalBinding(typeChecker, "math");
-    if (TableTypeVar* ttv = getMutable<TableTypeVar>(mathLibType))
-    {
-        ttv->props["min"] = makeProperty(listOfAtLeastOneNumberToNumberType, "@luau/global/math.min");
-        ttv->props["max"] = makeProperty(listOfAtLeastOneNumberToNumberType, "@luau/global/math.max");
-    }
-
-    TypeId bit32LibType = getGlobalBinding(typeChecker, "bit32");
-    if (TableTypeVar* ttv = getMutable<TableTypeVar>(bit32LibType))
-    {
-        ttv->props["band"] = makeProperty(listOfAtLeastZeroNumbersToNumberType, "@luau/global/bit32.band");
-        ttv->props["bor"] = makeProperty(listOfAtLeastZeroNumbersToNumberType, "@luau/global/bit32.bor");
-        ttv->props["bxor"] = makeProperty(listOfAtLeastZeroNumbersToNumberType, "@luau/global/bit32.bxor");
-        ttv->props["btest"] = makeProperty(arena.addType(FunctionTypeVar{listOfAtLeastOneNumber, oneBooleanPack}), "@luau/global/bit32.btest");
-    }
 
     TypeId genericK = arena.addType(GenericTypeVar{"K"});
     TypeId genericV = arena.addType(GenericTypeVar{"V"});
@@ -233,7 +200,7 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
 
     addGlobalBinding(typeChecker, "string", it->second.type, "@luau");
 
-    // next<K, V>(t: Table<K, V>, i: K | nil) -> (K, V)
+    // next<K, V>(t: Table<K, V>, i: K?) -> (K, V)
     TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(typeChecker, arena, genericK)}});
     addGlobalBinding(typeChecker, "next",
         arena.addType(FunctionTypeVar{{genericK, genericV}, {}, nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})}), "@luau");
@@ -243,8 +210,7 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     TypeId pairsNext = arena.addType(FunctionTypeVar{nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})});
     TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, nilType}});
 
-    // NOTE we are missing 'i: K | nil' argument in the first return types' argument.
-    // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>) -> (K, V), Table<K, V>, nil)
+    // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
     addGlobalBinding(typeChecker, "pairs", arena.addType(FunctionTypeVar{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
 
     TypeId genericMT = arena.addType(GenericTypeVar{"MT"});
@@ -289,9 +255,7 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     {
         // tabTy is a generic table type which we can't express via declaration syntax yet
         ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
-
-        if (FFlag::LuauTableCloneType)
-            ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
+        ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
 
         attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
     }
@@ -299,10 +263,10 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     attachMagicFunction(getGlobalBinding(typeChecker, "require"), magicFunctionRequire);
 }
 
-static std::optional<ExprResult<TypePackId>> magicFunctionSelect(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    auto [paramPack, _predicates] = exprResult;
+    auto [paramPack, _predicates] = withPredicate;
 
     (void)scope;
 
@@ -323,10 +287,10 @@ static std::optional<ExprResult<TypePackId>> magicFunctionSelect(
             if (size_t(offset) < v.size())
             {
                 std::vector<TypeId> result(v.begin() + offset, v.end());
-                return ExprResult<TypePackId>{typechecker.currentModule->internalTypes.addTypePack(TypePack{std::move(result), tail})};
+                return WithPredicate<TypePackId>{typechecker.currentModule->internalTypes.addTypePack(TypePack{std::move(result), tail})};
             }
             else if (tail)
-                return ExprResult<TypePackId>{*tail};
+                return WithPredicate<TypePackId>{*tail};
         }
 
         typechecker.reportError(TypeError{arg1->location, GenericError{"bad argument #1 to select (index out of range)"}});
@@ -334,16 +298,16 @@ static std::optional<ExprResult<TypePackId>> magicFunctionSelect(
     else if (AstExprConstantString* str = arg1->as<AstExprConstantString>())
     {
         if (str->value.size == 1 && str->value.data[0] == '#')
-            return ExprResult<TypePackId>{typechecker.currentModule->internalTypes.addTypePack({typechecker.numberType})};
+            return WithPredicate<TypePackId>{typechecker.currentModule->internalTypes.addTypePack({typechecker.numberType})};
     }
 
     return std::nullopt;
 }
 
-static std::optional<ExprResult<TypePackId>> magicFunctionSetMetaTable(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    auto [paramPack, _predicates] = exprResult;
+    auto [paramPack, _predicates] = withPredicate;
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
@@ -379,7 +343,7 @@ static std::optional<ExprResult<TypePackId>> magicFunctionSetMetaTable(
 
             if (FFlag::LuauSetMetaTableArgsCheck && expr.args.size < 1)
             {
-                return ExprResult<TypePackId>{};
+                return WithPredicate<TypePackId>{};
             }
 
             if (!FFlag::LuauSetMetaTableArgsCheck || !expr.self)
@@ -392,7 +356,7 @@ static std::optional<ExprResult<TypePackId>> magicFunctionSetMetaTable(
                 }
             }
 
-            return ExprResult<TypePackId>{arena.addTypePack({mtTy})};
+            return WithPredicate<TypePackId>{arena.addTypePack({mtTy})};
         }
     }
     else if (get<AnyTypeVar>(target) || get<ErrorTypeVar>(target) || isTableIntersection(target))
@@ -403,55 +367,43 @@ static std::optional<ExprResult<TypePackId>> magicFunctionSetMetaTable(
         typechecker.reportError(TypeError{expr.location, GenericError{"setmetatable should take a table"}});
     }
 
-    return ExprResult<TypePackId>{arena.addTypePack({target})};
+    return WithPredicate<TypePackId>{arena.addTypePack({target})};
 }
 
-static std::optional<ExprResult<TypePackId>> magicFunctionAssert(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    auto [paramPack, predicates] = exprResult;
+    auto [paramPack, predicates] = withPredicate;
 
-    if (FFlag::LuauAssertStripsFalsyTypes)
+    TypeArena& arena = typechecker.currentModule->internalTypes;
+
+    auto [head, tail] = flatten(paramPack);
+    if (head.empty() && tail)
     {
-        TypeArena& arena = typechecker.currentModule->internalTypes;
-
-        auto [head, tail] = flatten(paramPack);
-        if (head.empty() && tail)
-        {
-            std::optional<TypeId> fst = first(*tail);
-            if (!fst)
-                return ExprResult<TypePackId>{paramPack};
-            head.push_back(*fst);
-        }
-
-        typechecker.reportErrors(typechecker.resolve(predicates, scope, true));
-
-        if (head.size() > 0)
-        {
-            std::optional<TypeId> newhead = typechecker.pickTypesFromSense(head[0], true);
-            if (!newhead)
-                head = {typechecker.nilType};
-            else
-                head[0] = *newhead;
-        }
-
-        return ExprResult<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
+        std::optional<TypeId> fst = first(*tail);
+        if (!fst)
+            return WithPredicate<TypePackId>{paramPack};
+        head.push_back(*fst);
     }
-    else
+
+    typechecker.resolve(predicates, scope, true);
+
+    if (head.size() > 0)
     {
-        if (expr.args.size < 1)
-            return ExprResult<TypePackId>{paramPack};
-
-        typechecker.reportErrors(typechecker.resolve(predicates, scope, true));
-
-        return ExprResult<TypePackId>{paramPack};
+        std::optional<TypeId> newhead = typechecker.pickTypesFromSense(head[0], true);
+        if (!newhead)
+            head = {typechecker.nilType};
+        else
+            head[0] = *newhead;
     }
+
+    return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
 }
 
-static std::optional<ExprResult<TypePackId>> magicFunctionPack(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+static std::optional<WithPredicate<TypePackId>> magicFunctionPack(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    auto [paramPack, _predicates] = exprResult;
+    auto [paramPack, _predicates] = withPredicate;
 
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
@@ -484,7 +436,7 @@ static std::optional<ExprResult<TypePackId>> magicFunctionPack(
     TypeId packedTable = arena.addType(
         TableTypeVar{{{"n", {typechecker.numberType}}}, TableIndexer(typechecker.numberType, result), scope->level, TableState::Sealed});
 
-    return ExprResult<TypePackId>{arena.addTypePack({packedTable})};
+    return WithPredicate<TypePackId>{arena.addTypePack({packedTable})};
 }
 
 static bool checkRequirePath(TypeChecker& typechecker, AstExpr* expr)
@@ -509,8 +461,8 @@ static bool checkRequirePath(TypeChecker& typechecker, AstExpr* expr)
     return good;
 }
 
-static std::optional<ExprResult<TypePackId>> magicFunctionRequire(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, ExprResult<TypePackId> exprResult)
+static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
@@ -524,7 +476,7 @@ static std::optional<ExprResult<TypePackId>> magicFunctionRequire(
         return std::nullopt;
 
     if (auto moduleInfo = typechecker.resolver->resolveModuleInfo(typechecker.currentModuleName, expr))
-        return ExprResult<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};
+        return WithPredicate<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};
 
     return std::nullopt;
 }

@@ -488,7 +488,7 @@ function string.char(args: ...number): string
 Returns the string that contains a byte for every input number; all inputs must be integers in `[0..255]` range.
 
 ```
-function string.find(s: string, p: string, init: number?, plain: boolean?): (number?, number?)
+function string.find(s: string, p: string, init: number?, plain: boolean?): (number?, number?, ...string)
 ```
 
 Tries to find an instance of pattern `p` in the string `s`, starting from position `init` (defaults to 1). When `plain` is true, the search is using raw case-insensitive string equality, otherwise `p` should be a [string pattern](https://www.lua.org/manual/5.3/manual.html#6.4.1). If a match is found, returns the position of the match and the length of the match, followed by the pattern captures; otherwise returns `nil`.
@@ -536,7 +536,7 @@ function string.lower(s: string): string
 Returns a string where each byte corresponds to the lower-case ASCII version of the input byte in the source string.
 
 ```
-function string.match(s: string, p: string, init: number?): (number?, number?)
+function string.match(s: string, p: string, init: number?): ...string?
 ```
 
 Tries to find an instance of pattern `p` in the string `s`, starting from position `init` (defaults to 1). `p` should be a [string pattern](https://www.lua.org/manual/5.3/manual.html#6.4.1). If a match is found, returns all pattern captures, or entire matching substring if no captures are present, otherwise returns `nil`.
@@ -647,7 +647,7 @@ All functions in the `bit32` library treat input numbers as 32-bit unsigned inte
 function bit32.arshift(n: number, i: number): number
 ```
 
-Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift.
+Shifts `n` by `i` bits to the right (if `i` is negative, a left shift is performed instead). The most significant bit of `n` is propagated during the shift. When `i` is larger than 31, returns an integer with all bits set to the sign bit of `n`. When `i` is smaller than `-31`, 0 is returned.
 
 ```
 function bit32.band(args: ...number): number
@@ -695,7 +695,7 @@ Rotates `n` to the left by `i` bits (if `i` is negative, a right rotate is perfo
 function bit32.lshift(n: number, i: number): number
 ```
 
-Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead).
+Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is performed instead). When `i` is outside of `[-31..31]` range, returns 0.
 
 ```
 function bit32.replace(n: number, r: number, f: number, w: number?): number
@@ -713,7 +713,7 @@ Rotates `n` to the right by `i` bits (if `i` is negative, a left rotate is perfo
 function bit32.rshift(n: number, i: number): number
 ```
 
-Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead).
+Shifts `n` to the right by `i` bits (if `i` is negative, a left shift is performed instead). When `i` is outside of `[-31..31]` range, returns 0.
 
 ```
 function bit32.countlz(n: number): number

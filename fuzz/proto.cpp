@@ -103,7 +103,7 @@ int registerTypes(Luau::TypeChecker& env)
     // Vector3 stub
     TypeId vector3MetaType = arena.addType(TableTypeVar{});
 
-    TypeId vector3InstanceType = arena.addType(ClassTypeVar{"Vector3", {}, nullopt, vector3MetaType, {}, {}});
+    TypeId vector3InstanceType = arena.addType(ClassTypeVar{"Vector3", {}, nullopt, vector3MetaType, {}, {}, "Test"});
     getMutable<ClassTypeVar>(vector3InstanceType)->props = {
         {"X", {env.numberType}},
         {"Y", {env.numberType}},
@@ -117,7 +117,7 @@ int registerTypes(Luau::TypeChecker& env)
     env.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vector3InstanceType};
 
     // Instance stub
-    TypeId instanceType = arena.addType(ClassTypeVar{"Instance", {}, nullopt, nullopt, {}, {}});
+    TypeId instanceType = arena.addType(ClassTypeVar{"Instance", {}, nullopt, nullopt, {}, {}, "Test"});
     getMutable<ClassTypeVar>(instanceType)->props = {
         {"Name", {env.stringType}},
     };
@@ -125,7 +125,7 @@ int registerTypes(Luau::TypeChecker& env)
     env.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, instanceType};
 
     // Part stub
-    TypeId partType = arena.addType(ClassTypeVar{"Part", {}, instanceType, nullopt, {}, {}});
+    TypeId partType = arena.addType(ClassTypeVar{"Part", {}, instanceType, nullopt, {}, {}, "Test"});
     getMutable<ClassTypeVar>(partType)->props = {
         {"Position", {vector3InstanceType}},
     };
@@ -137,6 +137,21 @@ int registerTypes(Luau::TypeChecker& env)
 
     return 0;
 }
+
+static void setupFrontend(Luau::Frontend& frontend)
+{
+    registerTypes(frontend.typeChecker);
+    Luau::freeze(frontend.typeChecker.globalTypes);
+
+    registerTypes(frontend.typeCheckerForAutocomplete);
+    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+
+    frontend.iceHandler.onInternalError = [](const char* error) {
+        printf("ICE: %s\n", error);
+        LUAU_ASSERT(!"ICE");
+    };
+}
+
 struct FuzzFileResolver : Luau::FileResolver
 {
     std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
@@ -173,7 +188,7 @@ struct FuzzConfigResolver : Luau::ConfigResolver
 {
     FuzzConfigResolver()
     {
-        defaultConfig.mode = Luau::Mode::Nonstrict; // typecheckTwice option will cover Strict mode
+        defaultConfig.mode = Luau::Mode::Nonstrict;
         defaultConfig.enabledLint.warningMask = ~0ull;
         defaultConfig.parseOptions.captureComments = true;
     }
@@ -238,19 +253,11 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
     if (kFuzzTypeck)
     {
         static FuzzFileResolver fileResolver;
-        static Luau::NullConfigResolver configResolver;
+        static FuzzConfigResolver configResolver;
         static Luau::FrontendOptions options{true, true};
         static Luau::Frontend frontend(&fileResolver, &configResolver, options);
 
-        static int once = registerTypes(frontend.typeChecker);
-        (void)once;
-        static int once2 = (Luau::freeze(frontend.typeChecker.globalTypes), 0);
-        (void)once2;
-
-        frontend.iceHandler.onInternalError = [](const char* error) {
-            printf("ICE: %s\n", error);
-            LUAU_ASSERT(!"ICE");
-        };
+        static int once = (setupFrontend(frontend), 0);
 
         // restart
         frontend.clear();
@@ -275,6 +282,11 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
                 // lint (note that we need access to types so we need to do this with typeck in scope)
                 if (kFuzzLinter && result.errors.empty())
                     frontend.lint(name, std::nullopt);
+
+                // Second pass in strict mode (forced by auto-complete)
+                Luau::FrontendOptions opts;
+                opts.forAutocomplete = true;
+                frontend.check(name, opts);
             }
             catch (std::exception&)
             {

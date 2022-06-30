@@ -10,8 +10,6 @@
 #include "ldebug.h"
 #include "lvm.h"
 
-LUAU_FASTFLAGVARIABLE(LuauTableClone, false)
-
 static int foreachi(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -512,9 +510,6 @@ static int tisfrozen(lua_State* L)
 
 static int tclone(lua_State* L)
 {
-    if (!FFlag::LuauTableClone)
-        luaG_runerror(L, "table.clone is not available");
-
     luaL_checktype(L, 1, LUA_TTABLE);
     luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
 

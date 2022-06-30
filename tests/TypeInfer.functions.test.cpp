@@ -13,6 +13,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
 TEST_CASE_FIXTURE(Fixture, "tc_function")
@@ -43,7 +45,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_return_type")
     const FunctionTypeVar* takeFiveType = get<FunctionTypeVar>(requireType("take_five"));
     REQUIRE(takeFiveType != nullptr);
 
-    std::vector<TypeId> retVec = flatten(takeFiveType->retType).first;
+    std::vector<TypeId> retVec = flatten(takeFiveType->retTypes).first;
     REQUIRE(!retVec.empty());
 
     REQUIRE_EQ(*follow(retVec[0]), *typeChecker.numberType);
@@ -83,7 +85,7 @@ TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "vararg_function_is_quantified")
+TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
 {
     CheckResult result = check(R"(
         local T = {}
@@ -98,7 +100,7 @@ TEST_CASE_FIXTURE(Fixture, "vararg_function_is_quantified")
             end
 
             return result
-         end
+        end
 
         return T
     )");
@@ -274,6 +276,10 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
 {
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         function f(g)
             return f(f)
@@ -281,7 +287,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("t1 where t1 = (t1) -> ()", toString(requireType("f")));
+    CHECK_EQ("t1 where t1 = <a...>(t1) -> (a...)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "another_higher_order_function")
@@ -339,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "local_function")
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(h);
     REQUIRE(ftv != nullptr);
 
-    std::optional<TypeId> rt = first(ftv->retType);
+    std::optional<TypeId> rt = first(ftv->retTypes);
     REQUIRE(bool(rt));
 
     TypeId retType = follow(*rt);
@@ -355,7 +361,7 @@ TEST_CASE_FIXTURE(Fixture, "func_expr_doesnt_leak_free")
     LUAU_REQUIRE_NO_ERRORS(result);
     const Luau::FunctionTypeVar* fn = get<FunctionTypeVar>(requireType("p"));
     REQUIRE(fn);
-    auto ret = first(fn->retType);
+    auto ret = first(fn->retTypes);
     REQUIRE(ret);
     REQUIRE(get<GenericTypeVar>(follow(*ret)));
 }
@@ -454,7 +460,7 @@ TEST_CASE_FIXTURE(Fixture, "complicated_return_types_require_an_explicit_annotat
 
     const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("most_of_the_natural_numbers"));
 
-    std::optional<TypeId> retType = first(functionType->retType);
+    std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType);
     CHECK(get<UnionTypeVar>(*retType));
 }
@@ -481,10 +487,10 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
 
-    TypeId xType = argVec[1];
+    TypeId xType = follow(argVec[1]);
 
     CHECK_EQ(1, fArgs.size());
-    CHECK_EQ(xType, fArgs[0]);
+    CHECK_EQ(xType, follow(fArgs[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
@@ -549,7 +555,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
     CHECK(bool(argType->indexer));
 }
 
-TEST_CASE_FIXTURE(Fixture, "higher_order_function_4")
+TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
 {
     CheckResult result = check(R"(
         function bottomupmerge(comp, a, b, left, mid, right)
@@ -614,7 +620,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_4")
     CHECK_EQ(*arg0->indexer->indexResultType, *arg1Args[1]);
 }
 
-TEST_CASE_FIXTURE(Fixture, "mutual_recursion")
+TEST_CASE_FIXTURE(BuiltinsFixture, "mutual_recursion")
 {
     CheckResult result = check(R"(
         --!strict
@@ -633,7 +639,7 @@ TEST_CASE_FIXTURE(Fixture, "mutual_recursion")
     dumpErrors(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
+TEST_CASE_FIXTURE(BuiltinsFixture, "toposort_doesnt_break_mutual_recursion")
 {
     CheckResult result = check(R"(
         --!strict
@@ -650,6 +656,11 @@ TEST_CASE_FIXTURE(Fixture, "toposort_doesnt_break_mutual_recursion")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
 {
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -658,14 +669,14 @@ TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
         end
 
         return function()
-            return f():andThen()
+            return f()
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "it_is_ok_to_oversaturate_a_higher_order_function_argument")
+TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_oversaturate_a_higher_order_function_argument")
 {
     CheckResult result = check(R"(
         function onerror() end
@@ -783,15 +794,19 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
                                                                                       }}));
 }
 
-TEST_CASE_FIXTURE(Fixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
+TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
 {
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
-        function Test(a)
+        function Test(a): ...any
             return 1, ""
         end
-
 
         local tab = {}
         table.insert(tab, Test(1));
@@ -936,8 +951,6 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
 
 TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
 {
-    ScopedFastFlag sff{"LuauErrorRecoveryType", true};
-
     CheckResult result = check(R"(
         type Overload = ((string) -> string) & ((number, number) -> number)
         local abc: Overload
@@ -953,7 +966,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
     CHECK_EQ("string", toString(requireType("z")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
 {
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
@@ -1043,16 +1056,19 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    // Return type doesn't inference 'nil'
-    result = check(R"(
-function f(a: (number) -> nil) return a(4) end
-f(function(x) print(x) end)
-    )");
+    if (!FFlag::LuauLowerBoundsCalculation)
+    {
+        // Return type doesn't inference 'nil'
+        result = check(R"(
+            function f(a: (number) -> nil) return a(4) end
+            f(function(x) print(x) end)
+        )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments")
+TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
 {
     // Simple direct arg to arg propagation
     CheckResult result = check(R"(
@@ -1142,13 +1158,16 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    // Return type doesn't inference 'nil'
-    result = check(R"(
-function f(a: (number) -> nil) return a(4) end
-f(function(x) print(x) end)
-    )");
+    if (!FFlag::LuauLowerBoundsCalculation)
+    {
+        // Return type doesn't inference 'nil'
+        result = check(R"(
+            function f(a: (number) -> nil) return a(4) end
+            f(function(x) print(x) end)
+        )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments_outside_call")
@@ -1268,10 +1287,8 @@ caused by:
   Return #2 type is not compatible. Type 'string' could not be converted into 'boolean')");
 }
 
-TEST_CASE_FIXTURE(Fixture, "function_decl_quantify_right_type")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_quantify_right_type")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify2", true};
-
     fileResolver.source["game/isAMagicMock"] = R"(
 --!nonstrict
 return function(value)
@@ -1292,23 +1309,193 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "function_decl_non_self_sealed_overwrite")
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify2", true};
-
     CheckResult result = check(R"(
 function string.len(): number
     return 1
 end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // if 'string' library property was replaced with an internal module type, it will be freed and the next check will crash
+    frontend.clear();
+
+    result = check(R"(
+print(string.len('hello'))
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
+{
+    CheckResult result = check(R"(
+local t: { f: ((x: number) -> number)? } = {}
+
+function t.f(x)
+    print(x + 5)
+    return x .. "asd" -- 1st error: we know that return type is a number, not a string
+end
+
+t.f = function(x)
+    print(x + 5)
+    return x .. "asd" -- 2nd error: we know that return type is a number, not a string
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 'string' could not be converted into 'number')");
+    CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
+}
+
+TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types")
+{
+    const ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo(a: boolean, b: number)
+            if a then
+                return nil
+            else
+                return b
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(boolean, number) -> number?", toString(requireType("foo")));
+
+    // TODO: Test multiple returns
+    // Think of various cases where typepacks need to grow.  maybe consult other tests
+    // Basic normalization of ConstrainedTypeVars during quantification
+}
+
+TEST_CASE_FIXTURE(Fixture, "inconsistent_higher_order_function")
+{
+    const ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        function foo(f)
+            f(5)
+            f("six")
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<a...>((number | string) -> (a...)) -> ()", toString(requireType("foo")));
+}
+
+
+/* The bug here is that we are using the same level 2.0 for both the body of resolveDispatcher and the
+ * lambda useCallback.
+ *
+ * I think what we want to do is, at each scope level, never reuse the same sublevel.
+ *
+ * We also adjust checkBlock to consider the syntax `local x = function() ... end` to be sortable
+ * in the same way as `local function x() ... end`.  This causes the function `resolveDispatcher` to be
+ * checked before the lambda.
+ */
+TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local function resolveDispatcher()
+            return (nil :: any) :: {useCallback: (any) -> any}
+        end
+
+        local useCallback = function(deps: any)
+            return resolveDispatcher().useCallback(deps)
+        end
+    )");
+
+    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
+    // You get a TypeMismatch error where both types stringify the same.
+
+    CHECK(result.errors.empty());
+    if (!result.errors.empty())
+    {
+        for (const auto& e : result.errors)
+            printf("%s: %s\n", toString(e.location).c_str(), toString(e).c_str());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time2")
+{
+    CheckResult result = check(R"(
+        --!strict
+
+        local function resolveDispatcher()
+            return (nil :: any) :: {useContext: (number?) -> any}
+        end
+
+        local useContext
+        useContext = function(unstable_observedBits: number?)
+            resolveDispatcher().useContext(unstable_observedBits)
+        end
+    )");
+
+    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
+    // You get a TypeMismatch error where both types stringify the same.
+
+    CHECK(result.errors.empty());
+    if (!result.errors.empty())
+    {
+        for (const auto& e : result.errors)
+            printf("%s %s: %s\n", e.moduleName.c_str(), toString(e.location).c_str(), toString(e).c_str());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time3")
+{
+    CheckResult result = check(R"(
+        local foo
+
+        foo():bar(function()
+            return foo()
+        end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_unsealed_overwrite")
+{
+    CheckResult result = check(R"(
+local t = { f = nil :: ((x: number) -> number)? }
+
+function t.f(x: string): string -- 1st error: new function value type is incompatible
+    return x .. "asd"
+end
+
+t.f = function(x)
+    print(x + 5)
+    return x .. "asd" -- 2nd error: we know that return type is a number, not a string
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type '(string) -> string' could not be converted into '((number) -> number)?'
+caused by:
+  None of the union options are compatible. For example: Type '(string) -> string' could not be converted into '(number) -> number'
+caused by:
+  Argument #1 type is not compatible. Type 'number' could not be converted into 'string')");
+    CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
 }
 
 TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 {
-    ScopedFastFlag sff{"LuauAnyInIsOptionalIsOptional", true};
-
     CheckResult result = check(R"(
         local function f(x: any) end
         f()
@@ -1319,8 +1506,6 @@ TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "function_statement_sealed_table_assignment_through_indexer")
 {
-    ScopedFastFlag statFunctionSimplify{"LuauStatFunctionSimplify2", true};
-
     CheckResult result = check(R"(
 local t: {[string]: () -> number} = {}
 
@@ -1337,7 +1522,6 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
 {
-    ScopedFastFlag sff{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
     CheckResult result = check(R"(
     function test(a: number, b: string, ...)
     end
@@ -1359,8 +1543,6 @@ TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic")
 {
-    ScopedFastFlag sff1{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
-    ScopedFastFlag sff2{"LuauFixArgumentCountMismatchAmountWithGenericTypes", true};
     CheckResult result = check(R"(
 function test(a: number, b: string, ...)
     return 1
@@ -1384,10 +1566,8 @@ wrapper(test)
     CHECK(acm->isVariadic);
 }
 
-TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic_generic2")
+TEST_CASE_FIXTURE(BuiltinsFixture, "too_few_arguments_variadic_generic2")
 {
-    ScopedFastFlag sff1{"LuauArgCountMismatchSaysAtLeastWhenVariadic", true};
-    ScopedFastFlag sff2{"LuauFixArgumentCountMismatchAmountWithGenericTypes", true};
     CheckResult result = check(R"(
 function test(a: number, b: string, ...)
     return 1
@@ -1409,6 +1589,86 @@ pcall(wrapper, test)
     CHECK_EQ(2, acm->actual);
     CHECK_EQ(CountMismatch::Context::Arg, acm->context);
     CHECK(acm->isVariadic);
+}
+
+TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
+{
+    CheckResult result = check(R"(
+        function f()
+            return 5, f()
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(nullptr != get<OccursCheckFailed>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
+{
+    ScopedFastFlag sff[]{
+        {"LuauReturnTypeInferenceInNonstrict", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f() return end
+        local g = function() return f() end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauQuantifyConstrained", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local function foo(f)
+            f(5)
+            f("hi")
+            local function g()
+                return f
+            end
+            local h = g()
+            h(true)
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<a...>((boolean | number | string) -> (a...)) -> ()", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantified")
+{
+    ScopedFastFlag sff[]{
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauQuantifyConstrained", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f(o)
+            local t = {}
+            t[o] = true
+
+            local function foo(o)
+                o.m1(5)
+                t[o] = nil
+            end
+
+            o.m1("hi")
+
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    // TODO: check the normalized type of f
 }
 
 TEST_SUITE_END();
