@@ -19,6 +19,8 @@ but sealed and unsealed tables cannot.
 
 ## Design
 
+### Shape types
+
 Rename table types to shape types.
 
 Allow a class instance to be a member of a shape type if has all the named properties, and they have a matching type.
@@ -30,9 +32,13 @@ Allow a class to be a subtype of a table type if has all the named properties, a
 With these changes, `Part & { p : number }` is now an inhabited type, which it currently is not.
 
 Note that we can recover the current semantics if we also adopt the [Function and table types RFC](function-and-table-types.md),
-since the current semantics of `{ p : number }` is `table & { p : number }`.
+since the current semantics of `{ p : number }` is `table & { p : number }`. We may want dedicated syntax for this.
+
+### Built-in APIs
 
 We should audit the built-in APIs to check which ones require tables and which ones are also prepared to accept class instances.
+
+### Bounded generics
 
 This design will future-proof us for bounded generics, for example the inferred type of
 
@@ -46,6 +52,8 @@ will, with bounded generics and this RFC, have type:
   getP : <a, t <: {p:a}> (t) -> a
 ```
 
+### Related work
+
 This design is essentially the same as
 [WebIDL](https://webidl.spec.whatwg.org/#idl-objects), where what
 we're calling shape types they call "callback interfaces".
@@ -55,7 +63,17 @@ bindings](https://github.com/microsoft/TypeScript/blob/main/lib/lib.dom.d.ts)
 use interface types, so presumably TS interfaces are inhabited by both
 platform objects and ECMAScript objects.
 
-We should bikeshed the concept name: table types? Tably types? Shape types? Interface types?
+Flow distinguishes between class types and object types.
+```js
+class C { p : number }
+var c : C = new C()
+var t : { p : number } = c
+```
+gives error
+```
+var t : { p : number } = c
+                         ^ Cannot assign `c` to `t` because `C` [1] is not a subtype of object type [2].
+```
 
 ## Drawbacks
 
