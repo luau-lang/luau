@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Ast.h" // Used for some of the enumerations
 #include "Luau/NotNull.h"
 #include "Luau/Variant.h"
 
@@ -47,6 +48,21 @@ struct InstantiationConstraint
     TypeId superType;
 };
 
+struct UnaryConstraint
+{
+    AstExprUnary::Op op;
+    TypeId operandType;
+    TypeId resultType;
+};
+
+struct BinaryConstraint
+{
+    AstExprBinary::Op op;
+    TypeId leftType;
+    TypeId rightType;
+    TypeId resultType;
+};
+
 // name(namedType) = name
 struct NameConstraint
 {
@@ -54,7 +70,8 @@ struct NameConstraint
     std::string name;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, NameConstraint>;
+using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
+    BinaryConstraint, NameConstraint>;
 using ConstraintPtr = std::unique_ptr<struct Constraint>;
 
 struct Constraint

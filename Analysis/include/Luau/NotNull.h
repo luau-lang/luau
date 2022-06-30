@@ -26,7 +26,7 @@ namespace Luau
  * The explicit delete statement is permitted (but not recommended) on a
  * NotNull<T> through this implicit conversion.
  */
-template <typename T>
+template<typename T>
 struct NotNull
 {
     explicit NotNull(T* t)
@@ -38,10 +38,11 @@ struct NotNull
     explicit NotNull(std::nullptr_t) = delete;
     void operator=(std::nullptr_t) = delete;
 
-    template <typename U>
+    template<typename U>
     NotNull(NotNull<U> other)
         : ptr(other.get())
-    {}
+    {
+    }
 
     operator T*() const noexcept
     {
@@ -72,12 +73,13 @@ private:
     T* ptr;
 };
 
-}
+} // namespace Luau
 
 namespace std
 {
 
-template <typename T> struct hash<Luau::NotNull<T>>
+template<typename T>
+struct hash<Luau::NotNull<T>>
 {
     size_t operator()(const Luau::NotNull<T>& p) const
     {
@@ -85,4 +87,4 @@ template <typename T> struct hash<Luau::NotNull<T>>
     }
 };
 
-}
+} // namespace std

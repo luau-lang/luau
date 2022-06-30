@@ -13,7 +13,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 namespace Luau
 {
 
-[[maybe_unused]] static void dumpBindings(Scope2* scope, ToStringOptions& opts)
+[[maybe_unused]] static void dumpBindings(NotNull<Scope2> scope, ToStringOptions& opts)
 {
     for (const auto& [k, v] : scope->bindings)
     {
@@ -22,22 +22,22 @@ namespace Luau
         printf("\t%s : %s\n", k.c_str(), d.name.c_str());
     }
 
-    for (Scope2* child : scope->children)
+    for (NotNull<Scope2> child : scope->children)
         dumpBindings(child, opts);
 }
 
-static void dumpConstraints(Scope2* scope, ToStringOptions& opts)
+static void dumpConstraints(NotNull<Scope2> scope, ToStringOptions& opts)
 {
     for (const ConstraintPtr& c : scope->constraints)
     {
         printf("\t%s\n", toString(*c, opts).c_str());
     }
 
-    for (Scope2* child : scope->children)
+    for (NotNull<Scope2> child : scope->children)
         dumpConstraints(child, opts);
 }
 
-void dump(Scope2* rootScope, ToStringOptions& opts)
+void dump(NotNull<Scope2> rootScope, ToStringOptions& opts)
 {
     printf("constraints:\n");
     dumpConstraints(rootScope, opts);
@@ -55,7 +55,7 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
     }
 }
 
-ConstraintSolver::ConstraintSolver(TypeArena* arena, Scope2* rootScope)
+ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope2> rootScope)
     : arena(arena)
     , constraints(collectConstraints(rootScope))
     , rootScope(rootScope)
@@ -180,6 +180,10 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*gc, constraint, force);
     else if (auto ic = get<InstantiationConstraint>(*constraint))
         success = tryDispatch(*ic, constraint, force);
+    else if (auto uc = get<UnaryConstraint>(*constraint))
+        success = tryDispatch(*uc, constraint, force);
+    else if (auto bc = get<BinaryConstraint>(*constraint))
+        success = tryDispatch(*bc, constraint, force);
     else if (auto nc = get<NameConstraint>(*constraint))
         success = tryDispatch(*nc, constraint);
     else
@@ -246,8 +250,61 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
     LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
-    unify(c.subType, *instantiated);
+    if (isBlocked(c.subType))
+        asMutable(c.subType)->ty.emplace<BoundTypeVar>(*instantiated);
+    else
+        unify(c.subType, *instantiated);
+
     unblock(c.subType);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Constraint> constraint, bool force)
+{
+    TypeId operandType = follow(c.operandType);
+
+    if (isBlocked(operandType))
+        return block(operandType, constraint);
+
+    if (get<FreeTypeVar>(operandType))
+        return block(operandType, constraint);
+
+    LUAU_ASSERT(get<BlockedTypeVar>(c.resultType));
+
+    if (isNumber(operandType) || get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType))
+    {
+        asMutable(c.resultType)->ty.emplace<BoundTypeVar>(c.operandType);
+        return true;
+    }
+
+    LUAU_ASSERT(0); // TODO metatable handling
+    return false;
+}
+
+bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Constraint> constraint, bool force)
+{
+    TypeId leftType = follow(c.leftType);
+    TypeId rightType = follow(c.rightType);
+
+    if (isBlocked(leftType) || isBlocked(rightType))
+    {
+        block(leftType, constraint);
+        block(rightType, constraint);
+        return false;
+    }
+
+    if (isNumber(leftType))
+    {
+        unify(leftType, rightType);
+        asMutable(c.resultType)->ty.emplace<BoundTypeVar>(leftType);
+        return true;
+    }
+
+    if (get<FreeTypeVar>(leftType) && !force)
+        return block(leftType, constraint);
+
+    // TODO metatables, classes
 
     return true;
 }

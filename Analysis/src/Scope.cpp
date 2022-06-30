@@ -153,4 +153,19 @@ std::optional<TypeId> Scope2::lookupTypeBinding(const Name& name)
     return std::nullopt;
 }
 
+std::optional<TypePackId> Scope2::lookupTypePackBinding(const Name& name)
+{
+    Scope2* s = this;
+    while (s)
+    {
+        auto it = s->typePackBindings.find(name);
+        if (it != s->typePackBindings.end())
+            return it->second;
+
+        s = s->parent;
+    }
+
+    return std::nullopt;
+}
+
 } // namespace Luau

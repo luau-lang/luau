@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/BuiltinDefinitions.h"
 
+LUAU_FASTFLAG(LuauCheckLenMT)
+
 namespace Luau
 {
 
@@ -202,7 +204,13 @@ declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
 
 std::string getBuiltinDefinitionSource()
 {
-    return kBuiltinDefinitionLuaSrc;
+    std::string result = kBuiltinDefinitionLuaSrc;
+
+    // TODO: move this into kBuiltinDefinitionLuaSrc
+    if (FFlag::LuauCheckLenMT)
+        result += "declare function rawlen<K, V>(obj: {[K]: V} | string): number\n";
+
+    return result;
 }
 
 } // namespace Luau

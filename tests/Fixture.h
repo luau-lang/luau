@@ -133,6 +133,7 @@ struct Fixture
     TestConfigResolver configResolver;
     std::unique_ptr<SourceModule> sourceModule;
     Frontend frontend;
+    InternalErrorReporter ice;
     TypeChecker& typeChecker;
 
     std::string decorateWithTypes(const std::string& code);
@@ -160,7 +161,7 @@ struct BuiltinsFixture : Fixture
 struct ConstraintGraphBuilderFixture : Fixture
 {
     TypeArena arena;
-    ConstraintGraphBuilder cgb{&arena};
+    ConstraintGraphBuilder cgb;
 
     ScopedFastFlag forceTheFlag;
 

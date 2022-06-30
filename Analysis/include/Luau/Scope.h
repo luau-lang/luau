@@ -3,6 +3,7 @@
 
 #include "Luau/Constraint.h"
 #include "Luau/Location.h"
+#include "Luau/NotNull.h"
 #include "Luau/TypeVar.h"
 
 #include <unordered_map>
@@ -71,15 +72,18 @@ struct Scope2
     // is the module-level scope).
     Scope2* parent = nullptr;
     // All the children of this scope.
-    std::vector<Scope2*> children;
+    std::vector<NotNull<Scope2>> children;
     std::unordered_map<Symbol, TypeId> bindings; // TODO: I think this can be a DenseHashMap
     std::unordered_map<Name, TypeId> typeBindings;
+    std::unordered_map<Name, TypePackId> typePackBindings;
     TypePackId returnType;
+    std::optional<TypePackId> varargPack;
     // All constraints belonging to this scope.
     std::vector<ConstraintPtr> constraints;
 
     std::optional<TypeId> lookup(Symbol sym);
     std::optional<TypeId> lookupTypeBinding(const Name& name);
+    std::optional<TypePackId> lookupTypePackBinding(const Name& name);
 };
 
 } // namespace Luau

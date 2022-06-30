@@ -231,6 +231,8 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
+    ScopedFastFlag sff("LuauLenTM", true);
+
     runConformance("basic.lua");
 }
 
@@ -301,6 +303,8 @@ TEST_CASE("Errors")
 
 TEST_CASE("Events")
 {
+    ScopedFastFlag sff("LuauLenTM", true);
+
     runConformance("events.lua");
 }
 
@@ -475,6 +479,8 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
+    ScopedFastFlag sff("LuauCheckLenMT", true);
+
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;

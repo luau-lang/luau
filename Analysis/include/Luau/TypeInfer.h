@@ -173,7 +173,7 @@ struct TypeChecker
 
     TypeId checkFunctionName(const ScopePtr& scope, AstExpr& funName, TypeLevel level);
     std::pair<TypeId, ScopePtr> checkFunctionSignature(const ScopePtr& scope, int subLevel, const AstExprFunction& expr,
-        std::optional<Location> originalNameLoc, std::optional<TypeId> expectedType);
+        std::optional<Location> originalNameLoc, std::optional<TypeId> selfType, std::optional<TypeId> expectedType);
     void checkFunctionBody(const ScopePtr& scope, TypeId type, const AstExprFunction& function);
 
     void checkArgumentList(
@@ -424,6 +424,8 @@ private:
      * (exported, name) to properly deal with the case where the two duplicates do not have the same export status.
      */
     DenseHashSet<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
+
+    std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };
 
 // Unit test hook

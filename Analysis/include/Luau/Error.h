@@ -369,24 +369,25 @@ struct InternalErrorReporter
     [[noreturn]] void ice(const std::string& message);
 };
 
-class InternalCompilerError : public std::exception {
+class InternalCompilerError : public std::exception
+{
 public:
-  explicit InternalCompilerError(const std::string& message, const std::string& moduleName)
-  : message(message)
-  , moduleName(moduleName)
-  {
-  }
-  explicit InternalCompilerError(const std::string& message, const std::string& moduleName, const Location& location)
-  : message(message)
-  , moduleName(moduleName)
-  , location(location)
-  {
-  }
-  virtual const char* what() const throw();
+    explicit InternalCompilerError(const std::string& message, const std::string& moduleName)
+        : message(message)
+        , moduleName(moduleName)
+    {
+    }
+    explicit InternalCompilerError(const std::string& message, const std::string& moduleName, const Location& location)
+        : message(message)
+        , moduleName(moduleName)
+        , location(location)
+    {
+    }
+    virtual const char* what() const throw();
 
-  const std::string message;
-  const std::string moduleName;
-  const std::optional<Location> location;
+    const std::string message;
+    const std::string moduleName;
+    const std::optional<Location> location;
 };
 
 } // namespace Luau

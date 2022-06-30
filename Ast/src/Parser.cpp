@@ -5,6 +5,9 @@
 
 #include <algorithm>
 
+#include <errno.h>
+#include <limits.h>
+
 // Warning: If you are introducing new syntax, ensure that it is behind a separate
 // flag so that we don't break production games by reverting syntax changes.
 // See docs/SyntaxChanges.md for an explanation.
@@ -13,6 +16,18 @@ LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnTypeTokenConfusion, false)
+
+LUAU_FASTFLAGVARIABLE(LuauFixNamedFunctionParse, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseWrongNamedType, false)
+
+bool lua_telemetry_parsed_named_non_function_type = false;
+
+LUAU_FASTFLAGVARIABLE(LuauErrorParseIntegerIssues, false)
+LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
+
+bool lua_telemetry_parsed_out_of_range_bin_integer = false;
+bool lua_telemetry_parsed_out_of_range_hex_integer = false;
+bool lua_telemetry_parsed_double_prefix_hex_integer = false;
 
 namespace Luau
 {
@@ -1330,7 +1345,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
 {
     incrementRecursionCounter("type annotation");
 
-    bool monomorphic = lexer.current().type != '<';
+    bool forceFunctionType = lexer.current().type == '<';
 
     Lexeme begin = lexer.current();
 
@@ -1355,21 +1370,33 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
 
     AstArray<AstType*> paramTypes = copy(params);
 
+    if (FFlag::LuauFixNamedFunctionParse && !names.empty())
+        forceFunctionType = true;
+
     bool returnTypeIntroducer =
         FFlag::LuauReturnTypeTokenConfusion ? lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':' : false;
 
     // Not a function at all. Just a parenthesized type. Or maybe a type pack with a single element
-    if (params.size() == 1 && !varargAnnotation && monomorphic &&
+    if (params.size() == 1 && !varargAnnotation && !forceFunctionType &&
         (FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow))
     {
+        if (DFFlag::LuaReportParseWrongNamedType && !names.empty())
+            lua_telemetry_parsed_named_non_function_type = true;
+
         if (allowPack)
             return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, nullptr})};
         else
             return {params[0], {}};
     }
 
-    if ((FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow) && monomorphic && allowPack)
+    if ((FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow) && !forceFunctionType &&
+        allowPack)
+    {
+        if (DFFlag::LuaReportParseWrongNamedType && !names.empty())
+            lua_telemetry_parsed_named_non_function_type = true;
+
         return {{}, allocator.alloc<AstTypePackExplicit>(begin.location, AstTypeList{paramTypes, varargAnnotation})};
+    }
 
     AstArray<std::optional<AstArgumentName>> paramNames = copy(names);
 
@@ -2010,7 +2037,63 @@ AstExpr* Parser::parseAssertionExpr()
         return expr;
 }
 
-static bool parseNumber(double& result, const char* data)
+static const char* parseInteger(double& result, const char* data, int base)
+{
+    char* end = nullptr;
+    unsigned long long value = strtoull(data, &end, base);
+
+    if (value == ULLONG_MAX && errno == ERANGE)
+    {
+        // 'errno' might have been set before we called 'strtoull', but we don't want the overhead of resetting a TLS variable on each call
+        // so we only reset it when we get a result that might be an out-of-range error and parse again to make sure
+        errno = 0;
+        value = strtoull(data, &end, base);
+
+        if (errno == ERANGE)
+        {
+            if (DFFlag::LuaReportParseIntegerIssues)
+            {
+                if (base == 2)
+                    lua_telemetry_parsed_out_of_range_bin_integer = true;
+                else
+                    lua_telemetry_parsed_out_of_range_hex_integer = true;
+            }
+
+            if (FFlag::LuauErrorParseIntegerIssues)
+                return "Integer number value is out of range";
+        }
+    }
+
+    result = double(value);
+    return *end == 0 ? nullptr : "Malformed number";
+}
+
+static const char* parseNumber(double& result, const char* data)
+{
+    // binary literal
+    if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
+        return parseInteger(result, data + 2, 2);
+
+    // hexadecimal literal
+    if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])
+    {
+        if (DFFlag::LuaReportParseIntegerIssues && data[2] == '0' && (data[3] == 'x' || data[3] == 'X'))
+            lua_telemetry_parsed_double_prefix_hex_integer = true;
+
+        if (FFlag::LuauErrorParseIntegerIssues)
+            return parseInteger(result, data, 16); // keep prefix, it's handled by 'strtoull'
+        else
+            return parseInteger(result, data + 2, 16);
+    }
+
+    char* end = nullptr;
+    double value = strtod(data, &end);
+
+    result = value;
+    return *end == 0 ? nullptr : "Malformed number";
+}
+
+static bool parseNumber_DEPRECATED(double& result, const char* data)
 {
     // binary literal
     if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
@@ -2080,18 +2163,37 @@ AstExpr* Parser::parseSimpleExpr()
             scratchData.erase(std::remove(scratchData.begin(), scratchData.end(), '_'), scratchData.end());
         }
 
-        double value = 0;
-        if (parseNumber(value, scratchData.c_str()))
+        if (DFFlag::LuaReportParseIntegerIssues || FFlag::LuauErrorParseIntegerIssues)
         {
-            nextLexeme();
+            double value = 0;
+            if (const char* error = parseNumber(value, scratchData.c_str()))
+            {
+                nextLexeme();
 
-            return allocator.alloc<AstExprConstantNumber>(start, value);
+                return reportExprError(start, {}, "%s", error);
+            }
+            else
+            {
+                nextLexeme();
+
+                return allocator.alloc<AstExprConstantNumber>(start, value);
+            }
         }
         else
         {
-            nextLexeme();
+            double value = 0;
+            if (parseNumber_DEPRECATED(value, scratchData.c_str()))
+            {
+                nextLexeme();
 
-            return reportExprError(start, {}, "Malformed number");
+                return allocator.alloc<AstExprConstantNumber>(start, value);
+            }
+            else
+            {
+                nextLexeme();
+
+                return reportExprError(start, {}, "Malformed number");
+            }
         }
     }
     else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)

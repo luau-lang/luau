@@ -261,6 +261,8 @@ L1: RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
+    ScopedFastFlag sff("LuauCompileNoIpairs", true);
+
     // basic for loop: variable directly refers to internal iteration index (R2)
     CHECK_EQ("\n" + compileFunction0("for i=1,5 do print(i) end"), R"(
 LOADN R2 1
@@ -313,7 +315,7 @@ L0: GETIMPORT R5 3
 MOVE R6 R3
 MOVE R7 R4
 CALL R5 2 0
-L1: FORGLOOP_INEXT R0 L0
+L1: FORGLOOP R0 L0 2 [inext]
 RETURN R0 0
 )");
 
@@ -347,13 +349,15 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
+    ScopedFastFlag sff("LuauCompileNoIpairs", true);
+
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
 GETIMPORT R0 1
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP_INEXT R0 L0
-L0: FORGLOOP_INEXT R0 L0
+L0: FORGLOOP R0 L0 2 [inext]
 RETURN R0 0
 )");
 
@@ -364,7 +368,7 @@ MOVE R1 R0
 NEWTABLE R2 0 0
 CALL R1 1 3
 FORGPREP_INEXT R1 L0
-L0: FORGLOOP_INEXT R1 L0
+L0: FORGLOOP R1 L0 2 [inext]
 RETURN R0 0
 )");
 
@@ -374,7 +378,7 @@ GETUPVAL R0 0
 NEWTABLE R1 0 0
 CALL R0 1 3
 FORGPREP_INEXT R0 L0
-L0: FORGLOOP_INEXT R0 L0
+L0: FORGLOOP R0 L0 2 [inext]
 RETURN R0 0
 )");
 
@@ -2107,6 +2111,8 @@ RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
+    ScopedFastFlag sff("LuauCompileNoIpairs", true);
+
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
     for i=1,10 do
@@ -2169,7 +2175,7 @@ JUMPIFNOT R5 L1
 CLOSEUPVALS R3
 JUMP L3
 L1: CLOSEUPVALS R3
-L2: FORGLOOP_INEXT R0 L0
+L2: FORGLOOP R0 L0 1 [inext]
 L3: LOADN R0 0
 RETURN R0 1
 )");

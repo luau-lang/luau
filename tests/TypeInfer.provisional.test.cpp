@@ -499,4 +499,26 @@ TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
     CHECK_EQ("<a...>(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_function_with_no_returns")
+{
+    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+
+    CheckResult result = check(R"(
+        local T = {}
+        T.__index = T
+
+        function T.new()
+            local self = setmetatable({}, T)
+            return self:ctor() or self
+        end
+
+        function T:ctor()
+            -- oops, no return!
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Not all codepaths in this function return '{ @metatable T, {|  |} }, a...'.", toString(result.errors[0]));
+}
+
 TEST_SUITE_END();
