@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - callgrind
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -18,8 +19,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        bench:
-          - { title: "Luau Benchmarks (Callgrind)" }
+        compiler: [g++, clang++]
         benchResultsRepo:
           - { name: "luau-lang/benchmark-data", branch: "main" }
 
@@ -33,7 +33,7 @@ jobs:
           sudo apt-get install valgrind
 
       - name: Build Luau
-        run: make config=release CALLGRIND=1 luau
+        run: CXX=${{ matrix.compiler }} make config=release CALLGRIND=1 luau
 
       - name: Run benchmark
         run: |
@@ -50,7 +50,7 @@ jobs:
       - name: Store results
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
-          name: ${{ matrix.bench.title }}
+          name: callgrind ${{ matrix.compiler }}
           tool: "benchmarkluau"
           output-file-path: ./output.txt
           external-data-json-path: ./gh-pages/bench/data.json
