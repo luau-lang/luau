@@ -104,8 +104,7 @@ def getVmOutput(cmd):
             file = open(os.path.join(scriptdir, "callgrind.out"), "r")
             lines = file.readlines()
             return getCallgrindOutput(lines)
-        except e:
-            print(e)
+        except:
             return ""
     else:
         with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=scriptdir) as p:
