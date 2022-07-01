@@ -14,22 +14,17 @@ on:
 
 jobs:
   callgrind:
-    name: callgrind
+    name: ubuntu-callgrind
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest]
         bench:
-          - {
-              script: "run-benchmarks",
-              timeout: 12,
-              title: "Luau Benchmarks (Callgrind)",
-              cachegrindTitle: "Performance",
-              cachegrindIterCount: 20,
-            }
+          - { title: "Luau Benchmarks (Callgrind)" }
         benchResultsRepo:
           - { name: "luau-lang/benchmark-data", branch: "main" }
 
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout Luau repository
         uses: actions/checkout@v3
@@ -43,7 +38,7 @@ jobs:
 
       - name: Run benchmark
         run: |
-          python bench/bench.py --callgrind | tee ${{ matrix.bench.script }}-output.txt
+          python bench/bench.py --callgrind | tee output.txt
 
       - name: Checkout Benchmark Results repository
         uses: actions/checkout@v3
@@ -58,7 +53,7 @@ jobs:
         with:
           name: ${{ matrix.bench.title }}
           tool: "benchmarkluau"
-          output-file-path: ./${{ matrix.bench.script }}-output.txt
+          output-file-path: ./output.txt
           external-data-json-path: ./gh-pages/bench/data.json
           github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
