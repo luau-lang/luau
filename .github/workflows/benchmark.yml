@@ -39,7 +39,7 @@ jobs:
         run: |
           python bench/bench.py --callgrind --vm "./luau -O2" | tee output.txt
 
-      - name: Checkout Benchmark Results repository
+      - name: Checkout benchmark results
         uses: actions/checkout@v3
         with:
           repository: ${{ matrix.benchResultsRepo.name }}
