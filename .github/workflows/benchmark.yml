@@ -14,7 +14,7 @@ on:
 
 jobs:
   callgrind:
-    name: ubuntu-callgrind
+    name: callgrind ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -48,14 +48,13 @@ jobs:
           token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
 
-      - name: Store ${{ matrix.bench.title }} result
+      - name: Store results
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
           name: ${{ matrix.bench.title }}
           tool: "benchmarkluau"
           output-file-path: ./output.txt
           external-data-json-path: ./gh-pages/bench/data.json
-          github-token: ${{ secrets.BENCH_GITHUB_TOKEN }}
 
       - name: Push benchmark results
         if: github.event_name == 'push'
