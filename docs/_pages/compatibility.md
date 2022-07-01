@@ -54,7 +54,7 @@ Sandboxing challenges are [covered in the dedicated section](sandbox).
 | goto statement | ❌ | this complicates the compiler, makes control flow unstructured and doesn't address a significant need |
 | finalizers for tables | ❌ | no `__gc` support due to sandboxing and performance/complexity |
 | no more fenv for threads or functions | 😞 | we love this, but it breaks compatibility |
-| tables honor the `__len` metamethod | 🤷‍♀️ | performance implications, no strong use cases
+| tables honor the `__len` metamethod | ✔️ | |
 | hex and `\z` escapes in strings | ✔️ | |
 | support for hexadecimal floats | 🤷‍♀️ | no strong use cases |
 | order metamethods work for different types | ❌ | no strong use cases and more complicated semantics, compatibility and performance implications |
