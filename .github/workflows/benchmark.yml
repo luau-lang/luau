@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - callgrind
     paths-ignore:
       - "docs/**"
       - "papers/**"
