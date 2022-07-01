@@ -93,6 +93,10 @@ ifeq ($(config),fuzz)
 	LDFLAGS+=-fsanitize=address,fuzzer
 endif
 
+ifneq ($(CALLGRIND),)
+	CXXFLAGS+=-DCALLGRIND=$(CALLGRIND)
+endif
+
 # target-specific flags
 $(AST_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include
 $(COMPILER_OBJECTS): CXXFLAGS+=-std=c++17 -ICompiler/include -ICommon/include -IAst/include

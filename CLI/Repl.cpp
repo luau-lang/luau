@@ -21,6 +21,10 @@
 #include <fcntl.h>
 #endif
 
+#ifdef CALLGRIND
+#include <valgrind/callgrind.h>
+#endif
+
 #include <locale.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
@@ -166,6 +170,36 @@ static int lua_collectgarbage(lua_State* L)
     luaL_error(L, "collectgarbage must be called with 'count' or 'collect'");
 }
 
+#ifdef CALLGRIND
+static int lua_callgrind(lua_State* L)
+{
+    const char* option = luaL_checkstring(L, 1);
+
+    if (strcmp(option, "running") == 0)
+    {
+        int r = RUNNING_ON_VALGRIND;
+        lua_pushboolean(L, r);
+        return 1;
+    }
+
+    if (strcmp(option, "zero") == 0)
+    {
+        CALLGRIND_ZERO_STATS;
+        return 0;
+    }
+
+    if (strcmp(option, "dump") == 0)
+    {
+        const char* name = luaL_checkstring(L, 2);
+
+        CALLGRIND_DUMP_STATS_AT(name);
+        return 0;
+    }
+
+    luaL_error(L, "callgrind must be called with one of 'running', 'zero', 'dump'");
+}
+#endif
+
 void setupState(lua_State* L)
 {
     luaL_openlibs(L);
@@ -174,6 +208,9 @@ void setupState(lua_State* L)
         {"loadstring", lua_loadstring},
         {"require", lua_require},
         {"collectgarbage", lua_collectgarbage},
+#ifdef CALLGRIND
+        {"callgrind", lua_callgrind},
+#endif
         {NULL, NULL},
     };
 
