@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - master
-      - callgrind
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -14,7 +13,7 @@ on:
 
 jobs:
   callgrind:
-    name: callgrind ${{ matrix.os }}
+    name: callgrind ${{ matrix.compiler }}
     strategy:
       fail-fast: false
       matrix:
