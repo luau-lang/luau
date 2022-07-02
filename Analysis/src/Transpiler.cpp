@@ -385,7 +385,7 @@ struct Printer
         else if (const auto& a = expr.as<AstExprIndexName>())
         {
             visualize(*a->expr);
-            writer.symbol(".");
+            writer.symbol(std::string(1, a->op));
             writer.write(a->index.value);
         }
         else if (const auto& a = expr.as<AstExprIndexExpr>())
@@ -766,7 +766,7 @@ struct Printer
         else if (const auto& a = program.as<AstStatFunction>())
         {
             writer.keyword("function");
-            visualizeWithSelf(*a->name, a->func->self != nullptr);
+            visualize(*a->name);
             visualizeFunctionBody(*a->func);
         }
         else if (const auto& a = program.as<AstStatLocalFunction>())
