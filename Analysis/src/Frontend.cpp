@@ -496,6 +496,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             module->astTypes.clear();
             module->astExpectedTypes.clear();
             module->astOriginalCallTypes.clear();
+            module->astResolvedTypes.clear();
+            module->astResolvedTypePacks.clear();
             module->scopes.resize(1);
         }
 
