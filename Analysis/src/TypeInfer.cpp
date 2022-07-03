@@ -5085,7 +5085,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         // If the generic parameters and the type arguments are the same, we are about to
         // perform an identity substitution, which we can just short-circuit.
         if (sameTys && sameTps)
-            return tf->type;
+            return currentModule->astResolvedTypes[&annotation] = tf->type;
 
         return currentModule->astResolvedTypes[&annotation] = instantiateTypeFun(scope, *tf, typeParams, typePackParams, annotation.location);
     }
