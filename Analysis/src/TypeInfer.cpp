@@ -5200,9 +5200,10 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypeList
 
 TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack& annotation)
 {
+    TypePackId result;
     if (const AstTypePackVariadic* variadic = annotation.as<AstTypePackVariadic>())
     {
-        return currentModule->astResolvedTypePacks[&annotation] = addTypePack(TypePackVar{VariadicTypePack{resolveType(scope, *variadic->variadicType)}});
+        result = addTypePack(TypePackVar{VariadicTypePack{resolveType(scope, *variadic->variadicType)}});
     }
     else if (const AstTypePackGeneric* generic = annotation.as<AstTypePackGeneric>())
     {
@@ -5216,10 +5217,12 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
             else
                 reportError(TypeError{generic->location, UnknownSymbol{genericName, UnknownSymbol::Type}});
 
-            return currentModule->astResolvedTypePacks[&annotation] = errorRecoveryTypePack(scope);
+            result = errorRecoveryTypePack(scope);
         }
-
-        return currentModule->astResolvedTypePacks[&annotation] = *genericTy;
+        else
+        {
+            result = *genericTy;
+        }
     }
     else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
     {
@@ -5229,14 +5232,17 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
             types.push_back(resolveType(scope, *type));
 
         if (auto tailType = explicitTp->typeList.tailType)
-            return currentModule->astResolvedTypePacks[&annotation] = addTypePack(types, resolveTypePack(scope, *tailType));
-
-        return currentModule->astResolvedTypePacks[&annotation] = addTypePack(types);
+            result = addTypePack(types, resolveTypePack(scope, *tailType));
+        else
+            result = addTypePack(types);
     }
     else
     {
         ice("Unknown AstTypePack kind");
     }
+
+    currentModule->astResolvedTypePacks[&annotation] = result;
+    return result;
 }
 
 bool ApplyTypeFunction::isDirty(TypeId ty)
