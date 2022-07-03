@@ -4899,7 +4899,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
             if (lit->parameters.size != 1 || !lit->parameters.data[0].type)
             {
                 reportError(TypeError{annotation.location, GenericError{"_luau_print requires one generic parameter"}});
-                return errorRecoveryType(anyType);
+                return currentModule->astResolvedTypes[&annotation] = errorRecoveryType(anyType);
             }
 
             ToStringOptions opts;
@@ -4909,7 +4909,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
 
             TypeId param = resolveType(scope, *lit->parameters.data[0].type);
             luauPrintLine(format("_luau_print\t%s\t|\t%s", toString(param, opts).c_str(), toString(lit->location).c_str()));
-            return param;
+            return currentModule->astResolvedTypes[&annotation] = param;
         }
 
         else
@@ -4918,7 +4918,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         if (!tf)
         {
             if (lit->name == kParseNameError)
-                return errorRecoveryType(scope);
+                return currentModule->astResolvedTypes[&annotation] = errorRecoveryType(scope);
 
             std::string typeName;
             if (lit->prefix)
@@ -4930,11 +4930,11 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
             else
                 reportError(TypeError{annotation.location, UnknownSymbol{typeName, UnknownSymbol::Type}});
 
-            return errorRecoveryType(scope);
+            return currentModule->astResolvedTypes[&annotation] = errorRecoveryType(scope);
         }
 
         if (lit->parameters.size == 0 && tf->typeParams.empty() && tf->typePackParams.empty())
-            return tf->type;
+            return currentModule->astResolvedTypes[&annotation] = tf->type;
 
         bool parameterCountErrorReported = false;
         bool hasDefaultTypes = std::any_of(tf->typeParams.begin(), tf->typeParams.end(), [](auto&& el) {
@@ -5087,7 +5087,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         if (sameTys && sameTps)
             return tf->type;
 
-        return instantiateTypeFun(scope, *tf, typeParams, typePackParams, annotation.location);
+        return currentModule->astResolvedTypes[&annotation] = instantiateTypeFun(scope, *tf, typeParams, typePackParams, annotation.location);
     }
     else if (const auto& table = annotation.as<AstTypeTable>())
     {
@@ -5102,7 +5102,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
 
         TableTypeVar ttv{props, tableIndexer, scope->level, TableState::Sealed};
         ttv.definitionModuleName = currentModuleName;
-        return addType(std::move(ttv));
+        return currentModule->astResolvedTypes[&annotation] = addType(std::move(ttv));
     }
     else if (const auto& func = annotation.as<AstTypeFunction>())
     {
@@ -5139,12 +5139,12 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
                 ftv->argNames.push_back(std::nullopt);
         }
 
-        return fnType;
+        return currentModule->astResolvedTypes[&annotation] = fnType;
     }
     else if (auto typeOf = annotation.as<AstTypeTypeof>())
     {
         TypeId ty = checkExpr(scope, *typeOf->expr).type;
-        return ty;
+        return currentModule->astResolvedTypes[&annotation] = ty;
     }
     else if (const auto& un = annotation.as<AstTypeUnion>())
     {
@@ -5152,7 +5152,7 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
 
-        return addType(UnionTypeVar{types});
+        return currentModule->astResolvedTypes[&annotation] = addType(UnionTypeVar{types});
     }
     else if (const auto& un = annotation.as<AstTypeIntersection>())
     {
@@ -5160,22 +5160,22 @@ TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation
         for (AstType* ann : un->types)
             types.push_back(resolveType(scope, *ann));
 
-        return addType(IntersectionTypeVar{types});
+        return currentModule->astResolvedTypes[&annotation] = addType(IntersectionTypeVar{types});
     }
     else if (const auto& tsb = annotation.as<AstTypeSingletonBool>())
     {
-        return singletonType(tsb->value);
+        return currentModule->astResolvedTypes[&annotation] = singletonType(tsb->value);
     }
     else if (const auto& tss = annotation.as<AstTypeSingletonString>())
     {
-        return singletonType(std::string(tss->value.data, tss->value.size));
+        return currentModule->astResolvedTypes[&annotation] = singletonType(std::string(tss->value.data, tss->value.size));
     }
     else if (annotation.is<AstTypeError>())
-        return errorRecoveryType(scope);
+        return currentModule->astResolvedTypes[&annotation] = errorRecoveryType(scope);
     else
     {
         reportError(TypeError{annotation.location, GenericError{"Unknown type annotation?"}});
-        return errorRecoveryType(scope);
+        return currentModule->astResolvedTypes[&annotation] = errorRecoveryType(scope);
     }
 }
 
@@ -5202,7 +5202,7 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
 {
     if (const AstTypePackVariadic* variadic = annotation.as<AstTypePackVariadic>())
     {
-        return addTypePack(TypePackVar{VariadicTypePack{resolveType(scope, *variadic->variadicType)}});
+        return currentModule->astResolvedTypePacks[&annotation] = addTypePack(TypePackVar{VariadicTypePack{resolveType(scope, *variadic->variadicType)}});
     }
     else if (const AstTypePackGeneric* generic = annotation.as<AstTypePackGeneric>())
     {
@@ -5216,10 +5216,10 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
             else
                 reportError(TypeError{generic->location, UnknownSymbol{genericName, UnknownSymbol::Type}});
 
-            return errorRecoveryTypePack(scope);
+            return currentModule->astResolvedTypePacks[&annotation] = errorRecoveryTypePack(scope);
         }
 
-        return *genericTy;
+        return currentModule->astResolvedTypePacks[&annotation] = *genericTy;
     }
     else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
     {
@@ -5229,9 +5229,9 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
             types.push_back(resolveType(scope, *type));
 
         if (auto tailType = explicitTp->typeList.tailType)
-            return addTypePack(types, resolveTypePack(scope, *tailType));
+            return currentModule->astResolvedTypePacks[&annotation] = addTypePack(types, resolveTypePack(scope, *tailType));
 
-        return addTypePack(types);
+        return currentModule->astResolvedTypePacks[&annotation] = addTypePack(types);
     }
     else
     {
