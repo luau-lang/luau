@@ -345,6 +345,7 @@ private:
     TypePackId freshTypePack(TypeLevel level);
 
     TypeId resolveType(const ScopePtr& scope, const AstType& annotation);
+    TypeId resolveTypeWorker(const ScopePtr& scope, const AstType& annotation);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypeList& types);
     TypePackId resolveTypePack(const ScopePtr& scope, const AstTypePack& annotation);
     TypeId instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams,
