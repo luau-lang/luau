@@ -1003,4 +1003,27 @@ TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_
     )");
 }
 
+TEST_CASE_FIXTURE(Fixture, "types stored in astResolvedTypes")
+{
+    CheckResult result = check(R"(
+type alias = typeof("hello")
+local function foo(param: alias)
+end
+    )");
+
+    auto node = findNodeAtPosition(*getMainSourceModule(), {2, 16});
+    auto ty = lookupType("alias");
+    REQUIRE(node);
+    REQUIRE(node->is<AstExprFunction>());
+    REQUIRE(ty);
+
+    auto func = node->as<AstExprFunction>();
+    REQUIRE(func->args.size == 1);
+
+    auto arg = *func->args.begin();
+    auto annotation = arg->annotation;
+
+    CHECK_EQ(*getMainModule()->astResolvedTypes.find(annotation), *ty);
+}
+
 TEST_SUITE_END();
