@@ -642,6 +642,19 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
                 result->bindings[name].typeId = typeChecker.anyType;
         }
     }
+    
+    if (!config.globalTypePaths.empty())
+    {
+        result = std::make_shared<Scope>(result);
+        for (const std::string& path : config.globalTypePaths)
+        {
+            auto source = fileResolver->readSource(path);
+            if (!source)
+                continue;
+
+            loadDefinitionFile(typeChecker, typeChecker.globalScope, source->source, path);
+        }
+    }
 
     return result;
 }

@@ -33,6 +33,7 @@ struct Config
     bool typeErrors = true;
 
     std::vector<std::string> globals;
+    std::vector<std::string> globalTypePaths;
 };
 
 struct ConfigResolver
