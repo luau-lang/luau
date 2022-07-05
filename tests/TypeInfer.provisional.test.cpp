@@ -518,7 +518,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_f
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Not all codepaths in this function return '{ @metatable T, {|  |} }, a...'.", toString(result.errors[0]));
+    CHECK_EQ("Not all codepaths in this function return 'self, a...'.", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();
