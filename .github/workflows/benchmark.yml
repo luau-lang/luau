@@ -74,7 +74,7 @@ jobs:
           name: callgrind ${{ matrix.compiler }}
           tool: "benchmarkluau"
           output-file-path: ./bench-output.txt
-          external-data-json-path: ./gh-pages/bench/data.json
+          external-data-json-path: ./gh-pages/bench.json
 
       - name: Store results (analyze)
         uses: Roblox/rhysd-github-action-benchmark@v-luau
@@ -82,7 +82,7 @@ jobs:
           name: luau-analyze
           tool: "benchmarkluau"
           output-file-path: ./analyze-output.txt
-          external-data-json-path: ./gh-pages/analyze/data.json
+          external-data-json-path: ./gh-pages/analyze.json
 
       - name: Store results (compile)
         uses: Roblox/rhysd-github-action-benchmark@v-luau
@@ -90,7 +90,7 @@ jobs:
           name: luau --compile
           tool: "benchmarkluau"
           output-file-path: ./compile-output.txt
-          external-data-json-path: ./gh-pages/compile/data.json
+          external-data-json-path: ./gh-pages/compile.json
 
       - name: Push benchmark results
         if: github.event_name == 'push'
@@ -99,7 +99,7 @@ jobs:
           cd gh-pages
           git config user.name github-actions
           git config user.email github@users.noreply.github.com
-          git add ./bench/data.json ./analyze/data.json ./compile/data.json
+          git add *.json
           git commit -m "Add benchmarks results for ${{ github.sha }}"
           git push
           cd ..
