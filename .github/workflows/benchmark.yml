@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - benchmark
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -32,11 +33,33 @@ jobs:
           sudo apt-get install valgrind
 
       - name: Build Luau
-        run: CXX=${{ matrix.compiler }} make config=release CALLGRIND=1 luau
+        run: CXX=${{ matrix.compiler }} make config=release CALLGRIND=1 luau luau-analyze
 
-      - name: Run benchmark
+      - name: Run benchmark (bench)
         run: |
-          python bench/bench.py --callgrind --vm "./luau -O2" | tee output.txt
+          python bench/bench.py --callgrind --vm "./luau -O2" | tee -a bench-output.txt
+
+      - name: Run benchmark (analyze)
+        run: |
+          filter() {
+            awk '/.*I\s+refs:\s+[0-9,]+/ {gsub(",", "", $4); X=$4} END {print "SUCCESS: '$1' : " X/1e7 "ms +/- 0% on luau-analyze"}'
+          }
+          valgrind --tool=callgrind ./luau-analyze --mode=nonstrict bench/other/LuauPolyfillMap.lua 2>&1 | filter map-nonstrict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=strict bench/other/LuauPolyfillMap.lua 2>&1 | filter map-strict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=nonstrict bench/other/regex.lua 2>&1 | filter regex-nonstrict | tee -a analyze-output.txt
+          valgrind --tool=callgrind ./luau-analyze --mode=strict bench/other/regex.lua 2>&1 | filter regex-strict | tee -a analyze-output.txt
+
+      - name: Run benchmark (compile)
+        run: |
+          filter() {
+            awk '/.*I\s+refs:\s+[0-9,]+/ {gsub(",", "", $4); X=$4} END {print "SUCCESS: '$1' : " X/1e7 "ms +/- 0% on luau --compile"}'
+          }
+          valgrind --tool=callgrind ./luau --compile=null -O0 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O0 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau --compile=null -O1 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O1 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau --compile=null -O2 bench/other/LuauPolyfillMap.lua 2>&1 | filter map-O2 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau --compile=null -O0 bench/other/regex.lua 2>&1 | filter regex-O0 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau --compile=null -O1 bench/other/regex.lua 2>&1 | filter regex-O1 | tee -a compile-output.txt
+          valgrind --tool=callgrind ./luau --compile=null -O2 bench/other/regex.lua 2>&1 | filter regex-O2 | tee -a compile-output.txt
 
       - name: Checkout benchmark results
         uses: actions/checkout@v3
@@ -46,13 +69,29 @@ jobs:
           token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
 
-      - name: Store results
+      - name: Store results (bench)
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
           name: callgrind ${{ matrix.compiler }}
           tool: "benchmarkluau"
-          output-file-path: ./output.txt
+          output-file-path: ./bench-output.txt
           external-data-json-path: ./gh-pages/bench/data.json
+
+      - name: Store results (analyze)
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: luau-analyze
+          tool: "benchmarkluau"
+          output-file-path: ./analyze-output.txt
+          external-data-json-path: ./gh-pages/analyze/data.json
+
+      - name: Store results (compile)
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: luau --compile
+          tool: "benchmarkluau"
+          output-file-path: ./compile-output.txt
+          external-data-json-path: ./gh-pages/compile/data.json
 
       - name: Push benchmark results
         if: github.event_name == 'push'
@@ -61,7 +100,7 @@ jobs:
           cd gh-pages
           git config user.name github-actions
           git config user.email github@users.noreply.github.com
-          git add ./bench/data.json
+          git add ./bench/data.json ./analyze/data.json ./compile/data.json
           git commit -m "Add benchmarks results for ${{ github.sha }}"
           git push
           cd ..

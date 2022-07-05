@@ -112,6 +112,7 @@ static void displayHelp(const char* argv0)
     printf("Available options:\n");
     printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
     printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
+    printf("  --mode=strict: default to strict mode when typechecking\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
 }
 
@@ -178,9 +179,9 @@ struct CliConfigResolver : Luau::ConfigResolver
     mutable std::unordered_map<std::string, Luau::Config> configCache;
     mutable std::vector<std::pair<std::string, std::string>> configErrors;
 
-    CliConfigResolver()
+    CliConfigResolver(Luau::Mode mode)
     {
-        defaultConfig.mode = Luau::Mode::Nonstrict;
+        defaultConfig.mode = mode;
     }
 
     const Luau::Config& getConfig(const Luau::ModuleName& name) const override
@@ -229,6 +230,7 @@ int main(int argc, char** argv)
     }
 
     ReportFormat format = ReportFormat::Default;
+    Luau::Mode mode = Luau::Mode::Nonstrict;
     bool annotate = false;
 
     for (int i = 1; i < argc; ++i)
@@ -240,6 +242,8 @@ int main(int argc, char** argv)
             format = ReportFormat::Luacheck;
         else if (strcmp(argv[i], "--formatter=gnu") == 0)
             format = ReportFormat::Gnu;
+        else if (strcmp(argv[i], "--mode=strict") == 0)
+            mode = Luau::Mode::Strict;
         else if (strcmp(argv[i], "--annotate") == 0)
             annotate = true;
         else if (strcmp(argv[i], "--timetrace") == 0)
@@ -258,7 +262,7 @@ int main(int argc, char** argv)
     frontendOptions.retainFullTypeGraphs = annotate;
 
     CliFileResolver fileResolver;
-    CliConfigResolver configResolver;
+    CliConfigResolver configResolver(mode);
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
     Luau::registerBuiltinTypes(frontend.typeChecker);

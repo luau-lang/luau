@@ -1,5 +1,4 @@
 -- This file is part of the Roblox luau-polyfill repository and is licensed under MIT License; see LICENSE.txt for details
---!nonstrict
 -- #region Array
 -- Array related
 local Array = {}
