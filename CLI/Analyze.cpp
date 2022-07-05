@@ -8,6 +8,10 @@
 
 #include "FileUtils.h"
 
+#ifdef CALLGRIND
+#include <valgrind/callgrind.h>
+#endif
+
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 LUAU_FASTFLAG(LuauTypeMismatchModuleNameResolution)
 
@@ -267,6 +271,10 @@ int main(int argc, char** argv)
 
     Luau::registerBuiltinTypes(frontend.typeChecker);
     Luau::freeze(frontend.typeChecker.globalTypes);
+
+#ifdef CALLGRIND
+    CALLGRIND_ZERO_STATS;
+#endif
 
     std::vector<std::string> files = getSourceFiles(argc, argv);
 
