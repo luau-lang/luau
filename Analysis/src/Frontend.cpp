@@ -645,6 +645,8 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
     
     if (!config.globalTypePaths.empty())
     {
+        unfreeze(typeChecker.globalTypes);
+
         result = std::make_shared<Scope>(result);
         for (const std::string& path : config.globalTypePaths)
         {
@@ -654,6 +656,8 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
 
             loadDefinitionFile(typeChecker, typeChecker.globalScope, source->source, path);
         }
+
+        freeze(typeChecker.globalTypes);
     }
 
     return result;
