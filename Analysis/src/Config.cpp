@@ -4,8 +4,6 @@
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
-#include <filesystem>
-
 namespace
 {
 
@@ -106,15 +104,6 @@ Error parseLintRuleString(LintOptions& enabledLints, LintOptions& fatalLints, co
             return Error{"In key " + warningName + ": " + *err};
     }
 
-    return std::nullopt;
-}
-
-Error parseFilePath(std::vector<std::string>& paths, const std::string& value) {
-    // The exists check could be invalid, since we use the frontend file resolver to read the contents.
-    if (value.empty() || !std::filesystem::exists(value))
-        return Error{"Unkown file path: " + value};
-    
-    paths.push_back(value);
     return std::nullopt;
 }
 
@@ -272,7 +261,10 @@ Error parseConfig(const std::string& contents, Config& config, bool compat)
             return std::nullopt;
         }
         else if (keys.size() == 1 && keys[0] == "globalTypePaths")
-            return parseFilePath(config.globalTypePaths, value);
+        {
+            config.globalTypePaths.push_back(value);
+            return std::nullopt;
+        }
         else if (compat && keys.size() == 2 && keys[0] == "language" && keys[1] == "mode")
             return parseModeString(config.mode, value, compat);
         else

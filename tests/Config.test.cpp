@@ -8,7 +8,6 @@
 #include "doctest.h"
 
 #include <iostream>
-#include <fstream>
 
 using namespace Luau;
 
@@ -137,33 +136,18 @@ TEST_CASE("extra_globals")
 
 TEST_CASE("global_type_paths")
 {
-    // This could be done with a temp file!
-    std::ofstream file("./globalTypePathsTest.lua");
-    file.close();
-
     Config config;
     auto err = parseConfig(R"(
-        {"globalTypePaths": ["./globalTypePathsTest.lua"]}
-    )",
+{
+    "globalTypePaths": ["./globalTypePathsTest.lua"]
+}
+)",
         config);
-
-    std::remove("./globalTypePathsTest.lua");    
 
     REQUIRE(!err);
 
     CHECK(config.globalTypePaths.size() == 1);
     CHECK(config.globalTypePaths[0] == "./globalTypePathsTest.lua");
-}
-
-TEST_CASE("global_type_paths_unable_to_find_file") {
-    Config config;
-    auto err = parseConfig(R"(
-        {"globalTypePaths": ["./THIS_FILE_SHOULD_NOT_EXIST.lua"]}
-    )",
-        config);
-
-    REQUIRE(err);
-    CHECK(err.value() == "Unkown file path: ./THIS_FILE_SHOULD_NOT_EXIST.lua");
 }
 
 TEST_CASE("lint_rules_compat")
