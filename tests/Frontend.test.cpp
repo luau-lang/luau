@@ -873,6 +873,29 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
     LUAU_REQUIRE_ERROR_COUNT(1, resultB);
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "global_types_in_scope")
+{
+    auto& typePaths = configResolver.defaultConfig.globalTypePaths;
+    typePaths.push_back("myTypes");
+    typePaths.push_back("myOtherTypes");
+
+    fileResolver.source["myTypes"] = R"(
+    export type Foo = number | string
+    )";
+    fileResolver.source["myOtherTypes"] = R"(
+    export type Bar = string | boolean
+    )";
+
+    fileResolver.source["A"] = R"(
+    --!nonstrict
+    local foo: Foo = 1
+    local bar: Bar = false
+    )";
+
+    CheckResult result = frontend.check("A");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(FrontendFixture, "ast_node_at_position")
 {
     check(R"(
