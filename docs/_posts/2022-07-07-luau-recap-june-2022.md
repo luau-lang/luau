@@ -11,7 +11,7 @@ Luau is our new language that you can read more about at [https://luau-lang.org]
 
 A common problem that Luau has is that it primarily works by inspecting expressions in your program and narrowing the _upper bounds_ of the values that can inhabit particular variables.  In other words, each time we see a variable used, we eliminate possible sets of values from that variable's domain.
 
-There are lots of cases where this isn't actually the best thing.  Take this function for instance:
+There are some important cases where this doesn't produce a helpful result.  Take this function for instance:
 
 ```lua
 function find_first_if(vec, f)
@@ -27,84 +27,27 @@ end
 
 Luau scans the function from top to bottom and first sees the line `return i`.  It draws from this the inference that `find_first_if` must return the type of `i`, namely `number`.
 
-This is fine, but we then see the line `return nil` and this is where things go sour.  Since we are always narrowing, we take from this line the assumption that the return type of the function is `nil`.  Unfortunately, we already think that the function must return `number` so we report an error.
+This is fine, but things go sour when we see the line `return nil`.  Since we are always narrowing, we take from this line the judgement that the return type of the function is `nil`.  Since we have already concluded that the function must return `number`, Luau reports an error.
 
 What we actually want to do in this case is to take these `return` statements as inferences about the _lower_ bound of the function's return type.  Instead of saying "this function must return values of type `nil`," we should instead say "this function may _also_ return values of type `nil`."
 
 Lower bounds calculation does precisely this.  Moving forward, Luau will instead infer the type `number?` for the above function.
 
-This does have one unfortunate consequence: If a function has no return type annotation, we will no longer ever report a type error on a `return` statement.  We think this is the right balance, but we'll be keeping an eye on things just to be sure.
+This does have one unfortunate consequence: If a function has no return type annotation, we will no longer ever report a type error on a `return` statement.  We think this is the right balance but we'll be keeping an eye on things just to be sure.
 
-# Shared `self` Types for Objects
+Lower-bounds calculation is larger and a little bit riskier than other things we've been working on so we've set up a beta feature in Roblox Studio to enable them.  It is called "Experimental Luau language features."
 
-Another problem that has plagued us for quite some time is how exactly we should do type inference of OO patterns.  The following has been a constant thorn in our side.  Consider the following example:
+Please try it out and let us know what you think!
 
-```lua
-local T = {}
+## Known bug
 
-function T:one()
-    self:two()
-end
-
-function T:two()
-    if true then
-        self:one()
-    else
-        self:three()
-    end
-end
-
-function T:three()
-    self:two()
-end
-```
-
-To the casual eye, this should be simple to infer, but there are technicalities that can throw a wrench in the works.  First off, it is allowed to explicitly pass a `self` argument to any of these methods.  eg `T.two(x)`  Luau takes this into account when inferring types, but doing so forces us to produce a very unfortunate type for this code:
+We have a known bug with certain kinds of cyclic types when lower-bounds calculation is enabled.  The following, for instance, is known to be problematic.
 
 ```lua
-{
-    one: <a...>(t1) -> (),
-    three: <b...>(t3) -> (),
-    two: <c..., d...>(t2) -> ()
-}
-where
-    t1 = {+
-        two: (t1) -> (a...) 
-    +};
-    t2 = {+
-        one: (t2) -> (c...),
-        three: (t2) -> (d...)
-    +};
-    t3 = {+
-        two: (t3) -> (b...)
-    +}
+type T = {T?}? -- spuriously reduces to {nil}?
 ```
 
-We can see here that Luau is inferring a distinct `self` type for each method, but some of those `self`s themselves call other methods, which gives us these extra incomplete images of the intended type.  In real, nontrivial code, this pattern can quickly cause the size of a class's type to balloon out of control.  This results in confusing error messages and even performance bottlenecks in the type checker.
-
-Moving forward, we are going to take a slightly more opinionated stance on this use case by having Luau assume that every method on a table (that is, every function declared with the syntax `function A:b`) takes the same `self` type as every other method.
-
-Luau will now infer a much nicer type for this code:
-
-```lua
-{
-    one: <a..., b..., c...>(self: t1) -> (),
-    three: <a..., b..., c...>(self: t1) -> (),
-    two: <a..., b..., c...>(self: t1) -> ()
-} where t1 = {+
-    one: (t1) -> (a...),
-    three: (t1) -> (b...),
-    two: (t1) -> (c...)
-+}
-```
-
-We still have one duplicated table type to sort out on our end, but this is clearly much closer to what the author intended.
-
-## Beta Feature
-
-Shared-self and lower-bounds calculation are larger and a little bit riskier than other things we've been working on, so we've set up a beta feature in Roblox Studio to enable them.  It is called "Experimental Luau language features."
-
-Please try them out and let us know what you think!
+We hope to have this fixed soon.
 
 # All table literals now result in unsealed tables
 
