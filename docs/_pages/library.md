@@ -701,7 +701,7 @@ Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is perform
 function bit32.replace(n: number, r: number, f: number, w: number?): number
 ```
 
-Replaces bits at positions `[f..w]` of number `n` with `r` and returns the resulting integer. `w` defaults to `f+1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result.
+Replaces bits of `n` at position `f` and width `w` with `r`, and returns the resulting integer. `w` defaults to `1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result. Bits are indexed starting at 0. Errors if `f` and `f+w-1` are not between 0 and 31.
 
 ```
 function bit32.rrotate(n: number, i: number): number
