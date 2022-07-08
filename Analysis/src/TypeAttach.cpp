@@ -335,6 +335,14 @@ public:
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("<Lazy?>"));
     }
+    AstType* operator()(const UnknownTypeVar& ttv)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{"unknown"});
+    }
+    AstType* operator()(const NeverTypeVar& ttv)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{"never"});
+    }
 
 private:
     Allocator* allocator;

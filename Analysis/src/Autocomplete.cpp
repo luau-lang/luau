@@ -21,102 +21,6 @@ static const std::unordered_set<std::string> kStatementStartingKeywords = {
 namespace Luau
 {
 
-struct NodeFinder : public AstVisitor
-{
-    const Position pos;
-    std::vector<AstNode*> ancestry;
-
-    explicit NodeFinder(Position pos, AstNode* root)
-        : pos(pos)
-    {
-    }
-
-    bool visit(AstExpr* expr) override
-    {
-        if (expr->location.begin < pos && pos <= expr->location.end)
-        {
-            ancestry.push_back(expr);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(AstStat* stat) override
-    {
-        if (stat->location.begin < pos && pos <= stat->location.end)
-        {
-            ancestry.push_back(stat);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(AstType* type) override
-    {
-        if (type->location.begin < pos && pos <= type->location.end)
-        {
-            ancestry.push_back(type);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(AstTypeError* type) override
-    {
-        // For a missing type, match the whole range including the start position
-        if (type->isMissing && type->location.containsClosed(pos))
-        {
-            ancestry.push_back(type);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(class AstTypePack* typePack) override
-    {
-        return true;
-    }
-
-    bool visit(AstStatBlock* block) override
-    {
-        // If ancestry is empty, we are inspecting the root of the AST.  Its extent is considered to be infinite.
-        if (ancestry.empty())
-        {
-            ancestry.push_back(block);
-            return true;
-        }
-
-        // AstExprIndexName nodes are nested outside-in, so we want the outermost node in the case of nested nodes.
-        // ex foo.bar.baz is represented in the AST as IndexName{ IndexName {foo, bar}, baz}
-        if (!ancestry.empty() && ancestry.back()->is<AstExprIndexName>())
-            return false;
-
-        // Type annotation error might intersect the block statement when the function header is being written,
-        // annotation takes priority
-        if (!ancestry.empty() && ancestry.back()->is<AstTypeError>())
-            return false;
-
-        // If the cursor is at the end of an expression or type and simultaneously at the beginning of a block,
-        // the expression or type wins out.
-        // The exception to this is if we are in a block under an AstExprFunction.  In this case, we consider the position to
-        // be within the block.
-        if (block->location.begin == pos && !ancestry.empty())
-        {
-            if (ancestry.back()->asExpr() && !ancestry.back()->is<AstExprFunction>())
-                return false;
-
-            if (ancestry.back()->asType())
-                return false;
-        }
-
-        if (block->location.begin <= pos && pos <= block->location.end)
-        {
-            ancestry.push_back(block);
-            return true;
-        }
-        return false;
-    }
-};
 
 static bool alreadyHasParens(const std::vector<AstNode*>& nodes)
 {
@@ -905,7 +809,7 @@ AutocompleteEntryMap autocompleteTypeNames(const Module& module, Position positi
     }
 
     AstNode* parent = nullptr;
-    AstType* topType = nullptr;
+    AstType* topType = nullptr; // TODO: rename?
 
     for (auto it = ancestry.rbegin(), e = ancestry.rend(); it != e; ++it)
     {
@@ -1477,21 +1381,20 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     if (isWithinComment(sourceModule, position))
         return {};
 
-    NodeFinder finder{position, sourceModule.root};
-    sourceModule.root->visit(&finder);
-    LUAU_ASSERT(!finder.ancestry.empty());
-    AstNode* node = finder.ancestry.back();
+    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(sourceModule, position);
+    LUAU_ASSERT(!ancestry.empty());
+    AstNode* node = ancestry.back();
 
     AstExprConstantNil dummy{Location{}};
-    AstNode* parent = finder.ancestry.size() >= 2 ? finder.ancestry.rbegin()[1] : &dummy;
+    AstNode* parent = ancestry.size() >= 2 ? ancestry.rbegin()[1] : &dummy;
 
     // If we are inside a body of a function that doesn't have a completed argument list, ignore the body node
     if (auto exprFunction = parent->as<AstExprFunction>(); exprFunction && !exprFunction->argLocation && node == exprFunction->body)
     {
-        finder.ancestry.pop_back();
+        ancestry.pop_back();
 
-        node = finder.ancestry.back();
-        parent = finder.ancestry.size() >= 2 ? finder.ancestry.rbegin()[1] : &dummy;
+        node = ancestry.back();
+        parent = ancestry.size() >= 2 ? ancestry.rbegin()[1] : &dummy;
     }
 
     if (auto indexName = node->as<AstExprIndexName>())
@@ -1504,47 +1407,47 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
         if (!FFlag::LuauSelfCallAutocompleteFix2 && isString(ty))
-            return {autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, finder.ancestry),
-                finder.ancestry};
+            return {autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry),
+                ancestry};
         else
-            return {autocompleteProps(*module, typeArena, ty, indexType, finder.ancestry), finder.ancestry};
+            return {autocompleteProps(*module, typeArena, ty, indexType, ancestry), ancestry};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {
         if (typeReference->prefix)
-            return {autocompleteModuleTypes(*module, position, typeReference->prefix->value), finder.ancestry};
+            return {autocompleteModuleTypes(*module, position, typeReference->prefix->value), ancestry};
         else
-            return {autocompleteTypeNames(*module, position, finder.ancestry), finder.ancestry};
+            return {autocompleteTypeNames(*module, position, ancestry), ancestry};
     }
     else if (node->is<AstTypeError>())
     {
-        return {autocompleteTypeNames(*module, position, finder.ancestry), finder.ancestry};
+        return {autocompleteTypeNames(*module, position, ancestry), ancestry};
     }
     else if (AstStatLocal* statLocal = node->as<AstStatLocal>())
     {
         if (statLocal->vars.size == 1 && (!statLocal->equalsSignLocation || position < statLocal->equalsSignLocation->begin))
-            return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+            return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
         else if (statLocal->equalsSignLocation && position >= statLocal->equalsSignLocation->end)
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
+            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
         else
             return {};
     }
 
-    else if (AstStatFor* statFor = extractStat<AstStatFor>(finder.ancestry))
+    else if (AstStatFor* statFor = extractStat<AstStatFor>(ancestry))
     {
         if (!statFor->hasDo || position < statFor->doLocation.begin)
         {
             if (!statFor->from->is<AstExprError>() && !statFor->to->is<AstExprError>() && (!statFor->step || !statFor->step->is<AstExprError>()))
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
 
             if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
                 (statFor->step && statFor->step->location.containsClosed(position)))
-                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
+                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
 
             return {};
         }
 
-        return {autocompleteStatement(sourceModule, *module, finder.ancestry, position), finder.ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
     }
 
     else if (AstStatForIn* statForIn = parent->as<AstStatForIn>(); statForIn && (node->is<AstStatBlock>() || isIdentifier(node)))
@@ -1560,7 +1463,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 return {};
             }
 
-            return {{{"in", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+            return {{{"in", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
         }
 
         if (!statForIn->hasDo || position <= statForIn->doLocation.begin)
@@ -1569,58 +1472,58 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             AstExpr* lastExpr = statForIn->values.data[statForIn->values.size - 1];
 
             if (lastExpr->location.containsClosed(position))
-                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
+                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
 
             if (position > lastExpr->location.end)
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
 
             return {}; // Not sure what this means
         }
     }
-    else if (AstStatForIn* statForIn = extractStat<AstStatForIn>(finder.ancestry))
+    else if (AstStatForIn* statForIn = extractStat<AstStatForIn>(ancestry))
     {
         // The AST looks a bit differently if the cursor is at a position where only the "do" keyword is allowed.
         // ex "for f in f do"
         if (!statForIn->hasDo)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
 
-        return {autocompleteStatement(sourceModule, *module, finder.ancestry, position), finder.ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
     }
 
     else if (AstStatWhile* statWhile = parent->as<AstStatWhile>(); node->is<AstStatBlock>() && statWhile)
     {
         if (!statWhile->hasDo && !statWhile->condition->is<AstStatError>() && position > statWhile->condition->location.end)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
 
         if (!statWhile->hasDo || position < statWhile->doLocation.begin)
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
+            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
 
         if (statWhile->hasDo && position > statWhile->doLocation.end)
-            return {autocompleteStatement(sourceModule, *module, finder.ancestry, position), finder.ancestry};
+            return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
     }
 
-    else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(finder.ancestry); statWhile && !statWhile->hasDo)
-        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+    else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry); statWhile && !statWhile->hasDo)
+        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
 
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {
         return {{{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}},
-            finder.ancestry};
+            ancestry};
     }
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {
         if (statIf->condition->is<AstExprError>())
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
+            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
-            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
     }
-    else if (AstStatIf* statIf = extractStat<AstStatIf>(finder.ancestry);
+    else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
              statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)))
-        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, finder.ancestry};
+        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
-        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
-    else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(finder.ancestry); statRepeat)
-        return {autocompleteStatement(sourceModule, *module, finder.ancestry, position), finder.ancestry};
+        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+    else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
     else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>()))
     {
         for (const auto& [kind, key, value] : exprTable->items)
@@ -1630,7 +1533,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             {
                 if (auto it = module->astExpectedTypes.find(exprTable))
                 {
-                    auto result = autocompleteProps(*module, typeArena, *it, PropIndexType::Key, finder.ancestry);
+                    auto result = autocompleteProps(*module, typeArena, *it, PropIndexType::Key, ancestry);
 
                     // Remove keys that are already completed
                     for (const auto& item : exprTable->items)
@@ -1644,9 +1547,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
                     // If we know for sure that a key is being written, do not offer general expression suggestions
                     if (!key)
-                        autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position, result);
+                        autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position, result);
 
-                    return {result, finder.ancestry};
+                    return {result, ancestry};
                 }
 
                 break;
@@ -1654,11 +1557,11 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         }
     }
     else if (isIdentifier(node) && (parent->is<AstStatExpr>() || parent->is<AstStatError>()))
-        return {autocompleteStatement(sourceModule, *module, finder.ancestry, position), finder.ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
 
-    if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(sourceModule, module, finder.ancestry, position, callback))
+    if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(sourceModule, module, ancestry, position, callback))
     {
-        return {*ret, finder.ancestry};
+        return {*ret, ancestry};
     }
     else if (node->is<AstExprConstantString>())
     {
@@ -1667,14 +1570,14 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         if (auto it = module->astExpectedTypes.find(node->asExpr()))
             autocompleteStringSingleton(*it, false, result);
 
-        if (finder.ancestry.size() >= 2)
+        if (ancestry.size() >= 2)
         {
-            if (auto idxExpr = finder.ancestry.at(finder.ancestry.size() - 2)->as<AstExprIndexExpr>())
+            if (auto idxExpr = ancestry.at(ancestry.size() - 2)->as<AstExprIndexExpr>())
             {
                 if (auto it = module->astTypes.find(idxExpr->expr))
-                    autocompleteProps(*module, typeArena, follow(*it), PropIndexType::Point, finder.ancestry, result);
+                    autocompleteProps(*module, typeArena, follow(*it), PropIndexType::Point, ancestry, result);
             }
-            else if (auto binExpr = finder.ancestry.at(finder.ancestry.size() - 2)->as<AstExprBinary>())
+            else if (auto binExpr = ancestry.at(ancestry.size() - 2)->as<AstExprBinary>())
             {
                 if (binExpr->op == AstExprBinary::CompareEq || binExpr->op == AstExprBinary::CompareNe)
                 {
@@ -1684,7 +1587,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             }
         }
 
-        return {result, finder.ancestry};
+        return {result, ancestry};
     }
 
     if (node->is<AstExprConstantNumber>())
@@ -1693,9 +1596,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     }
 
     if (node->asExpr())
-        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, finder.ancestry, position), finder.ancestry};
+        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
     else if (node->asStat())
-        return {autocompleteStatement(sourceModule, *module, finder.ancestry, position), finder.ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
 
     return {};
 }

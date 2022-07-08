@@ -5,8 +5,6 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
-
 namespace Luau
 {
 
@@ -40,19 +38,10 @@ TypePackVar& TypePackVar::operator=(TypePackVariant&& tp)
 
 TypePackVar& TypePackVar::operator=(const TypePackVar& rhs)
 {
-    if (FFlag::LuauNonCopyableTypeVarFields)
-    {
-        LUAU_ASSERT(owningArena == rhs.owningArena);
-        LUAU_ASSERT(!rhs.persistent);
+    LUAU_ASSERT(owningArena == rhs.owningArena);
+    LUAU_ASSERT(!rhs.persistent);
 
-        reassign(rhs);
-    }
-    else
-    {
-        ty = rhs.ty;
-        persistent = rhs.persistent;
-        owningArena = rhs.owningArena;
-    }
+    reassign(rhs);
 
     return *this;
 }
@@ -294,6 +283,16 @@ std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics)
     return std::nullopt;
 }
 
+TypePackVar* asMutable(TypePackId tp)
+{
+    return const_cast<TypePackVar*>(tp);
+}
+
+TypePack* asMutable(const TypePack* tp)
+{
+    return const_cast<TypePack*>(tp);
+}
+
 bool isEmpty(TypePackId tp)
 {
     tp = follow(tp);
@@ -360,13 +359,25 @@ bool isVariadic(TypePackId tp, const TxnLog& log)
     return false;
 }
 
-TypePackVar* asMutable(TypePackId tp)
+bool containsNever(TypePackId tp)
 {
-    return const_cast<TypePackVar*>(tp);
+    auto it = begin(tp);
+    auto endIt = end(tp);
+
+    while (it != endIt)
+    {
+        if (get<NeverTypeVar>(follow(*it)))
+            return true;
+        ++it;
+    }
+
+    if (auto tail = it.tail())
+    {
+        if (auto vtp = get<VariadicTypePack>(*tail); vtp && get<NeverTypeVar>(follow(vtp->ty)))
+            return true;
+    }
+
+    return false;
 }
 
-TypePack* asMutable(const TypePack* tp)
-{
-    return const_cast<TypePack*>(tp);
-}
 } // namespace Luau

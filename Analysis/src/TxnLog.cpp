@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 
 namespace Luau
 {
@@ -81,34 +81,10 @@ void TxnLog::concat(TxnLog rhs)
 void TxnLog::commit()
 {
     for (auto& [ty, rep] : typeVarChanges)
-    {
-        if (FFlag::LuauNonCopyableTypeVarFields)
-        {
-            asMutable(ty)->reassign(rep.get()->pending);
-        }
-        else
-        {
-            TypeArena* owningArena = ty->owningArena;
-            TypeVar* mtv = asMutable(ty);
-            *mtv = rep.get()->pending;
-            mtv->owningArena = owningArena;
-        }
-    }
+        asMutable(ty)->reassign(rep.get()->pending);
 
     for (auto& [tp, rep] : typePackChanges)
-    {
-        if (FFlag::LuauNonCopyableTypeVarFields)
-        {
-            asMutable(tp)->reassign(rep.get()->pending);
-        }
-        else
-        {
-            TypeArena* owningArena = tp->owningArena;
-            TypePackVar* mpv = asMutable(tp);
-            *mpv = rep.get()->pending;
-            mpv->owningArena = owningArena;
-        }
-    }
+        asMutable(tp)->reassign(rep.get()->pending);
 
     clear();
 }
@@ -196,9 +172,7 @@ PendingType* TxnLog::queue(TypeId ty)
     if (!pending)
     {
         pending = std::make_unique<PendingType>(*ty);
-
-        if (FFlag::LuauNonCopyableTypeVarFields)
-            pending->pending.owningArena = nullptr;
+        pending->pending.owningArena = nullptr;
     }
 
     return pending.get();
@@ -214,9 +188,7 @@ PendingTypePack* TxnLog::queue(TypePackId tp)
     if (!pending)
     {
         pending = std::make_unique<PendingTypePack>(*tp);
-
-        if (FFlag::LuauNonCopyableTypeVarFields)
-            pending->pending.owningArena = nullptr;
+        pending->pending.owningArena = nullptr;
     }
 
     return pending.get();
@@ -255,24 +227,14 @@ PendingTypePack* TxnLog::pending(TypePackId tp) const
 PendingType* TxnLog::replace(TypeId ty, TypeVar replacement)
 {
     PendingType* newTy = queue(ty);
-
-    if (FFlag::LuauNonCopyableTypeVarFields)
-        newTy->pending.reassign(replacement);
-    else
-        newTy->pending = replacement;
-
+    newTy->pending.reassign(replacement);
     return newTy;
 }
 
 PendingTypePack* TxnLog::replace(TypePackId tp, TypePackVar replacement)
 {
     PendingTypePack* newTp = queue(tp);
-
-    if (FFlag::LuauNonCopyableTypeVarFields)
-        newTp->pending.reassign(replacement);
-    else
-        newTp->pending = replacement;
-
+    newTp->pending.reassign(replacement);
     return newTp;
 }
 
@@ -289,7 +251,7 @@ PendingType* TxnLog::bindTable(TypeId ty, std::optional<TypeId> newBoundTo)
 
 PendingType* TxnLog::changeLevel(TypeId ty, TypeLevel newLevel)
 {
-    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty));
+    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty) || get<ConstrainedTypeVar>(ty));
 
     PendingType* newTy = queue(ty);
     if (FreeTypeVar* ftv = Luau::getMutable<FreeTypeVar>(newTy))
@@ -304,6 +266,11 @@ PendingType* TxnLog::changeLevel(TypeId ty, TypeLevel newLevel)
     else if (FunctionTypeVar* ftv = Luau::getMutable<FunctionTypeVar>(newTy))
     {
         ftv->level = newLevel;
+    }
+    else if (ConstrainedTypeVar* ctv = Luau::getMutable<ConstrainedTypeVar>(newTy))
+    {
+        if (FFlag::LuauUnknownAndNeverType)
+            ctv->level = newLevel;
     }
 
     return newTy;

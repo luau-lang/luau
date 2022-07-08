@@ -128,6 +128,7 @@ struct Fixture
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
 
     ScopedFastFlag sff_DebugLuauFreezeArena;
+    ScopedFastFlag sff_UnknownNever{"LuauUnknownAndNeverType", true};
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;

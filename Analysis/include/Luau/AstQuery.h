@@ -63,6 +63,7 @@ private:
     AstLocal* local = nullptr;
 };
 
+std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos);
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos);
 AstNode* findNodeAtPosition(const SourceModule& source, Position pos);
 AstExpr* findExprAtPosition(const SourceModule& source, Position pos);

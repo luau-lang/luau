@@ -23,12 +23,17 @@ LUAU_FASTFLAG(DebugLuauFreezeArena)
 LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauNonCopyableTypeVarFields)
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAGVARIABLE(LuauDeduceGmatchReturnTypes, false)
+LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 
 namespace Luau
 {
 
 std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
+
+static std::optional<WithPredicate<TypePackId>> magicFunctionGmatch(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
 
 TypeId follow(TypeId t)
@@ -173,8 +178,8 @@ bool maybeString(TypeId ty)
 {
     ty = follow(ty);
 
-    if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
-        return true;
+        if (isPrim(ty, PrimitiveTypeVar::String) || get<AnyTypeVar>(ty))
+            return true;
 
     if (auto utv = get<UnionTypeVar>(ty))
         return std::any_of(begin(utv), end(utv), maybeString);
@@ -194,7 +199,7 @@ bool isOptional(TypeId ty)
 
     ty = follow(ty);
 
-    if (get<AnyTypeVar>(ty))
+    if (get<AnyTypeVar>(ty) || (FFlag::LuauUnknownAndNeverType && get<UnknownTypeVar>(ty)))
         return true;
 
     auto utv = get<UnionTypeVar>(ty);
@@ -334,6 +339,28 @@ bool isGeneric(TypeId ty)
 
 bool maybeGeneric(TypeId ty)
 {
+    if (FFlag::LuauMaybeGenericIntersectionTypes)
+    {
+        ty = follow(ty);
+
+        if (get<FreeTypeVar>(ty))
+            return true;
+
+        if (auto ttv = get<TableTypeVar>(ty))
+        {
+            // TODO: recurse on table types CLI-39914
+            (void)ttv;
+            return true;
+        }
+
+        if (auto itv = get<IntersectionTypeVar>(ty))
+        {
+            return std::any_of(begin(itv), end(itv), maybeGeneric);
+        }
+
+        return isGeneric(ty);
+    }
+
     ty = follow(ty);
     if (get<FreeTypeVar>(ty))
         return true;
@@ -646,20 +673,10 @@ TypeVar& TypeVar::operator=(TypeVariant&& rhs)
 
 TypeVar& TypeVar::operator=(const TypeVar& rhs)
 {
-    if (FFlag::LuauNonCopyableTypeVarFields)
-    {
-        LUAU_ASSERT(owningArena == rhs.owningArena);
-        LUAU_ASSERT(!rhs.persistent);
+    LUAU_ASSERT(owningArena == rhs.owningArena);
+    LUAU_ASSERT(!rhs.persistent);
 
-        reassign(rhs);
-    }
-    else
-    {
-        ty = rhs.ty;
-        persistent = rhs.persistent;
-        normal = rhs.normal;
-        owningArena = rhs.owningArena;
-    }
+    reassign(rhs);
 
     return *this;
 }
@@ -676,10 +693,14 @@ static TypeVar threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persist
 static TypeVar trueType_{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true};
 static TypeVar falseType_{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true};
 static TypeVar anyType_{AnyTypeVar{}, /*persistent*/ true};
+static TypeVar unknownType_{UnknownTypeVar{}, /*persistent*/ true};
+static TypeVar neverType_{NeverTypeVar{}, /*persistent*/ true};
 static TypeVar errorType_{ErrorTypeVar{}, /*persistent*/ true};
 
-static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, true};
-static TypePackVar errorTypePack_{Unifiable::Error{}};
+static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, /*persistent*/ true};
+static TypePackVar errorTypePack_{Unifiable::Error{}, /*persistent*/ true};
+static TypePackVar neverTypePack_{VariadicTypePack{&neverType_}, /*persistent*/ true};
+static TypePackVar uninhabitableTypePack_{TypePack{{&neverType_}, &neverTypePack_}, /*persistent*/ true};
 
 SingletonTypes::SingletonTypes()
     : nilType(&nilType_)
@@ -690,7 +711,11 @@ SingletonTypes::SingletonTypes()
     , trueType(&trueType_)
     , falseType(&falseType_)
     , anyType(&anyType_)
+    , unknownType(&unknownType_)
+    , neverType(&neverType_)
     , anyTypePack(&anyTypePack_)
+    , neverTypePack(&neverTypePack_)
+    , uninhabitableTypePack(&uninhabitableTypePack_)
     , arena(new TypeArena)
 {
     TypeId stringMetatable = makeStringMetatable();
@@ -738,6 +763,7 @@ TypeId SingletonTypes::makeStringMetatable()
     const TypeId gsubFunc = makeFunction(*arena, stringType, {}, {}, {stringType, replArgType, optionalNumber}, {}, {stringType, numberType});
     const TypeId gmatchFunc =
         makeFunction(*arena, stringType, {}, {}, {stringType}, {}, {arena->addType(FunctionTypeVar{emptyPack, stringVariadicList})});
+    attachMagicFunction(gmatchFunc, magicFunctionGmatch);
 
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
@@ -911,6 +937,8 @@ const TypeLevel* getLevel(TypeId ty)
         return &ttv->level;
     else if (auto ftv = get<FunctionTypeVar>(ty))
         return &ftv->level;
+    else if (auto ctv = get<ConstrainedTypeVar>(ty))
+        return &ctv->level;
     else
         return nullptr;
 }
@@ -965,94 +993,19 @@ bool isSubclass(const ClassTypeVar* cls, const ClassTypeVar* parent)
     return false;
 }
 
-UnionTypeVarIterator::UnionTypeVarIterator(const UnionTypeVar* utv)
+const std::vector<TypeId>& getTypes(const UnionTypeVar* utv)
 {
-    LUAU_ASSERT(utv);
-
-    if (!utv->options.empty())
-        stack.push_front({utv, 0});
-
-    seen.insert(utv);
+    return utv->options;
 }
 
-UnionTypeVarIterator& UnionTypeVarIterator::operator++()
+const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv)
 {
-    advance();
-    descend();
-    return *this;
+    return itv->parts;
 }
 
-UnionTypeVarIterator UnionTypeVarIterator::operator++(int)
+const std::vector<TypeId>& getTypes(const ConstrainedTypeVar* ctv)
 {
-    UnionTypeVarIterator copy = *this;
-    ++copy;
-    return copy;
-}
-
-bool UnionTypeVarIterator::operator!=(const UnionTypeVarIterator& rhs)
-{
-    return !(*this == rhs);
-}
-
-bool UnionTypeVarIterator::operator==(const UnionTypeVarIterator& rhs)
-{
-    if (!stack.empty() && !rhs.stack.empty())
-        return stack.front() == rhs.stack.front();
-
-    return stack.empty() && rhs.stack.empty();
-}
-
-const TypeId& UnionTypeVarIterator::operator*()
-{
-    LUAU_ASSERT(!stack.empty());
-
-    descend();
-
-    auto [utv, currentIndex] = stack.front();
-    LUAU_ASSERT(utv);
-    LUAU_ASSERT(currentIndex < utv->options.size());
-
-    const TypeId& ty = utv->options[currentIndex];
-    LUAU_ASSERT(!get<UnionTypeVar>(follow(ty)));
-    return ty;
-}
-
-void UnionTypeVarIterator::advance()
-{
-    while (!stack.empty())
-    {
-        auto& [utv, currentIndex] = stack.front();
-        ++currentIndex;
-
-        if (currentIndex >= utv->options.size())
-            stack.pop_front();
-        else
-            break;
-    }
-}
-
-void UnionTypeVarIterator::descend()
-{
-    while (!stack.empty())
-    {
-        auto [utv, currentIndex] = stack.front();
-        if (auto innerUnion = get<UnionTypeVar>(follow(utv->options[currentIndex])))
-        {
-            // If we're about to descend into a cyclic UnionTypeVar, we should skip over this.
-            // Ideally this should never happen, but alas it does from time to time. :(
-            if (seen.find(innerUnion) != seen.end())
-                advance();
-            else
-            {
-                seen.insert(innerUnion);
-                stack.push_front({innerUnion, 0});
-            }
-
-            continue;
-        }
-
-        break;
-    }
+    return ctv->parts;
 }
 
 UnionTypeVarIterator begin(const UnionTypeVar* utv)
@@ -1064,6 +1017,27 @@ UnionTypeVarIterator end(const UnionTypeVar* utv)
 {
     return UnionTypeVarIterator{};
 }
+
+IntersectionTypeVarIterator begin(const IntersectionTypeVar* itv)
+{
+    return IntersectionTypeVarIterator{itv};
+}
+
+IntersectionTypeVarIterator end(const IntersectionTypeVar* itv)
+{
+    return IntersectionTypeVarIterator{};
+}
+
+ConstrainedTypeVarIterator begin(const ConstrainedTypeVar* ctv)
+{
+    return ConstrainedTypeVarIterator{ctv};
+}
+
+ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
+{
+    return ConstrainedTypeVarIterator{};
+}
+
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {
@@ -1142,6 +1116,101 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
         typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), actualParamSize}});
 
     return WithPredicate<TypePackId>{arena.addTypePack({typechecker.stringType})};
+}
+
+static std::vector<TypeId> parsePatternString(TypeChecker& typechecker, const char* data, size_t size)
+{
+    std::vector<TypeId> result;
+    int depth = 0;
+    bool parsingSet = false;
+
+    for (size_t i = 0; i < size; ++i)
+    {
+        if (data[i] == '%')
+        {
+            ++i;
+            if (!parsingSet && i < size && data[i] == 'b')
+                i += 2;
+        }
+        else if (!parsingSet && data[i] == '[')
+        {
+            parsingSet = true;
+            if (i + 1 < size && data[i + 1] == ']')
+                i += 1;
+        }
+        else if (parsingSet && data[i] == ']')
+        {
+            parsingSet = false;
+        }
+        else if (data[i] == '(')
+        {
+            if (parsingSet)
+                continue;
+
+            if (i + 1 < size && data[i + 1] == ')')
+            {
+                i++;
+                result.push_back(typechecker.numberType);
+                continue;
+            }
+
+            ++depth;
+            result.push_back(typechecker.stringType);
+        }
+        else if (data[i] == ')')
+        {
+            if (parsingSet)
+                continue;
+
+            --depth;
+
+            if (depth < 0)
+                break;
+        }
+    }
+
+    if (depth != 0 || parsingSet)
+        return std::vector<TypeId>();
+
+    if (result.empty())
+        result.push_back(typechecker.stringType);
+
+    return result;
+}
+
+static std::optional<WithPredicate<TypePackId>> magicFunctionGmatch(
+    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
+{
+    if (!FFlag::LuauDeduceGmatchReturnTypes)
+        return std::nullopt;
+
+    auto [paramPack, _predicates] = withPredicate;
+    const auto& [params, tail] = flatten(paramPack);
+
+    if (params.size() != 2)
+        return std::nullopt;
+
+    TypeArena& arena = typechecker.currentModule->internalTypes;
+
+    AstExprConstantString* pattern = nullptr;
+    size_t index = expr.self ? 0 : 1;
+    if (expr.args.size > index)
+        pattern = expr.args.data[index]->as<AstExprConstantString>();
+
+    if (!pattern)
+        return std::nullopt;
+
+    std::vector<TypeId> returnTypes = parsePatternString(typechecker, pattern->value.data, pattern->value.size);
+
+    if (returnTypes.empty())
+        return std::nullopt;
+
+    typechecker.unify(params[0], typechecker.stringType, expr.args.data[0]->location);
+
+    const TypePackId emptyPack = arena.addTypePack({});
+    const TypePackId returnList = arena.addTypePack(returnTypes);
+    const TypeId iteratorType = arena.addType(FunctionTypeVar{emptyPack, returnList});
+    return WithPredicate<TypePackId>{arena.addTypePack({iteratorType})};
 }
 
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)

@@ -1055,13 +1055,51 @@ export type t1 = { a: typeof(string.byte) }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_combine_on_bound_self")
 {
-    ScopedFastFlag luauNormalizeCombineEqFix{"LuauNormalizeCombineEqFix", true};
-
     CheckResult result = check(R"(
 export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "normalize_unions_containing_never")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type Foo = string | never
+        local foo: Foo
+    )");
+
+    CHECK_EQ("string", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "normalize_unions_containing_unknown")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type Foo = string | unknown
+        local foo: Foo
+    )");
+
+    CHECK_EQ("unknown", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "any_wins_the_battle_over_unknown_in_unions")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type Foo = unknown | any
+        local foo: Foo
+
+        type Bar = any | unknown
+        local bar: Bar
+    )");
+
+    CHECK_EQ("any", toString(requireType("foo")));
+    CHECK_EQ("any", toString(requireType("bar")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_does_not_convert_ever")

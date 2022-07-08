@@ -14,7 +14,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeFlagIsConservative, false);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineEqFix, false);
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
@@ -182,11 +182,24 @@ struct Normalize final : TypeVarVisitor
     {
         if (!ty->normal)
             asMutable(ty)->normal = true;
-
         return false;
     }
 
     bool visit(TypeId ty, const ErrorTypeVar&) override
+    {
+        if (!ty->normal)
+            asMutable(ty)->normal = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const UnknownTypeVar&) override
+    {
+        if (!ty->normal)
+            asMutable(ty)->normal = true;
+        return false;
+    }
+
+    bool visit(TypeId ty, const NeverTypeVar&) override
     {
         if (!ty->normal)
             asMutable(ty)->normal = true;
@@ -416,7 +429,13 @@ struct Normalize final : TypeVarVisitor
         std::vector<TypeId> result;
 
         for (TypeId part : options)
+        {
+            // AnyTypeVar always win the battle no matter what we do, so we're done.
+            if (FFlag::LuauUnknownAndNeverType && get<AnyTypeVar>(follow(part)))
+                return {part};
+
             combineIntoUnion(result, part);
+        }
 
         return result;
     }
@@ -427,7 +446,17 @@ struct Normalize final : TypeVarVisitor
         if (auto utv = get<UnionTypeVar>(ty))
         {
             for (TypeId t : utv)
+            {
+                // AnyTypeVar always win the battle no matter what we do, so we're done.
+                if (FFlag::LuauUnknownAndNeverType && get<AnyTypeVar>(t))
+                {
+                    result = {t};
+                    return;
+                }
+
                 combineIntoUnion(result, t);
+            }
+
             return;
         }
 
@@ -571,8 +600,7 @@ struct Normalize final : TypeVarVisitor
      */
     TypeId combine(Replacer& replacer, TypeId a, TypeId b)
     {
-        if (FFlag::LuauNormalizeCombineEqFix)
-            b = follow(b);
+        b = follow(b);
 
         if (FFlag::LuauNormalizeCombineTableFix && a == b)
             return a;
@@ -592,7 +620,7 @@ struct Normalize final : TypeVarVisitor
         }
         else if (auto ttv = getMutable<TableTypeVar>(a))
         {
-            if (FFlag::LuauNormalizeCombineTableFix && !get<TableTypeVar>(FFlag::LuauNormalizeCombineEqFix ? b : follow(b)))
+            if (FFlag::LuauNormalizeCombineTableFix && !get<TableTypeVar>(b))
                 return arena.addType(IntersectionTypeVar{{a, b}});
             combineIntoTable(replacer, ttv, b);
             return a;

@@ -153,7 +153,7 @@ struct TypeChecker
         const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates = {});
     TypeId checkBinaryOperation(
         const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates = {});
-    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprBinary& expr);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprBinary& expr, std::optional<TypeId> expectedType = std::nullopt);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
@@ -180,8 +180,12 @@ struct TypeChecker
         const ScopePtr& scope, Unifier& state, TypePackId paramPack, TypePackId argPack, const std::vector<Location>& argLocations);
 
     WithPredicate<TypePackId> checkExprPack(const ScopePtr& scope, const AstExpr& expr);
-    WithPredicate<TypePackId> checkExprPack(const ScopePtr& scope, const AstExprCall& expr);
+
+    WithPredicate<TypePackId> checkExprPackHelper(const ScopePtr& scope, const AstExpr& expr);
+    WithPredicate<TypePackId> checkExprPackHelper(const ScopePtr& scope, const AstExprCall& expr);
+
     std::vector<std::optional<TypeId>> getExpectedTypesForCall(const std::vector<TypeId>& overloads, size_t argumentCount, bool selfCall);
+
     std::optional<WithPredicate<TypePackId>> checkCallOverload(const ScopePtr& scope, const AstExprCall& expr, TypeId fn, TypePackId retPack,
         TypePackId argPack, TypePack* args, const std::vector<Location>* argLocations, const WithPredicate<TypePackId>& argListResult,
         std::vector<TypeId>& overloadsThatMatchArgCount, std::vector<TypeId>& overloadsThatDont, std::vector<OverloadErrorEntry>& errors);
@@ -236,10 +240,11 @@ struct TypeChecker
 
     void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const Location& location);
 
-    std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location);
-    std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location);
+    std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location, bool addErrors);
+    std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors);
 
     std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, TypeId type, const Name& name, const Location& location, bool addErrors);
+    std::optional<TypeId> getIndexTypeFromTypeImpl(const ScopePtr& scope, TypeId type, const Name& name, const Location& location, bool addErrors);
 
     // Reduces the union to its simplest possible shape.
     // (A | B) | B | C yields A | B | C
@@ -316,11 +321,12 @@ private:
 
     TypeIdPredicate mkTruthyPredicate(bool sense);
 
-    // Returns nullopt if the predicate filters down the TypeId to 0 options.
-    std::optional<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);
+    // TODO: Return TypeId only.
+    std::optional<TypeId> filterMapImpl(TypeId type, TypeIdPredicate predicate);
+    std::pair<std::optional<TypeId>, bool> filterMap(TypeId type, TypeIdPredicate predicate);
 
 public:
-    std::optional<TypeId> pickTypesFromSense(TypeId type, bool sense);
+    std::pair<std::optional<TypeId>, bool> pickTypesFromSense(TypeId type, bool sense);
 
 private:
     TypeId unionOfTypes(TypeId a, TypeId b, const Location& location, bool unifyFreeTypes = true);
@@ -413,8 +419,12 @@ public:
     const TypeId booleanType;
     const TypeId threadType;
     const TypeId anyType;
+    const TypeId unknownType;
+    const TypeId neverType;
 
     const TypePackId anyTypePack;
+    const TypePackId neverTypePack;
+    const TypePackId uninhabitableTypePack;
 
 private:
     int checkRecursionCount = 0;
