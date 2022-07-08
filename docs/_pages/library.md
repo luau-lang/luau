@@ -683,7 +683,7 @@ Perform a bitwise `and` of all input numbers, and return `true` iff the result i
 function bit32.extract(n: number, f: number, w: number?): number
 ```
 
-Extracts bits at positions `[f..w]` and returns the resulting integer. `w` defaults to `f+1`, so a two-argument version of `extract` returns the bit value at position `f`.
+Extracts bits of `n` at position `f` with a width of `w`, and returns the resulting integer. `w` defaults to `1`, so a two-argument version of `extract` returns the bit value at position `f`. Bits are indexed starting at 0. Errors if `f` and `f+w-1` are not between 0 and 31.
 
 ```
 function bit32.lrotate(n: number, i: number): number
@@ -701,7 +701,7 @@ Shifts `n` to the left by `i` bits (if `i` is negative, a right shift is perform
 function bit32.replace(n: number, r: number, f: number, w: number?): number
 ```
 
-Replaces bits at positions `[f..w]` of number `n` with `r` and returns the resulting integer. `w` defaults to `f+1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result.
+Replaces bits of `n` at position `f` and width `w` with `r`, and returns the resulting integer. `w` defaults to `1`, so a three-argument version of `replace` changes one bit at position `f` to `r` (which should be 0 or 1) and returns the result. Bits are indexed starting at 0. Errors if `f` and `f+w-1` are not between 0 and 31.
 
 ```
 function bit32.rrotate(n: number, i: number): number
