@@ -871,4 +871,26 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_bra
     CHECK(toString(result2.errors[0]) == "Types Foo and Bar cannot be compared with == because they do not have the same metatable");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_and")
+{
+    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
+
+    CheckResult result = check(R"(
+        local x: "a" | "b" | boolean = math.random() > 0.5 and "a"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
+{
+    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
+
+    CheckResult result = check(R"(
+        local x: "a" | "b" | boolean = math.random() > 0.5 or "b"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

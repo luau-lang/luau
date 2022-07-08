@@ -225,7 +225,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     CHECK_EQ("{| x: nil, y: nil |} | {| x: string, y: number |}", toString(requireTypeAtPosition({7, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
     ScopedFastInt sffi{"LuauTarjanChildLimit", 1};
     ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 1};
@@ -499,6 +499,17 @@ TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
     CHECK_EQ("<a...>(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
 }
 
+TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_any")
+{
+    CheckResult result = check(R"(
+        local function foo(f: (any) -> (), x)
+            f(x)
+        end
+    )");
+
+    CHECK_EQ("((any) -> (), any) -> ()", toString(requireType("foo")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_function_with_no_returns")
 {
     ScopedFastFlag sff{"DebugLuauSharedSelf", true};
@@ -518,7 +529,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_f
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Not all codepaths in this function return '{ @metatable T, {|  |} }, a...'.", toString(result.errors[0]));
+    CHECK_EQ("Not all codepaths in this function return 'self, a...'.", toString(result.errors[0]));
 }
 
 TEST_SUITE_END();

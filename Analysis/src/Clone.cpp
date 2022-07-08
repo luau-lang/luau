@@ -59,6 +59,8 @@ struct TypeCloner
     void operator()(const UnionTypeVar& t);
     void operator()(const IntersectionTypeVar& t);
     void operator()(const LazyTypeVar& t);
+    void operator()(const UnknownTypeVar& t);
+    void operator()(const NeverTypeVar& t);
 };
 
 struct TypePackCloner
@@ -306,6 +308,16 @@ void TypeCloner::operator()(const IntersectionTypeVar& t)
 }
 
 void TypeCloner::operator()(const LazyTypeVar& t)
+{
+    defaultClone(t);
+}
+
+void TypeCloner::operator()(const UnknownTypeVar& t)
+{
+    defaultClone(t);
+}
+
+void TypeCloner::operator()(const NeverTypeVar& t)
 {
     defaultClone(t);
 }

@@ -40,6 +40,7 @@ argumentParser.add_argument('--results', dest='results',type=str,nargs='*',help=
 argumentParser.add_argument('--run-test', action='store', default=None, help='Regex test filter')
 argumentParser.add_argument('--extra-loops', action='store',type=int,default=0, help='Amount of times to loop over one test (one test already performs multiple runs)')
 argumentParser.add_argument('--filename', action='store',type=str,default='bench', help='File name for graph and results file')
+argumentParser.add_argument('--callgrind', dest='callgrind',action='store_const',const=1,default=0,help='Use callgrind to run benchmarks')
 
 if matplotlib != None:
     argumentParser.add_argument('--absolute', dest='absolute',action='store_const',const=1,default=0,help='Display absolute values instead of relative (enabled by default when benchmarking a single VM)')
@@ -54,6 +55,9 @@ argumentParser.add_argument('--print-influx-debugging', action='store_true', des
 argumentParser.add_argument('--no-print-influx-debugging', action='store_false', dest='print_influx_debugging', help="Don't print output to aid in debugging of influx metrics reporting.")
 
 argumentParser.add_argument('--no-print-final-summary', action='store_false', dest='print_final_summary', help="Don't print a table summarizing the results after all tests are run")
+
+# Assume 2.5 IPC on a 4 GHz CPU; this is obviously incorrect but it allows us to display simulated instruction counts using regular time units
+CALLGRIND_INSN_PER_SEC = 2.5 * 4e9
 
 def arrayRange(count):
     result = []
@@ -71,12 +75,37 @@ def arrayRangeOffset(count, offset):
 
     return result
 
+def getCallgrindOutput(lines):
+    result = []
+    name = None
+
+    for l in lines:
+        if l.startswith("desc: Trigger: Client Request: "):
+            name = l[31:].strip()
+        elif l.startswith("summary: ") and name != None:
+            insn = int(l[9:])
+            # Note: we only run each bench once under callgrind so we only report a single time per run; callgrind instruction count variance is ~0.01% so it might as well be zero
+            result += "|><|" + name + "|><|" + str(insn / CALLGRIND_INSN_PER_SEC * 1000.0) + "||_||"
+            name = None
+
+    return "".join(result)
+
 def getVmOutput(cmd):
     if os.name == "nt":
         try:
             return subprocess.check_output("start /realtime /affinity 1 /b /wait cmd /C \"" + cmd + "\"", shell=True, cwd=scriptdir).decode()
         except KeyboardInterrupt:
             exit(1)
+        except:
+            return ""
+    elif arguments.callgrind:
+        try:
+            subprocess.check_call("valgrind --tool=callgrind --callgrind-out-file=callgrind.out --combine-dumps=yes --dump-line=no " + cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=scriptdir)
+            path = os.path.join(scriptdir, "callgrind.out")
+            with open(path, "r") as file:
+                lines = file.readlines()
+            os.unlink(path)
+            return getCallgrindOutput(lines)
         except:
             return ""
     else:
@@ -375,12 +404,12 @@ def analyzeResult(subdir, main, comparisons):
 
             continue
 
-        pooledStdDev = math.sqrt((main.unbiasedEst + compare.unbiasedEst) / 2)
+        if main.count > 1 and stats:
+            pooledStdDev = math.sqrt((main.unbiasedEst + compare.unbiasedEst) / 2)
 
-        tStat = abs(main.avg - compare.avg) / (pooledStdDev * math.sqrt(2 / main.count))
-        degreesOfFreedom = 2 * main.count - 2
+            tStat = abs(main.avg - compare.avg) / (pooledStdDev * math.sqrt(2 / main.count))
+            degreesOfFreedom = 2 * main.count - 2
 
-        if stats:
             # Two-tailed distribution with 95% conf.
             tCritical = stats.t.ppf(1 - 0.05 / 2, degreesOfFreedom)
 

@@ -15,7 +15,6 @@ LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
-LUAU_FASTFLAGVARIABLE(LuauReturnTypeTokenConfusion, false)
 
 LUAU_FASTFLAGVARIABLE(LuauFixNamedFunctionParse, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseWrongNamedType, false)
@@ -1134,10 +1133,9 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
 
 std::optional<AstTypeList> Parser::parseOptionalReturnTypeAnnotation()
 {
-    if (options.allowTypeAnnotations &&
-        (lexer.current().type == ':' || (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)))
+    if (options.allowTypeAnnotations && (lexer.current().type == ':' || lexer.current().type == Lexeme::SkinnyArrow))
     {
-        if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)
+        if (lexer.current().type == Lexeme::SkinnyArrow)
             report(lexer.current().location, "Function return type annotations are written after ':' instead of '->'");
 
         nextLexeme();
@@ -1373,12 +1371,10 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
     if (FFlag::LuauFixNamedFunctionParse && !names.empty())
         forceFunctionType = true;
 
-    bool returnTypeIntroducer =
-        FFlag::LuauReturnTypeTokenConfusion ? lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':' : false;
+    bool returnTypeIntroducer = lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':';
 
     // Not a function at all. Just a parenthesized type. Or maybe a type pack with a single element
-    if (params.size() == 1 && !varargAnnotation && !forceFunctionType &&
-        (FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow))
+    if (params.size() == 1 && !varargAnnotation && !forceFunctionType && !returnTypeIntroducer)
     {
         if (DFFlag::LuaReportParseWrongNamedType && !names.empty())
             lua_telemetry_parsed_named_non_function_type = true;
@@ -1389,8 +1385,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
             return {params[0], {}};
     }
 
-    if ((FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow) && !forceFunctionType &&
-        allowPack)
+    if (!forceFunctionType && !returnTypeIntroducer && allowPack)
     {
         if (DFFlag::LuaReportParseWrongNamedType && !names.empty())
             lua_telemetry_parsed_named_non_function_type = true;
@@ -1409,7 +1404,7 @@ AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<A
 {
     incrementRecursionCounter("type annotation");
 
-    if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == ':')
+    if (lexer.current().type == ':')
     {
         report(lexer.current().location, "Return types in function type annotations are written after '->' instead of ':'");
         lexer.next();

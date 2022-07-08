@@ -3070,4 +3070,18 @@ TEST_CASE_FIXTURE(Fixture, "quantify_even_that_table_was_never_exported_at_all")
     CHECK_EQ("{| m: <a, b>({+ x: a, y: b +}) -> a, n: <a, b>({+ x: a, y: b +}) -> b |}", toString(requireType("T"), opts));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "leaking_bad_metatable_errors")
+{
+    ScopedFastFlag luauIndexSilenceErrors{"LuauIndexSilenceErrors", true};
+
+    CheckResult result = check(R"(
+local a = setmetatable({}, 1)
+local b = a.x
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ("Metatable was not a table", toString(result.errors[0]));
+    CHECK_EQ("Type 'a' does not have key 'x'", toString(result.errors[1]));
+}
+
 TEST_SUITE_END();

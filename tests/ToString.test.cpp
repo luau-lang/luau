@@ -96,6 +96,37 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
     //clang-format on
 }
 
+TEST_CASE_FIXTURE(Fixture, "metatable")
+{
+    TypeVar table{TypeVariant(TableTypeVar())};
+    TypeVar metatable{TypeVariant(TableTypeVar())};
+    TypeVar mtv{TypeVariant(MetatableTypeVar{&table, &metatable})};
+    CHECK_EQ("{ @metatable {  }, {  } }", toString(&mtv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_metatable")
+{
+    TypeVar table{TypeVariant(TableTypeVar())};
+    TypeVar metatable{TypeVariant(TableTypeVar())};
+    TypeVar mtv{TypeVariant(MetatableTypeVar{&table, &metatable, "NamedMetatable"})};
+    CHECK_EQ("NamedMetatable", toString(&mtv));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
+{
+    CheckResult result = check(R"(
+        local function createTbl(): NamedMetatable
+            return setmetatable({}, {})
+        end
+        type NamedMetatable = typeof(createTbl())
+    )");
+
+    TypeId ty = requireType("createTbl");
+    const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
+    REQUIRE(ftv);
+    CHECK_EQ("createTbl(): NamedMetatable", toStringNamedFunction("createTbl", *ftv));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
 {
     CheckResult result = check(R"(
@@ -468,7 +499,7 @@ local function target(callback: nil) return callback(4, "hello") end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("(nil) -> (*unknown*)", toString(requireType("target")));
+    CHECK_EQ("(nil) -> (<error-type>)", toString(requireType("target")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")

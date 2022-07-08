@@ -2648,7 +2648,6 @@ type Z<T> = { a: string | T..., b: number }
 
 TEST_CASE_FIXTURE(Fixture, "recover_function_return_type_annotations")
 {
-    ScopedFastFlag sff{"LuauReturnTypeTokenConfusion", true};
     ParseResult result = tryParse(R"(
 type Custom<A, B, C> = { x: A, y: B, z: C }
 type Packed<A...> = { x: (A...) -> () }

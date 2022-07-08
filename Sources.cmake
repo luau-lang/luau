@@ -247,12 +247,15 @@ if(TARGET Luau.UnitTest)
         tests/IostreamOptional.h
         tests/ScopedFlags.h
         tests/Fixture.cpp
+        tests/AssemblyBuilderX64.test.cpp
         tests/AstQuery.test.cpp
         tests/AstVisitor.test.cpp
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
+        tests/ConstraintGraphBuilder.test.cpp
+        tests/ConstraintSolver.test.cpp
         tests/CostModel.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
@@ -262,8 +265,7 @@ if(TARGET Luau.UnitTest)
         tests/Module.test.cpp
         tests/NonstrictMode.test.cpp
         tests/Normalize.test.cpp
-        tests/ConstraintGraphBuilder.test.cpp
-        tests/ConstraintSolver.test.cpp
+        tests/NotNull.test.cpp
         tests/Parser.test.cpp
         tests/RequireTracer.test.cpp
         tests/RuntimeLimits.test.cpp
@@ -295,11 +297,11 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.tryUnify.test.cpp
         tests/TypeInfer.typePacks.cpp
         tests/TypeInfer.unionTypes.test.cpp
+        tests/TypeInfer.unknownnever.test.cpp
         tests/TypePack.test.cpp
         tests/TypeVar.test.cpp
         tests/Variant.test.cpp
         tests/VisitTypeVar.test.cpp
-        tests/AssemblyBuilderX64.test.cpp
         tests/main.cpp)
 endif()
 

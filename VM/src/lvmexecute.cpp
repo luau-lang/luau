@@ -640,20 +640,16 @@ static void luau_execute(lua_State* L)
                             VM_PATCH_C(pc - 2, L->cachedslot);
                             VM_NEXT();
                         }
-                        else
-                        {
-                            // slow-path, may invoke Lua calls via __index metamethod
-                            VM_PROTECT(luaV_gettable(L, rb, kv, ra));
-                            VM_NEXT();
-                        }
+
+                        // fall through to slow path
                     }
-                    else
-                    {
-                        // slow-path, may invoke Lua calls via __index metamethod
-                        VM_PROTECT(luaV_gettable(L, rb, kv, ra));
-                        VM_NEXT();
-                    }
+
+                    // fall through to slow path
                 }
+
+                // slow-path, may invoke Lua calls via __index metamethod
+                VM_PROTECT(luaV_gettable(L, rb, kv, ra));
+                VM_NEXT();
             }
 
             VM_CASE(LOP_SETTABLEKS)
@@ -753,19 +749,13 @@ static void luau_execute(lua_State* L)
                         setobj2s(L, ra, &h->array[unsigned(index - 1)]);
                         VM_NEXT();
                     }
-                    else
-                    {
-                        // slow-path: handles out of bounds array lookups and non-integer numeric keys
-                        VM_PROTECT(luaV_gettable(L, rb, rc, ra));
-                        VM_NEXT();
-                    }
+
+                    // fall through to slow path
                 }
-                else
-                {
-                    // slow-path: handles non-array table lookup as well as __index MT calls
-                    VM_PROTECT(luaV_gettable(L, rb, rc, ra));
-                    VM_NEXT();
-                }
+
+                // slow-path: handles out of bounds array lookups, non-integer numeric keys, non-array table lookup, __index MT calls
+                VM_PROTECT(luaV_gettable(L, rb, rc, ra));
+                VM_NEXT();
             }
 
             VM_CASE(LOP_SETTABLE)
@@ -790,19 +780,13 @@ static void luau_execute(lua_State* L)
                         luaC_barriert(L, h, ra);
                         VM_NEXT();
                     }
-                    else
-                    {
-                        // slow-path: handles out of bounds array assignments and non-integer numeric keys
-                        VM_PROTECT(luaV_settable(L, rb, rc, ra));
-                        VM_NEXT();
-                    }
+
+                    // fall through to slow path
                 }
-                else
-                {
-                    // slow-path: handles non-array table access as well as __newindex MT calls
-                    VM_PROTECT(luaV_settable(L, rb, rc, ra));
-                    VM_NEXT();
-                }
+
+                // slow-path: handles out of bounds array assignments, non-integer numeric keys, non-array table access, __newindex MT calls
+                VM_PROTECT(luaV_settable(L, rb, rc, ra));
+                VM_NEXT();
             }
 
             VM_CASE(LOP_GETTABLEN)
@@ -822,6 +806,8 @@ static void luau_execute(lua_State* L)
                         setobj2s(L, ra, &h->array[c]);
                         VM_NEXT();
                     }
+
+                    // fall through to slow path
                 }
 
                 // slow-path: handles out of bounds array lookups
@@ -849,6 +835,8 @@ static void luau_execute(lua_State* L)
                         luaC_barriert(L, h, ra);
                         VM_NEXT();
                     }
+
+                    // fall through to slow path
                 }
 
                 // slow-path: handles out of bounds array lookups
@@ -2176,8 +2164,10 @@ static void luau_execute(lua_State* L)
                 if (!ttisnumber(ra + 0) || !ttisnumber(ra + 1) || !ttisnumber(ra + 2))
                 {
                     // slow-path: can convert arguments to numbers and trigger Lua errors
-                    // Note: this doesn't reallocate stack so we don't need to recompute ra
-                    VM_PROTECT(luau_prepareFORN(L, ra + 0, ra + 1, ra + 2));
+                    // Note: this doesn't reallocate stack so we don't need to recompute ra/base
+                    VM_PROTECT_PC();
+
+                    luau_prepareFORN(L, ra + 0, ra + 1, ra + 2);
                 }
 
                 double limit = nvalue(ra + 0);

@@ -238,10 +238,10 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     // TODO: Should we assert anything about these tests when DCR is being used?
     if (!FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ("*unknown*", toString(requireType("c")));
-        CHECK_EQ("*unknown*", toString(requireType("d")));
-        CHECK_EQ("*unknown*", toString(requireType("e")));
-        CHECK_EQ("*unknown*", toString(requireType("f")));
+        CHECK_EQ("<error-type>", toString(requireType("c")));
+        CHECK_EQ("<error-type>", toString(requireType("d")));
+        CHECK_EQ("<error-type>", toString(requireType("e")));
+        CHECK_EQ("<error-type>", toString(requireType("f")));
     }
 }
 
@@ -622,7 +622,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("*unknown*", toString(t0->type));
+    CHECK_EQ("<error-type>", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -1001,6 +1001,29 @@ TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_
             return q or {}
         end
     )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "types stored in astResolvedTypes")
+{
+    CheckResult result = check(R"(
+type alias = typeof("hello")
+local function foo(param: alias)
+end
+    )");
+
+    auto node = findNodeAtPosition(*getMainSourceModule(), {2, 16});
+    auto ty = lookupType("alias");
+    REQUIRE(node);
+    REQUIRE(node->is<AstExprFunction>());
+    REQUIRE(ty);
+
+    auto func = node->as<AstExprFunction>();
+    REQUIRE(func->args.size == 1);
+
+    auto arg = *func->args.begin();
+    auto annotation = arg->annotation;
+
+    CHECK_EQ(*getMainModule()->astResolvedTypes.find(annotation), *ty);
 }
 
 TEST_SUITE_END();

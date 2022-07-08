@@ -286,8 +286,31 @@ void AssemblyBuilderX64::jmp(OperandX64 op)
     if (logText)
         log("jmp", op);
 
+    placeRex(op);
     place(0xff);
     placeModRegMem(op, 4);
+    commit();
+}
+
+void AssemblyBuilderX64::call(Label& label)
+{
+    place(0xe8);
+    placeLabel(label);
+
+    if (logText)
+        log("call", label);
+
+    commit();
+}
+
+void AssemblyBuilderX64::call(OperandX64 op)
+{
+    if (logText)
+        log("call", op);
+
+    placeRex(op);
+    place(0xff);
+    placeModRegMem(op, 2);
     commit();
 }
 

@@ -129,6 +129,14 @@ struct GenericTypeVarVisitor
     {
         return visit(ty);
     }
+    virtual bool visit(TypeId ty, const UnknownTypeVar& atv)
+    {
+        return visit(ty);
+    }
+    virtual bool visit(TypeId ty, const NeverTypeVar& atv)
+    {
+        return visit(ty);
+    }
     virtual bool visit(TypeId ty, const UnionTypeVar& utv)
     {
         return visit(ty);

@@ -199,8 +199,6 @@ TEST_CASE_FIXTURE(TypePackFixture, "std_distance")
 
 TEST_CASE("content_reassignment")
 {
-    ScopedFastFlag luauNonCopyableTypeVarFields{"LuauNonCopyableTypeVarFields", true};
-
     TypePackVar myError{Unifiable::Error{}, /*presistent*/ true};
 
     TypeArena arena;

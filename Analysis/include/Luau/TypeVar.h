@@ -460,10 +460,18 @@ struct LazyTypeVar
     std::function<TypeId()> thunk;
 };
 
+struct UnknownTypeVar
+{
+};
+
+struct NeverTypeVar
+{
+};
+
 using ErrorTypeVar = Unifiable::Error;
 
 using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, ConstrainedTypeVar, BlockedTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
-    MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar>;
+    MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar>;
 
 struct TypeVar final
 {
@@ -575,8 +583,12 @@ struct SingletonTypes
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;
+    const TypeId unknownType;
+    const TypeId neverType;
 
     const TypePackId anyTypePack;
+    const TypePackId neverTypePack;
+    const TypePackId uninhabitableTypePack;
 
     SingletonTypes();
     ~SingletonTypes();
@@ -632,12 +644,30 @@ T* getMutable(TypeId tv)
     return get_if<T>(&asMutable(tv)->ty);
 }
 
-/* Traverses the UnionTypeVar yielding each TypeId.
- * If the iterator encounters a nested UnionTypeVar, it will instead yield each TypeId within.
- *
- * Beware: the iterator does not currently filter for unique TypeIds. This may change in the future.
+const std::vector<TypeId>& getTypes(const UnionTypeVar* utv);
+const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv);
+const std::vector<TypeId>& getTypes(const ConstrainedTypeVar* ctv);
+
+template<typename T>
+struct TypeIterator;
+
+using UnionTypeVarIterator = TypeIterator<UnionTypeVar>;
+UnionTypeVarIterator begin(const UnionTypeVar* utv);
+UnionTypeVarIterator end(const UnionTypeVar* utv);
+
+using IntersectionTypeVarIterator = TypeIterator<IntersectionTypeVar>;
+IntersectionTypeVarIterator begin(const IntersectionTypeVar* itv);
+IntersectionTypeVarIterator end(const IntersectionTypeVar* itv);
+
+using ConstrainedTypeVarIterator = TypeIterator<ConstrainedTypeVar>;
+ConstrainedTypeVarIterator begin(const ConstrainedTypeVar* ctv);
+ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv);
+
+/* Traverses the type T yielding each TypeId.
+ * If the iterator encounters a nested type T, it will instead yield each TypeId within.
  */
-struct UnionTypeVarIterator
+template<typename T>
+struct TypeIterator
 {
     using value_type = Luau::TypeId;
     using pointer = value_type*;
@@ -645,32 +675,115 @@ struct UnionTypeVarIterator
     using difference_type = size_t;
     using iterator_category = std::input_iterator_tag;
 
-    explicit UnionTypeVarIterator(const UnionTypeVar* utv);
+    explicit TypeIterator(const T* t)
+    {
+        LUAU_ASSERT(t);
 
-    UnionTypeVarIterator& operator++();
-    UnionTypeVarIterator operator++(int);
-    bool operator!=(const UnionTypeVarIterator& rhs);
-    bool operator==(const UnionTypeVarIterator& rhs);
+        const std::vector<TypeId>& types = getTypes(t);
+        if (!types.empty())
+            stack.push_front({t, 0});
 
-    const TypeId& operator*();
+        seen.insert(t);
+    }
 
-    friend UnionTypeVarIterator end(const UnionTypeVar* utv);
+    TypeIterator<T>& operator++()
+    {
+        advance();
+        descend();
+        return *this;
+    }
+
+    TypeIterator<T> operator++(int)
+    {
+        TypeIterator<T> copy = *this;
+        ++copy;
+        return copy;
+    }
+
+    bool operator==(const TypeIterator<T>& rhs) const
+    {
+        if (!stack.empty() && !rhs.stack.empty())
+            return stack.front() == rhs.stack.front();
+
+        return stack.empty() && rhs.stack.empty();
+    }
+
+    bool operator!=(const TypeIterator<T>& rhs) const
+    {
+        return !(*this == rhs);
+    }
+
+    const TypeId& operator*()
+    {
+        LUAU_ASSERT(!stack.empty());
+
+        descend();
+
+        auto [t, currentIndex] = stack.front();
+        LUAU_ASSERT(t);
+        const std::vector<TypeId>& types = getTypes(t);
+        LUAU_ASSERT(currentIndex < types.size());
+
+        const TypeId& ty = types[currentIndex];
+        LUAU_ASSERT(!get<T>(follow(ty)));
+        return ty;
+    }
+
+    // Normally, we'd have `begin` and `end` be a template but there's too much trouble
+    // with templates portability in this area, so not worth it. Thanks MSVC.
+    friend UnionTypeVarIterator end(const UnionTypeVar*);
+    friend IntersectionTypeVarIterator end(const IntersectionTypeVar*);
+    friend ConstrainedTypeVarIterator end(const ConstrainedTypeVar*);
 
 private:
-    UnionTypeVarIterator() = default;
+    TypeIterator() = default;
 
-    // (UnionTypeVar* utv, size_t currentIndex)
-    using SavedIterInfo = std::pair<const UnionTypeVar*, size_t>;
+    // (T* t, size_t currentIndex)
+    using SavedIterInfo = std::pair<const T*, size_t>;
 
     std::deque<SavedIterInfo> stack;
-    std::unordered_set<const UnionTypeVar*> seen; // Only needed to protect the iterator from hanging the thread.
+    std::unordered_set<const T*> seen; // Only needed to protect the iterator from hanging the thread.
 
-    void advance();
-    void descend();
+    void advance()
+    {
+        while (!stack.empty())
+        {
+            auto& [t, currentIndex] = stack.front();
+            ++currentIndex;
+
+            const std::vector<TypeId>& types = getTypes(t);
+            if (currentIndex >= types.size())
+                stack.pop_front();
+            else
+                break;
+        }
+    }
+
+    void descend()
+    {
+        while (!stack.empty())
+        {
+            auto [current, currentIndex] = stack.front();
+            const std::vector<TypeId>& types = getTypes(current);
+            if (auto inner = get<T>(follow(types[currentIndex])))
+            {
+                // If we're about to descend into a cyclic type, we should skip over this.
+                // Ideally this should never happen, but alas it does from time to time. :(
+                if (seen.find(inner) != seen.end())
+                    advance();
+                else
+                {
+                    seen.insert(inner);
+                    stack.push_front({inner, 0});
+                }
+
+                continue;
+            }
+
+            break;
+        }
+    }
 };
-
-UnionTypeVarIterator begin(const UnionTypeVar* utv);
-UnionTypeVarIterator end(const UnionTypeVar* utv);
 
 using TypeIdPredicate = std::function<std::optional<TypeId>(TypeId)>;
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate);

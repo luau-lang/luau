@@ -213,6 +213,16 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
     SINGLE_COMPARE(lea(rax, qword[r13 + r12 * 4 + 4]), 0x4b, 0x8d, 0x44, 0xa5, 0x04);
 }
 
+TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfAbsoluteJumps")
+{
+    SINGLE_COMPARE(jmp(rax), 0x48, 0xff, 0xe0);
+    SINGLE_COMPARE(jmp(r14), 0x49, 0xff, 0xe6);
+    SINGLE_COMPARE(jmp(qword[r14 + rdx * 4]), 0x49, 0xff, 0x24, 0x96);
+    SINGLE_COMPARE(call(rax), 0x48, 0xff, 0xd0);
+    SINGLE_COMPARE(call(r14), 0x49, 0xff, 0xd6);
+    SINGLE_COMPARE(call(qword[r14 + rdx * 4]), 0x49, 0xff, 0x14, 0x96);
+}
+
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
 {
     // Jump back
@@ -258,6 +268,23 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
             build.setLabel(skip);
         },
         {0xe9, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xe7, 0x3e});
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelCall")
+{
+    check(
+        [](AssemblyBuilderX64& build) {
+            Label fnB;
+
+            build.and_(rcx, 0x3e);
+            build.call(fnB);
+            build.ret();
+
+            build.setLabel(fnB);
+            build.lea(rax, qword[rcx + 0x1f]);
+            build.ret();
+        },
+        {0x48, 0x83, 0xe1, 0x3e, 0xe8, 0x01, 0x00, 0x00, 0x00, 0xc3, 0x48, 0x8d, 0x41, 0x1f, 0xc3});
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
