@@ -583,7 +583,7 @@ TEST_CASE_FIXTURE(Fixture, "transpile_error_expr")
     auto names = AstNameTable{allocator};
     ParseResult parseResult = Parser::parse(code.data(), code.size(), names, allocator, {});
 
-    CHECK_EQ("local a = (error-expr: f.%error-id%)-(error-expr)", transpileWithTypes(*parseResult.root));
+    CHECK_EQ("local a = (error-expr: f:%error-id%)-(error-expr)", transpileWithTypes(*parseResult.root));
 }
 
 TEST_CASE_FIXTURE(Fixture, "transpile_error_stat")

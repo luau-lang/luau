@@ -4885,6 +4885,13 @@ TypePackId TypeChecker::freshTypePack(TypeLevel level)
 
 TypeId TypeChecker::resolveType(const ScopePtr& scope, const AstType& annotation)
 {
+    TypeId ty = resolveTypeWorker(scope, annotation);
+    currentModule->astResolvedTypes[&annotation] = ty;
+    return ty;
+}
+
+TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& annotation)
+{
     if (const auto& lit = annotation.as<AstTypeReference>())
     {
         std::optional<TypeFun> tf;
@@ -5200,9 +5207,10 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypeList
 
 TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack& annotation)
 {
+    TypePackId result;
     if (const AstTypePackVariadic* variadic = annotation.as<AstTypePackVariadic>())
     {
-        return addTypePack(TypePackVar{VariadicTypePack{resolveType(scope, *variadic->variadicType)}});
+        result = addTypePack(TypePackVar{VariadicTypePack{resolveType(scope, *variadic->variadicType)}});
     }
     else if (const AstTypePackGeneric* generic = annotation.as<AstTypePackGeneric>())
     {
@@ -5216,10 +5224,12 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
             else
                 reportError(TypeError{generic->location, UnknownSymbol{genericName, UnknownSymbol::Type}});
 
-            return errorRecoveryTypePack(scope);
+            result = errorRecoveryTypePack(scope);
         }
-
-        return *genericTy;
+        else
+        {
+            result = *genericTy;
+        }
     }
     else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
     {
@@ -5229,14 +5239,17 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
             types.push_back(resolveType(scope, *type));
 
         if (auto tailType = explicitTp->typeList.tailType)
-            return addTypePack(types, resolveTypePack(scope, *tailType));
-
-        return addTypePack(types);
+            result = addTypePack(types, resolveTypePack(scope, *tailType));
+        else
+            result = addTypePack(types);
     }
     else
     {
         ice("Unknown AstTypePack kind");
     }
+
+    currentModule->astResolvedTypePacks[&annotation] = result;
+    return result;
 }
 
 bool ApplyTypeFunction::isDirty(TypeId ty)

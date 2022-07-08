@@ -700,6 +700,12 @@ struct TypeVarStringifier
     void operator()(TypeId, const MetatableTypeVar& mtv)
     {
         state.result.invalid = true;
+        if (!state.exhaustive && mtv.syntheticName)
+        {
+            state.emit(*mtv.syntheticName);
+            return;
+        }
+
         state.emit("{ @metatable ");
         stringify(mtv.metatable);
         state.emit(",");

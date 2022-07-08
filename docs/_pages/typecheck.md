@@ -104,15 +104,15 @@ From the type checker perspective, each table can be in one of three states. The
 
 ### Unsealed tables
 
-An unsealed table is a table whose properties could still be tacked on. This occurs when the table constructor literal had zero expressions. This is one way to accumulate knowledge of the shape of this table.
+An unsealed table is a table which supports adding new properties, which updates the tables type. Unsealed tables are created using table literals. This is one way to accumulate knowledge of the shape of this table.
 
 ```lua
-local t = {} -- {}
-t.x = 1      -- {x: number}
-t.y = 2      -- {x: number, y: number}
+local t = {x = 1} -- {x: number}
+t.y = 2           -- {x: number, y: number}
+t.z = 3           -- {x: number, y: number, z: number}
 ```
 
-However, if this local were written as `local t: {} = {}`, it ends up sealing the table, so the two assignments henceforth will not be ok.
+However, if this local were written as `local t: { x: number } = { x = 1 }`, it ends up sealing the table, so the two assignments henceforth will not be ok.
 
 Furthermore, once we exit the scope where this unsealed table was created in, we seal it.
 
@@ -128,16 +128,25 @@ local v2 = vec2(1, 2)
 v2.z = 3 -- not ok
 ```
 
-### Sealed tables
-
-A sealed table is a table that is now locked down. This occurs when the table constructor literal had 1 or more expression, or when the table type is spelt out explicitly via a type annotation.
+Unsealed tables are *exact* in that any property of the table must be named by the type. Since Luau treats missing properties as having value `nil`, this means that we can treat an unsealed table which does not mention a property as if it mentioned the property, as long as that property is optional.
 
 ```lua
-local t = {x = 1} -- {x: number}
-t.y = 2           -- not ok
+local t = {x = 1}
+local u : { x : number, y : number? } = t -- ok because y is optional
+local v : { x : number, z : number } = t  -- not ok because z is not optional
 ```
 
-Sealed tables support *width subtyping*, which allows a table with more properties to be used as a table with fewer
+### Sealed tables
+
+A sealed table is a table that is now locked down. This occurs when the table type is spelled out explicitly via a type annotation, or if it is returned from a function.
+
+```lua
+local t : { x: number } = {x = 1}
+t.y = 2 -- not ok
+```
+
+Sealed tables are *inexact* in that the table may have properties which are not mentioned in the type.
+As a result, sealed tables support *width subtyping*, which allows a table with more properties to be used as a table with fewer
 
 ```lua
 type Point1D = { x : number }
