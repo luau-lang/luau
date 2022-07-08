@@ -47,7 +47,7 @@ TEST_CASE_FIXTURE(Fixture, "string_index")
     REQUIRE(nat);
     CHECK_EQ("string", toString(nat->ty));
 
-    CHECK_EQ("*unknown*", toString(requireType("t")));
+    CHECK_EQ("<error-type>", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_method")

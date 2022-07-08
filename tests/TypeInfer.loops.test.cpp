@@ -142,7 +142,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
     CHECK_EQ(2, result.errors.size());
 
     TypeId p = requireType("p");
-    CHECK_EQ("*unknown*", toString(p));
+    CHECK_EQ("<error-type>", toString(p));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")

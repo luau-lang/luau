@@ -301,8 +301,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
-    ScopedFastFlag luauNonCopyableTypeVarFields{"LuauNonCopyableTypeVarFields", true};
-
     fileResolver.source["Module/A"] = R"(
 export type A = B
 type B = A

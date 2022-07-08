@@ -9,6 +9,7 @@
 #include <algorithm>
 
 LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -222,14 +223,14 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
 
     addGlobalBinding(typeChecker, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
 
-    // setmetatable<MT>({ @metatable MT }, MT) -> { @metatable MT }
     // clang-format off
+    // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
     addGlobalBinding(typeChecker, "setmetatable",
         arena.addType(
             FunctionTypeVar{
                 {genericMT},
                 {},
-                arena.addTypePack(TypePack{{tableMetaMT, genericMT}}),
+                arena.addTypePack(TypePack{{FFlag::LuauUnknownAndNeverType ? tabTy : tableMetaMT, genericMT}}),
                 arena.addTypePack(TypePack{{tableMetaMT}})
             }
         ), "@luau"
@@ -309,12 +310,24 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 {
     auto [paramPack, _predicates] = withPredicate;
 
+    if (FFlag::LuauUnknownAndNeverType)
+    {
+        if (size(paramPack) < 2 && finite(paramPack))
+            return std::nullopt;
+    }
+
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
     std::vector<TypeId> expectedArgs = typechecker.unTypePack(scope, paramPack, 2, expr.location);
 
     TypeId target = follow(expectedArgs[0]);
     TypeId mt = follow(expectedArgs[1]);
+
+    if (FFlag::LuauUnknownAndNeverType)
+    {
+        typechecker.tablify(target);
+        typechecker.tablify(mt);
+    }
 
     if (const auto& tab = get<TableTypeVar>(target))
     {
@@ -324,7 +337,8 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
         }
         else
         {
-            typechecker.tablify(mt);
+            if (!FFlag::LuauUnknownAndNeverType)
+                typechecker.tablify(mt);
 
             const TableTypeVar* mtTtv = get<TableTypeVar>(mt);
             MetatableTypeVar mtv{target, mt};
@@ -343,7 +357,10 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 
             if (FFlag::LuauSetMetaTableArgsCheck && expr.args.size < 1)
             {
-                return WithPredicate<TypePackId>{};
+                if (FFlag::LuauUnknownAndNeverType)
+                    return std::nullopt;
+                else
+                    return WithPredicate<TypePackId>{};
             }
 
             if (!FFlag::LuauSetMetaTableArgsCheck || !expr.self)
@@ -390,11 +407,21 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
 
     if (head.size() > 0)
     {
-        std::optional<TypeId> newhead = typechecker.pickTypesFromSense(head[0], true);
-        if (!newhead)
-            head = {typechecker.nilType};
+        auto [ty, ok] = typechecker.pickTypesFromSense(head[0], true);
+        if (FFlag::LuauUnknownAndNeverType)
+        {
+            if (get<NeverTypeVar>(*ty))
+                head = {*ty};
+            else
+                head[0] = *ty;
+        }
         else
-            head[0] = *newhead;
+        {
+            if (!ty)
+                head = {typechecker.nilType};
+            else
+                head[0] = *ty;
+        }
     }
 
     return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};

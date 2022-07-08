@@ -19,6 +19,7 @@ LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
@@ -47,33 +48,6 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
         }
     }
 
-    // TODO cycle and operator() need to be clipped when FFlagLuauUseVisitRecursionLimit is clipped
-    template<typename TID>
-    void cycle(TID)
-    {
-    }
-    template<typename TID, typename T>
-    bool operator()(TID ty, const T&)
-    {
-        return visit(ty);
-    }
-    bool operator()(TypeId ty, const FreeTypeVar& ftv)
-    {
-        return visit(ty, ftv);
-    }
-    bool operator()(TypeId ty, const FunctionTypeVar& ftv)
-    {
-        return visit(ty, ftv);
-    }
-    bool operator()(TypeId ty, const TableTypeVar& ttv)
-    {
-        return visit(ty, ttv);
-    }
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
-    {
-        return visit(tp, ftp);
-    }
-
     bool visit(TypeId ty) override
     {
         // Type levels of types from other modules are already global, so we don't need to promote anything inside
@@ -100,6 +74,15 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
             return true;
 
         promote(ty, log.getMutable<FreeTypeVar>(ty));
+        return true;
+    }
+
+    bool visit(TypeId ty, const ConstrainedTypeVar&) override
+    {
+        if (!FFlag::LuauUnknownAndNeverType)
+            return visit(ty);
+
+        promote(ty, log.getMutable<ConstrainedTypeVar>(ty));
         return true;
     }
 
@@ -445,6 +428,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     }
     else if (subFree)
     {
+        if (FFlag::LuauUnknownAndNeverType)
+        {
+            // Normally, if the subtype is free, it should not be bound to any, unknown, or error types.
+            // But for bug compatibility, we'll only apply this rule to unknown. Doing this will silence cascading type errors.
+            if (get<UnknownTypeVar>(superTy))
+                return;
+        }
+
         TypeLevel subLevel = subFree->level;
 
         occursCheck(subTy, superTy);
@@ -468,7 +459,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         return;
     }
 
-    if (get<ErrorTypeVar>(superTy) || get<AnyTypeVar>(superTy))
+    if (get<ErrorTypeVar>(superTy) || get<AnyTypeVar>(superTy) || get<UnknownTypeVar>(superTy))
         return tryUnifyWithAny(subTy, superTy);
 
     if (get<AnyTypeVar>(subTy))
@@ -483,6 +474,9 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     }
 
     if (get<ErrorTypeVar>(subTy))
+        return tryUnifyWithAny(superTy, subTy);
+
+    if (get<NeverTypeVar>(subTy))
         return tryUnifyWithAny(superTy, subTy);
 
     auto& cache = sharedState.cachedUnify;
@@ -1862,6 +1856,7 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
 
         if (state.log.getMutable<FreeTypeVar>(ty))
         {
+            // TODO: Only bind if the anyType isn't any, unknown, or error (?)
             state.log.replace(ty, BoundTypeVar{anyType});
         }
         else if (auto fun = state.log.getMutable<FunctionTypeVar>(ty))
@@ -1901,22 +1896,27 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
 
 void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
 {
-    LUAU_ASSERT(get<AnyTypeVar>(anyTy) || get<ErrorTypeVar>(anyTy));
+    LUAU_ASSERT(get<AnyTypeVar>(anyTy) || get<ErrorTypeVar>(anyTy) || get<UnknownTypeVar>(anyTy) || get<NeverTypeVar>(anyTy));
 
     // These types are not visited in general loop below
     if (get<PrimitiveTypeVar>(subTy) || get<AnyTypeVar>(subTy) || get<ClassTypeVar>(subTy))
         return;
 
-    const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{getSingletonTypes().anyType}});
-
-    const TypePackId anyTP = get<AnyTypeVar>(anyTy) ? anyTypePack : types->addTypePack(TypePackVar{Unifiable::Error{}});
+    TypePackId anyTp;
+    if (FFlag::LuauUnknownAndNeverType)
+        anyTp = types->addTypePack(TypePackVar{VariadicTypePack{anyTy}});
+    else
+    {
+        const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{getSingletonTypes().anyType}});
+        anyTp = get<AnyTypeVar>(anyTy) ? anyTypePack : types->addTypePack(TypePackVar{Unifiable::Error{}});
+    }
 
     std::vector<TypeId> queue = {subTy};
 
     sharedState.tempSeenTy.clear();
     sharedState.tempSeenTp.clear();
 
-    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, getSingletonTypes().anyType, anyTP);
+    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, FFlag::LuauUnknownAndNeverType ? anyTy : getSingletonTypes().anyType, anyTp);
 }
 
 void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)

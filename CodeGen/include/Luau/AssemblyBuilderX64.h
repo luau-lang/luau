@@ -58,6 +58,9 @@ public:
     void jmp(Label& label);
     void jmp(OperandX64 op);
 
+    void call(Label& label);
+    void call(OperandX64 op);
+
     // AVX
     void vaddpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vaddps(OperandX64 dst, OperandX64 src1, OperandX64 src2);

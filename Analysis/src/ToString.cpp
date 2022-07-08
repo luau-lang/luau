@@ -11,6 +11,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 
 /*
  * Prefix generic typenames with gen-
@@ -841,7 +842,7 @@ struct TypeVarStringifier
     void operator()(TypeId, const ErrorTypeVar& tv)
     {
         state.result.error = true;
-        state.emit("*unknown*");
+        state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
     }
 
     void operator()(TypeId, const LazyTypeVar& ltv)
@@ -850,7 +851,17 @@ struct TypeVarStringifier
         state.emit("lazy?");
     }
 
-}; // namespace
+    void operator()(TypeId, const UnknownTypeVar& ttv)
+    {
+        state.emit("unknown");
+    }
+
+    void operator()(TypeId, const NeverTypeVar& ttv)
+    {
+        state.emit("never");
+    }
+
+};
 
 struct TypePackStringifier
 {
@@ -955,7 +966,7 @@ struct TypePackStringifier
     void operator()(TypePackId, const Unifiable::Error& error)
     {
         state.result.error = true;
-        state.emit("*unknown*");
+        state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
     }
 
     void operator()(TypePackId, const VariadicTypePack& pack)

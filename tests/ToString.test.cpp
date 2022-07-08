@@ -499,7 +499,7 @@ local function target(callback: nil) return callback(4, "hello") end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("(nil) -> (*unknown*)", toString(requireType("target")));
+    CHECK_EQ("(nil) -> (<error-type>)", toString(requireType("target")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")

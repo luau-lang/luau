@@ -238,10 +238,10 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     // TODO: Should we assert anything about these tests when DCR is being used?
     if (!FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ("*unknown*", toString(requireType("c")));
-        CHECK_EQ("*unknown*", toString(requireType("d")));
-        CHECK_EQ("*unknown*", toString(requireType("e")));
-        CHECK_EQ("*unknown*", toString(requireType("f")));
+        CHECK_EQ("<error-type>", toString(requireType("c")));
+        CHECK_EQ("<error-type>", toString(requireType("d")));
+        CHECK_EQ("<error-type>", toString(requireType("e")));
+        CHECK_EQ("<error-type>", toString(requireType("f")));
     }
 }
 
@@ -622,7 +622,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("*unknown*", toString(t0->type));
+    CHECK_EQ("<error-type>", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);

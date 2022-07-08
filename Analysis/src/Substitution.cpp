@@ -8,8 +8,10 @@
 #include <algorithm>
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(LuauAnyificationMustClone, false)
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 
 namespace Luau
 {
@@ -154,7 +156,7 @@ TarjanResult Tarjan::loop()
         if (currEdge == -1)
         {
             ++childCount;
-            if (childLimit > 0 && childLimit < childCount)
+            if (childLimit > 0 && (FFlag::LuauUnknownAndNeverType ? childLimit <= childCount : childLimit < childCount))
                 return TarjanResult::TooManyChildren;
 
             stack.push_back(index);
@@ -439,6 +441,9 @@ void Substitution::replaceChildren(TypeId ty)
     if (ignoreChildren(ty))
         return;
 
+    if (FFlag::LuauAnyificationMustClone && ty->owningArena != arena)
+        return;
+
     if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
     {
         ftv->argTypes = replace(ftv->argTypes);
@@ -488,6 +493,9 @@ void Substitution::replaceChildren(TypePackId tp)
     LUAU_ASSERT(tp == log->follow(tp));
 
     if (ignoreChildren(tp))
+        return;
+
+    if (FFlag::LuauAnyificationMustClone && tp->owningArena != arena)
         return;
 
     if (TypePack* tpp = getMutable<TypePack>(tp))

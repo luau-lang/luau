@@ -2,7 +2,7 @@
 	PCRE2-based RegEx implemention for Luau
 	Version 1.0.0a2
 	BSD 2-Clause Licence
-	Copyright © 2020 - Blockzez (devforum.roblox.com/u/Blockzez and github.com/Blockzez)
+	Copyright © 2020 - Blockzez (devforum /u/Blockzez and github.com/Blockzez)
 	All rights reserved.
 
 	Redistribution and use in source and binary forms, with or without
