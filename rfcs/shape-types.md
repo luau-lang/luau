@@ -52,6 +52,20 @@ will, with bounded generics and this RFC, have type:
   getP : <a, t <: {p:a}> (t) -> a
 ```
 
+### String types
+
+In Luau, the string type has a metatable, so is a supertype of
+any appropriate shape type, for example `{ lower: (string) -> string }`.
+
+This is necessary to support string parameters to appropriate bounded generics, for example
+```lua
+   function getLower(x) return x:lower() end
+```
+which has type
+```
+   getLower : <a, t <: {lower: (t) -> a}> (t) -> a
+```
+
 ### Related work
 
 This design is essentially the same as
