@@ -7,7 +7,6 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
-#include "Luau/Parser.h" // TODO: only needed for autocompleteSource which is deprecated
 
 #include <algorithm>
 #include <unordered_set>
@@ -1407,8 +1406,8 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
         if (!FFlag::LuauSelfCallAutocompleteFix2 && isString(ty))
-            return {autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry),
-                ancestry};
+            return {
+                autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry), ancestry};
         else
             return {autocompleteProps(*module, typeArena, ty, indexType, ancestry), ancestry};
     }
@@ -1507,8 +1506,8 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {
-        return {{{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}},
-            ancestry};
+        return {
+            {{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
     }
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {
@@ -1622,34 +1621,6 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
         return {};
 
     AutocompleteResult autocompleteResult = autocomplete(*sourceModule, module, typeChecker, &frontend.arenaForAutocomplete, position, callback);
-
-    frontend.arenaForAutocomplete.clear();
-
-    return autocompleteResult;
-}
-
-OwningAutocompleteResult autocompleteSource(Frontend& frontend, std::string_view source, Position position, StringCompletionCallback callback)
-{
-    // TODO: Remove #include "Luau/Parser.h" with this function
-    auto sourceModule = std::make_unique<SourceModule>();
-    ParseOptions parseOptions;
-    parseOptions.captureComments = true;
-    ParseResult result = Parser::parse(source.data(), source.size(), *sourceModule->names, *sourceModule->allocator, parseOptions);
-
-    if (!result.root)
-        return {AutocompleteResult{}, {}, nullptr};
-
-    sourceModule->name = "FRAGMENT_SCRIPT";
-    sourceModule->root = result.root;
-    sourceModule->mode = Mode::Strict;
-    sourceModule->commentLocations = std::move(result.commentLocations);
-
-    TypeChecker& typeChecker = frontend.typeCheckerForAutocomplete;
-    ModulePtr module = typeChecker.check(*sourceModule, Mode::Strict);
-
-    OwningAutocompleteResult autocompleteResult = {
-        autocomplete(*sourceModule, module, typeChecker, &frontend.arenaForAutocomplete, position, callback), std::move(module),
-        std::move(sourceModule)};
 
     frontend.arenaForAutocomplete.clear();
 

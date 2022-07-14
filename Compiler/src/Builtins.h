@@ -35,7 +35,9 @@ struct Builtin
 };
 
 Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, const DenseHashMap<AstLocal*, Variable>& variables);
-int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& options);
+
+void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
+    const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options, AstNode* root);
 
 } // namespace Compile
 } // namespace Luau

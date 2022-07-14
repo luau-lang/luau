@@ -322,10 +322,13 @@ struct TypeChecker2 : public AstVisitor
     {
         pack = follow(pack);
 
-        while (auto tp = get<TypePack>(pack))
+        while (true)
         {
-            if (tp->head.empty() && tp->tail)
+            auto tp = get<TypePack>(pack);
+            if (tp && tp->head.empty() && tp->tail)
                 pack = *tp->tail;
+            else
+                break;
         }
 
         if (auto ty = first(pack))

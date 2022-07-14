@@ -2688,6 +2688,21 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                 else
                     seenMode = true;
             }
+            else if (first == "optimize")
+            {
+                size_t notspace = hc.content.find_first_not_of(" \t", space);
+
+                if (space == std::string::npos || notspace == std::string::npos)
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "optimize directive requires an optimization level");
+                else
+                {
+                    const char* level = hc.content.c_str() + notspace;
+
+                    if (strcmp(level, "0") && strcmp(level, "1") && strcmp(level, "2"))
+                        emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
+                            "optimize directive uses unknown optimization level '%s', 0..2 expected", level);
+                }
+            }
             else
             {
                 static const char* kHotComments[] = {
@@ -2695,6 +2710,7 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                     "nocheck",
                     "nonstrict",
                     "strict",
+                    "optimize",
                 };
 
                 if (const char* suggestion = fuzzyMatch(first, kHotComments, std::size(kHotComments)))

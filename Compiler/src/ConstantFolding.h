@@ -26,7 +26,7 @@ struct Constant
     {
         bool valueBoolean;
         double valueNumber;
-        char* valueString = nullptr; // length stored in stringLength
+        const char* valueString = nullptr; // length stored in stringLength
     };
 
     bool isTruthful() const
@@ -35,7 +35,7 @@ struct Constant
         return type != Type_Nil && !(type == Type_Boolean && valueBoolean == false);
     }
 
-    AstArray<char> getString() const
+    AstArray<const char> getString() const
     {
         LUAU_ASSERT(type == Type_String);
         return {valueString, stringLength};
@@ -43,7 +43,7 @@ struct Constant
 };
 
 void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, AstNode* root);
+    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, AstNode* root);
 
 } // namespace Compile
 } // namespace Luau

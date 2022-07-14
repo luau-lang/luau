@@ -19,7 +19,6 @@ LUAU_FASTFLAG(LuauUnknownAndNeverType)
  * Fair warning: Setting this will break a lot of Luau unit tests.
  */
 LUAU_FASTFLAGVARIABLE(DebugLuauVerboseTypeNames, false)
-LUAU_FASTFLAGVARIABLE(LuauToStringTableBracesNewlines, false)
 
 namespace Luau
 {
@@ -571,54 +570,22 @@ struct TypeVarStringifier
         {
         case TableState::Sealed:
             state.result.invalid = true;
-            if (FFlag::LuauToStringTableBracesNewlines)
-            {
-                openbrace = "{|";
-                closedbrace = "|}";
-            }
-            else
-            {
-                openbrace = "{| ";
-                closedbrace = " |}";
-            }
+            openbrace = "{|";
+            closedbrace = "|}";
             break;
         case TableState::Unsealed:
-            if (FFlag::LuauToStringTableBracesNewlines)
-            {
-                openbrace = "{";
-                closedbrace = "}";
-            }
-            else
-            {
-                openbrace = "{ ";
-                closedbrace = " }";
-            }
+            openbrace = "{";
+            closedbrace = "}";
             break;
         case TableState::Free:
             state.result.invalid = true;
-            if (FFlag::LuauToStringTableBracesNewlines)
-            {
-                openbrace = "{-";
-                closedbrace = "-}";
-            }
-            else
-            {
-                openbrace = "{- ";
-                closedbrace = " -}";
-            }
+            openbrace = "{-";
+            closedbrace = "-}";
             break;
         case TableState::Generic:
             state.result.invalid = true;
-            if (FFlag::LuauToStringTableBracesNewlines)
-            {
-                openbrace = "{+";
-                closedbrace = "+}";
-            }
-            else
-            {
-                openbrace = "{+ ";
-                closedbrace = " +}";
-            }
+            openbrace = "{+";
+            closedbrace = "+}";
             break;
         }
 
@@ -637,8 +604,7 @@ struct TypeVarStringifier
         bool comma = false;
         if (ttv.indexer)
         {
-            if (FFlag::LuauToStringTableBracesNewlines)
-                state.newline();
+            state.newline();
             state.emit("[");
             stringify(ttv.indexer->indexType);
             state.emit("]: ");
@@ -655,10 +621,8 @@ struct TypeVarStringifier
                 state.emit(",");
                 state.newline();
             }
-            else if (FFlag::LuauToStringTableBracesNewlines)
-            {
+            else
                 state.newline();
-            }
 
             size_t length = state.result.name.length() - oldLength;
 
@@ -685,13 +649,10 @@ struct TypeVarStringifier
         }
 
         state.dedent();
-        if (FFlag::LuauToStringTableBracesNewlines)
-        {
-            if (comma)
-                state.newline();
-            else
-                state.emit("  ");
-        }
+        if (comma)
+            state.newline();
+        else
+            state.emit("  ");
         state.emit(closedbrace);
 
         state.unsee(&ttv);
@@ -859,7 +820,6 @@ struct TypeVarStringifier
     {
         state.emit("never");
     }
-
 };
 
 struct TypePackStringifier

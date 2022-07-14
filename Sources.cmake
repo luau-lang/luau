@@ -38,12 +38,14 @@ target_sources(Luau.Compiler PRIVATE
     Compiler/src/BytecodeBuilder.cpp
     Compiler/src/Compiler.cpp
     Compiler/src/Builtins.cpp
+    Compiler/src/BuiltinFolding.cpp
     Compiler/src/ConstantFolding.cpp
     Compiler/src/CostModel.cpp
     Compiler/src/TableShape.cpp
     Compiler/src/ValueTracking.cpp
     Compiler/src/lcode.cpp
     Compiler/src/Builtins.h
+    Compiler/src/BuiltinFolding.h
     Compiler/src/ConstantFolding.h
     Compiler/src/CostModel.h
     Compiler/src/TableShape.h

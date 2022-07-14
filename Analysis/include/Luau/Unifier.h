@@ -79,6 +79,7 @@ private:
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);
     void tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection = false);
+    void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
 

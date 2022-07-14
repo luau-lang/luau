@@ -17,6 +17,16 @@
 #include <math.h>
 
 extern bool verbose;
+extern int optimizationLevel;
+
+static lua_CompileOptions defaultOptions()
+{
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = optimizationLevel;
+    copts.debugLevel = 1;
+
+    return copts;
+}
 
 static int lua_collectgarbage(lua_State* L)
 {
@@ -127,7 +137,7 @@ int lua_silence(lua_State* L)
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr,
-    lua_State* initialLuaState = nullptr, lua_CompileOptions* copts = nullptr)
+    lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr)
 {
     std::string path = __FILE__;
     path.erase(path.find_last_of("\\/"));
@@ -189,8 +199,11 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
 
     std::string chunkname = "=" + std::string(name);
 
+    // note: luau_compile supports nullptr options, but we need to customize our defaults to improve test coverage
+    lua_CompileOptions opts = options ? *options : defaultOptions();
+
     size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(source.data(), source.size(), copts, &bytecodeSize);
+    char* bytecode = luau_compile(source.data(), source.size(), &opts, &bytecodeSize);
     int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
 
@@ -383,9 +396,7 @@ TEST_CASE("Pack")
 
 TEST_CASE("Vector")
 {
-    lua_CompileOptions copts = {};
-    copts.optimizationLevel = 1;
-    copts.debugLevel = 1;
+    lua_CompileOptions copts = defaultOptions();
     copts.vectorCtor = "vector";
 
     runConformance(
@@ -519,8 +530,7 @@ TEST_CASE("Debugger")
     breakhits = 0;
     interruptedthread = nullptr;
 
-    lua_CompileOptions copts = {};
-    copts.optimizationLevel = 1;
+    lua_CompileOptions copts = defaultOptions();
     copts.debugLevel = 2;
 
     runConformance(
@@ -850,6 +860,43 @@ TEST_CASE("ApiCalls")
     }
 }
 
+TEST_CASE("ApiAtoms")
+{
+    ScopedFastFlag sff("LuauLazyAtoms", true);
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_callbacks(L)->useratom = [](const char* s, size_t l) -> int16_t {
+        if (strcmp(s, "string") == 0)
+            return 0;
+        if (strcmp(s, "important") == 0)
+            return 1;
+
+        return -1;
+    };
+
+    lua_pushstring(L, "string");
+    lua_pushstring(L, "import");
+    lua_pushstring(L, "ant");
+    lua_concat(L, 2);
+    lua_pushstring(L, "unimportant");
+
+    int a1, a2, a3;
+    const char* s1 = lua_tostringatom(L, -3, &a1);
+    const char* s2 = lua_tostringatom(L, -2, &a2);
+    const char* s3 = lua_tostringatom(L, -1, &a3);
+
+    CHECK(strcmp(s1, "string") == 0);
+    CHECK(a1 == 0);
+
+    CHECK(strcmp(s2, "important") == 0);
+    CHECK(a2 == 1);
+
+    CHECK(strcmp(s3, "unimportant") == 0);
+    CHECK(a3 == -1);
+}
+
 static bool endsWith(const std::string& str, const std::string& suffix)
 {
     if (suffix.length() > str.length())
@@ -957,9 +1004,8 @@ TEST_CASE("TagMethodError")
 
 TEST_CASE("Coverage")
 {
-    lua_CompileOptions copts = {};
-    copts.optimizationLevel = 1;
-    copts.debugLevel = 1;
+    lua_CompileOptions copts = defaultOptions();
+    copts.optimizationLevel = 1; // disable inlining to get fixed expected hit results
     copts.coverageLevel = 2;
 
     runConformance(
@@ -1059,6 +1105,9 @@ TEST_CASE("GCDump")
 
 TEST_CASE("Interrupt")
 {
+    lua_CompileOptions copts = defaultOptions();
+    copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
+
     static const int expectedhits[] = {
         2,
         9,
@@ -1109,7 +1158,8 @@ TEST_CASE("Interrupt")
         },
         [](lua_State* L) {
             CHECK(index == 5); // a single yield point
-        });
+        },
+        nullptr, &copts);
 
     CHECK(index == int(std::size(expectedhits)));
 }

@@ -103,6 +103,8 @@ void ConstraintGraphBuilder::visit(NotNull<Scope2> scope, AstStat* stat)
         visit(scope, s);
     else if (auto s = stat->as<AstStatLocal>())
         visit(scope, s);
+    else if (auto s = stat->as<AstStatFor>())
+        visit(scope, s);
     else if (auto f = stat->as<AstStatFunction>())
         visit(scope, f);
     else if (auto f = stat->as<AstStatLocalFunction>())
@@ -165,6 +167,27 @@ void ConstraintGraphBuilder::visit(NotNull<Scope2> scope, AstStatLocal* local)
                 addConstraint(scope, SubtypeConstraint{varTypes[i], exprType});
         }
     }
+}
+
+void ConstraintGraphBuilder::visit(NotNull<Scope2> scope, AstStatFor* for_)
+{
+    auto checkNumber = [&](AstExpr* expr)
+    {
+        if (!expr)
+            return;
+        
+        TypeId t = check(scope, expr);
+        addConstraint(scope, SubtypeConstraint{t, singletonTypes.numberType});
+    };
+
+    checkNumber(for_->from);
+    checkNumber(for_->to);
+    checkNumber(for_->step);
+
+    NotNull<Scope2> forScope = childScope(for_->location, scope);
+    forScope->bindings[for_->var] = singletonTypes.numberType;
+
+    visit(forScope, for_->body);
 }
 
 void addConstraints(Constraint* constraint, NotNull<Scope2> scope)
