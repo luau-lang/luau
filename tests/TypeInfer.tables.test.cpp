@@ -3084,4 +3084,86 @@ local b = a.x
     CHECK_EQ("Type 'a' does not have key 'x'", toString(result.errors[1]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "scalar_is_a_subtype_of_a_compatible_polymorphic_shape_type")
+{
+    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
+
+    CheckResult result = check(R"(
+        local function f(s)
+            return s:lower()
+        end
+
+        f("foo" :: string)
+        f("bar" :: "bar")
+        f("baz" :: "bar" | "baz")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "scalar_is_not_a_subtype_of_a_compatible_polymorphic_shape_type")
+{
+    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
+
+    CheckResult result = check(R"(
+        local function f(s)
+            return s:absolutely_no_scalar_has_this_method()
+        end
+
+        f("foo" :: string)
+        f("bar" :: "bar")
+        f("baz" :: "bar" | "baz")
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    CHECK_EQ(R"(Type 'string' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements. Table type 'string' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
+        toString(result.errors[0]));
+    CHECK_EQ(R"(Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements. Table type 'string' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
+        toString(result.errors[1]));
+    CHECK_EQ(R"(Type '"bar" | "baz"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  Not all union options are compatible. Type '"bar"' could not be converted into 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}'
+caused by:
+  The former's metatable does not satisfy the requirements. Table type 'string' not compatible with type 't1 where t1 = {- absolutely_no_scalar_has_this_method: (t1) -> (a...) -}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
+        toString(result.errors[2]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compatible")
+{
+    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
+
+    CheckResult result = check(R"(
+        local function f(s): string
+            local foo = s:lower()
+            return s
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(string) -> string", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "a_free_shape_cannot_turn_into_a_scalar_if_it_is_not_compatible")
+{
+    ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
+
+    CheckResult result = check(R"(
+        local function f(s): string
+            local foo = s:absolutely_no_scalar_has_this_method()
+            return s
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(R"(Type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' could not be converted into 'string'
+caused by:
+  The former's metatable does not satisfy the requirements. Table type 'string' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
+        toString(result.errors[0]));
+    CHECK_EQ("<a, b...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}", toString(requireType("f")));
+}
+
 TEST_SUITE_END();

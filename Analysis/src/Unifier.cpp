@@ -21,6 +21,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
+LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 
 namespace Luau
 {
@@ -432,7 +433,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         {
             // Normally, if the subtype is free, it should not be bound to any, unknown, or error types.
             // But for bug compatibility, we'll only apply this rule to unknown. Doing this will silence cascading type errors.
-            if (get<UnknownTypeVar>(superTy))
+            if (log.get<UnknownTypeVar>(superTy))
                 return;
         }
 
@@ -473,10 +474,10 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             return tryUnifyWithAny(superTy, subTy);
     }
 
-    if (get<ErrorTypeVar>(subTy))
+    if (log.get<ErrorTypeVar>(subTy))
         return tryUnifyWithAny(superTy, subTy);
 
-    if (get<NeverTypeVar>(subTy))
+    if (log.get<NeverTypeVar>(subTy))
         return tryUnifyWithAny(superTy, subTy);
 
     auto& cache = sharedState.cachedUnify;
@@ -537,6 +538,16 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<TableTypeVar>(superTy) && log.getMutable<TableTypeVar>(subTy))
     {
         tryUnifyTables(subTy, superTy, isIntersection);
+    }
+    else if (FFlag::LuauScalarShapeSubtyping && log.get<TableTypeVar>(superTy) &&
+             (log.get<PrimitiveTypeVar>(subTy) || log.get<SingletonTypeVar>(subTy)))
+    {
+        tryUnifyScalarShape(subTy, superTy, /*reversed*/ false);
+    }
+    else if (FFlag::LuauScalarShapeSubtyping && log.get<TableTypeVar>(subTy) &&
+             (log.get<PrimitiveTypeVar>(superTy) || log.get<SingletonTypeVar>(superTy)))
+    {
+        tryUnifyScalarShape(subTy, superTy, /*reversed*/ true);
     }
 
     // tryUnifyWithMetatable assumes its first argument is a MetatableTypeVar. The check is otherwise symmetrical.
@@ -1600,6 +1611,60 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     }
 }
 
+void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
+{
+    LUAU_ASSERT(FFlag::LuauScalarShapeSubtyping);
+
+    TypeId osubTy = subTy;
+    TypeId osuperTy = superTy;
+
+    if (reversed)
+        std::swap(subTy, superTy);
+
+    if (auto ttv = log.get<TableTypeVar>(superTy); !ttv || ttv->state != TableState::Free)
+        return reportError(TypeError{location, TypeMismatch{osuperTy, osubTy}});
+
+    auto fail = [&](std::optional<TypeError> e) {
+        std::string reason = "The former's metatable does not satisfy the requirements.";
+        if (e)
+            reportError(TypeError{location, TypeMismatch{osuperTy, osubTy, reason, *e}});
+        else
+            reportError(TypeError{location, TypeMismatch{osuperTy, osubTy, reason}});
+    };
+
+    // Given t1 where t1 = { lower: (t1) -> (a, b...) }
+    // It should be the case that `string <: t1` iff `(subtype's metatable).__index <: t1`
+    if (auto metatable = getMetatable(subTy))
+    {
+        auto mttv = log.get<TableTypeVar>(*metatable);
+        if (!mttv)
+            fail(std::nullopt);
+
+        if (auto it = mttv->props.find("__index"); it != mttv->props.end())
+        {
+            TypeId ty = it->second.type;
+            Unifier child = makeChildUnifier();
+            child.tryUnify_(ty, superTy);
+
+            if (auto e = hasUnificationTooComplex(child.errors))
+                reportError(*e);
+            else if (!child.errors.empty())
+                fail(child.errors.front());
+
+            log.concat(std::move(child.log));
+
+            return;
+        }
+        else
+        {
+            return fail(std::nullopt);
+        }
+    }
+
+    reportError(TypeError{location, TypeMismatch{osuperTy, osubTy}});
+    return;
+}
+
 TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen)
 {
     ty = follow(ty);
@@ -1916,7 +1981,8 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
     sharedState.tempSeenTy.clear();
     sharedState.tempSeenTp.clear();
 
-    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, FFlag::LuauUnknownAndNeverType ? anyTy : getSingletonTypes().anyType, anyTp);
+    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types,
+        FFlag::LuauUnknownAndNeverType ? anyTy : getSingletonTypes().anyType, anyTp);
 }
 
 void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)

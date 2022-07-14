@@ -662,29 +662,6 @@ LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOption
     return lint(*sourceModule, enabledLintWarnings);
 }
 
-std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view source, std::optional<Luau::LintOptions> enabledLintWarnings)
-{
-    LUAU_TIMETRACE_SCOPE("Frontend::lintFragment", "Frontend");
-
-    const Config& config = configResolver->getConfig("");
-
-    SourceModule sourceModule = parse(ModuleName{}, source, config.parseOptions);
-
-    uint64_t ignoreLints = LintWarning::parseMask(sourceModule.hotcomments);
-
-    Luau::LintOptions lintOptions = enabledLintWarnings.value_or(config.enabledLint);
-    lintOptions.warningMask &= ~ignoreLints;
-
-    double timestamp = getTimestamp();
-
-    std::vector<LintWarning> warnings = Luau::lint(sourceModule.root, *sourceModule.names.get(), typeChecker.globalScope, nullptr,
-        sourceModule.hotcomments, enabledLintWarnings.value_or(config.enabledLint));
-
-    stats.timeLint += getTimestamp() - timestamp;
-
-    return {std::move(sourceModule), classifyLints(warnings, config)};
-}
-
 LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
@@ -958,7 +935,7 @@ std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const Module
     {
         // CLI-43699
         // If we can't find the current module name, that's because we bypassed the frontend's initializer
-        // and called typeChecker.check directly. (This is done by autocompleteSource, for example).
+        // and called typeChecker.check directly.
         // In that case, requires will always fail.
         return std::nullopt;
     }

@@ -48,6 +48,8 @@ LUAU_FASTFLAGVARIABLE(LuauFalsyPredicateReturnsNilInstead, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckLenMT, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckGenericHOFTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
+LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
+LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
 
 namespace Luau
 {
@@ -2443,8 +2445,15 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
         operandType = stripFromNilAndReport(operandType, expr.location);
 
-        if (get<ErrorTypeVar>(operandType) || get<NeverTypeVar>(operandType))
-            return {!FFlag::LuauUnknownAndNeverType ? errorRecoveryType(scope) : operandType};
+        // # operator is guaranteed to return number
+        if ((FFlag::LuauNeverTypesAndOperatorsInference && get<AnyTypeVar>(operandType)) || get<ErrorTypeVar>(operandType) ||
+            get<NeverTypeVar>(operandType))
+        {
+            if (FFlag::LuauNeverTypesAndOperatorsInference)
+                return {numberType};
+            else
+                return {!FFlag::LuauUnknownAndNeverType ? errorRecoveryType(scope) : operandType};
+        }
 
         DenseHashSet<TypeId> seen{nullptr};
 
@@ -2610,6 +2619,13 @@ TypeId TypeChecker::checkRelationalOperation(
     case AstExprBinary::CompareGe:
     case AstExprBinary::CompareLe:
     {
+        if (FFlag::LuauNeverTypesAndOperatorsInference)
+        {
+            // If one of the operand is never, it doesn't make sense to unify these.
+            if (get<NeverTypeVar>(lhsType) || get<NeverTypeVar>(rhsType))
+                return booleanType;
+        }
+
         /* Subtlety here:
          * We need to do this unification first, but there are situations where we don't actually want to
          * report any problems that might have been surfaced as a result of this step because we might already
@@ -2787,8 +2803,10 @@ TypeId TypeChecker::checkBinaryOperation(
 
     // If we know nothing at all about the lhs type, we can usually say nothing about the result.
     // The notable exception to this is the equality and inequality operators, which always produce a boolean.
-    const bool lhsIsAny = get<AnyTypeVar>(lhsType) || get<ErrorTypeVar>(lhsType);
-    const bool rhsIsAny = get<AnyTypeVar>(rhsType) || get<ErrorTypeVar>(rhsType);
+    const bool lhsIsAny = get<AnyTypeVar>(lhsType) || get<ErrorTypeVar>(lhsType) ||
+                          (FFlag::LuauUnknownAndNeverType && FFlag::LuauNeverTypesAndOperatorsInference && get<NeverTypeVar>(lhsType));
+    const bool rhsIsAny = get<AnyTypeVar>(rhsType) || get<ErrorTypeVar>(rhsType) ||
+                          (FFlag::LuauUnknownAndNeverType && FFlag::LuauNeverTypesAndOperatorsInference && get<NeverTypeVar>(rhsType));
 
     if (lhsIsAny)
         return lhsType;
@@ -3775,7 +3793,10 @@ void TypeChecker::checkArgumentList(
                     }
 
                     TypePackId varPack = addTypePack(TypePackVar{TypePack{rest, paramIter.tail()}});
-                    state.tryUnify(varPack, tail);
+                    if (FFlag::LuauReturnsFromCallsitesAreNotWidened)
+                        state.tryUnify(tail, varPack);
+                    else
+                        state.tryUnify(varPack, tail);
                     return;
                 }
             }
@@ -4414,7 +4435,8 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, cons
 
             if (FFlag::LuauUnknownAndNeverType && containsNever(typePack))
             {
-                // f(), g() where f() returns (never, string) or (string, never) means this whole TypePackId is uninhabitable, so return (never, ...never)
+                // f(), g() where f() returns (never, string) or (string, never) means this whole TypePackId is uninhabitable, so return (never,
+                // ...never)
                 uninhabitable = true;
                 continue;
             }
@@ -4436,7 +4458,8 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, cons
 
             if (FFlag::LuauUnknownAndNeverType && get<NeverTypeVar>(type))
             {
-                // f(), g() where f() returns (never, string) or (string, never) means this whole TypePackId is uninhabitable, so return (never, ...never)
+                // f(), g() where f() returns (never, string) or (string, never) means this whole TypePackId is uninhabitable, so return (never,
+                // ...never)
                 uninhabitable = true;
                 continue;
             }

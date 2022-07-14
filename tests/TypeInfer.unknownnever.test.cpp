@@ -268,13 +268,49 @@ TEST_CASE_FIXTURE(Fixture, "unary_minus_of_never")
 
 TEST_CASE_FIXTURE(Fixture, "length_of_never")
 {
+    ScopedFastFlag sff{"LuauNeverTypesAndOperatorsInference", true};
+
     CheckResult result = check(R"(
         local x = #({} :: never)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("never", toString(requireType("x")));
+    CHECK_EQ("number", toString(requireType("x")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_in_any_ordering_operators")
+{
+    ScopedFastFlag sff[]{
+        {"LuauUnknownAndNeverType", true},
+        {"LuauNeverTypesAndOperatorsInference", true},
+    };
+
+    CheckResult result = check(R"(
+        local function ord(x: nil, y)
+            return x ~= nil and x > y
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")
+{
+    ScopedFastFlag sff[]{
+        {"LuauUnknownAndNeverType", true},
+        {"LuauNeverTypesAndOperatorsInference", true},
+    };
+
+    CheckResult result = check(R"(
+        local function mul(x: nil, y)
+            return x ~= nil and x * y -- infers boolean | never, which is normalized into boolean
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("mul")));
 }
 
 TEST_SUITE_END();

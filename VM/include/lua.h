@@ -373,7 +373,7 @@ LUA_API const char* lua_getupvalue(lua_State* L, int funcindex, int n);
 LUA_API const char* lua_setupvalue(lua_State* L, int funcindex, int n);
 
 LUA_API void lua_singlestep(lua_State* L, int enabled);
-LUA_API void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
+LUA_API int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
 
 typedef void (*lua_Coverage)(void* context, const char* function, int linedefined, int depth, const int* hits, size_t size);
 

@@ -2240,43 +2240,18 @@ local a: aaa.do
     CHECK(ac.entryMap.count("other"));
 }
 
-TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteSource")
+
+TEST_CASE_FIXTURE(ACFixture, "comments")
 {
-    std::string_view source = R"(
-        local a = table. -- Line 1
-        --             | Column 23
-    )";
+    fileResolver.source["Comments"] = "--!str";
 
-    auto ac = autocompleteSource(frontend, source, Position{1, 24}, nullCallback).result;
-
-    CHECK_EQ(17, ac.entryMap.size());
-    CHECK(ac.entryMap.count("find"));
-    CHECK(ac.entryMap.count("pack"));
-    CHECK(!ac.entryMap.count("math"));
-}
-
-TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_require")
-{
-    std::string_view source = R"(
-        local a = require(w -- Line 1
-        --                 | Column 27
-    )";
-
-    // CLI-43699 require shouldn't crash inside autocompleteSource
-    auto ac = autocompleteSource(frontend, source, Position{1, 27}, nullCallback).result;
-}
-
-TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_comments")
-{
-    std::string_view source = "--!str";
-
-    auto ac = autocompleteSource(frontend, source, Position{0, 6}, nullCallback).result;
+    auto ac = Luau::autocomplete(frontend, "Comments", Position{0, 6}, nullCallback);
     CHECK_EQ(0, ac.entryMap.size());
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteProp_index_function_metamethod_is_variadic")
 {
-    std::string_view source = R"(
+    fileResolver.source["Module/A"] = R"(
         type Foo = {x: number}
         local t = {}
         setmetatable(t, {
@@ -2289,7 +2264,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteProp_index_function_metamethod
         --          | Column 20
     )";
 
-    auto ac = autocompleteSource(frontend, source, Position{9, 20}, nullCallback).result;
+    auto ac = Luau::autocomplete(frontend, "Module/A", Position{9, 20}, nullCallback);
     REQUIRE_EQ(1, ac.entryMap.size());
     CHECK(ac.entryMap.count("x"));
 }
@@ -2378,35 +2353,36 @@ end
     CHECK(ac.entryMap.count("elsewhere"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_not_the_var_we_are_defining")
+TEST_CASE_FIXTURE(ACFixture, "not_the_var_we_are_defining")
 {
-    std::string_view source = "abc,de";
+    fileResolver.source["Module/A"] = "abc,de";
 
-    auto ac = autocompleteSource(frontend, source, Position{0, 6}, nullCallback).result;
+    auto ac = Luau::autocomplete(frontend, "Module/A", Position{0, 6}, nullCallback);
     CHECK(!ac.entryMap.count("de"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_recursive_function")
+TEST_CASE_FIXTURE(ACFixture, "recursive_function_global")
 {
-    {
-        std::string_view global = R"(function abc()
+    fileResolver.source["global"] = R"(function abc()
 
 end
 )";
 
-        auto ac = autocompleteSource(frontend, global, Position{1, 0}, nullCallback).result;
-        CHECK(ac.entryMap.count("abc"));
-    }
+    auto ac = Luau::autocomplete(frontend, "global", Position{1, 0}, nullCallback);
+    CHECK(ac.entryMap.count("abc"));
+}
 
-    {
-        std::string_view local = R"(local function abc()
+
+
+TEST_CASE_FIXTURE(ACFixture, "recursive_function_local")
+{
+    fileResolver.source["local"] = R"(local function abc()
 
 end
 )";
 
-        auto ac = autocompleteSource(frontend, local, Position{1, 0}, nullCallback).result;
-        CHECK(ac.entryMap.count("abc"));
-    }
+    auto ac = Luau::autocomplete(frontend, "local", Position{1, 0}, nullCallback);
+    CHECK(ac.entryMap.count("abc"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys")
