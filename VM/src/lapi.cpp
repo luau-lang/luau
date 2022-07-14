@@ -1305,6 +1305,14 @@ void lua_unref(lua_State* L, int ref)
     return;
 }
 
+void lua_setuserdatatag(lua_State* L, int idx, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    StkId o = index2addr(L, idx);
+    api_check(L, ttisuserdata(o));
+    uvalue(o)->tag = uint8_t(tag);
+}
+
 void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))
 {
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
