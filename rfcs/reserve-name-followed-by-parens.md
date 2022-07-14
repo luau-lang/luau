@@ -38,6 +38,10 @@ end
 
 Only allow these syntax when used inside parentheses e.g. `(name(...))`, but this makes it inconsistent with the existing `typeof(...)` type annotation, and changing that over is also breaking change. It's pretty clear that anything inbetween not doing this RFC or doing some backward-compatible option adds warts to the grammar.
 
+Another option is we never add new syntax and only use `Name<T>` syntax, and consider `typeof(...)` special because it parses an expression rather than types. This isn't a bad choice, but does mean one of the following must be chosen:
+  1. introduce the concept of "magic type functions" into type inference,
+  2. introduce them into the prelude as literally `export type Name<T> = (name T)`.
+
 Support backtracking in the parser, so if `: MyType(t or u):m()` is invalid syntax, revert and parse `MyType` as a type, and `(t or u):m()` as an expression statement. Even so, this option is terrible for:
   1. parsing performance (backtracking means losing progress on invalid input),
   2. user experience (why was this annotation parsed as `X(...)` instead of `X` followed by a statement `(...)`),
