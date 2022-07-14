@@ -1143,4 +1143,114 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_invalid_pattern_fallbac
     CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = string.match("This is a string", "(.()(%a+))")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = string.match("This is a string", "(.()(%a+))", "this should be a number")
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "number?");
+    CHECK_EQ(toString(tm->givenType), "string");
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types2")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", "this should be a number")
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "number?");
+    CHECK_EQ(toString(tm->givenType), "string");
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", 1, "this should be a bool")
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "boolean?");
+    CHECK_EQ(toString(tm->givenType), "string");
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b = string.find("This is a string", "(.()(%a+))", 1, true)
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 2);
+    CHECK_EQ(acm->actual, 4);
+
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
 TEST_SUITE_END();

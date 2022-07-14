@@ -756,6 +756,65 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
     CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
 }
 
+TEST_CASE_FIXTURE(Fixture, "cyclic_union")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauFixNormalizationOfCyclicUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {T?}?
+
+        local a: T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("t1? where t1 = {t1?}" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cyclic_intersection")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauFixNormalizationOfCyclicUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {T & {}}
+
+        local a: T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // FIXME: We are not properly normalizing this type, but we are at least not improperly discarding information
+    CHECK("t1 where t1 = {{t1 & {|  |}}}" == toString(requireType("a"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_indexers")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauFixNormalizationOfCyclicUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        type A = {number}
+        type B = {string}
+
+        type C = A & B
+
+        local a: C
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // FIXME: We are not properly normalizing this type, but we are at least not improperly discarding information
+    CHECK("{number & string}" == toString(requireType("a"), {true}));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
 {
     ScopedFastFlag flags[] = {

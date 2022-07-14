@@ -24,6 +24,8 @@ bool lua_telemetry_parsed_named_non_function_type = false;
 LUAU_FASTFLAGVARIABLE(LuauErrorParseIntegerIssues, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
+LUAU_FASTFLAGVARIABLE(LuauAlwaysCaptureHotComments, false)
+
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
 bool lua_telemetry_parsed_double_prefix_hex_integer = false;
@@ -2918,21 +2920,23 @@ AstTypeError* Parser::reportTypeAnnotationError(const Location& location, const 
 
 void Parser::nextLexeme()
 {
-    if (options.captureComments)
+    if (options.captureComments || FFlag::LuauAlwaysCaptureHotComments)
     {
         Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
 
         while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
         {
             const Lexeme& lexeme = lexer.current();
-            commentLocations.push_back(Comment{lexeme.type, lexeme.location});
+
+            if (options.captureComments)
+                commentLocations.push_back(Comment{lexeme.type, lexeme.location});
 
             // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
             // The parser will turn this into a proper syntax error.
             if (lexeme.type == Lexeme::BrokenComment)
                 return;
 
-            // Comments starting with ! are called "hot comments" and contain directives for type checking / linting
+            // Comments starting with ! are called "hot comments" and contain directives for type checking / linting / compiling
             if (lexeme.type == Lexeme::Comment && lexeme.length && lexeme.data[0] == '!')
             {
                 const char* text = lexeme.data;

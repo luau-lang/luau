@@ -127,13 +127,6 @@ struct Frontend
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
     LintResult lint(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
 
-    /** Lint some code that has no associated DataModel object
-     *
-     * Since this source fragment has no name, we cannot cache its AST.  Instead,
-     * we return it to the caller to use as they wish.
-     */
-    std::pair<SourceModule, LintResult> lintFragment(std::string_view source, std::optional<LintOptions> enabledLintWarnings = {});
-
     LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;

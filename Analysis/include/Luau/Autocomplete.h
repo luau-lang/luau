@@ -78,16 +78,6 @@ struct AutocompleteResult
 using ModuleName = std::string;
 using StringCompletionCallback = std::function<std::optional<AutocompleteEntryMap>(std::string tag, std::optional<const ClassTypeVar*> ctx)>;
 
-struct OwningAutocompleteResult
-{
-    AutocompleteResult result;
-    ModulePtr module;
-    std::unique_ptr<SourceModule> sourceModule;
-};
-
 AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName, Position position, StringCompletionCallback callback);
-
-// Deprecated, do not use in new work.
-OwningAutocompleteResult autocompleteSource(Frontend& frontend, std::string_view source, Position position, StringCompletionCallback callback);
 
 } // namespace Luau

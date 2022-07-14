@@ -1658,4 +1658,21 @@ end
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
 }
 
+TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")
+{
+    LintResult result = lint(R"(
+--!optimize
+--!optimize   
+--!optimize me
+--!optimize 100500
+--!optimize 2
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 4);
+    CHECK_EQ(result.warnings[0].text, "optimize directive requires an optimization level");
+    CHECK_EQ(result.warnings[1].text, "optimize directive requires an optimization level");
+    CHECK_EQ(result.warnings[2].text, "optimize directive uses unknown optimization level 'me', 0..2 expected");
+    CHECK_EQ(result.warnings[3].text, "optimize directive uses unknown optimization level '100500', 0..2 expected");
+}
+
 TEST_SUITE_END();

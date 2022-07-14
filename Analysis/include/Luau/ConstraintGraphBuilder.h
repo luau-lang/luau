@@ -99,6 +99,7 @@ struct ConstraintGraphBuilder
     void visit(NotNull<Scope2> scope, AstStat* stat);
     void visit(NotNull<Scope2> scope, AstStatBlock* block);
     void visit(NotNull<Scope2> scope, AstStatLocal* local);
+    void visit(NotNull<Scope2> scope, AstStatFor* for_);
     void visit(NotNull<Scope2> scope, AstStatLocalFunction* function);
     void visit(NotNull<Scope2> scope, AstStatFunction* function);
     void visit(NotNull<Scope2> scope, AstStatReturn* ret);

@@ -756,26 +756,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_lint_uses_correct_config")
     CHECK_EQ(0, result4.warnings.size());
 }
 
-TEST_CASE_FIXTURE(FrontendFixture, "lintFragment")
-{
-    LintOptions lintOptions;
-    lintOptions.enableWarning(LintWarning::Code_ForRange);
-
-    auto [_sourceModule, result] = frontend.lintFragment(R"(
-        local t = {}
-
-        for i=#t,1 do
-        end
-
-        for i=#t,1,-1 do
-        end
-    )",
-        lintOptions);
-
-    CHECK_EQ(1, result.warnings.size());
-    CHECK_EQ(0, result.errors.size());
-}
-
 TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 {
     Frontend fe{&fileResolver, &configResolver, {false}};

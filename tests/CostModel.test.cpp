@@ -10,7 +10,7 @@ namespace Luau
 namespace Compile
 {
 
-uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount);
+uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount, const DenseHashMap<AstExprCall*, int>& builtins);
 int computeCost(uint64_t model, const bool* varsConst, size_t varCount);
 
 } // namespace Compile
@@ -29,7 +29,7 @@ static uint64_t modelFunction(const char* source)
     AstStatFunction* func = result.root->body.data[0]->as<AstStatFunction>();
     REQUIRE(func);
 
-    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size);
+    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size, {nullptr});
 }
 
 TEST_CASE("Expression")

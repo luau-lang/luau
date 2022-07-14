@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauDebuggerBreakpointHitOnNextBestLine, false);
+
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -367,14 +369,6 @@ void lua_singlestep(lua_State* L, int enabled)
     L->singlestep = bool(enabled);
 }
 
-void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
-{
-    const TValue* func = luaA_toobject(L, funcindex);
-    api_check(L, ttisfunction(func) && !clvalue(func)->isC);
-
-    luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
-}
-
 static int getmaxline(Proto* p)
 {
     int result = -1;
@@ -392,6 +386,71 @@ static int getmaxline(Proto* p)
     }
 
     return result;
+}
+
+// Find the line number with instructions. If the provided line doesn't have any instruction, it should return the next line number with
+// instructions.
+static int getnextline(Proto* p, int line)
+{
+    int closest = -1;
+    if (p->lineinfo)
+    {
+        for (int i = 0; i < p->sizecode; ++i)
+        {
+            // note: we keep prologue as is, instead opting to break at the first meaningful instruction
+            if (LUAU_INSN_OP(p->code[i]) == LOP_PREPVARARGS)
+                continue;
+
+            int current = luaG_getline(p, i);
+            if (current >= line)
+            {
+                closest = current;
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; i < p->sizep; ++i)
+    {
+        // Find the closest line number to the intended one.
+        int candidate = getnextline(p->p[i], line);
+        if (closest == -1 || (candidate >= line && candidate < closest))
+        {
+            closest = candidate;
+        }
+    }
+
+    return closest;
+}
+
+int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
+{
+    int target = -1;
+
+    if (FFlag::LuauDebuggerBreakpointHitOnNextBestLine)
+    {
+        const TValue* func = luaA_toobject(L, funcindex);
+        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
+
+        Proto* p = clvalue(func)->l.p;
+        // Find line number to add the breakpoint to.
+        target = getnextline(p, line);
+
+        if (target != -1)
+        {
+            // Add breakpoint on the exact line
+            luaG_breakpoint(L, p, target, bool(enabled));
+        }
+    }
+    else
+    {
+        const TValue* func = luaA_toobject(L, funcindex);
+        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
+
+        luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
+    }
+
+    return target;
 }
 
 static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)

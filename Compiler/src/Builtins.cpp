@@ -40,11 +40,8 @@ Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, 
     }
 }
 
-int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& options)
+static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& options)
 {
-    if (builtin.empty())
-        return -1;
-
     if (builtin.isGlobal("assert"))
         return LBF_ASSERT;
 
@@ -198,6 +195,50 @@ int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& options)
     }
 
     return -1;
+}
+
+struct BuiltinVisitor : AstVisitor
+{
+    DenseHashMap<AstExprCall*, int>& result;
+
+    const DenseHashMap<AstName, Global>& globals;
+    const DenseHashMap<AstLocal*, Variable>& variables;
+
+    const CompileOptions& options;
+
+    BuiltinVisitor(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
+        const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options)
+        : result(result)
+        , globals(globals)
+        , variables(variables)
+        , options(options)
+    {
+    }
+
+    bool visit(AstExprCall* node) override
+    {
+        Builtin builtin = node->self ? Builtin() : getBuiltin(node->func, globals, variables);
+        if (builtin.empty())
+            return true;
+
+        int bfid = getBuiltinFunctionId(builtin, options);
+
+        // getBuiltinFunctionId optimistically assumes all select() calls are builtin but actually the second argument must be a vararg
+        if (bfid == LBF_SELECT_VARARG && !(node->args.size == 2 && node->args.data[1]->is<AstExprVarargs>()))
+            bfid = -1;
+
+        if (bfid >= 0)
+            result[node] = bfid;
+
+        return true; // propagate to nested calls
+    }
+};
+
+void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
+    const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options, AstNode* root)
+{
+    BuiltinVisitor visitor{result, globals, variables, options};
+    root->visit(&visitor);
 }
 
 } // namespace Compile

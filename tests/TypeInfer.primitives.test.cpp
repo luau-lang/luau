@@ -11,6 +11,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauDeduceFindMatchReturnTypes)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeInferPrimitives");
@@ -80,7 +82,10 @@ TEST_CASE_FIXTURE(Fixture, "string_function_other")
     )");
     CHECK_EQ(0, result.errors.size());
 
-    CHECK_EQ(toString(requireType("p")), "string?");
+    if (FFlag::LuauDeduceFindMatchReturnTypes)
+        CHECK_EQ(toString(requireType("p")), "string");
+    else
+        CHECK_EQ(toString(requireType("p")), "string?");
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")

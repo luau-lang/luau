@@ -23,9 +23,12 @@
 
 #include <optional>
 
-// Indicates if verbose output is enabled.
-// Currently, this enables  output from lua's 'print', but other verbose output could be enabled eventually.
+// Indicates if verbose output is enabled; can be overridden via --verbose
+// Currently, this enables output from 'print', but other verbose output could be enabled eventually.
 bool verbose = false;
+
+// Default optimization level for conformance test; can be overridden via -On
+int optimizationLevel = 1;
 
 static bool skipFastFlag(const char* flagName)
 {
@@ -249,6 +252,15 @@ int main(int argc, char** argv)
         verbose = true;
     }
 
+    int level = -1;
+    if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
+    {
+        if (level < 0 || level > 2)
+            std::cerr << "Optimization level must be between 0 and 2 inclusive." << std::endl;
+        else
+            optimizationLevel = level;
+    }
+
     if (std::vector<doctest::String> flags; doctest::parseCommaSepArgs(argc, argv, "--fflags=", flags))
         setFastFlags(flags);
 
@@ -279,6 +291,7 @@ int main(int argc, char** argv)
     if (doctest::parseFlag(argc, argv, "--help") || doctest::parseFlag(argc, argv, "-h"))
     {
         printf("Additional command line options:\n");
+        printf(" -O[n]                                 Changes default optimization level (1) for conformance runs\n");
         printf(" --verbose                             Enables verbose output (e.g. lua 'print' statements)\n");
         printf(" --fflags=                             Sets specified fast flags\n");
         printf(" --list-fflags                         List all fast flags\n");
