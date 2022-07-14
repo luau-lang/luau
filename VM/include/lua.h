@@ -64,14 +64,14 @@ enum lua_Type
     LUA_TNIL = 0,     /* must be 0 due to lua_isnoneornil */
     LUA_TBOOLEAN = 1, /* must be 1 due to l_isfalse */
 
-    
+
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
     LUA_TVECTOR,
 
     LUA_TSTRING, /* all types above this must be value types, all types below this must be GC types - see iscollectable */
 
-    
+
     LUA_TTABLE,
     LUA_TFUNCTION,
     LUA_TUSERDATA,
@@ -300,6 +300,7 @@ LUA_API uintptr_t lua_encodepointer(lua_State* L, uintptr_t p);
 
 LUA_API double lua_clock();
 
+LUA_API void lua_setuserdatatag(lua_State* L, int idx, int tag);
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*));
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);

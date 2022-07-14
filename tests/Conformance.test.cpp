@@ -1202,6 +1202,10 @@ TEST_CASE("UserdataApi")
     CHECK(lua_touserdatatagged(L, -1, 41) == nullptr);
     CHECK(lua_userdatatag(L, -1) == 42);
 
+    lua_setuserdatatag(L, -1, 43);
+    CHECK(lua_userdatatag(L, -1) == 43);
+    lua_setuserdatatag(L, -1, 42);
+
     // user data with inline dtor
     void* ud3 = lua_newuserdatadtor(L, 4, [](void* data) {
         dtorhits += *(int*)data;
