@@ -85,6 +85,34 @@ Adding some syntax for `F T` **will** cause the parser to change the semantics o
 
 This syntax is grandfathered in because the parser supported `typeof(...)` before we stabilized our syntax, and especially before type annotations were released to the public, so we didn't need to worry about compatibility here. We are very glad that we used parentheses in this case, because it's natural for expressions to belong within parentheses `()`, and types to belong within angles `<>`.
 
+## The One Exception with a caveat
+
+This is a strict requirement!
+
+`function() -> ()` has been talked about in the past, and this one is different despite falling under the same category as ``<name> `('``. The token `function` is in actual fact a "hard keyword," meaning that it cannot be parsed as a type annotation because it is not an identifier, just a keyword.
+
+Likewise, we also have talked about adding standalone `function` as a type annotation (semantics of it is irrelevant for this RFC)
+
+It's possible that we may end up adding both, but the requirements are as such:
+  1. `function() -> ()` must be added first before standalone `function`, OR
+  2. `function` can be added first, but with a future-proofing parse error if `<` or `(` follows after it
+
+If #1 is what ends up happening, there's not much to worry about because the type annotation parser will parse greedily already, so any new valid input will remain valid and have same semantics, except it also allows omitting of `(` and `<`.
+
+If #2 is what ends up happening, there could be a problem if we didn't future-proof against `<` and `(` to follow `function`:
+
+```
+  return f :: function(T) -> U
+```
+
+which would be a parse error because at the point of `(` we expect one of `until`, `end`, or `EOF`, and
+
+```
+  return f :: function<a>(a) -> a
+```
+
+which would also be a parse error by the time we reach `->`, that is the production of the above is semantically equivalent to `(f < a) > (a)` which would compare whether the value of `f` is less than the value of `a`, then whether the result of that value is greater than `a`.
+
 ## Alternatives
 
 Only allow these syntax when used inside parentheses e.g. `(F T)` or `(F(T))`. This makes it inconsistent with the existing `typeof(...)` type annotation, and changing that over is also breaking change.
