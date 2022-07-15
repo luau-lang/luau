@@ -2,7 +2,7 @@
 
 ## Summary
 
-We propose to ban any proposals for the syntax ``<name> `('`` as well as `<name> <type>` in type annotations, regardless of where they show up, e.g. a type or a type pack.
+We propose to disallow the syntax ``<name> `('`` as well as `<name> <type>` in future syntax extensions for type annotations to ensure that all existing programs continue to parse correctly. This still keeps the door open for future syntax extensions of different forms such as ``<name> `<' <type> `>'``.
 
 ## Motivation
 
