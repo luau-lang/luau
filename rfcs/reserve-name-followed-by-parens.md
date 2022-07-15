@@ -1,4 +1,4 @@
-# Ban `name T` and `name(T)` proposals
+# Disallow `name T` and `name(T)` in future syntactic extensions for type annotations
 
 ## Summary
 
