@@ -10,7 +10,7 @@ Lua and by extension Luau's syntax is very free form, which means that when the 
 
 That feature is sometimes quite troublesome when we want to add new syntax.
 
-We have had cases where we talked about using syntax like `setmetatable(T, MT)` and `keyof T`. They all look innocent, but when you look beyond that, and try to apply it onto Luau's grammar, things break down fast.
+We have had cases where we talked about using syntax like `setmetatable(T, MT)` and `keyof T`. They all look innocent, but when you look beyond that, and try to apply it onto Luau's grammar, things break down really fast.
 
 ### `F(T)`?
 
@@ -59,10 +59,27 @@ end
 ```
 
 There's three possible outcomes:
+  1. Return type of `f` is `keyof`, statement throws a parse error because `(` is on the next line after `Vec2`,
+  2. Return type of `f` is `keyof Vec2` and next statement is `(t or u):m()`, or
+  3. Return type of `f` is `keyof` and next statement is `Vec2(t or u):m()` (if we allow `(` on the next line to be part of previous line).
 
-1. Return type of `f` is `keyof`, statement throws a parse error because `(` is on the next line after `Vec2`,
-2. Return type of `f` is `keyof Vec2` and next statement is `(t or u):m()`, or
-3. Return type of `f` is `keyof` and next statement is `Vec2(t or u):m()` (if we allow `(` on the next line to be part of previous line).
+This particular case is even worse when we keep going:
+
+```
+local function f(t): F
+    T(t or u):m()
+end
+```
+
+```
+local function f(t): F T
+    {1, 2, 3}
+end
+```
+
+where today, `F` is the return type annotation of `f`, and `T(t or u):m()`/`T{1, 2, 3}` is the first statement, respectively.
+
+Adding some syntax for `F T` **will** cause the parser to change the semantics of the above three examples.
 
 ### But what about `typeof(...)`?
 
@@ -81,4 +98,4 @@ Support backtracking in the parser, so if `: MyType(t or u):m()` is invalid synt
 
 To be able to expose some kind of type-level operations using `F<T>` syntax, means one of the following must be chosen:
   1. introduce the concept of "magic type functions" into type inference, or
-  2. introduce them into the prelude as literally `export type F<T> = intrinsic`
+  2. introduce them into the prelude as `export type F<T> = ...` (where `...` is to be read as "we haven't decided")
