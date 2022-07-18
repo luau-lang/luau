@@ -23,6 +23,7 @@ For new standard library functions, we should be asking:
 - Is the new functionality used/useful often enough in existing code?
 - Does the standard library implementation carry important performance benefits that can't be achieved in user code?
 - Is the behavior general and unambiguous, as opposed to solving a problem / providing an interface that's too specific?
+- Is the function interface amenable to type checking / linting?
 
 In addition to these questions, we also need to consider that every addition carries a cost, and too many features will result in a language that is harder to learn, harder to implement and ensure consistent implementation quality throughout, slower, etc. In addition, any language is greater than the sum of its parts and features often have non-intuitive interactions with each other.
 
