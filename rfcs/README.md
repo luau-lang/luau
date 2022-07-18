@@ -18,6 +18,12 @@ For changes in semantics, we should be asking:
 - Can it be sandboxed assuming malicious usage?
 - Is it compatible with type checking and other forms of static analysis?
 
+For new standard library functions, we should be asking:
+
+- Is the new functionality used/useful often enough in existing code?
+- Does the standard library implementation carry important performance benefits that can't be achieved in user code?
+- Is the behavior general and unambiguous, as opposed to solving a problem / providing an interface that's too specific?
+
 In addition to these questions, we also need to consider that every addition carries a cost, and too many features will result in a language that is harder to learn, harder to implement and ensure consistent implementation quality throughout, slower, etc. In addition, any language is greater than the sum of its parts and features often have non-intuitive interactions with each other.
 
 Since reversing these decisions is incredibly costly and can be impossible due to backwards compatibility implications, all user facing changes to Luau language and core libraries must go through an RFC process.
