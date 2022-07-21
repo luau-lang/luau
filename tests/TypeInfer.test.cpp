@@ -85,20 +85,19 @@ TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
     ScopedFastFlag sff[]{
         {"DebugLuauDeferredConstraintResolution", false},
-        {"LuauReturnTypeInferenceInNonstrict", true},
         {"LuauLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
         --!nocheck
         function f(x)
-            return 5
+            return x
         end
          -- we get type information even if there's type errors
         f(1, 2)
     )");
 
-    CHECK_EQ("(any) -> number", toString(requireType("f")));
+    CHECK_EQ("(any) -> (...any)", toString(requireType("f")));
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -353,6 +352,35 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = true
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals2")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = function() return 1 end
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("() -> (...any)", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
+    CHECK_EQ("() -> (...any)", toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")

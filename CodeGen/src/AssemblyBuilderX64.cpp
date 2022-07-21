@@ -231,6 +231,7 @@ void AssemblyBuilderX64::lea(OperandX64 lhs, OperandX64 rhs)
     if (logText)
         log("lea", lhs, rhs);
 
+    LUAU_ASSERT(rhs.cat == CategoryX64::mem);
     placeBinaryRegAndRegMem(lhs, rhs, 0x8d, 0x8d);
 }
 
@@ -314,6 +315,14 @@ void AssemblyBuilderX64::call(OperandX64 op)
     commit();
 }
 
+void AssemblyBuilderX64::int3()
+{
+    if (logText)
+        log("int3");
+
+    place(0xcc);
+}
+
 void AssemblyBuilderX64::vaddpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vaddpd", dst, src1, src2, 0x58, false, AVX_0F, AVX_66);
@@ -332,6 +341,31 @@ void AssemblyBuilderX64::vaddsd(OperandX64 dst, OperandX64 src1, OperandX64 src2
 void AssemblyBuilderX64::vaddss(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vaddss", dst, src1, src2, 0x58, false, AVX_0F, AVX_F3);
+}
+
+void AssemblyBuilderX64::vsubsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vsubsd", dst, src1, src2, 0x5c, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vmulsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vmulsd", dst, src1, src2, 0x59, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vdivsd", dst, src1, src2, 0x5e, false, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vxorpd", dst, src1, src2, 0x57, false, AVX_0F, AVX_66);
+}
+
+void AssemblyBuilderX64::vcomisd(OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vcomisd", src1, src2, 0x2f, false, AVX_0F, AVX_66);
 }
 
 void AssemblyBuilderX64::vsqrtpd(OperandX64 dst, OperandX64 src)
@@ -494,9 +528,10 @@ void AssemblyBuilderX64::placeBinaryRegMemAndImm(OperandX64 lhs, OperandX64 rhs,
     LUAU_ASSERT(lhs.cat == CategoryX64::reg || lhs.cat == CategoryX64::mem);
     LUAU_ASSERT(rhs.cat == CategoryX64::imm);
 
-    SizeX64 size = lhs.base.size;
+    SizeX64 size = lhs.cat == CategoryX64::reg ? lhs.base.size : lhs.memSize;
+    LUAU_ASSERT(size == SizeX64::byte || size == SizeX64::dword || size == SizeX64::qword);
 
-    placeRex(lhs.base);
+    placeRex(lhs);
 
     if (size == SizeX64::byte)
     {

@@ -854,7 +854,7 @@ void lua_rawset(lua_State* L, int idx)
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     if (hvalue(t)->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
     setobj2t(L, luaH_set(L, hvalue(t), L->top - 2), L->top - 1);
     luaC_barriert(L, hvalue(t), L->top - 1);
     L->top -= 2;
@@ -867,7 +867,7 @@ void lua_rawseti(lua_State* L, int idx, int n)
     StkId o = index2addr(L, idx);
     api_check(L, ttistable(o));
     if (hvalue(o)->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
     setobj2t(L, luaH_setnum(L, hvalue(o), n), L->top - 1);
     luaC_barriert(L, hvalue(o), L->top - 1);
     L->top--;
@@ -890,7 +890,7 @@ int lua_setmetatable(lua_State* L, int objindex)
     case LUA_TTABLE:
     {
         if (hvalue(obj)->readonly)
-            luaG_runerror(L, "Attempt to modify a readonly table");
+            luaG_readonlyerror(L);
         hvalue(obj)->metatable = mt;
         if (mt)
             luaC_objbarrier(L, hvalue(obj), mt);

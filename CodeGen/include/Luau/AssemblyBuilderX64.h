@@ -61,11 +61,21 @@ public:
     void call(Label& label);
     void call(OperandX64 op);
 
+    void int3();
+
     // AVX
     void vaddpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vaddps(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vaddsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
     void vaddss(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
+    void vsubsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vmulsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+    void vdivsd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
+    void vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
+    void vcomisd(OperandX64 src1, OperandX64 src2);
 
     void vsqrtpd(OperandX64 dst, OperandX64 src);
     void vsqrtps(OperandX64 dst, OperandX64 src);

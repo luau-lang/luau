@@ -333,7 +333,7 @@ DEFINE_PROTO_FUZZER(const luau::ModuleSet& message)
                 try
                 {
                     Luau::BytecodeBuilder bcb;
-                    Luau::compileOrThrow(bcb, parseResult.root, parseNameTable, compileOptions);
+                    Luau::compileOrThrow(bcb, parseResult, parseNameTable, compileOptions);
                     bytecode = bcb.getBytecode();
                 }
                 catch (const Luau::CompileError&)

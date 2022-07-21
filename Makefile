@@ -31,15 +31,15 @@ ISOCLINE_SOURCES=extern/isocline/src/isocline.c
 ISOCLINE_OBJECTS=$(ISOCLINE_SOURCES:%=$(BUILD)/%.o)
 ISOCLINE_TARGET=$(BUILD)/libisocline.a
 
-TESTS_SOURCES=$(wildcard tests/*.cpp) CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
+TESTS_SOURCES=$(wildcard tests/*.cpp) CLI/FileUtils.cpp CLI/Flags.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
 TESTS_OBJECTS=$(TESTS_SOURCES:%=$(BUILD)/%.o)
 TESTS_TARGET=$(BUILD)/luau-tests
 
-REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp CLI/ReplEntry.cpp
+REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Flags.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp CLI/ReplEntry.cpp
 REPL_CLI_OBJECTS=$(REPL_CLI_SOURCES:%=$(BUILD)/%.o)
 REPL_CLI_TARGET=$(BUILD)/luau
 
-ANALYZE_CLI_SOURCES=CLI/FileUtils.cpp CLI/Analyze.cpp
+ANALYZE_CLI_SOURCES=CLI/FileUtils.cpp CLI/Flags.cpp CLI/Analyze.cpp
 ANALYZE_CLI_OBJECTS=$(ANALYZE_CLI_SOURCES:%=$(BUILD)/%.o)
 ANALYZE_CLI_TARGET=$(BUILD)/luau-analyze
 
@@ -117,15 +117,18 @@ $(REPL_CLI_TARGET): LDFLAGS+=-lpthread
 fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a build/libprotobuf-mutator/external.protobuf/lib/libprotobuf.a
 
 # pseudo targets
-.PHONY: all test clean coverage format luau-size
+.PHONY: all test clean coverage format luau-size aliases
 
-all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET)
+all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET) aliases
+
+aliases: luau luau-analyze
 
 test: $(TESTS_TARGET)
 	$(TESTS_TARGET) $(TESTS_ARGS)
 
 clean:
 	rm -rf $(BUILD)
+	rm -rf luau luau-analyze
 
 coverage: $(TESTS_TARGET)
 	$(TESTS_TARGET) --fflags=true

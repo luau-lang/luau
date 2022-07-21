@@ -31,6 +31,7 @@ LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
+LUAU_FASTFLAGVARIABLE(LuauExpectedTableUnionIndexerType, false)
 LUAU_FASTFLAGVARIABLE(LuauIndexSilenceErrors, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
@@ -38,7 +39,6 @@ LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix2, false)
 LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
-LUAU_FASTFLAGVARIABLE(LuauReturnTypeInferenceInNonstrict, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false);
 LUAU_FASTFLAGVARIABLE(LuauAlwaysQuantify, false);
 LUAU_FASTFLAGVARIABLE(LuauReportErrorsOnIndexerKeyMismatch, false)
@@ -50,6 +50,7 @@ LUAU_FASTFLAGVARIABLE(LuauCheckGenericHOFTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
+LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
 
 namespace Luau
 {
@@ -890,7 +891,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatReturn& return_)
 
     TypePackId retPack = checkExprList(scope, return_.location, return_.list, false, {}, expectedTypes).type;
 
-    if (FFlag::LuauReturnTypeInferenceInNonstrict ? FFlag::LuauLowerBoundsCalculation : useConstrainedIntersections())
+    if (useConstrainedIntersections())
     {
         unifyLowerBound(retPack, scope->returnType, demoter.demotedLevel(scope->level), return_.location);
         return;
@@ -1292,6 +1293,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
             for (size_t i = 2; i < varTypes.size(); ++i)
                 unify(nilType, varTypes[i], forin.location);
         }
+        else if (isNonstrictMode())
+        {
+            for (TypeId var : varTypes)
+                unify(anyType, var, forin.location);
+        }
         else
         {
             TypeId varTy = errorRecoveryType(loopScope);
@@ -1385,12 +1391,7 @@ void TypeChecker::check(const ScopePtr& scope, TypeId ty, const ScopePtr& funSco
         // If in nonstrict mode and allowing redefinition of global function, restore the previous definition type
         // in case this function has a differing signature. The signature discrepancy will be caught in checkBlock.
         if (previouslyDefined)
-        {
-            if (FFlag::LuauReturnTypeInferenceInNonstrict && FFlag::LuauLowerBoundsCalculation)
-                quantify(funScope, ty, exprName->location);
-
             globalBindings[name] = oldBinding;
-        }
         else
             globalBindings[name] = {quantify(funScope, ty, exprName->location), exprName->location};
 
@@ -2365,9 +2366,16 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                 {
                     std::vector<TypeId> expectedResultTypes;
                     for (TypeId expectedOption : expectedUnion)
+                    {
                         if (const TableTypeVar* ttv = get<TableTypeVar>(follow(expectedOption)))
+                        {
                             if (auto prop = ttv->props.find(key->value.data); prop != ttv->props.end())
                                 expectedResultTypes.push_back(prop->second.type);
+                            else if (FFlag::LuauExpectedTableUnionIndexerType && ttv->indexer && maybeString(ttv->indexer->indexType))
+                                expectedResultTypes.push_back(ttv->indexer->indexResultType);
+                        }
+                    }
+
                     if (expectedResultTypes.size() == 1)
                         expectedResultType = expectedResultTypes[0];
                     else if (expectedResultTypes.size() > 1)
@@ -3367,7 +3375,7 @@ std::pair<TypeId, ScopePtr> TypeChecker::checkFunctionSignature(const ScopePtr& 
     TypePackId retPack;
     if (expr.returnAnnotation)
         retPack = resolveTypePack(funScope, *expr.returnAnnotation);
-    else if (FFlag::LuauReturnTypeInferenceInNonstrict ? (!FFlag::LuauLowerBoundsCalculation && isNonstrictMode()) : isNonstrictMode())
+    else if (isNonstrictMode())
         retPack = anyTypePack;
     else if (expectedFunctionType &&
              (!FFlag::LuauCheckGenericHOFTypes || (expectedFunctionType->generics.empty() && expectedFunctionType->genericPacks.empty())))

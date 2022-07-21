@@ -1025,4 +1025,73 @@ TEST_CASE("check_without_builtin_next")
     frontend.check("Module/B");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauForceExportSurfacesToBeNormal", true},
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true},
+    };
+
+    fileResolver.source["Module/A"] = R"(
+        type F<T> = (set: G<T>) -> ()
+
+        export type G<T> = {
+            forEach: (a: F<T>) -> (),
+        }
+
+        function X<T>(a: F<T>): ()
+        end
+
+        return X
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        --!strict
+        local A = require(script.Parent.A)
+
+        export type G<T> = A.G<T>
+
+        return {
+            A = A,
+        }
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauForceExportSurfacesToBeNormal", true},
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauNormalizeFlagIsConservative", true},
+    };
+
+    fileResolver.source["Module/A"] = R"(
+        type KeyOfTestEvents = "test-file-start" | "test-file-success" | "test-file-failure" | "test-case-result"
+        type unknown = any
+
+        export type TestFileEvent<T = KeyOfTestEvents> = (
+            eventName: T,
+            args: any --[[ ROBLOX TODO: Unhandled node for type: TSIndexedAccessType ]] --[[ TestEvents[T] ]]
+        ) -> unknown
+
+        return {}
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        --!strict
+        local A = require(script.Parent.A)
+
+        export type TestFileEvent = A.TestFileEvent
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
