@@ -360,7 +360,7 @@ Returns `-1` if `n` is negative, `1` if `n` is positive, and `0` if `n` is zero 
 function math.round(n: number): number
 ```
 
-Rounds `n` to the nearest integer boundary.
+Rounds `n` to the nearest integer boundary. If `n` is exactly halfway between two integers, rounds `n` away from 0.
 
 ## table library
 
