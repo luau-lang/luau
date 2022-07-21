@@ -139,7 +139,7 @@ function test()
         for _, curr_qdr in pairs(negaMax.index_quadruplets) do -- iterate over all index quadruplets
             -- count the empty positions and positions occupied by the side whos move it is
             local player_plus_fields, player_minus_fields, empties = 0, 0, 0
-            for _, index in pairs(curr_qdr) do -- iterate over all indices
+            for _, index in next, curr_qdr do -- iterate over all indices
                 if board[index] == 0 then
                     empties = empties + 1
                 elseif board[index] == 1 then

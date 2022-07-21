@@ -10,6 +10,7 @@
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
+LUAU_FASTFLAG(LuauCompleteVisitor);
 
 namespace Luau
 {
@@ -129,11 +130,11 @@ struct GenericTypeVarVisitor
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const UnknownTypeVar& atv)
+    virtual bool visit(TypeId ty, const UnknownTypeVar& utv)
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const NeverTypeVar& atv)
+    virtual bool visit(TypeId ty, const NeverTypeVar& ntv)
     {
         return visit(ty);
     }
@@ -142,6 +143,14 @@ struct GenericTypeVarVisitor
         return visit(ty);
     }
     virtual bool visit(TypeId ty, const IntersectionTypeVar& itv)
+    {
+        return visit(ty);
+    }
+    virtual bool visit(TypeId ty, const BlockedTypeVar& btv)
+    {
+        return visit(ty);
+    }
+    virtual bool visit(TypeId ty, const SingletonTypeVar& stv)
     {
         return visit(ty);
     }
@@ -190,16 +199,12 @@ struct GenericTypeVarVisitor
             if (visit(ty, *btv))
                 traverse(btv->boundTo);
         }
-
         else if (auto ftv = get<FreeTypeVar>(ty))
             visit(ty, *ftv);
-
         else if (auto gtv = get<GenericTypeVar>(ty))
             visit(ty, *gtv);
-
         else if (auto etv = get<ErrorTypeVar>(ty))
             visit(ty, *etv);
-
         else if (auto ctv = get<ConstrainedTypeVar>(ty))
         {
             if (visit(ty, *ctv))
@@ -208,10 +213,8 @@ struct GenericTypeVarVisitor
                     traverse(part);
             }
         }
-
         else if (auto ptv = get<PrimitiveTypeVar>(ty))
             visit(ty, *ptv);
-
         else if (auto ftv = get<FunctionTypeVar>(ty))
         {
             if (visit(ty, *ftv))
@@ -220,7 +223,6 @@ struct GenericTypeVarVisitor
                 traverse(ftv->retTypes);
             }
         }
-
         else if (auto ttv = get<TableTypeVar>(ty))
         {
             // Some visitors want to see bound tables, that's why we traverse the original type
@@ -243,7 +245,6 @@ struct GenericTypeVarVisitor
                 }
             }
         }
-
         else if (auto mtv = get<MetatableTypeVar>(ty))
         {
             if (visit(ty, *mtv))
@@ -252,7 +253,6 @@ struct GenericTypeVarVisitor
                 traverse(mtv->metatable);
             }
         }
-
         else if (auto ctv = get<ClassTypeVar>(ty))
         {
             if (visit(ty, *ctv))
@@ -267,10 +267,8 @@ struct GenericTypeVarVisitor
                     traverse(*ctv->metatable);
             }
         }
-
         else if (auto atv = get<AnyTypeVar>(ty))
             visit(ty, *atv);
-
         else if (auto utv = get<UnionTypeVar>(ty))
         {
             if (visit(ty, *utv))
@@ -279,7 +277,6 @@ struct GenericTypeVarVisitor
                     traverse(optTy);
             }
         }
-
         else if (auto itv = get<IntersectionTypeVar>(ty))
         {
             if (visit(ty, *itv))
@@ -288,6 +285,24 @@ struct GenericTypeVarVisitor
                     traverse(partTy);
             }
         }
+        else if (!FFlag::LuauCompleteVisitor)
+            return visit_detail::unsee(seen, ty);
+        else if (get<LazyTypeVar>(ty))
+        {
+            // Visiting into LazyTypeVar may necessarily cause infinite expansion, so we don't do that on purpose.
+            // Asserting also makes no sense, because the type _will_ happen here, most likely as a property of some ClassTypeVar
+            // that doesn't need to be expanded.
+        }
+        else if (auto stv = get<SingletonTypeVar>(ty))
+            visit(ty, *stv);
+        else if (auto btv = get<BlockedTypeVar>(ty))
+            visit(ty, *btv);
+        else if (auto utv = get<UnknownTypeVar>(ty))
+            visit(ty, *utv);
+        else if (auto ntv = get<NeverTypeVar>(ty))
+            visit(ty, *ntv);
+        else
+            LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypeId) is not exhaustive!");
 
         visit_detail::unsee(seen, ty);
     }

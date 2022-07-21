@@ -128,7 +128,7 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
         }
         t = tm; /* else repeat with `tm' */
     }
-    luaG_runerror(L, "loop in gettable");
+    luaG_runerror(L, "'__index' chain too long; possible loop");
 }
 
 void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
@@ -143,7 +143,7 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
             Table* h = hvalue(t);
 
             if (h->readonly)
-                luaG_runerror(L, "Attempt to modify a readonly table");
+                luaG_readonlyerror(L);
 
             TValue* oldval = luaH_set(L, h, key); /* do a primitive set */
 
@@ -169,7 +169,7 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
         setobj(L, &temp, tm); /* avoid pointing inside table (may rehash) */
         t = &temp;
     }
-    luaG_runerror(L, "loop in settable");
+    luaG_runerror(L, "'__newindex' chain too long; possible loop");
 }
 
 static int call_binTM(lua_State* L, const TValue* p1, const TValue* p2, StkId res, TMS event)

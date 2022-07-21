@@ -17,6 +17,7 @@
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
 
 namespace Luau
 {
@@ -124,14 +125,20 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
         moduleScope2->returnType = returnType; // TODO varargPack
     }
 
+    ForceNormal forceNormal{&interfaceTypes};
+
     if (FFlag::LuauLowerBoundsCalculation)
     {
         normalize(returnType, interfaceTypes, ice);
+        if (FFlag::LuauForceExportSurfacesToBeNormal)
+            forceNormal.traverse(returnType);
         if (varargPack)
+        {
             normalize(*varargPack, interfaceTypes, ice);
+            if (FFlag::LuauForceExportSurfacesToBeNormal)
+                forceNormal.traverse(*varargPack);
+        }
     }
-
-    ForceNormal forceNormal{&interfaceTypes};
 
     if (exportedTypeBindings)
     {
@@ -147,6 +154,16 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
                     // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
                     // won't be marked normal.  If the types aren't normal by now, they never will be.
                     forceNormal.traverse(tf.type);
+                    for (GenericTypeDefinition param : tf.typeParams)
+                    {
+                        forceNormal.traverse(param.ty);
+
+                        if (param.defaultValue)
+                        {
+                            normalize(*param.defaultValue, interfaceTypes, ice);
+                            forceNormal.traverse(*param.defaultValue);
+                        }
+                    }
                 }
             }
         }
@@ -166,7 +183,12 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
     {
         ty = clone(ty, interfaceTypes, cloneState);
         if (FFlag::LuauLowerBoundsCalculation)
+        {
             normalize(ty, interfaceTypes, ice);
+
+            if (FFlag::LuauForceExportSurfacesToBeNormal)
+                forceNormal.traverse(ty);
+        }
     }
 
     freeze(internalTypes);

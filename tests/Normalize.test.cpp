@@ -621,7 +621,6 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauReturnTypeInferenceInNonstrict", true},
     };
 
     check(R"(
@@ -642,7 +641,7 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
         end
     )");
 
-    CHECK_EQ("(any, any) -> (any, any) -> any", toString(getMainModule()->getModuleScope()->returnType));
+    CHECK_EQ("(any, any) -> (...any)", toString(getMainModule()->getModuleScope()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_is_not_a_constrained_intersection")

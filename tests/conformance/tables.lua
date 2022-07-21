@@ -592,4 +592,24 @@ do
   assert(countud() == 3)
 end
 
+-- test __newindex-as-a-table indirection: this had memory safety bugs in Lua 5.1.0
+do
+  local hit = false
+
+  local grandparent = {}
+  grandparent.__newindex = function(s,k,v)
+    assert(k == "foo" and v == 10)
+    hit = true
+  end
+
+  local parent = {}
+  parent.__newindex = parent
+  setmetatable(parent, grandparent)
+
+  local child = setmetatable({}, parent)
+  child.foo = 10
+
+  assert(hit and child.foo == nil and parent.foo == nil)
+end
+
 return"OK"

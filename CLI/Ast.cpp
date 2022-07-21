@@ -62,6 +62,7 @@ int main(int argc, char** argv)
     Luau::AstNameTable names(allocator);
 
     Luau::ParseOptions options;
+    options.captureComments = true;
     options.supportContinueStatement = true;
     options.allowTypeAnnotations = true;
     options.allowDeclarationSyntax = true;
@@ -78,7 +79,7 @@ int main(int argc, char** argv)
         fprintf(stderr, "\n");
     }
 
-    printf("%s", Luau::toJson(parseResult.root).c_str());
+    printf("%s", Luau::toJson(parseResult.root, parseResult.commentLocations).c_str());
 
     return parseResult.errors.size() > 0 ? 1 : 0;
 }

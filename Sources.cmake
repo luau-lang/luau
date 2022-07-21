@@ -4,6 +4,7 @@ if(NOT ${CMAKE_VERSION} VERSION_LESS "3.19")
     target_sources(Luau.Common PRIVATE
         Common/include/Luau/Common.h
         Common/include/Luau/Bytecode.h
+        Common/include/Luau/ExperimentalFlags.h
     )
 endif()
 
@@ -220,6 +221,8 @@ if(TARGET Luau.Repl.CLI)
         CLI/Coverage.cpp
         CLI/FileUtils.h
         CLI/FileUtils.cpp
+        CLI/Flags.h
+        CLI/Flags.cpp
         CLI/Profiler.h
         CLI/Profiler.cpp
         CLI/Repl.cpp
@@ -231,6 +234,8 @@ if(TARGET Luau.Analyze.CLI)
     target_sources(Luau.Analyze.CLI PRIVATE
         CLI/FileUtils.h
         CLI/FileUtils.cpp
+        CLI/Flags.h
+        CLI/Flags.cpp
         CLI/Analyze.cpp)
 endif()
 
@@ -321,6 +326,8 @@ if(TARGET Luau.CLI.Test)
         CLI/Coverage.cpp
         CLI/FileUtils.h
         CLI/FileUtils.cpp
+        CLI/Flags.h
+        CLI/Flags.cpp
         CLI/Profiler.h
         CLI/Profiler.cpp
         CLI/Repl.cpp

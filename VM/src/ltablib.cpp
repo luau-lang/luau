@@ -79,7 +79,7 @@ static void moveelements(lua_State* L, int srct, int dstt, int f, int e, int t)
     Table* dst = hvalue(L->base + (dstt - 1));
 
     if (dst->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
 
     int n = e - f + 1; /* number of elements to move */
 
@@ -204,7 +204,7 @@ static int tmove(lua_State* L)
         Table* dst = hvalue(L->base + (tt - 1));
 
         if (dst->readonly) /* also checked in moveelements, but this blocks resizes of r/o tables */
-            luaG_runerror(L, "Attempt to modify a readonly table");
+            luaG_readonlyerror(L);
 
         if (t > 0 && (t - 1) <= dst->sizearray && (t - 1 + n) > dst->sizearray)
         { /* grow the destination table array */
@@ -482,7 +482,7 @@ static int tclear(lua_State* L)
 
     Table* tt = hvalue(L->base);
     if (tt->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
 
     luaH_clear(tt);
     return 0;

@@ -2990,6 +2990,15 @@ TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra_2")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "expected_indexer_from_table_union")
+{
+    ScopedFastFlag luauExpectedTableUnionIndexerType{"LuauExpectedTableUnionIndexerType", true};
+
+    LUAU_REQUIRE_NO_ERRORS(check(R"(local a: {[string]: {number | string}} = {a = {2, 's'}})"));
+    LUAU_REQUIRE_NO_ERRORS(check(R"(local a: {[string]: {number | string}}? = {a = {2, 's'}})"));
+    LUAU_REQUIRE_NO_ERRORS(check(R"(local a: {[string]: {[string]: {string?}}?} = {["a"] = {["b"] = {"a", "b"}}})"));
+}
+
 TEST_CASE_FIXTURE(Fixture, "prop_access_on_key_whose_types_mismatches")
 {
     ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};

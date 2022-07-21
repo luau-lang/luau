@@ -254,9 +254,9 @@ TEST_CASE("Math")
     runConformance("math.lua");
 }
 
-TEST_CASE("Table")
+TEST_CASE("Tables")
 {
-    runConformance("nextvar.lua", [](lua_State* L) {
+    runConformance("tables.lua", [](lua_State* L) {
         lua_pushcfunction(
             L,
             [](lua_State* L) {

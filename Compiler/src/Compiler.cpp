@@ -27,6 +27,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompileNoIpairs, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileFoldBuiltins, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileBetterMultret, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileFreeReassign, false)
 
 namespace Luau
 {
@@ -616,7 +617,7 @@ struct Compiler
             }
             else
             {
-                AstExprLocal* le = arg->as<AstExprLocal>();
+                AstExprLocal* le = FFlag::LuauCompileFreeReassign ? getExprLocal(arg) : arg->as<AstExprLocal>();
                 Variable* lv = le ? variables.find(le->local) : nullptr;
 
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
@@ -2200,19 +2201,27 @@ struct Compiler
         compileLValueUse(lv, source, /* set= */ true);
     }
 
-    int getExprLocalReg(AstExpr* node)
+    AstExprLocal* getExprLocal(AstExpr* node)
     {
         if (AstExprLocal* expr = node->as<AstExprLocal>())
+            return expr;
+        else if (AstExprGroup* expr = node->as<AstExprGroup>())
+            return getExprLocal(expr->expr);
+        else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
+            return getExprLocal(expr->expr);
+        else
+            return nullptr;
+    }
+
+    int getExprLocalReg(AstExpr* node)
+    {
+        if (AstExprLocal* expr = getExprLocal(node))
         {
             // note: this can't check expr->upvalue because upvalues may be upgraded to locals during inlining
             Local* l = locals.find(expr->local);
 
             return l && l->allocated ? l->reg : -1;
         }
-        else if (AstExprGroup* expr = node->as<AstExprGroup>())
-            return getExprLocalReg(expr->expr);
-        else if (AstExprTypeAssertion* expr = node->as<AstExprTypeAssertion>())
-            return getExprLocalReg(expr->expr);
         else
             return -1;
     }
@@ -2497,6 +2506,22 @@ struct Compiler
         // Optimization: we don't need to allocate and assign const locals, since their uses will be constant-folded
         if (options.optimizationLevel >= 1 && options.debugLevel <= 1 && areLocalsRedundant(stat))
             return;
+
+        // Optimization: for 1-1 local assignments, we can reuse the register *if* neither local is mutated
+        if (FFlag::LuauCompileFreeReassign && options.optimizationLevel >= 1 && stat->vars.size == 1 && stat->values.size == 1)
+        {
+            if (AstExprLocal* re = getExprLocal(stat->values.data[0]))
+            {
+                Variable* lv = variables.find(stat->vars.data[0]);
+                Variable* rv = variables.find(re->local);
+
+                if (int reg = getExprLocalReg(re); reg >= 0 && (!lv || !lv->written) && (!rv || !rv->written))
+                {
+                    pushLocal(stat->vars.data[0], uint8_t(reg));
+                    return;
+                }
+            }
+        }
 
         // note: allocReg in this case allocates into parent block register - note that we don't have RegScope here
         uint8_t vars = allocReg(stat, unsigned(stat->vars.size));
