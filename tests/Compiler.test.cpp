@@ -3793,6 +3793,8 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
+    ScopedFastFlag sff("LuauCompileFreeReassign", true);
+
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -3940,11 +3942,10 @@ LOADN R2 1
 LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L5
-L4: MOVE R3 R2
-GETIMPORT R4 1
-NEWCLOSURE R5 P2
-CAPTURE VAL R3
-CALL R4 1 0
+L4: GETIMPORT R3 1
+NEWCLOSURE R4 P2
+CAPTURE VAL R2
+CALL R3 1 0
 FORNLOOP R0 L4
 L5: RETURN R0 0
 )");
@@ -6154,6 +6155,90 @@ return math.abs(-42)
         R"(
 LOADN R0 42
 RETURN R0 1
+)");
+}
+
+TEST_CASE("LocalReassign")
+{
+    ScopedFastFlag sff("LuauCompileFreeReassign", true);
+
+    // locals can be re-assigned and the register gets reused
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = a
+    return c + b
+end
+)"), R"(
+ADD R2 R0 R1
+RETURN R2 1
+)");
+
+    // this works if the expression is using type casts or grouping
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = (a :: number)
+    return c + b
+end
+)"), R"(
+ADD R2 R0 R1
+RETURN R2 1
+)");
+
+    // the optimization requires that neither local is mutated
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = a
+    c += 0
+    local d = b
+    b += 0
+    return c + d
+end
+)"), R"(
+MOVE R2 R0
+ADDK R2 R2 K0
+MOVE R3 R1
+ADDK R1 R1 K0
+ADD R4 R2 R3
+RETURN R4 1
+)");
+
+    // sanity check for two values
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = a
+    local d = b
+    return c + d
+end
+)"), R"(
+ADD R2 R0 R1
+RETURN R2 1
+)");
+
+    // note: we currently only support this for single assignments
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c, d = a, b
+    return c + d
+end
+)"), R"(
+MOVE R2 R0
+MOVE R3 R1
+ADD R4 R2 R3
+RETURN R4 1
+)");
+
+    // of course, captures capture the original register as well (by value since it's immutable)
+    CHECK_EQ("\n" + compileFunction(R"(
+local function test(a, b)
+    local c = a
+    local d = b
+    return function() return c + d end
+end
+)", 1), R"(
+NEWCLOSURE R2 P0
+CAPTURE VAL R0
+CAPTURE VAL R1
+RETURN R2 1
 )");
 }
 

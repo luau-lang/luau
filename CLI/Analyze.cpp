@@ -7,6 +7,7 @@
 #include "Luau/Transpiler.h"
 
 #include "FileUtils.h"
+#include "Flags.h"
 
 #ifdef CALLGRIND
 #include <valgrind/callgrind.h>
@@ -223,9 +224,7 @@ int main(int argc, char** argv)
 {
     Luau::assertHandler() = assertionHandler;
 
-    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-        if (strncmp(flag->name, "Luau", 4) == 0)
-            flag->value = true;
+    setLuauFlagsDefault();
 
     if (argc >= 2 && strcmp(argv[1], "--help") == 0)
     {
@@ -252,12 +251,14 @@ int main(int argc, char** argv)
             annotate = true;
         else if (strcmp(argv[i], "--timetrace") == 0)
             FFlag::DebugLuauTimeTracing.value = true;
+        else if (strncmp(argv[i], "--fflags=", 9) == 0)
+            setLuauFlags(argv[i] + 9);
     }
 
 #if !defined(LUAU_ENABLE_TIME_TRACE)
     if (FFlag::DebugLuauTimeTracing)
     {
-        printf("To run with --timetrace, Luau has to be built with LUAU_ENABLE_TIME_TRACE enabled\n");
+        fprintf(stderr, "To run with --timetrace, Luau has to be built with LUAU_ENABLE_TIME_TRACE enabled\n");
         return 1;
     }
 #endif

@@ -155,6 +155,13 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseBinaryInstructionForms")
     SINGLE_COMPARE(add(qword[rax + r13 * 2 + 0x1b], rsi), 0x4a, 0x01, 0x74, 0x68, 0x1b);
     SINGLE_COMPARE(add(qword[rbp + rbx * 2], rsi), 0x48, 0x01, 0x74, 0x5d, 0x00);
     SINGLE_COMPARE(add(qword[rsp + r10 * 2 + 0x1b], r10), 0x4e, 0x01, 0x54, 0x54, 0x1b);
+
+    // [addr], imm
+    SINGLE_COMPARE(add(byte[rax], 2), 0x80, 0x00, 0x02);
+    SINGLE_COMPARE(add(dword[rax], 2), 0x83, 0x00, 0x02);
+    SINGLE_COMPARE(add(dword[rax], 0xabcd), 0x81, 0x00, 0xcd, 0xab, 0x00, 0x00);
+    SINGLE_COMPARE(add(qword[rax], 2), 0x48, 0x83, 0x00, 0x02);
+    SINGLE_COMPARE(add(qword[rax], 0xabcd), 0x48, 0x81, 0x00, 0xcd, 0xab, 0x00, 0x00);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseUnaryInstructionForms")
@@ -304,6 +311,13 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
     SINGLE_COMPARE(vaddps(xmm9, xmm12, xmmword[r9 + r14 * 2 + 0x1c]), 0xc4, 0x01, 0x98, 0x58, 0x4c, 0x71, 0x1c);
     SINGLE_COMPARE(vaddps(ymm1, ymm2, ymm3), 0xc4, 0xe1, 0xec, 0x58, 0xcb);
     SINGLE_COMPARE(vaddps(ymm9, ymm12, ymmword[r9 + r14 * 2 + 0x1c]), 0xc4, 0x01, 0x9c, 0x58, 0x4c, 0x71, 0x1c);
+
+    // Coverage for other instructions that follow the same pattern
+    SINGLE_COMPARE(vsubsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xab, 0x5c, 0xc6);
+    SINGLE_COMPARE(vmulsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xab, 0x59, 0xc6);
+    SINGLE_COMPARE(vdivsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xab, 0x5e, 0xc6);
+
+    SINGLE_COMPARE(vxorpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xa9, 0x57, 0xc6);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXUnaryMergeInstructionForms")
@@ -318,6 +332,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXUnaryMergeInstructionForms")
     SINGLE_COMPARE(vsqrtsd(xmm8, xmm10, qword[r9]), 0xc4, 0x41, 0xab, 0x51, 0x01);
     SINGLE_COMPARE(vsqrtss(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xaa, 0x51, 0xc6);
     SINGLE_COMPARE(vsqrtss(xmm8, xmm10, dword[r9]), 0xc4, 0x41, 0xaa, 0x51, 0x01);
+
+    // Coverage for other instructions that follow the same pattern
+    SINGLE_COMPARE(vcomisd(xmm8, xmm10), 0xc4, 0x41, 0xf9, 0x2f, 0xc2);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXMoveInstructionForms")
@@ -340,6 +357,11 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXMoveInstructionForms")
     SINGLE_COMPARE(vmovups(xmm8, xmmword[r9]), 0xc4, 0x41, 0xf8, 0x10, 0x01);
     SINGLE_COMPARE(vmovups(xmmword[r9], xmm10), 0xc4, 0x41, 0xf8, 0x11, 0x11);
     SINGLE_COMPARE(vmovups(ymm8, ymmword[r9]), 0xc4, 0x41, 0xfc, 0x10, 0x01);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
+{
+    SINGLE_COMPARE(int3(), 0xcc);
 }
 
 TEST_CASE("LogTest")
@@ -366,6 +388,7 @@ TEST_CASE("LogTest")
     build.vmovapd(xmmword[rax], xmm11);
     build.pop(r12);
     build.ret();
+    build.int3();
 
     build.finalize();
 
@@ -388,6 +411,7 @@ TEST_CASE("LogTest")
  vmovapd     xmmword ptr [rax],xmm11
  pop         r12
  ret
+ int3
 )";
     CHECK(same);
 }

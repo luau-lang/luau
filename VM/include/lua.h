@@ -300,6 +300,7 @@ LUA_API uintptr_t lua_encodepointer(lua_State* L, uintptr_t p);
 
 LUA_API double lua_clock();
 
+LUA_API void lua_setuserdatatag(lua_State* L, int idx, int tag);
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*));
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);

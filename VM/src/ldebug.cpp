@@ -269,6 +269,11 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
         luaG_runerror(L, "attempt to index %s with %s", t1, t2);
 }
 
+l_noret luaG_readonlyerror(lua_State* L)
+{
+    luaG_runerror(L, "attempt to modify a readonly table");
+}
+
 static void pusherror(lua_State* L, const char* msg)
 {
     CallInfo* ci = L->ci;

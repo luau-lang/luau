@@ -516,7 +516,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
     CHECK_EQ(*typeChecker.nilType, *requireType("extra"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
+TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -529,6 +529,17 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
     CHECK_EQ("Cannot iterate over a table without indexer", ge->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local t = {}
+        for k, v in t do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")
