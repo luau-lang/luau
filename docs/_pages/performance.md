@@ -29,7 +29,7 @@ Unlike Lua and LuaJIT, Luau uses a multi-pass compiler with a frontend that pars
 
 > Note: Compilation throughput isn't the main focus in Luau, but our compiler is reasonably fast; with all currently implemented optimizations enabled, it compiles 400K lines of Luau code in 0.5 seconds on a single core of a desktop Core i7 CPU, producing bytecode and debug information.
 
-While bytecode optimizations are limited due to the flexibility of Luau code (e.g. `a * 1` may not be equivalent to `a` if `*` is overloaded through metatables), even in absence of type information Luau compiler can perform some optimizations such as "deep" constant folding across functions and local variables, perform upvalue optimizations for upvalues that aren't mutated, do analysis of builtin function usage, and some peephole optimizations on the resulting bytecode. In the future we plan to do bytecode-level inlining and possibly other code transformation.
+While bytecode optimizations are limited due to the flexibility of Luau code (e.g. `a * 1` may not be equivalent to `a` if `*` is overloaded through metatables), even in absence of type information Luau compiler can perform some optimizations such as "deep" constant folding across functions and local variables, perform upvalue optimizations for upvalues that aren't mutated, do analysis of builtin function usage, and some peephole optimizations on the resulting bytecode. The compiler can also be instructed to use more aggressive optimizations by enabling optimization level 2 (`-O2` in CLI tools), some of which are documented further on this page.
 
 Luau compiler currently doesn't use type information to do further optimizations, however early experiments suggest that we can extract further wins. Because we control the entire stack (unlike e.g. TypeScript where the type information is discarded completely before reaching the VM), we have more flexibility there and can make some tradeoffs during codegen even if the type system isn't completely sound. For example, it might be reasonable to assume that in presence of known types, we can infer absence of side effects for arithmetic operations and builtins - if the runtime types mismatch due to intentional violation of the type safety through global injection, the code will still be safely sandboxed; this may unlock optimizations such as common subexpression elimination and allocation hoisting without a JIT. This is speculative pending further research.
 
@@ -89,6 +89,8 @@ The mechanism works by directly invoking a highly specialized and optimized impl
 As a result, builtin calls are very fast in Luau - they are still slightly slower than core instructions such as arithmetic operations, but only slightly so. The set of fastcall builtins is slowly expanding over time and as of this writing contains `assert`, `type`, `typeof`, `rawget`/`rawset`/`rawequal`, all functions from `math` and `bit32`, and some functions from `string` and `table` library.
 
 > Note: The partial specialization mechanism is cute in that for `assert`, it only specializes on truthy conditions; hopefully performance of `assert(false)` isn't crucial for most code!
+
+In addition to runtime optimizations for builtin calls, many builtin calls can also be constant-folded by the bytecode compiler when using aggressive optimizations (level 2); this currently applies to most builtin calls with constant arguments and a single return value.
 
 ## Optimized table iteration
 
