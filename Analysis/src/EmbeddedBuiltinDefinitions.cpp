@@ -13,17 +13,17 @@ declare bit32: {
     band: (...number) -> number,
     bor: (...number) -> number,
     bxor: (...number) -> number,
-    btest: (number, ...number) -> boolean,
-    rrotate: (number, number) -> number,
-    lrotate: (number, number) -> number,
-    lshift: (number, number) -> number,
-    arshift: (number, number) -> number,
-    rshift: (number, number) -> number,
-    bnot: (number) -> number,
-    extract: (number, number, number?) -> number,
-    replace: (number, number, number, number?) -> number,
-    countlz: (number) -> number,
-    countrz: (number) -> number,
+    btest: (n: number, ...number) -> boolean,
+    rrotate: (n: number, i: number) -> number,
+    lrotate: (n: number, i: number) -> number,
+    lshift: (n: number, i: number) -> number,
+    arshift: (n: number, i: number) -> number,
+    rshift: (n: number, i: number) -> number,
+    bnot: (n: number) -> number,
+    extract: (n: number, position: number, width: number?) -> number,
+    replace: (n: number, r: number, position: number, width: number?) -> number,
+    countlz: (n: number) -> number,
+    countrz: (n: number) -> number,
 }
 
 declare math: {
@@ -94,9 +94,9 @@ type DateTypeResult = {
 }
 
 declare os: {
-    time: (DateTypeArg?) -> number,
-    date: (string?, number?) -> DateTypeResult | string,
-    difftime: (DateTypeResult | number, DateTypeResult | number) -> number,
+    time: (time: DateTypeArg?) -> number,
+    date: (format: string?, time: number?) -> DateTypeResult | string,
+    difftime: (a: DateTypeResult | number, b: DateTypeResult | number) -> number,
     clock: () -> number,
 }
 
@@ -145,52 +145,52 @@ declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> 
 declare function newproxy(mt: boolean?): any
 
 declare coroutine: {
-    create: <A..., R...>((A...) -> R...) -> thread,
-    resume: <A..., R...>(thread, A...) -> (boolean, R...),
+    create: <A..., R...>(f: (A...) -> R...) -> thread,
+    resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
     running: () -> thread,
-    status: (thread) -> "dead" | "running" | "normal" | "suspended",
+    status: (co: thread) -> "dead" | "running" | "normal" | "suspended",
     -- FIXME: This technically returns a function, but we can't represent this yet.
-    wrap: <A..., R...>((A...) -> R...) -> any,
+    wrap: <A..., R...>(f: (A...) -> R...) -> any,
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
-    close: (thread) -> (boolean, any)
+    close: (co: thread) -> (boolean, any)
 }
 
 declare table: {
-    concat: <V>({V}, string?, number?, number?) -> string,
-    insert: (<V>({V}, V) -> ()) & (<V>({V}, number, V) -> ()),
-    maxn: <V>({V}) -> number,
-    remove: <V>({V}, number?) -> V?,
-    sort: <V>({V}, ((V, V) -> boolean)?) -> (),
-    create: <V>(number, V?) -> {V},
-    find: <V>({V}, V, number?) -> number?,
+    concat: <V>(tbl: {V}, sep: string?, from: number?, to: number?) -> string,
+    insert: (<V>(tbl: {V}, value: V) -> ()) & (<V>(tbl: {V}, index: number, value: V) -> ()),
+    maxn: <V>(tbl: {V}) -> number,
+    remove: <V>(tbl: {V}, index: number?) -> V?,
+    sort: <V>(tbl: {V}, f: ((V, V) -> boolean)?) -> (),
+    create: <V>(size: number, value: V?) -> {V},
+    find: <V>(tbl: {V}, value: V, startIndex: number?) -> number?,
 
-    unpack: <V>({V}, number?, number?) -> ...V,
+    unpack: <V>(tbl: {V}, from: number?, to: number?) -> ...V,
     pack: <V>(...V) -> { n: number, [number]: V },
 
-    getn: <V>({V}) -> number,
-    foreach: <K, V>({[K]: V}, (K, V) -> ()) -> (),
-    foreachi: <V>({V}, (number, V) -> ()) -> (),
+    getn: <V>(tbl: {V}) -> number,
+    foreach: <K, V>(tbl: {[K]: V}, f: (key: K, value: V) -> ()) -> (),
+    foreachi: <V>(tbl: {V}, (index: number, value: V) -> ()) -> (),
 
-    move: <V>({V}, number, number, number, {V}?) -> {V},
-    clear: <K, V>({[K]: V}) -> (),
+    move: <V>(tbl: {V}, from: number, to: number, startIndex: number, newTbl: {V}?) -> {V},
+    clear: <K, V>(tbl: {[K]: V}) -> (),
 
-    isfrozen: <K, V>({[K]: V}) -> boolean,
+    isfrozen: <K, V>(tbl: {[K]: V}) -> boolean,
 }
 
 declare debug: {
-    info: (<R...>(thread, number, string) -> R...) & (<R...>(number, string) -> R...) & (<A..., R1..., R2...>((A...) -> R1..., string) -> R2...),
-    traceback: ((string?, number?) -> string) & ((thread, string?, number?) -> string),
+    info: (<R...>(co: thread, level: number, s: string) -> R...) & (<R...>(level: number, s: string) -> R...) & (<A..., R1..., R2...>(f: (A...) -> R1..., s: string) -> R2...),
+    traceback: ((msg: string?, level: number?) -> string) & ((co: thread, message: string?, level: number?) -> string),
 }
 
 declare utf8: {
     char: (...number) -> string,
     charpattern: string,
-    codes: (string) -> ((string, number) -> (number, number), string, number),
+    codes: (str: string) -> ((string, number) -> (number, number), string, number),
     -- FIXME
-    codepoint: (string, number?, number?) -> (number, ...number),
-    len: (string, number?, number?) -> (number?, number?),
-    offset: (string, number?, number?) -> number,
+    codepoint: (str: string, startOffset: number?, endOffset: number?) -> (number, ...number),
+    len: (str: string, startOffset: number?, endOffset: number?) -> (number?, number?),
+    offset: (str: string, codepoint: number?, bytePosition: number?) -> number,
     nfdnormalize: (string) -> string,
     nfcnormalize: (string) -> string,
     graphemes: (string, number?, number?) -> (() -> (number, number)),
