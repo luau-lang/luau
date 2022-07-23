@@ -221,7 +221,7 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
 
     TypeId tableMetaMT = arena.addType(MetatableTypeVar{tabTy, genericMT});
 
-    addGlobalBinding(typeChecker, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
+    addGlobalBinding(typeChecker, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {"tbl"}, {genericMT}), "@luau");
 
     // clang-format off
     // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }

@@ -766,14 +766,14 @@ TypeId SingletonTypes::makeStringMetatable()
     const TypePackId stringVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{stringType}});
     const TypePackId numberVariadicList = arena->addTypePack(TypePackVar{VariadicTypePack{numberType}});
 
-    const TypeId stringToStringType = makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType});
+    const TypeId stringToStringType = makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {"str"}, {stringType});
 
     const TypeId replArgType = arena->addType(
         UnionTypeVar{{stringType, arena->addType(TableTypeVar({}, TableIndexer(stringType, stringType), TypeLevel{}, TableState::Generic)),
             makeFunction(*arena, std::nullopt, {}, {}, {stringType}, {}, {stringType})}});
-    const TypeId gsubFunc = makeFunction(*arena, stringType, {}, {}, {stringType, replArgType, optionalNumber}, {}, {stringType, numberType});
+    const TypeId gsubFunc = makeFunction(*arena, stringType, {}, {}, {stringType, replArgType, optionalNumber}, {"pattern", "replace", "maxs"}, {stringType, numberType});
     const TypeId gmatchFunc =
-        makeFunction(*arena, stringType, {}, {}, {stringType}, {}, {arena->addType(FunctionTypeVar{emptyPack, stringVariadicList})});
+        makeFunction(*arena, stringType, {}, {}, {stringType}, {"pattern"}, {arena->addType(FunctionTypeVar{emptyPack, stringVariadicList})});
     attachMagicFunction(gmatchFunc, magicFunctionGmatch);
 
     const TypeId matchFunc = arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}),
@@ -794,17 +794,17 @@ TypeId SingletonTypes::makeStringMetatable()
         {"len", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType})}},
         {"lower", {stringToStringType}},
         {"match", {matchFunc}},
-        {"rep", {makeFunction(*arena, stringType, {}, {}, {numberType}, {}, {stringType})}},
+        {"rep", {makeFunction(*arena, stringType, {}, {}, {numberType}, {"n"}, {stringType})}},
         {"reverse", {stringToStringType}},
-        {"sub", {makeFunction(*arena, stringType, {}, {}, {numberType, optionalNumber}, {}, {stringType})}},
+        {"sub", {makeFunction(*arena, stringType, {}, {}, {numberType, optionalNumber}, {"from", "to"}, {stringType})}},
         {"upper", {stringToStringType}},
-        {"split", {makeFunction(*arena, stringType, {}, {}, {optionalString}, {},
+        {"split", {makeFunction(*arena, stringType, {}, {}, {optionalString}, {"sep"},
                       {arena->addType(TableTypeVar{{}, TableIndexer{numberType, stringType}, TypeLevel{}, TableState::Sealed})})}},
         {"pack", {arena->addType(FunctionTypeVar{
                      arena->addTypePack(TypePack{{stringType}, anyTypePack}),
                      oneStringPack,
                  })}},
-        {"packsize", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType})}},
+        {"packsize", {makeFunction(*arena, stringType, {}, {}, {}, {"format"}, {numberType})}},
         {"unpack", {arena->addType(FunctionTypeVar{
                        arena->addTypePack(TypePack{{stringType, stringType, optionalNumber}}),
                        anyTypePack,

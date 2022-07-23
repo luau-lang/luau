@@ -170,7 +170,7 @@ declare table: {
 
     getn: <V>(tbl: {V}) -> number,
     foreach: <K, V>(tbl: {[K]: V}, f: (key: K, value: V) -> ()) -> (),
-    foreachi: <V>(tbl: {V}, (index: number, value: V) -> ()) -> (),
+    foreachi: <V>(tbl: {V}, f: (index: number, value: V) -> ()) -> (),
 
     move: <V>(tbl: {V}, from: number, to: number, startIndex: number, newTbl: {V}?) -> {V},
     clear: <K, V>(tbl: {[K]: V}) -> (),
