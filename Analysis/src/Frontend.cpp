@@ -448,7 +448,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                     typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
             }
 
-            ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict);
+            ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict, environmentScope);
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
 
             double duration = getTimestamp() - timestamp;
