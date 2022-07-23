@@ -403,7 +403,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         Mode mode = sourceModule.mode.value_or(config.mode);
 
-        ScopePtr environmentScope = getModuleEnvironment(sourceModule, config);
+        ScopePtr environmentScope = getModuleEnvironment(sourceModule, config, frontendOptions.forAutocomplete);
 
         double timestamp = getTimestamp();
 
@@ -625,9 +625,13 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& chec
     return cyclic;
 }
 
-ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config& config)
+ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete)
 {
-    ScopePtr result = typeChecker.globalScope;
+    ScopePtr result;
+    if (forAutocomplete)
+        result = typeCheckerForAutocomplete.globalScope;
+    else
+        result = typeChecker.globalScope;
 
     if (module.environmentName)
         result = getEnvironmentScope(*module.environmentName);
