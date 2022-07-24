@@ -1407,27 +1407,27 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
         if (!FFlag::LuauSelfCallAutocompleteFix2 && isString(ty))
             return {
-                autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry), ancestry};
+                autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry), ancestry, AutocompleteContext::Property};
         else
-            return {autocompleteProps(*module, typeArena, ty, indexType, ancestry), ancestry};
+            return {autocompleteProps(*module, typeArena, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {
         if (typeReference->prefix)
-            return {autocompleteModuleTypes(*module, position, typeReference->prefix->value), ancestry};
+            return {autocompleteModuleTypes(*module, position, typeReference->prefix->value), ancestry, AutocompleteContext::Type};
         else
-            return {autocompleteTypeNames(*module, position, ancestry), ancestry};
+            return {autocompleteTypeNames(*module, position, ancestry), ancestry, AutocompleteContext::Type};
     }
     else if (node->is<AstTypeError>())
     {
-        return {autocompleteTypeNames(*module, position, ancestry), ancestry};
+        return {autocompleteTypeNames(*module, position, ancestry), ancestry, AutocompleteContext::Type};
     }
     else if (AstStatLocal* statLocal = node->as<AstStatLocal>())
     {
         if (statLocal->vars.size == 1 && (!statLocal->equalsSignLocation || position < statLocal->equalsSignLocation->begin))
-            return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Unknown};
         else if (statLocal->equalsSignLocation && position >= statLocal->equalsSignLocation->end)
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
         else
             return {};
     }
@@ -1437,16 +1437,16 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         if (!statFor->hasDo || position < statFor->doLocation.begin)
         {
             if (!statFor->from->is<AstExprError>() && !statFor->to->is<AstExprError>() && (!statFor->step || !statFor->step->is<AstExprError>()))
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
             if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
                 (statFor->step && statFor->step->location.containsClosed(position)))
-                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
 
             return {};
         }
 
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
     else if (AstStatForIn* statForIn = parent->as<AstStatForIn>(); statForIn && (node->is<AstStatBlock>() || isIdentifier(node)))
@@ -1462,7 +1462,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 return {};
             }
 
-            return {{{"in", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"in", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
         }
 
         if (!statForIn->hasDo || position <= statForIn->doLocation.begin)
@@ -1471,10 +1471,10 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             AstExpr* lastExpr = statForIn->values.data[statForIn->values.size - 1];
 
             if (lastExpr->location.containsClosed(position))
-                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
 
             if (position > lastExpr->location.end)
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
             return {}; // Not sure what this means
         }
@@ -1484,45 +1484,45 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         // The AST looks a bit differently if the cursor is at a position where only the "do" keyword is allowed.
         // ex "for f in f do"
         if (!statForIn->hasDo)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
     else if (AstStatWhile* statWhile = parent->as<AstStatWhile>(); node->is<AstStatBlock>() && statWhile)
     {
         if (!statWhile->hasDo && !statWhile->condition->is<AstStatError>() && position > statWhile->condition->location.end)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
         if (!statWhile->hasDo || position < statWhile->doLocation.begin)
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
 
         if (statWhile->hasDo && position > statWhile->doLocation.end)
-            return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+            return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
     else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry); statWhile && !statWhile->hasDo)
-        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {
         return {
-            {{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            {{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {
         if (statIf->condition->is<AstExprError>())
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
-            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
              statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)))
-        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
-        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>()))
     {
         for (const auto& [kind, key, value] : exprTable->items)
@@ -1548,7 +1548,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                     if (!key)
                         autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position, result);
 
-                    return {result, ancestry};
+                    return {result, ancestry, AutocompleteContext::Property};
                 }
 
                 break;
@@ -1556,11 +1556,11 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         }
     }
     else if (isIdentifier(node) && (parent->is<AstStatExpr>() || parent->is<AstStatError>()))
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
     if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(sourceModule, module, ancestry, position, callback))
     {
-        return {*ret, ancestry};
+        return {*ret, ancestry, AutocompleteContext::String};
     }
     else if (node->is<AstExprConstantString>())
     {
@@ -1586,7 +1586,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             }
         }
 
-        return {result, ancestry};
+        return {result, ancestry, AutocompleteContext::String};
     }
 
     if (node->is<AstExprConstantNumber>())
@@ -1595,9 +1595,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     }
 
     if (node->asExpr())
-        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry, AutocompleteContext::Expression};
     else if (node->asStat())
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
     return {};
 }

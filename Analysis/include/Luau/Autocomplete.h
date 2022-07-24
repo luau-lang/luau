@@ -19,6 +19,22 @@ struct TypeChecker;
 
 using ModulePtr = std::shared_ptr<Module>;
 
+enum class AutocompleteContext
+{
+    // No context available - e.g. inside of comment
+    Unknown,
+    Expression,
+    Statement,
+    // Autocompleting an index - `foo.bar` / `foo:bar`
+    Property,
+    // Autocompleting a type name
+    Type,
+    // Autocompleting a keyword
+    Keyword,
+    // Autocompleting a string
+    String,
+};
+
 enum class AutocompleteEntryKind
 {
     Property,
@@ -66,11 +82,13 @@ struct AutocompleteResult
 {
     AutocompleteEntryMap entryMap;
     std::vector<AstNode*> ancestry;
+    AutocompleteContext context = AutocompleteContext::Unknown;
 
     AutocompleteResult() = default;
-    AutocompleteResult(AutocompleteEntryMap entryMap, std::vector<AstNode*> ancestry)
+    AutocompleteResult(AutocompleteEntryMap entryMap, std::vector<AstNode*> ancestry, AutocompleteContext context)
         : entryMap(std::move(entryMap))
         , ancestry(std::move(ancestry))
+        , context(context)
     {
     }
 };
