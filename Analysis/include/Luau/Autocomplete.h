@@ -21,17 +21,12 @@ using ModulePtr = std::shared_ptr<Module>;
 
 enum class AutocompleteContext
 {
-    // No context available - e.g. inside of comment
     Unknown,
     Expression,
     Statement,
-    // Autocompleting an index - `foo.bar` / `foo:bar`
     Property,
-    // Autocompleting a type name
     Type,
-    // Autocompleting a keyword
     Keyword,
-    // Autocompleting a string
     String,
 };
 
