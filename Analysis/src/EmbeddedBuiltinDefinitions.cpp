@@ -20,8 +20,8 @@ declare bit32: {
     arshift: (n: number, i: number) -> number,
     rshift: (n: number, i: number) -> number,
     bnot: (n: number) -> number,
-    extract: (n: number, position: number, width: number?) -> number,
-    replace: (n: number, r: number, position: number, width: number?) -> number,
+    extract: (n: number, f: number, w: number?) -> number,
+    replace: (n: number, r: number, f: number, w: number?) -> number,
     countlz: (n: number) -> number,
     countrz: (n: number) -> number,
 }
@@ -94,8 +94,8 @@ type DateTypeResult = {
 }
 
 declare os: {
-    time: (time: DateTypeArg?) -> number,
-    date: (format: string?, time: number?) -> DateTypeResult | string,
+    time: (t: DateTypeArg?) -> number,
+    date: (s: string?, t: number?) -> DateTypeResult | string,
     difftime: (a: DateTypeResult | number, b: DateTypeResult | number) -> number,
     clock: () -> number,
 }
@@ -115,25 +115,25 @@ declare function type<T>(value: T): string
 declare function typeof<T>(value: T): string
 
 -- `assert` has a magic function attached that will give more detailed type information
-declare function assert<T>(value: T, errorMessage: string?): T
+declare function assert<T>(value: T, message: string?): T
 
 declare function tostring<T>(value: T): string
 declare function tonumber<T>(value: T, radix: number?): number?
 
 declare function rawequal<T1, T2>(a: T1, b: T2): boolean
-declare function rawget<K, V>(tab: {[K]: V}, k: K): V
-declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
+declare function rawget<K, V>(t: {[K]: V}, k: K): V
+declare function rawset<K, V>(t: {[K]: V}, k: K, v: V): {[K]: V}
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 
-declare function ipairs<V>(tab: {V}): (({V}, number) -> (number, V), {V}, number)
+declare function ipairs<V>(t: {V}): (({V}, number) -> (number, V), {V}, number)
 
 declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...)
 
 -- FIXME: The actual type of `xpcall` is:
 -- <E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., A...) -> (true, R1...) | (false, R2...)
 -- Since we can't represent the return value, we use (boolean, R1...).
-declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., err: (E) -> R2..., ...: A...): (boolean, R1...)
+declare function xpcall<E, A..., R1..., R2...>(f: (A...) -> R1..., e: (E) -> R2..., ...: A...): (boolean, R1...)
 
 -- `select` has a magic function attached to provide more detailed type information
 declare function select<A...>(i: string | number, ...: A...): ...any
@@ -157,30 +157,30 @@ declare coroutine: {
 }
 
 declare table: {
-    concat: <V>(tbl: {V}, sep: string?, from: number?, to: number?) -> string,
-    insert: (<V>(tbl: {V}, value: V) -> ()) & (<V>(tbl: {V}, index: number, value: V) -> ()),
-    maxn: <V>(tbl: {V}) -> number,
-    remove: <V>(tbl: {V}, index: number?) -> V?,
-    sort: <V>(tbl: {V}, f: ((V, V) -> boolean)?) -> (),
-    create: <V>(size: number, value: V?) -> {V},
-    find: <V>(tbl: {V}, value: V, startIndex: number?) -> number?,
+    concat: <V>(t: {V}, sep: string?, f: number?, t: number?) -> string,
+    insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, i: number, v: V) -> ()),
+    maxn: <V>(t: {V}) -> number,
+    remove: <V>(t: {V}, i: number?) -> V?,
+    sort: <V>(t: {V}, f: ((V, V) -> boolean)?) -> (),
+    create: <V>(n: number, v: V?) -> {V},
+    find: <V>(t: {V}, v: V, i: number?) -> number?,
 
-    unpack: <V>(tbl: {V}, from: number?, to: number?) -> ...V,
+    unpack: <V>(a: {V}, f: number?, t: number?) -> ...V,
     pack: <V>(...V) -> { n: number, [number]: V },
 
-    getn: <V>(tbl: {V}) -> number,
-    foreach: <K, V>(tbl: {[K]: V}, f: (key: K, value: V) -> ()) -> (),
-    foreachi: <V>(tbl: {V}, f: (index: number, value: V) -> ()) -> (),
+    getn: <V>(t: {V}) -> number,
+    foreach: <K, V>(t: {[K]: V}, f: (key: K, value: V) -> ()) -> (),
+    foreachi: <V>(t: {V}, f: (index: number, value: V) -> ()) -> (),
 
-    move: <V>(tbl: {V}, from: number, to: number, startIndex: number, newTbl: {V}?) -> {V},
-    clear: <K, V>(tbl: {[K]: V}) -> (),
+    move: <V>(a: {V}, f: number, t: number, d: number, tt: {V}?) -> {V},
+    clear: <K, V>(t: {[K]: V}) -> (),
 
-    isfrozen: <K, V>(tbl: {[K]: V}) -> boolean,
+    isfrozen: <K, V>(t: {[K]: V}) -> boolean,
 }
 
 declare debug: {
     info: (<R...>(co: thread, level: number, s: string) -> R...) & (<R...>(level: number, s: string) -> R...) & (<A..., R1..., R2...>(f: (A...) -> R1..., s: string) -> R2...),
-    traceback: ((msg: string?, level: number?) -> string) & ((co: thread, message: string?, level: number?) -> string),
+    traceback: ((msg: string?, level: number?) -> string) & ((co: thread, msg: string?, level: number?) -> string),
 }
 
 declare utf8: {
@@ -188,16 +188,16 @@ declare utf8: {
     charpattern: string,
     codes: (str: string) -> ((string, number) -> (number, number), string, number),
     -- FIXME
-    codepoint: (str: string, startOffset: number?, endOffset: number?) -> (number, ...number),
-    len: (str: string, startOffset: number?, endOffset: number?) -> (number?, number?),
-    offset: (str: string, codepoint: number?, bytePosition: number?) -> number,
+    codepoint: (s: string, i: number?, j: number?) -> (number, ...number),
+    len: (s: string, i: number?, j: number?) -> (number?, number?),
+    offset: (s: string, n: number?, i: number?) -> number,
     nfdnormalize: (string) -> string,
     nfcnormalize: (string) -> string,
     graphemes: (string, number?, number?) -> (() -> (number, number)),
 }
 
 -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
-declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
+declare function unpack<V>(a: {V}, f: number?, t: number?): ...V
 
 )BUILTIN_SRC";
 
@@ -211,9 +211,9 @@ std::string getBuiltinDefinitionSource()
         result += "declare function rawlen<K, V>(obj: {[K]: V} | string): number\n";
 
     if (FFlag::LuauUnknownAndNeverType)
-        result += "declare function error<T>(message: T, level: number?): never\n";
+        result += "declare function error<T>(obj: T, level: number?): never\n";
     else
-        result += "declare function error<T>(message: T, level: number?)\n";
+        result += "declare function error<T>(obj: T, level: number?)\n";
 
     return result;
 }
