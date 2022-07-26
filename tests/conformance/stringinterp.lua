@@ -11,7 +11,7 @@ assertEq(`hello {"world"}`, "hello world")
 
 assertEq(`2 + 2 = {2 + 2}`, "2 + 2 = 4")
 
--- assertEq(`{1} {2} {3} {4} {5} {6} {7}`, "1 2 3 4 5 6 7")
+assertEq(`{1} {2} {3} {4} {5} {6} {7}`, "1 2 3 4 5 6 7")
 
 -- local combo = {5, 2, 8, 9}
 -- assert(`The lock combinations are: {table.concat(combo, ", ")}` == "The lock combinations are: 5, 2, 8, 9")

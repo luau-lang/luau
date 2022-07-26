@@ -625,6 +625,7 @@ const Lexeme Lexer::nextInterpolatedString()
             incrementInterpolatedStringDepth();
 
             lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringMid, &buffer[startOffset], offset - startOffset);
+            consume();
             return lexeme;
 
         default:
