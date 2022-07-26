@@ -134,6 +134,10 @@ public:
     {
         return visit((class AstExpr*)node);
     }
+    virtual bool visit(class AstExprInterpString* node)
+    {
+        return visit((class AstExpr*)node);
+    }
     virtual bool visit(class AstExprError* node)
     {
         return visit((class AstExpr*)node);
@@ -720,6 +724,19 @@ public:
     AstExpr* trueExpr;
     bool hasElse;
     AstExpr* falseExpr;
+};
+
+class AstExprInterpString : public AstExpr
+{
+public:
+    LUAU_RTTI(AstExprInterpString)
+
+    AstExprInterpString(const Location& location, const AstArray<AstArray<char>>& strings, const AstArray<AstExpr*>& expressions);
+
+    void visit(AstVisitor* visitor) override;
+
+    AstArray<AstArray<char>> strings;
+    AstArray<AstExpr*> expressions;
 };
 
 class AstStatBlock : public AstStat

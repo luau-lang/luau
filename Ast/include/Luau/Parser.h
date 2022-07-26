@@ -228,6 +228,9 @@ private:
     // TODO: Add grammar rules here?
     AstExpr* parseIfElseExpr();
 
+    // INTERP TODO: Grammar
+    AstExpr* parseInterpString();
+
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);
     Name parseName(const char* context = nullptr);

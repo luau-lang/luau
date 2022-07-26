@@ -89,7 +89,16 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
     , length(unsigned(size))
     , data(data)
 {
-    LUAU_ASSERT(type == RawString || type == QuotedString || type == Number || type == Comment || type == BlockComment);
+    LUAU_ASSERT( \
+        type == RawString \
+        || type == QuotedString \
+        || type == InterpStringBegin \
+        || type == InterpStringMid \
+        || type == InterpStringEnd \
+        || type == Number \
+        || type == Comment \
+        || type == BlockComment \
+    );
 }
 
 Lexeme::Lexeme(const Location& location, Type type, const char* name)
@@ -332,6 +341,8 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names)
     , names(names)
     , skipComments(false)
     , readNames(true)
+    , readAsInterpolatedStringExpression(true)
+    , interpolatedStringDepth(0)
 {
 }
 
@@ -343,6 +354,22 @@ void Lexer::setSkipComments(bool skip)
 void Lexer::setReadNames(bool read)
 {
     readNames = read;
+}
+
+// INTERP TODO: Probably not necessary
+void Lexer::setReadAsInterpolatedStringExpression(bool read)
+{
+    readAsInterpolatedStringExpression = read;
+}
+
+void Lexer::incrementInterpolatedStringDepth()
+{
+    interpolatedStringDepth++;
+}
+
+void Lexer::decrementInterpolatedStringDepth()
+{
+    interpolatedStringDepth--;
 }
 
 const Lexeme& Lexer::next()
@@ -515,6 +542,31 @@ Lexeme Lexer::readLongString(const Position& start, int sep, Lexeme::Type ok, Le
     return Lexeme(Location(start, position()), broken);
 }
 
+void Lexer::readBackslashInString()
+{
+    consume();
+    switch (peekch())
+    {
+    case '\r':
+        consume();
+        if (peekch() == '\n')
+            consume();
+        break;
+
+    case 0:
+        break;
+
+    case 'z':
+        consume();
+        while (isSpace(peekch()))
+            consume();
+        break;
+
+    default:
+        consume();
+    }
+}
+
 Lexeme Lexer::readQuotedString()
 {
     Position start = position();
@@ -535,27 +587,7 @@ Lexeme Lexer::readQuotedString()
             return Lexeme(Location(start, position()), Lexeme::BrokenString);
 
         case '\\':
-            consume();
-            switch (peekch())
-            {
-            case '\r':
-                consume();
-                if (peekch() == '\n')
-                    consume();
-                break;
-
-            case 0:
-                break;
-
-            case 'z':
-                consume();
-                while (isSpace(peekch()))
-                    consume();
-                break;
-
-            default:
-                consume();
-            }
+            readBackslashInString();
             break;
 
         default:
@@ -566,6 +598,82 @@ Lexeme Lexer::readQuotedString()
     consume();
 
     return Lexeme(Location(start, position()), Lexeme::QuotedString, &buffer[startOffset], offset - startOffset - 1);
+}
+
+const Lexeme Lexer::nextInterpolatedString()
+{
+    // INTERP TODO: This is a copy-paste
+    Position start = position();
+
+    unsigned int startOffset = offset;
+
+    while (peekch() != '`')
+    {
+        switch (peekch())
+        {
+        case 0:
+        case '\r':
+        case '\n':
+            lexeme = Lexeme(Location(start, position()), Lexeme::BrokenString);
+            return lexeme;
+
+        case '\\':
+            readBackslashInString();
+            break;
+
+        case '{':
+            incrementInterpolatedStringDepth();
+
+            lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringMid, &buffer[startOffset], offset - startOffset);
+            return lexeme;
+
+        default:
+            consume();
+        }
+    }
+
+    consume();
+
+    lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringEnd, &buffer[startOffset], offset - startOffset - 1);
+    return lexeme;
+}
+
+Lexeme Lexer::readInterpolatedStringBegin()
+{
+    Position start = position();
+
+    consume();
+
+    unsigned int startOffset = offset;
+
+    while (peekch() != '`')
+    {
+        switch (peekch())
+        {
+        case 0:
+        case '\r':
+        case '\n':
+            return Lexeme(Location(start, position()), Lexeme::BrokenString);
+
+        case '\\':
+            readBackslashInString();
+            break;
+
+        case '{':
+            incrementInterpolatedStringDepth();
+            lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
+            consume();
+            return lexeme;
+
+        default:
+            consume();
+        }
+    }
+
+    consume();
+
+    // INTERP TODO: Error if there was no interpolated expression
+    LUAU_ASSERT(!"INTERP TODO: interpolated string without ending");
 }
 
 Lexeme Lexer::readNumber(const Position& start, unsigned int startOffset)
@@ -715,6 +823,9 @@ Lexeme Lexer::readNext()
     case '"':
     case '\'':
         return readQuotedString();
+
+    case '`':
+        return readInterpolatedStringBegin();
 
     case '.':
         consume();

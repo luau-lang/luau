@@ -61,6 +61,10 @@ struct Lexeme
         SkinnyArrow,
         DoubleColon,
 
+        InterpStringBegin,
+        InterpStringMid,
+        InterpStringEnd,
+
         AddAssign,
         SubAssign,
         MulAssign,
@@ -166,6 +170,11 @@ public:
 
     void setSkipComments(bool skip);
     void setReadNames(bool read);
+    void setReadAsInterpolatedStringExpression(bool read);
+
+    void incrementInterpolatedStringDepth();
+    void decrementInterpolatedStringDepth();
+    const Lexeme nextInterpolatedString();
 
     const Location& previousLocation() const
     {
@@ -208,6 +217,10 @@ private:
     Lexeme readLongString(const Position& start, int sep, Lexeme::Type ok, Lexeme::Type broken);
     Lexeme readQuotedString();
 
+    Lexeme readInterpolatedStringBegin();
+
+    void readBackslashInString();
+
     std::pair<AstName, Lexeme::Type> readName();
 
     Lexeme readNumber(const Position& start, unsigned int startOffset);
@@ -231,6 +244,9 @@ private:
 
     bool skipComments;
     bool readNames;
+    bool readAsInterpolatedStringExpression;
+
+    unsigned int interpolatedStringDepth;
 };
 
 inline bool isSpace(char ch)

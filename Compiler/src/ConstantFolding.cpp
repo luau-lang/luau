@@ -349,6 +349,11 @@ struct ConstantVisitor : AstVisitor
             if (cond.type != Constant::Type_Unknown)
                 result = cond.isTruthful() ? trueExpr : falseExpr;
         }
+        else if (AstExprInterpString* interpString = node->as<AstExprInterpString>())
+        {
+            // INTERP CODE REVIEW: This can theoretically fold something like `debug mode: {DEBUG_MODE}` where DEBUG_MODE is true.
+            // Is this necessary or just something we can do later?
+        }
         else
         {
             LUAU_ASSERT(!"Unknown expression type");

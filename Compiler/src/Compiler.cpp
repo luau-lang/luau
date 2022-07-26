@@ -1477,6 +1477,57 @@ struct Compiler
         }
     }
 
+    void compileExprInterpString(AstExprInterpString* expr, uint8_t target, bool targetTemp)
+    {
+        // INTERP TODO: percent sign escape
+        std::string formatString;
+
+        unsigned int stringsLeft = expr->strings.size;
+
+        for (AstArray<char> const& string : expr->strings)
+        {
+            formatString += string.data;
+
+            stringsLeft--;
+
+            // INTERP TODO: %*
+            if (stringsLeft > 0)
+                formatString += "%s";
+        }
+
+        std::string& formatStringRef = interpFormatStrings.emplace_back(formatString);
+
+        AstArray<char> formatStringArray{formatStringRef.data(), formatStringRef.size()};
+
+        int32_t formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+        if (formatStringIndex < 0)
+            CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+        bytecode.emitABC(LOP_LOADK, target, formatStringIndex, 0);
+
+        // INTERP CODE REVIEW: Why do I need this?
+        // If I don't, it emits `LOADK R1 K1` instead of `LOADK R2 K1`,
+        // and it gives the error "missing argument 2".
+        allocReg(expr, 1);
+
+        RegScope rs(this);
+
+        for (AstExpr* expression : expr->expressions)
+        {
+            compileExprAuto(expression, rs);
+        }
+
+        BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
+
+        int32_t formatMethodIndex = bytecode.addConstantString(formatMethod);
+        if (formatMethodIndex < 0)
+            CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+        bytecode.emitABC(LOP_NAMECALL, target, target, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
+        bytecode.emitAux(formatMethodIndex);
+        bytecode.emitABC(LOP_CALL, target, expr->expressions.size + 2, 2);
+    }
+
     static uint8_t encodeHashSize(unsigned int hashSize)
     {
         size_t hashSizeLog2 = 0;
@@ -1950,6 +2001,10 @@ struct Compiler
         else if (AstExprIfElse* expr = node->as<AstExprIfElse>())
         {
             compileExprIfElse(expr, target, targetTemp);
+        }
+        else if (AstExprInterpString* interpString = node->as<AstExprInterpString>())
+        {
+            compileExprInterpString(interpString, target, targetTemp);
         }
         else
         {
@@ -3575,6 +3630,7 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
+    std::vector<std::string> interpFormatStrings;
 };
 
 void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, const AstNameTable& names, const CompileOptions& inputOptions)

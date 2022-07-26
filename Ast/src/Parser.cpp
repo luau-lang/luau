@@ -2197,6 +2197,10 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseString();
     }
+    else if (lexer.current().type == Lexeme::InterpStringBegin)
+    {
+        return parseInterpString();
+    }
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         nextLexeme();
@@ -2613,6 +2617,70 @@ AstExpr* Parser::parseString()
         return allocator.alloc<AstExprConstantString>(location, *value);
     else
         return reportExprError(location, {}, "String literal contains malformed escape sequence");
+}
+
+AstExpr* Parser::parseInterpString()
+{
+    std::vector<AstArray<char>> strings;
+    std::vector<AstExpr*> expressions;
+
+    // INTERP TODO: Compile to ("text"):format(...)
+    do {
+        auto currentLexeme = lexer.current();
+        LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid || currentLexeme.type == Lexeme::InterpStringEnd);
+
+        Location location = currentLexeme.location;
+
+        // INTERP TODO: Maybe 1 off?
+        Location startOfBrace = Location(location.end, 1);
+
+        scratchData.assign(currentLexeme.data, currentLexeme.length);
+
+        if (!Lexer::fixupQuotedString(scratchData))
+        {
+            nextLexeme();
+            return reportExprError(location, {}, "Interpolated string literal contains malformed escape sequence");
+        }
+
+        AstArray<char> chars = copy(scratchData);
+
+        nextLexeme();
+
+        strings.push_back(chars);
+
+        if (currentLexeme.type == Lexeme::InterpStringEnd)
+        {
+            // INTERP CODE REVIEW: I figure this isn't the right way to do this.
+            // From what I could gather, I'm expected to have strings and expressions be TempVector from the beginning.
+            // Everything that does that uses a scratch value.
+            // But I would think I would also be expected to use an existing scratch, like `scratchExpr`, in which case
+            // my assumption is that a nested expression would clash the scratches?
+            AstArray<AstArray<char>> stringsArray = copy(strings.data(), strings.size());
+            AstArray<AstExpr*> expressionsArray = copy(expressions.data(), expressions.size());
+
+            return allocator.alloc<AstExprInterpString>(location, stringsArray, expressionsArray);
+        }
+
+        AstExpr* expression = parseExpr();
+
+        // expectMatchAndConsume('}', Lexeme(startOfBrace, '{'));
+
+        // INTERP CODE REVIEW: I want to use expectMatchAndConsume, but using that
+        // consumes the rest of the string, not the `}`
+        if (lexer.current().type != static_cast<Lexeme::Type>(static_cast<unsigned char>('}'))) {
+            return reportExprError(location, {}, "Expected '}' after interpolated string expression");
+        }
+
+        expressions.push_back(expression);
+
+        lexer.decrementInterpolatedStringDepth();
+
+        auto next = lexer.nextInterpolatedString();
+        if (next.type == Lexeme::BrokenString)
+        {
+            return reportExprError(location, {}, "Malformed interpolated string");
+        }
+    } while (true);
 }
 
 AstLocal* Parser::pushLocal(const Binding& binding)
