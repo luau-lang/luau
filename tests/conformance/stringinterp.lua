@@ -9,7 +9,7 @@ end
 
 assertEq(`hello {"world"}`, "hello world")
 
--- assertEq(`2 + 2 = {2 + 2}`, "2 + 2 = 4")
+assertEq(`2 + 2 = {2 + 2}`, "2 + 2 = 4")
 
 -- assertEq(`{1} {2} {3} {4} {5} {6} {7}`, "1 2 3 4 5 6 7")
 

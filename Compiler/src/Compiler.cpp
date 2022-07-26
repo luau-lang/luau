@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <bitset>
+#include <memory>
 #include <math.h>
 
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
@@ -1495,13 +1496,20 @@ struct Compiler
                 formatString += "%s";
         }
 
-        std::string& formatStringRef = interpFormatStrings.emplace_back(formatString);
+        auto formatStringSize = formatString.size();
 
-        AstArray<char> formatStringArray{formatStringRef.data(), formatStringRef.size()};
+        // We can't use formatStringRef.data() directly, because short strings don't have their data
+        // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
+        std::shared_ptr<char[]> formatStringPtr(new char[formatStringSize]);
+        memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
+
+        auto formatStringPtrRef = interpFormatStrings.emplace_back(formatStringPtr);
+        AstArray<char> formatStringArray{formatStringPtrRef.get(), formatStringSize};
 
         int32_t formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
         if (formatStringIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
 
         bytecode.emitABC(LOP_LOADK, target, formatStringIndex, 0);
 
@@ -1513,9 +1521,7 @@ struct Compiler
         RegScope rs(this);
 
         for (AstExpr* expression : expr->expressions)
-        {
             compileExprAuto(expression, rs);
-        }
 
         BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
 
@@ -3630,7 +3636,7 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
-    std::vector<std::string> interpFormatStrings;
+    std::vector<std::shared_ptr<char[]>> interpFormatStrings;
 };
 
 void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, const AstNameTable& names, const CompileOptions& inputOptions)
