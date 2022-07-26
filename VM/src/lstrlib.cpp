@@ -1032,6 +1032,11 @@ static int str_format(lua_State* L)
                     break;
                 }
             }
+            case '*':
+            {
+                sprintf(buff, "%s", luaL_tolstring(L, arg, NULL));
+                break;
+            }
             default:
             { /* also treat cases `pnLlh' */
                 luaL_error(L, "invalid option '%%%c' to 'format'", *(strfrmt - 1));

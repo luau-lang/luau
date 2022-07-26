@@ -291,7 +291,7 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
-    // INTERP TODO: strings.lua
+    // INTERP TODO: Bring this back
     // runConformance("strings.lua");
 }
 

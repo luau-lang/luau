@@ -1491,9 +1491,8 @@ struct Compiler
 
             stringsLeft--;
 
-            // INTERP TODO: %*
             if (stringsLeft > 0)
-                formatString += "%s";
+                formatString += "%*";
         }
 
         auto formatStringSize = formatString.size();
