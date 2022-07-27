@@ -813,6 +813,15 @@ end
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
+{
+    CheckResult result = check(R"(
+        local foo: string = `hello {"world"}`
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 /*
  * If it wasn't instantly obvious, we have the fuzzer to thank for this gem of a test.
  *

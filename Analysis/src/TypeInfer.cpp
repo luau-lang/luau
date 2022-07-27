@@ -1803,6 +1803,8 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
         result = checkExpr(scope, *a);
     else if (auto a = expr.as<AstExprIfElse>())
         result = checkExpr(scope, *a, expectedType);
+    else if (auto a = expr.as<AstExprInterpString>())
+        result = {stringType};
     else
         ice("Unhandled AstExpr?");
 
