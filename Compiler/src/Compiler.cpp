@@ -1507,15 +1507,15 @@ struct Compiler
                 formatString += "%*";
         }
 
-        auto formatStringSize = formatString.size();
+        size_t formatStringSize = formatString.size();
 
         // We can't use formatStringRef.data() directly, because short strings don't have their data
         // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
         std::shared_ptr<char[]> formatStringPtr(new char[formatStringSize]);
         memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
 
-        auto formatStringPtrRef = interpFormatStrings.emplace_back(formatStringPtr);
-        AstArray<char> formatStringArray{formatStringPtrRef.get(), formatStringSize};
+        interpFormatStrings.emplace_back(formatStringPtr);
+        AstArray<char> formatStringArray{formatStringPtr.get(), formatStringSize};
 
         int32_t formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
         if (formatStringIndex < 0)

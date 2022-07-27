@@ -222,7 +222,7 @@ struct CostVisitor : AstVisitor
             // Baseline cost of string.format
             Cost cost = 3;
 
-            for (auto innerExpression : expr->expressions)
+            for (AstExpr* innerExpression : expr->expressions)
                 cost += model(innerExpression);
 
             return cost;

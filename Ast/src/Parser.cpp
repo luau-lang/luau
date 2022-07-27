@@ -2647,7 +2647,7 @@ AstExpr* Parser::parseInterpString()
     Location startLocation = lexer.current().location;
 
     do {
-        auto currentLexeme = lexer.current();
+        Lexeme currentLexeme = lexer.current();
         LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid || currentLexeme.type == Lexeme::InterpStringEnd);
 
         Location location = currentLexeme.location;
@@ -2691,7 +2691,7 @@ AstExpr* Parser::parseInterpString()
 
         expressions.push_back(expression);
 
-        auto next = lexer.nextInterpolatedString();
+        Lexeme next = lexer.nextInterpolatedString();
 
         switch (next.type)
         {
