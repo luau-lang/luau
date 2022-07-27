@@ -296,6 +296,7 @@ TEST_CASE("Strings")
 
 TEST_CASE("StringInterp")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
     runConformance("stringinterp.lua");
 }
 

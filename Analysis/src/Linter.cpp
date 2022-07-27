@@ -203,6 +203,24 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
         return true;
     }
     CASE(AstExprIfElse) return similar(le->condition, re->condition) && similar(le->trueExpr, re->trueExpr) && similar(le->falseExpr, re->falseExpr);
+    CASE(AstExprInterpString)
+    {
+        if (le->strings.size != re->strings.size)
+            return false;
+
+        if (le->expressions.size != re->expressions.size)
+            return false;
+
+        for (size_t i = 0; i < le->strings.size; ++i)
+            if (le->strings.data[i].size != re->strings.data[i].size || memcmp(le->strings.data[i].data, re->strings.data[i].data, le->strings.data[i].size) != 0)
+                return false;
+
+        for (size_t i = 0; i < le->expressions.size; ++i)
+            if (!similar(le->expressions.data[i], re->expressions.data[i]))
+                return false;
+
+        return true;
+    }
     else
     {
         LUAU_ASSERT(!"Unknown expression type");
