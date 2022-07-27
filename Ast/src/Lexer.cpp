@@ -595,9 +595,7 @@ const Lexeme Lexer::nextInterpolatedString()
     Position start = position();
     unsigned int startOffset = offset;
 
-    std::optional<Lexeme> readSectionOpt = readInterpolatedStringSection(start, Lexeme::InterpStringMid);
-
-    if (auto readSection = readSectionOpt)
+    if (auto readSection = readInterpolatedStringSection(start, Lexeme::InterpStringMid))
     {
         lexeme = *readSection;
         return lexeme;
@@ -635,7 +633,7 @@ std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexem
         case 0:
         case '\r':
         case '\n':
-            return std::optional(Lexeme(Location(start, position()), Lexeme::BrokenString));
+            return Lexeme(Location(start, position()), Lexeme::BrokenString);
 
         case '\\':
             readBackslashInString();
@@ -645,12 +643,12 @@ std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexem
         {
             if (peekch(1) == '{')
             {
-                return std::optional(Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace));
+                return Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace);
             }
 
             auto lexemeOutput = Lexeme(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
             consume();
-            return std::optional(lexemeOutput);
+            return lexemeOutput;
         }
 
         default:
