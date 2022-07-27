@@ -132,6 +132,13 @@ print(string.format("%* %* %*", return_two_nils()))
 --> error: value #3 is missing, got 2
 ```
 
+It must be said that we are not allowing this style of string literals in type annotations at this time, regardless of zero or many interpolating expressions, so the following two type annotations below are illegal syntax:
+
+```lua
+local foo: `foo`
+local bar: `bar{baz}`
+```
+
 ## Drawbacks
 
 If we want to use backticks for other purposes, it may introduce some potential ambiguity. One option to solve that is to only ever produce string interpolation tokens from the context of an expression. This is messy but doable because the parser and the lexer are already implemented to work in tandem. The other option is to pick a different delimiter syntax to keep backticks available for use in the future.
