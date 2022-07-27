@@ -39,9 +39,9 @@ assertEq(`Backslash \ that escapes the space is not a part of the string... ({2}
 assertEq(`Escaped backslash \\ ({3})`, "Escaped backslash \\ (3)")
 assertEq(`Escaped backtick: \` ({4})`, "Escaped backtick: ` (4)")
 
--- assert(`Hello {`from inside {"a nested string"}`}` == "Hello from inside a nested string")
+assertEq(`Hello {`from inside {"a nested string"}`}`, "Hello from inside a nested string")
 
--- assert(`1 {`2 {`3 {4}`}`}` == "1 2 3 4")
+assertEq(`1 {`2 {`3 {4}`}`}`, "1 2 3 4")
 
 -- local health = 50
 -- assert(`You have {health}% health` == "You have 50% health")
