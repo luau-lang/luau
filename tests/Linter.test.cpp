@@ -1680,6 +1680,7 @@ TEST_CASE_FIXTURE(Fixture, "TestStringInterpolation")
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
 
     LintResult result = lint(R"(
+        --!nocheck
         local _ = `unknown {foo}`
     )");
 
