@@ -26,6 +26,8 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCaptureHotComments, false)
 
+LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, true)
+
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
 bool lua_telemetry_parsed_double_prefix_hex_integer = false;
@@ -2199,7 +2201,7 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseString();
     }
-    else if (lexer.current().type == Lexeme::InterpStringBegin)
+    else if (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringBegin)
     {
         return parseInterpString();
     }

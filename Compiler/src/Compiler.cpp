@@ -30,6 +30,8 @@ LUAU_FASTFLAGVARIABLE(LuauCompileFoldBuiltins, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileBetterMultret, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileFreeReassign, false)
 
+LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
+
 namespace Luau
 {
 
@@ -2018,7 +2020,7 @@ struct Compiler
         {
             compileExprIfElse(expr, target, targetTemp);
         }
-        else if (AstExprInterpString* interpString = node->as<AstExprInterpString>())
+        else if (AstExprInterpString* interpString = node->as<AstExprInterpString>(); FFlag::LuauInterpolatedStringBaseSupport && interpString)
         {
             compileExprInterpString(interpString, target, targetTemp);
         }
