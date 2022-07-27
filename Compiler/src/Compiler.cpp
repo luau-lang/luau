@@ -1526,7 +1526,6 @@ struct Compiler
         // and it gives the error "missing argument 2".
         allocReg(expr, 1);
 
-        // bytecode.emitABC(LOP_LOADK, target, formatStringIndex, 0);
         emitLoadK(target, formatStringIndex);
 
         uint8_t baseExprReg = allocReg(expr, expr->expressions.size);
