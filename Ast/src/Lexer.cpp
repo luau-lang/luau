@@ -91,15 +91,15 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
     , length(unsigned(size))
     , data(data)
 {
-    LUAU_ASSERT( \
-        type == RawString \
-        || type == QuotedString \
-        || type == InterpStringBegin \
-        || type == InterpStringMid \
-        || type == InterpStringEnd \
-        || type == Number \
-        || type == Comment \
-        || type == BlockComment \
+    LUAU_ASSERT(
+        type == RawString
+        || type == QuotedString
+        || type == InterpStringBegin
+        || type == InterpStringMid
+        || type == InterpStringEnd
+        || type == Number
+        || type == Comment
+        || type == BlockComment
     );
 }
 
