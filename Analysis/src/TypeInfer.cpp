@@ -1804,7 +1804,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     else if (auto a = expr.as<AstExprIfElse>())
         result = checkExpr(scope, *a, expectedType);
     else if (auto a = expr.as<AstExprInterpString>())
-        result = {stringType};
+        result = checkExpr(scope, *a);
     else
         ice("Unhandled AstExpr?");
 
@@ -3021,6 +3021,14 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
     if (FFlag::LuauUnknownAndNeverType && types.empty())
         return {neverType};
     return {types.size() == 1 ? types[0] : addType(UnionTypeVar{std::move(types)})};
+}
+
+WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExprInterpString& expr)
+{
+    for (AstExpr* expr : expr.expressions)
+        checkExpr(scope, *expr);
+
+    return {stringType};
 }
 
 TypeId TypeChecker::checkLValue(const ScopePtr& scope, const AstExpr& expr)

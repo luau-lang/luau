@@ -822,6 +822,17 @@ TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_with_invalid_expression")
+{
+    CheckResult result = check(R"(
+        local function f(x: number) end
+
+        local foo: string = `hello {f("uh oh")}`
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 /*
  * If it wasn't instantly obvious, we have the fuzzer to thank for this gem of a test.
  *
