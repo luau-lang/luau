@@ -175,6 +175,15 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprIfThen")
     CHECK(toJson(statement) == expected);
 }
 
+TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprInterpString")
+{
+    AstStat* statement = expectParseStatement("local a = `var = {x}`");
+
+    std::string_view expected =
+        R"({"type":"AstStatLocal","location":"0,0 - 0,21","vars":[{"luauType":null,"name":"a","type":"AstLocal","location":"0,6 - 0,7"}],"values":[{"type":"AstExprInterpString","location":"0,20 - 0,21","strings":["var = ",""],"expressions":[{"type":"AstExprGlobal","location":"0,18 - 0,19","global":"x"}]}]})";
+
+    CHECK(toJson(statement) == expected);
+}
 
 TEST_CASE("encode_AstExprLocal")
 {

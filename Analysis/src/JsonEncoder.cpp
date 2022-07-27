@@ -445,6 +445,14 @@ struct AstJsonEncoder : public AstVisitor
         });
     }
 
+    void write(class AstExprInterpString* node)
+    {
+        writeNode(node, "AstExprInterpString", [&]() {
+            PROP(strings);
+            PROP(expressions);
+        });
+    }
+
     void write(class AstExprTable* node)
     {
         writeNode(node, "AstExprTable", [&]() {
@@ -773,7 +781,7 @@ struct AstJsonEncoder : public AstVisitor
             PROP(indexer);
         });
     }
-    
+
     void write(struct AstTableIndexer* indexer)
     {
         if (indexer)
@@ -883,6 +891,12 @@ struct AstJsonEncoder : public AstVisitor
     }
 
     bool visit(class AstExprIfElse* node) override
+    {
+        write(node);
+        return false;
+    }
+
+    bool visit(class AstExprInterpString* node) override
     {
         write(node);
         return false;
@@ -1178,7 +1192,7 @@ struct AstJsonEncoder : public AstVisitor
             write("location", comment.location);
             popComma(c);
             writeRaw("}");
-            
+
         }
     }
 };
