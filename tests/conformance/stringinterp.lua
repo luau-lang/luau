@@ -43,8 +43,8 @@ assertEq(`Hello {`from inside {"a nested string"}`}`, "Hello from inside a neste
 
 assertEq(`1 {`2 {`3 {4}`}`}`, "1 2 3 4")
 
--- local health = 50
--- assert(`You have {health}% health` == "You have 50% health")
+local health = 50
+assert(`You have {health}% health` == "You have 50% health")
 
 -- INTERP TODO: Test with shadowing `string` (both as a string and not)
 

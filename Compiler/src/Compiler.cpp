@@ -1480,14 +1480,24 @@ struct Compiler
 
     void compileExprInterpString(AstExprInterpString* expr, uint8_t target, bool targetTemp)
     {
-        // INTERP TODO: percent sign escape
         std::string formatString;
 
         unsigned int stringsLeft = expr->strings.size;
 
         for (AstArray<char> const& string : expr->strings)
         {
-            formatString += string.data;
+            std::string stringEscaped(string.data);
+
+            for (size_t characterIndex = 0; characterIndex < stringEscaped.size(); ++characterIndex)
+            {
+                if (stringEscaped[characterIndex] == '%')
+                {
+                    stringEscaped.insert(characterIndex, 1, '%');
+                    characterIndex++;
+                }
+            }
+
+            formatString += stringEscaped;
 
             stringsLeft--;
 
