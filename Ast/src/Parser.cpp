@@ -2008,6 +2008,12 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
         {
             expr = parseFunctionArgs(expr, false, Location());
         }
+        else if (lexer.current().type == Lexeme::InterpStringBegin)
+        {
+            report(lexer.current().location, "Interpolated strings cannot be used alone to call a function. Wrap this in parentheses.");
+
+            break;
+        }
         else
         {
             break;

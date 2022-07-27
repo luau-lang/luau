@@ -1036,6 +1036,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_multiple")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     try
     {
         parse(R"(
@@ -1051,6 +1053,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     try
     {
         parse(R"(
@@ -1066,6 +1070,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_format")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     try
     {
         parse(R"(
@@ -1081,6 +1087,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_format")
 
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     auto columnOfEndBraceError = [=](const char* code)
     {
         try
@@ -1100,6 +1108,23 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
     // This makes sure that the error is coming from the brace itself
     CHECK_EQ(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ = `{abcdefg`"));
     CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_after_prefixexp")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            print`Hello {name}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Interpolated strings cannot be used alone to call a function. Wrap this in parentheses.", e.getErrors().front().getMessage());
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
