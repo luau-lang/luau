@@ -44,7 +44,8 @@ functioncall = prefixexp funcargs | prefixexp ':' NAME funcargs
 exp = (asexp | unop exp) { binop exp }
 ifelseexp = 'if' exp 'then' exp {'elseif' exp 'then' exp} 'else' exp
 asexp = simpleexp ['::' Type]
-simpleexp = NUMBER | STRING | 'nil' | 'true' | 'false' | '...' | tableconstructor | 'function' body | prefixexp | ifelseexp
+stringinterp = INTERP_BEGIN exp { INTERP_MID exp } INTERP_END
+simpleexp = NUMBER | STRING | 'nil' | 'true' | 'false' | '...' | tableconstructor | 'function' body | prefixexp | ifelseexp | stringinterp
 funcargs =  '(' [explist] ')' | tableconstructor | STRING
 
 tableconstructor = '{' [fieldlist] '}'
