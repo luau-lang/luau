@@ -228,7 +228,7 @@ private:
     // TODO: Add grammar rules here?
     AstExpr* parseIfElseExpr();
 
-    // INTERP TODO: Grammar
+    // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
     AstExpr* parseInterpString();
 
     // Name
