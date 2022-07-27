@@ -29,15 +29,15 @@ assertEq(`Welcome to {
 local nameNotConstantEvaluated = (function() return "Luau" end)()
 assertEq(`Welcome to {nameNotConstantEvaluated}!`, "Welcome to Luau!")
 
--- assertEq(`This {local} does not exist`, "This nil does not exist")
+assertEq(`This {localName} does not exist`, "This nil does not exist")
 
--- assertEq(`Welcome to \
--- {name}!`, "Welcome to\nLuau!")
+assertEq(`Welcome to \
+{name}!`, "Welcome to \nLuau!")
 
--- assert(`Escaped brace: \{} ({1})` == "Escaped brace: { (1)")
--- assert(`Backslash \ that escapes the space is not a part of the string... ({2})` == "Backslash  that escapes the space is not a part of the string... (2)")
--- assert(`Escaped backslash \\ ({3})` == "Escaped backslash \\ (3)")
--- assert(`Escaped backtick: \` ({4})` == "Escaped backtick: ` (4)")
+assertEq(`Escaped brace: \{} ({1})`, "Escaped brace: {} (1)")
+assertEq(`Backslash \ that escapes the space is not a part of the string... ({2})`, "Backslash  that escapes the space is not a part of the string... (2)")
+assertEq(`Escaped backslash \\ ({3})`, "Escaped backslash \\ (3)")
+assertEq(`Escaped backtick: \` ({4})`, "Escaped backtick: ` (4)")
 
 -- assert(`Hello {`from inside {"a nested string"}`}` == "Hello from inside a nested string")
 
