@@ -2,6 +2,7 @@
 #include "Luau/Ast.h"
 #include "Luau/JsonEncoder.h"
 #include "Luau/Parser.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
