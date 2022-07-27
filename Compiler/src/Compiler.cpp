@@ -1484,7 +1484,7 @@ struct Compiler
     {
         std::string formatString;
 
-        unsigned int stringsLeft = expr->strings.size;
+        size_t stringsLeft = expr->strings.size;
 
         for (AstArray<char> const& string : expr->strings)
         {
@@ -1543,7 +1543,7 @@ struct Compiler
 
         bytecode.emitABC(LOP_NAMECALL, target, target, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
         bytecode.emitAux(formatMethodIndex);
-        bytecode.emitABC(LOP_CALL, target, expr->expressions.size + 2, 2);
+        bytecode.emitABC(LOP_CALL, target, uint8_t(expr->expressions.size + 2), 2);
     }
 
     static uint8_t encodeHashSize(unsigned int hashSize)
