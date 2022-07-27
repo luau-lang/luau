@@ -219,7 +219,8 @@ struct CostVisitor : AstVisitor
         }
         else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
         {
-            Cost cost = 0;
+            // Baseline cost of string.format
+            Cost cost = 3;
 
             for (auto innerExpression : expr->expressions)
                 cost += model(innerExpression);
