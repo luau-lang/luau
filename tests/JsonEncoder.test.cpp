@@ -177,6 +177,8 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprIfThen")
 
 TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprInterpString")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     AstStat* statement = expectParseStatement("local a = `var = {x}`");
 
     std::string_view expected =
