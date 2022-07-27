@@ -30,6 +30,8 @@ bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
 bool lua_telemetry_parsed_double_prefix_hex_integer = false;
 
+#define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
+
 namespace Luau
 {
 
@@ -2206,6 +2208,11 @@ AstExpr* Parser::parseSimpleExpr()
         nextLexeme();
         return reportExprError(start, {}, "Malformed string");
     }
+    else if (lexer.current().type == Lexeme::BrokenInterpDoubleBrace)
+    {
+        nextLexeme();
+        return reportExprError(start, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
+    }
     else if (lexer.current().type == Lexeme::Dot3)
     {
         if (functionStack.back().vararg)
@@ -2682,7 +2689,7 @@ AstExpr* Parser::parseInterpString()
         case Lexeme::BrokenString:
             return reportExprError(location, {}, "Malformed interpolated string");
         case Lexeme::BrokenInterpDoubleBrace:
-            return reportExprError(location, {}, "Double braces are not permitted within interpolated strings. Did you mean '\\{'?");
+            return reportExprError(location, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
         default:
             break;
         }

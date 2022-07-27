@@ -1045,7 +1045,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
     }
     catch (const ParseErrors& e)
     {
-        CHECK_EQ("Expected identifier when parsing expression, got '{{', which is invalid (did you mean '\\{'?)", e.getErrors().front().getMessage());
+        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
     }
 }
 
@@ -1060,7 +1060,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
     }
     catch (const ParseErrors& e)
     {
-        // INTERP CODE REVIEW: It's weird for these two to have separate messages, but the one created by _begin is emergent from something else.
         CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
     }
 }
