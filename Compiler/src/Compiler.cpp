@@ -1529,11 +1529,10 @@ struct Compiler
         // bytecode.emitABC(LOP_LOADK, target, formatStringIndex, 0);
         emitLoadK(target, formatStringIndex);
 
-        for (AstExpr* expression : expr->expressions)
-        {
-            uint8_t reg = allocReg(expression, 1);
-            compileExpr(expression, reg, targetTemp);
-        }
+        uint8_t baseExprReg = allocReg(expr, expr->expressions.size);
+
+        for (size_t index = 0; index < expr->expressions.size; ++index)
+            compileExpr(expr->expressions.data[index], baseExprReg + index, targetTemp);
 
         BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
 
