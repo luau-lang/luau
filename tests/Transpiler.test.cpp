@@ -6,6 +6,7 @@
 #include "Luau/Transpiler.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -674,6 +675,15 @@ type t2 = {[string]: number}
 TEST_CASE_FIXTURE(Fixture, "transpile_for_in_multiple_types")
 {
     std::string code = "for k:string,v:boolean in next,{}do end";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
+TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    std::string code = R"( local _ = `hello {name}` )";
 
     CHECK_EQ(code, transpile(code, {}, true).code);
 }

@@ -2638,6 +2638,8 @@ AstExpr* Parser::parseInterpString()
     std::vector<AstArray<char>> strings;
     std::vector<AstExpr*> expressions;
 
+    Location startLocation = lexer.current().location;
+
     do {
         auto currentLexeme = lexer.current();
         LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid || currentLexeme.type == Lexeme::InterpStringEnd);
@@ -2651,7 +2653,7 @@ AstExpr* Parser::parseInterpString()
         if (!Lexer::fixupQuotedString(scratchData))
         {
             nextLexeme();
-            return reportExprError(location, {}, "Interpolated string literal contains malformed escape sequence");
+            return reportExprError(startLocation, {}, "Interpolated string literal contains malformed escape sequence");
         }
 
         AstArray<char> chars = copy(scratchData);
@@ -2670,7 +2672,7 @@ AstExpr* Parser::parseInterpString()
             AstArray<AstArray<char>> stringsArray = copy(strings.data(), strings.size());
             AstArray<AstExpr*> expressionsArray = copy(expressions.data(), expressions.size());
 
-            return allocator.alloc<AstExprInterpString>(location, stringsArray, expressionsArray);
+            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
         }
 
         AstExpr* expression = parseExpr();

@@ -511,6 +511,28 @@ struct Printer
             writer.keyword("else");
             visualize(*a->falseExpr);
         }
+        else if (const auto& a = expr.as<AstExprInterpString>())
+        {
+            writer.symbol("`");
+
+            size_t index = 0;
+
+            for (const auto& string : a->strings)
+            {
+                writer.write(escape(std::string_view(string.data, string.size)));
+
+                if (index < a->expressions.size)
+                {
+                    writer.symbol("{");
+                    visualize(*a->expressions.data[index]);
+                    writer.symbol("}");
+                }
+
+                index++;
+            }
+
+            writer.symbol("`");
+        }
         else if (const auto& a = expr.as<AstExprError>())
         {
             writer.symbol("(error-expr");
