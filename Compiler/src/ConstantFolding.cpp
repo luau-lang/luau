@@ -353,6 +353,8 @@ struct ConstantVisitor : AstVisitor
         {
             // INTERP CODE REVIEW: This can theoretically fold something like `debug mode: {DEBUG_MODE}` where DEBUG_MODE is true.
             // Is this necessary or just something we can do later?
+            for (AstExpr* expression : interpString->expressions)
+                analyze(expression);
         }
         else
         {

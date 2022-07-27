@@ -21,10 +21,10 @@ assertEq(`true = {true}`, "true = true")
 -- -- INTERP TODO: Syntax error
 -- -- assert(string.find(`{{ "nested braces!" }}`, "table"))
 
--- local name = "Luau"
--- assertEq(`Welcome to {
--- 	name
--- }!`, "Welcome to Luau!")
+local name = "Luau"
+assertEq(`Welcome to {
+	name
+}!`, "Welcome to Luau!")
 
 local nameNotConstantEvaluated = (function() return "Luau" end)()
 assertEq(`Welcome to {nameNotConstantEvaluated}!`, "Welcome to Luau!")
