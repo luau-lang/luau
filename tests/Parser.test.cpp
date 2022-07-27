@@ -1075,7 +1075,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_format")
     }
     catch (const ParseErrors& e)
     {
-        CHECK_EQ("Expected identifier when parsing expression, got interpolated string with no formatting", e.getErrors().front().getMessage());
+        CHECK_EQ("Interpolated strings must contain expressions, and cannot be constant", e.getErrors().front().getMessage());
     }
 }
 
