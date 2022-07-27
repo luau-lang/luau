@@ -26,7 +26,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
 LUAU_FASTFLAGVARIABLE(LuauAlwaysCaptureHotComments, false)
 
-LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, true)
+LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
 
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;

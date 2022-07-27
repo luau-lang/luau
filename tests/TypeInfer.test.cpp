@@ -8,6 +8,7 @@
 #include "Luau/VisitTypeVar.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -815,6 +816,8 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     CheckResult result = check(R"(
         local foo: string = `hello {"world"}`
     )");
@@ -824,6 +827,8 @@ TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
 
 TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_with_invalid_expression")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     CheckResult result = check(R"(
         local function f(x: number) end
 
