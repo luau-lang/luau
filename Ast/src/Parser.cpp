@@ -2636,7 +2636,6 @@ AstExpr* Parser::parseInterpString()
     std::vector<AstArray<char>> strings;
     std::vector<AstExpr*> expressions;
 
-    // INTERP TODO: Compile to ("text"):format(...)
     do {
         auto currentLexeme = lexer.current();
         LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid || currentLexeme.type == Lexeme::InterpStringEnd);
