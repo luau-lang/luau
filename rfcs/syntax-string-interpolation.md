@@ -31,7 +31,6 @@ Because we care about backward compatibility, we need some new syntax in order t
 
 1. A string chunk (`` `...{ ``, `}...{`, and `` }...` ``) where `...` is a range of 0 to many characters.
    * `\` escapes `` ` ``, `{`, and itself `\`.
-   * Restriction: the string interpolation literal must have at least one value to interpolate. We do not need 3 ways to express a single line string literal.
    * The pairs must be on the same line (unless a `\` escapes the newline) but expressions needn't be on the same line.
 2. An expression between the braces. This is the value that will be interpolated into the string.
    * Restriction: we explicitly reject `{{` as it is considered an attempt to escape and get a single `{` character at runtime.
@@ -62,7 +61,6 @@ local set2 = Set.new({0, 5, 4})
 print(`{set1} ∪ {set2} = {Set.union(set1, set2)}`)
 --> {0, 1, 3} ∪ {0, 5, 4} = {0, 1, 3, 4, 5}
 
--- For illustrative purposes. These are illegal specifically because they don't interpolate anything.
 print(`Some example escaping the braces \{like so}`)
 print(`backslash \ that escapes the space is not a part of the string...`)
 print(`backslash \\ will escape the second backslash...`)
