@@ -2644,7 +2644,6 @@ AstExpr* Parser::parseInterpString()
 
         Location location = currentLexeme.location;
 
-        // INTERP TODO: Maybe 1 off?
         Location startOfBrace = Location(location.end, 1);
 
         scratchData.assign(currentLexeme.data, currentLexeme.length);
@@ -2676,12 +2675,10 @@ AstExpr* Parser::parseInterpString()
 
         AstExpr* expression = parseExpr();
 
-        // expectMatchAndConsume('}', Lexeme(startOfBrace, '{'));
-
         // INTERP CODE REVIEW: I want to use expectMatchAndConsume, but using that
         // consumes the rest of the string, not the `}`
         if (lexer.current().type != static_cast<Lexeme::Type>(static_cast<unsigned char>('}'))) {
-            return reportExprError(location, {}, "Expected '}' after interpolated string expression");
+            return reportExprError(startOfBrace, {}, "Expected '}' after interpolated string expression");
         }
 
         expressions.push_back(expression);

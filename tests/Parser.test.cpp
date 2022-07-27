@@ -1079,6 +1079,29 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_format")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
+{
+    auto columnOfEndBraceError = [=](const char* code)
+    {
+        try
+        {
+            parse(code);
+            FAIL("Expected ParseErrors to be thrown");
+            return UINT_MAX;
+        }
+        catch (const ParseErrors& e)
+        {
+            auto error = e.getErrors().front();
+            CHECK_EQ("Expected '}' after interpolated string expression", error.getMessage());
+            return error.getLocation().begin.column;
+        }
+    };
+
+    // This makes sure that the error is coming from the brace itself
+    CHECK_EQ(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ = `{abcdefg`"));
+    CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
 {
     try
