@@ -2683,6 +2683,8 @@ AstExpr* Parser::parseInterpString()
             return reportExprError(location, {}, "Malformed interpolated string");
         case Lexeme::BrokenInterpDoubleBrace:
             return reportExprError(location, {}, "Double braces are not permitted within interpolated strings. Did you mean '\\{'?");
+        default:
+            break;
         }
     } while (true);
 }

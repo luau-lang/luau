@@ -1065,6 +1065,21 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_format")
+{
+    try
+    {
+        parse(R"(
+            _ = `doge`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Expected identifier when parsing expression, got interpolated string with no formatting", e.getErrors().front().getMessage());
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
 {
     try

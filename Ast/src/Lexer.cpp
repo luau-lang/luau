@@ -187,6 +187,9 @@ std::string Lexeme::toString() const
     case BrokenInterpDoubleBrace:
         return "'{{', which is invalid (did you mean '\\{'?)";
 
+    case BrokenInterpNoFormat:
+        return "interpolated string with no formatting";
+
     case BrokenUnicode:
         if (codepoint)
         {
@@ -631,7 +634,7 @@ Lexeme Lexer::readInterpolatedStringBegin()
 
     if (!readSectionOpt)
     {
-        LUAU_ASSERT(!"INTERP TODO: Error if there was no interpolated expression");
+        return Lexeme(Location(start, position()), Lexeme::BrokenInterpNoFormat);
     }
 
     return *readSectionOpt;

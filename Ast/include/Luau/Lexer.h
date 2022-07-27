@@ -86,6 +86,7 @@ struct Lexeme
         BrokenUnicode,
 
         BrokenInterpDoubleBrace,
+        BrokenInterpNoFormat,
 
         Error,
 
