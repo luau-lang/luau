@@ -18,9 +18,6 @@ assertEq(`The lock combinations are: {table.concat(combo, ", ")}`, "The lock com
 
 assertEq(`true = {true}`, "true = true")
 
--- -- INTERP TODO: Syntax error
--- -- assert(string.find(`{{ "nested braces!" }}`, "table"))
-
 local name = "Luau"
 assertEq(`Welcome to {
 	name

@@ -218,6 +218,7 @@ private:
     Lexeme readQuotedString();
 
     Lexeme readInterpolatedStringBegin();
+    std::optional<Lexeme> readInterpolatedStringSection(Position start, Lexeme::Type formatType);
 
     void readBackslashInString();
 

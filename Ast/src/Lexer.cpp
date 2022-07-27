@@ -602,35 +602,15 @@ Lexeme Lexer::readQuotedString()
 
 const Lexeme Lexer::nextInterpolatedString()
 {
-    // INTERP TODO: This is a copy-paste
     Position start = position();
-
     unsigned int startOffset = offset;
 
-    while (peekch() != '`')
+    std::optional<Lexeme> readSectionOpt = readInterpolatedStringSection(start, Lexeme::InterpStringMid);
+
+    if (auto readSection = readSectionOpt)
     {
-        switch (peekch())
-        {
-        case 0:
-        case '\r':
-        case '\n':
-            lexeme = Lexeme(Location(start, position()), Lexeme::BrokenString);
-            return lexeme;
-
-        case '\\':
-            readBackslashInString();
-            break;
-
-        case '{':
-            incrementInterpolatedStringDepth();
-
-            lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringMid, &buffer[startOffset], offset - startOffset);
-            consume();
-            return lexeme;
-
-        default:
-            consume();
-        }
+        lexeme = *readSection;
+        return lexeme;
     }
 
     consume();
@@ -642,9 +622,20 @@ const Lexeme Lexer::nextInterpolatedString()
 Lexeme Lexer::readInterpolatedStringBegin()
 {
     Position start = position();
-
     consume();
 
+    std::optional<Lexeme> readSectionOpt = readInterpolatedStringSection(start, Lexeme::InterpStringBegin);
+
+    if (!readSectionOpt)
+    {
+        LUAU_ASSERT(!"INTERP TODO: Error if there was no interpolated expression");
+    }
+
+    return *readSectionOpt;
+}
+
+std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatType)
+{
     unsigned int startOffset = offset;
 
     while (peekch() != '`')
@@ -654,27 +645,26 @@ Lexeme Lexer::readInterpolatedStringBegin()
         case 0:
         case '\r':
         case '\n':
-            return Lexeme(Location(start, position()), Lexeme::BrokenString);
+            return std::optional(Lexeme(Location(start, position()), Lexeme::BrokenString));
 
         case '\\':
             readBackslashInString();
             break;
 
         case '{':
+        {
             incrementInterpolatedStringDepth();
-            lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
+            auto lexemeOutput = Lexeme(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
             consume();
-            return lexeme;
+            return std::optional(lexemeOutput);
+        }
 
         default:
             consume();
         }
     }
 
-    consume();
-
-    // INTERP TODO: Error if there was no interpolated expression
-    LUAU_ASSERT(!"INTERP TODO: interpolated string without ending");
+    return std::nullopt;
 }
 
 Lexeme Lexer::readNumber(const Position& start, unsigned int startOffset)

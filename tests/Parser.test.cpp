@@ -1034,6 +1034,21 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_multiple")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace")
+{
+    try
+    {
+        parse(R"(
+            _ = `{{oops}}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("INTERP TODO: Message", e.getErrors().front().getMessage());
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
 {
     try
