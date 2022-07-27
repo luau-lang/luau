@@ -34,6 +34,7 @@ Because we care about backward compatibility, we need some new syntax in order t
    * Restriction: the string interpolation literal must have at least one value to interpolate. We do not need 3 ways to express a single line string literal.
    * The pairs must be on the same line (unless a `\` escapes the newline) but expressions needn't be on the same line.
 2. An expression between the braces. This is the value that will be interpolated into the string.
+   * Restriction: we explicitly reject `{{` as it is considered an attempt to escape and get a single `{` character at runtime.
 3. Formatting specification may follow after the expression, delimited by an unambiguous character.
    * Restriction: the formatting specification must be constant at parse time.
    * In the absence of an explicit formatting specification, the `%*` token will be used.
@@ -93,6 +94,18 @@ This expression will not be allowed to come after a `prefixexp`. I believe this 
 ```
 local name = "world"
 print`Hello {name}`
+```
+
+The restriction on `{{` exists solely for the people coming from languages e.g. C#, Rust, or Python which uses `{{` to escape and get the character `{` at runtime. We're also rejecting this at parse time too, since the proper way to escape it is `\{`, so:
+
+```lua
+print(`{{1, 2, 3}} = {myCoolSet}`) -- parse error
+```
+
+If we did not apply this as a parse error, then the above would wind up printing as the following, which is obviously a gotcha we can and should avoid.
+
+```
+--> table: 0xSOMEADDRESS = {1, 2, 3}
 ```
 
 Since the string interpolation expression is going to be lowered into a `string.format` call, we'll also need to extend `string.format`. The bare minimum to support the lowering is to add a new token whose definition is to perform a `tostring` call. `%*` is currently an invalid token, so this is a backward compatible extension. This RFC shall define `%*` to have the same behavior as if `tostring` was called.
