@@ -174,10 +174,7 @@ public:
 
     void setSkipComments(bool skip);
     void setReadNames(bool read);
-    void setReadAsInterpolatedStringExpression(bool read);
 
-    void incrementInterpolatedStringDepth();
-    void decrementInterpolatedStringDepth();
     const Lexeme nextInterpolatedString();
 
     const Location& previousLocation() const
@@ -249,9 +246,6 @@ private:
 
     bool skipComments;
     bool readNames;
-    bool readAsInterpolatedStringExpression;
-
-    unsigned int interpolatedStringDepth;
 };
 
 inline bool isSpace(char ch)

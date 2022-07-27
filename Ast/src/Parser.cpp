@@ -2684,8 +2684,6 @@ AstExpr* Parser::parseInterpString()
 
         expressions.push_back(expression);
 
-        lexer.decrementInterpolatedStringDepth();
-
         auto next = lexer.nextInterpolatedString();
 
         switch (next.type)

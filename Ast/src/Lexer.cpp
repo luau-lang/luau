@@ -347,8 +347,6 @@ Lexer::Lexer(const char* buffer, size_t bufferSize, AstNameTable& names)
     , names(names)
     , skipComments(false)
     , readNames(true)
-    , readAsInterpolatedStringExpression(true)
-    , interpolatedStringDepth(0)
 {
 }
 
@@ -360,22 +358,6 @@ void Lexer::setSkipComments(bool skip)
 void Lexer::setReadNames(bool read)
 {
     readNames = read;
-}
-
-// INTERP TODO: Probably not necessary
-void Lexer::setReadAsInterpolatedStringExpression(bool read)
-{
-    readAsInterpolatedStringExpression = read;
-}
-
-void Lexer::incrementInterpolatedStringDepth()
-{
-    interpolatedStringDepth++;
-}
-
-void Lexer::decrementInterpolatedStringDepth()
-{
-    interpolatedStringDepth--;
 }
 
 const Lexeme& Lexer::next()
@@ -664,7 +646,6 @@ std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexem
                 return std::optional(Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace));
             }
 
-            incrementInterpolatedStringDepth();
             auto lexemeOutput = Lexeme(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
             consume();
             return std::optional(lexemeOutput);
