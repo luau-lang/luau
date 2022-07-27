@@ -46,6 +46,11 @@ assertEq(`1 {`2 {`3 {4}`}`}`, "1 2 3 4")
 local health = 50
 assert(`You have {health}% health` == "You have 50% health")
 
--- INTERP TODO: Test with shadowing `string` (both as a string and not)
+local function shadowsString(string)
+	return `Value is {string}`
+end
+
+assertEq(shadowsString("hello"), "Value is hello")
+assertEq(shadowsString(1), "Value is 1")
 
 return "OK"
