@@ -184,6 +184,9 @@ std::string Lexeme::toString() const
     case BrokenComment:
         return "unfinished comment";
 
+    case BrokenInterpDoubleBrace:
+        return "'{{', which is invalid (did you mean '\\{'?)";
+
     case BrokenUnicode:
         if (codepoint)
         {
@@ -653,6 +656,11 @@ std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexem
 
         case '{':
         {
+            if (peekch(1) == '{')
+            {
+                return std::optional(Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace));
+            }
+
             incrementInterpolatedStringDepth();
             auto lexemeOutput = Lexeme(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
             consume();

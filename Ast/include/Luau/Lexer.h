@@ -84,6 +84,9 @@ struct Lexeme
         BrokenString,
         BrokenComment,
         BrokenUnicode,
+
+        BrokenInterpDoubleBrace,
+
         Error,
 
         Reserved_BEGIN,

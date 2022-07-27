@@ -2676,9 +2676,13 @@ AstExpr* Parser::parseInterpString()
         lexer.decrementInterpolatedStringDepth();
 
         auto next = lexer.nextInterpolatedString();
-        if (next.type == Lexeme::BrokenString)
+
+        switch (next.type)
         {
+        case Lexeme::BrokenString:
             return reportExprError(location, {}, "Malformed interpolated string");
+        case Lexeme::BrokenInterpDoubleBrace:
+            return reportExprError(location, {}, "Double braces are not permitted within interpolated strings. Did you mean '\\{'?");
         }
     } while (true);
 }
