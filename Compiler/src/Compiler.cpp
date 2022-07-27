@@ -1509,18 +1509,19 @@ struct Compiler
         if (formatStringIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
-
-        bytecode.emitABC(LOP_LOADK, target, formatStringIndex, 0);
-
         // INTERP CODE REVIEW: Why do I need this?
         // If I don't, it emits `LOADK R1 K1` instead of `LOADK R2 K1`,
         // and it gives the error "missing argument 2".
         allocReg(expr, 1);
 
-        RegScope rs(this);
+        // bytecode.emitABC(LOP_LOADK, target, formatStringIndex, 0);
+        emitLoadK(target, formatStringIndex);
 
         for (AstExpr* expression : expr->expressions)
-            compileExprAuto(expression, rs);
+        {
+            uint8_t reg = allocReg(expression, 1);
+            compileExpr(expression, reg, targetTemp);
+        }
 
         BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
 

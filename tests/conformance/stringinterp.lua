@@ -22,11 +22,17 @@ assertEq(`true = {true}`, "true = true")
 -- -- assert(string.find(`{{ "nested braces!" }}`, "table"))
 
 -- local name = "Luau"
--- assert(`Welcome to {
+-- assertEq(`Welcome to {
 -- 	name
--- }!` == "Welcome to Luau!")
--- assert(`Welcome to \
--- {name}!` == "Welcome to\nLuau!")
+-- }!`, "Welcome to Luau!")
+
+local nameNotConstantEvaluated = (function() return "Luau" end)()
+assertEq(`Welcome to {nameNotConstantEvaluated}!`, "Welcome to Luau!")
+
+-- assertEq(`This {local} does not exist`, "This nil does not exist")
+
+-- assertEq(`Welcome to \
+-- {name}!`, "Welcome to\nLuau!")
 
 -- assert(`Escaped brace: \{} ({1})` == "Escaped brace: { (1)")
 -- assert(`Backslash \ that escapes the space is not a part of the string... ({2})` == "Backslash  that escapes the space is not a part of the string... (2)")
