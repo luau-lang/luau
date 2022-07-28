@@ -143,6 +143,9 @@ assert(pcall(function()
 	string.format("%* %* %*", return_two_nils())
 end) == false)
 
+assert(string.format("%*", "a\0b\0c") == "a\0b\0c")
+assert(string.format("%*", string.rep("doge", 3000)) == string.rep("doge", 3000))
+
 assert(loadstring("return 1\n--comentário sem EOL no final")() == 1)
 
 
