@@ -590,7 +590,6 @@ Lexeme Lexer::readQuotedString()
 const Lexeme& Lexer::nextInterpolatedString()
 {
     Position start = position();
-    unsigned int startOffset = offset;
 
     lexeme = readInterpolatedStringSection(start, Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
     return lexeme;
