@@ -1192,7 +1192,6 @@ struct AstJsonEncoder : public AstVisitor
             write("location", comment.location);
             popComma(c);
             writeRaw("}");
-
         }
     }
 };
