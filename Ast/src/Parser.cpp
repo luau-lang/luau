@@ -2221,11 +2221,6 @@ AstExpr* Parser::parseSimpleExpr()
         nextLexeme();
         return reportExprError(start, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
     }
-    else if (lexer.current().type == Lexeme::BrokenInterpNoFormat)
-    {
-        nextLexeme();
-        return reportExprError(start, {}, "Interpolated strings must contain expressions, and cannot be constant");
-    }
     else if (lexer.current().type == Lexeme::Dot3)
     {
         if (functionStack.back().vararg)

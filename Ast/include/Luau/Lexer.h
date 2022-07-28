@@ -84,9 +84,7 @@ struct Lexeme
         BrokenString,
         BrokenComment,
         BrokenUnicode,
-
         BrokenInterpDoubleBrace,
-        BrokenInterpNoFormat,
 
         Error,
 
@@ -219,7 +217,7 @@ private:
     Lexeme readQuotedString();
 
     Lexeme readInterpolatedStringBegin();
-    std::optional<Lexeme> readInterpolatedStringSection(Position start, Lexeme::Type formatType);
+    Lexeme readInterpolatedStringSection(Position start, Lexeme::Type formatType, Lexeme::Type endType);
 
     void readBackslashInString();
 

@@ -189,9 +189,6 @@ std::string Lexeme::toString() const
     case BrokenInterpDoubleBrace:
         return "'{{', which is invalid (did you mean '\\{'?)";
 
-    case BrokenInterpNoFormat:
-        return "interpolated string with no formatting";
-
     case BrokenUnicode:
         if (codepoint)
         {
@@ -595,15 +592,7 @@ const Lexeme Lexer::nextInterpolatedString()
     Position start = position();
     unsigned int startOffset = offset;
 
-    if (std::optional<Lexeme> readSection = readInterpolatedStringSection(start, Lexeme::InterpStringMid))
-    {
-        lexeme = *readSection;
-        return lexeme;
-    }
-
-    consume();
-
-    lexeme = Lexeme(Location(start, position()), Lexeme::InterpStringEnd, &buffer[startOffset], offset - startOffset - 1);
+    lexeme = readInterpolatedStringSection(start, Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
     return lexeme;
 }
 
@@ -612,17 +601,10 @@ Lexeme Lexer::readInterpolatedStringBegin()
     Position start = position();
     consume();
 
-    std::optional<Lexeme> readSectionOpt = readInterpolatedStringSection(start, Lexeme::InterpStringBegin);
-
-    if (!readSectionOpt)
-    {
-        return Lexeme(Location(start, position()), Lexeme::BrokenInterpNoFormat);
-    }
-
-    return *readSectionOpt;
+    return readInterpolatedStringSection(start, Lexeme::InterpStringBegin, Lexeme::QuotedString);
 }
 
-std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatType)
+Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatType, Lexeme::Type endType)
 {
     unsigned int startOffset = offset;
 
@@ -656,7 +638,8 @@ std::optional<Lexeme> Lexer::readInterpolatedStringSection(Position start, Lexem
         }
     }
 
-    return std::nullopt;
+    consume();
+    return Lexeme(Location(start, position()), endType, &buffer[startOffset], offset - startOffset - 1);
 }
 
 Lexeme Lexer::readNumber(const Position& start, unsigned int startOffset)

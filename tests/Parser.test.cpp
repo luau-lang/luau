@@ -1068,23 +1068,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
     }
 }
 
-TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_format")
-{
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
-    try
-    {
-        parse(R"(
-            _ = `doge`
-        )");
-        FAIL("Expected ParseErrors to be thrown");
-    }
-    catch (const ParseErrors& e)
-    {
-        CHECK_EQ("Interpolated strings must contain expressions, and cannot be constant", e.getErrors().front().getMessage());
-    }
-}
-
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};

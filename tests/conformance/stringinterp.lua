@@ -31,10 +31,10 @@ assertEq(`This {localName} does not exist`, "This nil does not exist")
 assertEq(`Welcome to \
 {name}!`, "Welcome to \nLuau!")
 
-assertEq(`Escaped brace: \{} ({1})`, "Escaped brace: {} (1)")
-assertEq(`Backslash \ that escapes the space is not a part of the string... ({2})`, "Backslash  that escapes the space is not a part of the string... (2)")
-assertEq(`Escaped backslash \\ ({3})`, "Escaped backslash \\ (3)")
-assertEq(`Escaped backtick: \` ({4})`, "Escaped backtick: ` (4)")
+assertEq(`Escaped brace: \{}`, "Escaped brace: {}")
+assertEq(`Backslash \ that escapes the space is not a part of the string...`, "Backslash  that escapes the space is not a part of the string...")
+assertEq(`Escaped backslash \\`, "Escaped backslash \\")
+assertEq(`Escaped backtick: \``, "Escaped backtick: `")
 
 assertEq(`Hello {`from inside {"a nested string"}`}`, "Hello from inside a nested string")
 
