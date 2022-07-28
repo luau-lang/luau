@@ -838,6 +838,17 @@ TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_with_invalid_expression")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_constant_type")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CheckResult result = check(R"(
+        local foo: "hello" = `hello`
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 /*
  * If it wasn't instantly obvious, we have the fuzzer to thank for this gem of a test.
  *
