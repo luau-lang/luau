@@ -2642,8 +2642,8 @@ AstExpr* Parser::parseString()
 
 AstExpr* Parser::parseInterpString()
 {
-    std::vector<AstArray<char>> strings;
-    std::vector<AstExpr*> expressions;
+    TempVector<AstArray<char>> strings(scratchString);
+    TempVector<AstExpr*> expressions(scratchExpr);
 
     Location startLocation = lexer.current().location;
 
@@ -2671,13 +2671,8 @@ AstExpr* Parser::parseInterpString()
 
         if (currentLexeme.type == Lexeme::InterpStringEnd)
         {
-            // INTERP CODE REVIEW: I figure this isn't the right way to do this.
-            // From what I could gather, I'm expected to have strings and expressions be TempVector from the beginning.
-            // Everything that does that uses a scratch value.
-            // But I would think I would also be expected to use an existing scratch, like `scratchExpr`, in which case
-            // my assumption is that a nested expression would clash the scratches?
-            AstArray<AstArray<char>> stringsArray = copy(strings.data(), strings.size());
-            AstArray<AstExpr*> expressionsArray = copy(expressions.data(), expressions.size());
+            AstArray<AstArray<char>> stringsArray = copy(strings);
+            AstArray<AstExpr*> expressionsArray = copy(expressions);
 
             return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
         }

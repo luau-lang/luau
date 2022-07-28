@@ -365,6 +365,7 @@ private:
     std::vector<unsigned int> matchRecoveryStopOnToken;
 
     std::vector<AstStat*> scratchStat;
+    std::vector<AstArray<char>> scratchString;
     std::vector<AstExpr*> scratchExpr;
     std::vector<AstExpr*> scratchExprAux;
     std::vector<AstName> scratchName;
