@@ -1488,18 +1488,19 @@ struct Compiler
 
         for (AstArray<char> const& string : expr->strings)
         {
-            std::string stringEscaped(string.data);
-
-            for (size_t characterIndex = 0; characterIndex < stringEscaped.size(); ++characterIndex)
+            if (memchr(string.data, '%', string.size))
             {
-                if (stringEscaped[characterIndex] == '%')
+                for (size_t characterIndex = 0; characterIndex < string.size; ++characterIndex)
                 {
-                    stringEscaped.insert(characterIndex, 1, '%');
-                    characterIndex++;
+                    char character = string.data[characterIndex];
+                    formatString.push_back(character);
+
+                    if (character == '%')
+                        formatString.push_back('%');
                 }
             }
-
-            formatString += stringEscaped;
+            else
+                formatString += std::string(string.data, string.size);
 
             stringsLeft--;
 
