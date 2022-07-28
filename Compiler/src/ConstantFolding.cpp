@@ -349,9 +349,9 @@ struct ConstantVisitor : AstVisitor
             if (cond.type != Constant::Type_Unknown)
                 result = cond.isTruthful() ? trueExpr : falseExpr;
         }
-        else if (AstExprInterpString* interpString = node->as<AstExprInterpString>())
+        else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
         {
-            for (AstExpr* expression : interpString->expressions)
+            for (AstExpr* expression : expr->expressions)
                 analyze(expression);
         }
         else
