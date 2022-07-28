@@ -31,9 +31,9 @@ Because we care about backward compatibility, we need some new syntax in order t
 
 1. A string chunk (`` `...{ ``, `}...{`, and `` }...` ``) where `...` is a range of 0 to many characters.
    * `\` escapes `` ` ``, `{`, and itself `\`.
-   * Restriction: the string interpolation literal must have at least one value to interpolate. We do not need 3 ways to express a single line string literal.
    * The pairs must be on the same line (unless a `\` escapes the newline) but expressions needn't be on the same line.
 2. An expression between the braces. This is the value that will be interpolated into the string.
+   * Restriction: we explicitly reject `{{` as it is considered an attempt to escape and get a single `{` character at runtime.
 3. Formatting specification may follow after the expression, delimited by an unambiguous character.
    * Restriction: the formatting specification must be constant at parse time.
    * In the absence of an explicit formatting specification, the `%*` token will be used.
@@ -61,7 +61,6 @@ local set2 = Set.new({0, 5, 4})
 print(`{set1} ∪ {set2} = {Set.union(set1, set2)}`)
 --> {0, 1, 3} ∪ {0, 5, 4} = {0, 1, 3, 4, 5}
 
--- For illustrative purposes. These are illegal specifically because they don't interpolate anything.
 print(`Some example escaping the braces \{like so}`)
 print(`backslash \ that escapes the space is not a part of the string...`)
 print(`backslash \\ will escape the second backslash...`)
@@ -88,11 +87,23 @@ print(`Welcome to \
 --  Luau!
 ```
 
-This expression will not be allowed to come after a `prefixexp`. I believe this is fully additive, so a future RFC may allow this. So for now, we explicitly reject the following:
+This expression can also come after a `prefixexp`:
 
 ```
 local name = "world"
 print`Hello {name}`
+```
+
+The restriction on `{{` exists solely for the people coming from languages e.g. C#, Rust, or Python which uses `{{` to escape and get the character `{` at runtime. We're also rejecting this at parse time too, since the proper way to escape it is `\{`, so:
+
+```lua
+print(`{{1, 2, 3}} = {myCoolSet}`) -- parse error
+```
+
+If we did not apply this as a parse error, then the above would wind up printing as the following, which is obviously a gotcha we can and should avoid.
+
+```
+--> table: 0xSOMEADDRESS = {1, 2, 3}
 ```
 
 Since the string interpolation expression is going to be lowered into a `string.format` call, we'll also need to extend `string.format`. The bare minimum to support the lowering is to add a new token whose definition is to perform a `tostring` call. `%*` is currently an invalid token, so this is a backward compatible extension. This RFC shall define `%*` to have the same behavior as if `tostring` was called.
@@ -119,6 +130,13 @@ print(string.format("%* %*", return_two_nils()))
 
 print(string.format("%* %* %*", return_two_nils()))
 --> error: value #3 is missing, got 2
+```
+
+It must be said that we are not allowing this style of string literals in type annotations at this time, regardless of zero or many interpolating expressions, so the following two type annotations below are illegal syntax:
+
+```lua
+local foo: `foo`
+local bar: `bar{baz}`
 ```
 
 ## Drawbacks
