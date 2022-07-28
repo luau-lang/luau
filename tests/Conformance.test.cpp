@@ -291,12 +291,16 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
+    ScopedFastFlag sff{"LuauTostringFormatSpecifier", true};
+
     runConformance("strings.lua");
 }
 
 TEST_CASE("StringInterp")
 {
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+    ScopedFastFlag sffInterpStrings{"LuauInterpolatedStringBaseSupport", true};
+    ScopedFastFlag sffTostringFormat{"LuauTostringFormatSpecifier", true};
+
     runConformance("stringinterp.lua");
 }
 

@@ -8,6 +8,9 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
+LUAU_FASTFLAGVARIABLE(LuauTostringFormatSpecifier, false);
+
 /* macro to `unsign' a character */
 #define uchar(c) ((unsigned char)(c))
 
@@ -1034,6 +1037,18 @@ static int str_format(lua_State* L)
             }
             case '*':
             {
+                if (!FFlag::LuauTostringFormatSpecifier)
+                {
+                    if (FFlag::LuauInterpolatedStringBaseSupport)
+                    {
+                        luaL_error(L, "interpolated strings are enabled, but the '*' format specifier is not. this is a configuration bug.");
+                        break;
+                    }
+
+                    luaL_error(L, "invalid option '%%*' to 'format'");
+                    break;
+                }
+
                 if (formatItemSize != 1)
                 {
                     luaL_error(L, "'%%*' does not take a form");
