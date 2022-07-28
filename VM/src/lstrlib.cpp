@@ -1034,6 +1034,11 @@ static int str_format(lua_State* L)
             }
             case '*':
             {
+                if (formatItemSize != 1)
+                {
+                    luaL_error(L, "'%%*' does not take a form");
+                }
+
                 size_t length;
                 const char* string = luaL_tolstring(L, arg, &length);
 
