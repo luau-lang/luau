@@ -173,7 +173,7 @@ public:
     void setSkipComments(bool skip);
     void setReadNames(bool read);
 
-    const Lexeme nextInterpolatedString();
+    const Lexeme& nextInterpolatedString();
 
     const Location& previousLocation() const
     {

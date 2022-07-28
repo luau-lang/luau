@@ -587,7 +587,7 @@ Lexeme Lexer::readQuotedString()
     return Lexeme(Location(start, position()), Lexeme::QuotedString, &buffer[startOffset], offset - startOffset - 1);
 }
 
-const Lexeme Lexer::nextInterpolatedString()
+const Lexeme& Lexer::nextInterpolatedString()
 {
     Position start = position();
     unsigned int startOffset = offset;
