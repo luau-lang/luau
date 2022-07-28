@@ -1574,6 +1574,12 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
         else
             return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
     }
+    else if (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringEnd)
+    {
+        parseInterpString();
+
+        return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "Interpolated string literals cannot be used as types")};
+    }
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         Location location = lexer.current().location;

@@ -1117,14 +1117,18 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
     try
     {
         parse(R"(
-            local a: `what` = `what`
+            local a: `what` = `???`
+            local b: `what {"the"}` = `???`
+            local c: `what {"the"} heck` = `???`
         )");
         FAIL("Expected ParseErrors to be thrown");
     }
-    catch (const ParseErrors& e)
+    catch (const ParseErrors& parseErrors)
     {
-        // CHECK_EQ("Interpolated strings cannot be used alone to call a function. Wrap this in parentheses.", e.getErrors().front().getMessage());
-        CHECK_EQ("TODO", e.getErrors().front().getMessage());
+        CHECK_EQ(parseErrors.getErrors().size(), 3);
+
+        for (ParseError error : parseErrors.getErrors())
+            CHECK_EQ(error.getMessage(), "Interpolated string literals cannot be used as types");
     }
 }
 
