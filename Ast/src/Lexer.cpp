@@ -601,7 +601,7 @@ Lexeme Lexer::readInterpolatedStringBegin()
     Position start = position();
     consume();
 
-    return readInterpolatedStringSection(start, Lexeme::InterpStringBegin, Lexeme::QuotedString);
+    return readInterpolatedStringSection(start, Lexeme::InterpStringBegin, Lexeme::InterpStringEnd);
 }
 
 Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatType, Lexeme::Type endType)

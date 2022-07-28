@@ -31,7 +31,10 @@ assertEq(`This {localName} does not exist`, "This nil does not exist")
 assertEq(`Welcome to \
 {name}!`, "Welcome to \nLuau!")
 
+assertEq(`empty`, "empty")
+
 assertEq(`Escaped brace: \{}`, "Escaped brace: {}")
+assertEq(`Escaped brace \{} with {"expression"}`, "Escaped brace {} with expression")
 assertEq(`Backslash \ that escapes the space is not a part of the string...`, "Backslash  that escapes the space is not a part of the string...")
 assertEq(`Escaped backslash \\`, "Escaped backslash \\")
 assertEq(`Escaped backtick: \``, "Escaped backtick: `")

@@ -1110,6 +1110,24 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_after_prefixexp")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            local a: `what` = `what`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        // CHECK_EQ("Interpolated strings cannot be used alone to call a function. Wrap this in parentheses.", e.getErrors().front().getMessage());
+        CHECK_EQ("TODO", e.getErrors().front().getMessage());
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
 {
     try

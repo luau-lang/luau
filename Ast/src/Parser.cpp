@@ -2203,7 +2203,7 @@ AstExpr* Parser::parseSimpleExpr()
             }
         }
     }
-    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringEnd))
     {
         return parseString();
     }
@@ -2603,11 +2603,11 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
 std::optional<AstArray<char>> Parser::parseCharArray()
 {
-    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString);
+    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::InterpStringEnd);
 
     scratchData.assign(lexer.current().data, lexer.current().length);
 
-    if (lexer.current().type == Lexeme::QuotedString)
+    if (lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::InterpStringEnd)
     {
         if (!Lexer::fixupQuotedString(scratchData))
         {
