@@ -1234,6 +1234,13 @@ RETURN R0 0
 )");
 }
 
+TEST_CASE("InterpStringWithNoExpressions")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CHECK_EQ(compileFunction0(R"(return "hello")"), compileFunction0("return `hello`"));
+}
+
 TEST_CASE("ConstantFoldArith")
 {
     CHECK_EQ("\n" + compileFunction0("return 10 + 2"), R"(
@@ -2386,7 +2393,7 @@ TEST_CASE("DebugLineInfoRepeatUntil")
 local f = 0
 repeat
     f += 1
-    if f == 1 then 
+    if f == 1 then
         print(f)
     else
         f = 0
