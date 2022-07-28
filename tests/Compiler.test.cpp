@@ -1241,6 +1241,62 @@ TEST_CASE("InterpStringWithNoExpressions")
     CHECK_EQ(compileFunction0(R"(return "hello")"), compileFunction0("return `hello`"));
 }
 
+/**
+ * INTERP CODE REVIEW: This test fails, but its not clear to me why.
+ *
+ * One reason is that LOP_MOVE is added indiscriminately with interpolated strings, whereas
+ * standard namecalls only add it where necessary.
+ * I am not sure how to fix that, but at least understand why it happens.
+ *
+ * The second reason, however, is that the registers are completely different for both.
+ * Since the conformance tests pass, this might just be a difference without a distinction,
+ * like if "format" is being registered before the other strings, for instance.
+ *
+ * (""):format() codegen:
+ * LOADK R0 K0
+ * LOADK R2 K1
+ * NAMECALL R0 R0 K2
+ * CALL R0 2 1
+ * RETURN R0 0
+ *
+ * Interpolated string codegen:
+ * LOADK R1 K0
+ * LOADK R3 K1
+ * NAMECALL R1 R1 K2
+ * CALL R1 2 1
+ * MOVE R0 R1
+ * RETURN R0 0
+ */
+
+// TEST_CASE("InterpStringZeroCost")
+// {
+//     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+//     CHECK_EQ(
+//         "\n" + compileFunction0(R"(local _ = ("hello, %*!"):format("world"))"),
+//         "\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)")
+//     );
+// }
+
+TEST_CASE("InterpStringRegisterCleanup")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local a, b, c = nil, "um", "uh oh"
+            a = ("foo%*"):format("bar")
+            print(a)
+        )"),
+
+        "\n" + compileFunction0(R"(
+            local a, b, c = nil, "um", "uh oh"
+            a = `foo{"bar"}`
+            print(a)
+        )")
+    );
+}
+
 TEST_CASE("ConstantFoldArith")
 {
     CHECK_EQ("\n" + compileFunction0("return 10 + 2"), R"(

@@ -1522,17 +1522,15 @@ struct Compiler
         if (formatStringIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
-        // INTERP CODE REVIEW: Why do I need this?
-        // If I don't, it emits `LOADK R1 K1` instead of `LOADK R2 K1`,
-        // and it gives the error "missing argument 2".
-        allocReg(expr, 1);
+        RegScope rs(this);
+        // unsigned int top = regTop;
 
-        emitLoadK(target, formatStringIndex);
+        uint8_t baseReg = allocReg(expr, 2 + expr->expressions.size);
 
-        uint8_t baseExprReg = allocReg(expr, expr->expressions.size);
+        emitLoadK(baseReg, formatStringIndex);
 
         for (size_t index = 0; index < expr->expressions.size; ++index)
-            compileExpr(expr->expressions.data[index], baseExprReg + index, targetTemp);
+            compileExprTempTop(expr->expressions.data[index], uint8_t(baseReg + 2 + index));
 
         BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
 
@@ -1540,9 +1538,10 @@ struct Compiler
         if (formatMethodIndex < 0)
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
-        bytecode.emitABC(LOP_NAMECALL, target, target, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
+        bytecode.emitABC(LOP_NAMECALL, baseReg, baseReg, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
         bytecode.emitAux(formatMethodIndex);
-        bytecode.emitABC(LOP_CALL, target, uint8_t(expr->expressions.size + 2), 2);
+        bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2), 2);
+        bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
     }
 
     static uint8_t encodeHashSize(unsigned int hashSize)

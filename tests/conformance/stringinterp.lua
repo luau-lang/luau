@@ -1,6 +1,6 @@
 local function assertEq(left, right)
-	assert(typeof(left) == "string")
-	assert(typeof(right) == "string")
+	assert(typeof(left) == "string", "left is a " .. typeof(left))
+	assert(typeof(right) == "string", "right is a " .. typeof(right))
 
 	if left ~= right then
 		error(string.format("%q ~= %q", left, right))
@@ -8,6 +8,7 @@ local function assertEq(left, right)
 end
 
 assertEq(`hello {"world"}`, "hello world")
+assertEq(`Welcome {"to"} {"Luau"}!`, "Welcome to Luau!")
 
 assertEq(`2 + 2 = {2 + 2}`, "2 + 2 = 4")
 
