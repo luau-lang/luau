@@ -735,6 +735,9 @@ public:
 
     void visit(AstVisitor* visitor) override;
 
+    /// An interpolated string such as `foo{bar}baz` is represented as
+    /// an array of strings for "foo" and "bar", and an array of expressions for "baz".
+    /// `strings` will always have one more element than `expressions`.
     AstArray<AstArray<char>> strings;
     AstArray<AstExpr*> expressions;
 };
