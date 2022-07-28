@@ -1486,7 +1486,7 @@ struct Compiler
 
         size_t stringsLeft = expr->strings.size;
 
-        for (AstArray<char> const& string : expr->strings)
+        for (AstArray<char> string : expr->strings)
         {
             if (memchr(string.data, '%', string.size))
             {
