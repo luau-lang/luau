@@ -1050,7 +1050,6 @@ static int str_format(lua_State* L)
                 size_t length;
                 const char* string = luaL_tolstring(L, arg, &length);
 
-                luaL_reservebuffer(&b, length, -1);
                 luaL_addlstring(&b, string, length);
 
                 continue; /* skip the `addsize' at the end */
