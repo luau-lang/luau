@@ -1500,7 +1500,7 @@ struct Compiler
                 }
             }
             else
-                formatString += std::string(string.data, string.size);
+                formatString.append(string.data, string.size);
 
             stringsLeft--;
 
