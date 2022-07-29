@@ -1523,7 +1523,6 @@ struct Compiler
             CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
         RegScope rs(this);
-        // unsigned int top = regTop;
 
         uint8_t baseReg = allocReg(expr, 2 + expr->expressions.size);
 
