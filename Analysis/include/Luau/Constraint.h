@@ -12,7 +12,8 @@
 namespace Luau
 {
 
-struct Scope2;
+struct Scope;
+
 struct TypeVar;
 using TypeId = const TypeVar*;
 
@@ -38,7 +39,7 @@ struct GeneralizationConstraint
 {
     TypeId generalizedType;
     TypeId sourceType;
-    Scope2* scope;
+    Scope* scope;
 };
 
 // subType ~ inst superType

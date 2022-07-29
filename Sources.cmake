@@ -267,6 +267,7 @@ if(TARGET Luau.UnitTest)
         tests/Error.test.cpp
         tests/Frontend.test.cpp
         tests/JsonEncoder.test.cpp
+        tests/Lexer.test.cpp
         tests/Linter.test.cpp
         tests/LValue.test.cpp
         tests/Module.test.cpp

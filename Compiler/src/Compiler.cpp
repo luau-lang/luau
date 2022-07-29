@@ -25,8 +25,6 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileNoIpairs, false)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileFoldBuiltins, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileBetterMultret, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileFreeReassign, false)
 
 namespace Luau
@@ -276,9 +274,6 @@ struct Compiler
     // returns true if node can return multiple values; may conservatively return true even if expr is known to return just a single value
     bool isExprMultRet(AstExpr* node)
     {
-        if (!FFlag::LuauCompileBetterMultret)
-            return node->is<AstExprCall>() || node->is<AstExprVarargs>();
-
         AstExprCall* expr = node->as<AstExprCall>();
         if (!expr)
             return node->is<AstExprVarargs>();
@@ -310,27 +305,10 @@ struct Compiler
         if (AstExprCall* expr = node->as<AstExprCall>())
         {
             // Optimization: convert multret calls that always return one value to fixedret calls; this facilitates inlining/constant folding
-            if (options.optimizationLevel >= 2)
+            if (options.optimizationLevel >= 2 && !isExprMultRet(node))
             {
-                if (FFlag::LuauCompileBetterMultret)
-                {
-                    if (!isExprMultRet(node))
-                    {
-                        compileExprTemp(node, target);
-                        return false;
-                    }
-                }
-                else
-                {
-                    AstExprFunction* func = getFunctionExpr(expr->func);
-                    Function* fi = func ? functions.find(func) : nullptr;
-
-                    if (fi && fi->returnsOne)
-                    {
-                        compileExprTemp(node, target);
-                        return false;
-                    }
-                }
+                compileExprTemp(node, target);
+                return false;
             }
 
             // We temporarily swap out regTop to have targetTop work correctly...
@@ -3437,30 +3415,7 @@ struct Compiler
 
         bool visit(AstStatReturn* stat) override
         {
-            if (FFlag::LuauCompileBetterMultret)
-            {
-                returnsOne &= stat->list.size == 1 && !self->isExprMultRet(stat->list.data[0]);
-            }
-            else if (stat->list.size == 1)
-            {
-                AstExpr* value = stat->list.data[0];
-
-                if (AstExprCall* expr = value->as<AstExprCall>())
-                {
-                    AstExprFunction* func = self->getFunctionExpr(expr->func);
-                    Function* fi = func ? self->functions.find(func) : nullptr;
-
-                    returnsOne &= fi && fi->returnsOne;
-                }
-                else if (value->is<AstExprVarargs>())
-                {
-                    returnsOne = false;
-                }
-            }
-            else
-            {
-                returnsOne = false;
-            }
+            returnsOne &= stat->list.size == 1 && !self->isExprMultRet(stat->list.data[0]);
 
             return false;
         }
@@ -3601,7 +3556,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     trackValues(compiler.globals, compiler.variables, root);
 
     // builtin folding is enabled on optimization level 2 since we can't deoptimize folding at runtime
-    if (options.optimizationLevel >= 2 && FFlag::LuauCompileFoldBuiltins)
+    if (options.optimizationLevel >= 2)
         compiler.builtinsFold = &compiler.builtins;
 
     if (options.optimizationLevel >= 1)

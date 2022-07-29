@@ -6,8 +6,6 @@
 
 #include <limits.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileModelBuiltins, false)
-
 namespace Luau
 {
 namespace Compile
@@ -155,7 +153,7 @@ struct CostVisitor : AstVisitor
         {
             // builtin cost modeling is different from regular calls because we use FASTCALL to compile these
             // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
-            bool builtin = FFlag::LuauCompileModelBuiltins && builtins.find(expr) != nullptr;
+            bool builtin = builtins.find(expr) != nullptr;
             bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
 
             Cost cost = builtin ? 2 : 3;

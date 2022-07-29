@@ -5,12 +5,12 @@
 namespace Luau
 {
 
-static std::string dumpScopeAndChildren(const Scope2* scope, ToStringOptions& opts)
+static std::string dumpScopeAndChildren(const Scope* scope, ToStringOptions& opts)
 {
     std::string output = "{\"bindings\":{";
 
     bool comma = false;
-    for (const auto& [name, type] : scope->bindings)
+    for (const auto& [name, binding] : scope->bindings)
     {
         if (comma)
             output += ",";
@@ -19,7 +19,7 @@ static std::string dumpScopeAndChildren(const Scope2* scope, ToStringOptions& op
         output += name.c_str();
         output += "\": \"";
 
-        ToStringResult result = toStringDetailed(type, opts);
+        ToStringResult result = toStringDetailed(binding.typeId, opts);
         opts.nameMap = std::move(result.nameMap);
         output += result.name;
         output += "\"";
@@ -30,7 +30,7 @@ static std::string dumpScopeAndChildren(const Scope2* scope, ToStringOptions& op
     output += "},\"children\":[";
     comma = false;
 
-    for (const Scope2* child : scope->children)
+    for (const Scope* child : scope->children)
     {
         if (comma)
             output += ",";
@@ -96,7 +96,7 @@ std::string ConstraintSolverLogger::compileOutput()
     return output;
 }
 
-void ConstraintSolverLogger::captureBoundarySnapshot(const Scope2* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+void ConstraintSolverLogger::captureBoundarySnapshot(const Scope* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
     std::string snapshot = "{\"type\":\"boundary\",\"rootScope\":";
 
@@ -109,7 +109,7 @@ void ConstraintSolverLogger::captureBoundarySnapshot(const Scope2* rootScope, st
 }
 
 void ConstraintSolverLogger::prepareStepSnapshot(
-    const Scope2* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+    const Scope* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
     // LUAU_ASSERT(!preparedSnapshot);
 

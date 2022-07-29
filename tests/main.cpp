@@ -61,7 +61,7 @@ static bool debuggerPresent()
 static int testAssertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     if (debuggerPresent())
-        LUAU_DEBUGBREAK();
+	    LUAU_DEBUGBREAK();
 
     ADD_FAIL_AT(file, line, "Assertion failed: ", std::string(expr));
     return 1;
@@ -298,5 +298,3 @@ int main(int argc, char** argv)
     }
     return result;
 }
-
-
