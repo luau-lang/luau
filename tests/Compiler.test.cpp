@@ -1285,15 +1285,24 @@ TEST_CASE("InterpStringRegisterCleanup")
     CHECK_EQ(
         "\n" + compileFunction0(R"(
             local a, b, c = nil, "um", "uh oh"
-            a = ("foo%*"):format("bar")
+            a = `foo{"bar"}`
             print(a)
         )"),
 
-        "\n" + compileFunction0(R"(
-            local a, b, c = nil, "um", "uh oh"
-            a = `foo{"bar"}`
-            print(a)
-        )")
+        R"(
+LOADNIL R0
+LOADK R1 K0
+LOADK R2 K1
+LOADK R3 K2
+LOADK R5 K3
+NAMECALL R3 R3 K4
+CALL R3 2 1
+MOVE R0 R3
+GETIMPORT R3 6
+MOVE R4 R0
+CALL R3 1 0
+RETURN R0 0
+)"
     );
 }
 
