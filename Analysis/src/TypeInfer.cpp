@@ -3640,6 +3640,9 @@ void TypeChecker::checkFunctionBody(const ScopePtr& scope, TypeId ty, const AstE
                 reportError(getEndLocation(function), FunctionExitsWithoutReturning{funTy->retTypes});
             }
         }
+
+        if (!currentModule->astTypes.find(&function))
+            currentModule->astTypes[&function] = ty;
     }
     else
         ice("Checking non functional type");
