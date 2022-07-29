@@ -83,5 +83,3 @@ int main(int argc, char** argv)
 
     return parseResult.errors.size() > 0 ? 1 : 0;
 }
-
-

@@ -35,7 +35,7 @@ LUAU_FASTFLAGVARIABLE(LuauExpectedTableUnionIndexerType, false)
 LUAU_FASTFLAGVARIABLE(LuauIndexSilenceErrors, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
-LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix2, false)
+LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix3, false)
 LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
@@ -45,7 +45,6 @@ LUAU_FASTFLAGVARIABLE(LuauReportErrorsOnIndexerKeyMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 LUAU_FASTFLAGVARIABLE(LuauFalsyPredicateReturnsNilInstead, false)
-LUAU_FASTFLAGVARIABLE(LuauCheckLenMT, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckGenericHOFTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
@@ -1667,7 +1666,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
 
-                if (FFlag::LuauSelfCallAutocompleteFix2)
+                if (FFlag::LuauSelfCallAutocompleteFix3)
                     ftv->hasSelf = true;
             }
         }
@@ -2465,7 +2464,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
         DenseHashSet<TypeId> seen{nullptr};
 
-        if (FFlag::LuauCheckLenMT && typeCouldHaveMetatable(operandType))
+        if (typeCouldHaveMetatable(operandType))
         {
             if (auto fnt = findMetatableEntry(operandType, "__len", expr.location, /* addErrors= */ true))
             {
@@ -3640,6 +3639,9 @@ void TypeChecker::checkFunctionBody(const ScopePtr& scope, TypeId ty, const AstE
                 reportError(getEndLocation(function), FunctionExitsWithoutReturning{funTy->retTypes});
             }
         }
+
+        if (!currentModule->astTypes.find(&function))
+            currentModule->astTypes[&function] = ty;
     }
     else
         ice("Checking non functional type");

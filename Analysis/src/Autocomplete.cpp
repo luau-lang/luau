@@ -12,7 +12,7 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauSelfCallAutocompleteFix2)
+LUAU_FASTFLAG(LuauSelfCallAutocompleteFix3)
 
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
@@ -149,7 +149,7 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
     ty = follow(ty);
 
     auto canUnify = [&typeArena](TypeId subTy, TypeId superTy) {
-        LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix2);
+        LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix3);
 
         InternalErrorReporter iceReporter;
         UnifierSharedState unifierState(&iceReporter);
@@ -168,7 +168,7 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
     TypeId expectedType = follow(*typeAtPosition);
 
     auto checkFunctionType = [typeArena, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
-        if (FFlag::LuauSelfCallAutocompleteFix2)
+        if (FFlag::LuauSelfCallAutocompleteFix3)
         {
             if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
                 return checkTypeMatch(typeArena, *firstRetTy, expectedType);
@@ -209,7 +209,7 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
         }
     }
 
-    if (FFlag::LuauSelfCallAutocompleteFix2)
+    if (FFlag::LuauSelfCallAutocompleteFix3)
         return checkTypeMatch(typeArena, ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
     else
         return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
@@ -226,7 +226,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
     const std::vector<AstNode*>& nodes, AutocompleteEntryMap& result, std::unordered_set<TypeId>& seen,
     std::optional<const ClassTypeVar*> containingClass = std::nullopt)
 {
-    if (FFlag::LuauSelfCallAutocompleteFix2)
+    if (FFlag::LuauSelfCallAutocompleteFix3)
         rootTy = follow(rootTy);
 
     ty = follow(ty);
@@ -236,7 +236,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
     seen.insert(ty);
 
     auto isWrongIndexer_DEPRECATED = [indexType, useStrictFunctionIndexers = !!get<ClassTypeVar>(ty)](Luau::TypeId type) {
-        LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix2);
+        LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix3);
 
         if (indexType == PropIndexType::Key)
             return false;
@@ -269,7 +269,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
         }
     };
     auto isWrongIndexer = [typeArena, rootTy, indexType](Luau::TypeId type) {
-        LUAU_ASSERT(FFlag::LuauSelfCallAutocompleteFix2);
+        LUAU_ASSERT(FFlag::LuauSelfCallAutocompleteFix3);
 
         if (indexType == PropIndexType::Key)
             return false;
@@ -277,21 +277,20 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
         bool calledWithSelf = indexType == PropIndexType::Colon;
 
         auto isCompatibleCall = [typeArena, rootTy, calledWithSelf](const FunctionTypeVar* ftv) {
-            if (get<ClassTypeVar>(rootTy))
-            {
-                // Calls on classes require strict match between how function is declared and how it's called
-                return calledWithSelf == ftv->hasSelf;
-            }
+            // Strong match with definition is a success
+            if (calledWithSelf == ftv->hasSelf)
+                return true;
 
-            // If a call is made with ':', it is invalid if a function has incompatible first argument or no arguments at all
-            // If a call is made with '.', but it was declared with 'self', it is considered invalid if first argument is compatible
-            if (calledWithSelf || ftv->hasSelf)
+            // Calls on classes require strict match between how function is declared and how it's called
+            if (get<ClassTypeVar>(rootTy))
+                return false;
+
+            // When called with ':', but declared without 'self', it is invalid if a function has incompatible first argument or no arguments at all
+            // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
+            if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
             {
-                if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
-                {
-                    if (checkTypeMatch(typeArena, rootTy, *firstArgTy))
-                        return calledWithSelf;
-                }
+                if (checkTypeMatch(typeArena, rootTy, *firstArgTy))
+                    return calledWithSelf;
             }
 
             return !calledWithSelf;
@@ -333,7 +332,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
                     AutocompleteEntryKind::Property,
                     type,
                     prop.deprecated,
-                    FFlag::LuauSelfCallAutocompleteFix2 ? isWrongIndexer(type) : isWrongIndexer_DEPRECATED(type),
+                    FFlag::LuauSelfCallAutocompleteFix3 ? isWrongIndexer(type) : isWrongIndexer_DEPRECATED(type),
                     typeCorrect,
                     containingClass,
                     &prop,
@@ -376,7 +375,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
     {
         autocompleteProps(module, typeArena, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (FFlag::LuauSelfCallAutocompleteFix2)
+        if (FFlag::LuauSelfCallAutocompleteFix3)
         {
             if (auto mtable = get<TableTypeVar>(mt->metatable))
                 fillMetatableProps(mtable);
@@ -442,7 +441,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             AutocompleteEntryMap inner;
             std::unordered_set<TypeId> innerSeen;
 
-            if (!FFlag::LuauSelfCallAutocompleteFix2)
+            if (!FFlag::LuauSelfCallAutocompleteFix3)
                 innerSeen = seen;
 
             if (isNil(*iter))
@@ -468,7 +467,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             ++iter;
         }
     }
-    else if (auto pt = get<PrimitiveTypeVar>(ty); pt && FFlag::LuauSelfCallAutocompleteFix2)
+    else if (auto pt = get<PrimitiveTypeVar>(ty); pt && FFlag::LuauSelfCallAutocompleteFix3)
     {
         if (pt->metatable)
         {
@@ -476,7 +475,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
                 fillMetatableProps(mtable);
         }
     }
-    else if (FFlag::LuauSelfCallAutocompleteFix2 && get<StringSingleton>(get<SingletonTypeVar>(ty)))
+    else if (FFlag::LuauSelfCallAutocompleteFix3 && get<StringSingleton>(get<SingletonTypeVar>(ty)))
     {
         autocompleteProps(module, typeArena, rootTy, getSingletonTypes().stringType, indexType, nodes, result, seen);
     }
@@ -1405,7 +1404,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         TypeId ty = follow(*it);
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
-        if (!FFlag::LuauSelfCallAutocompleteFix2 && isString(ty))
+        if (!FFlag::LuauSelfCallAutocompleteFix3 && isString(ty))
             return {
                 autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry), ancestry};
         else

@@ -44,9 +44,6 @@ static_assert(TKey{{NULL}, {0}, LUA_TDEADKEY, 0}.tt == LUA_TDEADKEY, "not enough
 static_assert(TKey{{NULL}, {0}, LUA_TNIL, MAXSIZE - 1}.next == MAXSIZE - 1, "not enough bits for next");
 static_assert(TKey{{NULL}, {0}, LUA_TNIL, -(MAXSIZE - 1)}.next == -(MAXSIZE - 1), "not enough bits for next");
 
-// reset cache of absent metamethods, cache is updated in luaT_gettm
-#define invalidateTMcache(t) t->tmcache = 0
-
 // empty hash data points to dummynode so that we can always dereference it
 const LuaNode luaH_dummynode = {
     {{NULL}, {0}, LUA_TNIL},   /* value */
@@ -667,15 +664,18 @@ TValue* luaH_set(lua_State* L, Table* t, const TValue* key)
     if (p != luaO_nilobject)
         return cast_to(TValue*, p);
     else
-    {
-        if (ttisnil(key))
-            luaG_runerror(L, "table index is nil");
-        else if (ttisnumber(key) && luai_numisnan(nvalue(key)))
-            luaG_runerror(L, "table index is NaN");
-        else if (ttisvector(key) && luai_vecisnan(vvalue(key)))
-            luaG_runerror(L, "table index contains NaN");
-        return newkey(L, t, key);
-    }
+        return luaH_newkey(L, t, key);
+}
+
+TValue* luaH_newkey(lua_State* L, Table* t, const TValue* key)
+{
+    if (ttisnil(key))
+        luaG_runerror(L, "table index is nil");
+    else if (ttisnumber(key) && luai_numisnan(nvalue(key)))
+        luaG_runerror(L, "table index is NaN");
+    else if (ttisvector(key) && luai_vecisnan(vvalue(key)))
+        luaG_runerror(L, "table index contains NaN");
+    return newkey(L, t, key);
 }
 
 TValue* luaH_setnum(lua_State* L, Table* t, int key)

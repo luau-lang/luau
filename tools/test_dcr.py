@@ -14,6 +14,11 @@ def loadFailList():
     with open(FAIL_LIST_PATH) as f:
         return set(map(str.strip, f.readlines()))
 
+def safeParseInt(i, default=0):
+    try:
+        return int(i)
+    except ValueError:
+        return default
 
 class Handler(x.ContentHandler):
     def __init__(self, failList):
@@ -21,6 +26,8 @@ class Handler(x.ContentHandler):
         self.failList = failList  # Set of dotted test names that are expected to fail
 
         self.results = {}  # {DottedName: TrueIfTheTestPassed}
+
+        self.numSkippedTests = 0
 
     def startElement(self, name, attrs):
         if name == "TestSuite":
@@ -30,10 +37,7 @@ class Handler(x.ContentHandler):
 
         elif name == "OverallResultsAsserts":
             if self.currentTest:
-                try:
-                    failed = 0 != int(attrs["failures"])
-                except ValueError:
-                    failed = False
+                failed = 0 != safeParseInt(attrs["failures"])
 
                 dottedName = ".".join(self.currentTest)
                 shouldFail = dottedName in self.failList
@@ -44,6 +48,9 @@ class Handler(x.ContentHandler):
                     print("UNEXPECTED: {} should have failed".format(dottedName))
 
                 self.results[dottedName] = not failed
+
+        elif name == 'OverallResultsTestCases':
+            self.numSkippedTests = safeParseInt(attrs.get("skipped", 0))
 
     def endElement(self, name):
         if name == "TestCase":
@@ -110,6 +117,10 @@ def main():
             for name in newFailList:
                 print(name, file=f)
         print("Updated faillist.txt")
+
+    if handler.numSkippedTests > 0:
+        print('{} test(s) were skipped!  That probably means that a test segfaulted!'.format(handler.numSkippedTests), file=sys.stderr)
+        sys.exit(1)
 
     sys.exit(
         0

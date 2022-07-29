@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -952,7 +953,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
-    CHECK_EQ("<error-type>", toString(requireType("d")));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(requireType("d")));
+    else
+        CHECK_EQ("<error-type>", toString(requireType("d")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")

@@ -100,29 +100,20 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     CloneState cloneState;
 
-    ScopePtr moduleScope = FFlag::DebugLuauDeferredConstraintResolution ? nullptr : getModuleScope();
-    Scope2* moduleScope2 = FFlag::DebugLuauDeferredConstraintResolution ? getModuleScope2() : nullptr;
+    ScopePtr moduleScope = getModuleScope();
 
-    TypePackId returnType = FFlag::DebugLuauDeferredConstraintResolution ? moduleScope2->returnType : moduleScope->returnType;
+    TypePackId returnType = moduleScope->returnType;
     std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
     std::unordered_map<Name, TypeFun>* exportedTypeBindings =
         FFlag::DebugLuauDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
 
     returnType = clone(returnType, interfaceTypes, cloneState);
 
-    if (moduleScope)
+    moduleScope->returnType = returnType;
+    if (varargPack)
     {
-        moduleScope->returnType = returnType;
-        if (varargPack)
-        {
-            varargPack = clone(*varargPack, interfaceTypes, cloneState);
-            moduleScope->varargPack = varargPack;
-        }
-    }
-    else
-    {
-        LUAU_ASSERT(moduleScope2);
-        moduleScope2->returnType = returnType; // TODO varargPack
+        varargPack = clone(*varargPack, interfaceTypes, cloneState);
+        moduleScope->varargPack = varargPack;
     }
 
     ForceNormal forceNormal{&interfaceTypes};
@@ -199,12 +190,6 @@ ScopePtr Module::getModuleScope() const
 {
     LUAU_ASSERT(!scopes.empty());
     return scopes.front().second;
-}
-
-Scope2* Module::getModuleScope2() const
-{
-    LUAU_ASSERT(!scope2s.empty());
-    return scope2s.front().second.get();
 }
 
 } // namespace Luau

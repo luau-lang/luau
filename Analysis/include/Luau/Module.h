@@ -69,7 +69,6 @@ struct Module
     std::shared_ptr<AstNameTable> names;
 
     std::vector<std::pair<Location, ScopePtr>> scopes;                 // never empty
-    std::vector<std::pair<Location, std::unique_ptr<Scope2>>> scope2s; // never empty
 
     DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
     DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};
@@ -86,7 +85,6 @@ struct Module
     bool timeout = false;
 
     ScopePtr getModuleScope() const;
-    Scope2* getModuleScope2() const;
 
     // Once a module has been typechecked, we clone its public interface into a separate arena.
     // This helps us to force TypeVar ownership into a DAG rather than a DCG.

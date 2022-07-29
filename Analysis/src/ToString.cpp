@@ -12,6 +12,7 @@
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAGVARIABLE(LuauSpecialTypesAsterisked, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -277,7 +278,10 @@ struct TypeVarStringifier
         if (tv->ty.valueless_by_exception())
         {
             state.result.error = true;
-            state.emit("< VALUELESS BY EXCEPTION >");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("* VALUELESS BY EXCEPTION *");
+            else
+                state.emit("< VALUELESS BY EXCEPTION >");
             return;
         }
 
@@ -452,7 +456,10 @@ struct TypeVarStringifier
         if (state.hasSeen(&ftv))
         {
             state.result.cycle = true;
-            state.emit("<CYCLE>");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("*CYCLE*");
+            else
+                state.emit("<CYCLE>");
             return;
         }
 
@@ -560,7 +567,10 @@ struct TypeVarStringifier
         if (state.hasSeen(&ttv))
         {
             state.result.cycle = true;
-            state.emit("<CYCLE>");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("*CYCLE*");
+            else
+                state.emit("<CYCLE>");
             return;
         }
 
@@ -690,7 +700,10 @@ struct TypeVarStringifier
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
-            state.emit("<CYCLE>");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("*CYCLE*");
+            else
+                state.emit("<CYCLE>");
             return;
         }
 
@@ -757,7 +770,10 @@ struct TypeVarStringifier
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
-            state.emit("<CYCLE>");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("*CYCLE*");
+            else
+                state.emit("<CYCLE>");
             return;
         }
 
@@ -802,7 +818,10 @@ struct TypeVarStringifier
     void operator()(TypeId, const ErrorTypeVar& tv)
     {
         state.result.error = true;
-        state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
+        if (FFlag::LuauSpecialTypesAsterisked)
+            state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
+        else
+            state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
     }
 
     void operator()(TypeId, const LazyTypeVar& ltv)
@@ -856,7 +875,10 @@ struct TypePackStringifier
         if (tp->ty.valueless_by_exception())
         {
             state.result.error = true;
-            state.emit("< VALUELESS TP BY EXCEPTION >");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("* VALUELESS TP BY EXCEPTION *");
+            else
+                state.emit("< VALUELESS TP BY EXCEPTION >");
             return;
         }
 
@@ -879,7 +901,10 @@ struct TypePackStringifier
         if (state.hasSeen(&tp))
         {
             state.result.cycle = true;
-            state.emit("<CYCLETP>");
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("*CYCLETP*");
+            else
+                state.emit("<CYCLETP>");
             return;
         }
 
@@ -924,14 +949,22 @@ struct TypePackStringifier
     void operator()(TypePackId, const Unifiable::Error& error)
     {
         state.result.error = true;
-        state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
+        if (FFlag::LuauSpecialTypesAsterisked)
+            state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
+        else
+            state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
     }
 
     void operator()(TypePackId, const VariadicTypePack& pack)
     {
         state.emit("...");
         if (FFlag::DebugLuauVerboseTypeNames && pack.hidden)
-            state.emit("<hidden>");
+        {
+            if (FFlag::LuauSpecialTypesAsterisked)
+                state.emit("*hidden*");
+            else
+                state.emit("<hidden>");
+        }
         stringify(pack.ty);
     }
 
@@ -1121,7 +1154,11 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
     if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
     {
         result.truncated = true;
-        result.name += "... <TRUNCATED>";
+
+        if (FFlag::LuauSpecialTypesAsterisked)
+            result.name += "... *TRUNCATED*";
+        else
+            result.name += "... <TRUNCATED>";
     }
 
     return result;
@@ -1189,7 +1226,12 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
     }
 
     if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
-        result.name += "... <TRUNCATED>";
+    {
+        if (FFlag::LuauSpecialTypesAsterisked)
+            result.name += "... *TRUNCATED*";
+        else
+            result.name += "... <TRUNCATED>";
+    }
 
     return result;
 }

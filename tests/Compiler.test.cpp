@@ -4352,8 +4352,6 @@ TEST_CASE("LoopUnrollControlFlow")
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
     };
 
-    ScopedFastFlag sff("LuauCompileFoldBuiltins", true);
-
     // break jumps to the end
     CHECK_EQ("\n" + compileFunction(R"(
 for i=1,3 do
@@ -4668,8 +4666,6 @@ TEST_CASE("LoopUnrollCostBuiltins")
         {"LuauCompileLoopUnrollThreshold", 25},
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
     };
-
-    ScopedFastFlag sff("LuauCompileModelBuiltins", true);
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
     CHECK_EQ("\n" + compileFunction(R"(
@@ -5893,8 +5889,6 @@ RETURN R0 2
 
 TEST_CASE("OptimizationLevel")
 {
-    ScopedFastFlag sff("LuauAlwaysCaptureHotComments", true);
-
     // at optimization level 1, no inlining is performed
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -5964,8 +5958,6 @@ RETURN R1 -1
 
 TEST_CASE("BuiltinFolding")
 {
-    ScopedFastFlag sff("LuauCompileFoldBuiltins", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 return
     math.abs(-42),
@@ -6073,8 +6065,6 @@ RETURN R0 48
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
-    ScopedFastFlag sff("LuauCompileFoldBuiltins", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 return
     math.abs(),
@@ -6108,9 +6098,6 @@ L3: RETURN R0 -1
 
 TEST_CASE("BuiltinFoldingMultret")
 {
-    ScopedFastFlag sff1("LuauCompileFoldBuiltins", true);
-    ScopedFastFlag sff2("LuauCompileBetterMultret", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 local NoLanes: Lanes = --[[                             ]] 0b0000000000000000000000000000000
 local OffscreenLane: Lane = --[[                        ]] 0b1000000000000000000000000000000
