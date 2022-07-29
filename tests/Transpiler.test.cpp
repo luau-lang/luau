@@ -688,4 +688,13 @@ TEST_CASE_FIXTURE(Fixture, "transpile_string_interp")
     CHECK_EQ(code, transpile(code, {}, true).code);
 }
 
+TEST_CASE_FIXTURE(Fixture, "transpile_string_literal_escape")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    std::string code = R"( local _ = ` bracket = \{, backtick = \` = {'ok'} ` )";
+
+    CHECK_EQ(code, transpile(code, {}, true).code);
+}
+
 TEST_SUITE_END();

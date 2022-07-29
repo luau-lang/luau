@@ -237,7 +237,7 @@ std::string escape(std::string_view s)
 
     for (uint8_t c : s)
     {
-        if (c >= ' ' && c != '\\' && c != '\'' && c != '\"')
+        if (c >= ' ' && c != '\\' && c != '\'' && c != '\"' && c != '`' && c != '{')
             r += c;
         else
         {
@@ -271,6 +271,14 @@ std::string escape(std::string_view s)
                 break;
             case '\"':
                 r += '\"';
+                break;
+            // INTERP CODE REVIEW: This is going to apply it to all escaped strings, not just
+            // interpolated ones. Is that acceptable, or should this be split into two functions/a toggle?
+            case '`':
+                r += '`';
+                break;
+            case '{':
+                r += '{';
                 break;
             case '\\':
                 r += '\\';
