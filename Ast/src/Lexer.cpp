@@ -597,6 +597,8 @@ const Lexeme& Lexer::nextInterpolatedString()
 
 Lexeme Lexer::readInterpolatedStringBegin()
 {
+    LUAU_ASSERT(peekch() == '`');
+
     Position start = position();
     consume();
 
