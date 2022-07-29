@@ -54,4 +54,11 @@ end
 assertEq(shadowsString("hello"), "Value is hello")
 assertEq(shadowsString(1), "Value is 1")
 
+local function identity(x)
+	return x
+end
+
+assertEq(identity`text`, "text")
+-- assertEq(identity`foo{"bar"}`, "foobar")
+
 return "OK"

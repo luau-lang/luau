@@ -2010,15 +2010,15 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
 
             expr = parseFunctionArgs(expr, false, Location());
         }
-        else if (lexer.current().type == '{' || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
+        else if (
+            lexer.current().type == '{'
+            || lexer.current().type == Lexeme::RawString
+            || lexer.current().type == Lexeme::QuotedString
+            || lexer.current().type == Lexeme::InterpStringBegin
+            || lexer.current().type == Lexeme::InterpStringEnd
+        )
         {
             expr = parseFunctionArgs(expr, false, Location());
-        }
-        else if (lexer.current().type == Lexeme::InterpStringBegin)
-        {
-            report(lexer.current().location, "Interpolated strings cannot be used alone to call a function. Wrap this in parentheses.");
-
-            break;
         }
         else
         {
@@ -2256,7 +2256,7 @@ AstExpr* Parser::parseSimpleExpr()
     }
 }
 
-// args ::=  `(' [explist] `)' | tableconstructor | String
+// args ::=  `(' [explist] `)' | tableconstructor | String | InterpString
 AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, const Location& selfLocation)
 {
     if (lexer.current().type == '(')
@@ -2297,6 +2297,14 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, const Location& sel
         AstExpr* expr = parseString();
 
         return allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, argLocation);
+    }
+    else if (FFlag::LuauInterpolatedStringBaseSupport && (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringEnd))
+    {
+        Position argStart = lexer.current().location.end;
+        AstExpr* expr = parseInterpString();
+        Position argEnd = lexer.previousLocation().end;
+
+        return allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, Location(argStart, argEnd));
     }
     else
     {

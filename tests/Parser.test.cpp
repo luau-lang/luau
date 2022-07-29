@@ -1093,23 +1093,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
     CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_after_prefixexp")
-{
-    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-
-    try
-    {
-        parse(R"(
-            print`Hello {name}`
-        )");
-        FAIL("Expected ParseErrors to be thrown");
-    }
-    catch (const ParseErrors& e)
-    {
-        CHECK_EQ("Interpolated strings cannot be used alone to call a function. Wrap this in parentheses.", e.getErrors().front().getMessage());
-    }
-}
-
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
