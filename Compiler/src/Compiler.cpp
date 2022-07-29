@@ -1482,7 +1482,14 @@ struct Compiler
 
     void compileExprInterpString(AstExprInterpString* expr, uint8_t target, bool targetTemp)
     {
+        size_t formatCapacity = 0;
+        for (AstArray<char> string : expr->strings)
+        {
+            formatCapacity += string.size + std::count(string.data, string.data + string.size, '%');
+        }
+
         std::string formatString;
+        formatString.reserve(formatCapacity);
 
         size_t stringsLeft = expr->strings.size;
 
