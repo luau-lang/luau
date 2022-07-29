@@ -8,7 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
 LUAU_FASTFLAGVARIABLE(LuauTostringFormatSpecifier, false);
 
 /* macro to `unsign' a character */
@@ -1039,12 +1038,6 @@ static int str_format(lua_State* L)
             {
                 if (!FFlag::LuauTostringFormatSpecifier)
                 {
-                    if (FFlag::LuauInterpolatedStringBaseSupport)
-                    {
-                        luaL_error(L, "interpolated strings are enabled, but the '*' format specifier is not. this is a configuration bug.");
-                        break;
-                    }
-
                     luaL_error(L, "invalid option '%%*' to 'format'");
                     break;
                 }
