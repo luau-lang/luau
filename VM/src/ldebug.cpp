@@ -529,7 +529,7 @@ const char* lua_debugtrace(lua_State* L)
         if (ar.currentline > 0)
         {
             char line[32];
-            sprintf(line, ":%d", ar.currentline);
+            snprintf(line, sizeof(line), ":%d", ar.currentline);
 
             offset = append(buf, sizeof(buf), offset, line);
         }
@@ -545,7 +545,7 @@ const char* lua_debugtrace(lua_State* L)
         if (depth > limit1 + limit2 && level == limit1 - 1)
         {
             char skip[32];
-            sprintf(skip, "... (+%d frames)\n", int(depth - limit1 - limit2));
+            snprintf(skip, sizeof(skip), "... (+%d frames)\n", int(depth - limit1 - limit2));
 
             offset = append(buf, sizeof(buf), offset, skip);
 

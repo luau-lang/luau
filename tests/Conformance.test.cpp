@@ -316,7 +316,8 @@ TEST_CASE("Errors")
 
 TEST_CASE("Events")
 {
-    ScopedFastFlag sff("LuauLenTM", true);
+    ScopedFastFlag sff1("LuauLenTM", true);
+    ScopedFastFlag sff2("LuauBetterNewindex", true);
 
     runConformance("events.lua");
 }
@@ -490,8 +491,6 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag sff("LuauCheckLenMT", true);
-
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
@@ -862,8 +861,6 @@ TEST_CASE("ApiCalls")
 
 TEST_CASE("ApiAtoms")
 {
-    ScopedFastFlag sff("LuauLazyAtoms", true);
-
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 

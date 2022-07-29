@@ -15,8 +15,8 @@ namespace Luau
 struct ConstraintSolverLogger
 {
     std::string compileOutput();
-    void captureBoundarySnapshot(const Scope2* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints);
-    void prepareStepSnapshot(const Scope2* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints);
+    void captureBoundarySnapshot(const Scope* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints);
+    void prepareStepSnapshot(const Scope* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints);
     void commitPreparedStepSnapshot();
 
 private:

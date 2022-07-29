@@ -103,8 +103,8 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(double d)
     {
-        char b[256];
-        sprintf(b, "%.17g", d);
+        char b[32];
+        snprintf(b, sizeof(b), "%.17g", d);
         writeRaw(b);
     }
 

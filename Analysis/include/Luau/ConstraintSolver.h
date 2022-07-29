@@ -25,7 +25,7 @@ struct ConstraintSolver
     // is important to not add elements to this vector, lest the underlying
     // storage that we retain pointers to be mutated underneath us.
     const std::vector<NotNull<Constraint>> constraints;
-    NotNull<Scope2> rootScope;
+    NotNull<Scope> rootScope;
 
     // This includes every constraint that has not been fully solved.
     // A constraint can be both blocked and unsolved, for instance.
@@ -40,7 +40,7 @@ struct ConstraintSolver
 
     ConstraintSolverLogger logger;
 
-    explicit ConstraintSolver(TypeArena* arena, NotNull<Scope2> rootScope);
+    explicit ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope);
 
     /**
      * Attempts to dispatch all pending constraints and reach a type solution
@@ -121,6 +121,6 @@ private:
     void unblock_(BlockedConstraintId progressed);
 };
 
-void dump(NotNull<Scope2> rootScope, struct ToStringOptions& opts);
+void dump(NotNull<Scope> rootScope, struct ToStringOptions& opts);
 
 } // namespace Luau

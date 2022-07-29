@@ -13,31 +13,31 @@ LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 namespace Luau
 {
 
-[[maybe_unused]] static void dumpBindings(NotNull<Scope2> scope, ToStringOptions& opts)
+[[maybe_unused]] static void dumpBindings(NotNull<Scope> scope, ToStringOptions& opts)
 {
     for (const auto& [k, v] : scope->bindings)
     {
-        auto d = toStringDetailed(v, opts);
+        auto d = toStringDetailed(v.typeId, opts);
         opts.nameMap = d.nameMap;
         printf("\t%s : %s\n", k.c_str(), d.name.c_str());
     }
 
-    for (NotNull<Scope2> child : scope->children)
+    for (NotNull<Scope> child : scope->children)
         dumpBindings(child, opts);
 }
 
-static void dumpConstraints(NotNull<Scope2> scope, ToStringOptions& opts)
+static void dumpConstraints(NotNull<Scope> scope, ToStringOptions& opts)
 {
     for (const ConstraintPtr& c : scope->constraints)
     {
         printf("\t%s\n", toString(*c, opts).c_str());
     }
 
-    for (NotNull<Scope2> child : scope->children)
+    for (NotNull<Scope> child : scope->children)
         dumpConstraints(child, opts);
 }
 
-void dump(NotNull<Scope2> rootScope, ToStringOptions& opts)
+void dump(NotNull<Scope> rootScope, ToStringOptions& opts)
 {
     printf("constraints:\n");
     dumpConstraints(rootScope, opts);
@@ -55,7 +55,7 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
     }
 }
 
-ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope2> rootScope)
+ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope)
     : arena(arena)
     , constraints(collectConstraints(rootScope))
     , rootScope(rootScope)

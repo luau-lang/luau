@@ -12,7 +12,7 @@ Free::Free(TypeLevel level)
 {
 }
 
-Free::Free(Scope2* scope)
+Free::Free(Scope* scope)
     : scope(scope)
 {
 }
@@ -39,7 +39,7 @@ Generic::Generic(const Name& name)
 {
 }
 
-Generic::Generic(Scope2* scope)
+Generic::Generic(Scope* scope)
     : index(++nextIndex)
     , scope(scope)
 {
@@ -53,7 +53,7 @@ Generic::Generic(TypeLevel level, const Name& name)
 {
 }
 
-Generic::Generic(Scope2* scope, const Name& name)
+Generic::Generic(Scope* scope, const Name& name)
     : index(++nextIndex)
     , scope(scope)
     , name(name)

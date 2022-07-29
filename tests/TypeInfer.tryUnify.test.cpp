@@ -9,6 +9,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+
 struct TryUnifyFixture : Fixture
 {
     TypeArena arena;
@@ -121,7 +123,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_u
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("a", toString(requireType("a")));
-    CHECK_EQ("<error-type>", toString(requireType("b")));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(requireType("b")));
+    else
+        CHECK_EQ("<error-type>", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_constrained")
@@ -136,7 +141,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_con
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("a", toString(requireType("a")));
-    CHECK_EQ("<error-type>", toString(requireType("b")));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(requireType("b")));
+    else
+        CHECK_EQ("<error-type>", toString(requireType("b")));
     CHECK_EQ("number", toString(requireType("c")));
 }
 

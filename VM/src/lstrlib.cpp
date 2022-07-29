@@ -979,14 +979,14 @@ static int str_format(lua_State* L)
             {
             case 'c':
             {
-                sprintf(buff, form, (int)luaL_checknumber(L, arg));
+                snprintf(buff, sizeof(buff), form, (int)luaL_checknumber(L, arg));
                 break;
             }
             case 'd':
             case 'i':
             {
                 addInt64Format(form, formatIndicator, formatItemSize);
-                sprintf(buff, form, (long long)luaL_checknumber(L, arg));
+                snprintf(buff, sizeof(buff), form, (long long)luaL_checknumber(L, arg));
                 break;
             }
             case 'o':
@@ -997,7 +997,7 @@ static int str_format(lua_State* L)
                 double argValue = luaL_checknumber(L, arg);
                 addInt64Format(form, formatIndicator, formatItemSize);
                 unsigned long long v = (argValue < 0) ? (unsigned long long)(long long)argValue : (unsigned long long)argValue;
-                sprintf(buff, form, v);
+                snprintf(buff, sizeof(buff), form, v);
                 break;
             }
             case 'e':
@@ -1006,7 +1006,7 @@ static int str_format(lua_State* L)
             case 'g':
             case 'G':
             {
-                sprintf(buff, form, (double)luaL_checknumber(L, arg));
+                snprintf(buff, sizeof(buff), form, (double)luaL_checknumber(L, arg));
                 break;
             }
             case 'q':
@@ -1028,7 +1028,7 @@ static int str_format(lua_State* L)
                 }
                 else
                 {
-                    sprintf(buff, form, s);
+                    snprintf(buff, sizeof(buff), form, s);
                     break;
                 }
             }

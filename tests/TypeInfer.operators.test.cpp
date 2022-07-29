@@ -490,8 +490,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
 {
-    ScopedFastFlag sff("LuauCheckLenMT", true);
-
     CheckResult result = check(R"(
         --!strict
         local foo = {

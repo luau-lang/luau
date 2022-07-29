@@ -192,7 +192,7 @@ void dump(const std::vector<Constraint>& constraints);
 
 std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Warning: This function runs in O(n**2)
 
-std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name);
+std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
 
 } // namespace Luau
 
