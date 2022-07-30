@@ -16,13 +16,13 @@ namespace Luau
 {
 
 /// @return true if outer encloses inner
-static bool subsumes(Scope2* outer, Scope2* inner)
+static bool subsumes(Scope* outer, Scope* inner)
 {
     while (inner)
     {
         if (inner == outer)
             return true;
-        inner = inner->parent;
+        inner = inner->parent.get();
     }
 
     return false;
@@ -33,7 +33,7 @@ struct Quantifier final : TypeVarOnceVisitor
     TypeLevel level;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
-    Scope2* scope = nullptr;
+    Scope* scope = nullptr;
     bool seenGenericType = false;
     bool seenMutableType = false;
 
@@ -43,20 +43,20 @@ struct Quantifier final : TypeVarOnceVisitor
         LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
     }
 
-    explicit Quantifier(Scope2* scope)
+    explicit Quantifier(Scope* scope)
         : scope(scope)
     {
         LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     }
 
     /// @return true if outer encloses inner
-    bool subsumes(Scope2* outer, Scope2* inner)
+    bool subsumes(Scope* outer, Scope* inner)
     {
         while (inner)
         {
             if (inner == outer)
                 return true;
-            inner = inner->parent;
+            inner = inner->parent.get();
         }
 
         return false;
@@ -216,7 +216,7 @@ void quantify(TypeId ty, TypeLevel level)
     }
 }
 
-void quantify(TypeId ty, Scope2* scope)
+void quantify(TypeId ty, Scope* scope)
 {
     Quantifier q{scope};
     q.traverse(ty);
@@ -240,11 +240,11 @@ void quantify(TypeId ty, Scope2* scope)
 
 struct PureQuantifier : Substitution
 {
-    Scope2* scope;
+    Scope* scope;
     std::vector<TypeId> insertedGenerics;
     std::vector<TypePackId> insertedGenericPacks;
 
-    PureQuantifier(TypeArena* arena, Scope2* scope)
+    PureQuantifier(TypeArena* arena, Scope* scope)
         : Substitution(TxnLog::empty(), arena)
         , scope(scope)
     {
@@ -322,7 +322,7 @@ struct PureQuantifier : Substitution
     }
 };
 
-TypeId quantify(TypeArena* arena, TypeId ty, Scope2* scope)
+TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
 {
     PureQuantifier quantifier{arena, scope};
     std::optional<TypeId> result = quantifier.substitute(ty);

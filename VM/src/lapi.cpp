@@ -34,8 +34,6 @@
  * therefore call luaC_checkGC before luaC_checkthreadsleep to guarantee the object is pushed to an awake thread.
  */
 
-LUAU_FASTFLAG(LuauLazyAtoms)
-
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -54,7 +52,6 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
     }
 
 #define updateatom(L, ts) \
-    if (FFlag::LuauLazyAtoms) \
     { \
         if (ts->atom == ATOM_UNDEF) \
             ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1; \

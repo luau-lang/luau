@@ -152,7 +152,7 @@ struct Frontend
     void registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, ScopePtr)>);
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
-    NotNull<Scope2> getGlobalScope2();
+    NotNull<Scope> getGlobalScope();
 
 private:
     ModulePtr check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope);
@@ -169,7 +169,7 @@ private:
     std::unordered_map<std::string, ScopePtr> environments;
     std::unordered_map<std::string, std::function<void(TypeChecker&, ScopePtr)>> builtinDefinitions;
 
-    std::unique_ptr<Scope2> globalScope2;
+    std::unique_ptr<Scope> globalScope;
 
 public:
     FileResolver* fileResolver;

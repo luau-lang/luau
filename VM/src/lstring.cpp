@@ -7,8 +7,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLazyAtoms, false)
-
 unsigned int luaS_hash(const char* str, size_t len)
 {
     // Note that this hashing algorithm is replicated in BytecodeBuilder.cpp, BytecodeBuilder::getStringHash
@@ -84,7 +82,7 @@ static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
     ts->memcat = L->activememcat;
     memcpy(ts->data, str, l);
     ts->data[l] = '\0'; /* ending 0 */
-    ts->atom = FFlag::LuauLazyAtoms ? ATOM_UNDEF : L->global->cb.useratom ? L->global->cb.useratom(ts->data, l) : -1;
+    ts->atom = ATOM_UNDEF;
     tb = &L->global->strt;
     h = lmod(h, tb->size);
     ts->next = tb->hash[h]; /* chain new entry */
@@ -165,9 +163,7 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
 
     ts->hash = h;
     ts->data[ts->len] = '\0'; // ending 0
-
-    // Complete string object
-    ts->atom = FFlag::LuauLazyAtoms ? ATOM_UNDEF : L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1;
+    ts->atom = ATOM_UNDEF;
     ts->next = tb->hash[bucket]; // chain new entry
     tb->hash[bucket] = ts;
 

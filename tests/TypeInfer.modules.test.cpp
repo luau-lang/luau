@@ -12,6 +12,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+
 TEST_SUITE_BEGIN("TypeInferModules");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "require")
@@ -143,7 +145,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_module_that_does_not_export")
 
     auto hootyType = requireType(bModule, "Hooty");
 
-    CHECK_EQ("<error-type>", toString(hootyType));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(hootyType));
+    else
+        CHECK_EQ("<error-type>", toString(hootyType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "warn_if_you_try_to_require_a_non_modulescript")
@@ -244,7 +249,11 @@ local ModuleA = require(game.A)
     LUAU_REQUIRE_NO_ERRORS(result);
 
     std::optional<TypeId> oty = requireType("ModuleA");
-    CHECK_EQ("<error-type>", toString(*oty));
+
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(*oty));
+    else
+        CHECK_EQ("<error-type>", toString(*oty));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types")

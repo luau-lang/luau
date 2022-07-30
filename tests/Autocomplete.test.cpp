@@ -2946,7 +2946,7 @@ local abc = b@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_on_class")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     loadDefinition(R"(
 declare class Foo
@@ -2984,9 +2984,25 @@ t.@1
     }
 }
 
+TEST_CASE_FIXTURE(ACFixture, "do_compatible_self_calls")
+{
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+
+    check(R"(
+local t = {}
+function t:m() end
+t:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("m"));
+    CHECK(!ac.entryMap["m"].wrongIndexType);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     check(R"(
 local t = {}
@@ -3002,7 +3018,7 @@ t:@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_2")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     check(R"(
 local f: (() -> number) & ((number) -> number) = function(x: number?) return 2 end
@@ -3017,7 +3033,7 @@ t:@1
     CHECK(ac.entryMap["f"].wrongIndexType);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_provisional")
+TEST_CASE_FIXTURE(ACFixture, "do_wrong_compatible_self_calls")
 {
     check(R"(
 local t = {}
@@ -3032,9 +3048,26 @@ t:@1
     CHECK(!ac.entryMap["m"].wrongIndexType);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "no_wrong_compatible_self_calls_with_generics")
+{
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+
+    check(R"(
+local t = {}
+function t.m<T>(a: T) end
+t:@1
+    )");
+
+    auto ac = autocomplete('1');
+
+    REQUIRE(ac.entryMap.count("m"));
+    // While this call is compatible with the type, this requires instantiation of a generic type which we don't perform
+    CHECK(ac.entryMap["m"].wrongIndexType);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "string_prim_self_calls_are_fine")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     check(R"(
 local s = "hello"
@@ -3053,7 +3086,7 @@ s:@1
 
 TEST_CASE_FIXTURE(ACFixture, "string_prim_non_self_calls_are_avoided")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     check(R"(
 local s = "hello"
@@ -3070,7 +3103,7 @@ s.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_non_self_calls_are_fine")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     check(R"(
 string.@1
@@ -3101,7 +3134,7 @@ table.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_self_calls_are_invalid")
 {
-    ScopedFastFlag selfCallAutocompleteFix2{"LuauSelfCallAutocompleteFix2", true};
+    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
 
     check(R"(
 string:@1
@@ -3113,8 +3146,11 @@ string:@1
     CHECK(ac.entryMap["byte"].wrongIndexType == true);
     REQUIRE(ac.entryMap.count("char"));
     CHECK(ac.entryMap["char"].wrongIndexType == true);
+
+    // We want the next test to evaluate to 'true', but we have to allow function defined with 'self' to be callable with ':'
+    // We may change the definition of the string metatable to not use 'self' types in the future (like byte/char/pack/unpack)
     REQUIRE(ac.entryMap.count("sub"));
-    CHECK(ac.entryMap["sub"].wrongIndexType == true);
+    CHECK(ac.entryMap["sub"].wrongIndexType == false);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "source_module_preservation_and_invalidation")

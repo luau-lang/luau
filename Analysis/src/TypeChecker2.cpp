@@ -69,6 +69,9 @@ struct TypeChecker2 : public AstVisitor
 
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena)
     {
+        if (exprs.size == 0)
+            return arena.addTypePack(TypePack{{}, std::nullopt});
+
         std::vector<TypeId> head;
 
         for (size_t i = 0; i < exprs.size - 1; ++i)
@@ -80,14 +83,14 @@ struct TypeChecker2 : public AstVisitor
         return arena.addTypePack(TypePack{head, tail});
     }
 
-    Scope2* findInnermostScope(Location location)
+    Scope* findInnermostScope(Location location)
     {
-        Scope2* bestScope = module->getModuleScope2();
-        Location bestLocation = module->scope2s[0].first;
+        Scope* bestScope = module->getModuleScope().get();
+        Location bestLocation = module->scopes[0].first;
 
-        for (size_t i = 0; i < module->scope2s.size(); ++i)
+        for (size_t i = 0; i < module->scopes.size(); ++i)
         {
-            auto& [scopeBounds, scope] = module->scope2s[i];
+            auto& [scopeBounds, scope] = module->scopes[i];
             if (scopeBounds.encloses(location))
             {
                 if (scopeBounds.begin > bestLocation.begin || scopeBounds.end < bestLocation.end)
@@ -181,7 +184,7 @@ struct TypeChecker2 : public AstVisitor
 
     bool visit(AstStatReturn* ret) override
     {
-        Scope2* scope = findInnermostScope(ret->location);
+        Scope* scope = findInnermostScope(ret->location);
         TypePackId expectedRetType = scope->returnType;
 
         TypeArena arena;
@@ -359,7 +362,7 @@ struct TypeChecker2 : public AstVisitor
 
     bool visit(AstTypeReference* ty) override
     {
-        Scope2* scope = findInnermostScope(ty->location);
+        Scope* scope = findInnermostScope(ty->location);
 
         // TODO: Imported types
         // TODO: Generic types
