@@ -1,19 +1,19 @@
 
-#include "Luau/TypeChecker2.h"
+#include "lluz/TypeChecker2.h"
 
 #include <algorithm>
 
-#include "Luau/Ast.h"
-#include "Luau/AstQuery.h"
-#include "Luau/Clone.h"
-#include "Luau/Instantiation.h"
-#include "Luau/Normalize.h"
-#include "Luau/TxnLog.h"
-#include "Luau/TypeUtils.h"
-#include "Luau/Unifier.h"
-#include "Luau/ToString.h"
+#include "lluz/Ast.h"
+#include "lluz/AstQuery.h"
+#include "lluz/Clone.h"
+#include "lluz/Instantiation.h"
+#include "lluz/Normalize.h"
+#include "lluz/TxnLog.h"
+#include "lluz/TypeUtils.h"
+#include "lluz/Unifier.h"
+#include "lluz/ToString.h"
 
-namespace Luau
+namespace lluz
 {
 
 struct TypeChecker2 : public AstVisitor
@@ -63,15 +63,12 @@ struct TypeChecker2 : public AstVisitor
     TypeId lookupAnnotation(AstType* annotation)
     {
         TypeId* ty = module->astResolvedTypes.find(annotation);
-        LUAU_ASSERT(ty);
+        lluz_ASSERT(ty);
         return follow(*ty);
     }
 
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena)
     {
-        if (exprs.size == 0)
-            return arena.addTypePack(TypePack{{}, std::nullopt});
-
         std::vector<TypeId> head;
 
         for (size_t i = 0; i < exprs.size - 1; ++i)
@@ -83,14 +80,14 @@ struct TypeChecker2 : public AstVisitor
         return arena.addTypePack(TypePack{head, tail});
     }
 
-    Scope* findInnermostScope(Location location)
+    Scope2* findInnermostScope(Location location)
     {
-        Scope* bestScope = module->getModuleScope().get();
-        Location bestLocation = module->scopes[0].first;
+        Scope2* bestScope = module->getModuleScope2();
+        Location bestLocation = module->scope2s[0].first;
 
-        for (size_t i = 0; i < module->scopes.size(); ++i)
+        for (size_t i = 0; i < module->scope2s.size(); ++i)
         {
-            auto& [scopeBounds, scope] = module->scopes[i];
+            auto& [scopeBounds, scope] = module->scope2s[i];
             if (scopeBounds.encloses(location))
             {
                 if (scopeBounds.begin > bestLocation.begin || scopeBounds.end < bestLocation.end)
@@ -184,7 +181,7 @@ struct TypeChecker2 : public AstVisitor
 
     bool visit(AstStatReturn* ret) override
     {
-        Scope* scope = findInnermostScope(ret->location);
+        Scope2* scope = findInnermostScope(ret->location);
         TypePackId expectedRetType = scope->returnType;
 
         TypeArena arena;
@@ -214,13 +211,13 @@ struct TypeChecker2 : public AstVisitor
         TypePackId expectedRetType = lookupPack(call);
         TypeId functionType = lookupType(call->func);
         TypeId instantiatedFunctionType = instantiation.substitute(functionType).value_or(nullptr);
-        LUAU_ASSERT(functionType);
+        lluz_ASSERT(functionType);
 
         TypePack args;
         for (const auto& arg : call->args)
         {
             TypeId argTy = module->astTypes[arg];
-            LUAU_ASSERT(argTy);
+            lluz_ASSERT(argTy);
             args.head.push_back(argTy);
         }
 
@@ -243,7 +240,7 @@ struct TypeChecker2 : public AstVisitor
     {
         TypeId inferredFnTy = lookupType(fn);
         const FunctionTypeVar* inferredFtv = get<FunctionTypeVar>(inferredFnTy);
-        LUAU_ASSERT(inferredFtv);
+        lluz_ASSERT(inferredFtv);
 
         auto argIt = begin(inferredFtv->argTypes);
         for (const auto& arg : fn->args)
@@ -325,13 +322,10 @@ struct TypeChecker2 : public AstVisitor
     {
         pack = follow(pack);
 
-        while (true)
+        while (auto tp = get<TypePack>(pack))
         {
-            auto tp = get<TypePack>(pack);
-            if (tp && tp->head.empty() && tp->tail)
+            if (tp->head.empty() && tp->tail)
                 pack = *tp->tail;
-            else
-                break;
         }
 
         if (auto ty = first(pack))
@@ -352,7 +346,7 @@ struct TypeChecker2 : public AstVisitor
         else if (get<Unifiable::Error>(pack))
             return singletonTypes.errorRecoveryType();
         else
-            ice.ice("flattenPack got a weird pack!");
+            ice.ice(XorStr("flattenPack got a weird pack!"));
     }
 
     bool visit(AstType* ty) override
@@ -362,7 +356,7 @@ struct TypeChecker2 : public AstVisitor
 
     bool visit(AstTypeReference* ty) override
     {
-        Scope* scope = findInnermostScope(ty->location);
+        Scope2* scope = findInnermostScope(ty->location);
 
         // TODO: Imported types
         // TODO: Generic types
@@ -392,4 +386,4 @@ void check(const SourceModule& sourceModule, Module* module)
     sourceModule.root->visit(&typeChecker);
 }
 
-} // namespace Luau
+} // namespace lluz

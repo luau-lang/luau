@@ -1,21 +1,21 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Linter.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Linter.h"
 
-#include "Luau/AstQuery.h"
-#include "Luau/Module.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/StringUtils.h"
-#include "Luau/Common.h"
+#include "lluz/AstQuery.h"
+#include "lluz/Module.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/StringUtils.h"
+#include "lluz/Common.h"
 
 #include <algorithm>
 #include <math.h>
 #include <limits.h>
 
-LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
-LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
+lluz_FASTINTVARIABLE(LluSuggestionDistance, 4)
+lluz_FASTFLAGVARIABLE(LluLintGlobalNeverReadBeforeWritten, false)
 
-namespace Luau
+namespace lluz
 {
 
 // clang-format off
@@ -51,7 +51,7 @@ static const char* kWarningNames[] = {
 };
 // clang-format on
 
-static_assert(std::size(kWarningNames) == unsigned(LintWarning::Code__Count), "did you forget to add warning to the list?");
+static_assert(std::size(kWarningNames) == unsigned(LintWarning::Code__Count), XorStr("did you forget to add warning to the list?"));
 
 struct LintContext
 {
@@ -125,7 +125,7 @@ struct WarningComparator
     }
 };
 
-LUAU_PRINTF_ATTR(4, 5)
+lluz_PRINTF_ATTR(4, 5)
 static void emitWarning(LintContext& context, LintWarning::Code code, const Location& location, const char* format, ...)
 {
     if (!context.warningEnabled(code))
@@ -205,7 +205,7 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
     CASE(AstExprIfElse) return similar(le->condition, re->condition) && similar(le->trueExpr, re->trueExpr) && similar(le->falseExpr, re->falseExpr);
     else
     {
-        LUAU_ASSERT(!"Unknown expression type");
+        lluz_ASSERT(!XorStr("Unknown expression type"));
         return false;
     }
 
@@ -215,7 +215,7 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
 class LintGlobalLocal : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintGlobalLocal pass;
         pass.context = &context;
@@ -282,14 +282,14 @@ private:
             Global* g = globals.find(gv->name);
 
             if (!g || (!g->assigned && !g->builtin))
-                emitWarning(*context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'", gv->name.value);
+                emitWarning(*context, LintWarning::Code_UnknownGlobal, gv->location, XorStr("Unknown global '%s'"), gv->name.value);
             else if (g->deprecated)
             {
                 if (*g->deprecated)
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
+                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, XorStr("Global '%s' is deprecated, use '%s' instead"),
                         gv->name.value, *g->deprecated);
                 else
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, XorStr("Global '%s' is deprecated"), gv->name.value);
             }
         }
 
@@ -310,7 +310,7 @@ private:
                         "Global '%s' is only used in the enclosing function defined at line %d; consider changing it to local",
                         g.firstRef->name.value, top->location.begin.line + 1);
             }
-            else if (FFlag::LuauLintGlobalNeverReadBeforeWritten && g.assigned && !g.readBeforeWritten && !g.definedInModuleScope &&
+            else if (FFlag::LluLintGlobalNeverReadBeforeWritten && g.assigned && !g.readBeforeWritten && !g.definedInModuleScope &&
                      g.firstRef->name != context->placeholder)
             {
                 emitWarning(*context, LintWarning::Code_GlobalUsedAsLocal, g.firstRef->location,
@@ -332,7 +332,7 @@ private:
 
     bool visit(AstExprGlobal* node) override
     {
-        if (FFlag::LuauLintGlobalNeverReadBeforeWritten && !functionStack.empty() && !functionStack.back().dominatedGlobals.contains(node->name))
+        if (FFlag::LluLintGlobalNeverReadBeforeWritten && !functionStack.empty() && !functionStack.back().dominatedGlobals.contains(node->name))
         {
             Global& g = globals[node->name];
             g.readBeforeWritten = true;
@@ -341,7 +341,7 @@ private:
 
         if (node->name == context->placeholder)
             emitWarning(
-                *context, LintWarning::Code_PlaceholderRead, node->location, "Placeholder value '_' is read here; consider using a named variable");
+                *context, LintWarning::Code_PlaceholderRead, node->location, XorStr("Placeholder value '_' is read here; consider using a named variable"));
 
         return true;
     }
@@ -350,7 +350,7 @@ private:
     {
         if (node->local->name == context->placeholder)
             emitWarning(
-                *context, LintWarning::Code_PlaceholderRead, node->location, "Placeholder value '_' is read here; consider using a named variable");
+                *context, LintWarning::Code_PlaceholderRead, node->location, XorStr("Placeholder value '_' is read here; consider using a named variable"));
 
         return true;
     }
@@ -365,7 +365,7 @@ private:
             {
                 Global& g = globals[gv->name];
 
-                if (FFlag::LuauLintGlobalNeverReadBeforeWritten)
+                if (FFlag::LluLintGlobalNeverReadBeforeWritten)
                 {
                     if (functionStack.empty())
                     {
@@ -416,7 +416,7 @@ private:
             else
             {
                 g.assigned = true;
-                if (FFlag::LuauLintGlobalNeverReadBeforeWritten)
+                if (FFlag::LluLintGlobalNeverReadBeforeWritten)
                 {
                     g.definedAsFunction = true;
                     g.definedInModuleScope = functionStack.empty();
@@ -454,7 +454,7 @@ private:
 
     bool visit(AstStatIf* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
+        if (!FFlag::LluLintGlobalNeverReadBeforeWritten)
             return true;
 
         HoldConditionalExecution ce(*this);
@@ -468,7 +468,7 @@ private:
 
     bool visit(AstStatWhile* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
+        if (!FFlag::LluLintGlobalNeverReadBeforeWritten)
             return true;
 
         HoldConditionalExecution ce(*this);
@@ -480,7 +480,7 @@ private:
 
     bool visit(AstStatRepeat* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
+        if (!FFlag::LluLintGlobalNeverReadBeforeWritten)
             return true;
 
         HoldConditionalExecution ce(*this);
@@ -492,7 +492,7 @@ private:
 
     bool visit(AstStatFor* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
+        if (!FFlag::LluLintGlobalNeverReadBeforeWritten)
             return true;
 
         HoldConditionalExecution ce(*this);
@@ -509,7 +509,7 @@ private:
 
     bool visit(AstStatForIn* node) override
     {
-        if (!FFlag::LuauLintGlobalNeverReadBeforeWritten)
+        if (!FFlag::LluLintGlobalNeverReadBeforeWritten)
             return true;
 
         HoldConditionalExecution ce(*this);
@@ -562,7 +562,7 @@ private:
 class LintSameLineStatement : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintSameLineStatement pass;
 
@@ -599,7 +599,7 @@ private:
                 continue;
 
             emitWarning(*context, LintWarning::Code_SameLineStatement, location,
-                "A new statement is on the same line; add semi-colon on previous statement to silence");
+                XorStr("A new statement is on the same line; add semi-colon on previous statement to silence"));
 
             lastLine = location.begin.line;
         }
@@ -611,7 +611,7 @@ private:
 class LintMultiLineStatement : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintMultiLineStatement pass;
         pass.context = &context;
@@ -646,7 +646,7 @@ private:
                 if (location.begin.column <= top.start.begin.column)
                 {
                     emitWarning(
-                        *context, LintWarning::Code_MultiLineStatement, location, "Statement spans multiple lines; use indentation to silence");
+                        *context, LintWarning::Code_MultiLineStatement, location, XorStr("Statement spans multiple lines; use indentation to silence"));
 
                     top.flagged = true;
                 }
@@ -691,7 +691,7 @@ private:
 class LintLocalHygiene : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintLocalHygiene pass;
         pass.context = &context;
@@ -760,7 +760,7 @@ private:
 
             // don't warn on inter-function shadowing since it is much more fragile wrt refactoring
             if (shadow->functionDepth == local->functionDepth)
-                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, "Variable '%s' shadows previous declaration at line %d",
+                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, XorStr("Variable '%s' shadows previous declaration at line %d"),
                     local->name.value, shadow->location.begin.line + 1);
         }
         else if (Global* global = globals.find(local->name))
@@ -769,12 +769,12 @@ private:
                 ; // there are many builtins with common names like 'table'; some of them are deprecated as well
             else if (global->firstRef)
             {
-                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, "Variable '%s' shadows a global variable used at line %d",
+                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, XorStr("Variable '%s' shadows a global variable used at line %d"),
                     local->name.value, global->firstRef->location.begin.line + 1);
             }
             else
             {
-                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, "Variable '%s' shadows a global variable", local->name.value);
+                emitWarning(*context, LintWarning::Code_LocalShadow, local->location, XorStr("Variable '%s' shadows a global variable"), local->name.value);
             }
         }
     }
@@ -785,13 +785,13 @@ private:
             return;
 
         if (info.function)
-            emitWarning(*context, LintWarning::Code_FunctionUnused, local->location, "Function '%s' is never used; prefix with '_' to silence",
+            emitWarning(*context, LintWarning::Code_FunctionUnused, local->location, XorStr("Function '%s' is never used; prefix with '_' to silence"),
                 local->name.value);
         else if (info.import)
-            emitWarning(*context, LintWarning::Code_ImportUnused, local->location, "Import '%s' is never used; prefix with '_' to silence",
+            emitWarning(*context, LintWarning::Code_ImportUnused, local->location, XorStr("Import '%s' is never used; prefix with '_' to silence"),
                 local->name.value);
         else
-            emitWarning(*context, LintWarning::Code_LocalUnused, local->location, "Variable '%s' is never used; prefix with '_' to silence",
+            emitWarning(*context, LintWarning::Code_LocalUnused, local->location, XorStr("Variable '%s' is never used; prefix with '_' to silence"),
                 local->name.value);
     }
 
@@ -805,7 +805,7 @@ private:
         if (!glob)
             return false;
 
-        return glob->name == "require";
+        return glob->name == XorStr("require");
     }
 
     bool visit(AstStatAssign* node) override
@@ -893,7 +893,7 @@ private:
 
         AstLocal* astLocal = imports[*node->prefix];
         Local& local = locals[astLocal];
-        LUAU_ASSERT(local.import);
+        lluz_ASSERT(local.import);
         local.used = true;
 
         return true;
@@ -914,7 +914,7 @@ private:
 class LintUnusedFunction : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintUnusedFunction pass;
         pass.context = &context;
@@ -946,7 +946,7 @@ private:
         for (auto& g : globals)
         {
             if (g.second.function && !g.second.used && g.first.value[0] != '_')
-                emitWarning(*context, LintWarning::Code_FunctionUnused, g.second.location, "Function '%s' is never used; prefix with '_' to silence",
+                emitWarning(*context, LintWarning::Code_FunctionUnused, g.second.location, XorStr("Function '%s' is never used; prefix with '_' to silence"),
                     g.first.value);
         }
     }
@@ -981,7 +981,7 @@ private:
 class LintUnreachableCode : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintUnreachableCode pass;
         pass.context = &context;
@@ -1010,19 +1010,19 @@ private:
         switch (status)
         {
         case Continue:
-            return "continue";
+            return XorStr("continue");
 
         case Break:
-            return "break";
+            return XorStr("break");
 
         case Return:
-            return "return";
+            return XorStr("return");
 
         case Error:
-            return "error";
+            return XorStr("error");
 
         default:
-            return "unknown";
+            return XorStr("unknown");
         }
     }
 
@@ -1046,7 +1046,7 @@ private:
                     if (step == Error && si->is<AstStatExpr>() && next->is<AstStatReturn>() && i + 2 == stat->body.size)
                         return Error;
 
-                    emitWarning(*context, LintWarning::Code_UnreachableCode, next->location, "Unreachable code (previous statement always %ss)",
+                    emitWarning(*context, LintWarning::Code_UnreachableCode, next->location, XorStr("Unreachable code (previous statement always %ss)"),
                         getReason(step));
                     return step;
                 }
@@ -1122,7 +1122,7 @@ private:
 class LintUnknownType : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintUnknownType pass;
         pass.context = &context;
@@ -1143,11 +1143,11 @@ private:
 
     TypeKind getTypeKind(const std::string& name)
     {
-        if (name == "nil" || name == "boolean" || name == "userdata" || name == "number" || name == "string" || name == "table" ||
-            name == "function" || name == "thread")
+        if (name == XorStr("nil") || name == XorStr("boolean") || name == XorStr("userdata") || name == XorStr("number") || name == XorStr("string") || name == XorStr("table") ||
+            name == XorStr("function") || name == XorStr("thread"))
             return Kind_Primitive;
 
-        if (name == "vector")
+        if (name == XorStr("vector"))
             return Kind_Vector;
 
         if (std::optional<TypeFun> maybeTy = context->scope->lookupType(name))
@@ -1163,7 +1163,7 @@ private:
 
         if (kind == Kind_Unknown)
         {
-            emitWarning(*context, LintWarning::Code_UnknownType, expr->location, "Unknown type '%s'", name.c_str());
+            emitWarning(*context, LintWarning::Code_UnknownType, expr->location, XorStr("Unknown type '%s'"), name.c_str());
             return;
         }
 
@@ -1173,7 +1173,7 @@ private:
                 return;
         }
 
-        emitWarning(*context, LintWarning::Code_UnknownType, expr->location, "Unknown type '%s' (expected %s)", name.c_str(), expectedString);
+        emitWarning(*context, LintWarning::Code_UnknownType, expr->location, XorStr("Unknown type '%s' (expected %s)"), name.c_str(), expectedString);
     }
 
     bool visit(AstExprBinary* node) override
@@ -1193,13 +1193,13 @@ private:
             {
                 AstExprGlobal* g = call->func->as<AstExprGlobal>();
 
-                if (g && g->name == "type")
+                if (g && g->name == XorStr("type"))
                 {
-                    validateType(arg, {Kind_Primitive, Kind_Vector}, "primitive type");
+                    validateType(arg, {Kind_Primitive, Kind_Vector}, XorStr("primitive type"));
                 }
-                else if (g && g->name == "typeof")
+                else if (g && g->name == XorStr("typeof"))
                 {
-                    validateType(arg, {Kind_Primitive, Kind_Userdata}, "primitive or userdata type");
+                    validateType(arg, {Kind_Primitive, Kind_Userdata}, XorStr("primitive or userdata type"));
                 }
             }
         }
@@ -1211,7 +1211,7 @@ private:
 class LintForRange : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintForRange pass;
         pass.context = &context;
@@ -1242,22 +1242,22 @@ private:
             // for i=#t,1 do
             if (fu && fu->op == AstExprUnary::Len && tc && tc->value == 1.0)
                 emitWarning(
-                    *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?");
+                    *context, LintWarning::Code_ForRange, rangeLocation, XorStr("For loop should iterate backwards; did you forget to specify -1 as step?"));
             // for i=8,1 do
             else if (fc && tc && fc->value > tc->value)
                 emitWarning(
-                    *context, LintWarning::Code_ForRange, rangeLocation, "For loop should iterate backwards; did you forget to specify -1 as step?");
+                    *context, LintWarning::Code_ForRange, rangeLocation, XorStr("For loop should iterate backwards; did you forget to specify -1 as step?"));
             // for i=1,8.75 do
             else if (fc && tc && getLoopEnd(fc->value, tc->value) != tc->value)
-                emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, "For loop ends at %g instead of %g; did you forget to specify step?",
+                emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, XorStr("For loop ends at %g instead of %g; did you forget to specify step?"),
                     getLoopEnd(fc->value, tc->value), tc->value);
             // for i=0,#t do
             else if (fc && tu && fc->value == 0.0 && tu->op == AstExprUnary::Len)
-                emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, "For loop starts at 0, but arrays start at 1");
+                emitWarning(*context, LintWarning::Code_ForRange, rangeLocation, XorStr("For loop starts at 0, but arrays start at 1"));
             // for i=#t,0 do
             else if (fu && fu->op == AstExprUnary::Len && tc && tc->value == 0.0)
                 emitWarning(*context, LintWarning::Code_ForRange, rangeLocation,
-                    "For loop should iterate backwards; did you forget to specify -1 as step? Also consider changing 0 to 1 since arrays start at 1");
+                    XorStr("For loop should iterate backwards; did you forget to specify -1 as step? Also consider changing 0 to 1 since arrays start at 1"));
         }
 
         return true;
@@ -1267,7 +1267,7 @@ private:
 class LintUnbalancedAssignment : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintUnbalancedAssignment pass;
         pass.context = &context;
@@ -1316,7 +1316,7 @@ private:
 class LintImplicitReturn : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintImplicitReturn pass;
         pass.context = &context;
@@ -1393,7 +1393,7 @@ private:
 class LintFormatString : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintFormatString pass;
         pass.context = &context;
@@ -1468,10 +1468,10 @@ private:
                 }
 
                 if (i == size)
-                    return "unfinished format specifier";
+                    return XorStr("unfinished format specifier");
 
                 if (!strchr(options, data[i]))
-                    return "invalid format specifier: must be a string format specifier or %";
+                    return XorStr("invalid format specifier: must be a string format specifier or %");
             }
         }
 
@@ -1486,16 +1486,16 @@ private:
         for (size_t i = 0; i < size; ++i)
         {
             if (!strchr(options, data[i]))
-                return "unexpected character; must be a pack specifier or space";
+                return XorStr("unexpected character; must be a pack specifier or space");
 
             if (data[i] == 'c' && (i + 1 == size || !isDigit(data[i + 1])))
-                return "fixed-sized string format must specify the size";
+                return XorStr("fixed-sized string format must specify the size");
 
             if (data[i] == 'X' && (i + 1 == size || strchr(unsized, data[i + 1])))
-                return "X must be followed by a size specifier";
+                return XorStr("X must be followed by a size specifier");
 
             if (fixed && (data[i] == 'z' || data[i] == 's'))
-                return "pack specifier must be fixed-size";
+                return XorStr("pack specifier must be fixed-size");
 
             if ((data[i] == '!' || data[i] == 'i' || data[i] == 'I' || data[i] == 'c' || data[i] == 's') && i + 1 < size && isDigit(data[i + 1]))
             {
@@ -1509,10 +1509,10 @@ private:
                 }
 
                 if (i + 1 < size && isDigit(data[i + 1]))
-                    return "size specifier is too large";
+                    return XorStr("size specifier is too large");
 
                 if (!isc && (v == 0 || v > 16))
-                    return "integer size must be in range [1,16]";
+                    return XorStr("integer size must be in range [1,16]");
             }
         }
 
@@ -1528,32 +1528,32 @@ private:
                 i++;
 
                 if (i == size)
-                    return "unfinished character class";
+                    return XorStr("unfinished character class");
 
                 if (isDigit(data[i]))
                 {
-                    return "sets can not contain capture references";
+                    return XorStr("sets can not contain capture references");
                 }
                 else if (isAlpha(data[i]))
                 {
                     // lower case lookup - upper case for every character class is defined as its inverse
                     if (!strchr(classes, data[i] | ' '))
-                        return "invalid character class, must refer to a defined class or its inverse";
+                        return XorStr("invalid character class, must refer to a defined class or its inverse");
                 }
                 else
                 {
                     // technically % can escape any non-alphanumeric character but this is error-prone
                     if (!strchr(magic, data[i]))
-                        return "expected a magic character after %";
+                        return XorStr("expected a magic character after %");
                 }
 
                 if (i + 1 < size && data[i + 1] == '-')
-                    return "character range can't include character sets";
+                    return XorStr("character range can't include character sets");
             }
             else if (data[i] == '-')
             {
                 if (i + 1 < size && data[i + 1] == '%')
-                    return "character range can't include character sets";
+                    return XorStr("character range can't include character sets");
             }
         }
 
@@ -1575,35 +1575,35 @@ private:
                 i++;
 
                 if (i == size)
-                    return "unfinished character class";
+                    return XorStr("unfinished character class");
 
                 if (isDigit(data[i]))
                 {
                     if (data[i] == '0')
-                        return "invalid capture reference, must be 1-9";
+                        return XorStr("invalid capture reference, must be 1-9");
 
                     int captureIndex = data[i] - '0';
 
                     if (captureIndex > totalCaptures)
-                        return "invalid capture reference, must refer to a valid capture";
+                        return XorStr("invalid capture reference, must refer to a valid capture");
 
                     for (int open : openCaptures)
                         if (open == captureIndex)
-                            return "invalid capture reference, must refer to a closed capture";
+                            return XorStr("invalid capture reference, must refer to a closed capture");
                 }
                 else if (isAlpha(data[i]))
                 {
                     if (data[i] == 'b')
                     {
                         if (i + 2 >= size)
-                            return "missing brace characters for balanced match";
+                            return XorStr("missing brace characters for balanced match");
 
                         i += 2;
                     }
                     else if (data[i] == 'f')
                     {
                         if (i + 1 >= size || data[i + 1] != '[')
-                            return "missing set after a frontier pattern";
+                            return XorStr("missing set after a frontier pattern");
 
                         // we can parse the set with the regular logic
                     }
@@ -1611,14 +1611,14 @@ private:
                     {
                         // lower case lookup - upper case for every character class is defined as its inverse
                         if (!strchr(classes, data[i] | ' '))
-                            return "invalid character class, must refer to a defined class or its inverse";
+                            return XorStr("invalid character class, must refer to a defined class or its inverse");
                     }
                 }
                 else
                 {
                     // technically % can escape any non-alphanumeric character but this is error-prone
                     if (!strchr(magic, data[i]))
-                        return "expected a magic character after %";
+                        return XorStr("expected a magic character after %");
                 }
             }
             else if (data[i] == '[')
@@ -1643,12 +1643,12 @@ private:
                 }
 
                 if (j == size)
-                    return "expected ] at the end of the string to close a set";
+                    return XorStr("expected ] at the end of the string to close a set");
 
                 if (const char* error = checkStringMatchSet(data + i + 1, j - i - 1, magic, classes))
                     return error;
 
-                LUAU_ASSERT(data[j] == ']');
+                lluz_ASSERT(data[j] == ']');
                 i = j;
             }
             else if (data[i] == '(')
@@ -1659,13 +1659,13 @@ private:
             else if (data[i] == ')')
             {
                 if (openCaptures.empty())
-                    return "unexpected ) without a matching (";
+                    return XorStr("unexpected ) without a matching (");
                 openCaptures.pop_back();
             }
         }
 
         if (!openCaptures.empty())
-            return "expected ) at the end of the string to close a capture";
+            return XorStr("expected ) at the end of the string to close a capture");
 
         if (outCaptures)
             *outCaptures = totalCaptures;
@@ -1682,13 +1682,13 @@ private:
                 i++;
 
                 if (i == size)
-                    return "unfinished replacement";
+                    return XorStr("unfinished replacement");
 
                 if (data[i] != '%' && !isDigit(data[i]))
-                    return "unexpected replacement character; must be a digit or %";
+                    return XorStr("unexpected replacement character; must be a digit or %");
 
                 if (isDigit(data[i]) && captures >= 0 && data[i] - '0' > captures)
-                    return "invalid capture index, must refer to pattern capture";
+                    return XorStr("invalid capture index, must refer to pattern capture");
             }
         }
 
@@ -1706,14 +1706,14 @@ private:
                 i++;
 
                 if (i == size)
-                    return "unfinished replacement";
+                    return XorStr("unfinished replacement");
 
                 if (data[i] != '%' && !strchr(options, data[i]))
-                    return "unexpected replacement character; must be a date format specifier or %";
+                    return XorStr("unexpected replacement character; must be a date format specifier or %");
             }
 
             if (data[i] == 0)
-                return "date format can not contain null characters";
+                return XorStr("date format can not contain null characters");
         }
 
         return nullptr;
@@ -1721,31 +1721,31 @@ private:
 
     void matchStringCall(AstName name, AstExpr* self, AstArray<AstExpr*> args)
     {
-        if (name == "format")
+        if (name == XorStr("format"))
         {
             if (AstExprConstantString* fmt = self->as<AstExprConstantString>())
                 if (const char* error = checkStringFormat(fmt->value.data, fmt->value.size))
-                    emitWarning(*context, LintWarning::Code_FormatString, fmt->location, "Invalid format string: %s", error);
+                    emitWarning(*context, LintWarning::Code_FormatString, fmt->location, XorStr("Invalid format string: %s"), error);
         }
-        else if (name == "pack" || name == "packsize" || name == "unpack")
+        else if (name == XorStr("pack") || name == XorStr("packsize") || name == XorStr("unpack"))
         {
             if (AstExprConstantString* fmt = self->as<AstExprConstantString>())
-                if (const char* error = checkStringPack(fmt->value.data, fmt->value.size, name == "packsize"))
-                    emitWarning(*context, LintWarning::Code_FormatString, fmt->location, "Invalid pack format: %s", error);
+                if (const char* error = checkStringPack(fmt->value.data, fmt->value.size, name == XorStr("packsize")))
+                    emitWarning(*context, LintWarning::Code_FormatString, fmt->location, XorStr("Invalid pack format: %s"), error);
         }
-        else if ((name == "match" || name == "gmatch") && args.size > 0)
+        else if ((name == XorStr("match") || name == XorStr("gmatch")) && args.size > 0)
         {
             if (AstExprConstantString* pat = args.data[0]->as<AstExprConstantString>())
                 if (const char* error = checkStringMatch(pat->value.data, pat->value.size))
-                    emitWarning(*context, LintWarning::Code_FormatString, pat->location, "Invalid match pattern: %s", error);
+                    emitWarning(*context, LintWarning::Code_FormatString, pat->location, XorStr("Invalid match pattern: %s"), error);
         }
-        else if (name == "find" && args.size > 0 && args.size <= 2)
+        else if (name == XorStr("find") && args.size > 0 && args.size <= 2)
         {
             if (AstExprConstantString* pat = args.data[0]->as<AstExprConstantString>())
                 if (const char* error = checkStringMatch(pat->value.data, pat->value.size))
-                    emitWarning(*context, LintWarning::Code_FormatString, pat->location, "Invalid match pattern: %s", error);
+                    emitWarning(*context, LintWarning::Code_FormatString, pat->location, XorStr("Invalid match pattern: %s"), error);
         }
-        else if (name == "find" && args.size >= 3)
+        else if (name == XorStr("find") && args.size >= 3)
         {
             AstExprConstantBool* mode = args.data[2]->as<AstExprConstantBool>();
 
@@ -1753,19 +1753,19 @@ private:
             if (mode && !mode->value)
                 if (AstExprConstantString* pat = args.data[0]->as<AstExprConstantString>())
                     if (const char* error = checkStringMatch(pat->value.data, pat->value.size))
-                        emitWarning(*context, LintWarning::Code_FormatString, pat->location, "Invalid match pattern: %s", error);
+                        emitWarning(*context, LintWarning::Code_FormatString, pat->location, XorStr("Invalid match pattern: %s"), error);
         }
-        else if (name == "gsub" && args.size > 1)
+        else if (name == XorStr("gsub") && args.size > 1)
         {
             int captures = -1;
 
             if (AstExprConstantString* pat = args.data[0]->as<AstExprConstantString>())
                 if (const char* error = checkStringMatch(pat->value.data, pat->value.size, &captures))
-                    emitWarning(*context, LintWarning::Code_FormatString, pat->location, "Invalid match pattern: %s", error);
+                    emitWarning(*context, LintWarning::Code_FormatString, pat->location, XorStr("Invalid match pattern: %s"), error);
 
             if (AstExprConstantString* rep = args.data[1]->as<AstExprConstantString>())
                 if (const char* error = checkStringReplace(rep->value.data, rep->value.size, captures))
-                    emitWarning(*context, LintWarning::Code_FormatString, rep->location, "Invalid match replacement: %s", error);
+                    emitWarning(*context, LintWarning::Code_FormatString, rep->location, XorStr("Invalid match replacement: %s"), error);
         }
     }
 
@@ -1792,7 +1792,7 @@ private:
         if (!lib)
             return;
 
-        if (lib->name == "string")
+        if (lib->name == XorStr("string"))
         {
             if (node->args.size > 0)
             {
@@ -1801,13 +1801,13 @@ private:
                 matchStringCall(func->index, node->args.data[0], rest);
             }
         }
-        else if (lib->name == "os")
+        else if (lib->name == XorStr("os"))
         {
-            if (func->index == "date" && node->args.size > 0)
+            if (func->index == XorStr("date") && node->args.size > 0)
             {
                 if (AstExprConstantString* fmt = node->args.data[0]->as<AstExprConstantString>())
                     if (const char* error = checkDateFormat(fmt->value.data, fmt->value.size))
-                        emitWarning(*context, LintWarning::Code_FormatString, fmt->location, "Invalid date format: %s", error);
+                        emitWarning(*context, LintWarning::Code_FormatString, fmt->location, XorStr("Invalid date format: %s"), error);
             }
         }
     }
@@ -1822,7 +1822,7 @@ private:
 class LintTableLiteral : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintTableLiteral pass;
         pass.context = &context;
@@ -1920,7 +1920,7 @@ private:
 class LintUninitializedLocal : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintUninitializedLocal pass;
         pass.context = &context;
@@ -2026,7 +2026,7 @@ private:
 class LintDuplicateFunction : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintDuplicateFunction pass{&context};
         context.root->visit(&pass);
@@ -2092,7 +2092,7 @@ private:
 
     void report(const std::string& name, Location location, Location otherLocation)
     {
-        emitWarning(*context, LintWarning::Code_DuplicateFunction, location, "Duplicate function definition: '%s' also defined on line %d",
+        emitWarning(*context, LintWarning::Code_DuplicateFunction, location, XorStr("Duplicate function definition: '%s' also defined on line %d"),
             name.c_str(), otherLocation.begin.line + 1);
     }
 };
@@ -2100,7 +2100,7 @@ private:
 class LintDeprecatedApi : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         if (!context.module)
             return;
@@ -2143,19 +2143,19 @@ private:
 
     void report(const Location& location, const Property& prop, const char* container, const char* field)
     {
-        std::string suggestion = prop.deprecatedSuggestion.empty() ? "" : format(", use '%s' instead", prop.deprecatedSuggestion.c_str());
+        std::string suggestion = prop.deprecatedSuggestion.empty() ? "" : format(XorStr(", use '%s' instead"), prop.deprecatedSuggestion.c_str());
 
         if (container)
-            emitWarning(*context, LintWarning::Code_DeprecatedApi, location, "Member '%s.%s' is deprecated%s", container, field, suggestion.c_str());
+            emitWarning(*context, LintWarning::Code_DeprecatedApi, location, XorStr("Member '%s.%s' is deprecated%s"), container, field, suggestion.c_str());
         else
-            emitWarning(*context, LintWarning::Code_DeprecatedApi, location, "Member '%s' is deprecated%s", field, suggestion.c_str());
+            emitWarning(*context, LintWarning::Code_DeprecatedApi, location, XorStr("Member '%s' is deprecated%s"), field, suggestion.c_str());
     }
 };
 
 class LintTableOperations : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         if (!context.module)
             return;
@@ -2184,7 +2184,7 @@ private:
 
         AstExpr** args = node->args.data;
 
-        if (func->index == "insert" && node->args.size == 2)
+        if (func->index == XorStr("insert") && node->args.size == 2)
         {
             if (AstExprCall* tail = args[1]->as<AstExprCall>())
             {
@@ -2195,37 +2195,37 @@ private:
                     if (ret > 1)
                         emitWarning(*context, LintWarning::Code_TableOperations, tail->location,
                             "table.insert may change behavior if the call returns more than one result; consider adding parentheses around second "
-                            "argument");
+                            XorStr("argument"));
                 }
             }
         }
 
-        if (func->index == "insert" && node->args.size >= 3)
+        if (func->index == XorStr("insert") && node->args.size >= 3)
         {
             // table.insert(t, 0, ?)
             if (isConstant(args[1], 0.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                    XorStr("table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?"));
 
             // table.insert(t, #t, ?)
             if (isLength(args[1], args[0]))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
                     "table.insert will insert the value before the last element, which is likely a bug; consider removing the second argument or "
-                    "wrap it in parentheses to silence");
+                    XorStr("wrap it in parentheses to silence"));
 
             // table.insert(t, #t+1, ?)
             if (AstExprBinary* add = args[1]->as<AstExprBinary>();
                 add && add->op == AstExprBinary::Add && isLength(add->left, args[0]) && isConstant(add->right, 1.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.insert will append the value to the table; consider removing the second argument for efficiency");
+                    XorStr("table.insert will append the value to the table; consider removing the second argument for efficiency"));
         }
 
-        if (func->index == "remove" && node->args.size >= 2)
+        if (func->index == XorStr("remove") && node->args.size >= 2)
         {
             // table.remove(t, 0)
             if (isConstant(args[1], 0.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.remove uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                    XorStr("table.remove uses index 0 but arrays are 1-based; did you mean 1 instead?"));
 
             // note: it's tempting to check for table.remove(t, #t), which is equivalent to table.remove(t), but it's correct, occurs frequently,
             // and also reads better.
@@ -2235,33 +2235,33 @@ private:
                 sub && sub->op == AstExprBinary::Sub && isLength(sub->left, args[0]) && isConstant(sub->right, 1.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
                     "table.remove will remove the value before the last element, which is likely a bug; consider removing the second argument or "
-                    "wrap it in parentheses to silence");
+                    XorStr("wrap it in parentheses to silence"));
         }
 
-        if (func->index == "move" && node->args.size >= 4)
+        if (func->index == XorStr("move") && node->args.size >= 4)
         {
             // table.move(t, 0, _, _)
             if (isConstant(args[1], 0.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                    XorStr("table.move uses index 0 but arrays are 1-based; did you mean 1 instead?"));
 
             // table.move(t, _, _, 0)
             else if (isConstant(args[3], 0.0))
                 emitWarning(*context, LintWarning::Code_TableOperations, args[3]->location,
-                    "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                    XorStr("table.move uses index 0 but arrays are 1-based; did you mean 1 instead?"));
         }
 
-        if (func->index == "create" && node->args.size == 2)
+        if (func->index == XorStr("create") && node->args.size == 2)
         {
             // table.create(n, {...})
             if (args[1]->is<AstExprTable>())
                 emitWarning(*context, LintWarning::Code_TableOperations, args[1]->location,
-                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+                    XorStr("table.create with a table literal will reuse the same object for all elements; consider using a for loop instead"));
 
             // table.create(n, {...} :: ?)
             if (AstExprTypeAssertion* as = args[1]->as<AstExprTypeAssertion>(); as && as->expr->is<AstExprTable>())
                 emitWarning(*context, LintWarning::Code_TableOperations, as->expr->location,
-                    "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+                    XorStr("table.create with a table literal will reuse the same object for all elements; consider using a for loop instead"));
         }
 
         return true;
@@ -2303,7 +2303,7 @@ private:
 class LintDuplicateCondition : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintDuplicateCondition pass{&context};
         context.root->visit(&pass);
@@ -2470,7 +2470,7 @@ private:
 class LintDuplicateLocal : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintDuplicateLocal pass;
         pass.context = &context;
@@ -2504,10 +2504,10 @@ private:
             if (local->shadow && locals[local->shadow] == node && !ignoreDuplicate(local))
             {
                 if (local->shadow->location.begin.line == local->location.begin.line)
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Variable '%s' already defined on column %d",
+                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, XorStr("Variable '%s' already defined on column %d"),
                         local->name.value, local->shadow->location.begin.column + 1);
                 else
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Variable '%s' already defined on line %d",
+                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, XorStr("Variable '%s' already defined on line %d"),
                         local->name.value, local->shadow->location.begin.line + 1);
             }
         }
@@ -2530,12 +2530,12 @@ private:
             if (local->shadow && locals[local->shadow] == node && !ignoreDuplicate(local))
             {
                 if (local->shadow == node->self)
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter 'self' already defined implicitly");
+                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, XorStr("Function parameter 'self' already defined implicitly"));
                 else if (local->shadow->location.begin.line == local->location.begin.line)
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter '%s' already defined on column %d",
+                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, XorStr("Function parameter '%s' already defined on column %d"),
                         local->name.value, local->shadow->location.begin.column + 1);
                 else
-                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, "Function parameter '%s' already defined on line %d",
+                    emitWarning(*context, LintWarning::Code_DuplicateLocal, local->location, XorStr("Function parameter '%s' already defined on line %d"),
                         local->name.value, local->shadow->location.begin.line + 1);
             }
         }
@@ -2545,14 +2545,14 @@ private:
 
     bool ignoreDuplicate(AstLocal* local)
     {
-        return local->name == "_";
+        return local->name == XorStr("_");
     }
 };
 
 class LintMisleadingAndOr : AstVisitor
 {
 public:
-    LUAU_NOINLINE static void process(LintContext& context)
+    lluz_NOINLINE static void process(LintContext& context)
     {
         LintMisleadingAndOr pass;
         pass.context = &context;
@@ -2616,10 +2616,10 @@ static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, 
 
 static const char* fuzzyMatch(std::string_view str, const char** array, size_t size)
 {
-    if (FInt::LuauSuggestionDistance == 0)
+    if (FInt::LluSuggestionDistance == 0)
         return nullptr;
 
-    size_t bestDistance = FInt::LuauSuggestionDistance;
+    size_t bestDistance = FInt::LluSuggestionDistance;
     size_t bestMatch = size;
 
     for (size_t i = 0; i < size; ++i)
@@ -2649,14 +2649,14 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
         if (!hc.header)
         {
             emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                "Comment directive is ignored because it is placed after the first non-comment token");
+                XorStr("Comment directive is ignored because it is placed after the first non-comment token"));
         }
         else
         {
-            size_t space = hc.content.find_first_of(" \t");
+            size_t space = hc.content.find_first_of(XorStr(" \t"));
             std::string_view first = std::string_view(hc.content).substr(0, space);
 
-            if (first == "nolint")
+            if (first == XorStr("nolint"))
             {
                 size_t notspace = hc.content.find_first_not_of(" \t", space);
 
@@ -2674,34 +2674,19 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                             "nolint directive refers to unknown lint rule '%s'; did you mean '%s'?", rule, suggestion);
                     else
                         emitWarning(
-                            context, LintWarning::Code_CommentDirective, hc.location, "nolint directive refers to unknown lint rule '%s'", rule);
+                            context, LintWarning::Code_CommentDirective, hc.location, XorStr("nolint directive refers to unknown lint rule '%s'"), rule);
                 }
             }
-            else if (first == "nocheck" || first == "nonstrict" || first == "strict")
+            else if (first == XorStr("nocheck") || first == XorStr("nonstrict") || first == XorStr("strict"))
             {
                 if (space != std::string::npos)
                     emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                        "Comment directive with the type checking mode has extra symbols at the end of the line");
+                        XorStr("Comment directive with the type checking mode has extra symbols at the end of the line"));
                 else if (seenMode)
                     emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                        "Comment directive with the type checking mode has already been used");
+                        XorStr("Comment directive with the type checking mode has already been used"));
                 else
                     seenMode = true;
-            }
-            else if (first == "optimize")
-            {
-                size_t notspace = hc.content.find_first_not_of(" \t", space);
-
-                if (space == std::string::npos || notspace == std::string::npos)
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "optimize directive requires an optimization level");
-                else
-                {
-                    const char* level = hc.content.c_str() + notspace;
-
-                    if (strcmp(level, "0") && strcmp(level, "1") && strcmp(level, "2"))
-                        emitWarning(context, LintWarning::Code_CommentDirective, hc.location,
-                            "optimize directive uses unknown optimization level '%s', 0..2 expected", level);
-                }
             }
             else
             {
@@ -2710,14 +2695,13 @@ static void lintComments(LintContext& context, const std::vector<HotComment>& ho
                     "nocheck",
                     "nonstrict",
                     "strict",
-                    "optimize",
                 };
 
                 if (const char* suggestion = fuzzyMatch(first, kHotComments, std::size(kHotComments)))
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'; did you mean '%s'?",
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, XorStr("Unknown comment directive '%.*s'; did you mean '%s'?"),
                         int(first.size()), first.data(), suggestion);
                 else
-                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, "Unknown comment directive '%.*s'", int(first.size()),
+                    emitWarning(context, LintWarning::Code_CommentDirective, hc.location, XorStr("Unknown comment directive '%.*s'"), int(first.size()),
                         first.data());
             }
         }
@@ -2737,7 +2721,7 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
 
     context.options = options;
     context.root = root;
-    context.placeholder = names.get("_");
+    context.placeholder = names.get(XorStr("_"));
     context.scope = env;
     context.module = module;
 
@@ -2817,7 +2801,7 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
 
 const char* LintWarning::getName(Code code)
 {
-    LUAU_ASSERT(unsigned(code) < Code__Count);
+    lluz_ASSERT(unsigned(code) < Code__Count);
 
     return kWarningNames[code];
 }
@@ -2882,4 +2866,4 @@ void fuzzFormatString(const char* data, size_t size)
     LintFormatString::fuzz(data, size);
 }
 
-} // namespace Luau
+} // namespace lluz

@@ -1,10 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/RequireTracer.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/RequireTracer.h"
 
-#include "Luau/Ast.h"
-#include "Luau/Module.h"
+#include "lluz/Ast.h"
+#include "lluz/Module.h"
 
-namespace Luau
+namespace lluz
 {
 
 struct RequireTracer : AstVisitor
@@ -27,7 +27,7 @@ struct RequireTracer : AstVisitor
     {
         AstExprGlobal* global = expr->func->as<AstExprGlobal>();
 
-        if (global && global->name == "require" && expr->args.size >= 1)
+        if (global && global->name == XorStr("require") && expr->args.size >= 1)
             requireCalls.push_back(expr);
 
         return true;
@@ -163,4 +163,4 @@ RequireTraceResult traceRequires(FileResolver* fileResolver, AstStatBlock* root,
     return result;
 }
 
-} // namespace Luau
+} // namespace lluz

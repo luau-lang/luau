@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Unifiable.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Unifiable.h"
 
-namespace Luau
+namespace lluz
 {
 namespace Unifiable
 {
@@ -12,7 +12,7 @@ Free::Free(TypeLevel level)
 {
 }
 
-Free::Free(Scope* scope)
+Free::Free(Scope2* scope)
     : scope(scope)
 {
 }
@@ -39,7 +39,7 @@ Generic::Generic(const Name& name)
 {
 }
 
-Generic::Generic(Scope* scope)
+Generic::Generic(Scope2* scope)
     : index(++nextIndex)
     , scope(scope)
 {
@@ -53,7 +53,7 @@ Generic::Generic(TypeLevel level, const Name& name)
 {
 }
 
-Generic::Generic(Scope* scope, const Name& name)
+Generic::Generic(Scope2* scope, const Name& name)
     : index(++nextIndex)
     , scope(scope)
     , name(name)
@@ -71,4 +71,4 @@ Error::Error()
 int Error::nextIndex = 0;
 
 } // namespace Unifiable
-} // namespace Luau
+} // namespace lluz

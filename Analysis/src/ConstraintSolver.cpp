@@ -1,51 +1,51 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/ConstraintSolver.h"
-#include "Luau/Instantiation.h"
-#include "Luau/Location.h"
-#include "Luau/Quantify.h"
-#include "Luau/ToString.h"
-#include "Luau/Unifier.h"
+#include "lluz/ConstraintSolver.h"
+#include "lluz/Instantiation.h"
+#include "lluz/Location.h"
+#include "lluz/Quantify.h"
+#include "lluz/ToString.h"
+#include "lluz/Unifier.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
-LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
+lluz_FASTFLAGVARIABLE(DebugLluLogSolver, false);
+lluz_FASTFLAGVARIABLE(DebugLluLogSolverToJson, false);
 
-namespace Luau
+namespace lluz
 {
 
-[[maybe_unused]] static void dumpBindings(NotNull<Scope> scope, ToStringOptions& opts)
+[[maybe_unused]] static void dumpBindings(NotNull<Scope2> scope, ToStringOptions& opts)
 {
     for (const auto& [k, v] : scope->bindings)
     {
-        auto d = toStringDetailed(v.typeId, opts);
+        auto d = toStringDetailed(v, opts);
         opts.nameMap = d.nameMap;
         printf("\t%s : %s\n", k.c_str(), d.name.c_str());
     }
 
-    for (NotNull<Scope> child : scope->children)
+    for (NotNull<Scope2> child : scope->children)
         dumpBindings(child, opts);
 }
 
-static void dumpConstraints(NotNull<Scope> scope, ToStringOptions& opts)
+static void dumpConstraints(NotNull<Scope2> scope, ToStringOptions& opts)
 {
     for (const ConstraintPtr& c : scope->constraints)
     {
         printf("\t%s\n", toString(*c, opts).c_str());
     }
 
-    for (NotNull<Scope> child : scope->children)
+    for (NotNull<Scope2> child : scope->children)
         dumpConstraints(child, opts);
 }
 
-void dump(NotNull<Scope> rootScope, ToStringOptions& opts)
+void dump(NotNull<Scope2> rootScope, ToStringOptions& opts)
 {
-    printf("constraints:\n");
+    printf(XorStr("constraints:\n"));
     dumpConstraints(rootScope, opts);
 }
 
 void dump(ConstraintSolver* cs, ToStringOptions& opts)
 {
-    printf("constraints:\n");
+    printf(XorStr("constraints:\n"));
     for (const Constraint* c : cs->unsolvedConstraints)
     {
         printf("\t%s\n", toString(*c, opts).c_str());
@@ -55,7 +55,7 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
     }
 }
 
-ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope)
+ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope2> rootScope)
     : arena(arena)
     , constraints(collectConstraints(rootScope))
     , rootScope(rootScope)
@@ -78,13 +78,13 @@ void ConstraintSolver::run()
 
     ToStringOptions opts;
 
-    if (FFlag::DebugLuauLogSolver)
+    if (FFlag::DebugLluLogSolver)
     {
-        printf("Starting solver\n");
+        printf(XorStr("Starting solver\n"));
         dump(this, opts);
     }
 
-    if (FFlag::DebugLuauLogSolverToJson)
+    if (FFlag::DebugLluLogSolverToJson)
     {
         logger.captureBoundarySnapshot(rootScope, unsolvedConstraints);
     }
@@ -102,9 +102,9 @@ void ConstraintSolver::run()
                 continue;
             }
 
-            std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
+            std::string saveMe = FFlag::DebugLluLogSolver ? toString(*c, opts) : std::string{};
 
-            if (FFlag::DebugLuauLogSolverToJson)
+            if (FFlag::DebugLluLogSolverToJson)
             {
                 logger.prepareStepSnapshot(rootScope, c, unsolvedConstraints);
             }
@@ -117,15 +117,15 @@ void ConstraintSolver::run()
             {
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + i);
 
-                if (FFlag::DebugLuauLogSolverToJson)
+                if (FFlag::DebugLluLogSolverToJson)
                 {
                     logger.commitPreparedStepSnapshot();
                 }
 
-                if (FFlag::DebugLuauLogSolver)
+                if (FFlag::DebugLluLogSolver)
                 {
                     if (force)
-                        printf("Force ");
+                        printf(XorStr("Force "));
                     printf("Dispatched\n\t%s\n", saveMe.c_str());
                     dump(this, opts);
                 }
@@ -148,12 +148,12 @@ void ConstraintSolver::run()
             progress |= runSolverPass(true);
     } while (progress);
 
-    if (FFlag::DebugLuauLogSolver)
+    if (FFlag::DebugLluLogSolver)
     {
         dumpBindings(rootScope, opts);
     }
 
-    if (FFlag::DebugLuauLogSolverToJson)
+    if (FFlag::DebugLluLogSolverToJson)
     {
         logger.captureBoundarySnapshot(rootScope, unsolvedConstraints);
         printf("Logger output:\n%s\n", logger.compileOutput().c_str());
@@ -187,7 +187,7 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else if (auto nc = get<NameConstraint>(*constraint))
         success = tryDispatch(*nc, constraint);
     else
-        LUAU_ASSERT(0);
+        lluz_ASSERT(0);
 
     if (success)
     {
@@ -248,7 +248,7 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     Instantiation inst(TxnLog::empty(), arena, TypeLevel{});
 
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
-    LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
+    lluz_ASSERT(instantiated); // TODO FIXME HANDLE THIS
 
     if (isBlocked(c.subType))
         asMutable(c.subType)->ty.emplace<BoundTypeVar>(*instantiated);
@@ -270,7 +270,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
     if (get<FreeTypeVar>(operandType))
         return block(operandType, constraint);
 
-    LUAU_ASSERT(get<BlockedTypeVar>(c.resultType));
+    lluz_ASSERT(get<BlockedTypeVar>(c.resultType));
 
     if (isNumber(operandType) || get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType))
     {
@@ -278,7 +278,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
         return true;
     }
 
-    LUAU_ASSERT(0); // TODO metatable handling
+    lluz_ASSERT(0); // TODO metatable handling
     return false;
 }
 
@@ -364,7 +364,7 @@ void ConstraintSolver::unblock_(BlockedConstraintId progressed)
         // `blockedConstraints` desynchronized at some point. This is problematic
         // because we rely on this count being correct to skip over blocked
         // constraints.
-        LUAU_ASSERT(count > 0);
+        lluz_ASSERT(count > 0);
         count -= 1;
     }
 
@@ -415,4 +415,4 @@ void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack)
     u.log.commit();
 }
 
-} // namespace Luau
+} // namespace lluz

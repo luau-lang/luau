@@ -1,8 +1,8 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/IostreamHelpers.h"
-#include "Luau/ToString.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/IostreamHelpers.h"
+#include "lluz/ToString.h"
 
-namespace Luau
+namespace lluz
 {
 
 std::ostream& operator<<(std::ostream& stream, const Position& position)
@@ -189,7 +189,7 @@ static void errorToString(std::ostream& stream, const T& err)
     else if constexpr (std::is_same_v<T, NormalizationTooComplex>)
         stream << "NormalizationTooComplex { }";
     else
-        static_assert(always_false_v<T>, "Non-exhaustive type switch");
+        static_assert(always_false_v<T>, XorStr("Non-exhaustive type switch"));
 }
 
 std::ostream& operator<<(std::ostream& stream, const TypeErrorData& data)
@@ -221,4 +221,4 @@ std::ostream& operator<<(std::ostream& stream, const TypePackVar& tv)
     return stream << toString(tv);
 }
 
-} // namespace Luau
+} // namespace lluz

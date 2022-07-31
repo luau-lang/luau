@@ -1,15 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/ToDot.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/ToDot.h"
 
-#include "Luau/ToString.h"
-#include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
-#include "Luau/StringUtils.h"
+#include "lluz/ToString.h"
+#include "lluz/TypePack.h"
+#include "lluz/TypeVar.h"
+#include "lluz/StringUtils.h"
 
 #include <unordered_map>
 #include <unordered_set>
 
-namespace Luau
+namespace lluz
 {
 
 namespace
@@ -106,12 +106,12 @@ void StateDot::startNode(int index)
 
 void StateDot::finishNode()
 {
-    formatAppend(result, "];\n");
+    formatAppend(result, XorStr("];\n"));
 }
 
 void StateDot::startNodeLabel()
 {
-    formatAppend(result, "label=\"");
+    formatAppend(result, XorStr("label=\""));
 }
 
 void StateDot::finishNodeLabel(TypeId ty)
@@ -153,8 +153,8 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNodeLabel(ty);
         finishNode();
 
-        visitChild(ftv->argTypes, index, "arg");
-        visitChild(ftv->retTypes, index, "ret");
+        visitChild(ftv->argTypes, index, XorStr("arg"));
+        visitChild(ftv->retTypes, index, XorStr("ret"));
     }
     else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
@@ -168,20 +168,20 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNode();
 
         if (ttv->boundTo)
-            return visitChild(*ttv->boundTo, index, "boundTo");
+            return visitChild(*ttv->boundTo, index, XorStr("boundTo"));
 
         for (const auto& [name, prop] : ttv->props)
             visitChild(prop.type, index, name.c_str());
         if (ttv->indexer)
         {
-            visitChild(ttv->indexer->indexType, index, "[index]");
-            visitChild(ttv->indexer->indexResultType, index, "[value]");
+            visitChild(ttv->indexer->indexType, index, XorStr("[index]"));
+            visitChild(ttv->indexer->indexResultType, index, XorStr("[value]"));
         }
         for (TypeId itp : ttv->instantiatedTypeParams)
-            visitChild(itp, index, "typeParam");
+            visitChild(itp, index, XorStr("typeParam"));
 
         for (TypePackId itp : ttv->instantiatedTypePackParams)
-            visitChild(itp, index, "typePackParam");
+            visitChild(itp, index, XorStr("typePackParam"));
     }
     else if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
     {
@@ -189,8 +189,8 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNodeLabel(ty);
         finishNode();
 
-        visitChild(mtv->table, index, "table");
-        visitChild(mtv->metatable, index, "metatable");
+        visitChild(mtv->table, index, XorStr("table"));
+        visitChild(mtv->metatable, index, XorStr("metatable"));
     }
     else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
     {
@@ -262,10 +262,10 @@ void StateDot::visitChildren(TypeId ty, int index)
             visitChild(prop.type, index, name.c_str());
 
         if (ctv->parent)
-            visitChild(*ctv->parent, index, "[parent]");
+            visitChild(*ctv->parent, index, XorStr("[parent]"));
 
         if (ctv->metatable)
-            visitChild(*ctv->metatable, index, "[metatable]");
+            visitChild(*ctv->metatable, index, XorStr("[metatable]"));
     }
     else if (const SingletonTypeVar* stv = get<SingletonTypeVar>(ty))
     {
@@ -283,7 +283,7 @@ void StateDot::visitChildren(TypeId ty, int index)
             res += bs->value ? "true" : "false";
         }
         else
-            LUAU_ASSERT(!"unknown singleton type");
+            lluz_ASSERT(!XorStr("unknown singleton type"));
 
         formatAppend(result, "SingletonTypeVar %s", res.c_str());
         finishNodeLabel(ty);
@@ -291,7 +291,7 @@ void StateDot::visitChildren(TypeId ty, int index)
     }
     else
     {
-        LUAU_ASSERT(!"unknown type kind");
+        lluz_ASSERT(!XorStr("unknown type kind"));
         finishNodeLabel(ty);
         finishNode();
     }
@@ -323,7 +323,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
         for (TypeId tv : tpp->head)
             visitChild(tv, index);
         if (tpp->tail)
-            visitChild(*tpp->tail, index, "tail");
+            visitChild(*tpp->tail, index, XorStr("tail"));
     }
     else if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
     {
@@ -356,7 +356,7 @@ void StateDot::visitChildren(TypePackId tp, int index)
     }
     else
     {
-        LUAU_ASSERT(!"unknown type pack kind");
+        lluz_ASSERT(!XorStr("unknown type pack kind"));
         finishNodeLabel(tp);
         finishNode();
     }
@@ -406,4 +406,4 @@ void dumpDot(TypePackId tp)
     printf("%s\n", toDot(tp).c_str());
 }
 
-} // namespace Luau
+} // namespace lluz

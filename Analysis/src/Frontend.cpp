@@ -1,33 +1,33 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Frontend.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Frontend.h"
 
-#include "Luau/Clone.h"
-#include "Luau/Common.h"
-#include "Luau/Config.h"
-#include "Luau/ConstraintGraphBuilder.h"
-#include "Luau/ConstraintSolver.h"
-#include "Luau/FileResolver.h"
-#include "Luau/Parser.h"
-#include "Luau/Scope.h"
-#include "Luau/StringUtils.h"
-#include "Luau/TimeTrace.h"
-#include "Luau/TypeChecker2.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/Variant.h"
+#include "lluz/Clone.h"
+#include "lluz/Common.h"
+#include "lluz/Config.h"
+#include "lluz/ConstraintGraphBuilder.h"
+#include "lluz/ConstraintSolver.h"
+#include "lluz/FileResolver.h"
+#include "lluz/Parser.h"
+#include "lluz/Scope.h"
+#include "lluz/StringUtils.h"
+#include "lluz/TimeTrace.h"
+#include "lluz/TypeChecker2.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/Variant.h"
 
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
 
-LUAU_FASTINT(LuauTypeInferIterationLimit)
-LUAU_FASTINT(LuauTarjanChildLimit)
-LUAU_FASTFLAG(LuauInferInNoCheckMode)
-LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
-LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
-LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
-LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
+lluz_FASTINT(LluTypeInferIterationLimit)
+lluz_FASTINT(LluTarjanChildLimit)
+lluz_FASTFLAG(LluInferInNoCheckMode)
+lluz_FASTFLAGVARIABLE(LluKnowsTheDataModel3, false)
+lluz_FASTFLAGVARIABLE(LlluztocompleteDynamicLimits, false)
+lluz_FASTINTVARIABLE(LlluztocompleteCheckTimeoutMs, 100)
+lluz_FASTFLAGVARIABLE(DebugLluDeferredConstraintResolution, false)
 
-namespace Luau
+namespace lluz
 {
 
 std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments)
@@ -37,13 +37,13 @@ std::optional<Mode> parseMode(const std::vector<HotComment>& hotcomments)
         if (!hc.header)
             continue;
 
-        if (hc.content == "nocheck")
+        if (hc.content == XorStr("nocheck"))
             return Mode::NoCheck;
 
-        if (hc.content == "nonstrict")
+        if (hc.content == XorStr("nonstrict"))
             return Mode::Nonstrict;
 
-        if (hc.content == "strict")
+        if (hc.content == XorStr("strict"))
             return Mode::Strict;
     }
 
@@ -79,20 +79,20 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
 
 LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
 {
-    LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
+    lluz_TIMETRACE_SCOPE(XorStr("loadDefinitionFile", "Frontend"));
 
-    Luau::Allocator allocator;
-    Luau::AstNameTable names(allocator);
+    lluz::Allocator allocator;
+    lluz::AstNameTable names(allocator);
 
     ParseOptions options;
     options.allowDeclarationSyntax = true;
 
-    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
+    lluz::ParseResult parseResult = lluz::Parser::parse(source.data(), source.size(), names, allocator, options);
 
     if (parseResult.errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, nullptr};
 
-    Luau::SourceModule module;
+    lluz::SourceModule module;
     module.root = parseResult.root;
     module.mode = Mode::Definition;
 
@@ -169,7 +169,7 @@ std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleN
 
     auto it = segments.begin();
 
-    if (*it == "script" && !currentModuleName.empty())
+    if (*it == XorStr("script") && !currentModuleName.empty())
     {
         result = split(currentModuleName, '/');
         ++it;
@@ -177,13 +177,13 @@ std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleN
 
     for (; it != segments.end(); ++it)
     {
-        if (result.size() > 1 && *it == "Parent")
+        if (result.size() > 1 && *it == XorStr("Parent"))
             result.pop_back();
         else
             result.push_back(*it);
     }
 
-    return join(result, "/");
+    return join(result, XorStr("/"));
 }
 
 std::optional<std::string> pathExprToModuleName(const ModuleName& currentModuleName, const AstExpr& pathExpr)
@@ -271,7 +271,7 @@ std::vector<RequireCycle> getRequireCycles(
             if (top == nullptr)
             {
                 // special marker for post-order processing
-                LUAU_ASSERT(!path.empty());
+                lluz_ASSERT(!path.empty());
                 top = path.back();
                 path.pop_back();
 
@@ -353,8 +353,8 @@ FrontendModuleResolver::FrontendModuleResolver(Frontend* frontend)
 
 CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOptions> optionOverride)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::check", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::check", "Frontend"));
+    lluz_TIMETRACE_ARGUMENT("name", name.c_str());
 
     FrontendOptions frontendOptions = optionOverride.value_or(options);
     CheckResult checkResult;
@@ -386,17 +386,17 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
     // Keep track of which AST nodes we've reported cycles in
     std::unordered_set<AstNode*> reportedCycles;
 
-    double autocompleteTimeLimit = FInt::LuauAutocompleteCheckTimeoutMs / 1000.0;
+    double autocompleteTimeLimit = FInt::LlluztocompleteCheckTimeoutMs / 1000.0;
 
     for (const ModuleName& moduleName : buildQueue)
     {
-        LUAU_ASSERT(sourceNodes.count(moduleName));
+        lluz_ASSERT(sourceNodes.count(moduleName));
         SourceNode& sourceNode = sourceNodes[moduleName];
 
         if (!sourceNode.hasDirtyModule(frontendOptions.forAutocomplete))
             continue;
 
-        LUAU_ASSERT(sourceModules.count(moduleName));
+        lluz_ASSERT(sourceModules.count(moduleName));
         SourceModule& sourceModule = sourceModules[moduleName];
 
         const Config& config = configResolver->getConfig(moduleName);
@@ -430,20 +430,20 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             else
                 typeCheckerForAutocomplete.finishTime = std::nullopt;
 
-            if (FFlag::LuauAutocompleteDynamicLimits)
+            if (FFlag::LlluztocompleteDynamicLimits)
             {
                 // TODO: This is a dirty ad hoc solution for autocomplete timeouts
                 // We are trying to dynamically adjust our existing limits to lower total typechecking time under the limit
                 // so that we'll have type information for the whole file at lower quality instead of a full abort in the middle
-                if (FInt::LuauTarjanChildLimit > 0)
+                if (FInt::LluTarjanChildLimit > 0)
                     typeCheckerForAutocomplete.instantiationChildLimit =
-                        std::max(1, int(FInt::LuauTarjanChildLimit * sourceNode.autocompleteLimitsMult));
+                        std::max(1, int(FInt::LluTarjanChildLimit * sourceNode.autocompleteLimitsMult));
                 else
                     typeCheckerForAutocomplete.instantiationChildLimit = std::nullopt;
 
-                if (FInt::LuauTypeInferIterationLimit > 0)
+                if (FInt::LluTypeInferIterationLimit > 0)
                     typeCheckerForAutocomplete.unifierIterationLimit =
-                        std::max(1, int(FInt::LuauTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
+                        std::max(1, int(FInt::LluTypeInferIterationLimit * sourceNode.autocompleteLimitsMult));
                 else
                     typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
             }
@@ -457,10 +457,10 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             {
                 checkResult.timeoutHits.push_back(moduleName);
 
-                if (FFlag::LuauAutocompleteDynamicLimits)
+                if (FFlag::LlluztocompleteDynamicLimits)
                     sourceNode.autocompleteLimitsMult = sourceNode.autocompleteLimitsMult / 2.0;
             }
-            else if (FFlag::LuauAutocompleteDynamicLimits && duration < autocompleteTimeLimit / 2.0)
+            else if (FFlag::LlluztocompleteDynamicLimits && duration < autocompleteTimeLimit / 2.0)
             {
                 sourceNode.autocompleteLimitsMult = std::min(sourceNode.autocompleteLimitsMult * 2.0, 1.0);
             }
@@ -474,7 +474,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         typeChecker.requireCycles = requireCycles;
 
-        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, environmentScope)
+        ModulePtr module = FFlag::DebugLluDeferredConstraintResolution ? check(sourceModule, mode, environmentScope)
                                                                         : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
@@ -529,8 +529,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
 bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& checkResult, const ModuleName& root, bool forAutocomplete)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::parseGraph", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("root", root.c_str());
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::parseGraph", "Frontend"));
+    lluz_TIMETRACE_ARGUMENT("root", root.c_str());
 
     // https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
     enum Mark
@@ -559,14 +559,14 @@ bool Frontend::parseGraph(std::vector<ModuleName>& buildQueue, CheckResult& chec
         if (top == nullptr)
         {
             // special marker for post-order processing
-            LUAU_ASSERT(!path.empty());
+            lluz_ASSERT(!path.empty());
 
             top = path.back();
             path.pop_back();
 
             // note: topseen ref gets invalidated in any seen[] access, beware - only one seen[] access per iteration!
             Mark& topseen = seen[top];
-            LUAU_ASSERT(topseen == Temporary);
+            lluz_ASSERT(topseen == Temporary);
             topseen = Permanent;
 
             buildQueue.push_back(top->name);
@@ -648,10 +648,10 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
     return result;
 }
 
-LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOptions> enabledLintWarnings)
+LintResult Frontend::lint(const ModuleName& name, std::optional<lluz::LintOptions> enabledLintWarnings)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::lint", "Frontend"));
+    lluz_TIMETRACE_ARGUMENT("name", name.c_str());
 
     CheckResult checkResult;
     auto [_sourceNode, sourceModule] = getSourceNode(checkResult, name);
@@ -662,10 +662,33 @@ LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOption
     return lint(*sourceModule, enabledLintWarnings);
 }
 
-LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)
+std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view source, std::optional<lluz::LintOptions> enabledLintWarnings)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::lintFragment", "Frontend"));
+
+    const Config& config = configResolver->getConfig(XorStr(""));
+
+    SourceModule sourceModule = parse(ModuleName{}, source, config.parseOptions);
+
+    uint64_t ignoreLints = LintWarning::parseMask(sourceModule.hotcomments);
+
+    lluz::LintOptions lintOptions = enabledLintWarnings.value_or(config.enabledLint);
+    lintOptions.warningMask &= ~ignoreLints;
+
+    double timestamp = getTimestamp();
+
+    std::vector<LintWarning> warnings = lluz::lint(sourceModule.root, *sourceModule.names.get(), typeChecker.globalScope, nullptr,
+        sourceModule.hotcomments, enabledLintWarnings.value_or(config.enabledLint));
+
+    stats.timeLint += getTimestamp() - timestamp;
+
+    return {std::move(sourceModule), classifyLints(warnings, config)};
+}
+
+LintResult Frontend::lint(const SourceModule& module, std::optional<lluz::LintOptions> enabledLintWarnings)
+{
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::lint", "Frontend"));
+    lluz_TIMETRACE_ARGUMENT("module", module.name.c_str());
 
     const Config& config = configResolver->getConfig(module.name);
 
@@ -677,12 +700,12 @@ LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOp
     Mode mode = module.mode.value_or(config.mode);
     if (mode != Mode::NoCheck)
     {
-        options.disableWarning(Luau::LintWarning::Code_UnknownGlobal);
+        options.disableWarning(lluz::LintWarning::Code_UnknownGlobal);
     }
 
     if (mode == Mode::Strict)
     {
-        options.disableWarning(Luau::LintWarning::Code_ImplicitReturn);
+        options.disableWarning(lluz::LintWarning::Code_ImplicitReturn);
     }
 
     ScopePtr environmentScope = getModuleEnvironment(module, config);
@@ -691,7 +714,7 @@ LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOp
 
     double timestamp = getTimestamp();
 
-    std::vector<LintWarning> warnings = Luau::lint(module.root, *module.names, environmentScope, modulePtr.get(), module.hotcomments, options);
+    std::vector<LintWarning> warnings = lluz::lint(module.root, *module.names, environmentScope, modulePtr.get(), module.hotcomments, options);
 
     stats.timeLint += getTimestamp() - timestamp;
 
@@ -729,7 +752,7 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
         ModuleName next = std::move(queue.back());
         queue.pop_back();
 
-        LUAU_ASSERT(sourceNodes.count(next) > 0);
+        lluz_ASSERT(sourceNodes.count(next) > 0);
         SourceNode& sourceNode = sourceNodes[next];
 
         if (markedDirty)
@@ -766,35 +789,35 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-NotNull<Scope> Frontend::getGlobalScope()
+NotNull<Scope2> Frontend::getGlobalScope2()
 {
-    if (!globalScope)
+    if (!globalScope2)
     {
         const SingletonTypes& singletonTypes = getSingletonTypes();
 
-        globalScope = std::make_unique<Scope>(singletonTypes.anyTypePack);
-        globalScope->typeBindings["nil"] = singletonTypes.nilType;
-        globalScope->typeBindings["number"] = singletonTypes.numberType;
-        globalScope->typeBindings["string"] = singletonTypes.stringType;
-        globalScope->typeBindings["boolean"] = singletonTypes.booleanType;
-        globalScope->typeBindings["thread"] = singletonTypes.threadType;
+        globalScope2 = std::make_unique<Scope2>();
+        globalScope2->typeBindings["nil"] = singletonTypes.nilType;
+        globalScope2->typeBindings["number"] = singletonTypes.numberType;
+        globalScope2->typeBindings["string"] = singletonTypes.stringType;
+        globalScope2->typeBindings["boolean"] = singletonTypes.booleanType;
+        globalScope2->typeBindings["thread"] = singletonTypes.threadType;
     }
 
-    return NotNull(globalScope.get());
+    return NotNull(globalScope2.get());
 }
 
 ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope)
 {
     ModulePtr result = std::make_shared<Module>();
 
-    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope()};
+    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope2()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
     ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope)};
     cs.run();
 
-    result->scopes = std::move(cgb.scopes);
+    result->scope2s = std::move(cgb.scopes);
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
@@ -803,7 +826,7 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
 
     result->clonePublicInterface(iceHandler);
 
-    Luau::check(sourceModule, result.get());
+    lluz::check(sourceModule, result.get());
 
     return result;
 }
@@ -811,8 +834,8 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
 // Read AST into sourceModules if necessary.  Trace require()s.  Report parse errors.
 std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& checkResult, const ModuleName& name)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::getSourceNode", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::getSourceNode", "Frontend"));
+    lluz_TIMETRACE_ARGUMENT("name", name.c_str());
 
     auto it = sourceNodes.find(name);
     if (it != sourceNodes.end() && !it->second.hasDirtySourceModule())
@@ -822,7 +845,7 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
             return {&it->second, &moduleIt->second};
         else
         {
-            LUAU_ASSERT(!"Everything in sourceNodes should also be in sourceModules");
+            lluz_ASSERT(!XorStr("Everything in sourceNodes should also be in sourceModules"));
             return {&it->second, nullptr};
         }
     }
@@ -884,19 +907,19 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
  * If the file has syntax errors, we report them and synthesize an empty AST if it's not available.
  * This suppresses the Unknown require error and allows us to make a best effort to typecheck code that require()s
  * something that has broken syntax.
- * We also translate Luau::ParseError into a Luau::TypeError so that we can use a vector<TypeError> to describe the
+ * We also translate lluz::ParseError into a lluz::TypeError so that we can use a vector<TypeError> to describe the
  * result of the check()
  */
 SourceModule Frontend::parse(const ModuleName& name, std::string_view src, const ParseOptions& parseOptions)
 {
-    LUAU_TIMETRACE_SCOPE("Frontend::parse", "Frontend");
-    LUAU_TIMETRACE_ARGUMENT("name", name.c_str());
+    lluz_TIMETRACE_SCOPE(XorStr("Frontend::parse", "Frontend"));
+    lluz_TIMETRACE_ARGUMENT("name", name.c_str());
 
     SourceModule sourceModule;
 
     double timestamp = getTimestamp();
 
-    auto parseResult = Luau::Parser::parse(src.data(), src.size(), *sourceModule.names, *sourceModule.allocator, parseOptions);
+    auto parseResult = lluz::Parser::parse(src.data(), src.size(), *sourceModule.names, *sourceModule.allocator, parseOptions);
 
     stats.timeParse += getTimestamp() - timestamp;
     stats.files++;
@@ -935,7 +958,7 @@ std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const Module
     {
         // CLI-43699
         // If we can't find the current module name, that's because we bypassed the frontend's initializer
-        // and called typeChecker.check directly.
+        // and called typeChecker.check directly. (This is done by autocompleteSource, for example).
         // In that case, requires will always fail.
         return std::nullopt;
     }
@@ -970,7 +993,7 @@ std::string FrontendModuleResolver::getHumanReadableModuleName(const ModuleName&
 
 ScopePtr Frontend::addEnvironment(const std::string& environmentName)
 {
-    LUAU_ASSERT(environments.count(environmentName) == 0);
+    lluz_ASSERT(environments.count(environmentName) == 0);
 
     if (environments.count(environmentName) == 0)
     {
@@ -984,14 +1007,14 @@ ScopePtr Frontend::addEnvironment(const std::string& environmentName)
 
 ScopePtr Frontend::getEnvironmentScope(const std::string& environmentName)
 {
-    LUAU_ASSERT(environments.count(environmentName) > 0);
+    lluz_ASSERT(environments.count(environmentName) > 0);
 
     return environments[environmentName];
 }
 
 void Frontend::registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, ScopePtr)> applicator)
 {
-    LUAU_ASSERT(builtinDefinitions.count(name) == 0);
+    lluz_ASSERT(builtinDefinitions.count(name) == 0);
 
     if (builtinDefinitions.count(name) == 0)
         builtinDefinitions[name] = applicator;
@@ -999,7 +1022,7 @@ void Frontend::registerBuiltinDefinition(const std::string& name, std::function<
 
 void Frontend::applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName)
 {
-    LUAU_ASSERT(builtinDefinitions.count(definitionName) > 0);
+    lluz_ASSERT(builtinDefinitions.count(definitionName) > 0);
 
     if (builtinDefinitions.count(definitionName) > 0)
         builtinDefinitions[definitionName](typeChecker, getEnvironmentScope(environmentName));
@@ -1033,4 +1056,4 @@ void Frontend::clear()
     requireTrace.clear();
 }
 
-} // namespace Luau
+} // namespace lluz

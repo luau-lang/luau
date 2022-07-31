@@ -1,28 +1,28 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/Quantify.h"
+#include "lluz/Quantify.h"
 
-#include "Luau/Scope.h"
-#include "Luau/Substitution.h"
-#include "Luau/TxnLog.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/Scope.h"
+#include "lluz/Substitution.h"
+#include "lluz/TxnLog.h"
+#include "lluz/VisitTypeVar.h"
 
-LUAU_FASTFLAG(LuauAlwaysQuantify);
-LUAU_FASTFLAG(DebugLuauSharedSelf)
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauQuantifyConstrained, false)
+lluz_FASTFLAG(LluAlwaysQuantify);
+lluz_FASTFLAG(DebugLluSharedSelf)
+lluz_FASTFLAG(DebugLluDeferredConstraintResolution);
+lluz_FASTFLAGVARIABLE(LluQuantifyConstrained, false)
 
-namespace Luau
+namespace lluz
 {
 
 /// @return true if outer encloses inner
-static bool subsumes(Scope* outer, Scope* inner)
+static bool subsumes(Scope2* outer, Scope2* inner)
 {
     while (inner)
     {
         if (inner == outer)
             return true;
-        inner = inner->parent.get();
+        inner = inner->parent;
     }
 
     return false;
@@ -33,30 +33,30 @@ struct Quantifier final : TypeVarOnceVisitor
     TypeLevel level;
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
-    Scope* scope = nullptr;
+    Scope2* scope = nullptr;
     bool seenGenericType = false;
     bool seenMutableType = false;
 
     explicit Quantifier(TypeLevel level)
         : level(level)
     {
-        LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
+        lluz_ASSERT(!FFlag::DebugLluDeferredConstraintResolution);
     }
 
-    explicit Quantifier(Scope* scope)
+    explicit Quantifier(Scope2* scope)
         : scope(scope)
     {
-        LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
+        lluz_ASSERT(FFlag::DebugLluDeferredConstraintResolution);
     }
 
     /// @return true if outer encloses inner
-    bool subsumes(Scope* outer, Scope* inner)
+    bool subsumes(Scope2* outer, Scope2* inner)
     {
         while (inner)
         {
             if (inner == outer)
                 return true;
-            inner = inner->parent.get();
+            inner = inner->parent;
         }
 
         return false;
@@ -66,10 +66,10 @@ struct Quantifier final : TypeVarOnceVisitor
     {
         seenMutableType = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ftv.scope) : !level.subsumes(ftv.level))
+        if (FFlag::DebugLluDeferredConstraintResolution ? !subsumes(scope, ftv.scope) : !level.subsumes(ftv.level))
             return false;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
+        if (FFlag::DebugLluDeferredConstraintResolution)
             *asMutable(ty) = GenericTypeVar{scope};
         else
             *asMutable(ty) = GenericTypeVar{level};
@@ -81,13 +81,13 @@ struct Quantifier final : TypeVarOnceVisitor
 
     bool visit(TypeId ty, const ConstrainedTypeVar&) override
     {
-        if (FFlag::LuauQuantifyConstrained)
+        if (FFlag::LluQuantifyConstrained)
         {
             ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(ty);
 
             seenMutableType = true;
 
-            if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ctv->scope) : !level.subsumes(ctv->level))
+            if (FFlag::DebugLluDeferredConstraintResolution ? !subsumes(scope, ctv->scope) : !level.subsumes(ctv->level))
                 return false;
 
             std::vector<TypeId> opts = std::move(ctv->parts);
@@ -109,7 +109,7 @@ struct Quantifier final : TypeVarOnceVisitor
 
     bool visit(TypeId ty, const TableTypeVar&) override
     {
-        LUAU_ASSERT(getMutable<TableTypeVar>(ty));
+        lluz_ASSERT(getMutable<TableTypeVar>(ty));
         TableTypeVar& ttv = *getMutable<TableTypeVar>(ty);
 
         if (ttv.state == TableState::Generic)
@@ -118,13 +118,13 @@ struct Quantifier final : TypeVarOnceVisitor
         if (ttv.state == TableState::Free)
             seenMutableType = true;
 
-        if (!FFlag::LuauQuantifyConstrained)
+        if (!FFlag::LluQuantifyConstrained)
         {
             if (ttv.state == TableState::Sealed || ttv.state == TableState::Generic)
                 return false;
         }
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ttv.scope) : !level.subsumes(ttv.level))
+        if (FFlag::DebugLluDeferredConstraintResolution ? !subsumes(scope, ttv.scope) : !level.subsumes(ttv.level))
         {
             if (ttv.state == TableState::Unsealed)
                 seenMutableType = true;
@@ -148,7 +148,7 @@ struct Quantifier final : TypeVarOnceVisitor
     {
         seenMutableType = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ftp.scope) : !level.subsumes(ftp.level))
+        if (FFlag::DebugLluDeferredConstraintResolution ? !subsumes(scope, ftp.scope) : !level.subsumes(ftp.level))
             return false;
 
         *asMutable(tp) = GenericTypePack{level};
@@ -159,7 +159,7 @@ struct Quantifier final : TypeVarOnceVisitor
 
 void quantify(TypeId ty, TypeLevel level)
 {
-    if (FFlag::DebugLuauSharedSelf)
+    if (FFlag::DebugLluSharedSelf)
     {
         ty = follow(ty);
 
@@ -177,7 +177,7 @@ void quantify(TypeId ty, TypeLevel level)
                 if (!ftv || !ftv->hasSelf)
                     continue;
 
-                if (Luau::first(ftv->argTypes) == ttv->selfTy)
+                if (lluz::first(ftv->argTypes) == ttv->selfTy)
                 {
                     ftv->generics.insert(ftv->generics.end(), selfQ.generics.begin(), selfQ.generics.end());
                     ftv->genericPacks.insert(ftv->genericPacks.end(), selfQ.genericPacks.begin(), selfQ.genericPacks.end());
@@ -202,8 +202,8 @@ void quantify(TypeId ty, TypeLevel level)
         q.traverse(ty);
 
         FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
-        LUAU_ASSERT(ftv);
-        if (FFlag::LuauAlwaysQuantify)
+        lluz_ASSERT(ftv);
+        if (FFlag::LluAlwaysQuantify)
         {
             ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
             ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
@@ -216,14 +216,14 @@ void quantify(TypeId ty, TypeLevel level)
     }
 }
 
-void quantify(TypeId ty, Scope* scope)
+void quantify(TypeId ty, Scope2* scope)
 {
     Quantifier q{scope};
     q.traverse(ty);
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
-    LUAU_ASSERT(ftv);
-    if (FFlag::LuauAlwaysQuantify)
+    lluz_ASSERT(ftv);
+    if (FFlag::LluAlwaysQuantify)
     {
         ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
         ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
@@ -240,11 +240,11 @@ void quantify(TypeId ty, Scope* scope)
 
 struct PureQuantifier : Substitution
 {
-    Scope* scope;
+    Scope2* scope;
     std::vector<TypeId> insertedGenerics;
     std::vector<TypePackId> insertedGenericPacks;
 
-    PureQuantifier(TypeArena* arena, Scope* scope)
+    PureQuantifier(TypeArena* arena, Scope2* scope)
         : Substitution(TxnLog::empty(), arena)
         , scope(scope)
     {
@@ -252,7 +252,7 @@ struct PureQuantifier : Substitution
 
     bool isDirty(TypeId ty) override
     {
-        LUAU_ASSERT(ty == follow(ty));
+        lluz_ASSERT(ty == follow(ty));
 
         if (auto ftv = get<FreeTypeVar>(ty))
         {
@@ -288,7 +288,7 @@ struct PureQuantifier : Substitution
         {
             TypeId result = arena->addType(TableTypeVar{});
             TableTypeVar* resultTable = getMutable<TableTypeVar>(result);
-            LUAU_ASSERT(resultTable);
+            lluz_ASSERT(resultTable);
 
             *resultTable = *ttv;
             resultTable->scope = nullptr;
@@ -322,14 +322,14 @@ struct PureQuantifier : Substitution
     }
 };
 
-TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
+TypeId quantify(TypeArena* arena, TypeId ty, Scope2* scope)
 {
     PureQuantifier quantifier{arena, scope};
     std::optional<TypeId> result = quantifier.substitute(ty);
-    LUAU_ASSERT(result);
+    lluz_ASSERT(result);
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(*result);
-    LUAU_ASSERT(ftv);
+    lluz_ASSERT(ftv);
     ftv->generics.insert(ftv->generics.end(), quantifier.insertedGenerics.begin(), quantifier.insertedGenerics.end());
     ftv->genericPacks.insert(ftv->genericPacks.end(), quantifier.insertedGenericPacks.begin(), quantifier.insertedGenericPacks.end());
     ftv->hasNoGenerics = ftv->generics.empty() && ftv->genericPacks.empty();
@@ -337,4 +337,4 @@ TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
     return *result;
 }
 
-} // namespace Luau
+} // namespace lluz

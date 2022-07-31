@@ -1,15 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
 
-#include "Luau/Frontend.h"
-#include "Luau/Symbol.h"
-#include "Luau/Common.h"
-#include "Luau/ToString.h"
+#include "lluz/Frontend.h"
+#include "lluz/Symbol.h"
+#include "lluz/Common.h"
+#include "lluz/ToString.h"
 
 #include <algorithm>
 
-LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
+lluz_FASTFLAGVARIABLE(LluSetMetaTableArgsCheck, false)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -17,7 +16,7 @@ LUAU_FASTFLAG(LuauUnknownAndNeverType)
  * about a function that takes any number of values, but where each value must have some specific type.
  */
 
-namespace Luau
+namespace lluz
 {
 
 static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
@@ -79,12 +78,12 @@ TypeId makeFunction(TypeArena& arena, std::optional<TypeId> selfType, std::initi
     FunctionTypeVar ftv{generics, genericPacks, paramPack, retPack, {}, selfType.has_value()};
 
     if (selfType)
-        ftv.argNames.push_back(Luau::FunctionArgument{"self", {}});
+        ftv.argNames.push_back(lluz::FunctionArgument{"self", {}});
 
     if (paramNames.size() != 0)
     {
         for (auto&& p : paramNames)
-            ftv.argNames.push_back(Luau::FunctionArgument{std::move(p), {}});
+            ftv.argNames.push_back(lluz::FunctionArgument{std::move(p), {}});
     }
     else if (selfType)
     {
@@ -101,7 +100,7 @@ void attachMagicFunction(TypeId ty, MagicFunction fn)
     if (auto ftv = getMutable<FunctionTypeVar>(ty))
         ftv->magicFunction = fn;
     else
-        LUAU_ASSERT(!"Got a non functional type");
+        lluz_ASSERT(!XorStr("Got a non functional type"));
 }
 
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol)
@@ -140,7 +139,7 @@ void addGlobalBinding(TypeChecker& typeChecker, const ScopePtr& scope, const std
 TypeId getGlobalBinding(TypeChecker& typeChecker, const std::string& name)
 {
     auto t = tryGetGlobalBinding(typeChecker, name);
-    LUAU_ASSERT(t.has_value());
+    lluz_ASSERT(t.has_value());
     return t->typeId;
 }
 
@@ -177,34 +176,34 @@ void assignPropDocumentationSymbols(TableTypeVar::Props& props, const std::strin
 
 void registerBuiltinTypes(TypeChecker& typeChecker)
 {
-    LUAU_ASSERT(!typeChecker.globalTypes.typeVars.isFrozen());
-    LUAU_ASSERT(!typeChecker.globalTypes.typePacks.isFrozen());
+    lluz_ASSERT(!typeChecker.globalTypes.typeVars.isFrozen());
+    lluz_ASSERT(!typeChecker.globalTypes.typePacks.isFrozen());
 
     TypeId nilType = typeChecker.nilType;
 
     TypeArena& arena = typeChecker.globalTypes;
 
-    LoadDefinitionFileResult loadResult = Luau::loadDefinitionFile(typeChecker, typeChecker.globalScope, getBuiltinDefinitionSource(), "@luau");
-    LUAU_ASSERT(loadResult.success);
+    LoadDefinitionFileResult loadResult = lluz::loadDefinitionFile(typeChecker, typeChecker.globalScope, getBuiltinDefinitionSource(), XorStr("@lluz"));
+    lluz_ASSERT(loadResult.success);
 
     TypeId genericK = arena.addType(GenericTypeVar{"K"});
     TypeId genericV = arena.addType(GenericTypeVar{"V"});
     TypeId mapOfKtoV = arena.addType(TableTypeVar{{}, TableIndexer(genericK, genericV), typeChecker.globalScope->level, TableState::Generic});
 
     std::optional<TypeId> stringMetatableTy = getMetatable(getSingletonTypes().stringType);
-    LUAU_ASSERT(stringMetatableTy);
+    lluz_ASSERT(stringMetatableTy);
     const TableTypeVar* stringMetatableTable = get<TableTypeVar>(follow(*stringMetatableTy));
-    LUAU_ASSERT(stringMetatableTable);
+    lluz_ASSERT(stringMetatableTable);
 
-    auto it = stringMetatableTable->props.find("__index");
-    LUAU_ASSERT(it != stringMetatableTable->props.end());
+    auto it = stringMetatableTable->props.find(XorStr("__index"));
+    lluz_ASSERT(it != stringMetatableTable->props.end());
 
-    addGlobalBinding(typeChecker, "string", it->second.type, "@luau");
+    addGlobalBinding(typeChecker, XorStr("string"), it->second.type, XorStr("@lluz"));
 
     // next<K, V>(t: Table<K, V>, i: K?) -> (K, V)
     TypePackId nextArgsTypePack = arena.addTypePack(TypePack{{mapOfKtoV, makeOption(typeChecker, arena, genericK)}});
     addGlobalBinding(typeChecker, "next",
-        arena.addType(FunctionTypeVar{{genericK, genericV}, {}, nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})}), "@luau");
+        arena.addType(FunctionTypeVar{{genericK, genericV}, {}, nextArgsTypePack, arena.addTypePack(TypePack{{genericK, genericV}})}), XorStr("@lluz"));
 
     TypePackId pairsArgsTypePack = arena.addTypePack({mapOfKtoV});
 
@@ -212,7 +211,7 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     TypePackId pairsReturnTypePack = arena.addTypePack(TypePack{{pairsNext, mapOfKtoV, nilType}});
 
     // pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K?) -> (K, V), Table<K, V>, nil)
-    addGlobalBinding(typeChecker, "pairs", arena.addType(FunctionTypeVar{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), "@luau");
+    addGlobalBinding(typeChecker, XorStr("pairs"), arena.addType(FunctionTypeVar{{genericK, genericV}, {}, pairsArgsTypePack, pairsReturnTypePack}), XorStr("@lluz"));
 
     TypeId genericMT = arena.addType(GenericTypeVar{"MT"});
 
@@ -221,19 +220,19 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
 
     TypeId tableMetaMT = arena.addType(MetatableTypeVar{tabTy, genericMT});
 
-    addGlobalBinding(typeChecker, "getmetatable", makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@luau");
+    addGlobalBinding(typeChecker, XorStr("getmetatable"), makeFunction(arena, std::nullopt, {genericMT}, {}, {tableMetaMT}, {genericMT}), "@lluz");
 
+    // setmetatable<MT>({ @metatable MT }, MT) -> { @metatable MT }
     // clang-format off
-    // setmetatable<T: {}, MT>(T, MT) -> { @metatable MT, T }
-    addGlobalBinding(typeChecker, "setmetatable",
+    addGlobalBinding(typeChecker, XorStr("setmetatable"),
         arena.addType(
             FunctionTypeVar{
                 {genericMT},
                 {},
-                arena.addTypePack(TypePack{{FFlag::LuauUnknownAndNeverType ? tabTy : tableMetaMT, genericMT}}),
+                arena.addTypePack(TypePack{{tableMetaMT, genericMT}}),
                 arena.addTypePack(TypePack{{tableMetaMT}})
             }
-        ), "@luau"
+        ), XorStr("@lluz")
     );
     // clang-format on
 
@@ -248,20 +247,20 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
         }
     }
 
-    attachMagicFunction(getGlobalBinding(typeChecker, "assert"), magicFunctionAssert);
-    attachMagicFunction(getGlobalBinding(typeChecker, "setmetatable"), magicFunctionSetMetaTable);
-    attachMagicFunction(getGlobalBinding(typeChecker, "select"), magicFunctionSelect);
+    attachMagicFunction(getGlobalBinding(typeChecker, XorStr("assert")), magicFunctionAssert);
+    attachMagicFunction(getGlobalBinding(typeChecker, XorStr("setmetatable")), magicFunctionSetMetaTable);
+    attachMagicFunction(getGlobalBinding(typeChecker, XorStr("select")), magicFunctionSelect);
 
-    if (TableTypeVar* ttv = getMutable<TableTypeVar>(getGlobalBinding(typeChecker, "table")))
+    if (TableTypeVar* ttv = getMutable<TableTypeVar>(getGlobalBinding(typeChecker, XorStr("table"))))
     {
         // tabTy is a generic table type which we can't express via declaration syntax yet
-        ttv->props["freeze"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.freeze");
-        ttv->props["clone"] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), "@luau/global/table.clone");
+        ttv->props[XorStr("freeze")] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), XorStr("@lluz/global/table.freeze"));
+        ttv->props[XorStr("clone")] = makeProperty(makeFunction(arena, std::nullopt, {tabTy}, {tabTy}), XorStr("@lluz/global/table.clone"));
 
-        attachMagicFunction(ttv->props["pack"].type, magicFunctionPack);
+        attachMagicFunction(ttv->props[XorStr("pack")].type, magicFunctionPack);
     }
 
-    attachMagicFunction(getGlobalBinding(typeChecker, "require"), magicFunctionRequire);
+    attachMagicFunction(getGlobalBinding(typeChecker, XorStr("require")), magicFunctionRequire);
 }
 
 static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
@@ -273,7 +272,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
 
     if (expr.args.size <= 0)
     {
-        typechecker.reportError(TypeError{expr.location, GenericError{"select should take 1 or more arguments"}});
+        typechecker.reportError(TypeError{expr.location, GenericError{XorStr("select should take 1 or more arguments")}});
         return std::nullopt;
     }
 
@@ -294,7 +293,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
                 return WithPredicate<TypePackId>{*tail};
         }
 
-        typechecker.reportError(TypeError{arg1->location, GenericError{"bad argument #1 to select (index out of range)"}});
+        typechecker.reportError(TypeError{arg1->location, GenericError{XorStr("bad argument #1 to select (index out of range)")}});
     }
     else if (AstExprConstantString* str = arg1->as<AstExprConstantString>())
     {
@@ -310,24 +309,12 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 {
     auto [paramPack, _predicates] = withPredicate;
 
-    if (FFlag::LuauUnknownAndNeverType)
-    {
-        if (size(paramPack) < 2 && finite(paramPack))
-            return std::nullopt;
-    }
-
     TypeArena& arena = typechecker.currentModule->internalTypes;
 
     std::vector<TypeId> expectedArgs = typechecker.unTypePack(scope, paramPack, 2, expr.location);
 
     TypeId target = follow(expectedArgs[0]);
     TypeId mt = follow(expectedArgs[1]);
-
-    if (FFlag::LuauUnknownAndNeverType)
-    {
-        typechecker.tablify(target);
-        typechecker.tablify(mt);
-    }
 
     if (const auto& tab = get<TableTypeVar>(target))
     {
@@ -337,8 +324,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
         }
         else
         {
-            if (!FFlag::LuauUnknownAndNeverType)
-                typechecker.tablify(mt);
+            typechecker.tablify(mt);
 
             const TableTypeVar* mtTtv = get<TableTypeVar>(mt);
             MetatableTypeVar mtv{target, mt};
@@ -350,20 +336,17 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
                 if (tableName == metatableName)
                     mtv.syntheticName = tableName;
                 else
-                    mtv.syntheticName = "{ @metatable: " + metatableName + ", " + tableName + " }";
+                    mtv.syntheticName = XorStr("{ @metatable: ") + metatableName + ", " + tableName + " }";
             }
 
             TypeId mtTy = arena.addType(mtv);
 
-            if (FFlag::LuauSetMetaTableArgsCheck && expr.args.size < 1)
+            if (FFlag::LluSetMetaTableArgsCheck && expr.args.size < 1)
             {
-                if (FFlag::LuauUnknownAndNeverType)
-                    return std::nullopt;
-                else
-                    return WithPredicate<TypePackId>{};
+                return WithPredicate<TypePackId>{};
             }
 
-            if (!FFlag::LuauSetMetaTableArgsCheck || !expr.self)
+            if (!FFlag::LluSetMetaTableArgsCheck || !expr.self)
             {
                 AstExpr* targetExpr = expr.args.data[0];
                 if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
@@ -381,7 +364,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
     }
     else
     {
-        typechecker.reportError(TypeError{expr.location, GenericError{"setmetatable should take a table"}});
+        typechecker.reportError(TypeError{expr.location, GenericError{XorStr("setmetatable should take a table")}});
     }
 
     return WithPredicate<TypePackId>{arena.addTypePack({target})};
@@ -407,21 +390,11 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
 
     if (head.size() > 0)
     {
-        auto [ty, ok] = typechecker.pickTypesFromSense(head[0], true);
-        if (FFlag::LuauUnknownAndNeverType)
-        {
-            if (get<NeverTypeVar>(*ty))
-                head = {*ty};
-            else
-                head[0] = *ty;
-        }
+        std::optional<TypeId> newhead = typechecker.pickTypesFromSense(head[0], true);
+        if (!newhead)
+            head = {typechecker.nilType};
         else
-        {
-            if (!ty)
-                head = {typechecker.nilType};
-            else
-                head[0] = *ty;
-        }
+            head[0] = *newhead;
     }
 
     return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
@@ -469,16 +442,16 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionPack(
 static bool checkRequirePath(TypeChecker& typechecker, AstExpr* expr)
 {
     // require(foo.parent.bar) will technically work, but it depends on legacy goop that
-    // Luau does not and could not support without a bunch of work.  It's deprecated anyway, so
+    // lluz does not and could not support without a bunch of work.  It's deprecated anyway, so
     // we'll warn here if we see it.
     bool good = true;
     AstExprIndexName* indexExpr = expr->as<AstExprIndexName>();
 
     while (indexExpr)
     {
-        if (indexExpr->index == "parent")
+        if (indexExpr->index == XorStr("parent"))
         {
-            typechecker.reportError(indexExpr->indexLocation, DeprecatedApiUsed{"parent", "Parent"});
+            typechecker.reportError(indexExpr->indexLocation, DeprecatedApiUsed{XorStr("parent"), XorStr("Parent")});
             good = false;
         }
 
@@ -495,7 +468,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
 
     if (expr.args.size != 1)
     {
-        typechecker.reportError(TypeError{expr.location, GenericError{"require takes 1 argument"}});
+        typechecker.reportError(TypeError{expr.location, GenericError{XorStr("require takes 1 argument")}});
         return std::nullopt;
     }
 
@@ -508,4 +481,4 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
     return std::nullopt;
 }
 
-} // namespace Luau
+} // namespace lluz

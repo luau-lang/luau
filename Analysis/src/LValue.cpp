@@ -1,16 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/LValue.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/LValue.h"
 
-#include "Luau/Ast.h"
+#include "lluz/Ast.h"
 
 #include <vector>
 
-namespace Luau
+namespace lluz
 {
 
 bool Field::operator==(const Field& rhs) const
 {
-    LUAU_ASSERT(parent && rhs.parent);
+    lluz_ASSERT(parent && rhs.parent);
     return key == rhs.key && (parent == rhs.parent || *parent == *rhs.parent);
 }
 
@@ -34,7 +34,7 @@ size_t LValueHasher::operator()(const LValue& lvalue) const
         else if (auto symbol = get<Symbol>(*current))
             acc ^= std::hash<Symbol>{}(*symbol) << 1;
         else
-            LUAU_ASSERT(!"Hash not accumulated for this new LValue alternative.");
+            lluz_ASSERT(!XorStr("Hash not accumulated for this new LValue alternative."));
 
         current = baseof(*current);
     }
@@ -48,7 +48,7 @@ const LValue* baseof(const LValue& lvalue)
         return field->parent.get();
 
     auto symbol = get<Symbol>(lvalue);
-    LUAU_ASSERT(symbol);
+    lluz_ASSERT(symbol);
     return nullptr; // Base of root is null.
 }
 
@@ -84,7 +84,7 @@ Symbol getBaseSymbol(const LValue& lvalue)
         current = baseof(*current);
 
     const Symbol* symbol = get<Symbol>(*current);
-    LUAU_ASSERT(symbol);
+    lluz_ASSERT(symbol);
     return *symbol;
 }
 
@@ -104,4 +104,4 @@ void addRefinement(RefinementMap& refis, const LValue& lvalue, TypeId ty)
     refis[lvalue] = ty;
 }
 
-} // namespace Luau
+} // namespace lluz

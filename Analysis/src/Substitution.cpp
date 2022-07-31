@@ -1,24 +1,22 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Substitution.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Substitution.h"
 
-#include "Luau/Common.h"
-#include "Luau/Clone.h"
-#include "Luau/TxnLog.h"
+#include "lluz/Common.h"
+#include "lluz/Clone.h"
+#include "lluz/TxnLog.h"
 
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauAnyificationMustClone, false)
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
+lluz_FASTFLAG(LluLowerBoundsCalculation)
+lluz_FASTINTVARIABLE(LluTarjanChildLimit, 10000)
 
-namespace Luau
+namespace lluz
 {
 
 void Tarjan::visitChildren(TypeId ty, int index)
 {
-    LUAU_ASSERT(ty == log->follow(ty));
+    lluz_ASSERT(ty == log->follow(ty));
 
     if (ignoreChildren(ty))
         return;
@@ -33,7 +31,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
     }
     else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
-        LUAU_ASSERT(!ttv->boundTo);
+        lluz_ASSERT(!ttv->boundTo);
         for (const auto& [name, prop] : ttv->props)
             visitChild(prop.type);
         if (ttv->indexer)
@@ -72,7 +70,7 @@ void Tarjan::visitChildren(TypeId ty, int index)
 
 void Tarjan::visitChildren(TypePackId tp, int index)
 {
-    LUAU_ASSERT(tp == log->follow(tp));
+    lluz_ASSERT(tp == log->follow(tp));
 
     if (ignoreChildren(tp))
         return;
@@ -156,7 +154,7 @@ TarjanResult Tarjan::loop()
         if (currEdge == -1)
         {
             ++childCount;
-            if (childLimit > 0 && (FFlag::LuauUnknownAndNeverType ? childLimit <= childCount : childLimit < childCount))
+            if (childLimit > 0 && childLimit < childCount)
                 return TarjanResult::TooManyChildren;
 
             stack.push_back(index);
@@ -186,7 +184,7 @@ TarjanResult Tarjan::loop()
             else if (auto tp = edgesTp[currEdge])
                 std::tie(childIndex, fresh) = indexify(tp);
             else
-                LUAU_ASSERT(false);
+                lluz_ASSERT(false);
 
             if (fresh)
             {
@@ -245,7 +243,7 @@ TarjanResult Tarjan::visitRoot(TypeId ty)
 {
     childCount = 0;
     if (childLimit == 0)
-        childLimit = FInt::LuauTarjanChildLimit;
+        childLimit = FInt::LluTarjanChildLimit;
 
     ty = log->follow(ty);
 
@@ -258,7 +256,7 @@ TarjanResult Tarjan::visitRoot(TypePackId tp)
 {
     childCount = 0;
     if (childLimit == 0)
-        childLimit = FInt::LuauTarjanChildLimit;
+        childLimit = FInt::LluTarjanChildLimit;
 
     tp = log->follow(tp);
 
@@ -433,15 +431,12 @@ TypePackId Substitution::replace(TypePackId tp)
 
 void Substitution::replaceChildren(TypeId ty)
 {
-    if (BoundTypeVar* btv = log->getMutable<BoundTypeVar>(ty); FFlag::LuauLowerBoundsCalculation && btv)
+    if (BoundTypeVar* btv = log->getMutable<BoundTypeVar>(ty); FFlag::LluLowerBoundsCalculation && btv)
         btv->boundTo = replace(btv->boundTo);
 
-    LUAU_ASSERT(ty == log->follow(ty));
+    lluz_ASSERT(ty == log->follow(ty));
 
     if (ignoreChildren(ty))
-        return;
-
-    if (FFlag::LuauAnyificationMustClone && ty->owningArena != arena)
         return;
 
     if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
@@ -451,7 +446,7 @@ void Substitution::replaceChildren(TypeId ty)
     }
     else if (TableTypeVar* ttv = getMutable<TableTypeVar>(ty))
     {
-        LUAU_ASSERT(!ttv->boundTo);
+        lluz_ASSERT(!ttv->boundTo);
         for (auto& [name, prop] : ttv->props)
             prop.type = replace(prop.type);
         if (ttv->indexer)
@@ -490,12 +485,9 @@ void Substitution::replaceChildren(TypeId ty)
 
 void Substitution::replaceChildren(TypePackId tp)
 {
-    LUAU_ASSERT(tp == log->follow(tp));
+    lluz_ASSERT(tp == log->follow(tp));
 
     if (ignoreChildren(tp))
-        return;
-
-    if (FFlag::LuauAnyificationMustClone && tp->owningArena != arena)
         return;
 
     if (TypePack* tpp = getMutable<TypePack>(tp))
@@ -511,4 +503,4 @@ void Substitution::replaceChildren(TypePackId tp)
     }
 }
 
-} // namespace Luau
+} // namespace lluz

@@ -1,11 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeUtils.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeUtils.h"
 
-#include "Luau/Scope.h"
-#include "Luau/ToString.h"
-#include "Luau/TypeInfer.h"
+#include "lluz/Scope.h"
+#include "lluz/ToString.h"
+#include "lluz/TypeInfer.h"
 
-namespace Luau
+namespace lluz
 {
 
 std::optional<TypeId> findMetatableEntry(ErrorVec& errors, TypeId type, std::string entry, Location location)
@@ -24,7 +24,7 @@ std::optional<TypeId> findMetatableEntry(ErrorVec& errors, TypeId type, std::str
     const TableTypeVar* mtt = getTableType(unwrapped);
     if (!mtt)
     {
-        errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
+        errors.push_back(TypeError{location, GenericError{"Metatable was not a table."}});
         return std::nullopt;
     }
 
@@ -83,4 +83,4 @@ std::optional<TypeId> findTablePropertyRespectingMeta(ErrorVec& errors, TypeId t
     return std::nullopt;
 }
 
-} // namespace Luau
+} // namespace lluz

@@ -1,9 +1,9 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Transpiler.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Transpiler.h"
 
-#include "Luau/Parser.h"
-#include "Luau/StringUtils.h"
-#include "Luau/Common.h"
+#include "lluz/Parser.h"
+#include "lluz/StringUtils.h"
+#include "lluz/Common.h"
 
 #include <algorithm>
 #include <memory>
@@ -32,7 +32,7 @@ const std::vector<std::string> keywords = {"and", "break", "do", "else", "elseif
 
 } // namespace
 
-namespace Luau
+namespace lluz
 {
 
 struct Writer
@@ -175,7 +175,7 @@ public:
         if (first)
             first = !first;
         else
-            writer.symbol(",");
+            writer.symbol(XorStr(","));
     }
 
 private:
@@ -200,7 +200,7 @@ struct Printer
         writer.identifier(local.name.value);
         if (writeTypes && local.annotation)
         {
-            writer.symbol(":");
+            writer.symbol(XorStr(":"));
             visualizeTypeAnnotation(*local.annotation);
         }
     }
@@ -211,23 +211,23 @@ struct Printer
         if (const AstTypePackVariadic* variadicTp = annotation.as<AstTypePackVariadic>())
         {
             if (!forVarArg)
-                writer.symbol("...");
+                writer.symbol(XorStr("..."));
 
             visualizeTypeAnnotation(*variadicTp->variadicType);
         }
         else if (const AstTypePackGeneric* genericTp = annotation.as<AstTypePackGeneric>())
         {
             writer.symbol(genericTp->genericName.value);
-            writer.symbol("...");
+            writer.symbol(XorStr("..."));
         }
         else if (const AstTypePackExplicit* explicitTp = annotation.as<AstTypePackExplicit>())
         {
-            LUAU_ASSERT(!forVarArg);
+            lluz_ASSERT(!forVarArg);
             visualizeTypeList(explicitTp->typeList, true);
         }
         else
         {
-            LUAU_ASSERT(!"Unknown TypePackAnnotation kind");
+            lluz_ASSERT(!XorStr("Unknown TypePackAnnotation kind"));
         }
     }
 
@@ -236,13 +236,13 @@ struct Printer
         size_t typeCount = list.types.size + (list.tailType != nullptr ? 1 : 0);
         if (typeCount == 0)
         {
-            writer.symbol("(");
-            writer.symbol(")");
+            writer.symbol(XorStr("("));
+            writer.symbol(XorStr(")"));
         }
         else if (typeCount == 1)
         {
             if (unconditionallyParenthesize)
-                writer.symbol("(");
+                writer.symbol(XorStr("("));
 
             // Only variadic tail
             if (list.types.size == 0)
@@ -255,11 +255,11 @@ struct Printer
             }
 
             if (unconditionallyParenthesize)
-                writer.symbol(")");
+                writer.symbol(XorStr(")"));
         }
         else
         {
-            writer.symbol("(");
+            writer.symbol(XorStr("("));
 
             bool first = true;
             for (const auto& el : list.types)
@@ -267,18 +267,18 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 visualizeTypeAnnotation(*el);
             }
 
             if (list.tailType)
             {
-                writer.symbol(",");
+                writer.symbol(XorStr(","));
                 visualizeTypePackAnnotation(*list.tailType, false);
             }
 
-            writer.symbol(")");
+            writer.symbol(XorStr(")"));
         }
     }
 
@@ -296,32 +296,32 @@ struct Printer
 
         if (const auto& a = expr.as<AstExprGroup>())
         {
-            writer.symbol("(");
+            writer.symbol(XorStr("("));
             visualize(*a->expr);
-            writer.symbol(")");
+            writer.symbol(XorStr(")"));
         }
         else if (expr.is<AstExprConstantNil>())
         {
-            writer.keyword("nil");
+            writer.keyword(XorStr("nil"));
         }
         else if (const auto& a = expr.as<AstExprConstantBool>())
         {
             if (a->value)
-                writer.keyword("true");
+                writer.keyword(XorStr("true"));
             else
-                writer.keyword("false");
+                writer.keyword(XorStr("false"));
         }
         else if (const auto& a = expr.as<AstExprConstantNumber>())
         {
             if (isinf(a->value))
             {
                 if (a->value > 0)
-                    writer.literal("1e500");
+                    writer.literal(XorStr("1e500"));
                 else
-                    writer.literal("-1e500");
+                    writer.literal(XorStr("-1e500"));
             }
             else if (isnan(a->value))
-                writer.literal("0/0");
+                writer.literal(XorStr("0/0"));
             else
             {
                 if (isIntegerish(a->value))
@@ -348,12 +348,12 @@ struct Printer
         }
         else if (expr.is<AstExprVarargs>())
         {
-            writer.symbol("...");
+            writer.symbol(XorStr("..."));
         }
         else if (const auto& a = expr.as<AstExprCall>())
         {
             visualize(*a->func);
-            writer.symbol("(");
+            writer.symbol(XorStr("("));
 
             bool first = true;
             for (const auto& arg : a->args)
@@ -361,12 +361,12 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 visualize(*arg);
             }
 
-            writer.symbol(")");
+            writer.symbol(XorStr(")"));
         }
         else if (const auto& a = expr.as<AstExprIndexName>())
         {
@@ -377,18 +377,18 @@ struct Printer
         else if (const auto& a = expr.as<AstExprIndexExpr>())
         {
             visualize(*a->expr);
-            writer.symbol("[");
+            writer.symbol(XorStr("["));
             visualize(*a->index);
-            writer.symbol("]");
+            writer.symbol(XorStr("]"));
         }
         else if (const auto& a = expr.as<AstExprFunction>())
         {
-            writer.keyword("function");
+            writer.keyword(XorStr("function"));
             visualizeFunctionBody(*a);
         }
         else if (const auto& a = expr.as<AstExprTable>())
         {
-            writer.symbol("{");
+            writer.symbol(XorStr("{"));
 
             bool first = true;
 
@@ -397,7 +397,7 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 switch (item.kind)
                 {
@@ -410,22 +410,22 @@ struct Printer
                     advance(item.key->location.begin);
                     writer.identifier(std::string_view(value.data, value.size));
                     writer.maybeSpace(item.value->location.begin, 1);
-                    writer.symbol("=");
+                    writer.symbol(XorStr("="));
                 }
                 break;
 
                 case AstExprTable::Item::General:
                 {
-                    writer.symbol("[");
+                    writer.symbol(XorStr("["));
                     visualize(*item.key);
-                    writer.symbol("]");
+                    writer.symbol(XorStr("]"));
                     writer.maybeSpace(item.value->location.begin, 1);
-                    writer.symbol("=");
+                    writer.symbol(XorStr("="));
                 }
                 break;
 
                 default:
-                    LUAU_ASSERT(!"Unknown table item kind");
+                    lluz_ASSERT(!XorStr("Unknown table item kind"));
                 }
 
                 advance(item.value->location.begin);
@@ -438,7 +438,7 @@ struct Printer
 
             advance(endPos);
 
-            writer.symbol("}");
+            writer.symbol(XorStr("}"));
             advance(expr.location.end);
         }
         else if (const auto& a = expr.as<AstExprUnary>())
@@ -446,13 +446,13 @@ struct Printer
             switch (a->op)
             {
             case AstExprUnary::Not:
-                writer.keyword("not");
+                writer.keyword(XorStr("not"));
                 break;
             case AstExprUnary::Minus:
-                writer.symbol("-");
+                writer.symbol(XorStr("-"));
                 break;
             case AstExprUnary::Len:
-                writer.symbol("#");
+                writer.symbol(XorStr("#"));
                 break;
             }
             visualize(*a->expr);
@@ -498,34 +498,34 @@ struct Printer
             if (writeTypes)
             {
                 writer.maybeSpace(a->annotation->location.begin, 2);
-                writer.symbol("::");
+                writer.symbol(XorStr("::"));
                 visualizeTypeAnnotation(*a->annotation);
             }
         }
         else if (const auto& a = expr.as<AstExprIfElse>())
         {
-            writer.keyword("if");
+            writer.keyword(XorStr("if"));
             visualize(*a->condition);
-            writer.keyword("then");
+            writer.keyword(XorStr("then"));
             visualize(*a->trueExpr);
-            writer.keyword("else");
+            writer.keyword(XorStr("else"));
             visualize(*a->falseExpr);
         }
         else if (const auto& a = expr.as<AstExprError>())
         {
-            writer.symbol("(error-expr");
+            writer.symbol(XorStr("(error-expr"));
 
             for (size_t i = 0; i < a->expressions.size; i++)
             {
-                writer.symbol(i == 0 ? ": " : ", ");
+                writer.symbol(i == 0 ? XorStr(": " : ", "));
                 visualize(*a->expressions.data[i]);
             }
 
-            writer.symbol(")");
+            writer.symbol(XorStr(")"));
         }
         else
         {
-            LUAU_ASSERT(!"Unknown AstExpr");
+            lluz_ASSERT(!XorStr("Unknown AstExpr"));
         }
     }
 
@@ -535,7 +535,7 @@ struct Printer
         if (endPos.column >= 3)
             endPos.column -= 3;
         advance(endPos);
-        writer.keyword("end");
+        writer.keyword(XorStr("end"));
     }
 
     void advance(const Position& newPos)
@@ -549,7 +549,7 @@ struct Printer
 
         if (const auto& block = program.as<AstStatBlock>())
         {
-            writer.keyword("do");
+            writer.keyword(XorStr("do"));
             for (const auto& s : block->body)
                 visualize(*s);
             writer.advance(block->location.end);
@@ -557,33 +557,33 @@ struct Printer
         }
         else if (const auto& a = program.as<AstStatIf>())
         {
-            writer.keyword("if");
+            writer.keyword(XorStr("if"));
             visualizeElseIf(*a);
         }
         else if (const auto& a = program.as<AstStatWhile>())
         {
-            writer.keyword("while");
+            writer.keyword(XorStr("while"));
             visualize(*a->condition);
-            writer.keyword("do");
+            writer.keyword(XorStr("do"));
             visualizeBlock(*a->body);
             writeEnd(program.location);
         }
         else if (const auto& a = program.as<AstStatRepeat>())
         {
-            writer.keyword("repeat");
+            writer.keyword(XorStr("repeat"));
             visualizeBlock(*a->body);
             if (a->condition->location.begin.column > 5)
                 writer.advance(Position{a->condition->location.begin.line, a->condition->location.begin.column - 6});
-            writer.keyword("until");
+            writer.keyword(XorStr("until"));
             visualize(*a->condition);
         }
         else if (program.is<AstStatBreak>())
-            writer.keyword("break");
+            writer.keyword(XorStr("break"));
         else if (program.is<AstStatContinue>())
-            writer.keyword("continue");
+            writer.keyword(XorStr("continue"));
         else if (const auto& a = program.as<AstStatReturn>())
         {
-            writer.keyword("return");
+            writer.keyword(XorStr("return"));
 
             bool first = true;
             for (const auto& expr : a->list)
@@ -591,7 +591,7 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
                 visualize(*expr);
             }
         }
@@ -601,7 +601,7 @@ struct Printer
         }
         else if (const auto& a = program.as<AstStatLocal>())
         {
-            writer.keyword("local");
+            writer.keyword(XorStr("local"));
 
             bool first = true;
             for (const auto& local : a->vars)
@@ -609,7 +609,7 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.write(",");
+                    writer.write(XorStr(","));
 
                 visualize(*local);
             }
@@ -621,36 +621,36 @@ struct Printer
                 {
                     first = false;
                     writer.maybeSpace(value->location.begin, 2);
-                    writer.symbol("=");
+                    writer.symbol(XorStr("="));
                 }
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 visualize(*value);
             }
         }
         else if (const auto& a = program.as<AstStatFor>())
         {
-            writer.keyword("for");
+            writer.keyword(XorStr("for"));
 
             visualize(*a->var);
-            writer.symbol("=");
+            writer.symbol(XorStr("="));
             visualize(*a->from);
-            writer.symbol(",");
+            writer.symbol(XorStr(","));
             visualize(*a->to);
             if (a->step)
             {
-                writer.symbol(",");
+                writer.symbol(XorStr(","));
                 visualize(*a->step);
             }
-            writer.keyword("do");
+            writer.keyword(XorStr("do"));
             visualizeBlock(*a->body);
 
             writeEnd(program.location);
         }
         else if (const auto& a = program.as<AstStatForIn>())
         {
-            writer.keyword("for");
+            writer.keyword(XorStr("for"));
 
             bool first = true;
             for (const auto& var : a->vars)
@@ -658,12 +658,12 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 visualize(*var);
             }
 
-            writer.keyword("in");
+            writer.keyword(XorStr("in"));
 
             first = true;
             for (const auto& val : a->values)
@@ -671,12 +671,12 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 visualize(*val);
             }
 
-            writer.keyword("do");
+            writer.keyword(XorStr("do"));
 
             visualizeBlock(*a->body);
 
@@ -690,7 +690,7 @@ struct Printer
                 if (first)
                     first = false;
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
                 visualize(*var);
             }
 
@@ -700,11 +700,11 @@ struct Printer
                 if (first)
                 {
                     writer.maybeSpace(value->location.begin, 1);
-                    writer.symbol("=");
+                    writer.symbol(XorStr("="));
                     first = false;
                 }
                 else
-                    writer.symbol(",");
+                    writer.symbol(XorStr(","));
 
                 visualize(*value);
             }
@@ -717,47 +717,47 @@ struct Printer
             {
             case AstExprBinary::Add:
                 writer.maybeSpace(a->value->location.begin, 2);
-                writer.symbol("+=");
+                writer.symbol(XorStr("+="));
                 break;
             case AstExprBinary::Sub:
                 writer.maybeSpace(a->value->location.begin, 2);
-                writer.symbol("-=");
+                writer.symbol(XorStr("-="));
                 break;
             case AstExprBinary::Mul:
                 writer.maybeSpace(a->value->location.begin, 2);
-                writer.symbol("*=");
+                writer.symbol(XorStr("*="));
                 break;
             case AstExprBinary::Div:
                 writer.maybeSpace(a->value->location.begin, 2);
-                writer.symbol("/=");
+                writer.symbol(XorStr("/="));
                 break;
             case AstExprBinary::Mod:
                 writer.maybeSpace(a->value->location.begin, 2);
-                writer.symbol("%=");
+                writer.symbol(XorStr("%="));
                 break;
             case AstExprBinary::Pow:
                 writer.maybeSpace(a->value->location.begin, 2);
-                writer.symbol("^=");
+                writer.symbol(XorStr("^="));
                 break;
             case AstExprBinary::Concat:
                 writer.maybeSpace(a->value->location.begin, 3);
-                writer.symbol("..=");
+                writer.symbol(XorStr("..="));
                 break;
             default:
-                LUAU_ASSERT(!"Unexpected compound assignment op");
+                lluz_ASSERT(!XorStr("Unexpected compound assignment op"));
             }
 
             visualize(*a->value);
         }
         else if (const auto& a = program.as<AstStatFunction>())
         {
-            writer.keyword("function");
+            writer.keyword(XorStr("function"));
             visualize(*a->name);
             visualizeFunctionBody(*a->func);
         }
         else if (const auto& a = program.as<AstStatLocalFunction>())
         {
-            writer.keyword("local function");
+            writer.keyword(XorStr("local function"));
             advance(a->name->location.begin);
             writer.identifier(a->name->name.value);
             visualizeFunctionBody(*a->func);
@@ -767,13 +767,13 @@ struct Printer
             if (writeTypes)
             {
                 if (a->exported)
-                    writer.keyword("export");
+                    writer.keyword(XorStr("export"));
 
-                writer.keyword("type");
+                writer.keyword(XorStr("type"));
                 writer.identifier(a->name.value);
                 if (a->generics.size > 0 || a->genericPacks.size > 0)
                 {
-                    writer.symbol("<");
+                    writer.symbol(XorStr("<"));
                     CommaSeparatorInserter comma(writer);
 
                     for (auto o : a->generics)
@@ -786,7 +786,7 @@ struct Printer
                         if (o.defaultValue)
                         {
                             writer.maybeSpace(o.defaultValue->location.begin, 2);
-                            writer.symbol("=");
+                            writer.symbol(XorStr("="));
                             visualizeTypeAnnotation(*o.defaultValue);
                         }
                     }
@@ -797,48 +797,48 @@ struct Printer
 
                         writer.advance(o.location.begin);
                         writer.identifier(o.name.value);
-                        writer.symbol("...");
+                        writer.symbol(XorStr("..."));
 
                         if (o.defaultValue)
                         {
                             writer.maybeSpace(o.defaultValue->location.begin, 2);
-                            writer.symbol("=");
+                            writer.symbol(XorStr("="));
                             visualizeTypePackAnnotation(*o.defaultValue, false);
                         }
                     }
 
-                    writer.symbol(">");
+                    writer.symbol(XorStr(">"));
                 }
                 writer.maybeSpace(a->type->location.begin, 2);
-                writer.symbol("=");
+                writer.symbol(XorStr("="));
                 visualizeTypeAnnotation(*a->type);
             }
         }
         else if (const auto& a = program.as<AstStatError>())
         {
-            writer.symbol("(error-stat");
+            writer.symbol(XorStr("(error-stat"));
 
             for (size_t i = 0; i < a->expressions.size; i++)
             {
-                writer.symbol(i == 0 ? ": " : ", ");
+                writer.symbol(i == 0 ? XorStr(": " : ", "));
                 visualize(*a->expressions.data[i]);
             }
 
             for (size_t i = 0; i < a->statements.size; i++)
             {
-                writer.symbol(i == 0 && a->expressions.size == 0 ? ": " : ", ");
+                writer.symbol(i == 0 && a->expressions.size == 0 ? XorStr(": " : ", "));
                 visualize(*a->statements.data[i]);
             }
 
-            writer.symbol(")");
+            writer.symbol(XorStr(")"));
         }
         else
         {
-            LUAU_ASSERT(!"Unknown AstStat");
+            lluz_ASSERT(!XorStr("Unknown AstStat"));
         }
 
         if (program.hasSemicolon)
-            writer.symbol(";");
+            writer.symbol(XorStr(";"));
     }
 
     void visualizeFunctionBody(AstExprFunction& func)
@@ -846,7 +846,7 @@ struct Printer
         if (func.generics.size > 0 || func.genericPacks.size > 0)
         {
             CommaSeparatorInserter comma(writer);
-            writer.symbol("<");
+            writer.symbol(XorStr("<"));
             for (const auto& o : func.generics)
             {
                 comma();
@@ -860,12 +860,12 @@ struct Printer
 
                 writer.advance(o.location.begin);
                 writer.identifier(o.name.value);
-                writer.symbol("...");
+                writer.symbol(XorStr("..."));
             }
-            writer.symbol(">");
+            writer.symbol(XorStr(">"));
         }
 
-        writer.symbol("(");
+        writer.symbol(XorStr("("));
         CommaSeparatorInserter comma(writer);
 
         for (size_t i = 0; i < func.args.size; ++i)
@@ -878,7 +878,7 @@ struct Printer
             writer.identifier(local->name.value);
             if (writeTypes && local->annotation)
             {
-                writer.symbol(":");
+                writer.symbol(XorStr(":"));
                 visualizeTypeAnnotation(*local->annotation);
             }
         }
@@ -887,20 +887,20 @@ struct Printer
         {
             comma();
             advance(func.varargLocation.begin);
-            writer.symbol("...");
+            writer.symbol(XorStr("..."));
 
             if (func.varargAnnotation)
             {
-                writer.symbol(":");
+                writer.symbol(XorStr(":"));
                 visualizeTypePackAnnotation(*func.varargAnnotation, true);
             }
         }
 
-        writer.symbol(")");
+        writer.symbol(XorStr(")"));
 
         if (writeTypes && func.returnAnnotation)
         {
-            writer.symbol(":");
+            writer.symbol(XorStr(":"));
             writer.space();
 
             visualizeTypeList(*func.returnAnnotation, false);
@@ -922,13 +922,13 @@ struct Printer
         if (AstStatBlock* block = stat.as<AstStatBlock>())
             visualizeBlock(*block);
         else
-            LUAU_ASSERT(!"visualizeBlock was expecting an AstStatBlock");
+            lluz_ASSERT(!XorStr("visualizeBlock was expecting an AstStatBlock"));
     }
 
     void visualizeElseIf(AstStatIf& elseif)
     {
         visualize(*elseif.condition);
-        writer.keyword("then");
+        writer.keyword(XorStr("then"));
         visualizeBlock(*elseif.thenbody);
 
         if (elseif.elsebody == nullptr)
@@ -937,12 +937,12 @@ struct Printer
         }
         else if (auto elseifelseif = elseif.elsebody->as<AstStatIf>())
         {
-            writer.keyword("elseif");
+            writer.keyword(XorStr("elseif"));
             visualizeElseIf(*elseifelseif);
         }
         else
         {
-            writer.keyword("else");
+            writer.keyword(XorStr("else"));
 
             visualizeBlock(*elseif.elsebody);
             writeEnd(elseif.location);
@@ -957,14 +957,14 @@ struct Printer
             if (a->prefix)
             {
                 writer.write(a->prefix->value);
-                writer.symbol(".");
+                writer.symbol(XorStr("."));
             }
 
             writer.write(a->name.value);
             if (a->parameters.size > 0 || a->hasParameterList)
             {
                 CommaSeparatorInserter comma(writer);
-                writer.symbol("<");
+                writer.symbol(XorStr("<"));
                 for (auto o : a->parameters)
                 {
                     comma();
@@ -975,7 +975,7 @@ struct Printer
                         visualizeTypePackAnnotation(*o.typePack, false);
                 }
 
-                writer.symbol(">");
+                writer.symbol(XorStr(">"));
             }
         }
         else if (const auto& a = typeAnnotation.as<AstTypeFunction>())
@@ -983,7 +983,7 @@ struct Printer
             if (a->generics.size > 0 || a->genericPacks.size > 0)
             {
                 CommaSeparatorInserter comma(writer);
-                writer.symbol("<");
+                writer.symbol(XorStr("<"));
                 for (const auto& o : a->generics)
                 {
                     comma();
@@ -997,33 +997,33 @@ struct Printer
 
                     writer.advance(o.location.begin);
                     writer.identifier(o.name.value);
-                    writer.symbol("...");
+                    writer.symbol(XorStr("..."));
                 }
-                writer.symbol(">");
+                writer.symbol(XorStr(">"));
             }
 
             {
                 visualizeTypeList(a->argTypes, true);
             }
 
-            writer.symbol("->");
+            writer.symbol(XorStr("->"));
             visualizeTypeList(a->returnTypes, true);
         }
         else if (const auto& a = typeAnnotation.as<AstTypeTable>())
         {
             AstTypeReference* indexType = a->indexer ? a->indexer->indexType->as<AstTypeReference>() : nullptr;
 
-            if (a->props.size == 0 && indexType && indexType->name == "number")
+            if (a->props.size == 0 && indexType && indexType->name == XorStr("number"))
             {
-                writer.symbol("{");
+                writer.symbol(XorStr("{"));
                 visualizeTypeAnnotation(*a->indexer->resultType);
-                writer.symbol("}");
+                writer.symbol(XorStr("}"));
             }
             else
             {
                 CommaSeparatorInserter comma(writer);
 
-                writer.symbol("{");
+                writer.symbol(XorStr("{"));
 
                 for (std::size_t i = 0; i < a->props.size; ++i)
                 {
@@ -1032,28 +1032,28 @@ struct Printer
                     writer.identifier(a->props.data[i].name.value);
                     if (a->props.data[i].type)
                     {
-                        writer.symbol(":");
+                        writer.symbol(XorStr(":"));
                         visualizeTypeAnnotation(*a->props.data[i].type);
                     }
                 }
                 if (a->indexer)
                 {
                     comma();
-                    writer.symbol("[");
+                    writer.symbol(XorStr("["));
                     visualizeTypeAnnotation(*a->indexer->indexType);
-                    writer.symbol("]");
-                    writer.symbol(":");
+                    writer.symbol(XorStr("]"));
+                    writer.symbol(XorStr(":"));
                     visualizeTypeAnnotation(*a->indexer->resultType);
                 }
-                writer.symbol("}");
+                writer.symbol(XorStr("}"));
             }
         }
         else if (auto a = typeAnnotation.as<AstTypeTypeof>())
         {
-            writer.keyword("typeof");
-            writer.symbol("(");
+            writer.keyword(XorStr("typeof"));
+            writer.symbol(XorStr("("));
             visualize(*a->expr);
-            writer.symbol(")");
+            writer.symbol(XorStr(")"));
         }
         else if (const auto& a = typeAnnotation.as<AstTypeUnion>())
         {
@@ -1063,24 +1063,24 @@ struct Printer
                 AstType* r = a->types.data[1];
 
                 auto lta = l->as<AstTypeReference>();
-                if (lta && lta->name == "nil")
+                if (lta && lta->name == XorStr("nil"))
                     std::swap(l, r);
 
                 // it's still possible that we had a (T | U) or (T | nil) and not (nil | T)
                 auto rta = r->as<AstTypeReference>();
-                if (rta && rta->name == "nil")
+                if (rta && rta->name == XorStr("nil"))
                 {
                     bool wrap = l->as<AstTypeIntersection>() || l->as<AstTypeFunction>();
 
                     if (wrap)
-                        writer.symbol("(");
+                        writer.symbol(XorStr("("));
 
                     visualizeTypeAnnotation(*l);
 
                     if (wrap)
-                        writer.symbol(")");
+                        writer.symbol(XorStr(")"));
 
-                    writer.symbol("?");
+                    writer.symbol(XorStr("?"));
                     return;
                 }
             }
@@ -1090,18 +1090,18 @@ struct Printer
                 if (i > 0)
                 {
                     writer.maybeSpace(a->types.data[i]->location.begin, 2);
-                    writer.symbol("|");
+                    writer.symbol(XorStr("|"));
                 }
 
                 bool wrap = a->types.data[i]->as<AstTypeIntersection>() || a->types.data[i]->as<AstTypeFunction>();
 
                 if (wrap)
-                    writer.symbol("(");
+                    writer.symbol(XorStr("("));
 
                 visualizeTypeAnnotation(*a->types.data[i]);
 
                 if (wrap)
-                    writer.symbol(")");
+                    writer.symbol(XorStr(")"));
             }
         }
         else if (const auto& a = typeAnnotation.as<AstTypeIntersection>())
@@ -1111,23 +1111,23 @@ struct Printer
                 if (i > 0)
                 {
                     writer.maybeSpace(a->types.data[i]->location.begin, 2);
-                    writer.symbol("&");
+                    writer.symbol(XorStr("&"));
                 }
 
                 bool wrap = a->types.data[i]->as<AstTypeUnion>() || a->types.data[i]->as<AstTypeFunction>();
 
                 if (wrap)
-                    writer.symbol("(");
+                    writer.symbol(XorStr("("));
 
                 visualizeTypeAnnotation(*a->types.data[i]);
 
                 if (wrap)
-                    writer.symbol(")");
+                    writer.symbol(XorStr(")"));
             }
         }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonBool>())
         {
-            writer.keyword(a->value ? "true" : "false");
+            writer.keyword(a->value ? XorStr("true" : "false"));
         }
         else if (const auto& a = typeAnnotation.as<AstTypeSingletonString>())
         {
@@ -1135,11 +1135,11 @@ struct Printer
         }
         else if (typeAnnotation.is<AstTypeError>())
         {
-            writer.symbol("%error-type%");
+            writer.symbol(XorStr("%error-type%"));
         }
         else
         {
-            LUAU_ASSERT(!"Unknown AstType");
+            lluz_ASSERT(!XorStr("Unknown AstType"));
         }
     }
 };
@@ -1197,7 +1197,7 @@ TranspileResult transpile(std::string_view source, ParseOptions options, bool wi
         return TranspileResult{"", error.getLocation(), error.what()};
     }
 
-    LUAU_ASSERT(parseResult.root);
+    lluz_ASSERT(parseResult.root);
     if (!parseResult.root)
         return TranspileResult{"", {}, "Internal error: Parser yielded empty parse tree"};
 
@@ -1207,4 +1207,4 @@ TranspileResult transpile(std::string_view source, ParseOptions options, bool wi
     return TranspileResult{transpile(*parseResult.root)};
 }
 
-} // namespace Luau
+} // namespace lluz

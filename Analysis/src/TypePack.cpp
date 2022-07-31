@@ -1,11 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypePack.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypePack.h"
 
-#include "Luau/TxnLog.h"
+#include "lluz/TxnLog.h"
 
 #include <stdexcept>
 
-namespace Luau
+lluz_FASTFLAG(LluNonCopyableTypeVarFields)
+
+namespace lluz
 {
 
 TypePackVar::TypePackVar(const TypePackVariant& tp)
@@ -38,10 +40,19 @@ TypePackVar& TypePackVar::operator=(TypePackVariant&& tp)
 
 TypePackVar& TypePackVar::operator=(const TypePackVar& rhs)
 {
-    LUAU_ASSERT(owningArena == rhs.owningArena);
-    LUAU_ASSERT(!rhs.persistent);
+    if (FFlag::LluNonCopyableTypeVarFields)
+    {
+        lluz_ASSERT(owningArena == rhs.owningArena);
+        lluz_ASSERT(!rhs.persistent);
 
-    reassign(rhs);
+        reassign(rhs);
+    }
+    else
+    {
+        ty = rhs.ty;
+        persistent = rhs.persistent;
+        owningArena = rhs.owningArena;
+    }
 
     return *this;
 }
@@ -66,7 +77,7 @@ TypePackIterator::TypePackIterator(TypePackId typePack, const TxnLog* log)
 
 TypePackIterator& TypePackIterator::operator++()
 {
-    LUAU_ASSERT(tp);
+    lluz_ASSERT(tp);
 
     ++currentIndex;
     while (tp && currentIndex >= tp->head.size())
@@ -99,13 +110,13 @@ bool TypePackIterator::operator==(const TypePackIterator& rhs)
 
 const TypeId& TypePackIterator::operator*()
 {
-    LUAU_ASSERT(tp);
+    lluz_ASSERT(tp);
     return tp->head[currentIndex];
 }
 
 std::optional<TypePackId> TypePackIterator::tail()
 {
-    LUAU_ASSERT(!tp);
+    lluz_ASSERT(!tp);
     return currentTypePack ? std::optional<TypePackId>{currentTypePack} : std::nullopt;
 }
 
@@ -227,7 +238,7 @@ TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
                 cycleTester = nullptr;
 
             if (tp == cycleTester)
-                throw std::runtime_error("Luau::follow detected a TypeVar cycle!!");
+                throw std::runtime_error(XorStr("lluz::follow detected a TypeVar cycle!!"));
         }
     }
 }
@@ -281,16 +292,6 @@ std::optional<TypeId> first(TypePackId tp, bool ignoreHiddenVariadics)
     }
 
     return std::nullopt;
-}
-
-TypePackVar* asMutable(TypePackId tp)
-{
-    return const_cast<TypePackVar*>(tp);
-}
-
-TypePack* asMutable(const TypePack* tp)
-{
-    return const_cast<TypePack*>(tp);
 }
 
 bool isEmpty(TypePackId tp)
@@ -359,25 +360,13 @@ bool isVariadic(TypePackId tp, const TxnLog& log)
     return false;
 }
 
-bool containsNever(TypePackId tp)
+TypePackVar* asMutable(TypePackId tp)
 {
-    auto it = begin(tp);
-    auto endIt = end(tp);
-
-    while (it != endIt)
-    {
-        if (get<NeverTypeVar>(follow(*it)))
-            return true;
-        ++it;
-    }
-
-    if (auto tail = it.tail())
-    {
-        if (auto vtp = get<VariadicTypePack>(*tail); vtp && get<NeverTypeVar>(follow(vtp->ty)))
-            return true;
-    }
-
-    return false;
+    return const_cast<TypePackVar*>(tp);
 }
 
-} // namespace Luau
+TypePack* asMutable(const TypePack* tp)
+{
+    return const_cast<TypePack*>(tp);
+}
+} // namespace lluz

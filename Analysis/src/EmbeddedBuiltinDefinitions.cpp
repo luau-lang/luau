@@ -1,12 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
 
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
+#include "..\..\..\..\Security\XorString.h"
 
-namespace Luau
+lluz_FASTFLAG(LluCheckLenMT)
+
+namespace lluz
 {
 
-static const std::string kBuiltinDefinitionLuaSrc = R"BUILTIN_SRC(
+static const std::string kBuiltinDefinitionLuaSrc = XorStr(R"BUILTIN_SRC(
 
 declare bit32: {
     band: (...number) -> number,
@@ -116,13 +118,14 @@ declare function typeof<T>(value: T): string
 -- `assert` has a magic function attached that will give more detailed type information
 declare function assert<T>(value: T, errorMessage: string?): T
 
+declare function error<T>(message: T, level: number?)
+
 declare function tostring<T>(value: T): string
 declare function tonumber<T>(value: T, radix: number?): number?
 
 declare function rawequal<T1, T2>(a: T1, b: T2): boolean
 declare function rawget<K, V>(tab: {[K]: V}, k: K): V
 declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
-declare function rawlen<K, V>(obj: {[K]: V} | string): number
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 
@@ -199,19 +202,17 @@ declare utf8: {
 -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.
 declare function unpack<V>(tab: {V}, i: number?, j: number?): ...V
 
-)BUILTIN_SRC";
+)BUILTIN_SRC");
 
 std::string getBuiltinDefinitionSource()
 {
-
     std::string result = kBuiltinDefinitionLuaSrc;
 
-    if (FFlag::LuauUnknownAndNeverType)
-        result += "declare function error<T>(message: T, level: number?): never\n";
-    else
-        result += "declare function error<T>(message: T, level: number?)\n";
+    // TODO: move this into kBuiltinDefinitionLuaSrc
+    if (FFlag::LluCheckLenMT)
+        result += XorStr("declare function rawlen<K, V>(obj: {[K]: V} | string): number\n");
 
     return result;
 }
 
-} // namespace Luau
+} // namespace lluz

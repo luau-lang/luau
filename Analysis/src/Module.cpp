@@ -1,25 +1,24 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Module.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Module.h"
 
-#include "Luau/Clone.h"
-#include "Luau/Common.h"
-#include "Luau/ConstraintGraphBuilder.h"
-#include "Luau/Normalize.h"
-#include "Luau/RecursionCounter.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypePack.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/Clone.h"
+#include "lluz/Common.h"
+#include "lluz/ConstraintGraphBuilder.h"
+#include "lluz/Normalize.h"
+#include "lluz/RecursionCounter.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypePack.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-LUAU_FASTFLAG(LuauNormalizeFlagIsConservative);
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
+lluz_FASTFLAG(LluNormalizeFlagIsConservative);
+lluz_FASTFLAG(DebugLluDeferredConstraintResolution);
 
-namespace Luau
+namespace lluz
 {
 
 static bool contains(Position pos, Comment comment)
@@ -95,66 +94,59 @@ Module::~Module()
 
 void Module::clonePublicInterface(InternalErrorReporter& ice)
 {
-    LUAU_ASSERT(interfaceTypes.typeVars.empty());
-    LUAU_ASSERT(interfaceTypes.typePacks.empty());
+    lluz_ASSERT(interfaceTypes.typeVars.empty());
+    lluz_ASSERT(interfaceTypes.typePacks.empty());
 
     CloneState cloneState;
 
-    ScopePtr moduleScope = getModuleScope();
+    ScopePtr moduleScope = FFlag::DebugLluDeferredConstraintResolution ? nullptr : getModuleScope();
+    Scope2* moduleScope2 = FFlag::DebugLluDeferredConstraintResolution ? getModuleScope2() : nullptr;
 
-    TypePackId returnType = moduleScope->returnType;
-    std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
+    TypePackId returnType = FFlag::DebugLluDeferredConstraintResolution ? moduleScope2->returnType : moduleScope->returnType;
+    std::optional<TypePackId> varargPack = FFlag::DebugLluDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
     std::unordered_map<Name, TypeFun>* exportedTypeBindings =
-        FFlag::DebugLuauDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
+        FFlag::DebugLluDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
 
     returnType = clone(returnType, interfaceTypes, cloneState);
 
-    moduleScope->returnType = returnType;
-    if (varargPack)
+    if (moduleScope)
     {
-        varargPack = clone(*varargPack, interfaceTypes, cloneState);
-        moduleScope->varargPack = varargPack;
+        moduleScope->returnType = returnType;
+        if (varargPack)
+        {
+            varargPack = clone(*varargPack, interfaceTypes, cloneState);
+            moduleScope->varargPack = varargPack;
+        }
+    }
+    else
+    {
+        lluz_ASSERT(moduleScope2);
+        moduleScope2->returnType = returnType; // TODO varargPack
+    }
+
+    if (FFlag::LluLowerBoundsCalculation)
+    {
+        normalize(returnType, interfaceTypes, ice);
+        if (varargPack)
+            normalize(*varargPack, interfaceTypes, ice);
     }
 
     ForceNormal forceNormal{&interfaceTypes};
-
-    if (FFlag::LuauLowerBoundsCalculation)
-    {
-        normalize(returnType, interfaceTypes, ice);
-        if (FFlag::LuauForceExportSurfacesToBeNormal)
-            forceNormal.traverse(returnType);
-        if (varargPack)
-        {
-            normalize(*varargPack, interfaceTypes, ice);
-            if (FFlag::LuauForceExportSurfacesToBeNormal)
-                forceNormal.traverse(*varargPack);
-        }
-    }
 
     if (exportedTypeBindings)
     {
         for (auto& [name, tf] : *exportedTypeBindings)
         {
             tf = clone(tf, interfaceTypes, cloneState);
-            if (FFlag::LuauLowerBoundsCalculation)
+            if (FFlag::LluLowerBoundsCalculation)
             {
                 normalize(tf.type, interfaceTypes, ice);
 
-                if (FFlag::LuauNormalizeFlagIsConservative)
+                if (FFlag::LluNormalizeFlagIsConservative)
                 {
                     // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
                     // won't be marked normal.  If the types aren't normal by now, they never will be.
                     forceNormal.traverse(tf.type);
-                    for (GenericTypeDefinition param : tf.typeParams)
-                    {
-                        forceNormal.traverse(param.ty);
-
-                        if (param.defaultValue)
-                        {
-                            normalize(*param.defaultValue, interfaceTypes, ice);
-                            forceNormal.traverse(*param.defaultValue);
-                        }
-                    }
                 }
             }
         }
@@ -173,13 +165,8 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
     for (auto& [name, ty] : declaredGlobals)
     {
         ty = clone(ty, interfaceTypes, cloneState);
-        if (FFlag::LuauLowerBoundsCalculation)
-        {
+        if (FFlag::LluLowerBoundsCalculation)
             normalize(ty, interfaceTypes, ice);
-
-            if (FFlag::LuauForceExportSurfacesToBeNormal)
-                forceNormal.traverse(ty);
-        }
     }
 
     freeze(internalTypes);
@@ -188,8 +175,14 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
 ScopePtr Module::getModuleScope() const
 {
-    LUAU_ASSERT(!scopes.empty());
+    lluz_ASSERT(!scopes.empty());
     return scopes.front().second;
 }
 
-} // namespace Luau
+Scope2* Module::getModuleScope2() const
+{
+    lluz_ASSERT(!scope2s.empty());
+    return scope2s.front().second.get();
+}
+
+} // namespace lluz

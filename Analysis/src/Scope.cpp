@@ -1,8 +1,8 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/Scope.h"
+#include "lluz/Scope.h"
 
-namespace Luau
+namespace lluz
 {
 
 Scope::Scope(TypePackId returnType)
@@ -19,6 +19,22 @@ Scope::Scope(const ScopePtr& parent, int subLevel)
 {
     level = level.incr();
     level.subLevel = subLevel;
+}
+
+std::optional<TypeId> Scope::lookup(const Symbol& name)
+{
+    Scope* scope = this;
+
+    while (scope)
+    {
+        auto it = scope->bindings.find(name);
+        if (it != scope->bindings.end())
+            return it->second.typeId;
+
+        scope = scope->parent.get();
+    }
+
+    return std::nullopt;
 }
 
 std::optional<TypeFun> Scope::lookupType(const Name& name)
@@ -105,51 +121,51 @@ std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bo
     return std::nullopt;
 }
 
-std::optional<TypeId> Scope::lookup(Symbol sym)
+std::optional<TypeId> Scope2::lookup(Symbol sym)
 {
-    Scope* s = this;
+    Scope2* s = this;
 
     while (true)
     {
         auto it = s->bindings.find(sym);
         if (it != s->bindings.end())
-            return it->second.typeId;
+            return it->second;
 
         if (s->parent)
-            s = s->parent.get();
+            s = s->parent;
         else
             return std::nullopt;
     }
 }
 
-std::optional<TypeId> Scope::lookupTypeBinding(const Name& name)
+std::optional<TypeId> Scope2::lookupTypeBinding(const Name& name)
 {
-    Scope* s = this;
+    Scope2* s = this;
     while (s)
     {
         auto it = s->typeBindings.find(name);
         if (it != s->typeBindings.end())
             return it->second;
 
-        s = s->parent.get();
+        s = s->parent;
     }
 
     return std::nullopt;
 }
 
-std::optional<TypePackId> Scope::lookupTypePackBinding(const Name& name)
+std::optional<TypePackId> Scope2::lookupTypePackBinding(const Name& name)
 {
-    Scope* s = this;
+    Scope2* s = this;
     while (s)
     {
         auto it = s->typePackBindings.find(name);
         if (it != s->typePackBindings.end())
             return it->second;
 
-        s = s->parent.get();
+        s = s->parent;
     }
 
     return std::nullopt;
 }
 
-} // namespace Luau
+} // namespace lluz

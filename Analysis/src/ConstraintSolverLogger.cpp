@@ -1,16 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/ConstraintSolverLogger.h"
+#include "lluz/ConstraintSolverLogger.h"
 
-namespace Luau
+namespace lluz
 {
 
-static std::string dumpScopeAndChildren(const Scope* scope, ToStringOptions& opts)
+static std::string dumpScopeAndChildren(const Scope2* scope, ToStringOptions& opts)
 {
     std::string output = "{\"bindings\":{";
 
     bool comma = false;
-    for (const auto& [name, binding] : scope->bindings)
+    for (const auto& [name, type] : scope->bindings)
     {
         if (comma)
             output += ",";
@@ -19,7 +19,7 @@ static std::string dumpScopeAndChildren(const Scope* scope, ToStringOptions& opt
         output += name.c_str();
         output += "\": \"";
 
-        ToStringResult result = toStringDetailed(binding.typeId, opts);
+        ToStringResult result = toStringDetailed(type, opts);
         opts.nameMap = std::move(result.nameMap);
         output += result.name;
         output += "\"";
@@ -30,7 +30,7 @@ static std::string dumpScopeAndChildren(const Scope* scope, ToStringOptions& opt
     output += "},\"children\":[";
     comma = false;
 
-    for (const Scope* child : scope->children)
+    for (const Scope2* child : scope->children)
     {
         if (comma)
             output += ",";
@@ -96,7 +96,7 @@ std::string ConstraintSolverLogger::compileOutput()
     return output;
 }
 
-void ConstraintSolverLogger::captureBoundarySnapshot(const Scope* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+void ConstraintSolverLogger::captureBoundarySnapshot(const Scope2* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
     std::string snapshot = "{\"type\":\"boundary\",\"rootScope\":";
 
@@ -109,9 +109,9 @@ void ConstraintSolverLogger::captureBoundarySnapshot(const Scope* rootScope, std
 }
 
 void ConstraintSolverLogger::prepareStepSnapshot(
-    const Scope* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+    const Scope2* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
-    // LUAU_ASSERT(!preparedSnapshot);
+    // lluz_ASSERT(!preparedSnapshot);
 
     std::string snapshot = "{\"type\":\"step\",\"rootScope\":";
 
@@ -136,4 +136,4 @@ void ConstraintSolverLogger::commitPreparedStepSnapshot()
     }
 }
 
-} // namespace Luau
+} // namespace lluz

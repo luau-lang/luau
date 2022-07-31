@@ -1,16 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/Clone.h"
-#include "Luau/RecursionCounter.h"
-#include "Luau/TxnLog.h"
-#include "Luau/TypePack.h"
-#include "Luau/Unifiable.h"
+#include "lluz/Clone.h"
+#include "lluz/RecursionCounter.h"
+#include "lluz/TxnLog.h"
+#include "lluz/TypePack.h"
+#include "lluz/Unifiable.h"
 
-LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
+lluz_FASTFLAG(DebugLluCopyBeforeNormalizing)
 
-LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
+lluz_FASTINTVARIABLE(LluTypeCloneRecursionLimit, 300)
 
-namespace Luau
+namespace lluz
 {
 
 namespace
@@ -59,8 +59,6 @@ struct TypeCloner
     void operator()(const UnionTypeVar& t);
     void operator()(const IntersectionTypeVar& t);
     void operator()(const LazyTypeVar& t);
-    void operator()(const UnknownTypeVar& t);
-    void operator()(const NeverTypeVar& t);
 };
 
 struct TypePackCloner
@@ -105,7 +103,7 @@ struct TypePackCloner
     void operator()(const Unifiable::Bound<TypePackId>& t)
     {
         TypePackId cloned = clone(t.boundTo, dest, cloneState);
-        if (FFlag::DebugLuauCopyBeforeNormalizing)
+        if (FFlag::DebugLluCopyBeforeNormalizing)
             cloned = dest.addTypePack(TypePackVar{BoundTypePack{cloned}});
         seenTypePacks[typePackId] = cloned;
     }
@@ -120,7 +118,7 @@ struct TypePackCloner
     {
         TypePackId cloned = dest.addTypePack(TypePack{});
         TypePack* destTp = getMutable<TypePack>(cloned);
-        LUAU_ASSERT(destTp != nullptr);
+        lluz_ASSERT(destTp != nullptr);
         seenTypePacks[typePackId] = cloned;
 
         for (TypeId ty : t.head)
@@ -151,7 +149,7 @@ void TypeCloner::operator()(const Unifiable::Generic& t)
 void TypeCloner::operator()(const Unifiable::Bound<TypeId>& t)
 {
     TypeId boundTo = clone(t.boundTo, dest, cloneState);
-    if (FFlag::DebugLuauCopyBeforeNormalizing)
+    if (FFlag::DebugLluCopyBeforeNormalizing)
         boundTo = dest.addType(BoundTypeVar{boundTo});
     seenTypes[typeId] = boundTo;
 }
@@ -175,7 +173,7 @@ void TypeCloner::operator()(const ConstrainedTypeVar& t)
 {
     TypeId res = dest.addType(ConstrainedTypeVar{t.level});
     ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(res);
-    LUAU_ASSERT(ctv);
+    lluz_ASSERT(ctv);
 
     seenTypes[typeId] = res;
 
@@ -195,7 +193,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
 {
     TypeId result = dest.addType(FunctionTypeVar{TypeLevel{0, 0}, {}, {}, nullptr, nullptr, t.definition, t.hasSelf});
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(result);
-    LUAU_ASSERT(ftv != nullptr);
+    lluz_ASSERT(ftv != nullptr);
 
     seenTypes[typeId] = result;
 
@@ -215,7 +213,7 @@ void TypeCloner::operator()(const FunctionTypeVar& t)
 void TypeCloner::operator()(const TableTypeVar& t)
 {
     // If table is now bound to another one, we ignore the content of the original
-    if (!FFlag::DebugLuauCopyBeforeNormalizing && t.boundTo)
+    if (!FFlag::DebugLluCopyBeforeNormalizing && t.boundTo)
     {
         TypeId boundTo = clone(*t.boundTo, dest, cloneState);
         seenTypes[typeId] = boundTo;
@@ -224,7 +222,7 @@ void TypeCloner::operator()(const TableTypeVar& t)
 
     TypeId result = dest.addType(TableTypeVar{});
     TableTypeVar* ttv = getMutable<TableTypeVar>(result);
-    LUAU_ASSERT(ttv != nullptr);
+    lluz_ASSERT(ttv != nullptr);
 
     *ttv = t;
 
@@ -232,7 +230,7 @@ void TypeCloner::operator()(const TableTypeVar& t)
 
     ttv->level = TypeLevel{0, 0};
 
-    if (FFlag::DebugLuauCopyBeforeNormalizing && t.boundTo)
+    if (FFlag::DebugLluCopyBeforeNormalizing && t.boundTo)
         ttv->boundTo = clone(*t.boundTo, dest, cloneState);
 
     for (const auto& [name, prop] : t.props)
@@ -301,23 +299,13 @@ void TypeCloner::operator()(const IntersectionTypeVar& t)
     seenTypes[typeId] = result;
 
     IntersectionTypeVar* option = getMutable<IntersectionTypeVar>(result);
-    LUAU_ASSERT(option != nullptr);
+    lluz_ASSERT(option != nullptr);
 
     for (TypeId ty : t.parts)
         option->parts.push_back(clone(ty, dest, cloneState));
 }
 
 void TypeCloner::operator()(const LazyTypeVar& t)
-{
-    defaultClone(t);
-}
-
-void TypeCloner::operator()(const UnknownTypeVar& t)
-{
-    defaultClone(t);
-}
-
-void TypeCloner::operator()(const NeverTypeVar& t)
 {
     defaultClone(t);
 }
@@ -329,14 +317,14 @@ TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
     if (tp->persistent)
         return tp;
 
-    RecursionLimiter _ra(&cloneState.recursionCount, FInt::LuauTypeCloneRecursionLimit);
+    RecursionLimiter _ra(&cloneState.recursionCount, FInt::LluTypeCloneRecursionLimit);
 
     TypePackId& res = cloneState.seenTypePacks[tp];
 
     if (res == nullptr)
     {
         TypePackCloner cloner{dest, tp, cloneState};
-        Luau::visit(cloner, tp->ty); // Mutates the storage that 'res' points into.
+        lluz::visit(cloner, tp->ty); // Mutates the storage that 'res' points into.
     }
 
     return res;
@@ -347,14 +335,14 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
     if (typeId->persistent)
         return typeId;
 
-    RecursionLimiter _ra(&cloneState.recursionCount, FInt::LuauTypeCloneRecursionLimit);
+    RecursionLimiter _ra(&cloneState.recursionCount, FInt::LluTypeCloneRecursionLimit);
 
     TypeId& res = cloneState.seenTypes[typeId];
 
     if (res == nullptr)
     {
         TypeCloner cloner{dest, typeId, cloneState};
-        Luau::visit(cloner, typeId->ty); // Mutates the storage that 'res' points into.
+        lluz::visit(cloner, typeId->ty); // Mutates the storage that 'res' points into.
 
         // Persistent types are not being cloned and we get the original type back which might be read-only
         if (!res->persistent)
@@ -419,7 +407,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
     }
     else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
-        LUAU_ASSERT(!ttv->boundTo);
+        lluz_ASSERT(!ttv->boundTo);
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
@@ -459,4 +447,4 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
     return result;
 }
 
-} // namespace Luau
+} // namespace lluz

@@ -1,5 +1,5 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TopoSortStatements.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TopoSortStatements.h"
 
 /* Decide the order in which we typecheck Lua statements in a block.
  *
@@ -26,10 +26,10 @@
  *     3. Cyclic dependencies can be resolved by picking an arbitrary statement to check first.
  */
 
-#include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
-#include "Luau/Common.h"
-#include "Luau/StringUtils.h"
+#include "lluz/Ast.h"
+#include "lluz/DenseHash.h"
+#include "lluz/Common.h"
+#include "lluz/StringUtils.h"
 
 #include <algorithm>
 #include <deque>
@@ -40,7 +40,7 @@
 #include <stdexcept>
 #include <optional>
 
-namespace Luau
+namespace lluz
 {
 
 // For some reason, natvis interacts really poorly with anonymous data types
@@ -127,7 +127,7 @@ std::optional<Identifier> mkName(const AstExprIndexName& expr)
 
 Identifier mkName(const AstExprError& expr)
 {
-    return {format("error#%d", expr.messageIndex), nullptr};
+    return {format(XorStr("error#%d"), expr.messageIndex), nullptr};
 }
 
 std::optional<Identifier> mkName(const AstExpr& expr)
@@ -147,9 +147,9 @@ std::optional<Identifier> mkName(const AstExpr& expr)
 Identifier mkName(const AstStatFunction& function)
 {
     auto name = mkName(*function.name);
-    LUAU_ASSERT(bool(name));
+    lluz_ASSERT(bool(name));
     if (!name)
-        throw std::runtime_error("Internal error: Function declaration has a bad name");
+        throw std::runtime_error(XorStr("Internal error: Function declaration has a bad name"));
 
     return *name;
 }
@@ -255,7 +255,7 @@ struct ArcCollector : public AstVisitor
     {
         auto name = mkName(*node->name);
         if (!name)
-            throw std::runtime_error("Internal error: AstStatFunction has a bad name");
+            throw std::runtime_error(XorStr("Internal error: AstStatFunction has a bad name"));
 
         add(*name);
         return true;
@@ -382,14 +382,14 @@ void prune(Node* next)
     for (const auto& node : next->provides)
     {
         auto it = node->depends.find(next);
-        LUAU_ASSERT(it != node->depends.end());
+        lluz_ASSERT(it != node->depends.end());
         node->depends.erase(it);
     }
 
     for (const auto& node : next->depends)
     {
         auto it = node->provides.find(next);
-        LUAU_ASSERT(it != node->provides.end());
+        lluz_ASSERT(it != node->provides.end());
         node->provides.erase(it);
     }
 }
@@ -439,7 +439,7 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
             if (isBlockTerminator(*iter->get()->element))
                 continue;
 
-            LUAU_ASSERT(allArcs.end() != allArcs.find(iter->get()));
+            lluz_ASSERT(allArcs.end() != allArcs.find(iter->get()));
             const Arcs& arcs = allArcs[iter->get()];
 
             if (arcs.depends.empty())
@@ -463,7 +463,7 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
             if (allArcs.end() != it)
             {
                 auto i2 = it->second.depends.find(nextNode.get());
-                LUAU_ASSERT(i2 != it->second.depends.end());
+                lluz_ASSERT(i2 != it->second.depends.end());
                 it->second.depends.erase(i2);
             }
         }
@@ -474,7 +474,7 @@ void drain(NodeList& Q, std::vector<AstStat*>& result, Node* target)
             if (allArcs.end() != it)
             {
                 auto i2 = it->second.provides.find(nextNode.get());
-                LUAU_ASSERT(i2 != it->second.provides.end());
+                lluz_ASSERT(i2 != it->second.provides.end());
                 it->second.provides.erase(i2);
             }
         }
@@ -576,4 +576,4 @@ void toposort(std::vector<AstStat*>& stats)
     std::swap(stats, result);
 }
 
-} // namespace Luau
+} // namespace lluz

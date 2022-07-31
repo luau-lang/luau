@@ -1,10 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Common.h"
-#include "Luau/Instantiation.h"
-#include "Luau/TxnLog.h"
-#include "Luau/TypeArena.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Common.h"
+#include "lluz/Instantiation.h"
+#include "lluz/TxnLog.h"
+#include "lluz/TypeArena.h"
 
-namespace Luau
+namespace lluz
 {
 
 bool Instantiation::isDirty(TypeId ty)
@@ -38,7 +38,7 @@ bool Instantiation::ignoreChildren(TypeId ty)
 TypeId Instantiation::clean(TypeId ty)
 {
     const FunctionTypeVar* ftv = log->getMutable<FunctionTypeVar>(ty);
-    LUAU_ASSERT(ftv);
+    lluz_ASSERT(ftv);
 
     FunctionTypeVar clone = FunctionTypeVar{level, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
     clone.magicFunction = ftv->magicFunction;
@@ -60,7 +60,7 @@ TypeId Instantiation::clean(TypeId ty)
 
 TypePackId Instantiation::clean(TypePackId tp)
 {
-    LUAU_ASSERT(false);
+    lluz_ASSERT(false);
     return tp;
 }
 
@@ -104,7 +104,7 @@ bool ReplaceGenerics::isDirty(TypePackId tp)
 
 TypeId ReplaceGenerics::clean(TypeId ty)
 {
-    LUAU_ASSERT(isDirty(ty));
+    lluz_ASSERT(isDirty(ty));
     if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
     {
         TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, level, TableState::Free};
@@ -117,8 +117,8 @@ TypeId ReplaceGenerics::clean(TypeId ty)
 
 TypePackId ReplaceGenerics::clean(TypePackId tp)
 {
-    LUAU_ASSERT(isDirty(tp));
+    lluz_ASSERT(isDirty(tp));
     return addTypePack(TypePackVar(FreeTypePack{level}));
 }
 
-} // namespace Luau
+} // namespace lluz

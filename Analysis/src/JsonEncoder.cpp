@@ -1,12 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/JsonEncoder.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/JsonEncoder.h"
 
-#include "Luau/Ast.h"
-#include "Luau/ParseResult.h"
-#include "Luau/StringUtils.h"
-#include "Luau/Common.h"
+#include "lluz/Ast.h"
+#include "lluz/StringUtils.h"
+#include "lluz/Common.h"
 
-namespace Luau
+namespace lluz
 {
 
 struct AstJsonEncoder : public AstVisitor
@@ -22,7 +21,7 @@ struct AstJsonEncoder : public AstVisitor
 
     std::string str()
     {
-        return join(chunks, "");
+        return join(chunks, XorStr(""));
     }
 
     bool pushComma()
@@ -76,58 +75,49 @@ struct AstJsonEncoder : public AstVisitor
         writeRaw(std::string_view{&c, 1});
     }
 
-    void writeType(std::string_view propValue)
-    {
-        write("type", propValue);
-    }
-
     template<typename T>
     void write(std::string_view propName, const T& value)
     {
         if (comma)
-            writeRaw(",");
+            writeRaw(XorStr(","));
         comma = true;
-        writeRaw("\"");
+        writeRaw(XorStr("\""));
         writeRaw(propName);
-        writeRaw("\":");
+        writeRaw(XorStr("\":"));
         write(value);
     }
 
     void write(bool b)
     {
         if (b)
-            writeRaw("true");
+            writeRaw(XorStr("true"));
         else
-            writeRaw("false");
+            writeRaw(XorStr("false"));
     }
 
     void write(double d)
     {
-        char b[32];
-        snprintf(b, sizeof(b), "%.17g", d);
+        char b[256];
+        sprintf(b, "%g", d);
         writeRaw(b);
     }
 
     void writeString(std::string_view sv)
     {
         // TODO escape more accurately?
-        writeRaw("\"");
+        writeRaw(XorStr("\""));
 
         for (char c : sv)
         {
             if (c == '"')
-                writeRaw("\\\"");
-            else if (c == '\\')
-                writeRaw("\\\\");
-            else if (c < ' ')
-                writeRaw(format("\\u%04x", c));
-            else if (c == '\n')
-                writeRaw("\\n");
+                writeRaw(XorStr("\\\""));
+            else if (c == '\0')
+                writeRaw(XorStr("\\\0"));
             else
                 writeRaw(c);
         }
 
-        writeRaw("\"");
+        writeRaw(XorStr("\""));
     }
 
     void write(char c)
@@ -160,7 +150,7 @@ struct AstJsonEncoder : public AstVisitor
     }
     void write(std::nullptr_t)
     {
-        writeRaw("null");
+        writeRaw(XorStr("null"));
     }
     void write(std::string_view str)
     {
@@ -171,42 +161,41 @@ struct AstJsonEncoder : public AstVisitor
         if (name)
             write(*name);
         else
-            writeRaw("null");
+            writeRaw(XorStr("null"));
     }
     void write(AstName name)
     {
-        writeString(name.value ? name.value : "");
+        writeString(name.value ? name.value : XorStr(""));
     }
 
     void write(const Position& position)
     {
         write(position.line);
-        writeRaw(",");
+        writeRaw(XorStr(","));
         write(position.column);
     }
 
     void write(const Location& location)
     {
-        writeRaw("\"");
+        writeRaw(XorStr("\""));
         write(location.begin);
-        writeRaw(" - ");
+        writeRaw(XorStr(" - "));
         write(location.end);
-        writeRaw("\"");
+        writeRaw(XorStr("\""));
     }
 
     void write(AstLocal* local)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
         if (local->annotation != nullptr)
-            write("luauType", local->annotation);
+            write("type", local->annotation);
         else
-            write("luauType", nullptr);
+            write("type", nullptr);
         write("name", local->name);
-        writeType("AstLocal");
         write("location", local->location);
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void writeNode(AstNode* node)
@@ -217,13 +206,13 @@ struct AstJsonEncoder : public AstVisitor
     template<typename F>
     void writeNode(AstNode* node, std::string_view name, F&& f)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
-        writeType(name);
+        write("type", name);
         writeNode(node);
         f();
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void write(AstNode* node)
@@ -286,18 +275,18 @@ struct AstJsonEncoder : public AstVisitor
     template<typename T>
     void write(AstArray<T> arr)
     {
-        writeRaw("[");
+        writeRaw(XorStr("["));
         bool comma = false;
         for (const auto& a : arr)
         {
             if (comma)
-                writeRaw(",");
+                writeRaw(XorStr(","));
             else
                 comma = true;
 
             write(a);
         }
-        writeRaw("]");
+        writeRaw(XorStr("]"));
     }
 
     void write(AstArray<char> arr)
@@ -362,43 +351,40 @@ struct AstJsonEncoder : public AstVisitor
         if (typeList)
             write(*typeList);
         else
-            writeRaw("null");
+            writeRaw(XorStr("null"));
     }
 
     void write(const AstTypeList& typeList)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
-        writeType("AstTypeList");
         write("types", typeList.types);
         if (typeList.tailType)
             write("tailType", typeList.tailType);
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void write(const AstGenericType& genericType)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
-        writeType("AstGenericType");
         write("name", genericType.name);
         if (genericType.defaultValue)
-            write("luauType", genericType.defaultValue);
+            write("type", genericType.defaultValue);
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void write(const AstGenericTypePack& genericTypePack)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
-        writeType("AstGenericTypePack");
         write("name", genericTypePack.name);
         if (genericTypePack.defaultValue)
-            write("luauType", genericTypePack.defaultValue);
+            write("type", genericTypePack.defaultValue);
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void write(AstExprTable::Item::Kind kind)
@@ -406,19 +392,18 @@ struct AstJsonEncoder : public AstVisitor
         switch (kind)
         {
         case AstExprTable::Item::List:
-            return writeString("item");
+            return writeString(XorStr("item"));
         case AstExprTable::Item::Record:
-            return writeString("record");
+            return writeString(XorStr("record"));
         case AstExprTable::Item::General:
-            return writeString("general");
+            return writeString(XorStr("general"));
         }
     }
 
     void write(const AstExprTable::Item& item)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
-        writeType("AstExprTableItem");
         write("kind", item.kind);
         switch (item.kind)
         {
@@ -431,18 +416,7 @@ struct AstJsonEncoder : public AstVisitor
             break;
         }
         popComma(c);
-        writeRaw("}");
-    }
-
-    void write(class AstExprIfElse* node)
-    {
-        writeNode(node, "AstExprIfElse", [&]() {
-            PROP(condition);
-            PROP(hasThen);
-            PROP(trueExpr);
-            PROP(hasElse);
-            PROP(falseExpr);
-        });
+        writeRaw(XorStr("}"));
     }
 
     void write(class AstExprTable* node)
@@ -457,11 +431,11 @@ struct AstJsonEncoder : public AstVisitor
         switch (op)
         {
         case AstExprUnary::Not:
-            return writeString("Not");
+            return writeString(XorStr("not"));
         case AstExprUnary::Minus:
-            return writeString("Minus");
+            return writeString(XorStr("minus"));
         case AstExprUnary::Len:
-            return writeString("Len");
+            return writeString(XorStr("len"));
         }
     }
 
@@ -478,35 +452,35 @@ struct AstJsonEncoder : public AstVisitor
         switch (op)
         {
         case AstExprBinary::Add:
-            return writeString("Add");
+            return writeString(XorStr("Add"));
         case AstExprBinary::Sub:
-            return writeString("Sub");
+            return writeString(XorStr("Sub"));
         case AstExprBinary::Mul:
-            return writeString("Mul");
+            return writeString(XorStr("Mul"));
         case AstExprBinary::Div:
-            return writeString("Div");
+            return writeString(XorStr("Div"));
         case AstExprBinary::Mod:
-            return writeString("Mod");
+            return writeString(XorStr("Mod"));
         case AstExprBinary::Pow:
-            return writeString("Pow");
+            return writeString(XorStr("Pow"));
         case AstExprBinary::Concat:
-            return writeString("Concat");
+            return writeString(XorStr("Concat"));
         case AstExprBinary::CompareNe:
-            return writeString("CompareNe");
+            return writeString(XorStr("CompareNe"));
         case AstExprBinary::CompareEq:
-            return writeString("CompareEq");
+            return writeString(XorStr("CompareEq"));
         case AstExprBinary::CompareLt:
-            return writeString("CompareLt");
+            return writeString(XorStr("CompareLt"));
         case AstExprBinary::CompareLe:
-            return writeString("CompareLe");
+            return writeString(XorStr("CompareLe"));
         case AstExprBinary::CompareGt:
-            return writeString("CompareGt");
+            return writeString(XorStr("CompareGt"));
         case AstExprBinary::CompareGe:
-            return writeString("CompareGe");
+            return writeString(XorStr("CompareGe"));
         case AstExprBinary::And:
-            return writeString("And");
+            return writeString(XorStr("And"));
         case AstExprBinary::Or:
-            return writeString("Or");
+            return writeString(XorStr("Or"));
         }
     }
 
@@ -538,18 +512,18 @@ struct AstJsonEncoder : public AstVisitor
     void write(class AstStatBlock* node)
     {
         writeNode(node, "AstStatBlock", [&]() {
-            writeRaw(",\"body\":[");
+            writeRaw(XorStr(",\"body\":["));
             bool comma = false;
             for (AstStat* stat : node->body)
             {
                 if (comma)
-                    writeRaw(",");
+                    writeRaw(XorStr(","));
                 else
                     comma = true;
 
                 write(stat);
             }
-            writeRaw("]");
+            writeRaw(XorStr("]"));
         });
     }
 
@@ -567,7 +541,7 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(class AstStatWhile* node)
     {
-        writeNode(node, "AstStatWhile", [&]() {
+        writeNode(node, "AtStatWhile", [&]() {
             PROP(condition);
             PROP(body);
             PROP(hasDo);
@@ -707,13 +681,12 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(const AstDeclaredClassProp& prop)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
         write("name", prop.name);
-        writeType("AstDeclaredClassProp");
-        write("luauType", prop.ty);
+        write("type", prop.ty);
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void write(class AstStatDeclareClass* node)
@@ -754,16 +727,15 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(const AstTableProp& prop)
     {
-        writeRaw("{");
+        writeRaw(XorStr("{"));
         bool c = pushComma();
 
         write("name", prop.name);
-        writeType("AstTableProp");
         write("location", prop.location);
-        write("propType", prop.type);
+        write("type", prop.type);
 
         popComma(c);
-        writeRaw("}");
+        writeRaw(XorStr("}"));
     }
 
     void write(class AstTypeTable* node)
@@ -772,24 +744,6 @@ struct AstJsonEncoder : public AstVisitor
             PROP(props);
             PROP(indexer);
         });
-    }
-    
-    void write(struct AstTableIndexer* indexer)
-    {
-        if (indexer)
-        {
-            writeRaw("{");
-            bool c = pushComma();
-            write("location", indexer->location);
-            write("indexType", indexer->indexType);
-            write("resultType", indexer->resultType);
-            popComma(c);
-            writeRaw("}");
-        }
-        else
-        {
-            writeRaw("null");
-        }
     }
 
     void write(class AstTypeFunction* node)
@@ -877,12 +831,6 @@ struct AstJsonEncoder : public AstVisitor
     }
 
     bool visit(class AstExprConstantString* node) override
-    {
-        write(node);
-        return false;
-    }
-
-    bool visit(class AstExprIfElse* node) override
     {
         write(node);
         return false;
@@ -1145,42 +1093,6 @@ struct AstJsonEncoder : public AstVisitor
         write(node);
         return false;
     }
-
-    void writeComments(std::vector<Comment> commentLocations)
-    {
-        bool commentComma = false;
-        for (Comment comment : commentLocations)
-        {
-            if (commentComma)
-            {
-                writeRaw(",");
-            }
-            else
-            {
-                commentComma = true;
-            }
-            writeRaw("{");
-            bool c = pushComma();
-            switch (comment.type)
-            {
-            case Lexeme::Comment:
-                writeType("Comment");
-                break;
-            case Lexeme::BlockComment:
-                writeType("BlockComment");
-                break;
-            case Lexeme::BrokenComment:
-                writeType("BrokenComment");
-                break;
-            default:
-                break;
-            }
-            write("location", comment.location);
-            popComma(c);
-            writeRaw("}");
-            
-        }
-    }
 };
 
 std::string toJson(AstNode* node)
@@ -1190,15 +1102,4 @@ std::string toJson(AstNode* node)
     return encoder.str();
 }
 
-std::string toJson(AstNode* node, const std::vector<Comment>& commentLocations)
-{
-    AstJsonEncoder encoder;
-    encoder.writeRaw(R"({"root":)");
-    node->visit(&encoder);
-    encoder.writeRaw(R"(,"commentLocations":[)");
-    encoder.writeComments(commentLocations);
-    encoder.writeRaw("]}");
-    return encoder.str();
-}
-
-} // namespace Luau
+} // namespace lluz

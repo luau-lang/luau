@@ -1,7 +1,9 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypedAllocator.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypedAllocator.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
+
+#include "..\..\..\..\Security\Lazy_Importer.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -22,9 +24,9 @@ const size_t kPageSize = sysconf(_SC_PAGESIZE);
 
 #include <stdlib.h>
 
-LUAU_FASTFLAG(DebugLuauFreezeArena)
+lluz_FASTFLAG(DebugLluFreezeArena)
 
-namespace Luau
+namespace lluz
 {
 
 static void* systemAllocateAligned(size_t size, size_t align)
@@ -55,7 +57,7 @@ static size_t pageAlign(size_t size)
 
 void* pagedAllocate(size_t size)
 {
-    if (FFlag::DebugLuauFreezeArena)
+    if (FFlag::DebugLluFreezeArena)
         return systemAllocateAligned(pageAlign(size), kPageSize);
     else
         return ::operator new(size, std::nothrow);
@@ -63,7 +65,7 @@ void* pagedAllocate(size_t size)
 
 void pagedDeallocate(void* ptr)
 {
-    if (FFlag::DebugLuauFreezeArena)
+    if (FFlag::DebugLluFreezeArena)
         systemDeallocateAligned(ptr);
     else
         ::operator delete(ptr);
@@ -71,32 +73,32 @@ void pagedDeallocate(void* ptr)
 
 void pagedFreeze(void* ptr, size_t size)
 {
-    LUAU_ASSERT(FFlag::DebugLuauFreezeArena);
-    LUAU_ASSERT(uintptr_t(ptr) % kPageSize == 0);
+    lluz_ASSERT(FFlag::DebugLluFreezeArena);
+    lluz_ASSERT(uintptr_t(ptr) % kPageSize == 0);
 
 #ifdef _WIN32
     DWORD oldProtect;
-    BOOL rc = VirtualProtect(ptr, pageAlign(size), PAGE_READONLY, &oldProtect);
-    LUAU_ASSERT(rc);
+    BOOL rc = LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached())(ptr, pageAlign(size), PAGE_READONLY, &oldProtect);
+    lluz_ASSERT(rc);
 #else
     int rc = mprotect(ptr, pageAlign(size), PROT_READ);
-    LUAU_ASSERT(rc == 0);
+    lluz_ASSERT(rc == 0);
 #endif
 }
 
 void pagedUnfreeze(void* ptr, size_t size)
 {
-    LUAU_ASSERT(FFlag::DebugLuauFreezeArena);
-    LUAU_ASSERT(uintptr_t(ptr) % kPageSize == 0);
+    lluz_ASSERT(FFlag::DebugLluFreezeArena);
+    lluz_ASSERT(uintptr_t(ptr) % kPageSize == 0);
 
 #ifdef _WIN32
     DWORD oldProtect;
-    BOOL rc = VirtualProtect(ptr, pageAlign(size), PAGE_READWRITE, &oldProtect);
-    LUAU_ASSERT(rc);
+    BOOL rc = LI_FN(VirtualProtect).in(LI_MODULE("kernel32.dll").cached())(ptr, pageAlign(size), PAGE_READWRITE, &oldProtect);
+    lluz_ASSERT(rc);
 #else
     int rc = mprotect(ptr, pageAlign(size), PROT_READ | PROT_WRITE);
-    LUAU_ASSERT(rc == 0);
+    lluz_ASSERT(rc == 0);
 #endif
 }
 
-} // namespace Luau
+} // namespace lluz

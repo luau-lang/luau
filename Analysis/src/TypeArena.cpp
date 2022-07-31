@@ -1,10 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/TypeArena.h"
+#include "lluz/TypeArena.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena, false);
+lluz_FASTFLAGVARIABLE(DebugLluFreezeArena, false);
 
-namespace Luau
+namespace lluz
 {
 
 void TypeArena::clear()
@@ -69,7 +69,7 @@ TypePackId TypeArena::addTypePack(TypePackVar tp)
 
 void freeze(TypeArena& arena)
 {
-    if (!FFlag::DebugLuauFreezeArena)
+    if (!FFlag::DebugLluFreezeArena)
         return;
 
     arena.typeVars.freeze();
@@ -78,11 +78,11 @@ void freeze(TypeArena& arena)
 
 void unfreeze(TypeArena& arena)
 {
-    if (!FFlag::DebugLuauFreezeArena)
+    if (!FFlag::DebugLluFreezeArena)
         return;
 
     arena.typeVars.unfreeze();
     arena.typePacks.unfreeze();
 }
 
-} // namespace Luau
+} // namespace lluz

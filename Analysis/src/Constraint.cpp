@@ -1,8 +1,8 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/Constraint.h"
+#include "lluz/Constraint.h"
 
-namespace Luau
+namespace lluz
 {
 
 Constraint::Constraint(ConstraintV&& c)
@@ -10,4 +10,4 @@ Constraint::Constraint(ConstraintV&& c)
 {
 }
 
-} // namespace Luau
+} // namespace lluz

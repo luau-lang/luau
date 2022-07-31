@@ -1,119 +1,21 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/AstQuery.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/AstQuery.h"
 
-#include "Luau/Module.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/ToString.h"
+#include "lluz/Module.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/ToString.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
 
 #include <algorithm>
 
-namespace Luau
+namespace lluz
 {
 
 namespace
 {
-
-
-struct AutocompleteNodeFinder : public AstVisitor
-{
-    const Position pos;
-    std::vector<AstNode*> ancestry;
-
-    explicit AutocompleteNodeFinder(Position pos, AstNode* root)
-        : pos(pos)
-    {
-    }
-
-    bool visit(AstExpr* expr) override
-    {
-        if (expr->location.begin < pos && pos <= expr->location.end)
-        {
-            ancestry.push_back(expr);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(AstStat* stat) override
-    {
-        if (stat->location.begin < pos && pos <= stat->location.end)
-        {
-            ancestry.push_back(stat);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(AstType* type) override
-    {
-        if (type->location.begin < pos && pos <= type->location.end)
-        {
-            ancestry.push_back(type);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(AstTypeError* type) override
-    {
-        // For a missing type, match the whole range including the start position
-        if (type->isMissing && type->location.containsClosed(pos))
-        {
-            ancestry.push_back(type);
-            return true;
-        }
-        return false;
-    }
-
-    bool visit(class AstTypePack* typePack) override
-    {
-        return true;
-    }
-
-    bool visit(AstStatBlock* block) override
-    {
-        // If ancestry is empty, we are inspecting the root of the AST.  Its extent is considered to be infinite.
-        if (ancestry.empty())
-        {
-            ancestry.push_back(block);
-            return true;
-        }
-
-        // AstExprIndexName nodes are nested outside-in, so we want the outermost node in the case of nested nodes.
-        // ex foo.bar.baz is represented in the AST as IndexName{ IndexName {foo, bar}, baz}
-        if (!ancestry.empty() && ancestry.back()->is<AstExprIndexName>())
-            return false;
-
-        // Type annotation error might intersect the block statement when the function header is being written,
-        // annotation takes priority
-        if (!ancestry.empty() && ancestry.back()->is<AstTypeError>())
-            return false;
-
-        // If the cursor is at the end of an expression or type and simultaneously at the beginning of a block,
-        // the expression or type wins out.
-        // The exception to this is if we are in a block under an AstExprFunction.  In this case, we consider the position to
-        // be within the block.
-        if (block->location.begin == pos && !ancestry.empty())
-        {
-            if (ancestry.back()->asExpr() && !ancestry.back()->is<AstExprFunction>())
-                return false;
-
-            if (ancestry.back()->asType())
-                return false;
-        }
-
-        if (block->location.begin <= pos && pos <= block->location.end)
-        {
-            ancestry.push_back(block);
-            return true;
-        }
-        return false;
-    }
-};
 
 struct FindNode : public AstVisitor
 {
@@ -200,13 +102,6 @@ struct FindFullAncestry final : public AstVisitor
 
 } // namespace
 
-std::vector<AstNode*> findAncestryAtPositionForAutocomplete(const SourceModule& source, Position pos)
-{
-    AutocompleteNodeFinder finder{pos, source.root};
-    source.root->visit(&finder);
-    return finder.ancestry;
-}
-
 std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Position pos)
 {
     const Position end = source.root->location.end;
@@ -215,7 +110,7 @@ std::vector<AstNode*> findAstAncestryOfPosition(const SourceModule& source, Posi
 
     FindFullAncestry finder(pos, end);
     source.root->visit(&finder);
-    return finder.nodes;
+    return std::move(finder.nodes);
 }
 
 AstNode* findNodeAtPosition(const SourceModule& source, Position pos)
@@ -243,7 +138,7 @@ AstExpr* findExprAtPosition(const SourceModule& source, Position pos)
 
 ScopePtr findScopeAtPosition(const Module& module, Position pos)
 {
-    LUAU_ASSERT(!module.scopes.empty());
+    lluz_ASSERT(!module.scopes.empty());
 
     Location scopeLocation = module.scopes.front().first;
     ScopePtr scope = module.scopes.front().second;
@@ -307,7 +202,7 @@ std::optional<Binding> findBindingAtPosition(const Module& module, const SourceM
         return std::nullopt;
 
     ScopePtr currentScope = findScopeAtPosition(module, pos);
-    LUAU_ASSERT(currentScope);
+    lluz_ASSERT(currentScope);
 
     while (currentScope)
     {
@@ -530,4 +425,4 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
     return std::nullopt;
 }
 
-} // namespace Luau
+} // namespace lluz

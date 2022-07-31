@@ -1,16 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeVar.h"
 
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Common.h"
-#include "Luau/DenseHash.h"
-#include "Luau/Error.h"
-#include "Luau/RecursionCounter.h"
-#include "Luau/StringUtils.h"
-#include "Luau/ToString.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypePack.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Common.h"
+#include "lluz/DenseHash.h"
+#include "lluz/Error.h"
+#include "lluz/RecursionCounter.h"
+#include "lluz/StringUtils.h"
+#include "lluz/ToString.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypePack.h"
+#include "lluz/VisitTypeVar.h"
 
 #include <algorithm>
 #include <optional>
@@ -18,29 +18,17 @@
 #include <unordered_map>
 #include <unordered_set>
 
-LUAU_FASTFLAG(DebugLuauFreezeArena)
+lluz_FASTFLAG(DebugLluFreezeArena)
 
-LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
-LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
-LUAU_FASTINT(LuauTypeInferRecursionLimit)
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAGVARIABLE(LuauDeduceGmatchReturnTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauDeduceFindMatchReturnTypes, false)
+lluz_FASTINTVARIABLE(LluTypeMaximumStringifierLength, 500)
+lluz_FASTINTVARIABLE(LluTableTypeMaximumStringifierLength, 0)
+lluz_FASTINT(LluTypeInferRecursionLimit)
+lluz_FASTFLAG(LluNonCopyableTypeVarFields)
 
-namespace Luau
+namespace lluz
 {
 
 std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
-
-static std::optional<WithPredicate<TypePackId>> magicFunctionGmatch(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
-
-static std::optional<WithPredicate<TypePackId>> magicFunctionMatch(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
-
-static std::optional<WithPredicate<TypePackId>> magicFunctionFind(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
 
 TypeId follow(TypeId t)
@@ -66,7 +54,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         {
             TypeId res = ltv->thunk();
             if (get<LazyTypeVar>(res))
-                throw std::runtime_error("Lazy TypeVar cannot resolve to another Lazy TypeVar");
+                throw std::runtime_error(XorStr("Lazy TypeVar cannot resolve to another Lazy TypeVar"));
 
             *asMutable(ty) = BoundTypeVar(res);
         }
@@ -104,7 +92,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
                 cycleTester = nullptr;
 
             if (t == cycleTester)
-                throw std::runtime_error("Luau::follow detected a TypeVar cycle!!");
+                throw std::runtime_error(XorStr("lluz::follow detected a TypeVar cycle!!"));
         }
     }
 }
@@ -171,12 +159,10 @@ bool isNumber(TypeId ty)
 // Returns true when ty is a subtype of string
 bool isString(TypeId ty)
 {
-    ty = follow(ty);
-
-    if (isPrim(ty, PrimitiveTypeVar::String) || get<StringSingleton>(get<SingletonTypeVar>(ty)))
+    if (isPrim(ty, PrimitiveTypeVar::String) || get<StringSingleton>(get<SingletonTypeVar>(follow(ty))))
         return true;
 
-    if (auto utv = get<UnionTypeVar>(ty))
+    if (auto utv = get<UnionTypeVar>(follow(ty)))
         return std::all_of(begin(utv), end(utv), isString);
 
     return false;
@@ -208,7 +194,7 @@ bool isOptional(TypeId ty)
 
     ty = follow(ty);
 
-    if (get<AnyTypeVar>(ty) || (FFlag::LuauUnknownAndNeverType && get<UnknownTypeVar>(ty)))
+    if (get<AnyTypeVar>(ty))
         return true;
 
     auto utv = get<UnionTypeVar>(ty);
@@ -242,8 +228,6 @@ bool isOverloadedFunction(TypeId ty)
 
 std::optional<TypeId> getMetatable(TypeId type)
 {
-    type = follow(type);
-
     if (const MetatableTypeVar* mtType = get<MetatableTypeVar>(type))
         return mtType->metatable;
     else if (const ClassTypeVar* classType = get<ClassTypeVar>(type))
@@ -251,7 +235,7 @@ std::optional<TypeId> getMetatable(TypeId type)
     else if (isString(type))
     {
         auto ptv = get<PrimitiveTypeVar>(getSingletonTypes().stringType);
-        LUAU_ASSERT(ptv && ptv->metatable);
+        lluz_ASSERT(ptv && ptv->metatable);
         return ptv->metatable;
     }
 
@@ -350,28 +334,6 @@ bool isGeneric(TypeId ty)
 
 bool maybeGeneric(TypeId ty)
 {
-    if (FFlag::LuauMaybeGenericIntersectionTypes)
-    {
-        ty = follow(ty);
-
-        if (get<FreeTypeVar>(ty))
-            return true;
-
-        if (auto ttv = get<TableTypeVar>(ty))
-        {
-            // TODO: recurse on table types CLI-39914
-            (void)ttv;
-            return true;
-        }
-
-        if (auto itv = get<IntersectionTypeVar>(ty))
-        {
-            return std::any_of(begin(itv), end(itv), maybeGeneric);
-        }
-
-        return isGeneric(ty);
-    }
-
     ty = follow(ty);
     if (get<FreeTypeVar>(ty))
         return true;
@@ -399,7 +361,7 @@ bool maybeSingleton(TypeId ty)
 
 bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount)
 {
-    RecursionLimiter _rl(recursionCount, FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _rl(recursionCount, FInt::LluTypeInferRecursionLimit);
 
     ty = follow(ty);
 
@@ -684,10 +646,20 @@ TypeVar& TypeVar::operator=(TypeVariant&& rhs)
 
 TypeVar& TypeVar::operator=(const TypeVar& rhs)
 {
-    LUAU_ASSERT(owningArena == rhs.owningArena);
-    LUAU_ASSERT(!rhs.persistent);
+    if (FFlag::LluNonCopyableTypeVarFields)
+    {
+        lluz_ASSERT(owningArena == rhs.owningArena);
+        lluz_ASSERT(!rhs.persistent);
 
-    reassign(rhs);
+        reassign(rhs);
+    }
+    else
+    {
+        ty = rhs.ty;
+        persistent = rhs.persistent;
+        normal = rhs.normal;
+        owningArena = rhs.owningArena;
+    }
 
     return *this;
 }
@@ -704,14 +676,10 @@ static TypeVar threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persist
 static TypeVar trueType_{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true};
 static TypeVar falseType_{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true};
 static TypeVar anyType_{AnyTypeVar{}, /*persistent*/ true};
-static TypeVar unknownType_{UnknownTypeVar{}, /*persistent*/ true};
-static TypeVar neverType_{NeverTypeVar{}, /*persistent*/ true};
 static TypeVar errorType_{ErrorTypeVar{}, /*persistent*/ true};
 
-static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, /*persistent*/ true};
-static TypePackVar errorTypePack_{Unifiable::Error{}, /*persistent*/ true};
-static TypePackVar neverTypePack_{VariadicTypePack{&neverType_}, /*persistent*/ true};
-static TypePackVar uninhabitableTypePack_{TypePack{{&neverType_}, &neverTypePack_}, /*persistent*/ true};
+static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, true};
+static TypePackVar errorTypePack_{Unifiable::Error{}};
 
 SingletonTypes::SingletonTypes()
     : nilType(&nilType_)
@@ -722,31 +690,27 @@ SingletonTypes::SingletonTypes()
     , trueType(&trueType_)
     , falseType(&falseType_)
     , anyType(&anyType_)
-    , unknownType(&unknownType_)
-    , neverType(&neverType_)
     , anyTypePack(&anyTypePack_)
-    , neverTypePack(&neverTypePack_)
-    , uninhabitableTypePack(&uninhabitableTypePack_)
     , arena(new TypeArena)
 {
     TypeId stringMetatable = makeStringMetatable();
     stringType_.ty = PrimitiveTypeVar{PrimitiveTypeVar::String, stringMetatable};
     persist(stringMetatable);
 
-    debugFreezeArena = FFlag::DebugLuauFreezeArena;
+    debugFreezeArena = FFlag::DebugLluFreezeArena;
     freeze(*arena);
 }
 
 SingletonTypes::~SingletonTypes()
 {
     // Destroy the arena with the same memory management flags it was created with
-    bool prevFlag = FFlag::DebugLuauFreezeArena;
-    FFlag::DebugLuauFreezeArena.value = debugFreezeArena;
+    bool prevFlag = FFlag::DebugLluFreezeArena;
+    FFlag::DebugLluFreezeArena.value = debugFreezeArena;
 
     unfreeze(*arena);
     arena.reset(nullptr);
 
-    FFlag::DebugLuauFreezeArena.value = prevFlag;
+    FFlag::DebugLluFreezeArena.value = prevFlag;
 }
 
 TypeId SingletonTypes::makeStringMetatable()
@@ -774,26 +738,19 @@ TypeId SingletonTypes::makeStringMetatable()
     const TypeId gsubFunc = makeFunction(*arena, stringType, {}, {}, {stringType, replArgType, optionalNumber}, {}, {stringType, numberType});
     const TypeId gmatchFunc =
         makeFunction(*arena, stringType, {}, {}, {stringType}, {}, {arena->addType(FunctionTypeVar{emptyPack, stringVariadicList})});
-    attachMagicFunction(gmatchFunc, magicFunctionGmatch);
-
-    const TypeId matchFunc = arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}),
-        arena->addTypePack(TypePackVar{VariadicTypePack{FFlag::LuauDeduceFindMatchReturnTypes ? stringType : optionalString}})});
-    attachMagicFunction(matchFunc, magicFunctionMatch);
-
-    const TypeId findFunc = arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber, optionalBoolean}),
-        arena->addTypePack(TypePack{{optionalNumber, optionalNumber}, stringVariadicList})});
-    attachMagicFunction(findFunc, magicFunctionFind);
 
     TableTypeVar::Props stringLib = {
         {"byte", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, optionalNumber, optionalNumber}), numberVariadicList})}},
         {"char", {arena->addType(FunctionTypeVar{numberVariadicList, arena->addTypePack({stringType})})}},
-        {"find", {findFunc}},
+        {"find", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber, optionalBoolean}),
+                     arena->addTypePack(TypePack{{optionalNumber, optionalNumber}, stringVariadicList})})}},
         {"format", {formatFn}}, // FIXME
         {"gmatch", {gmatchFunc}},
         {"gsub", {gsubFunc}},
         {"len", {makeFunction(*arena, stringType, {}, {}, {}, {}, {numberType})}},
         {"lower", {stringToStringType}},
-        {"match", {matchFunc}},
+        {"match", {arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}),
+                      arena->addTypePack(TypePackVar{VariadicTypePack{optionalString}})})}},
         {"rep", {makeFunction(*arena, stringType, {}, {}, {numberType}, {}, {stringType})}},
         {"reverse", {stringToStringType}},
         {"sub", {makeFunction(*arena, stringType, {}, {}, {numberType, optionalNumber}, {}, {stringType})}},
@@ -811,7 +768,7 @@ TypeId SingletonTypes::makeStringMetatable()
                    })}},
     };
 
-    assignPropDocumentationSymbols(stringLib, "@luau/global/string");
+    assignPropDocumentationSymbols(stringLib, XorStr("@lluz/global/string"));
 
     TypeId tableType = arena->addType(TableTypeVar{std::move(stringLib), std::nullopt, TypeLevel{}, TableState::Sealed});
 
@@ -871,7 +828,7 @@ void persist(TypeId ty)
         }
         else if (auto ttv = get<TableTypeVar>(t))
         {
-            LUAU_ASSERT(ttv->state != TableState::Free && ttv->state != TableState::Unsealed);
+            lluz_ASSERT(ttv->state != TableState::Free && ttv->state != TableState::Unsealed);
 
             for (const auto& [_name, prop] : ttv->props)
                 queue.push_back(prop.type);
@@ -912,7 +869,7 @@ void persist(TypeId ty)
         }
         else
         {
-            LUAU_ASSERT(!"TypeId is not supported in a persist call");
+            lluz_ASSERT(!XorStr("TypeId is not supported in a persist call"));
         }
     }
 }
@@ -940,7 +897,7 @@ void persist(TypePackId tp)
     }
     else
     {
-        LUAU_ASSERT(!"TypePackId is not supported in a persist call");
+        lluz_ASSERT(!XorStr("TypePackId is not supported in a persist call"));
     }
 }
 
@@ -954,8 +911,6 @@ const TypeLevel* getLevel(TypeId ty)
         return &ttv->level;
     else if (auto ftv = get<FunctionTypeVar>(ty))
         return &ftv->level;
-    else if (auto ctv = get<ConstrainedTypeVar>(ty))
-        return &ctv->level;
     else
         return nullptr;
 }
@@ -988,7 +943,7 @@ const Property* lookupClassProp(const ClassTypeVar* cls, const Name& name)
         else
             return nullptr;
 
-        LUAU_ASSERT(cls);
+        lluz_ASSERT(cls);
     }
 
     return nullptr;
@@ -1004,25 +959,100 @@ bool isSubclass(const ClassTypeVar* cls, const ClassTypeVar* parent)
             return false;
 
         cls = get<ClassTypeVar>(*cls->parent);
-        LUAU_ASSERT(cls);
+        lluz_ASSERT(cls);
     }
 
     return false;
 }
 
-const std::vector<TypeId>& getTypes(const UnionTypeVar* utv)
+UnionTypeVarIterator::UnionTypeVarIterator(const UnionTypeVar* utv)
 {
-    return utv->options;
+    lluz_ASSERT(utv);
+
+    if (!utv->options.empty())
+        stack.push_front({utv, 0});
+
+    seen.insert(utv);
 }
 
-const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv)
+UnionTypeVarIterator& UnionTypeVarIterator::operator++()
 {
-    return itv->parts;
+    advance();
+    descend();
+    return *this;
 }
 
-const std::vector<TypeId>& getTypes(const ConstrainedTypeVar* ctv)
+UnionTypeVarIterator UnionTypeVarIterator::operator++(int)
 {
-    return ctv->parts;
+    UnionTypeVarIterator copy = *this;
+    ++copy;
+    return copy;
+}
+
+bool UnionTypeVarIterator::operator!=(const UnionTypeVarIterator& rhs)
+{
+    return !(*this == rhs);
+}
+
+bool UnionTypeVarIterator::operator==(const UnionTypeVarIterator& rhs)
+{
+    if (!stack.empty() && !rhs.stack.empty())
+        return stack.front() == rhs.stack.front();
+
+    return stack.empty() && rhs.stack.empty();
+}
+
+const TypeId& UnionTypeVarIterator::operator*()
+{
+    lluz_ASSERT(!stack.empty());
+
+    descend();
+
+    auto [utv, currentIndex] = stack.front();
+    lluz_ASSERT(utv);
+    lluz_ASSERT(currentIndex < utv->options.size());
+
+    const TypeId& ty = utv->options[currentIndex];
+    lluz_ASSERT(!get<UnionTypeVar>(follow(ty)));
+    return ty;
+}
+
+void UnionTypeVarIterator::advance()
+{
+    while (!stack.empty())
+    {
+        auto& [utv, currentIndex] = stack.front();
+        ++currentIndex;
+
+        if (currentIndex >= utv->options.size())
+            stack.pop_front();
+        else
+            break;
+    }
+}
+
+void UnionTypeVarIterator::descend()
+{
+    while (!stack.empty())
+    {
+        auto [utv, currentIndex] = stack.front();
+        if (auto innerUnion = get<UnionTypeVar>(follow(utv->options[currentIndex])))
+        {
+            // If we're about to descend into a cyclic UnionTypeVar, we should skip over this.
+            // Ideally this should never happen, but alas it does from time to time. :(
+            if (seen.find(innerUnion) != seen.end())
+                advance();
+            else
+            {
+                seen.insert(innerUnion);
+                stack.push_front({innerUnion, 0});
+            }
+
+            continue;
+        }
+
+        break;
+    }
 }
 
 UnionTypeVarIterator begin(const UnionTypeVar* utv)
@@ -1034,27 +1064,6 @@ UnionTypeVarIterator end(const UnionTypeVar* utv)
 {
     return UnionTypeVarIterator{};
 }
-
-IntersectionTypeVarIterator begin(const IntersectionTypeVar* itv)
-{
-    return IntersectionTypeVarIterator{itv};
-}
-
-IntersectionTypeVarIterator end(const IntersectionTypeVar* itv)
-{
-    return IntersectionTypeVarIterator{};
-}
-
-ConstrainedTypeVarIterator begin(const ConstrainedTypeVar* ctv)
-{
-    return ConstrainedTypeVarIterator{ctv};
-}
-
-ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
-{
-    return ConstrainedTypeVarIterator{};
-}
-
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {
@@ -1135,197 +1144,6 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
     return WithPredicate<TypePackId>{arena.addTypePack({typechecker.stringType})};
 }
 
-static std::vector<TypeId> parsePatternString(TypeChecker& typechecker, const char* data, size_t size)
-{
-    std::vector<TypeId> result;
-    int depth = 0;
-    bool parsingSet = false;
-
-    for (size_t i = 0; i < size; ++i)
-    {
-        if (data[i] == '%')
-        {
-            ++i;
-            if (!parsingSet && i < size && data[i] == 'b')
-                i += 2;
-        }
-        else if (!parsingSet && data[i] == '[')
-        {
-            parsingSet = true;
-            if (i + 1 < size && data[i + 1] == ']')
-                i += 1;
-        }
-        else if (parsingSet && data[i] == ']')
-        {
-            parsingSet = false;
-        }
-        else if (data[i] == '(')
-        {
-            if (parsingSet)
-                continue;
-
-            if (i + 1 < size && data[i + 1] == ')')
-            {
-                i++;
-                result.push_back(typechecker.numberType);
-                continue;
-            }
-
-            ++depth;
-            result.push_back(typechecker.stringType);
-        }
-        else if (data[i] == ')')
-        {
-            if (parsingSet)
-                continue;
-
-            --depth;
-
-            if (depth < 0)
-                break;
-        }
-    }
-
-    if (depth != 0 || parsingSet)
-        return std::vector<TypeId>();
-
-    if (result.empty())
-        result.push_back(typechecker.stringType);
-
-    return result;
-}
-
-static std::optional<WithPredicate<TypePackId>> magicFunctionGmatch(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
-{
-    if (!FFlag::LuauDeduceGmatchReturnTypes)
-        return std::nullopt;
-
-    auto [paramPack, _predicates] = withPredicate;
-    const auto& [params, tail] = flatten(paramPack);
-
-    if (params.size() != 2)
-        return std::nullopt;
-
-    TypeArena& arena = typechecker.currentModule->internalTypes;
-
-    AstExprConstantString* pattern = nullptr;
-    size_t index = expr.self ? 0 : 1;
-    if (expr.args.size > index)
-        pattern = expr.args.data[index]->as<AstExprConstantString>();
-
-    if (!pattern)
-        return std::nullopt;
-
-    std::vector<TypeId> returnTypes = parsePatternString(typechecker, pattern->value.data, pattern->value.size);
-
-    if (returnTypes.empty())
-        return std::nullopt;
-
-    typechecker.unify(params[0], typechecker.stringType, expr.args.data[0]->location);
-
-    const TypePackId emptyPack = arena.addTypePack({});
-    const TypePackId returnList = arena.addTypePack(returnTypes);
-    const TypeId iteratorType = arena.addType(FunctionTypeVar{emptyPack, returnList});
-    return WithPredicate<TypePackId>{arena.addTypePack({iteratorType})};
-}
-
-static std::optional<WithPredicate<TypePackId>> magicFunctionMatch(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
-{
-    if (!FFlag::LuauDeduceFindMatchReturnTypes)
-        return std::nullopt;
-
-    auto [paramPack, _predicates] = withPredicate;
-    const auto& [params, tail] = flatten(paramPack);
-
-    if (params.size() < 2 || params.size() > 3)
-        return std::nullopt;
-
-    TypeArena& arena = typechecker.currentModule->internalTypes;
-
-    AstExprConstantString* pattern = nullptr;
-    size_t patternIndex = expr.self ? 0 : 1;
-    if (expr.args.size > patternIndex)
-        pattern = expr.args.data[patternIndex]->as<AstExprConstantString>();
-
-    if (!pattern)
-        return std::nullopt;
-
-    std::vector<TypeId> returnTypes = parsePatternString(typechecker, pattern->value.data, pattern->value.size);
-
-    if (returnTypes.empty())
-        return std::nullopt;
-
-    typechecker.unify(params[0], typechecker.stringType, expr.args.data[0]->location);
-
-    const TypeId optionalNumber = arena.addType(UnionTypeVar{{typechecker.nilType, typechecker.numberType}});
-
-    size_t initIndex = expr.self ? 1 : 2;
-    if (params.size() == 3 && expr.args.size > initIndex)
-        typechecker.unify(params[2], optionalNumber, expr.args.data[initIndex]->location);
-
-    const TypePackId returnList = arena.addTypePack(returnTypes);
-    return WithPredicate<TypePackId>{returnList};
-}
-
-static std::optional<WithPredicate<TypePackId>> magicFunctionFind(
-    TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
-{
-    if (!FFlag::LuauDeduceFindMatchReturnTypes)
-        return std::nullopt;
-
-    auto [paramPack, _predicates] = withPredicate;
-    const auto& [params, tail] = flatten(paramPack);
-
-    if (params.size() < 2 || params.size() > 4)
-        return std::nullopt;
-
-    TypeArena& arena = typechecker.currentModule->internalTypes;
-
-    AstExprConstantString* pattern = nullptr;
-    size_t patternIndex = expr.self ? 0 : 1;
-    if (expr.args.size > patternIndex)
-        pattern = expr.args.data[patternIndex]->as<AstExprConstantString>();
-
-    if (!pattern)
-        return std::nullopt;
-
-    bool plain = false;
-    size_t plainIndex = expr.self ? 2 : 3;
-    if (expr.args.size > plainIndex)
-    {
-        AstExprConstantBool* p = expr.args.data[plainIndex]->as<AstExprConstantBool>();
-        plain = p && p->value;
-    }
-
-    std::vector<TypeId> returnTypes;
-    if (!plain)
-    {
-        returnTypes = parsePatternString(typechecker, pattern->value.data, pattern->value.size);
-
-        if (returnTypes.empty())
-            return std::nullopt;
-    }
-
-    typechecker.unify(params[0], typechecker.stringType, expr.args.data[0]->location);
-
-    const TypeId optionalNumber = arena.addType(UnionTypeVar{{typechecker.nilType, typechecker.numberType}});
-    const TypeId optionalBoolean = arena.addType(UnionTypeVar{{typechecker.nilType, typechecker.booleanType}});
-
-    size_t initIndex = expr.self ? 1 : 2;
-    if (params.size() >= 3 && expr.args.size > initIndex)
-        typechecker.unify(params[2], optionalNumber, expr.args.data[initIndex]->location);
-
-    if (params.size() == 4 && expr.args.size > plainIndex)
-        typechecker.unify(params[3], optionalBoolean, expr.args.data[plainIndex]->location);
-
-    returnTypes.insert(returnTypes.begin(), {optionalNumber, optionalNumber});
-
-    const TypePackId returnList = arena.addTypePack(returnTypes);
-    return WithPredicate<TypePackId>{returnList};
-}
-
 std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)
 {
     type = follow(type);
@@ -1364,7 +1182,7 @@ void attachTag(TypeId ty, const std::string& tagName)
     if (auto tags = getTags(ty))
         tags->push_back(tagName);
     else
-        LUAU_ASSERT(!"This TypeId does not support tags");
+        lluz_ASSERT(!XorStr("This TypeId does not support tags"));
 }
 
 void attachTag(Property& prop, const std::string& tagName)
@@ -1396,7 +1214,7 @@ bool hasTag(TypeId ty, const std::string& tagName)
                 return false;
 
             ctv = get<ClassTypeVar>(*ctv->parent);
-            LUAU_ASSERT(ctv);
+            lluz_ASSERT(ctv);
         }
     }
     else if (auto tags = getTags(ty))
@@ -1410,4 +1228,4 @@ bool hasTag(const Property& prop, const std::string& tagName)
     return hasTag(prop.tags, tagName);
 }
 
-} // namespace Luau
+} // namespace lluz

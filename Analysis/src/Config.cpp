@@ -1,8 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Config.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Config.h"
 
-#include "Luau/Lexer.h"
-#include "Luau/StringUtils.h"
+#include "lluz/Lexer.h"
+#include "lluz/StringUtils.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 namespace
 {
@@ -11,14 +13,14 @@ using Error = std::optional<std::string>;
 
 }
 
-namespace Luau
+namespace lluz
 {
 
 static Error parseBoolean(bool& result, const std::string& value)
 {
-    if (value == "true")
+    if (value == XorStr("true"))
         result = true;
-    else if (value == "false")
+    else if (value == XorStr("false"))
         result = false;
     else
         return Error{"Bad setting '" + value + "'.  Valid options are true and false"};
@@ -28,13 +30,13 @@ static Error parseBoolean(bool& result, const std::string& value)
 
 Error parseModeString(Mode& mode, const std::string& modeString, bool compat)
 {
-    if (modeString == "nocheck")
+    if (modeString == XorStr("nocheck"))
         mode = Mode::NoCheck;
-    else if (modeString == "strict")
+    else if (modeString == XorStr("strict"))
         mode = Mode::Strict;
-    else if (modeString == "nonstrict")
+    else if (modeString == XorStr("nonstrict"))
         mode = Mode::Nonstrict;
-    else if (modeString == "noinfer" && compat)
+    else if (modeString == XorStr("noinfer") && compat)
         mode = Mode::NoCheck;
     else
         return Error{"Bad mode \"" + modeString + "\".  Valid options are nocheck, nonstrict, and strict"};
@@ -45,27 +47,27 @@ Error parseModeString(Mode& mode, const std::string& modeString, bool compat)
 static Error parseLintRuleStringForCode(
     LintOptions& enabledLints, LintOptions& fatalLints, LintWarning::Code code, const std::string& value, bool compat)
 {
-    if (value == "true")
+    if (value == XorStr("true"))
     {
         enabledLints.enableWarning(code);
     }
-    else if (value == "false")
+    else if (value == XorStr("false"))
     {
         enabledLints.disableWarning(code);
     }
     else if (compat)
     {
-        if (value == "enabled")
+        if (value == XorStr("enabled"))
         {
             enabledLints.enableWarning(code);
             fatalLints.disableWarning(code);
         }
-        else if (value == "disabled")
+        else if (value == XorStr("disabled"))
         {
             enabledLints.disableWarning(code);
             fatalLints.disableWarning(code);
         }
-        else if (value == "fatal")
+        else if (value == XorStr("fatal"))
         {
             enabledLints.enableWarning(code);
             fatalLints.enableWarning(code);
@@ -85,7 +87,7 @@ static Error parseLintRuleStringForCode(
 
 Error parseLintRuleString(LintOptions& enabledLints, LintOptions& fatalLints, const std::string& warningName, const std::string& value, bool compat)
 {
-    if (warningName == "*")
+    if (warningName == XorStr("*"))
     {
         for (int code = LintWarning::Code_Unknown; code < LintWarning::Code__Count; ++code)
         {
@@ -127,7 +129,7 @@ static Error fail(Lexer& lexer, const char* message)
 {
     Lexeme cur = lexer.current();
 
-    return format("Expected %s at line %d, got %s instead", message, cur.location.begin.line + 1, cur.toString().c_str());
+    return format(XorStr("Expected %s at line %d, got %s instead"), message, cur.location.begin.line + 1, cur.toString().c_str());
 }
 
 template<typename Action>
@@ -142,7 +144,7 @@ static Error parseJson(const std::string& contents, Action action)
     bool arrayTop = false; // we don't support nested arrays
 
     if (lexer.current().type != '{')
-        return fail(lexer, "'{'");
+        return fail(lexer, XorStr("'{'"));
     next(lexer);
 
     for (;;)
@@ -154,13 +156,13 @@ static Error parseJson(const std::string& contents, Action action)
                 next(lexer);
                 arrayTop = false;
 
-                LUAU_ASSERT(!keys.empty());
+                lluz_ASSERT(!keys.empty());
                 keys.pop_back();
 
                 if (lexer.current().type == ',')
                     next(lexer);
                 else if (lexer.current().type != '}')
-                    return fail(lexer, "',' or '}'");
+                    return fail(lexer, XorStr("',' or '}'"));
             }
             else if (lexer.current().type == Lexeme::QuotedString)
             {
@@ -173,10 +175,10 @@ static Error parseJson(const std::string& contents, Action action)
                 if (lexer.current().type == ',')
                     next(lexer);
                 else if (lexer.current().type != ']')
-                    return fail(lexer, "',' or ']'");
+                    return fail(lexer, XorStr("',' or ']'"));
             }
             else
-                return fail(lexer, "array element or ']'");
+                return fail(lexer, XorStr("array element or ']'"));
         }
         else
         {
@@ -187,7 +189,7 @@ static Error parseJson(const std::string& contents, Action action)
                 if (keys.empty())
                 {
                     if (lexer.current().type != Lexeme::Eof)
-                        return fail(lexer, "end of file");
+                        return fail(lexer, XorStr("end of file"));
 
                     return {};
                 }
@@ -197,7 +199,7 @@ static Error parseJson(const std::string& contents, Action action)
                 if (lexer.current().type == ',')
                     next(lexer);
                 else if (lexer.current().type != '}')
-                    return fail(lexer, "',' or '}'");
+                    return fail(lexer, XorStr("',' or '}'"));
             }
             else if (lexer.current().type == Lexeme::QuotedString)
             {
@@ -207,7 +209,7 @@ static Error parseJson(const std::string& contents, Action action)
                 keys.push_back(key);
 
                 if (lexer.current().type != ':')
-                    return fail(lexer, "':'");
+                    return fail(lexer, XorStr("':'"));
                 next(lexer);
 
                 if (lexer.current().type == '{' || lexer.current().type == '[')
@@ -220,7 +222,7 @@ static Error parseJson(const std::string& contents, Action action)
                 {
                     std::string value = lexer.current().type == Lexeme::QuotedString
                                             ? std::string(lexer.current().data, lexer.current().length)
-                                            : (lexer.current().type == Lexeme::ReservedTrue ? "true" : "false");
+                                            : (lexer.current().type == Lexeme::ReservedTrue ? XorStr("true" : "false"));
                     next(lexer);
 
                     if (Error err = action(keys, value))
@@ -231,13 +233,13 @@ static Error parseJson(const std::string& contents, Action action)
                     if (lexer.current().type == ',')
                         next(lexer);
                     else if (lexer.current().type != '}')
-                        return fail(lexer, "',' or '}'");
+                        return fail(lexer, XorStr("',' or '}'"));
                 }
                 else
-                    return fail(lexer, "field value");
+                    return fail(lexer, XorStr("field value"));
             }
             else
-                return fail(lexer, "field key");
+                return fail(lexer, XorStr("field key"));
         }
     }
 
@@ -247,25 +249,25 @@ static Error parseJson(const std::string& contents, Action action)
 Error parseConfig(const std::string& contents, Config& config, bool compat)
 {
     return parseJson(contents, [&](const std::vector<std::string>& keys, const std::string& value) -> Error {
-        if (keys.size() == 1 && keys[0] == "languageMode")
+        if (keys.size() == 1 && keys[0] == XorStr("languageMode"))
             return parseModeString(config.mode, value, compat);
-        else if (keys.size() == 2 && keys[0] == "lint")
+        else if (keys.size() == 2 && keys[0] == XorStr("lint"))
             return parseLintRuleString(config.enabledLint, config.fatalLint, keys[1], value, compat);
-        else if (keys.size() == 1 && keys[0] == "lintErrors")
+        else if (keys.size() == 1 && keys[0] == XorStr("lintErrors"))
             return parseBoolean(config.lintErrors, value);
-        else if (keys.size() == 1 && keys[0] == "typeErrors")
+        else if (keys.size() == 1 && keys[0] == XorStr("typeErrors"))
             return parseBoolean(config.typeErrors, value);
-        else if (keys.size() == 1 && keys[0] == "globals")
+        else if (keys.size() == 1 && keys[0] == XorStr("globals"))
         {
             config.globals.push_back(value);
             return std::nullopt;
         }
-        else if (compat && keys.size() == 2 && keys[0] == "language" && keys[1] == "mode")
+        else if (compat && keys.size() == 2 && keys[0] == XorStr("language") && keys[1] == XorStr("mode"))
             return parseModeString(config.mode, value, compat);
         else
         {
             std::vector<std::string_view> keysv(keys.begin(), keys.end());
-            return "Unknown key " + join(keysv, "/");
+            return XorStr("Unknown key " + join(keysv, "/"));
         }
     });
 }
@@ -275,4 +277,4 @@ const Config& NullConfigResolver::getConfig(const ModuleName& name) const
     return defaultConfig;
 }
 
-} // namespace Luau
+} // namespace lluz
