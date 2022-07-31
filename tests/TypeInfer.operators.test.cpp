@@ -1,19 +1,19 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("TypeInferOperators");
+TEST_SUITE_BEGIN(XorStr("TypeInferOperators"));
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types")
 {
@@ -21,9 +21,9 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types")
         local s = "a" or 10
         local x:string|number = s
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(*requireType("s")), "number | string");
-    CHECK_EQ(toString(*requireType("x")), "number | string");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(*requireType(XorStr("s")), "number | string"));
+    CHECK_EQ(toString(*requireType(XorStr("x")), "number | string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
@@ -34,8 +34,8 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
         local y = x or "s"
     )");
     CHECK_EQ(0, result.errors.size());
-    CHECK_EQ(toString(*requireType("s")), "number | string");
-    CHECK_EQ(toString(*requireType("y")), "number | string");
+    CHECK_EQ(toString(*requireType(XorStr("s")), "number | string"));
+    CHECK_EQ(toString(*requireType(XorStr("y")), "number | string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
@@ -55,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "and_adds_boolean")
         local x:boolean|number = s
     )");
     CHECK_EQ(0, result.errors.size());
-    CHECK_EQ(toString(*requireType("s")), "boolean | number");
+    CHECK_EQ(toString(*requireType(XorStr("s")), "boolean | number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_adds_boolean_no_superfluous_union")
@@ -74,7 +74,7 @@ TEST_CASE_FIXTURE(Fixture, "and_or_ternary")
         local s = (1/2) > 0.5 and "a" or 10
     )");
     CHECK_EQ(0, result.errors.size());
-    CHECK_EQ(toString(*requireType("s")), "number | string");
+    CHECK_EQ(toString(*requireType(XorStr("s")), "number | string"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
@@ -86,7 +86,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
         local n, s = add(2,"3")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("add"));
 
@@ -104,7 +104,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_no_metatable_with_follows")
         local SOLAR_MASS=4*PI * PI
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(requireType("SOLAR_MASS"), typeChecker.numberType);
 }
 
@@ -117,7 +117,7 @@ TEST_CASE_FIXTURE(Fixture, "primitive_arith_possible_metatable")
         local t = add(1,2)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("t")));
 }
 
@@ -131,7 +131,7 @@ TEST_CASE_FIXTURE(Fixture, "some_primitive_binary_ops")
         local c = b - a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
@@ -165,7 +165,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_overloaded_multiply_that_is_an_int
         local e = a * 'cabbage'
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Vec3", toString(requireType("a")));
     CHECK_EQ("Vec3", toString(requireType("b")));
@@ -199,7 +199,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_overloaded_multiply_that_is_an_int
         local e = 'cabbage' * a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Vec3", toString(requireType("a")));
     CHECK_EQ("Vec3", toString(requireType("b")));
@@ -216,7 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "compare_numbers")
         local c = a < b
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "compare_strings")
@@ -227,7 +227,7 @@ TEST_CASE_FIXTURE(Fixture, "compare_strings")
         local c = a < b
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_metatable")
@@ -238,11 +238,11 @@ TEST_CASE_FIXTURE(Fixture, "cannot_indirectly_compare_types_that_do_not_have_a_m
         local c = a < b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* gen = get<GenericError>(result.errors[0]);
 
-    REQUIRE_EQ(gen->message, "Type a cannot be compared with < because it has no metatable");
+    REQUIRE_EQ(gen->message, XorStr("Type a cannot be compared with < because it has no metatable"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_offer_overloaded_ordering_operators")
@@ -259,11 +259,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_indirectly_compare_types_that_do_not_
         local c = a < b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* gen = get<GenericError>(result.errors[0]);
     REQUIRE(gen != nullptr);
-    REQUIRE_EQ(gen->message, "Table M does not offer metamethod __lt");
+    REQUIRE_EQ(gen->message, XorStr("Table M does not offer metamethod __lt"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_compare_tables_that_do_not_have_the_same_metatable")
@@ -282,7 +282,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_compare_tables_that_do_not_have_the_s
         local d = b < a -- line 11
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     REQUIRE_EQ((Location{{10, 18}, {10, 23}}), result.errors[0].location);
 
@@ -305,7 +305,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "produce_the_correct_error_message_when_compa
         local c = a < b -- line 10
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = get<GenericError>(result.errors[0]);
     REQUIRE(err != nullptr);
@@ -326,7 +326,7 @@ TEST_CASE_FIXTURE(Fixture, "in_nonstrict_mode_strip_nil_from_intersections_when_
         local a = maybe_a_number() < maybe_a_number()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_basic")
@@ -336,7 +336,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_basic")
         s += 20
     )");
     CHECK_EQ(0, result.errors.size());
-    CHECK_EQ(toString(*requireType("s")), "number");
+    CHECK_EQ(toString(*requireType(XorStr("s")), "number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_op")
         local s = 10
         s += true
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(result.errors[0], (TypeError{Location{{2, 13}, {2, 17}}, TypeMismatch{typeChecker.numberType, typeChecker.booleanType}}));
 }
 
@@ -356,7 +356,7 @@ TEST_CASE_FIXTURE(Fixture, "compound_assign_mismatch_result")
         s += 10
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(result.errors[0], (TypeError{Location{{2, 8}, {2, 9}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
     CHECK_EQ(result.errors[1], (TypeError{Location{{2, 8}, {2, 15}}, TypeMismatch{typeChecker.stringType, typeChecker.numberType}}));
 }
@@ -398,7 +398,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "compound_assign_mismatch_metatable")
         local v2: V2 = setmetatable({ x = 3, y = 4 }, VMT)
         v1 %= v2
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     CHECK_EQ(*tm->wantedType, *requireType("v2"));
@@ -413,7 +413,7 @@ function g() return 2; end
 (f or g)()
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CallAndOrOfFunctions")
@@ -425,7 +425,7 @@ local x = false
 (x and f or g)()
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
@@ -452,13 +452,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
         local c = -bar -- disallowed
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("string", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
 
     GenericError* gen = get<GenericError>(result.errors[0]);
-    REQUIRE_EQ(gen->message, "Unary operator '-' not supported by type 'bar'");
+    REQUIRE_EQ(gen->message, XorStr("Unary operator '-' not supported by type 'bar'"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
@@ -473,13 +473,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
         setmetatable(foo, mt)
 
         mt.__unm = function(val: boolean): string
-            return "test"
+            return XorStr("test")
         end
 
         local a = -foo
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("string", toString(requireType("a")));
 
@@ -490,6 +490,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
 {
+    ScopedFastFlag sff("lluzCheckLenMT", true);
+
     CheckResult result = check(R"(
         --!strict
         local foo = {
@@ -499,13 +501,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
         setmetatable(foo, mt)
 
         mt.__len = function(val: any): string
-            return "test"
+            return XorStr("test")
         end
 
         local a = #foo
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("number", toString(requireType("a")));
 
@@ -521,7 +523,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unary_not_is_boolean")
         local c = not (math.random() > 0.5 and "string" or 7)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     REQUIRE_EQ("boolean", toString(requireType("b")));
     REQUIRE_EQ("boolean", toString(requireType("c")));
 }
@@ -555,7 +557,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
         local d = bar + foo -- not allowed
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    lluz_REQUIRE_ERROR_COUNT(3, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE_EQ(*tm->wantedType, *typeChecker.numberType);
@@ -566,7 +568,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
     CHECK_EQ(*tm2->givenType, *requireType("foo"));
 
     GenericError* gen2 = get<GenericError>(result.errors[1]);
-    REQUIRE_EQ(gen2->message, "Binary operator '+' not supported by types 'foo' and 'number'");
+    REQUIRE_EQ(gen2->message, XorStr("Binary operator '+' not supported by types 'foo' and 'number'"));
 }
 
 // CLI-29033
@@ -579,7 +581,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_in_comparison")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
@@ -590,7 +592,7 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_free_lhs_and_string_rhs")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<CannotInferBinaryOperation>(result.errors[0]));
 }
 
@@ -598,11 +600,11 @@ TEST_CASE_FIXTURE(Fixture, "concat_op_on_string_lhs_and_free_rhs")
 {
     CheckResult result = check(R"(
         local function f(x)
-            return "foo" .. x
+            return XorStr("foo") .. x
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("(string) -> string", toString(requireType("f")));
 }
@@ -621,7 +623,7 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
     src += "end";
 
     CheckResult result = check(src);
-    LUAU_REQUIRE_ERROR_COUNT(ops.size(), result);
+    lluz_REQUIRE_ERROR_COUNT(ops.size(), result);
 
     CHECK_EQ("Unknown type used in + operation; consider adding a type annotation to 'a'", toString(result.errors[0]));
 }
@@ -636,7 +638,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "and_binexps_dont_unify")
     end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators")
@@ -647,7 +649,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
         local foo = a < b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
@@ -662,7 +664,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
         local foo = a < b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
@@ -677,7 +679,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
         _ += _ and _ or _ and _ or _ and _
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type contains a self-recursive construct that cannot be resolved", toString(result.errors[0]));
 }
 
@@ -691,8 +693,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalCompoundAssign")
             print(a)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-        CHECK_EQ(toString(result.errors[0]), "Unknown global 'a'");
+        lluz_REQUIRE_ERROR_COUNT(1, result);
+        CHECK_EQ(toString(result.errors[0]), XorStr("Unknown global 'a'"));
     }
 
     // In strict mode we no longer generate two errors from lhs
@@ -703,8 +705,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalCompoundAssign")
             print(a)
         )");
 
-        LUAU_REQUIRE_ERRORS(result);
-        CHECK_EQ(toString(result.errors[0]), "Unknown global 'a'");
+        lluz_REQUIRE_ERRORS(result);
+        CHECK_EQ(toString(result.errors[0]), XorStr("Unknown global 'a'"));
     }
 
     // In non-strict mode, compound assignment is not a definition, it's a modification
@@ -715,8 +717,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "UnknownGlobalCompoundAssign")
             print(a)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
-        CHECK_EQ(toString(result.errors[0]), "Unknown global 'a'");
+        lluz_REQUIRE_ERROR_COUNT(2, result);
+        CHECK_EQ(toString(result.errors[0]), XorStr("Unknown global 'a'"));
     }
 }
 
@@ -728,7 +730,7 @@ local a: number? = nil
 local b: number = a or 1
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "strip_nil_from_lhs_or_operator2")
@@ -739,7 +741,7 @@ local a: number? = nil
 local b: number = a or 1
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_strip_nil_from_rhs_or_operator")
@@ -750,7 +752,7 @@ local a: number? = nil
 local b: number = 1 or a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -776,7 +778,7 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_verifies_types_do_intersect")
         return f
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "operator_eq_operands_are_not_subtypes_of_each_other_but_has_overlap")
@@ -789,7 +791,7 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_operands_are_not_subtypes_of_each_other_
 
     // This doesn't produce any errors but for the wrong reasons.
     // This unit test serves as a reminder to not try and unify the operands on `==`/`~=`.
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "refine_and_or")
@@ -799,7 +801,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_and_or")
         local u = t and t.x or 5
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireType("u")));
 }
@@ -812,8 +814,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type used in + operation; consider adding a type annotation to 'x'");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Unknown type used in + operation; consider adding a type annotation to 'x'"));
 
     result = check(Mode::Nonstrict, R"(
         local function f(x, y)
@@ -821,7 +823,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_any_in_all_modes_when_lhs_is_unknown")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // When type inference is unified, we could add an assertion that
     // the strict and nonstrict types are equivalent. This isn't actually
@@ -842,7 +844,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_bra
         local v4 = y ~= x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CheckResult result2 = check(R"(
         local mm1 = {
@@ -865,30 +867,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_bra
         local v2 = x2 == y2
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result2);
-    CHECK(toString(result2.errors[0]) == "Types Foo and Bar cannot be compared with == because they do not have the same metatable");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_and")
-{
-    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
-
-    CheckResult result = check(R"(
-        local x: "a" | "b" | boolean = math.random() > 0.5 and "a"
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
-{
-    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
-
-    CheckResult result = check(R"(
-        local x: "a" | "b" | boolean = math.random() > 0.5 or "b"
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_ERROR_COUNT(1, result2);
+    CHECK(toString(result2.errors[0]) == XorStr("Types Foo and Bar cannot be compared with == because they do not have the same metatable"));
 }
 
 TEST_SUITE_END();

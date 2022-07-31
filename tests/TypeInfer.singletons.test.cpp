@@ -1,13 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Fixture.h"
 
 #include "doctest.h"
-#include "Luau/BuiltinDefinitions.h"
+#include "lluz/BuiltinDefinitions.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("TypeSingletons");
+TEST_SUITE_BEGIN(XorStr("TypeSingletons"));
 
 TEST_CASE_FIXTURE(Fixture, "bool_singletons")
 {
@@ -16,7 +16,7 @@ TEST_CASE_FIXTURE(Fixture, "bool_singletons")
         local b: false = false
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_singletons")
@@ -26,7 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons")
         local b: "bar" = "bar"
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "bool_singletons_mismatch")
@@ -35,7 +35,7 @@ TEST_CASE_FIXTURE(Fixture, "bool_singletons_mismatch")
         local a: true = false
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'false' could not be converted into 'true'", toString(result.errors[0]));
 }
 
@@ -45,7 +45,7 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons_mismatch")
         local a: "foo" = "bar"
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type '\"bar\"' could not be converted into '\"foo\"'", toString(result.errors[0]));
 }
 
@@ -55,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "string_singletons_escape_chars")
         local a: "\n" = "\000\r"
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Type '"\000\r"' could not be converted into '"\n"')", toString(result.errors[0]));
 }
 
@@ -66,7 +66,7 @@ TEST_CASE_FIXTURE(Fixture, "bool_singleton_subtype")
         local b: boolean = a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_singleton_subtype")
@@ -76,7 +76,7 @@ TEST_CASE_FIXTURE(Fixture, "string_singleton_subtype")
         local b: string = a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_call_with_singletons")
@@ -86,7 +86,7 @@ TEST_CASE_FIXTURE(Fixture, "function_call_with_singletons")
         f(true, "foo")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_call_with_singletons_mismatch")
@@ -96,7 +96,7 @@ TEST_CASE_FIXTURE(Fixture, "function_call_with_singletons_mismatch")
         f(true, "bar")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type '\"bar\"' could not be converted into '\"foo\"'", toString(result.errors[0]));
 }
 
@@ -109,7 +109,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons")
         g(false, 37)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
@@ -120,7 +120,7 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_function_call_with_singletons_mismatch")
         g(true, 37)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
     CHECK_EQ("Other overloads are also not viable: (false, number) -> ()", toString(result.errors[1]));
 }
@@ -134,7 +134,7 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons")
         local c : MyEnum = "baz"
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
@@ -144,7 +144,7 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_mismatch")
         local a : MyEnum = "bang"
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type '\"bang\"' could not be converted into '\"bar\" | \"baz\" | \"foo\"'; none of the union options are compatible",
         toString(result.errors[0]));
 }
@@ -159,7 +159,7 @@ TEST_CASE_FIXTURE(Fixture, "enums_using_singletons_subtyping")
         local c : string = b
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tagged_unions_using_singletons")
@@ -174,7 +174,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_using_singletons")
         c = b
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tagged_unions_using_singletons_mismatch")
@@ -186,7 +186,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_using_singletons_mismatch")
         local a : Animal = { tag = "Cat", howls = true }
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
@@ -199,7 +199,7 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
         a.tag = "Dog"
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_properties_singleton_strings")
@@ -224,7 +224,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_singleton_strings")
         t.baz = false
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 TEST_CASE_FIXTURE(Fixture, "table_properties_singleton_strings_mismatch")
 {
@@ -239,7 +239,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_singleton_strings_mismatch")
         t["$$bar"] = 5
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[0]));
 }
 
@@ -254,7 +254,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_alias_or_parens_is_indexer")
         }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Cannot have more than one table indexer", toString(result.errors[0]));
 }
 
@@ -266,7 +266,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
         x = { ["\n"] = 5 }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Table type '{ ["\n"]: number }' not compatible with type '{| ["<>"]: number |}' because the former is missing field '<>')",
         toString(result.errors[0]));
 }
@@ -281,7 +281,7 @@ type Animal = Cat | Dog
 local a: Animal = { tag = 'cat', cafood = 'something' }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Type 'a' could not be converted into 'Cat | Dog'
 caused by:
   None of the union options are compatible. For example: Table type 'a' not compatible with type 'Cat' because the former is missing field 'catfood')",
@@ -298,7 +298,7 @@ type Result = Good | Bad
 local a: Result = { success = false, result = 'something' }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Type 'a' could not be converted into 'Bad | Good'
 caused by:
   None of the union options are compatible. For example: Table type 'a' not compatible with type 'Bad' because the former is missing field 'error')",
@@ -315,21 +315,21 @@ type Animal = Cat | Dog
 local a: Animal = if true then { tag = 'cat', catfood = 'something' } else { tag = 'dog', dogfood = 'other' }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "widen_the_supertype_if_it_is_free_and_subtype_has_singleton")
 {
     CheckResult result = check(R"(
         local function foo(f, x)
-            if x == "hi" then
+            if x == XorStr("hi") then
                 f(x)
                 f("foo")
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 18})));
     // should be <a...>((string) -> a..., string) -> () but needs lower bounds calculation
@@ -340,13 +340,13 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_f_is_not_widened")
 {
     CheckResult result = check(R"(
         local function foo(f, x): "hello"? -- anyone there?
-            return if x == "hi"
+            return if x == XorStr("hi")
                 then f(x)
                 else nil
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
     CHECK_EQ(R"(<a, b, c...>((string) -> (a, c...), b) -> "hello"?)", toString(requireType("foo")));
@@ -360,7 +360,7 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere")
         local copy = foo
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string", toString(requireType("copy")));
 }
 
@@ -372,10 +372,10 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables
         type Animal = Cat | Dog
 
         local function f(tag: "Cat" | "Dog"): Animal?
-            if tag == "Cat" then
+            if tag == XorStr("Cat") then
                 local result = {tag = tag, meows = true}
                 return result
-            elseif tag == "Dog" then
+            elseif tag == XorStr("Dog") then
                 local result = {tag = tag, barks = true}
                 return result
             else
@@ -384,16 +384,16 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
 {
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+    ScopedFastFlag sff{"lluzLowerBoundsCalculation", true};
 
     CheckResult result = check(R"(
         local function foo(t, x)
-            if x == "hi" or x == "bye" then
+            if x == XorStr("hi") or x == XorStr("bye") then
                 table.insert(t, x)
             end
 
@@ -404,7 +404,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
         table.insert(t, "totally_unrelated_type" :: "totally_unrelated_type")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("{string}", toString(requireType("t")));
 }
@@ -415,7 +415,7 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_not_to_be_widened")
         local function foo(my_enum: "A" | "B") end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"(("A" | "B") -> ())", toString(requireType("foo")));
 }
@@ -424,12 +424,12 @@ TEST_CASE_FIXTURE(Fixture, "indexing_on_string_singletons")
 {
     CheckResult result = check(R"(
         local a: string = "hi"
-        if a == "hi" then
+        if a == XorStr("hi") then
             local x = a:byte()
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 22})));
 }
@@ -438,12 +438,12 @@ TEST_CASE_FIXTURE(Fixture, "indexing_on_union_of_string_singletons")
 {
     CheckResult result = check(R"(
         local a: string = "hi"
-        if a == "hi" or a == "bye" then
+        if a == XorStr("hi") or a == XorStr("bye") then
             local x = a:byte()
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 22})));
 }
@@ -452,12 +452,12 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_string_singleton")
 {
     CheckResult result = check(R"(
         local a: string = "hi"
-        if a == "hi" then
+        if a == XorStr("hi") then
             local x = #a
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("hi")", toString(requireTypeAtPosition({3, 23})));
 }
@@ -466,31 +466,14 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
 {
     CheckResult result = check(R"(
         local a: string = "hi"
-        if a == "hi" or a == "bye" then
+        if a == XorStr("hi") or a == XorStr("bye") then
             local x = #a
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 23})));
-}
-
-TEST_CASE_FIXTURE(Fixture, "no_widening_from_callsites")
-{
-    ScopedFastFlag sff{"LuauReturnsFromCallsitesAreNotWidened", true};
-
-    CheckResult result = check(R"(
-        type Direction = "North" | "East" | "West" | "South"
-
-        local function direction(): Direction
-            return "North"
-        end
-
-        local d: Direction = direction()
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

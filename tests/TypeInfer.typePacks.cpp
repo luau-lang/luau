@@ -1,17 +1,17 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
 
-TEST_SUITE_BEGIN("TypePackTests");
+TEST_SUITE_BEGIN(XorStr("TypePackTests"));
 
 TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
 {
@@ -21,7 +21,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_multi_return")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* takeTwoType = get<FunctionTypeVar>(requireType("take_two"));
     REQUIRE(takeTwoType != nullptr);
@@ -41,7 +41,7 @@ TEST_CASE_FIXTURE(Fixture, "empty_varargs_should_return_nil_when_not_in_tail_pos
         local a, b = ..., 1
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "self_and_varargs_should_work")
@@ -52,7 +52,7 @@ TEST_CASE_FIXTURE(Fixture, "self_and_varargs_should_work")
         t:f(1)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pack")
@@ -67,7 +67,7 @@ TEST_CASE_FIXTURE(Fixture, "last_element_of_return_statement_can_itself_be_a_pac
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
     const FunctionTypeVar* takeOneMoreType = get<FunctionTypeVar>(requireType("take_three"));
@@ -91,7 +91,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a, b..., c...>((b...) -> (c...), (a) -> (b...), a) -> (c...)", toString(requireType("apply")));
 }
@@ -102,7 +102,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_should_be_empty_if_nothing_is_returned")
         function f() end
         function g() return end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     const FunctionTypeVar* fTy = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fTy != nullptr);
     CHECK_EQ(0, size(fTy->retTypes));
@@ -121,7 +121,7 @@ TEST_CASE_FIXTURE(Fixture, "no_return_size_should_be_zero")
         g(h())
         f(g(),h())
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* fTy = get<FunctionTypeVar>(requireType("f"));
     REQUIRE(fTy != nullptr);
@@ -149,7 +149,7 @@ TEST_CASE_FIXTURE(Fixture, "varargs_inference_through_multiple_scopes")
         f("foo")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiple_varargs_inference_are_not_confused")
@@ -166,7 +166,7 @@ TEST_CASE_FIXTURE(Fixture, "multiple_varargs_inference_are_not_confused")
         f("foo", "bar")(1, 2)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parenthesized_varargs_returns_any")
@@ -180,7 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_varargs_returns_any")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("value")));
 }
 
@@ -223,7 +223,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
         bar(1, "foo", "bar", 3)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location(Position{3, 21}, Position{3, 26}), TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
 
@@ -241,8 +241,8 @@ TEST_CASE_FIXTURE(Fixture, "variadic_pack_syntax")
         foo(1, 2, 3, 4, 5, 6)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("foo")), "(...number) -> ()");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("foo")), "(...number) -> ()"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_pack_hidden_free_tail_infinite_growth")
@@ -259,7 +259,7 @@ elseif _ then
 end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_argument_tail")
@@ -272,7 +272,7 @@ for y in _() do
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs")
@@ -284,14 +284,14 @@ local b: Packed<number>
 local c: Packed<string, number>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    auto tf = lookupType("Packed");
+    auto tf = lookupType(XorStr("Packed"));
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf), "(T...) -> (T...)");
-    CHECK_EQ(toString(requireType("a")), "() -> ()");
-    CHECK_EQ(toString(requireType("b")), "(number) -> number");
-    CHECK_EQ(toString(requireType("c")), "(string, number) -> (string, number)");
+    CHECK_EQ(toString(*tf), XorStr("(T...) -> (T...)"));
+    CHECK_EQ(toString(requireType(XorStr("a")), "() -> ()"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "(number) -> number"));
+    CHECK_EQ(toString(requireType(XorStr("c")), "(string, number) -> (string, number)"));
 
     result = check(R"(
 -- (U..., T) cannot be parsed right now
@@ -301,42 +301,42 @@ local b: Packed<string, number>
 local c: Packed<string, number, boolean>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    tf = lookupType("Packed");
+    tf = lookupType(XorStr("Packed"));
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf), "Packed<T, U...>");
-    CHECK_EQ(toString(*tf, {true}), "{| f: (T, U...) -> (T, U...) |}");
+    CHECK_EQ(toString(*tf), XorStr("Packed<T, U...>"));
+    CHECK_EQ(toString(*tf, {true}), XorStr("{| f: (T, U...) -> (T, U...) |}"));
 
     auto ttvA = get<TableTypeVar>(requireType("a"));
     REQUIRE(ttvA);
-    CHECK_EQ(toString(requireType("a")), "Packed<number>");
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Packed<number>"));
+    if (FFlag::LluLowerBoundsCalculation)
+        CHECK_EQ(toString(requireType(XorStr("a"), {true}), "{| f: (number) -> number |}"));
     else
-        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
+        CHECK_EQ(toString(requireType(XorStr("a"), {true}), "{| f: (number) -> (number) |}"));
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
-    CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
-    CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), "");
+    CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), XorStr("number"));
+    CHECK_EQ(toString(ttvA->instantiatedTypePackParams[0], {true}), XorStr(""));
 
     auto ttvB = get<TableTypeVar>(requireType("b"));
     REQUIRE(ttvB);
-    CHECK_EQ(toString(requireType("b")), "Packed<string, number>");
-    CHECK_EQ(toString(requireType("b"), {true}), "{| f: (string, number) -> (string, number) |}");
+    CHECK_EQ(toString(requireType(XorStr("b")), "Packed<string, number>"));
+    CHECK_EQ(toString(requireType(XorStr("b"), {true}), "{| f: (string, number) -> (string, number) |}"));
     REQUIRE(ttvB->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvB->instantiatedTypePackParams.size() == 1);
-    CHECK_EQ(toString(ttvB->instantiatedTypeParams[0], {true}), "string");
-    CHECK_EQ(toString(ttvB->instantiatedTypePackParams[0], {true}), "number");
+    CHECK_EQ(toString(ttvB->instantiatedTypeParams[0], {true}), XorStr("string"));
+    CHECK_EQ(toString(ttvB->instantiatedTypePackParams[0], {true}), XorStr("number"));
 
     auto ttvC = get<TableTypeVar>(requireType("c"));
     REQUIRE(ttvC);
-    CHECK_EQ(toString(requireType("c")), "Packed<string, number, boolean>");
-    CHECK_EQ(toString(requireType("c"), {true}), "{| f: (string, number, boolean) -> (string, number, boolean) |}");
+    CHECK_EQ(toString(requireType(XorStr("c")), "Packed<string, number, boolean>"));
+    CHECK_EQ(toString(requireType(XorStr("c"), {true}), "{| f: (string, number, boolean) -> (string, number, boolean) |}"));
     REQUIRE(ttvC->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvC->instantiatedTypePackParams.size() == 1);
-    CHECK_EQ(toString(ttvC->instantiatedTypeParams[0], {true}), "string");
-    CHECK_EQ(toString(ttvC->instantiatedTypePackParams[0], {true}), "number, boolean");
+    CHECK_EQ(toString(ttvC->instantiatedTypeParams[0], {true}), XorStr("string"));
+    CHECK_EQ(toString(ttvC->instantiatedTypePackParams[0], {true}), XorStr("number, boolean"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_type_packs_import")
@@ -346,8 +346,8 @@ export type Packed<T, U...> = { a: T, b: (U...) -> () }
 return {}
     )";
 
-    CheckResult aResult = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(aResult);
+    CheckResult aResult = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
 local Import = require(game.A)
@@ -356,17 +356,17 @@ local b: Import.Packed<string, number>
 local c: Import.Packed<string, number, boolean>
 local d: { a: typeof(c) }
     )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
+    lluz_REQUIRE_NO_ERRORS(bResult);
 
-    auto tf = lookupImportedType("Import", "Packed");
+    auto tf = lookupImportedType(XorStr("Import", "Packed"));
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf), "Packed<T, U...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: T, b: (U...) -> () |}");
+    CHECK_EQ(toString(*tf), XorStr("Packed<T, U...>"));
+    CHECK_EQ(toString(*tf, {true}), XorStr("{| a: T, b: (U...) -> () |}"));
 
-    CHECK_EQ(toString(requireType("a"), {true}), "{| a: number, b: () -> () |}");
-    CHECK_EQ(toString(requireType("b"), {true}), "{| a: string, b: (number) -> () |}");
-    CHECK_EQ(toString(requireType("c"), {true}), "{| a: string, b: (number, boolean) -> () |}");
-    CHECK_EQ(toString(requireType("d")), "{| a: Packed<string, number, boolean> |}");
+    CHECK_EQ(toString(requireType(XorStr("a"), {true}), "{| a: number, b: () -> () |}"));
+    CHECK_EQ(toString(requireType(XorStr("b"), {true}), "{| a: string, b: (number) -> () |}"));
+    CHECK_EQ(toString(requireType(XorStr("c"), {true}), "{| a: string, b: (number, boolean) -> () |}"));
+    CHECK_EQ(toString(requireType(XorStr("d")), "{| a: Packed<string, number, boolean> |}"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_pack_type_parameters")
@@ -384,24 +384,24 @@ local a: Alias<string, number, boolean>
 type B<X...> = Import.Packed<string, X...>
 type C<X...> = Import.Packed<string, (number, X...)>
     )");
-    LUAU_REQUIRE_NO_ERRORS(cResult);
+    lluz_REQUIRE_NO_ERRORS(cResult);
 
-    auto tf = lookupType("Alias");
+    auto tf = lookupType(XorStr("Alias"));
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf), "Alias<S, T, R...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: S, b: (T, R...) -> () |}");
+    CHECK_EQ(toString(*tf), XorStr("Alias<S, T, R...>"));
+    CHECK_EQ(toString(*tf, {true}), XorStr("{| a: S, b: (T, R...) -> () |}"));
 
-    CHECK_EQ(toString(requireType("a"), {true}), "{| a: string, b: (number, boolean) -> () |}");
+    CHECK_EQ(toString(requireType(XorStr("a"), {true}), "{| a: string, b: (number, boolean) -> () |}"));
 
-    tf = lookupType("B");
+    tf = lookupType(XorStr("B"));
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf), "B<X...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (X...) -> () |}");
+    CHECK_EQ(toString(*tf), XorStr("B<X...>"));
+    CHECK_EQ(toString(*tf, {true}), XorStr("{| a: string, b: (X...) -> () |}"));
 
-    tf = lookupType("C");
+    tf = lookupType(XorStr("C"));
     REQUIRE(tf);
-    CHECK_EQ(toString(*tf), "C<X...>");
-    CHECK_EQ(toString(*tf, {true}), "{| a: string, b: (number, X...) -> () |}");
+    CHECK_EQ(toString(*tf), XorStr("C<X...>"));
+    CHECK_EQ(toString(*tf, {true}), XorStr("{| a: string, b: (number, X...) -> () |}"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_nested")
@@ -413,13 +413,13 @@ type Packed3<T...> = (Packed2<T...>, T...) -> (Packed2<T...>, T...)
 type Packed4<T...> = (Packed3<T...>, T...) -> (Packed3<T...>, T...)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    auto tf = lookupType("Packed4");
+    auto tf = lookupType(XorStr("Packed4"));
     REQUIRE(tf);
     CHECK_EQ(toString(*tf),
         "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...) -> "
-        "((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...)");
+        XorStr("((((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...) -> (((T...) -> (T...), T...) -> ((T...) -> (T...), T...), T...), T...)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_variadic")
@@ -431,10 +431,10 @@ type D = X<...number>
 type E = X<(number, ...string)>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("D")), "(...number) -> (string, ...number)");
-    CHECK_EQ(toString(*lookupType("E")), "(number, ...string) -> (string, number, ...string)");
+    CHECK_EQ(toString(*lookupType(XorStr("D")), "(...number) -> (string, ...number)"));
+    CHECK_EQ(toString(*lookupType(XorStr("E")), "(number, ...string) -> (string, number, ...string)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_multi")
@@ -453,16 +453,16 @@ type H<S..., R...> = W<number, S..., R...>
 type I<S..., R...> = W<number, (string, S...), R...>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("A")), "(S...) -> (S...)");
-    CHECK_EQ(toString(*lookupType("B")), "(number, ...string) -> (S...)");
+    CHECK_EQ(toString(*lookupType(XorStr("A")), "(S...) -> (S...)"));
+    CHECK_EQ(toString(*lookupType(XorStr("B")), "(number, ...string) -> (S...)"));
 
-    CHECK_EQ(toString(*lookupType("E")), "(number) -> (S...)");
-    CHECK_EQ(toString(*lookupType("F")), "(number) -> (string, S...)");
+    CHECK_EQ(toString(*lookupType(XorStr("E")), "(number) -> (S...)"));
+    CHECK_EQ(toString(*lookupType(XorStr("F")), "(number) -> (string, S...)"));
 
-    CHECK_EQ(toString(*lookupType("H")), "(number, S...) -> (number, R...)");
-    CHECK_EQ(toString(*lookupType("I")), "(number, string, S...) -> (number, R...)");
+    CHECK_EQ(toString(*lookupType(XorStr("H")), "(number, S...) -> (number, R...)"));
+    CHECK_EQ(toString(*lookupType(XorStr("I")), "(number, string, S...) -> (number, R...)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit")
@@ -478,14 +478,14 @@ type E = X<(...number)>
 type F = X<(string, ...number)>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("A")), "(S...) -> (S...)");
-    CHECK_EQ(toString(*lookupType("B")), "() -> ()");
-    CHECK_EQ(toString(*lookupType("C")), "(number) -> number");
-    CHECK_EQ(toString(*lookupType("D")), "(number, string) -> (number, string)");
-    CHECK_EQ(toString(*lookupType("E")), "(...number) -> (...number)");
-    CHECK_EQ(toString(*lookupType("F")), "(string, ...number) -> (string, ...number)");
+    CHECK_EQ(toString(*lookupType(XorStr("A")), "(S...) -> (S...)"));
+    CHECK_EQ(toString(*lookupType(XorStr("B")), "() -> ()"));
+    CHECK_EQ(toString(*lookupType(XorStr("C")), "(number) -> number"));
+    CHECK_EQ(toString(*lookupType(XorStr("D")), "(number, string) -> (number, string)"));
+    CHECK_EQ(toString(*lookupType(XorStr("E")), "(...number) -> (...number)"));
+    CHECK_EQ(toString(*lookupType(XorStr("F")), "(string, ...number) -> (string, ...number)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi")
@@ -499,12 +499,12 @@ type C<S...> = Y<...string, (number, S...)>
 type D<X...> = Y<X..., (number, string, X...)>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("A")), "(number, string) -> boolean");
-    CHECK_EQ(toString(*lookupType("B")), "() -> ()");
-    CHECK_EQ(toString(*lookupType("C")), "(...string) -> (number, S...)");
-    CHECK_EQ(toString(*lookupType("D")), "(X...) -> (number, string, X...)");
+    CHECK_EQ(toString(*lookupType(XorStr("A")), "(number, string) -> boolean"));
+    CHECK_EQ(toString(*lookupType(XorStr("B")), "() -> ()"));
+    CHECK_EQ(toString(*lookupType(XorStr("C")), "(...string) -> (number, S...)"));
+    CHECK_EQ(toString(*lookupType(XorStr("D")), "(X...) -> (number, string, X...)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi_tostring")
@@ -516,10 +516,10 @@ local a: Y<(number, string), (boolean)>
 local b: Y<(), ()>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<(number, string), (boolean)>");
-    CHECK_EQ(toString(requireType("b")), "Y<(), ()>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<(number, string), (boolean)>"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "Y<(), ()>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_backwards_compatible")
@@ -533,11 +533,11 @@ type B = Y<(number), (boolean)>
 type C = Y<(number), boolean>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("A")), "() -> number");
-    CHECK_EQ(toString(*lookupType("B")), "(number) -> boolean");
-    CHECK_EQ(toString(*lookupType("C")), "(number) -> boolean");
+    CHECK_EQ(toString(*lookupType(XorStr("A")), "() -> number"));
+    CHECK_EQ(toString(*lookupType(XorStr("B")), "(number) -> boolean"));
+    CHECK_EQ(toString(*lookupType(XorStr("C")), "(number) -> boolean"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_packs_errors")
@@ -547,56 +547,56 @@ type Packed<T, U, V...> = (T, U) -> (V...)
 local b: Packed<number>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T, U, V...>' expects at least 2 type arguments, but only 1 is specified");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Generic type 'Packed<T, U, V...>' expects at least 2 type arguments, but only 1 is specified"));
 
     result = check(R"(
 type Packed<T, U> = (T, U) -> ()
 type B<X...> = Packed<number, string, X...>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T, U>' expects 0 type pack arguments, but 1 is specified");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Generic type 'Packed<T, U>' expects 0 type pack arguments, but 1 is specified"));
 
     result = check(R"(
 type Packed<T..., U...> = (T...) -> (U...)
 type Other<S...> = Packed<S..., string>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type parameters must come before type pack parameters");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Type parameters must come before type pack parameters"));
 
     result = check(R"(
 type Packed<T, U> = (T) -> U
 type Other<S...> = Packed<number, S...>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T, U>' expects 2 type arguments, but only 1 is specified");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Generic type 'Packed<T, U>' expects 2 type arguments, but only 1 is specified"));
 
     result = check(R"(
 type Packed<T...> = (T...) -> T...
 local a: Packed
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Type parameter list is required"));
 
     result = check(R"(
 type Packed<T..., U...> = (T...) -> (U...)
 type Other = Packed<>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but none are specified");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but none are specified"));
 
     result = check(R"(
 type Packed<T..., U...> = (T...) -> (U...)
 type Other = Packed<number, string>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but only 1 is specified");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Generic type 'Packed<T..., U...>' expects 2 type pack arguments, but only 1 is specified"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_explicit")
@@ -608,10 +608,10 @@ local a: Y<number, number> = { a = 2, b = 3 }
 local b: Y<number> = { a = 2, b = "s" }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number, number>");
-    CHECK_EQ(toString(requireType("b")), "Y<number, string>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number, number>"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "Y<number, string>"));
 
     result = check(R"(
 type Y<T = string> = { a: T }
@@ -621,11 +621,11 @@ local b: Y<> = { a = "s" }
 local c: Y = { a = "s" }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number>");
-    CHECK_EQ(toString(requireType("b")), "Y<string>");
-    CHECK_EQ(toString(requireType("c")), "Y<string>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number>"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "Y<string>"));
+    CHECK_EQ(toString(requireType(XorStr("c")), "Y<string>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_self")
@@ -637,10 +637,10 @@ local a: Y<number> = { a = 2, b = 3 }
 local b: Y<string> = { a = "h", b = "s" }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number, number>");
-    CHECK_EQ(toString(requireType("b")), "Y<string, string>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number, number>"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "Y<string, string>"));
 
     result = check(R"(
 type Y<T, U = (T, T) -> string> = { a: T, b: U }
@@ -648,9 +648,9 @@ type Y<T, U = (T, T) -> string> = { a: T, b: U }
 local a: Y<number>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number, (number, number) -> string>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number, (number, number) -> string>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_chained")
@@ -662,10 +662,10 @@ local a: Y<number>
 local b: Y<number, string>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number, number, number>");
-    CHECK_EQ(toString(requireType("b")), "Y<number, string, string>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number, number, number>"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "Y<number, string, string>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_explicit")
@@ -675,9 +675,9 @@ type Y<T... = (string, number)> = { a: (T...) -> () }
 local a: Y<>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<string, number>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<string, number>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_ty")
@@ -688,9 +688,9 @@ type Y<T, U... = ...T> = { a: T, b: (U...) -> T }
 local a: Y<number>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number, ...number>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number, ...number>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_tp")
@@ -700,9 +700,9 @@ type Y<T..., U... = T...> = { a: (T...) -> U... }
 local a: Y<number, string>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<(number, string), (number, string)>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<(number, string), (number, string)>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_pack_self_chained_tp")
@@ -712,9 +712,9 @@ type Y<T..., U... = T..., V... = U...> = { a: (T...) -> U..., b: (T...) -> V... 
 local a: Y<number, string>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<(number, string), (number, string), (number, string)>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<(number, string), (number, string), (number, string)>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_mixed_self")
@@ -727,12 +727,12 @@ local c: Y<number, string, ...boolean>
 local d: Y<number, string, ...boolean, ...() -> ()>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "Y<number, number, ...number, (number, number, ...number)>");
-    CHECK_EQ(toString(requireType("b")), "Y<number, string, ...number, (number, string, ...number)>");
-    CHECK_EQ(toString(requireType("c")), "Y<number, string, ...boolean, (number, string, ...boolean)>");
-    CHECK_EQ(toString(requireType("d")), "Y<number, string, ...boolean, ...() -> ()>");
+    CHECK_EQ(toString(requireType(XorStr("a")), "Y<number, number, ...number, (number, number, ...number)>"));
+    CHECK_EQ(toString(requireType(XorStr("b")), "Y<number, string, ...number, (number, string, ...number)>"));
+    CHECK_EQ(toString(requireType(XorStr("c")), "Y<number, string, ...boolean, (number, string, ...boolean)>"));
+    CHECK_EQ(toString(requireType(XorStr("d")), "Y<number, string, ...boolean, ...() -> ()>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_errors")
@@ -742,46 +742,46 @@ type Y<T = T> = { a: T }
 local a: Y = { a = 2 }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Unknown type 'T'"));
 
     result = check(R"(
 type Y<T... = T...> = { a: (T...) -> () }
 local a: Y<>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Unknown type 'T'");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Unknown type 'T'"));
 
     result = check(R"(
 type Y<T = string, U... = ...string> = { a: (T) -> U... }
 local a: Y<...number>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Generic type 'Y<T, U...>' expects at least 1 type argument, but none are specified");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Generic type 'Y<T, U...>' expects at least 1 type argument, but none are specified"));
 
     result = check(R"(
 type Packed<T> = (T) -> T
 local a: Packed
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type parameter list is required");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Type parameter list is required"));
 
     result = check(R"(
 type Y<T, U = T, V> = { a: T }
 local a: Y<number>
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
     result = check(R"(
 type Y<T..., U... = T..., V...> = { a: T }
 local a: Y<...number>
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_default_export")
@@ -798,8 +798,8 @@ export type H<T... = ()> = { b: (T...) -> T... }
 return {}
     )";
 
-    CheckResult resultTypes = frontend.check("Module/Types");
-    LUAU_REQUIRE_NO_ERRORS(resultTypes);
+    CheckResult resultTypes = frontend.check(XorStr("Module/Types"));
+    lluz_REQUIRE_NO_ERRORS(resultTypes);
 
     fileResolver.source["Module/Users"] = R"(
 local Types = require(script.Parent.Types)
@@ -815,18 +815,18 @@ local g: Types.G<...number>
 local h: Types.H<>
     )";
 
-    CheckResult resultUsers = frontend.check("Module/Users");
-    LUAU_REQUIRE_NO_ERRORS(resultUsers);
+    CheckResult resultUsers = frontend.check(XorStr("Module/Users"));
+    lluz_REQUIRE_NO_ERRORS(resultUsers);
 
-    CHECK_EQ(toString(requireType("Module/Users", "a")), "A<number, string>");
-    CHECK_EQ(toString(requireType("Module/Users", "b")), "B<number, number>");
-    CHECK_EQ(toString(requireType("Module/Users", "c")), "C<number, (number, number) -> string>");
-    CHECK_EQ(toString(requireType("Module/Users", "d")), "D<number, number, number>");
-    CHECK_EQ(toString(requireType("Module/Users", "e")), "E<string, number>");
-    CHECK_EQ(toString(requireType("Module/Users", "eVoid")), "E<>");
-    CHECK_EQ(toString(requireType("Module/Users", "f")), "F<number, ...number>");
-    CHECK_EQ(toString(requireType("Module/Users", "g")), "G<...number, ()>");
-    CHECK_EQ(toString(requireType("Module/Users", "h")), "H<>");
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "a")), "A<number, string>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "b")), "B<number, number>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "c")), "C<number, (number, number) -> string>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "d")), "D<number, number, number>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "e")), "E<string, number>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "eVoid")), "E<>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "f")), "F<number, ...number>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "g")), "G<...number, ()>"));
+    CHECK_EQ(toString(requireType(XorStr("Module/Users", "h")), "H<>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_default_type_skip_brackets")
@@ -836,9 +836,9 @@ type Y<T... = ...string> = (T...) -> number
 local a: Y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireType("a")), "(...string) -> number");
+    CHECK_EQ(toString(requireType(XorStr("a")), "(...string) -> number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_confusing_types")
@@ -849,10 +849,10 @@ type B = A<string, (number)>
 type C = A<string, (number), (boolean)>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("B"), {true}), "(string, ...any) -> (number, ...any)");
-    CHECK_EQ(toString(*lookupType("C"), {true}), "(string, boolean) -> (number, boolean)");
+    CHECK_EQ(toString(*lookupType(XorStr("B"), {true}), "(string, ...any) -> (number, ...any)"));
+    CHECK_EQ(toString(*lookupType(XorStr("C"), {true}), "(string, boolean) -> (number, boolean)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_defaults_recursive_type")
@@ -862,9 +862,9 @@ type F<K = string, V = (K) -> ()> = (K) -> V
 type R = { m: F<R> }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(*lookupType("R"), {true}), "t1 where t1 = {| m: (t1) -> (t1) -> () |}");
+    CHECK_EQ(toString(*lookupType(XorStr("R"), {true}), "t1 where t1 = {| m: (t1) -> (t1) -> () |}"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "pack_tail_unification_check")
@@ -875,7 +875,7 @@ local b: () -> (number, ...boolean)
 a = b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '() -> (number, ...boolean)' could not be converted into '() -> (number, ...string)'
 caused by:
   Type 'boolean' could not be converted into 'string')");
@@ -890,7 +890,7 @@ TEST_CASE_FIXTURE(Fixture, "unifying_vararg_pack_with_fixed_length_pack_produces
         a(...)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     REQUIRE(bool(getMainModule()->getModuleScope()->varargPack));
 
@@ -949,7 +949,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks")
         ( ... ) ""
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
@@ -961,7 +961,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

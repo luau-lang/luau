@@ -1,17 +1,17 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("TypeVarTests");
+TEST_SUITE_BEGIN(XorStr("TypeVarTests"));
 
 TEST_CASE_FIXTURE(Fixture, "primitives_are_equal")
 {
@@ -79,7 +79,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_of_function_is_parenthesized_if_tail_is_
     auto returnsTwo = TypeVar(FunctionTypeVar(typeChecker.globalScope->level, &emptyArgumentPack, &returnPack));
 
     std::string res = toString(&returnsTwo);
-    CHECK_EQ(res, "() -> (number, a...)");
+    CHECK_EQ(res, XorStr("() -> (number, a...)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "subset_check")
@@ -266,17 +266,17 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 TEST_CASE("tagging_tables")
 {
     TypeVar ttv{TableTypeVar{}};
-    CHECK(!Luau::hasTag(&ttv, "foo"));
-    Luau::attachTag(&ttv, "foo");
-    CHECK(Luau::hasTag(&ttv, "foo"));
+    CHECK(!lluz::hasTag(&ttv, "foo"));
+    lluz::attachTag(&ttv, XorStr("foo"));
+    CHECK(lluz::hasTag(&ttv, "foo"));
 }
 
 TEST_CASE("tagging_classes")
 {
     TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
-    CHECK(!Luau::hasTag(&base, "foo"));
-    Luau::attachTag(&base, "foo");
-    CHECK(Luau::hasTag(&base, "foo"));
+    CHECK(!lluz::hasTag(&base, "foo"));
+    lluz::attachTag(&base, XorStr("foo"));
+    CHECK(lluz::hasTag(&base, "foo"));
 }
 
 TEST_CASE("tagging_subclasses")
@@ -284,33 +284,33 @@ TEST_CASE("tagging_subclasses")
     TypeVar base{ClassTypeVar{"Base", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"}};
     TypeVar derived{ClassTypeVar{"Derived", {}, &base, std::nullopt, {}, nullptr, "Test"}};
 
-    CHECK(!Luau::hasTag(&base, "foo"));
-    CHECK(!Luau::hasTag(&derived, "foo"));
+    CHECK(!lluz::hasTag(&base, "foo"));
+    CHECK(!lluz::hasTag(&derived, "foo"));
 
-    Luau::attachTag(&base, "foo");
-    CHECK(Luau::hasTag(&base, "foo"));
-    CHECK(Luau::hasTag(&derived, "foo"));
+    lluz::attachTag(&base, XorStr("foo"));
+    CHECK(lluz::hasTag(&base, "foo"));
+    CHECK(lluz::hasTag(&derived, "foo"));
 
-    Luau::attachTag(&derived, "bar");
-    CHECK(!Luau::hasTag(&base, "bar"));
-    CHECK(Luau::hasTag(&derived, "bar"));
+    lluz::attachTag(&derived, XorStr("bar"));
+    CHECK(!lluz::hasTag(&base, "bar"));
+    CHECK(lluz::hasTag(&derived, "bar"));
 }
 
 TEST_CASE("tagging_functions")
 {
     TypePackVar empty{TypePack{}};
     TypeVar ftv{FunctionTypeVar{&empty, &empty}};
-    CHECK(!Luau::hasTag(&ftv, "foo"));
-    Luau::attachTag(&ftv, "foo");
-    CHECK(Luau::hasTag(&ftv, "foo"));
+    CHECK(!lluz::hasTag(&ftv, "foo"));
+    lluz::attachTag(&ftv, XorStr("foo"));
+    CHECK(lluz::hasTag(&ftv, "foo"));
 }
 
 TEST_CASE("tagging_props")
 {
     Property prop{};
-    CHECK(!Luau::hasTag(prop, "foo"));
-    Luau::attachTag(prop, "foo");
-    CHECK(Luau::hasTag(prop, "foo"));
+    CHECK(!lluz::hasTag(prop, "foo"));
+    lluz::attachTag(prop, XorStr("foo"));
+    CHECK(lluz::hasTag(prop, "foo"));
 }
 
 struct VisitCountTracker final : TypeVarOnceVisitor
@@ -352,9 +352,9 @@ TEST_CASE_FIXTURE(Fixture, "visit_once")
 type T = { a: number, b: () -> () }
 local b: (T, T, T) -> T
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId bType = requireType("b");
+    TypeId bType = requireType(XorStr("b"));
 
     VisitCountTracker tester;
     tester.traverse(bType);
@@ -418,6 +418,8 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
+    ScopedFastFlag lluzNonCopyableTypeVarFields{"lluzNonCopyableTypeVarFields", true};
+
     TypeVar myAny{AnyTypeVar{}, /*presistent*/ true};
     myAny.normal = true;
     myAny.documentationSymbol = "@global/any";
@@ -430,7 +432,7 @@ TEST_CASE("content_reassignment")
     CHECK(get<AnyTypeVar>(futureAny) != nullptr);
     CHECK(!futureAny->persistent);
     CHECK(futureAny->normal);
-    CHECK(futureAny->documentationSymbol == "@global/any");
+    CHECK(futureAny->documentationSymbol == XorStr("@global/any"));
     CHECK(futureAny->owningArena == &arena);
 }
 

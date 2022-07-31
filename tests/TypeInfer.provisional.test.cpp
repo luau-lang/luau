@@ -1,5 +1,5 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
 
 #include "Fixture.h"
 
@@ -7,11 +7,11 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+lluz_FASTFLAG(LluLowerBoundsCalculation)
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("ProvisionalTests");
+TEST_SUITE_BEGIN(XorStr("ProvisionalTests"));
 
 // These tests check for behavior that differs from the final behavior we'd
 // like to have.  They serve to document the current state of the typechecker.
@@ -31,7 +31,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 {
     const std::string code = R"(
         function f(a)
-            if type(a) == "boolean" then
+            if type(a) == XorStr("boolean") then
                 local a1 = a
             elseif a.fn() then
                 local a2 = a
@@ -55,7 +55,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_inference_incomplete")
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
 {
     const std::string code = R"(
-        local a, b, c = xpcall(function() return 1, "foo" end, function() return "foo", 1 end)
+        local a, b, c = xpcall(function() return 1, "foo" end, function() return XorStr("foo"), 1 end)
     )";
 
     const std::string expected = R"(
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
 TEST_CASE_FIXTURE(Fixture, "weirditer_should_not_loop_forever")
 {
     // this flag is intentionally here doing nothing to demonstrate that we exit early via case detection
-    ScopedFastInt sfis{"LuauTypeInferTypePackLoopLimit", 50};
+    ScopedFastInt sfis{"lluzTypeInferTypePackLoopLimit", 50};
 
     CheckResult result = check(R"(
         local function toVertexList(vertices, x, y, ...)
@@ -83,11 +83,11 @@ TEST_CASE_FIXTURE(Fixture, "weirditer_should_not_loop_forever")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 // This should also generate an OccursCheckFailed error too, like the above toVertexList snippet.
-// at least up until we can get Luau to recognize this code as a valid function that iterates over a list of values in the pack.
+// at least up until we can get lluz to recognize this code as a valid function that iterates over a list of values in the pack.
 TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
 {
     CheckResult result = check(R"(
@@ -99,7 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "it_should_be_agnostic_of_actual_size")
         f(3, 2, 1, 0)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 // Ideally setmetatable's second argument would be an optional free table.
@@ -113,7 +113,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_
         b = 1
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -121,7 +121,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_constrains_free_type_into_free_
     CHECK_EQ("number", toString(tm->givenType));
 }
 
-// Luau currently doesn't yet know how to allow assignments when the binding was refined.
+// lluz currently doesn't yet know how to allow assignments when the binding was refined.
 TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
 {
     CheckResult result = check(R"(
@@ -137,7 +137,7 @@ TEST_CASE_FIXTURE(Fixture, "while_body_are_also_refined")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Type 'Node<T>?' could not be converted into 'Node<T>'", toString(result.errors[0]));
 }
@@ -157,7 +157,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_othe
         local a = tab2 == tab
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
@@ -175,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
         local r2 = b == a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 // Belongs in TypeInfer.refinements.test.cpp.
@@ -192,13 +192,13 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "string");   // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?"); // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), XorStr("string"));   // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), XorStr("boolean?")); // a == b
 
-    CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "string");   // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?"); // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({5, 33})), XorStr("string"));   // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({5, 36})), XorStr("boolean?")); // a ~= b
 }
 
 // Also belongs in TypeInfer.refinements.test.cpp.
@@ -217,7 +217,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("{| x: string, y: number |}", toString(requireTypeAtPosition({5, 28})));
 
@@ -225,10 +225,10 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_x_not_equal_to_nil")
     CHECK_EQ("{| x: nil, y: nil |} | {| x: string, y: number |}", toString(requireTypeAtPosition({7, 28})));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
+TEST_CASE_FIXTURE(Fixture, "bail_early_if_unification_is_too_complicated" * doctest::timeout(0.5))
 {
-    ScopedFastInt sffi{"LuauTarjanChildLimit", 1};
-    ScopedFastInt sffi2{"LuauTypeInferIterationLimit", 1};
+    ScopedFastInt sffi{"lluzTarjanChildLimit", 1};
+    ScopedFastInt sffi2{"lluzTypeInferIterationLimit", 1};
 
     CheckResult result = check(R"LUA(
         local Result
@@ -259,7 +259,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bail_early_if_unification_is_too_complicated
     if (it == result.errors.end())
     {
         dumpErrors(result);
-        FAIL("Expected a UnificationTooComplex error");
+        FAIL(XorStr("Expected a UnificationTooComplex error"));
     }
 }
 
@@ -284,14 +284,14 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
     // TODO: this should error!
     // This should be fixed by replacing generic tables by generics with type bounds.
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
-// FIXME: Move this test to another source file when removing FFlag::LuauLowerBoundsCalculation
+// FIXME: Move this test to another source file when removing FFlag::LluLowerBoundsCalculation
 TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type_pack")
 {
     ScopedFastFlag sff[]{
-        {"LuauReturnAnyInsteadOfICE", true},
+        {"lluzReturnAnyInsteadOfICE", true},
     };
 
     // In-place quantification causes these types to have the wrong types but only because of nasty interaction with prototyping.
@@ -315,9 +315,9 @@ TEST_CASE_FIXTURE(Fixture, "do_not_ice_when_trying_to_pick_first_of_generic_type
         local x = (f()) -- should error: no return values to assign from the call to f
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauLowerBoundsCalculation)
+    if (FFlag::LluLowerBoundsCalculation)
     {
         CHECK_EQ("() -> ()", toString(requireType("f")));
         CHECK_EQ("() -> ()", toString(requireType("g")));
@@ -340,27 +340,13 @@ TEST_CASE_FIXTURE(Fixture, "specialization_binds_with_prototypes_too_early")
         local s2s: (string) -> string = id
     )");
 
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
-}
-
-TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", false},
-    };
-
-    CheckResult result = check(R"(
-        local function f() return end
-        local g = function() return f() end
-    )");
-
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
+    lluz_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
 TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
     ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", false},
+        {"lluzLowerBoundsCalculation", false},
     };
 
     CheckResult result = check(R"(
@@ -369,13 +355,13 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
         local g = function(...) return f(...) end
     )");
 
-    LUAU_REQUIRE_ERRORS(result); // Should not have any errors.
+    lluz_REQUIRE_ERRORS(result); // Should not have any errors.
 }
 
 TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_overloaded_higher_order_functions")
 {
     ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -385,7 +371,7 @@ TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_over
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // We incorrectly infer that the argument to foo could be called with (number, number) or (string, string)
     // even though that is strictly more permissive than the actual source text shows.
@@ -396,11 +382,11 @@ TEST_CASE_FIXTURE(Fixture, "lower_bounds_calculation_is_too_permissive_with_over
 TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_tables")
 {
 #if defined(_DEBUG) || defined(_NOOPT)
-    ScopedFastInt sfi("LuauNormalizeIterationLimit", 500);
+    ScopedFastInt sfi("lluzNormalizeIterationLimit", 500);
 #endif
 
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -417,7 +403,7 @@ TEST_CASE_FIXTURE(Fixture, "normalization_fails_on_certain_kinds_of_cyclic_table
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(nullptr != get<NormalizationTooComplex>(result.errors[0]));
 }
@@ -430,9 +416,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pcall_returns_at_least_two_value_but_functio
         local ok, res = pcall(f)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Function only returns 1 value. 2 are required here", toString(result.errors[0]));
-    // LUAU_REQUIRE_NO_ERRORS(result);
+    // lluz_REQUIRE_NO_ERRORS(result);
     // CHECK_EQ("boolean", toString(requireType("ok")));
     // CHECK_EQ("any", toString(requireType("res")));
 }
@@ -452,7 +438,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "choose_the_right_overload_for_pcall")
         local ok, res = pcall(f)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("boolean", toString(requireType("ok")));
     CHECK_EQ("number", toString(requireType("res")));
     // CHECK_EQ("any", toString(requireType("res")));
@@ -473,7 +459,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_many_things_but_first_of_it
         local ok, res, s, b = pcall(f)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("boolean", toString(requireType("ok")));
     CHECK_EQ("number", toString(requireType("res")));
     // CHECK_EQ("any", toString(requireType("res")));
@@ -484,9 +470,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_many_things_but_first_of_it
 TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
 {
     ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzNormalizeFlagIsConservative", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(
@@ -508,25 +494,14 @@ TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     // TODO: We're missing generics b...
     CHECK_EQ("<a...>(t1) -> {| [t1]: boolean |} where t1 = t2 ; t2 = {+ m1: (t1) -> (a...), m2: (t2) -> (b...) +}", toString(requireType("f")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_any")
-{
-    CheckResult result = check(R"(
-        local function foo(f: (any) -> (), x)
-            f(x)
-        end
-    )");
-
-    CHECK_EQ("((any) -> (), any) -> ()", toString(requireType("foo")));
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_function_with_no_returns")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{"DebuglluzSharedSelf", true};
 
     CheckResult result = check(R"(
         local T = {}
@@ -542,7 +517,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_f
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Not all codepaths in this function return 'self, a...'.", toString(result.errors[0]));
 }
 

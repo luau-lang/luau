@@ -1,13 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Fixture.h"
-#include "Luau/ConstraintGraphBuilder.h"
+#include "lluz/ConstraintGraphBuilder.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("ConstraintGraphBuilder");
+TEST_SUITE_BEGIN(XorStr("ConstraintGraphBuilder"));
 
 TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello_world")
 {

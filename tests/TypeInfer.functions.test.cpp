@@ -1,27 +1,26 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
 
-TEST_SUITE_BEGIN("TypeInferFunctions");
+TEST_SUITE_BEGIN(XorStr("TypeInferFunctions"));
 
 TEST_CASE_FIXTURE(Fixture, "tc_function")
 {
-    CheckResult result = check("function five() return 5 end");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("function five() return 5 end"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* fiveType = get<FunctionTypeVar>(requireType("five"));
     REQUIRE(fiveType != nullptr);
@@ -29,8 +28,8 @@ TEST_CASE_FIXTURE(Fixture, "tc_function")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_bodies")
 {
-    CheckResult result = check("function myFunction()    local a = 0    a = true    end");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = check(XorStr("function myFunction()    local a = 0    a = true    end"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 44}, Position{0, 48}}, TypeMismatch{
                                                                                           typeChecker.numberType,
@@ -51,7 +50,7 @@ TEST_CASE_FIXTURE(Fixture, "cannot_hoist_interior_defns_into_signature")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0] == TypeError{Location{{1, 28}, {1, 29}}, getMainSourceModule()->name,
                                   UnknownSymbol{
                                       "T",
@@ -61,8 +60,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_hoist_interior_defns_into_signature")
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_type")
 {
-    CheckResult result = check("function take_five() return 5 end");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("function take_five() return 5 end"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* takeFiveType = get<FunctionTypeVar>(requireType("take_five"));
     REQUIRE(takeFiveType != nullptr);
@@ -75,8 +74,8 @@ TEST_CASE_FIXTURE(Fixture, "infer_return_type")
 
 TEST_CASE_FIXTURE(Fixture, "infer_from_function_return_type")
 {
-    CheckResult result = check("function take_five() return 5 end    local five = take_five()");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("function take_five() return 5 end    local five = take_five()"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *follow(requireType("five")));
 }
@@ -91,7 +90,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_that_function_does_not_return_a_table")
         take_five().prop = 888
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{5, 8}, Position{5, 24}}, NotATable{typeChecker.numberType}}));
 }
 
@@ -104,7 +103,7 @@ TEST_CASE_FIXTURE(Fixture, "vararg_functions_should_allow_calls_of_any_types_and
         f("foo", 2)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
@@ -136,7 +135,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
     TypeId k = ttv->props["f"].type;
     REQUIRE(k);
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_count")
@@ -146,7 +145,7 @@ TEST_CASE_FIXTURE(Fixture, "list_only_alternative_overloads_that_match_argument_
         multiply("")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -165,7 +164,7 @@ TEST_CASE_FIXTURE(Fixture, "list_all_overloads_if_no_overload_takes_given_argume
         multiply()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
@@ -183,7 +182,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_give_other_overloads_message_if_only_one_argume
         multiply(1, "")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -201,7 +200,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_return_type_from_selected_overload")
         local b = T.method(5)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
 }
@@ -217,7 +216,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_arguments")
 
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = result.errors[0];
     auto acm = get<CountMismatch>(err);
@@ -239,7 +238,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "lambda_form_of_local_function_cannot_be_recursive")
@@ -248,7 +247,7 @@ TEST_CASE_FIXTURE(Fixture, "lambda_form_of_local_function_cannot_be_recursive")
         local f = function() return f() end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "recursive_local_function")
@@ -263,7 +262,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_local_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 // FIXME: This and the above case get handled very differently.  It's pretty dumb.
@@ -281,7 +280,7 @@ TEST_CASE_FIXTURE(Fixture, "another_recursive_local_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
@@ -292,14 +291,14 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
 {
     ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -308,7 +307,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = <a...>(t1) -> (a...)", toString(requireType("f")));
 }
 
@@ -329,7 +328,7 @@ TEST_CASE_FIXTURE(Fixture, "another_higher_order_function")
 
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "another_other_higher_order_function")
@@ -340,7 +339,7 @@ TEST_CASE_FIXTURE(Fixture, "another_other_higher_order_function")
         d:foo()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "local_function")
@@ -360,7 +359,7 @@ TEST_CASE_FIXTURE(Fixture, "local_function")
         local h = g()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     TypeId h = follow(requireType("h"));
 
@@ -380,8 +379,8 @@ TEST_CASE_FIXTURE(Fixture, "func_expr_doesnt_leak_free")
         local p = function(x) return x end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    const Luau::FunctionTypeVar* fn = get<FunctionTypeVar>(requireType("p"));
+    lluz_REQUIRE_NO_ERRORS(result);
+    const lluz::FunctionTypeVar* fn = get<FunctionTypeVar>(requireType("p"));
     REQUIRE(fn);
     auto ret = first(fn->retTypes);
     REQUIRE(ret);
@@ -396,7 +395,7 @@ TEST_CASE_FIXTURE(Fixture, "first_argument_can_be_optional")
         local m = T.new()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
@@ -408,7 +407,7 @@ TEST_CASE_FIXTURE(Fixture, "it_is_ok_not_to_supply_enough_retvals")
         local a = get_two()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
@@ -422,7 +421,7 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_functions2")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    lluz_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_functions_allowed_in_nonstrict")
@@ -438,7 +437,7 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_functions_allowed_in_nonstrict")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_functions_with_different_signatures_not_allowed_in_nonstrict")
@@ -456,7 +455,7 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_functions_with_different_signatures_not_al
         foo()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -478,7 +477,7 @@ TEST_CASE_FIXTURE(Fixture, "complicated_return_types_require_an_explicit_annotat
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("most_of_the_natural_numbers"));
 
@@ -495,7 +494,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(requireType("apply"));
     REQUIRE(ftv != nullptr);
@@ -532,7 +531,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(requireType("bottomupmerge"));
     REQUIRE(ftv != nullptr);
@@ -562,7 +561,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_3")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(requireType("swapTwice"));
     REQUIRE(ftv != nullptr);
@@ -612,7 +611,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "higher_order_function_4")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
     /*
@@ -657,7 +656,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mutual_recursion")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
@@ -672,12 +671,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toposort_doesnt_break_mutual_recursion")
         print(x)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
 {
+    ScopedFastFlag sff[]{
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -686,11 +690,11 @@ TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
         end
 
         return function()
-            return f():andThen()
+            return f()
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_oversaturate_a_higher_order_function_argument")
@@ -701,7 +705,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_oversaturate_a_higher_order_func
         xpcall(foo, onerror)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "another_indirect_function_case_where_it_is_ok_to_provide_too_many_arguments")
@@ -714,7 +718,7 @@ TEST_CASE_FIXTURE(Fixture, "another_indirect_function_case_where_it_is_ok_to_pro
         mycb = f
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_nonstrict")
@@ -747,7 +751,7 @@ TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_nonstrict")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     FunctionExitsWithoutReturning* err = get<FunctionExitsWithoutReturning>(result.errors[0]);
     CHECK(err);
 }
@@ -782,7 +786,7 @@ TEST_CASE_FIXTURE(Fixture, "report_exiting_without_return_strict")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     FunctionExitsWithoutReturning* annotatedErr = get<FunctionExitsWithoutReturning>(result.errors[0]);
     CHECK(annotatedErr);
 
@@ -798,7 +802,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
         foo("Test", 123)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{3, 12}, Position{3, 18}}, TypeMismatch{
                                                                                           typeChecker.numberType,
@@ -813,19 +817,23 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
 {
+    ScopedFastFlag sff[]{
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
-        function Test(a)
+        function Test(a): ...any
             return 1, ""
         end
-
 
         local tab = {}
         table.insert(tab, Test(1));
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions opts;
     opts.exhaustive = true;
@@ -846,7 +854,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
         local a, b = f()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
@@ -867,7 +875,7 @@ TEST_CASE_FIXTURE(Fixture, "ignored_return_values")
         local a = f()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    lluz_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
@@ -880,7 +888,7 @@ TEST_CASE_FIXTURE(Fixture, "function_does_not_return_enough_values")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
@@ -902,25 +910,19 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
         local c: (string, number)->number = foo -- no error
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     auto tm1 = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm1);
 
     CHECK_EQ("(string) -> number", toString(tm1->wantedType));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("(string, *error-type*) -> number", toString(tm1->givenType));
-    else
-        CHECK_EQ("(string, <error-type>) -> number", toString(tm1->givenType));
+    CHECK_EQ("(string, *unknown*) -> number", toString(tm1->givenType));
 
     auto tm2 = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm2);
 
     CHECK_EQ("(number, number) -> (number, number)", toString(tm2->wantedType));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("(string, *error-type*) -> number", toString(tm2->givenType));
-    else
-        CHECK_EQ("(string, <error-type>) -> number", toString(tm2->givenType));
+    CHECK_EQ("(string, *unknown*) -> number", toString(tm2->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
@@ -935,7 +937,7 @@ TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
         --   | Column 14
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     TypeId type = requireTypeAtPosition(Position(6, 14));
     CHECK_EQ("(tbl, number, number) -> number", toString(type));
     auto ftv = get<FunctionTypeVar>(type);
@@ -951,7 +953,7 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
         abc(1)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // AstExprCall is the node that has the overload stored on it.
     // findTypeAtPosition will look at the AstExprLocal, but this is not what
@@ -965,7 +967,7 @@ TEST_CASE_FIXTURE(Fixture, "record_matching_overload")
     ModulePtr module = getMainModule();
     auto it = module->astOverloadResolvedTypes.find(parentExpr);
     REQUIRE(it);
-    CHECK_EQ(toString(*it), "(number) -> number");
+    CHECK_EQ(toString(*it), XorStr("(number) -> number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
@@ -978,7 +980,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_by_overload")
         local z = abc(true,true,true)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ("string", toString(requireType("x")));
     CHECK_EQ("number", toString(requireType("y")));
     // Should this be string|number?
@@ -994,7 +996,7 @@ local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
 f(function(a) return a.x + a.y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // An optional function is accepted, but since we already provide a function, nil can be ignored
     result = check(R"(
@@ -1003,7 +1005,7 @@ local function f(a: ((Table) -> number)?) if a then return a({x = 1, y = 2}) els
 f(function(a) return a.x + a.y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Make sure self calls match correct index
     result = check(R"(
@@ -1014,7 +1016,7 @@ function x:f(a: (Table) -> number) return a(self.b) end
 x:f(function(a) return a.x + a.y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Mix inferred and explicit argument types
     result = check(R"(
@@ -1022,7 +1024,7 @@ function f(a: (a: number, b: number, c: boolean) -> number) return a(1, 2, true)
 f(function(a: number, b, c) return c and a + b or b - a end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Anonymous function has a variadic pack
     result = check(R"(
@@ -1031,7 +1033,7 @@ local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
 f(function(...) return select(1, ...).z end)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ("Key 'z' not found in table 'Table'", toString(result.errors[0]));
 
     // Can't accept more arguments than provided
@@ -1040,7 +1042,7 @@ function f(a: (a: number, b: number) -> number) return a(1, 2) end
 f(function(a, b, c, ...) return a + b end)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
     CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
 caused by:
@@ -1053,7 +1055,7 @@ function f(a: (...number) -> number) return a(1, 2) end
 f(function(a, b) return a + b end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Infer from variadic packs into variadic packs
     result = check(R"(
@@ -1062,7 +1064,7 @@ function f(a: (...Table) -> number) return a({x = 1, y = 2}, {x = 3, y = 4}) end
 f(function(a, ...) local b = ... return b.z end)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ("Key 'z' not found in table 'Table'", toString(result.errors[0]));
 
     // Return type inference
@@ -1072,10 +1074,10 @@ function f(a: (number) -> Table) return a(4) end
 f(function(x) return x * 2 end)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    if (!FFlag::LuauLowerBoundsCalculation)
+    if (!FFlag::LluLowerBoundsCalculation)
     {
         // Return type doesn't inference 'nil'
         result = check(R"(
@@ -1083,7 +1085,7 @@ f(function(x) return x * 2 end)
             f(function(x) print(x) end)
         )");
 
-        LUAU_REQUIRE_NO_ERRORS(result);
+        lluz_REQUIRE_NO_ERRORS(result);
     }
 }
 
@@ -1096,7 +1098,7 @@ local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
 f(function(a) return a.x + a.y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // An optional function is accepted, but since we already provide a function, nil can be ignored
     result = check(R"(
@@ -1105,7 +1107,7 @@ local function f(a: ((Table) -> number)?) if a then return a({x = 1, y = 2}) els
 f(function(a) return a.x + a.y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Make sure self calls match correct index
     result = check(R"(
@@ -1116,7 +1118,7 @@ function x:f(a: (Table) -> number) return a(self.b) end
 x:f(function(a) return a.x + a.y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Mix inferred and explicit argument types
     result = check(R"(
@@ -1124,7 +1126,7 @@ function f(a: (a: number, b: number, c: boolean) -> number) return a(1, 2, true)
 f(function(a: number, b, c) return c and a + b or b - a end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Anonymous function has a variadic pack
     result = check(R"(
@@ -1133,7 +1135,7 @@ local function f(a: (Table) -> number) return a({x = 1, y = 2}) end
 f(function(...) return select(1, ...).z end)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ("Key 'z' not found in table 'Table'", toString(result.errors[0]));
 
     // Can't accept more arguments than provided
@@ -1142,7 +1144,7 @@ function f(a: (a: number, b: number) -> number) return a(1, 2) end
 f(function(a, b, c, ...) return a + b end)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
     CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
 caused by:
@@ -1155,7 +1157,7 @@ function f(a: (...number) -> number) return a(1, 2) end
 f(function(a, b) return a + b end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // Infer from variadic packs into variadic packs
     result = check(R"(
@@ -1164,7 +1166,7 @@ function f(a: (...Table) -> number) return a({x = 1, y = 2}, {x = 3, y = 4}) end
 f(function(a, ...) local b = ... return b.z end)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ("Key 'z' not found in table 'Table'", toString(result.errors[0]));
 
     // Return type inference
@@ -1174,10 +1176,10 @@ function f(a: (number) -> Table) return a(4) end
 f(function(x) return x * 2 end)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    if (!FFlag::LuauLowerBoundsCalculation)
+    if (!FFlag::LluLowerBoundsCalculation)
     {
         // Return type doesn't inference 'nil'
         result = check(R"(
@@ -1185,7 +1187,7 @@ f(function(x) return x * 2 end)
             f(function(x) print(x) end)
         )");
 
-        LUAU_REQUIRE_NO_ERRORS(result);
+        lluz_REQUIRE_NO_ERRORS(result);
     }
 }
 
@@ -1199,7 +1201,7 @@ type TableWithFunc = { x: number, y: number, f: (number, number) -> number }
 local a: TableWithFunc = { x = 3, y = 4, f = function(a, b) return a + b end }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_return_value_type")
@@ -1222,7 +1224,7 @@ local function i(): ...{string|number}
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_arg_count")
@@ -1235,7 +1237,7 @@ local a: A
 local b: B = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> string' could not be converted into '(number) -> string'
 caused by:
   Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
@@ -1251,7 +1253,7 @@ local a: A
 local b: B = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> string' could not be converted into '(number, string) -> string'
 caused by:
   Argument #2 type is not compatible. Type 'string' could not be converted into 'number')");
@@ -1267,7 +1269,7 @@ local a: A
 local b: B = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> number' could not be converted into '(number, number) -> (number, boolean)'
 caused by:
   Function only returns 1 value. 2 are required here)");
@@ -1283,7 +1285,7 @@ local a: A
 local b: B = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> string' could not be converted into '(number, number) -> number'
 caused by:
   Return type is not compatible. Type 'string' could not be converted into 'number')");
@@ -1299,7 +1301,7 @@ local a: A
 local b: B = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]),
         R"(Type '(number, number) -> (number, string)' could not be converted into '(number, number) -> (number, boolean)'
 caused by:
@@ -1325,7 +1327,7 @@ function MagicMock.is(value)
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite")
@@ -1336,7 +1338,7 @@ function string.len(): number
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // if 'string' library property was replaced with an internal module type, it will be freed and the next check will crash
     frontend.clear();
@@ -1345,7 +1347,7 @@ end
 print(string.len('hello'))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_sealed_overwrite_2")
@@ -1364,15 +1366,15 @@ t.f = function(x)
 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'string' could not be converted into 'number')");
-    CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
+    lluz_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), RXorStr("(Type 'string' could not be converted into 'number')"));
+    CHECK_EQ(toString(result.errors[1]), RXorStr("(Type 'string' could not be converted into 'number')"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types")
 {
     const ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -1385,7 +1387,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(boolean, number) -> number?", toString(requireType("foo")));
 
     // TODO: Test multiple returns
@@ -1396,7 +1398,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types")
 TEST_CASE_FIXTURE(Fixture, "inconsistent_higher_order_function")
 {
     const ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -1406,7 +1408,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_higher_order_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a...>((number | string) -> (a...)) -> ()", toString(requireType("foo")));
 }
@@ -1424,7 +1426,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_higher_order_function")
 TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time")
 {
     ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -1439,7 +1441,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
         end
     )");
 
-    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
+    // lluz_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
     // You get a TypeMismatch error where both types stringify the same.
 
     CHECK(result.errors.empty());
@@ -1465,7 +1467,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
         end
     )");
 
-    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
+    // lluz_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
     // You get a TypeMismatch error where both types stringify the same.
 
     CHECK(result.errors.empty());
@@ -1486,7 +1488,7 @@ TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_th
         end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "function_decl_non_self_unsealed_overwrite")
@@ -1504,13 +1506,13 @@ t.f = function(x)
 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(string) -> string' could not be converted into '((number) -> number)?'
 caused by:
   None of the union options are compatible. For example: Type '(string) -> string' could not be converted into '(number) -> number'
 caused by:
   Argument #1 type is not compatible. Type 'number' could not be converted into 'string')");
-    CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
+    CHECK_EQ(toString(result.errors[1]), RXorStr("(Type 'string' could not be converted into 'number')"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
@@ -1520,7 +1522,7 @@ TEST_CASE_FIXTURE(Fixture, "strict_mode_ok_with_missing_arguments")
         f()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_statement_sealed_table_assignment_through_indexer")
@@ -1532,22 +1534,11 @@ function t.a() return 1 end -- OK
 function t:b() return 2 end -- not OK
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSpecialTypesAsterisked)
-    {
-        CHECK_EQ(R"(Type '(*error-type*) -> number' could not be converted into '() -> number'
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(R"(Type '(*unknown*) -> number' could not be converted into '() -> number'
 caused by:
   Argument count mismatch. Function expects 1 argument, but none are specified)",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ(R"(Type '(<error-type>) -> number' could not be converted into '() -> number'
-caused by:
-  Argument count mismatch. Function expects 1 argument, but none are specified)",
-            toString(result.errors[0]));
-    }
-
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
@@ -1559,7 +1550,7 @@ TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
     test(1)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = result.errors[0];
     auto acm = get<CountMismatch>(err);
@@ -1584,7 +1575,7 @@ end
 wrapper(test)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = result.errors[0];
     auto acm = get<CountMismatch>(err);
@@ -1609,7 +1600,7 @@ end
 pcall(wrapper, test)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = result.errors[0];
     auto acm = get<CountMismatch>(err);
@@ -1629,16 +1620,31 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK(nullptr != get<OccursCheckFailed>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
+{
+    ScopedFastFlag sff[]{
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f() return end
+        local g = function() return f() end
+    )");
+
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
 {
     ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(
@@ -1654,7 +1660,7 @@ TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a...>((boolean | number | string) -> (a...)) -> ()", toString(requireType("foo")));
 }
@@ -1662,8 +1668,8 @@ TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
 TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantified")
 {
     ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(
@@ -1682,56 +1688,8 @@ TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantifie
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     // TODO: check the normalized type of f
-}
-
-TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_unknown")
-{
-    CheckResult result = check(R"(
-        local function foo(f: (unknown) -> (), x)
-            f(x)
-        end
-    )");
-
-    CHECK_EQ("<a>((unknown) -> (), a) -> ()", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_call_site")
-{
-    CheckResult result = check(R"(
-        local t = {}
-
-        function t.f(x)
-            return x
-        end
-
-        t.__index = t
-
-        function g(s)
-            local q = s.p and s.p.q or nil
-            return q and t.f(q) or nil
-        end
-
-        local f = t.f
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "dont_mutate_the_underlying_head_of_typepack_when_calling_with_self")
-{
-    CheckResult result = check(R"(
-        local t = {}
-        function t:m(x) end
-        function f(): never return 5 :: never end
-        t:m(f())
-        t:m(f())
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

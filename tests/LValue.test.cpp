@@ -1,16 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 static void merge(TypeArena& arena, RefinementMap& l, const RefinementMap& r)
 {
-    Luau::merge(l, r, [&arena](TypeId a, TypeId b) -> TypeId {
+    lluz::merge(l, r, [&arena](TypeId a, TypeId b) -> TypeId {
         // TODO: normalize here also.
         std::unordered_set<TypeId> s;
 
@@ -34,9 +34,9 @@ static LValue mkSymbol(const std::string& s)
     return Symbol{AstName{s.data()}};
 }
 
-TEST_SUITE_BEGIN("LValue");
+TEST_SUITE_BEGIN(XorStr("LValue"));
 
-TEST_CASE("Luau_merge_hashmap_order")
+TEST_CASE("lluz_merge_hashmap_order")
 {
     std::string a = "a";
     std::string b = "b";
@@ -66,7 +66,7 @@ TEST_CASE("Luau_merge_hashmap_order")
     CHECK_EQ("boolean | number", toString(m[mkSymbol(c)]));
 }
 
-TEST_CASE("Luau_merge_hashmap_order2")
+TEST_CASE("lluz_merge_hashmap_order2")
 {
     std::string a = "a";
     std::string b = "b";

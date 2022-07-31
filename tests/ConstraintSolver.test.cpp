@@ -1,22 +1,22 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-#include "Luau/ConstraintGraphBuilder.h"
-#include "Luau/ConstraintSolver.h"
+#include "lluz/ConstraintGraphBuilder.h"
+#include "lluz/ConstraintSolver.h"
 
-using namespace Luau;
+using namespace lluz;
 
-static TypeId requireBinding(NotNull<Scope> scope, const char* name)
+static TypeId requireBinding(NotNull<Scope2> scope, const char* name)
 {
     auto b = linearSearchForBinding(scope, name);
-    LUAU_ASSERT(b.has_value());
+    lluz_ASSERT(b.has_value());
     return *b;
 }
 
-TEST_SUITE_BEGIN("ConstraintSolver");
+TEST_SUITE_BEGIN(XorStr("ConstraintSolver"));
 
 TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
 {
@@ -26,13 +26,13 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
     )");
 
     cgb.visit(block);
-    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
 
     ConstraintSolver cs{&arena, rootScope};
 
     cs.run();
 
-    TypeId bType = requireBinding(rootScope, "b");
+    TypeId bType = requireBinding(rootScope, XorStr("b"));
 
     CHECK("number" == toString(bType));
 }
@@ -46,13 +46,13 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     )");
 
     cgb.visit(block);
-    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
 
     ConstraintSolver cs{&arena, rootScope};
 
     cs.run();
 
-    TypeId idType = requireBinding(rootScope, "id");
+    TypeId idType = requireBinding(rootScope, XorStr("id"));
 
     CHECK("<a>(a) -> a" == toString(idType));
 }
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
     )");
 
     cgb.visit(block);
-    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
 
     ToStringOptions opts;
 
@@ -81,7 +81,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
 
     cs.run();
 
-    TypeId idType = requireBinding(rootScope, "b");
+    TypeId idType = requireBinding(rootScope, XorStr("b"));
 
     CHECK("<a>(a) -> number" == toString(idType, opts));
 }

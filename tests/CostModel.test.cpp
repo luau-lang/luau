@@ -1,22 +1,22 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Parser.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-namespace Luau
+namespace lluz
 {
 namespace Compile
 {
 
-uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount, const DenseHashMap<AstExprCall*, int>& builtins);
+uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount);
 int computeCost(uint64_t model, const bool* varsConst, size_t varCount);
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz
 
-TEST_SUITE_BEGIN("CostModel");
+TEST_SUITE_BEGIN(XorStr("CostModel"));
 
 static uint64_t modelFunction(const char* source)
 {
@@ -29,7 +29,7 @@ static uint64_t modelFunction(const char* source)
     AstStatFunction* func = result.root->body.data[0]->as<AstStatFunction>();
     REQUIRE(func);
 
-    return Luau::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size, {nullptr});
+    return lluz::Compile::modelCost(func->func->body, func->func->args.data, func->func->args.size);
 }
 
 TEST_CASE("Expression")
@@ -43,8 +43,8 @@ end
     const bool args1[] = {false, false, false};
     const bool args2[] = {false, true, false};
 
-    CHECK_EQ(5, Luau::Compile::computeCost(model, args1, 3));
-    CHECK_EQ(2, Luau::Compile::computeCost(model, args2, 3));
+    CHECK_EQ(5, lluz::Compile::computeCost(model, args1, 3));
+    CHECK_EQ(2, lluz::Compile::computeCost(model, args2, 3));
 }
 
 TEST_CASE("PropagateVariable")
@@ -59,8 +59,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(3, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(0, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(3, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(0, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("LoopAssign")
@@ -77,8 +77,8 @@ end
     const bool args2[] = {true};
 
     // loop baseline cost is 5
-    CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(6, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(6, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("MutableVariable")
@@ -94,8 +94,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(3, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(2, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(3, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(2, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("ImportCall")
@@ -109,8 +109,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(6, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(6, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("FastCall")
@@ -125,8 +125,8 @@ end
     const bool args2[] = {true};
 
     // note: we currently don't treat fast calls differently from cost model perspective
-    CHECK_EQ(6, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(5, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(6, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(5, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("ControlFlow")
@@ -154,8 +154,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(82, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(79, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(82, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(79, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("Conditional")
@@ -169,8 +169,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(4, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(2, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(4, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(2, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_CASE("VarArgs")
@@ -181,7 +181,7 @@ function test(...)
 end
 )");
 
-    CHECK_EQ(8, Luau::Compile::computeCost(model, nullptr, 0));
+    CHECK_EQ(8, lluz::Compile::computeCost(model, nullptr, 0));
 }
 
 TEST_CASE("TablesFunctions")
@@ -192,7 +192,7 @@ function test()
 end
 )");
 
-    CHECK_EQ(22, Luau::Compile::computeCost(model, nullptr, 0));
+    CHECK_EQ(22, lluz::Compile::computeCost(model, nullptr, 0));
 }
 
 TEST_CASE("CostOverflow")
@@ -203,7 +203,7 @@ function test()
 end
 )");
 
-    CHECK_EQ(127, Luau::Compile::computeCost(model, nullptr, 0));
+    CHECK_EQ(127, lluz::Compile::computeCost(model, nullptr, 0));
 }
 
 TEST_CASE("TableAssign")
@@ -219,8 +219,8 @@ end
     const bool args1[] = {false};
     const bool args2[] = {true};
 
-    CHECK_EQ(7, Luau::Compile::computeCost(model, args1, 1));
-    CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
+    CHECK_EQ(7, lluz::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(6, lluz::Compile::computeCost(model, args2, 1));
 }
 
 TEST_SUITE_END();

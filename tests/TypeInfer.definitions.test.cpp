@@ -1,15 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("DefinitionTests");
+TEST_SUITE_BEGIN(XorStr("DefinitionTests"));
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
 {
@@ -21,22 +21,22 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
         declare function var(...: any): string
     )");
 
-    TypeId globalFooTy = getGlobalBinding(frontend.typeChecker, "foo");
-    CHECK_EQ(toString(globalFooTy), "number");
+    TypeId globalFooTy = getGlobalBinding(frontend.typeChecker, XorStr("foo"));
+    CHECK_EQ(toString(globalFooTy), XorStr("number"));
 
-    std::optional<TypeFun> globalAsdfTy = frontend.typeChecker.globalScope->lookupType("Asdf");
+    std::optional<TypeFun> globalAsdfTy = frontend.typeChecker.globalScope->lookupType(XorStr("Asdf"));
     REQUIRE(bool(globalAsdfTy));
-    CHECK_EQ(toString(globalAsdfTy->type), "number | string");
+    CHECK_EQ(toString(globalAsdfTy->type), XorStr("number | string"));
 
-    TypeId globalBarTy = getGlobalBinding(frontend.typeChecker, "bar");
-    CHECK_EQ(toString(globalBarTy), "(number) -> string");
+    TypeId globalBarTy = getGlobalBinding(frontend.typeChecker, XorStr("bar"));
+    CHECK_EQ(toString(globalBarTy), XorStr("(number) -> string"));
 
-    TypeId globalFoo2Ty = getGlobalBinding(frontend.typeChecker, "foo2");
-    CHECK_EQ(toString(globalFoo2Ty), "number");
+    TypeId globalFoo2Ty = getGlobalBinding(frontend.typeChecker, XorStr("foo2"));
+    CHECK_EQ(toString(globalFoo2Ty), XorStr("number"));
 
-    TypeId globalVarTy = getGlobalBinding(frontend.typeChecker, "var");
+    TypeId globalVarTy = getGlobalBinding(frontend.typeChecker, XorStr("var"));
 
-    CHECK_EQ(toString(globalVarTy), "(...any) -> string");
+    CHECK_EQ(toString(globalVarTy), XorStr("(...any) -> string"));
 
     CheckResult result = check(R"(
         local x: number = foo + 1
@@ -45,7 +45,7 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
         z = y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_scope")
@@ -54,21 +54,21 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
     LoadDefinitionFileResult parseFailResult = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
         declare foo
     )",
-        "@test");
+        XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
     REQUIRE(!parseFailResult.success);
-    std::optional<Binding> fooTy = tryGetGlobalBinding(typeChecker, "foo");
+    std::optional<Binding> fooTy = tryGetGlobalBinding(typeChecker, XorStr("foo"));
     CHECK(!fooTy.has_value());
 
     LoadDefinitionFileResult checkFailResult = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
         local foo: string = 123
         declare bar: typeof(foo)
     )",
-        "@test");
+        XorStr("@test"));
 
     REQUIRE(!checkFailResult.success);
-    std::optional<Binding> barTy = tryGetGlobalBinding(typeChecker, "bar");
+    std::optional<Binding> barTy = tryGetGlobalBinding(typeChecker, XorStr("bar"));
     CHECK(!barTy.has_value());
 }
 
@@ -101,13 +101,13 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_classes")
         local inheritedMethod: number = x:inheritance()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("prop")), "number");
-    CHECK_EQ(toString(requireType("inheritedProp")), "number");
-    CHECK_EQ(toString(requireType("method")), "number");
-    CHECK_EQ(toString(requireType("method2")), "string");
-    CHECK_EQ(toString(requireType("metamethod")), "Bar");
-    CHECK_EQ(toString(requireType("inheritedMethod")), "number");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("prop")), "number"));
+    CHECK_EQ(toString(requireType(XorStr("inheritedProp")), "number"));
+    CHECK_EQ(toString(requireType(XorStr("method")), "number"));
+    CHECK_EQ(toString(requireType(XorStr("method2")), "string"));
+    CHECK_EQ(toString(requireType(XorStr("metamethod")), "Bar"));
+    CHECK_EQ(toString(requireType(XorStr("inheritedMethod")), "number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
@@ -119,7 +119,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_overload_non_function")
             X: string
         end
     )",
-        "@test");
+        XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
     REQUIRE(!result.success);
@@ -140,7 +140,7 @@ TEST_CASE_FIXTURE(Fixture, "class_definitions_cannot_extend_non_class")
         declare class Foo extends NotAClass
         end
     )",
-        "@test");
+        XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
     REQUIRE(!result.success);
@@ -162,7 +162,7 @@ TEST_CASE_FIXTURE(Fixture, "no_cyclic_defined_classes")
         declare class Bar extends Foo
         end
     )",
-        "@test");
+        XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
     REQUIRE(!result.success);
@@ -186,13 +186,13 @@ TEST_CASE_FIXTURE(Fixture, "declaring_generic_functions")
         local h = h
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("x")), "string");
-    CHECK_EQ(toString(requireType("w")), "boolean");
-    CHECK_EQ(toString(requireType("u")), "number");
-    CHECK_EQ(toString(requireType("f")), "<a, b>(a, b) -> string");
-    CHECK_EQ(toString(requireType("g")), "<a..., b...>(a...) -> (b...)");
-    CHECK_EQ(toString(requireType("h")), "<a, b>(a, b) -> (b, a)");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("x")), "string"));
+    CHECK_EQ(toString(requireType(XorStr("w")), "boolean"));
+    CHECK_EQ(toString(requireType(XorStr("u")), "number"));
+    CHECK_EQ(toString(requireType(XorStr("f")), "<a, b>(a, b) -> string"));
+    CHECK_EQ(toString(requireType(XorStr("g")), "<a..., b...>(a...) -> (b...)"));
+    CHECK_EQ(toString(requireType(XorStr("h")), "<a, b>(a, b) -> (b, a)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "class_definition_function_prop")
@@ -208,8 +208,8 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_function_prop")
         local prop = x.X
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("prop")), "(number) -> string");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("prop")), "(number) -> string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "definition_file_class_function_args")
@@ -230,12 +230,12 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_class_function_args")
         local prop = x.y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     ToStringOptions opts;
     opts.functionTypeArguments = true;
-    CHECK_EQ(toString(requireType("methodRef1"), opts), "(self: Foo, x: number) -> number");
-    CHECK_EQ(toString(requireType("methodRef2"), opts), "(self: Foo, x: number, y: string) -> number");
-    CHECK_EQ(toString(requireType("prop"), opts), "(a: number, b: string) -> string");
+    CHECK_EQ(toString(requireType(XorStr("methodRef1"), opts), "(self: Foo, x: number) -> number"));
+    CHECK_EQ(toString(requireType(XorStr("methodRef2"), opts), "(self: Foo, x: number, y: string) -> number"));
+    CHECK_EQ(toString(requireType(XorStr("prop"), opts), "(a: number, b: string) -> string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
@@ -254,32 +254,32 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
         }
     )");
 
-    std::optional<Binding> xBinding = typeChecker.globalScope->linearSearchForBinding("x");
+    std::optional<Binding> xBinding = typeChecker.globalScope->linearSearchForBinding(XorStr("x"));
     REQUIRE(bool(xBinding));
     // note: loadDefinition uses the @test package name.
-    CHECK_EQ(xBinding->documentationSymbol, "@test/global/x");
+    CHECK_EQ(xBinding->documentationSymbol, XorStr("@test/global/x"));
 
-    std::optional<TypeFun> fooTy = typeChecker.globalScope->lookupType("Foo");
+    std::optional<TypeFun> fooTy = typeChecker.globalScope->lookupType(XorStr("Foo"));
     REQUIRE(bool(fooTy));
-    CHECK_EQ(fooTy->type->documentationSymbol, "@test/globaltype/Foo");
+    CHECK_EQ(fooTy->type->documentationSymbol, XorStr("@test/globaltype/Foo"));
 
-    std::optional<TypeFun> barTy = typeChecker.globalScope->lookupType("Bar");
+    std::optional<TypeFun> barTy = typeChecker.globalScope->lookupType(XorStr("Bar"));
     REQUIRE(bool(barTy));
-    CHECK_EQ(barTy->type->documentationSymbol, "@test/globaltype/Bar");
+    CHECK_EQ(barTy->type->documentationSymbol, XorStr("@test/globaltype/Bar"));
 
     ClassTypeVar* barClass = getMutable<ClassTypeVar>(barTy->type);
     REQUIRE(bool(barClass));
     REQUIRE_EQ(barClass->props.count("prop"), 1);
-    CHECK_EQ(barClass->props["prop"].documentationSymbol, "@test/globaltype/Bar.prop");
+    CHECK_EQ(barClass->props[XorStr("prop"].documentationSymbol, "@test/globaltype/Bar.prop"));
 
-    std::optional<Binding> yBinding = typeChecker.globalScope->linearSearchForBinding("y");
+    std::optional<Binding> yBinding = typeChecker.globalScope->linearSearchForBinding(XorStr("y"));
     REQUIRE(bool(yBinding));
-    CHECK_EQ(yBinding->documentationSymbol, "@test/global/y");
+    CHECK_EQ(yBinding->documentationSymbol, XorStr("@test/global/y"));
 
     TableTypeVar* yTtv = getMutable<TableTypeVar>(yBinding->typeId);
     REQUIRE(bool(yTtv));
     REQUIRE_EQ(yTtv->props.count("x"), 1);
-    CHECK_EQ(yTtv->props["x"].documentationSymbol, "@test/global/y.x");
+    CHECK_EQ(yTtv->props[XorStr("x"].documentationSymbol, "@test/global/y.x"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_types")
@@ -288,7 +288,7 @@ TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_type
         export type Evil = string
     )");
 
-    std::optional<TypeFun> ty = typeChecker.globalScope->lookupType("Evil");
+    std::optional<TypeFun> ty = typeChecker.globalScope->lookupType(XorStr("Evil"));
     REQUIRE(bool(ty));
     CHECK_EQ(ty->type->documentationSymbol, std::nullopt);
 }
@@ -306,7 +306,7 @@ declare GetCls: () -> (Cls)
 local s : Cls = GetCls()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

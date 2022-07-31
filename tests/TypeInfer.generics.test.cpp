@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/Scope.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/Scope.h"
 
 #include <algorithm>
 
@@ -9,12 +9,9 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauCheckGenericHOFTypes)
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+using namespace lluz;
 
-using namespace Luau;
-
-TEST_SUITE_BEGIN("GenericsTests");
+TEST_SUITE_BEGIN(XorStr("GenericsTests"));
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_function")
 {
@@ -25,7 +22,7 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_function")
         local x: string = id("hi")
         local y: number = id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_local_function")
@@ -37,7 +34,7 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_local_function")
         local x: string = id("hi")
         local y: number = id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_generic_typepack_function")
@@ -48,7 +45,7 @@ TEST_CASE_FIXTURE(Fixture, "check_generic_typepack_function")
         local z: number = id(37)
         id()
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "types_before_typepacks")
@@ -56,7 +53,7 @@ TEST_CASE_FIXTURE(Fixture, "types_before_typepacks")
     CheckResult result = check(R"(
         function f<a,b...>() end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_polytypes")
@@ -67,7 +64,7 @@ TEST_CASE_FIXTURE(Fixture, "local_vars_can_be_polytypes")
         local x: string = f("hi")
         local y: number = f(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "inferred_local_vars_can_be_polytypes")
@@ -79,7 +76,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "inferred_local_vars_can_be_polytypes")
         local x: string = f("hi")
         local y: number = f(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "local_vars_can_be_instantiated_polytypes")
@@ -90,7 +87,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "local_vars_can_be_instantiated_polytypes")
         local f: (number)->number = id
         local g: (string)->string = id
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "properties_can_be_polytypes")
@@ -101,7 +98,7 @@ TEST_CASE_FIXTURE(Fixture, "properties_can_be_polytypes")
         local x: string = t.m("hi")
         local y: number = t.m(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "properties_can_be_instantiated_polytypes")
@@ -111,7 +108,7 @@ TEST_CASE_FIXTURE(Fixture, "properties_can_be_instantiated_polytypes")
         local function id<a>(x:a):a return x end
         t.m = id
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_nested_generic_function")
@@ -125,7 +122,7 @@ TEST_CASE_FIXTURE(Fixture, "check_nested_generic_function")
             local y: number = id(37)
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_recursive_generic_function")
@@ -137,7 +134,7 @@ TEST_CASE_FIXTURE(Fixture, "check_recursive_generic_function")
             return x
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions")
@@ -155,7 +152,7 @@ TEST_CASE_FIXTURE(Fixture, "check_mutual_generic_functions")
             return x
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
@@ -166,7 +163,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_functions_in_types")
         local y: string = x.id("hi")
         local z: number = x.id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_factories")
@@ -187,7 +184,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_factories")
         local y: string = f.build().id("hi")
         local z: number = f.build().id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "factories_of_generics")
@@ -209,7 +206,7 @@ TEST_CASE_FIXTURE(Fixture, "factories_of_generics")
         local y: string = x.id("hi")
         local z: number = x.id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
@@ -221,9 +218,9 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function")
         local x: string = id("hi")
         local y: number = id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId idType = requireType("id");
+    TypeId idType = requireType(XorStr("id"));
     const FunctionTypeVar* idFun = get<FunctionTypeVar>(idType);
     REQUIRE(idFun);
     auto [args, varargs] = flatten(idFun->argTypes);
@@ -244,9 +241,9 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_local_function")
         local x: string = id("hi")
         local y: number = id(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId idType = requireType("id");
+    TypeId idType = requireType(XorStr("id"));
     const FunctionTypeVar* idFun = get<FunctionTypeVar>(idType);
     REQUIRE(idFun);
     auto [args, varargs] = flatten(idFun->argTypes);
@@ -269,12 +266,12 @@ TEST_CASE_FIXTURE(Fixture, "infer_nested_generic_function")
             local y: number = id(37)
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
 {
-    ScopedFastFlag sff{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff{"DebuglluzSharedSelf", true};
 
     CheckResult result = check(R"(
         local x = {}
@@ -283,7 +280,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_methods")
         function x:g(): number return self:id(37) end
     )");
     // TODO: Quantification should be doing the conversion, not normalization.
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
@@ -297,7 +294,7 @@ TEST_CASE_FIXTURE(Fixture, "calling_self_generic_methods")
         end
     )");
     // TODO: Should typecheck but currently errors CLI-39916
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_generic_property")
@@ -308,7 +305,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_property")
         local x: string = t.m("hi")
         local y: number = t.m(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_arguments_can_be_polytypes")
@@ -319,7 +316,7 @@ TEST_CASE_FIXTURE(Fixture, "function_arguments_can_be_polytypes")
             local y: string = g("hi")
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_results_can_be_polytypes")
@@ -330,7 +327,7 @@ TEST_CASE_FIXTURE(Fixture, "function_results_can_be_polytypes")
             return id
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_parameters_can_be_polytypes")
@@ -339,7 +336,7 @@ TEST_CASE_FIXTURE(Fixture, "type_parameters_can_be_polytypes")
         local function id<a>(x:a):a return x end
         local f: <a>(a)->a = id(id)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_leak_generic_types")
@@ -360,7 +357,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_leak_generic_types")
         -- so this assignment should fail
         local b: boolean = f(true)
     )");
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_leak_inferred_generic_types")
@@ -376,7 +373,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_leak_inferred_generic_types")
             local y: number = id(37)
         end
     )");
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_substitute_bound_types")
@@ -387,7 +384,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_substitute_bound_types")
             local x: T = t.m(37)
         end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_unify_bound_types")
@@ -410,12 +407,12 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_bound_types")
         local a : string = g("not a number", "hi")
         local b : number = g(5, 37)
     )");
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutable_state_polymorphism")
 {
-    // Replaying the classic problem with polymorphism and mutable state in Luau
+    // Replaying the classic problem with polymorphism and mutable state in lluz
     // See, e.g. Tofte (1990)
     // https://www.sciencedirect.com/science/article/pii/089054019090018D.
     CheckResult result = check(R"(
@@ -450,7 +447,7 @@ TEST_CASE_FIXTURE(Fixture, "mutable_state_polymorphism")
         -- so b has value "not a number" at run time
         local b: number = f(37)
     )");
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "rank_N_types_via_typeof")
@@ -472,7 +469,7 @@ TEST_CASE_FIXTURE(Fixture, "rank_N_types_via_typeof")
         local a: string = f("hi")
         local b: number = f(37)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_generic_types")
@@ -480,7 +477,7 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_generic_types")
     CheckResult result = check(R"(
         function f<a,a>(x:a):a return x end
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "duplicate_generic_type_packs")
@@ -488,7 +485,7 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_generic_type_packs")
     CheckResult result = check(R"(
         function f<a...,a...>() end
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "typepacks_before_types")
@@ -496,7 +493,7 @@ TEST_CASE_FIXTURE(Fixture, "typepacks_before_types")
     CheckResult result = check(R"(
         function f<a...,b>() end
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_generics")
@@ -507,7 +504,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_generics")
         type F<a> = (...a) -> ...a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_syntax")
@@ -516,8 +513,8 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_syntax")
         function f<a...>(...: a...): (a...) return ... end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("f")), "<a...>(a...) -> (a...)");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("f")), "<a...>(a...) -> (a...)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
@@ -526,7 +523,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_pack_parentheses")
         function f<a...>(...: a...): any return (...) end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
@@ -541,15 +538,15 @@ TEST_CASE_FIXTURE(Fixture, "better_mismatch_error_messages")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     SwappedGenericTypeParameter* fErr = get<SwappedGenericTypeParameter>(result.errors[0]);
     REQUIRE(fErr);
-    CHECK_EQ(fErr->name, "T");
+    CHECK_EQ(fErr->name, XorStr("T"));
     CHECK_EQ(fErr->kind, SwappedGenericTypeParameter::Pack);
 
     SwappedGenericTypeParameter* gErr = get<SwappedGenericTypeParameter>(result.errors[1]);
     REQUIRE(gErr);
-    CHECK_EQ(gErr->name, "T");
+    CHECK_EQ(gErr->name, XorStr("T"));
     CHECK_EQ(gErr->kind, SwappedGenericTypeParameter::Type);
 }
 
@@ -559,10 +556,10 @@ TEST_CASE_FIXTURE(Fixture, "reject_clashing_generic_and_pack_names")
         function f<a, a...>() end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     DuplicateGenericParameter* err = get<DuplicateGenericParameter>(result.errors[0]);
     REQUIRE(err != nullptr);
-    CHECK_EQ(err->parameterName, "a");
+    CHECK_EQ(err->parameterName, XorStr("a"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiation_sharing_types")
@@ -581,7 +578,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiation_sharing_types")
         local x2, y2, z2 = o2.x, o2.y, o2.z
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK(requireType("x1") != requireType("x2"));
     CHECK(requireType("y1") == requireType("y2"));
     CHECK(requireType("z1") != requireType("z2"));
@@ -596,7 +593,7 @@ TEST_CASE_FIXTURE(Fixture, "quantification_sharing_types")
         local z2 = g(true, "hi")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK(requireType("z1") == requireType("z2"));
 }
 
@@ -610,7 +607,7 @@ TEST_CASE_FIXTURE(Fixture, "typefuns_sharing_types")
         local x2, y2 = o2.x, o2.y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK(requireType("x1") != requireType("x2"));
     CHECK(requireType("y1") == requireType("y2"));
 }
@@ -630,7 +627,7 @@ exports.nested = nested
 return exports
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiated_function_argument_names")
@@ -641,13 +638,13 @@ local function f<T, U...>(a: T, ...: U...) end
 f(1, 2, 3)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     auto ty = findTypeAtPosition(Position(3, 0));
     REQUIRE(ty);
     ToStringOptions opts;
     opts.functionTypeArguments = true;
-    CHECK_EQ(toString(*ty, opts), "(a: number, number, number) -> ()");
+    CHECK_EQ(toString(*ty, opts), XorStr("(a: number, number, number) -> ()"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_types")
@@ -660,9 +657,9 @@ local c: C
 local d: D = c
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]), R"(Type '() -> ()' could not be converted into '<T>() -> ()'; different number of generic type parameters)");
+    CHECK_EQ(toString(result.errors[0]), RXorStr("(Type '() -> ()' could not be converted into '<T>() -> ()'; different number of generic type parameters)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_generic_pack")
@@ -675,16 +672,16 @@ local c: C
 local d: D = c
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(toString(result.errors[0]),
-        R"(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)");
+        RXorStr("(Type '() -> ()' could not be converted into '<T...>() -> ()'; different number of generic type pack parameters)"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "generic_functions_dont_cache_type_parameters")
 {
     CheckResult result = check(R"(
--- See https://github.com/Roblox/luau/issues/332
+-- See https://github.com/Roblox/lluz/issues/332
 -- This function has a type parameter with the same name as clones,
 -- so if we cache type parameter names for functions these get confused.
 -- function id<Z>(x : Z) : Z
@@ -701,7 +698,7 @@ function clone<X, Y>(dict: {[X]:Y}): {[X]:Y}
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_functions_should_be_memory_safe")
@@ -717,7 +714,7 @@ local y: T<string> = { a = { c = nil, d = 5 }, b = 37 }
 y.a.c = y
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ(toString(result.errors[0]),
         R"(Type 'y' could not be converted into 'T<string>'
 caused by:
@@ -741,7 +738,7 @@ local TheDispatcher: Dispatcher = {
 }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification2")
@@ -759,7 +756,7 @@ local TheDispatcher: Dispatcher = {
 }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification3")
@@ -777,7 +774,7 @@ local TheDispatcher: Dispatcher = {
 }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_few")
@@ -793,8 +790,8 @@ end
 wrapper(test)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), RXorStr("(Argument count mismatch. Function expects 2 arguments, but only 1 is specified)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
@@ -810,8 +807,8 @@ end
 wrapper(test2, 1, "", 3)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Argument count mismatch. Function expects 3 arguments, but 4 are specified)");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), RXorStr("(Argument count mismatch. Function expects 3 arguments, but 4 are specified)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_function")
@@ -822,7 +819,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function")
         local b = id(nil)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
@@ -839,9 +836,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId tType = requireType("T");
+    TypeId tType = requireType(XorStr("T"));
     TableTypeVar* tTable = getMutable<TableTypeVar>(tType);
     REQUIRE(tTable != nullptr);
 
@@ -871,13 +868,13 @@ TEST_CASE_FIXTURE(Fixture, "correctly_instantiate_polymorphic_member_functions")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
     const TableTypeVar* t = get<TableTypeVar>(requireType("T"));
     REQUIRE(t != nullptr);
 
-    std::optional<Property> fooProp = get(t->props, "foo");
+    std::optional<Property> fooProp = get(t->props, XorStr("foo"));
     REQUIRE(bool(fooProp));
 
     const FunctionTypeVar* foo = get<FunctionTypeVar>(follow(fooProp->type));
@@ -913,7 +910,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
         end
     )");
 
-    TypeId g = requireType("g");
+    TypeId g = requireType(XorStr("g"));
     const FunctionTypeVar* gFun = get<FunctionTypeVar>(g);
     REQUIRE(gFun != nullptr);
 
@@ -924,7 +921,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_cyclic_generic_function")
     const TableTypeVar* argTable = get<TableTypeVar>(arg);
     REQUIRE(argTable != nullptr);
 
-    std::optional<Property> methodProp = get(argTable->props, "method");
+    std::optional<Property> methodProp = get(argTable->props, XorStr("method"));
     REQUIRE(bool(methodProp));
 
     const FunctionTypeVar* methodFunction = get<FunctionTypeVar>(methodProp->type);
@@ -950,7 +947,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -970,7 +967,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -987,8 +984,8 @@ type Self<T> = T
 local a: Self<Table>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("a")), "Table");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("a")), "Table"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
@@ -1000,14 +997,11 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
         type t0 = t0 | {}
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
-    std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
+    std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType(XorStr("t0"));
     REQUIRE(t0);
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(t0->type));
-    else
-        CHECK_EQ("<error-type>", toString(t0->type));
+    CHECK_EQ("*unknown*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -1024,7 +1018,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
         return sum(2, 3, function(a, b) return a + b end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
         local function map<a, b>(arr: {a}, f: (a) -> b)
@@ -1038,7 +1032,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
         local r = map(a, function(a) return a + a > 100 end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     REQUIRE_EQ("{boolean}", toString(requireType("r")));
 
     check(R"(
@@ -1053,7 +1047,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_function_function_argument")
         local r = foldl(a, {s=0,c=0}, function(a, b) return {s = a.s + b, c = a.c + 1} end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     REQUIRE_EQ("{ c: number, s: number }", toString(requireType("r")));
 }
 
@@ -1066,7 +1060,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded"
         g12(1, 2, function(x, y) return x + y end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
         local g12: (<T>(T, (T) -> T) -> T) & (<T>(T, T, (T, T) -> T) -> T)
@@ -1075,7 +1069,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_generic_function_function_argument_overloaded"
         g12({x=1}, {x=2}, function(x, y) return {x=x.x + y.x} end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_generic_lib_function_function_argument")
@@ -1085,7 +1079,7 @@ local a = {{x=4}, {x=7}, {x=1}}
 table.sort(a, function(x, y) return x.x < y.x end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "do_not_infer_generic_functions")
@@ -1101,18 +1095,10 @@ local b = sumrec(sum) -- ok
 local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
     )");
 
-    if (FFlag::LuauCheckGenericHOFTypes)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else
-    {
-        LUAU_REQUIRE_ERRORS(result);
-        CHECK_EQ(
-            "Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
-            "parameters",
-            toString(result.errors[0]));
-    }
+    lluz_REQUIRE_ERRORS(result);
+    CHECK_EQ("Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
+             "parameters",
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
@@ -1126,12 +1112,12 @@ TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
         local c: X<B>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics1")
 {
-    // https://github.com/Roblox/luau/issues/484
+    // https://github.com/Roblox/lluz/issues/484
     CheckResult result = check(R"(
 --!strict
 type MyObject = {
@@ -1154,12 +1140,12 @@ local complex: ComplexObject<string> = {
 }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "apply_type_function_nested_generics2")
 {
-    // https://github.com/Roblox/luau/issues/484
+    // https://github.com/Roblox/lluz/issues/484
     CheckResult result = check(R"(
 --!strict
 type MyObject = {
@@ -1173,7 +1159,7 @@ type ComplexObject<T> = {
 local complex2: ComplexObject<string> = nil
 
 local x = complex2.nested.getReturnValue(function(): string
-	return ""
+	return XorStr("")
 end)
 
 local y = complex2.nested.getReturnValue(function()
@@ -1181,13 +1167,13 @@ local y = complex2.nested.getReturnValue(function()
 end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
     ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
+        {"lluzAlwaysQuantify", true},
     };
 
     CheckResult result = check(R"(
@@ -1197,25 +1183,6 @@ TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_gen
     )");
 
     CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "do_not_always_instantiate_generic_intersection_types")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauMaybeGenericIntersectionTypes", true},
-    };
-
-    CheckResult result = check(R"(
-        --!strict
-        type Array<T> = { [number]: T }
-
-        type Array_Statics = {
-            new: <T>() -> Array<T>,
-        }
-
-        local _Arr : Array<any> & Array_Statics = {} :: Array_Statics
-    )");
-    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

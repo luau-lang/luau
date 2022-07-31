@@ -1,17 +1,17 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Config.h"
-#include "Luau/FileResolver.h"
-#include "Luau/Frontend.h"
-#include "Luau/IostreamHelpers.h"
-#include "Luau/Linter.h"
-#include "Luau/Location.h"
-#include "Luau/ModuleResolver.h"
-#include "Luau/Scope.h"
-#include "Luau/ToString.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+#include "lluz/Config.h"
+#include "lluz/FileResolver.h"
+#include "lluz/Frontend.h"
+#include "lluz/IostreamHelpers.h"
+#include "lluz/Linter.h"
+#include "lluz/Location.h"
+#include "lluz/ModuleResolver.h"
+#include "lluz/Scope.h"
+#include "lluz/ToString.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"
@@ -22,7 +22,7 @@
 
 #include <optional>
 
-namespace Luau
+namespace lluz
 {
 
 struct TestFileResolver
@@ -39,7 +39,7 @@ struct TestFileResolver
 
     const ModulePtr getModule(const ModuleName& moduleName) const override
     {
-        LUAU_ASSERT(false);
+        lluz_ASSERT(false);
         return nullptr;
     }
 
@@ -95,7 +95,7 @@ struct Fixture
     explicit Fixture(bool freeze = true, bool prepareAutocomplete = false);
     ~Fixture();
 
-    // Throws Luau::ParseErrors if the parse fails.
+    // Throws lluz::ParseErrors if the parse fails.
     AstStatBlock* parse(const std::string& source, const ParseOptions& parseOptions = {});
     CheckResult check(Mode mode, std::string source);
     CheckResult check(const std::string& source);
@@ -127,8 +127,7 @@ struct Fixture
     std::optional<TypeId> lookupType(const std::string& name);
     std::optional<TypeId> lookupImportedType(const std::string& moduleAlias, const std::string& name);
 
-    ScopedFastFlag sff_DebugLuauFreezeArena;
-    ScopedFastFlag sff_UnknownNever{"LuauUnknownAndNeverType", true};
+    ScopedFastFlag sff_DebuglluzFreezeArena;
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
@@ -192,11 +191,11 @@ void dump(const std::vector<Constraint>& constraints);
 
 std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name); // Warning: This function runs in O(n**2)
 
-std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
+std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name);
 
-} // namespace Luau
+} // namespace lluz
 
-#define LUAU_REQUIRE_ERRORS(result) \
+#define lluz_REQUIRE_ERRORS(result) \
     do \
     { \
         auto&& r = (result); \
@@ -204,7 +203,7 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
         REQUIRE(!r.errors.empty()); \
     } while (false)
 
-#define LUAU_REQUIRE_ERROR_COUNT(count, result) \
+#define lluz_REQUIRE_ERROR_COUNT(count, result) \
     do \
     { \
         auto&& r = (result); \
@@ -212,4 +211,4 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name);
         REQUIRE_MESSAGE(count == r.errors.size(), getErrors(r)); \
     } while (false)
 
-#define LUAU_REQUIRE_NO_ERRORS(result) LUAU_REQUIRE_ERROR_COUNT(0, result)
+#define lluz_REQUIRE_NO_ERRORS(result) lluz_REQUIRE_ERROR_COUNT(0, result)

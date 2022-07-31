@@ -1,15 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Linter.h"
-#include "Luau/BuiltinDefinitions.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Linter.h"
+#include "lluz/BuiltinDefinitions.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("Linter");
+TEST_SUITE_BEGIN(XorStr("Linter"));
 
 TEST_CASE_FIXTURE(Fixture, "CleanCode")
 {
@@ -26,10 +26,10 @@ return math.max(fib(5), 1)
 
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 {
-    LintResult result = lint("--!nocheck\nreturn foo");
+    LintResult result = lint(XorStr("--!nocheck\nreturn foo"));
 
     REQUIRE_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unknown global 'foo'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
@@ -37,10 +37,10 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
     // Normally this would be defined externally, so hack it in for testing
     addGlobalBinding(typeChecker, "Wait", Binding{typeChecker.anyType, {}, true, "wait", "@test/global/Wait"});
 
-    LintResult result = lintTyped("Wait(5)");
+    LintResult result = lintTyped(XorStr("Wait(5)"));
 
     REQUIRE_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Global 'Wait' is deprecated, use 'wait' instead");
+    CHECK_EQ(result.warnings[0].text, XorStr("Global 'Wait' is deprecated, use 'wait' instead"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "PlaceholderRead")
@@ -51,7 +51,7 @@ return _
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Placeholder value '_' is read here; consider using a named variable");
+    CHECK_EQ(result.warnings[0].text, XorStr("Placeholder value '_' is read here; consider using a named variable"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "PlaceholderReadGlobal")
@@ -62,7 +62,7 @@ print(_)
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Placeholder value '_' is read here; consider using a named variable");
+    CHECK_EQ(result.warnings[0].text, XorStr("Placeholder value '_' is read here; consider using a named variable"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "PlaceholderWrite")
@@ -87,8 +87,8 @@ assert(5)
 )");
 
     CHECK_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "Built-in global 'math' is overwritten here; consider using a local or changing the name");
-    CHECK_EQ(result.warnings[1].text, "Built-in global 'assert' is overwritten here; consider using a local or changing the name");
+    CHECK_EQ(result.warnings[0].text, XorStr("Built-in global 'math' is overwritten here; consider using a local or changing the name"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Built-in global 'assert' is overwritten here; consider using a local or changing the name"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "MultilineBlock")
@@ -98,7 +98,7 @@ if true then print(1) print(2) print(3) end
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "A new statement is on the same line; add semi-colon on previous statement to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("A new statement is on the same line; add semi-colon on previous statement to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "MultilineBlockSemicolonsWhitelisted")
@@ -117,7 +117,7 @@ print(1); print(2) print(3)
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "A new statement is on the same line; add semi-colon on previous statement to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("A new statement is on the same line; add semi-colon on previous statement to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "MultilineBlockLocalDo")
@@ -139,7 +139,7 @@ print(math.max(1,
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Statement spans multiple lines; use indentation to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Statement spans multiple lines; use indentation to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocal")
@@ -154,12 +154,12 @@ return bar()
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Global 'foo' is only used in the enclosing function 'bar'; consider changing it to local");
+    CHECK_EQ(result.warnings[0].text, XorStr("Global 'foo' is only used in the enclosing function 'bar'; consider changing it to local"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMultiFx")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    ScopedFastFlag sff{"lluzLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     foo = 6
@@ -175,12 +175,12 @@ return bar() + baz()
 )");
 
     REQUIRE_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Global 'foo' is never read before being written. Consider changing it to local");
+    CHECK_EQ(result.warnings[0].text, XorStr("Global 'foo' is never read before being written. Consider changing it to local"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMultiFxWithRead")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    ScopedFastFlag sff{"lluzLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     foo = 6
@@ -204,7 +204,7 @@ return bar() + baz() + read()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalWithConditional")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    ScopedFastFlag sff{"lluzLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     if true then foo = 6 end
@@ -224,7 +224,7 @@ return bar() + baz()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocal3WithConditionalRead")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    ScopedFastFlag sff{"lluzLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function bar()
     foo = 6
@@ -248,7 +248,7 @@ return bar() + baz() + read()
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalInnerRead")
 {
-    ScopedFastFlag sff{"LuauLintGlobalNeverReadBeforeWritten", true};
+    ScopedFastFlag sff{"lluzLintGlobalNeverReadBeforeWritten", true};
     LintResult result = lint(R"(
 function foo()
    local f = function() return bar end
@@ -292,7 +292,7 @@ fnB() -- prints "false", "nil"
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].text,
-        "Global 'moreInternalLogic' is only used in the enclosing function defined at line 2; consider changing it to local");
+        XorStr("Global 'moreInternalLogic' is only used in the enclosing function defined at line 2; consider changing it to local"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalShadowLocal")
@@ -306,7 +306,7 @@ print(arg)
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Variable 'arg' shadows previous declaration at line 2");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'arg' shadows previous declaration at line 2"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "LocalShadowGlobal")
@@ -324,7 +324,7 @@ return bar()
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Variable 'global' shadows a global variable used at line 3");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'global' shadows a global variable used at line 3"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalShadowArgument")
@@ -339,7 +339,7 @@ return bar()
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Variable 'a' shadows previous declaration at line 2");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'a' shadows previous declaration at line 2"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalUnused")
@@ -359,14 +359,14 @@ return bar()
 )");
 
     CHECK_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "Variable 'arg' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[1].text, "Variable 'blarg' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'arg' is never used; prefix with '_' to silence"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Variable 'blarg' is never used; prefix with '_' to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImportUnused")
 {
     // Normally this would be defined externally, so hack it in for testing
-    addGlobalBinding(typeChecker, "game", typeChecker.anyType, "@test");
+    addGlobalBinding(typeChecker, XorStr("game", typeChecker.anyType, "@test"));
 
     LintResult result = lint(R"(
 local Roact = require(game.Packages.Roact)
@@ -374,7 +374,7 @@ local _Roact = require(game.Packages.Roact)
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Import 'Roact' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Import 'Roact' is never used; prefix with '_' to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FunctionUnused")
@@ -399,8 +399,8 @@ return foo()
 )");
 
     CHECK_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "Function 'bar' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[1].text, "Function 'qux' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Function 'bar' is never used; prefix with '_' to silence"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Function 'qux' is never used; prefix with '_' to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeBasic")
@@ -415,7 +415,7 @@ print("hi!")
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 5);
-    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always returns)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unreachable code (previous statement always returns)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeLoopBreak")
@@ -431,7 +431,7 @@ print("hi!")
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
-    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always breaks)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unreachable code (previous statement always breaks)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeLoopContinue")
@@ -447,7 +447,7 @@ print("hi!")
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
-    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always continues)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unreachable code (previous statement always continues)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeIfMerge")
@@ -483,7 +483,7 @@ return { foo1, foo2, foo3 }
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 7);
-    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always returns)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unreachable code (previous statement always returns)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeErrorReturnSilent")
@@ -538,7 +538,7 @@ return foo1
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 7);
-    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always errors)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unreachable code (previous statement always errors)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeErrorReturnPropagate")
@@ -559,7 +559,7 @@ return foo1
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 8);
-    CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always errors)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unreachable code (previous statement always errors)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeLoopWhile")
@@ -602,7 +602,7 @@ TEST_CASE_FIXTURE(Fixture, "UnknownType")
         {"ClassName", {typeChecker.anyType}},
     };
 
-    TableTypeVar instanceTable{instanceProps, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed};
+    TableTypeVar instanceTable{instanceProps, std::nullopt, typeChecker.globalScope->level, lluz::TableState::Sealed};
     TypeId instanceType = typeChecker.globalTypes.addType(instanceTable);
     TypeFun instanceTypeFun{{}, instanceType};
 
@@ -610,22 +610,22 @@ TEST_CASE_FIXTURE(Fixture, "UnknownType")
 
     LintResult result = lint(R"(
 local game = ...
-local _e01 = type(game) == "Part"
-local _e02 = typeof(game) == "Bar"
-local _e03 = typeof(game) == "vector"
+local _e01 = type(game) == XorStr("Part")
+local _e02 = typeof(game) == XorStr("Bar")
+local _e03 = typeof(game) == XorStr("vector")
 
-local _o01 = type(game) == "number"
-local _o02 = type(game) == "vector"
-local _o03 = typeof(game) == "Part"
+local _o01 = type(game) == XorStr("number")
+local _o02 = type(game) == XorStr("vector")
+local _o03 = typeof(game) == XorStr("Part")
 )");
 
     REQUIRE_EQ(result.warnings.size(), 3);
     CHECK_EQ(result.warnings[0].location.begin.line, 2);
-    CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unknown type 'Part' (expected primitive type)"));
     CHECK_EQ(result.warnings[1].location.begin.line, 3);
-    CHECK_EQ(result.warnings[1].text, "Unknown type 'Bar'");
+    CHECK_EQ(result.warnings[1].text, XorStr("Unknown type 'Bar'"));
     CHECK_EQ(result.warnings[2].location.begin.line, 4);
-    CHECK_EQ(result.warnings[2].text, "Unknown type 'vector' (expected primitive or userdata type)");
+    CHECK_EQ(result.warnings[2].text, XorStr("Unknown type 'vector' (expected primitive or userdata type)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeTable")
@@ -642,7 +642,7 @@ end
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
-    CHECK_EQ(result.warnings[0].text, "For loop should iterate backwards; did you forget to specify -1 as step?");
+    CHECK_EQ(result.warnings[0].text, XorStr("For loop should iterate backwards; did you forget to specify -1 as step?"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeBackwards")
@@ -657,7 +657,7 @@ end
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 1);
-    CHECK_EQ(result.warnings[0].text, "For loop should iterate backwards; did you forget to specify -1 as step?");
+    CHECK_EQ(result.warnings[0].text, XorStr("For loop should iterate backwards; did you forget to specify -1 as step?"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeImprecise")
@@ -672,7 +672,7 @@ end
 
     CHECK_EQ(result.warnings.size(), 1);
     CHECK_EQ(result.warnings[0].location.begin.line, 1);
-    CHECK_EQ(result.warnings[0].text, "For loop ends at 7.3 instead of 7.5; did you forget to specify step?");
+    CHECK_EQ(result.warnings[0].text, XorStr("For loop ends at 7.3 instead of 7.5; did you forget to specify step?"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ForRangeZero")
@@ -690,10 +690,10 @@ end
 
     CHECK_EQ(result.warnings.size(), 2);
     CHECK_EQ(result.warnings[0].location.begin.line, 1);
-    CHECK_EQ(result.warnings[0].text, "For loop starts at 0, but arrays start at 1");
+    CHECK_EQ(result.warnings[0].text, XorStr("For loop starts at 0, but arrays start at 1"));
     CHECK_EQ(result.warnings[1].location.begin.line, 7);
     CHECK_EQ(result.warnings[1].text,
-        "For loop should iterate backwards; did you forget to specify -1 as step? Also consider changing 0 to 1 since arrays start at 1");
+        XorStr("For loop should iterate backwards; did you forget to specify -1 as step? Also consider changing 0 to 1 since arrays start at 1"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnbalancedAssignment")
@@ -718,9 +718,9 @@ end
 
     CHECK_EQ(result.warnings.size(), 2);
     CHECK_EQ(result.warnings[0].location.begin.line, 5);
-    CHECK_EQ(result.warnings[0].text, "Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence"));
     CHECK_EQ(result.warnings[1].location.begin.line, 11);
-    CHECK_EQ(result.warnings[1].text, "Assigning 4 values to 3 variables leaves some values unused");
+    CHECK_EQ(result.warnings[1].text, XorStr("Assigning 4 values to 3 variables leaves some values unused"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImplicitReturn")
@@ -784,13 +784,13 @@ return f1,f2,f3,f4,f5,f6,f7
     CHECK_EQ(result.warnings.size(), 3);
     CHECK_EQ(result.warnings[0].location.begin.line, 4);
     CHECK_EQ(result.warnings[0].text,
-        "Function 'f1' can implicitly return no values even though there's an explicit return at line 4; add explicit return to silence");
+        XorStr("Function 'f1' can implicitly return no values even though there's an explicit return at line 4; add explicit return to silence"));
     CHECK_EQ(result.warnings[1].location.begin.line, 28);
     CHECK_EQ(result.warnings[1].text,
-        "Function 'f4' can implicitly return no values even though there's an explicit return at line 25; add explicit return to silence");
+        XorStr("Function 'f4' can implicitly return no values even though there's an explicit return at line 25; add explicit return to silence"));
     CHECK_EQ(result.warnings[2].location.begin.line, 44);
     CHECK_EQ(result.warnings[2].text,
-        "Function can implicitly return no values even though there's an explicit return at line 44; add explicit return to silence");
+        XorStr("Function can implicitly return no values even though there's an explicit return at line 44; add explicit return to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImplicitReturnInfiniteLoop")
@@ -840,10 +840,10 @@ return f1,f2,f3,f4
     CHECK_EQ(result.warnings.size(), 2);
     CHECK_EQ(result.warnings[0].location.begin.line, 25);
     CHECK_EQ(result.warnings[0].text,
-        "Function 'f3' can implicitly return no values even though there's an explicit return at line 21; add explicit return to silence");
+        XorStr("Function 'f3' can implicitly return no values even though there's an explicit return at line 21; add explicit return to silence"));
     CHECK_EQ(result.warnings[1].location.begin.line, 36);
     CHECK_EQ(result.warnings[1].text,
-        "Function 'f4' can implicitly return no values even though there's an explicit return at line 32; add explicit return to silence");
+        XorStr("Function 'f4' can implicitly return no values even though there's an explicit return at line 32; add explicit return to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsShouldNotProduceWarnings")
@@ -901,29 +901,29 @@ return foo
 )");
 
     CHECK_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Variable 'x' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'x' is never used; prefix with '_' to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringFormat")
 {
     LintResult result = lint(R"(
 -- incorrect format strings
-string.format("%")
-string.format("%??d")
-string.format("%Y")
+string.format(XorStr("%"))
+string.format(XorStr("%??d"))
+string.format(XorStr("%Y"))
 
 -- incorrect format strings, self call
 local _ = ("%"):format()
 
 -- correct format strings, just to uh make sure
-string.format("hello %+10d %.02f %%", 4, 5)
+string.format(XorStr("hello %+10d %.02f %%"), 4, 5)
 )");
 
     CHECK_EQ(result.warnings.size(), 4);
-    CHECK_EQ(result.warnings[0].text, "Invalid format string: unfinished format specifier");
-    CHECK_EQ(result.warnings[1].text, "Invalid format string: invalid format specifier: must be a string format specifier or %");
-    CHECK_EQ(result.warnings[2].text, "Invalid format string: invalid format specifier: must be a string format specifier or %");
-    CHECK_EQ(result.warnings[3].text, "Invalid format string: unfinished format specifier");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid format string: unfinished format specifier"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid format string: invalid format specifier: must be a string format specifier or %"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Invalid format string: invalid format specifier: must be a string format specifier or %"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Invalid format string: unfinished format specifier"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringPack")
@@ -960,17 +960,17 @@ string.packsize("=!1bbbI3c42")
 )");
 
     CHECK_EQ(result.warnings.size(), 11);
-    CHECK_EQ(result.warnings[0].text, "Invalid pack format: unexpected character; must be a pack specifier or space");
-    CHECK_EQ(result.warnings[1].text, "Invalid pack format: unexpected character; must be a pack specifier or space");
-    CHECK_EQ(result.warnings[2].text, "Invalid pack format: unexpected character; must be a pack specifier or space");
-    CHECK_EQ(result.warnings[3].text, "Invalid pack format: fixed-sized string format must specify the size");
-    CHECK_EQ(result.warnings[4].text, "Invalid pack format: X must be followed by a size specifier");
-    CHECK_EQ(result.warnings[5].text, "Invalid pack format: X must be followed by a size specifier");
-    CHECK_EQ(result.warnings[6].text, "Invalid pack format: pack specifier must be fixed-size");
-    CHECK_EQ(result.warnings[7].text, "Invalid pack format: integer size must be in range [1,16]");
-    CHECK_EQ(result.warnings[8].text, "Invalid pack format: integer size must be in range [1,16]");
-    CHECK_EQ(result.warnings[9].text, "Invalid pack format: size specifier is too large");
-    CHECK_EQ(result.warnings[10].text, "Invalid pack format: size specifier is too large");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid pack format: unexpected character; must be a pack specifier or space"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid pack format: unexpected character; must be a pack specifier or space"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Invalid pack format: unexpected character; must be a pack specifier or space"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Invalid pack format: fixed-sized string format must specify the size"));
+    CHECK_EQ(result.warnings[4].text, XorStr("Invalid pack format: X must be followed by a size specifier"));
+    CHECK_EQ(result.warnings[5].text, XorStr("Invalid pack format: X must be followed by a size specifier"));
+    CHECK_EQ(result.warnings[6].text, XorStr("Invalid pack format: pack specifier must be fixed-size"));
+    CHECK_EQ(result.warnings[7].text, XorStr("Invalid pack format: integer size must be in range [1,16]"));
+    CHECK_EQ(result.warnings[8].text, XorStr("Invalid pack format: integer size must be in range [1,16]"));
+    CHECK_EQ(result.warnings[9].text, XorStr("Invalid pack format: size specifier is too large"));
+    CHECK_EQ(result.warnings[10].text, XorStr("Invalid pack format: size specifier is too large"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringMatch")
@@ -1004,20 +1004,20 @@ string.match(s, "[A-Z]+(%d)%1")
 )");
 
     CHECK_EQ(result.warnings.size(), 14);
-    CHECK_EQ(result.warnings[0].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
-    CHECK_EQ(result.warnings[1].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
-    CHECK_EQ(result.warnings[2].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
-    CHECK_EQ(result.warnings[3].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
-    CHECK_EQ(result.warnings[4].text, "Invalid match pattern: unfinished character class");
-    CHECK_EQ(result.warnings[5].text, "Invalid match pattern: sets can not contain capture references");
-    CHECK_EQ(result.warnings[6].text, "Invalid match pattern: invalid capture reference, must be 1-9");
-    CHECK_EQ(result.warnings[7].text, "Invalid match pattern: invalid capture reference, must refer to a valid capture");
-    CHECK_EQ(result.warnings[8].text, "Invalid match pattern: missing brace characters for balanced match");
-    CHECK_EQ(result.warnings[9].text, "Invalid match pattern: missing set after a frontier pattern");
-    CHECK_EQ(result.warnings[10].text, "Invalid match pattern: unexpected ) without a matching (");
-    CHECK_EQ(result.warnings[11].text, "Invalid match pattern: expected ) at the end of the string to close a capture");
-    CHECK_EQ(result.warnings[12].text, "Invalid match pattern: expected ] at the end of the string to close a set");
-    CHECK_EQ(result.warnings[13].text, "Invalid match pattern: expected a magic character after %");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
+    CHECK_EQ(result.warnings[4].text, XorStr("Invalid match pattern: unfinished character class"));
+    CHECK_EQ(result.warnings[5].text, XorStr("Invalid match pattern: sets can not contain capture references"));
+    CHECK_EQ(result.warnings[6].text, XorStr("Invalid match pattern: invalid capture reference, must be 1-9"));
+    CHECK_EQ(result.warnings[7].text, XorStr("Invalid match pattern: invalid capture reference, must refer to a valid capture"));
+    CHECK_EQ(result.warnings[8].text, XorStr("Invalid match pattern: missing brace characters for balanced match"));
+    CHECK_EQ(result.warnings[9].text, XorStr("Invalid match pattern: missing set after a frontier pattern"));
+    CHECK_EQ(result.warnings[10].text, XorStr("Invalid match pattern: unexpected ) without a matching ("));
+    CHECK_EQ(result.warnings[11].text, XorStr("Invalid match pattern: expected ) at the end of the string to close a capture"));
+    CHECK_EQ(result.warnings[12].text, XorStr("Invalid match pattern: expected ] at the end of the string to close a set"));
+    CHECK_EQ(result.warnings[13].text, XorStr("Invalid match pattern: expected a magic character after %"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringMatchNested")
@@ -1036,9 +1036,9 @@ string.match(s, "((a)%3)")
 )~");
 
     CHECK_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "Invalid match pattern: invalid capture reference, must refer to a closed capture");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid match pattern: invalid capture reference, must refer to a closed capture"));
     CHECK_EQ(result.warnings[0].location.begin.line, 7);
-    CHECK_EQ(result.warnings[1].text, "Invalid match pattern: invalid capture reference, must refer to a valid capture");
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid match pattern: invalid capture reference, must refer to a valid capture"));
     CHECK_EQ(result.warnings[1].location.begin.line, 10);
 }
 
@@ -1074,13 +1074,13 @@ string.match(s, "[^]|'[]")
 )~");
 
     CHECK_EQ(result.warnings.size(), 7);
-    CHECK_EQ(result.warnings[0].text, "Invalid match pattern: expected ] at the end of the string to close a set");
-    CHECK_EQ(result.warnings[1].text, "Invalid match pattern: expected ] at the end of the string to close a set");
-    CHECK_EQ(result.warnings[2].text, "Invalid match pattern: character range can't include character sets");
-    CHECK_EQ(result.warnings[3].text, "Invalid match pattern: character range can't include character sets");
-    CHECK_EQ(result.warnings[4].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
-    CHECK_EQ(result.warnings[5].text, "Invalid match pattern: expected a magic character after %");
-    CHECK_EQ(result.warnings[6].text, "Invalid match pattern: sets can not contain capture references");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid match pattern: expected ] at the end of the string to close a set"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid match pattern: expected ] at the end of the string to close a set"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Invalid match pattern: character range can't include character sets"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Invalid match pattern: character range can't include character sets"));
+    CHECK_EQ(result.warnings[4].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
+    CHECK_EQ(result.warnings[5].text, XorStr("Invalid match pattern: expected a magic character after %"));
+    CHECK_EQ(result.warnings[6].text, XorStr("Invalid match pattern: sets can not contain capture references"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringFindArgs")
@@ -1100,14 +1100,14 @@ string.find(s, "%q", 1, false)
 
 -- missing arguments
 string.find()
-string.find("foo");
+string.find(XorStr("foo"));
 ("foo"):find()
 )");
 
     CHECK_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
     CHECK_EQ(result.warnings[0].location.begin.line, 4);
-    CHECK_EQ(result.warnings[1].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid match pattern: invalid character class, must refer to a defined class or its inverse"));
     CHECK_EQ(result.warnings[1].location.begin.line, 11);
 }
 
@@ -1128,10 +1128,10 @@ string.gsub(s, 'foo', "%0")
 )");
 
     CHECK_EQ(result.warnings.size(), 4);
-    CHECK_EQ(result.warnings[0].text, "Invalid match replacement: unfinished replacement");
-    CHECK_EQ(result.warnings[1].text, "Invalid match replacement: unexpected replacement character; must be a digit or %");
-    CHECK_EQ(result.warnings[2].text, "Invalid match replacement: invalid capture index, must refer to pattern capture");
-    CHECK_EQ(result.warnings[3].text, "Invalid match replacement: invalid capture index, must refer to pattern capture");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid match replacement: unfinished replacement"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid match replacement: unexpected replacement character; must be a digit or %"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Invalid match replacement: invalid capture index, must refer to pattern capture"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Invalid match replacement: invalid capture index, must refer to pattern capture"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringDate")
@@ -1149,10 +1149,10 @@ os.date("!*t")
 )");
 
     CHECK_EQ(result.warnings.size(), 4);
-    CHECK_EQ(result.warnings[0].text, "Invalid date format: unfinished replacement");
-    CHECK_EQ(result.warnings[1].text, "Invalid date format: unexpected replacement character; must be a date format specifier or %");
-    CHECK_EQ(result.warnings[2].text, "Invalid date format: unexpected replacement character; must be a date format specifier or %");
-    CHECK_EQ(result.warnings[3].text, "Invalid date format: date format can not contain null characters");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid date format: unfinished replacement"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid date format: unexpected replacement character; must be a date format specifier or %"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Invalid date format: unexpected replacement character; must be a date format specifier or %"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Invalid date format: date format can not contain null characters"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "FormatStringTyped")
@@ -1168,9 +1168,9 @@ nons:match("[]")
 )~");
 
     CHECK_EQ(result.warnings.size(), 2);
-    CHECK_EQ(result.warnings[0].text, "Invalid match pattern: expected ] at the end of the string to close a set");
+    CHECK_EQ(result.warnings[0].text, XorStr("Invalid match pattern: expected ] at the end of the string to close a set"));
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
-    CHECK_EQ(result.warnings[1].text, "Invalid match pattern: expected ] at the end of the string to close a set");
+    CHECK_EQ(result.warnings[1].text, XorStr("Invalid match pattern: expected ] at the end of the string to close a set"));
     CHECK_EQ(result.warnings[1].location.begin.line, 4);
 }
 
@@ -1218,12 +1218,12 @@ _ = {
 )");
 
     CHECK_EQ(result.warnings.size(), 6);
-    CHECK_EQ(result.warnings[0].text, "Table field 'first' is a duplicate; previously defined at line 3");
-    CHECK_EQ(result.warnings[1].text, "Table field 'first' is a duplicate; previously defined at line 9");
-    CHECK_EQ(result.warnings[2].text, "Table index 1 is a duplicate; previously defined as a list entry");
-    CHECK_EQ(result.warnings[3].text, "Table index 3 is a duplicate; previously defined as a list entry");
-    CHECK_EQ(result.warnings[4].text, "Table type field 'first' is a duplicate; previously defined at line 24");
-    CHECK_EQ(result.warnings[5].text, "Table index 1 is a duplicate; previously defined at line 36");
+    CHECK_EQ(result.warnings[0].text, XorStr("Table field 'first' is a duplicate; previously defined at line 3"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Table field 'first' is a duplicate; previously defined at line 9"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Table index 1 is a duplicate; previously defined as a list entry"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Table index 3 is a duplicate; previously defined as a list entry"));
+    CHECK_EQ(result.warnings[4].text, XorStr("Table type field 'first' is a duplicate; previously defined at line 24"));
+    CHECK_EQ(result.warnings[5].text, XorStr("Table index 1 is a duplicate; previously defined at line 36"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "ImportOnlyUsedInTypeAnnotation")
@@ -1235,7 +1235,7 @@ TEST_CASE_FIXTURE(Fixture, "ImportOnlyUsedInTypeAnnotation")
     )");
 
     REQUIRE_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Variable 'x' is never used; prefix with '_' to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'x' is never used; prefix with '_' to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "DisableUnknownGlobalWithTypeChecking")
@@ -1262,12 +1262,12 @@ TEST_CASE_FIXTURE(Fixture, "no_spurious_warning_after_a_function_type_alias")
 
 TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
 {
-    ScopePtr testScope = frontend.addEnvironment("Test");
+    ScopePtr testScope = frontend.addEnvironment(XorStr("Test"));
     unfreeze(typeChecker.globalTypes);
     loadDefinitionFile(frontend.typeChecker, testScope, R"(
         declare Foo: number
     )",
-        "@test");
+        XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
     fileResolver.environments["A"] = "Test";
@@ -1278,7 +1278,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
         local _bar: typeof(os.clock) = os.clock
     )";
 
-    LintResult result = frontend.lint("A");
+    LintResult result = frontend.lint(XorStr("A"));
 
     CHECK_EQ(result.warnings.size(), 0);
 }
@@ -1307,9 +1307,9 @@ end
     )");
 
     CHECK_EQ(result.warnings.size(), 3);
-    CHECK_EQ(result.warnings[0].text, "Variable 'x' defined at line 4 is never initialized or assigned; initialize with 'nil' to silence");
-    CHECK_EQ(result.warnings[1].text, "Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence");
-    CHECK_EQ(result.warnings[2].text, "Variable 'c' defined at line 12 is never initialized or assigned; initialize with 'nil' to silence");
+    CHECK_EQ(result.warnings[0].text, XorStr("Variable 'x' defined at line 4 is never initialized or assigned; initialize with 'nil' to silence"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Variable 'c' defined at line 12 is never initialized or assigned; initialize with 'nil' to silence"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "LocalFunctionNotDead")
@@ -1446,7 +1446,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
         {"Wait", {typeChecker.anyType, /* deprecated= */ true}},
     };
 
-    TypeId colorType = typeChecker.globalTypes.addType(TableTypeVar{{}, std::nullopt, typeChecker.globalScope->level, Luau::TableState::Sealed});
+    TypeId colorType = typeChecker.globalTypes.addType(TableTypeVar{{}, std::nullopt, typeChecker.globalScope->level, lluz::TableState::Sealed});
 
     getMutable<TableTypeVar>(colorType)->props = {{"toHSV", {typeChecker.anyType, /* deprecated= */ true, "Color3:ToHSV"}}};
 
@@ -1465,9 +1465,9 @@ end
 )");
 
     REQUIRE_EQ(result.warnings.size(), 3);
-    CHECK_EQ(result.warnings[0].text, "Member 'Instance.Wait' is deprecated");
-    CHECK_EQ(result.warnings[1].text, "Member 'toHSV' is deprecated, use 'Color3:ToHSV' instead");
-    CHECK_EQ(result.warnings[2].text, "Member 'Instance.DataCost' is deprecated");
+    CHECK_EQ(result.warnings[0].text, XorStr("Member 'Instance.Wait' is deprecated"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Member 'toHSV' is deprecated, use 'Color3:ToHSV' instead"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Member 'Instance.DataCost' is deprecated"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "TableOperations")
@@ -1499,20 +1499,20 @@ table.create(42, {} :: {})
 
     REQUIRE_EQ(result.warnings.size(), 10);
     CHECK_EQ(result.warnings[0].text, "table.insert will insert the value before the last element, which is likely a bug; consider removing the "
-                                      "second argument or wrap it in parentheses to silence");
-    CHECK_EQ(result.warnings[1].text, "table.insert will append the value to the table; consider removing the second argument for efficiency");
-    CHECK_EQ(result.warnings[2].text, "table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?");
-    CHECK_EQ(result.warnings[3].text, "table.remove uses index 0 but arrays are 1-based; did you mean 1 instead?");
+                                      XorStr("second argument or wrap it in parentheses to silence"));
+    CHECK_EQ(result.warnings[1].text, XorStr("table.insert will append the value to the table; consider removing the second argument for efficiency"));
+    CHECK_EQ(result.warnings[2].text, XorStr("table.insert uses index 0 but arrays are 1-based; did you mean 1 instead?"));
+    CHECK_EQ(result.warnings[3].text, XorStr("table.remove uses index 0 but arrays are 1-based; did you mean 1 instead?"));
     CHECK_EQ(result.warnings[4].text, "table.remove will remove the value before the last element, which is likely a bug; consider removing the "
-                                      "second argument or wrap it in parentheses to silence");
+                                      XorStr("second argument or wrap it in parentheses to silence"));
     CHECK_EQ(result.warnings[5].text,
-        "table.insert may change behavior if the call returns more than one result; consider adding parentheses around second argument");
-    CHECK_EQ(result.warnings[6].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
-    CHECK_EQ(result.warnings[7].text, "table.move uses index 0 but arrays are 1-based; did you mean 1 instead?");
+        XorStr("table.insert may change behavior if the call returns more than one result; consider adding parentheses around second argument"));
+    CHECK_EQ(result.warnings[6].text, XorStr("table.move uses index 0 but arrays are 1-based; did you mean 1 instead?"));
+    CHECK_EQ(result.warnings[7].text, XorStr("table.move uses index 0 but arrays are 1-based; did you mean 1 instead?"));
     CHECK_EQ(
-        result.warnings[8].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+        result.warnings[8].text, XorStr("table.create with a table literal will reuse the same object for all elements; consider using a for loop instead"));
     CHECK_EQ(
-        result.warnings[9].text, "table.create with a table literal will reuse the same object for all elements; consider using a for loop instead");
+        result.warnings[9].text, XorStr("table.create with a table literal will reuse the same object for all elements; consider using a for loop instead"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditions")
@@ -1543,16 +1543,16 @@ _ = if true then 1 elseif true then 2 else 3
 )");
 
     REQUIRE_EQ(result.warnings.size(), 8);
-    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
+    CHECK_EQ(result.warnings[0].text, XorStr("Condition has already been checked on line 2"));
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 4);
-    CHECK_EQ(result.warnings[1].text, "Condition has already been checked on column 5");
-    CHECK_EQ(result.warnings[2].text, "Condition has already been checked on column 5");
-    CHECK_EQ(result.warnings[3].text, "Condition has already been checked on column 6");
-    CHECK_EQ(result.warnings[4].text, "Condition has already been checked on column 6");
-    CHECK_EQ(result.warnings[5].text, "Condition has already been checked on column 6");
-    CHECK_EQ(result.warnings[6].text, "Condition has already been checked on column 15");
+    CHECK_EQ(result.warnings[1].text, XorStr("Condition has already been checked on column 5"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Condition has already been checked on column 5"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Condition has already been checked on column 6"));
+    CHECK_EQ(result.warnings[4].text, XorStr("Condition has already been checked on column 6"));
+    CHECK_EQ(result.warnings[5].text, XorStr("Condition has already been checked on column 6"));
+    CHECK_EQ(result.warnings[6].text, XorStr("Condition has already been checked on column 15"));
     CHECK_EQ(result.warnings[6].location.begin.line + 1, 19);
-    CHECK_EQ(result.warnings[7].text, "Condition has already been checked on column 8");
+    CHECK_EQ(result.warnings[7].text, XorStr("Condition has already been checked on column 8"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsExpr")
@@ -1567,7 +1567,7 @@ end
 )");
 
     REQUIRE_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 4");
+    CHECK_EQ(result.warnings[0].text, XorStr("Condition has already been checked on line 4"));
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 5);
 }
 
@@ -1588,10 +1588,10 @@ return foo, moo, a1, a2
 )");
 
     REQUIRE_EQ(result.warnings.size(), 4);
-    CHECK_EQ(result.warnings[0].text, "Function parameter 'a1' already defined on column 14");
-    CHECK_EQ(result.warnings[1].text, "Variable 'a1' is never used; prefix with '_' to silence");
-    CHECK_EQ(result.warnings[2].text, "Variable 'a1' already defined on column 7");
-    CHECK_EQ(result.warnings[3].text, "Function parameter 'self' already defined implicitly");
+    CHECK_EQ(result.warnings[0].text, XorStr("Function parameter 'a1' already defined on column 14"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Variable 'a1' is never used; prefix with '_' to silence"));
+    CHECK_EQ(result.warnings[2].text, XorStr("Variable 'a1' already defined on column 7"));
+    CHECK_EQ(result.warnings[3].text, XorStr("Function parameter 'self' already defined implicitly"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "MisleadingAndOr")
@@ -1606,9 +1606,9 @@ _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 
     REQUIRE_EQ(result.warnings.size(), 2);
     CHECK_EQ(result.warnings[0].text, "The and-or expression always evaluates to the second alternative because the first alternative is false; "
-                                      "consider using if-then-else expression instead");
+                                      XorStr("consider using if-then-else expression instead"));
     CHECK_EQ(result.warnings[1].text, "The and-or expression always evaluates to the second alternative because the first alternative is nil; "
-                                      "consider using if-then-else expression instead");
+                                      XorStr("consider using if-then-else expression instead"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongComment")
@@ -1627,12 +1627,12 @@ do end
 )");
 
     REQUIRE_EQ(result.warnings.size(), 6);
-    CHECK_EQ(result.warnings[0].text, "Unknown comment directive 'struct'; did you mean 'strict'?");
-    CHECK_EQ(result.warnings[1].text, "Unknown comment directive 'nolintGlobal'");
-    CHECK_EQ(result.warnings[2].text, "nolint directive refers to unknown lint rule 'Global'");
-    CHECK_EQ(result.warnings[3].text, "nolint directive refers to unknown lint rule 'KnownGlobal'; did you mean 'UnknownGlobal'?");
-    CHECK_EQ(result.warnings[4].text, "Comment directive with the type checking mode has extra symbols at the end of the line");
-    CHECK_EQ(result.warnings[5].text, "Comment directive is ignored because it is placed after the first non-comment token");
+    CHECK_EQ(result.warnings[0].text, XorStr("Unknown comment directive 'struct'; did you mean 'strict'?"));
+    CHECK_EQ(result.warnings[1].text, XorStr("Unknown comment directive 'nolintGlobal'"));
+    CHECK_EQ(result.warnings[2].text, XorStr("nolint directive refers to unknown lint rule 'Global'"));
+    CHECK_EQ(result.warnings[3].text, XorStr("nolint directive refers to unknown lint rule 'KnownGlobal'; did you mean 'UnknownGlobal'?"));
+    CHECK_EQ(result.warnings[4].text, XorStr("Comment directive with the type checking mode has extra symbols at the end of the line"));
+    CHECK_EQ(result.warnings[5].text, XorStr("Comment directive is ignored because it is placed after the first non-comment token"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
@@ -1655,24 +1655,7 @@ end
 )");
 
     REQUIRE_EQ(result.warnings.size(), 1);
-    CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
-}
-
-TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")
-{
-    LintResult result = lint(R"(
---!optimize
---!optimize   
---!optimize me
---!optimize 100500
---!optimize 2
-)");
-
-    REQUIRE_EQ(result.warnings.size(), 4);
-    CHECK_EQ(result.warnings[0].text, "optimize directive requires an optimization level");
-    CHECK_EQ(result.warnings[1].text, "optimize directive requires an optimization level");
-    CHECK_EQ(result.warnings[2].text, "optimize directive uses unknown optimization level 'me', 0..2 expected");
-    CHECK_EQ(result.warnings[3].text, "optimize directive uses unknown optimization level '100500', 0..2 expected");
+    CHECK_EQ(result.warnings[0].text, XorStr("Condition has already been checked on line 2"));
 }
 
 TEST_SUITE_END();

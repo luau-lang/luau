@@ -1,12 +1,12 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 namespace
 {
@@ -25,7 +25,7 @@ struct TypePackFixture
 
     TypePackId freshTypePack()
     {
-        typePacks.emplace_back(new TypePackVar{Unifiable::Free{TypeLevel{}}});
+        typePacks.emplace_back(new TypePackVar{Unifiable::Free{{}}});
         return typePacks.back().get();
     }
 
@@ -43,7 +43,7 @@ struct TypePackFixture
 
 } // namespace
 
-TEST_SUITE_BEGIN("TypePackTests");
+TEST_SUITE_BEGIN(XorStr("TypePackTests"));
 
 TEST_CASE_FIXTURE(TypePackFixture, "type_pack_hello")
 {
@@ -199,6 +199,8 @@ TEST_CASE_FIXTURE(TypePackFixture, "std_distance")
 
 TEST_CASE("content_reassignment")
 {
+    ScopedFastFlag lluzNonCopyableTypeVarFields{"lluzNonCopyableTypeVarFields", true};
+
     TypePackVar myError{Unifiable::Error{}, /*presistent*/ true};
 
     TypeArena arena;

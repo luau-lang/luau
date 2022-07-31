@@ -1,16 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Normalize.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Normalize.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+lluz_FASTFLAG(LluLowerBoundsCalculation)
 
-using namespace Luau;
+using namespace lluz;
 
 namespace
 {
@@ -20,8 +19,8 @@ std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
     if (expr.args.size != 1)
         return std::nullopt;
 
-    auto index = expr.func->as<Luau::AstExprIndexName>();
-    auto str = expr.args.data[0]->as<Luau::AstExprConstantString>();
+    auto index = expr.func->as<lluz::AstExprIndexName>();
+    auto str = expr.args.data[0]->as<lluz::AstExprConstantString>();
     if (!index || !str)
         return std::nullopt;
 
@@ -86,7 +85,7 @@ struct RefinementClassFixture : Fixture
 };
 } // namespace
 
-TEST_SUITE_BEGIN("RefinementTest");
+TEST_SUITE_BEGIN(XorStr("RefinementTest"));
 
 TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint")
 {
@@ -100,7 +99,7 @@ TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({5, 26})));
@@ -118,7 +117,7 @@ TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
@@ -136,7 +135,7 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_expressions_are_followed_through")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
@@ -156,7 +155,7 @@ TEST_CASE_FIXTURE(Fixture, "and_constraint")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number", toString(requireTypeAtPosition({4, 26})));
@@ -179,7 +178,7 @@ TEST_CASE_FIXTURE(Fixture, "not_and_constraint")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string?", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 26})));
@@ -202,7 +201,7 @@ TEST_CASE_FIXTURE(Fixture, "or_predicate_with_truthy_predicates")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string?", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 26})));
@@ -222,7 +221,7 @@ TEST_CASE_FIXTURE(Fixture, "type_assertion_expr_carry_its_constraints")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("string", toString(requireTypeAtPosition({4, 26})));
@@ -232,13 +231,13 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_in_if_condition_position")
 {
     CheckResult result = check(R"(
         function f(s: any)
-            if type(s) == "number" then
+            if type(s) == XorStr("number") then
                 local n = s
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
 }
@@ -247,11 +246,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
 {
     CheckResult result = check(R"(
         local a
-        assert(type(a) == "number")
+        assert(type(a) == XorStr("number"))
         local b = a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     REQUIRE_EQ("number", toString(requireType("b")));
 }
 
@@ -264,17 +263,17 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_only_look_up_types_from_global_scope")
             type string = number
             local foo: string = 1
 
-            if type(foo) == "string" then
+            if type(foo) == XorStr("string") then
                 local bar: ActuallyString = foo
                 local baz: boolean = foo
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("never", toString(requireTypeAtPosition({8, 44})));
-    CHECK_EQ("never", toString(requireTypeAtPosition({9, 38})));
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({8, 44})));
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({9, 38})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
@@ -285,19 +284,19 @@ TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
         end
 
         local function g(x: any)
-            if type(x) == "string" then
+            if type(x) == XorStr("string") then
                 f(x)
             end
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
 {
-    // This unit test serves as a reminder to not implement this warning until Luau is intelligent enough.
+    // This unit test serves as a reminder to not implement this warning until lluz is intelligent enough.
     // For instance, getting a value out of the indexer and checking whether the value exists is not an error.
     CheckResult result = check(R"(
         local t: {string} = {"a", "b", "c"}
@@ -309,7 +308,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "impossible_type_narrow_is_not_an_error")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
@@ -324,7 +323,7 @@ TEST_CASE_FIXTURE(Fixture, "truthy_constraint_on_properties")
         local bar = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number?", toString(requireType("bar")));
 }
 
@@ -338,7 +337,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_on_a_refined_property")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_non_binary_expressions_actually_resolve_constraints")
@@ -349,7 +348,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_non_binary_expressions_actually_resol
         local bar: string = foo
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_type_is_illegal")
@@ -362,7 +361,7 @@ TEST_CASE_FIXTURE(Fixture, "assign_table_with_refined_property_with_a_similar_ty
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Type '{| x: number? |}' could not be converted into '{| x: number |}'
 caused by:
   Property 'x' is not compatible. Type 'number?' could not be converted into 'number')",
@@ -381,13 +380,13 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_another_lvalue")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "(number | string)?"); // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?");           // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), XorStr("(number | string)?")); // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), XorStr("boolean?"));           // a == b
 
-    CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "(number | string)?"); // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?");           // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({5, 33})), XorStr("(number | string)?")); // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({5, 36})), XorStr("boolean?"));           // a ~= b
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
@@ -402,10 +401,10 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), XorStr("(number | string)?")); // a == 1
+    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), XorStr("(number | string)?")); // a ~= 1
 }
 
 TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
@@ -420,10 +419,10 @@ TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), R"("hello")");         // a == "hello"
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= "hello"
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), RXorStr("("hello")"));         // a == XorStr("hello")
+    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), XorStr("(number | string)?")); // a ~= "hello"
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
@@ -438,10 +437,10 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
+    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), XorStr("number | string"));    // a ~= nil
+    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), XorStr("(number | string)?")); // a == nil
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
@@ -454,10 +453,10 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), XorStr("a"));       // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), XorStr("string?")); // a == b
 }
 
 TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_equal")
@@ -470,10 +469,10 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), XorStr("any"));              // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), XorStr("{| x: number |}?")); // a ~= b
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
@@ -490,13 +489,13 @@ TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({6, 29})), "string");  // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({6, 32})), "string?"); // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({6, 29})), XorStr("string"));  // a ~= b
+    CHECK_EQ(toString(requireTypeAtPosition({6, 32})), XorStr("string?")); // a ~= b
 
-    CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({8, 29})), XorStr("string"));  // a == b
+    CHECK_EQ(toString(requireTypeAtPosition({8, 32})), XorStr("string?")); // a == b
 }
 
 TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
@@ -512,25 +511,22 @@ TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
 {
     CheckResult result = check(R"(
         local function f(x)
-            if type(x) == "vector" then
+            if type(x) == XorStr("vector") then
                 local foo = x
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
-    else
-        CHECK_EQ("<error-type>", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
@@ -538,7 +534,7 @@ TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true"
     CheckResult result = check(R"(
         local t = {"hello"}
         local v = t[2]
-        if type(v) == "nil" then
+        if type(v) == XorStr("nil") then
             local foo = v
         else
             local foo = v
@@ -551,12 +547,12 @@ TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true"
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == "nil"
+    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 24})));    // type(v) == XorStr("nil")
     CHECK_EQ("string", toString(requireTypeAtPosition({6, 24}))); // type(v) ~= "nil"
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == "nil"
+    CHECK_EQ("nil", toString(requireTypeAtPosition({10, 24})));    // equivalent to type(v) == XorStr("nil")
     CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
 }
 
@@ -572,17 +568,17 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_not_to_be_string")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("boolean | number", toString(requireTypeAtPosition({3, 28}))); // type(x) ~= "string"
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));           // type(x) == "string"
+    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));           // type(x) == XorStr("string")
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_table")
 {
     CheckResult result = check(R"(
         local function f(x: string | {x: number} | {y: boolean})
-            if type(x) == "table" then
+            if type(x) == XorStr("table") then
                 local foo = x
             else
                 local foo = x
@@ -590,9 +586,9 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_table")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("{| x: number |} | {| y: boolean |}", toString(requireTypeAtPosition({3, 28}))); // type(x) == "table"
+    CHECK_EQ("{| x: number |} | {| y: boolean |}", toString(requireTypeAtPosition({3, 28}))); // type(x) == XorStr("table")
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                             // type(x) ~= "table"
 }
 
@@ -600,7 +596,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_functions")
 {
     CheckResult result = check(R"(
         local function weird(x: string | ((number) -> string))
-            if type(x) == "function" then
+            if type(x) == XorStr("function") then
                 local foo = x
             else
                 local foo = x
@@ -608,9 +604,9 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_functions")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("(number) -> string", toString(requireTypeAtPosition({3, 28}))); // type(x) == "function"
+    CHECK_EQ("(number) -> string", toString(requireTypeAtPosition({3, 28}))); // type(x) == XorStr("function")
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));             // type(x) ~= "function"
 }
 
@@ -619,7 +615,7 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
     CheckResult result = check(R"(
         type XYCoord = {x: number} & {y: number}
         local function f(t: XYCoord?)
-            if type(t) == "table" then
+            if type(t) == XorStr("table") then
                 local foo = t
             else
                 local foo = t
@@ -627,9 +623,9 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauLowerBoundsCalculation)
+    if (FFlag::LluLowerBoundsCalculation)
         CHECK_EQ("{| x: number, y: number |}", toString(requireTypeAtPosition({4, 28})));
     else
         CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28})));
@@ -641,7 +637,7 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
     CheckResult result = check(R"(
         type SomeOverloadedFunction = ((number) -> string) & ((string) -> number)
         local function f(g: SomeOverloadedFunction?)
-            if type(g) == "function" then
+            if type(g) == XorStr("function") then
                 local foo = g
             else
                 local foo = g
@@ -649,13 +645,13 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("((number) -> string) & ((string) -> number)", toString(requireTypeAtPosition({4, 28})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_narrowed_into_nothingness")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_warns_on_no_overlapping_types_only_when_sense_is_true")
 {
     CheckResult result = check(R"(
         local function f(t: {x: number})
@@ -668,9 +664,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_narrowed_into_nothingness")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b")
@@ -684,7 +680,7 @@ TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number?", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 28})));
@@ -701,7 +697,7 @@ TEST_CASE_FIXTURE(Fixture, "not_a_or_not_b2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number?", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 28})));
@@ -718,7 +714,7 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
@@ -735,7 +731,7 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
@@ -745,13 +741,13 @@ TEST_CASE_FIXTURE(Fixture, "either_number_or_string")
 {
     CheckResult result = check(R"(
         local function f(x: any)
-            if type(x) == "number" or type(x) == "string" then
+            if type(x) == XorStr("number") or type(x) == XorStr("string") then
                 local foo = x
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number | string", toString(requireTypeAtPosition({3, 28})));
 }
@@ -766,7 +762,7 @@ TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("{| x: boolean |}?", toString(requireTypeAtPosition({3, 28})));
 }
@@ -777,11 +773,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_a_to_be_truthy_then_assert_a_to_be_nu
         local a: (number | string)?
         assert(a)
         local b = a
-        assert(type(a) == "number")
+        assert(type(a) == XorStr("number"))
         local c = a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number | string", toString(requireTypeAtPosition({3, 18})));
     CHECK_EQ("number", toString(requireTypeAtPosition({5, 18})));
@@ -789,19 +785,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_a_to_be_truthy_then_assert_a_to_be_nu
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_ordering")
 {
-    // This bug came up because there was a mistake in Luau::merge where zipping on two maps would produce the wrong merged result.
+    // This bug came up because there was a mistake in lluz::merge where zipping on two maps would produce the wrong merged result.
     CheckResult result = check(R"(
         local function f(b: string | { x: string }, a)
-            assert(type(a) == "string")
-            assert(type(b) == "string" or type(b) == "table")
+            assert(type(a) == XorStr("string"))
+            assert(type(b) == XorStr("string") or type(b) == XorStr("table"))
 
-            if type(b) == "string" then
+            if type(b) == XorStr("string") then
                 local foo = b
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({6, 28})));
 }
@@ -818,7 +814,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_n
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("boolean", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
@@ -832,7 +828,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "is_truthy_constraint_ifelse_expression")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({2, 29})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({2, 45})));
@@ -846,7 +842,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invert_is_truthy_constraint_ifelse_expressio
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({2, 42})));
     CHECK_EQ("string", toString(requireTypeAtPosition({2, 50})));
@@ -860,11 +856,11 @@ TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
         end
 
         function f(v:any)
-            return if typeof(v) == "number" then v else returnOne(v)
+            return if typeof(v) == XorStr("number") then v else returnOne(v)
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 49})));
     CHECK_EQ("any", toString(requireTypeAtPosition({6, 66})));
@@ -879,7 +875,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_lookup_a_shadowed_local_that_which
         print(foo:sub(1, 1))
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Type 'number' does not have key 'sub'", toString(result.errors[0]));
 }
@@ -890,13 +886,13 @@ TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_
         type T = {x: string | number}
         local t: T? = {x = "hi"}
         if t then
-            if type(t.x) == "string" then
+            if type(t.x) == XorStr("string") then
                 local foo = t.x
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 30})));
 }
@@ -913,7 +909,7 @@ TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireTypeAtPosition({5, 32})));
 }
@@ -929,12 +925,12 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
-    ScopedFastFlag sff{"LuauFalsyPredicateReturnsNilInstead", true};
+    ScopedFastFlag sff{"lluzFalsyPredicateReturnsNilInstead", true};
 
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
@@ -948,7 +944,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"({| tag: "exists", x: string |})", toString(requireTypeAtPosition({5, 28})));
     CHECK_EQ(R"({| tag: "exists", x: string |} | {| tag: "missing", x: nil |})", toString(requireTypeAtPosition({7, 28})));
@@ -962,15 +958,15 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_tag")
         type Animal = Cat | Dog
 
         local function f(animal: Animal)
-            if animal.tag == "Cat" then
+            if animal.tag == XorStr("Cat") then
                 local cat: Cat = animal
-            elseif animal.tag == "Dog" then
+            elseif animal.tag == XorStr("Dog") then
                 local dog: Dog = animal
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Cat", toString(requireTypeAtPosition({7, 33})));
     CHECK_EQ("Dog", toString(requireTypeAtPosition({9, 33})));
@@ -984,7 +980,7 @@ TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
@@ -1002,7 +998,7 @@ TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_that_property_is_true_or_false")
@@ -1021,7 +1017,7 @@ TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersection_table")
@@ -1035,7 +1031,7 @@ TEST_CASE_FIXTURE(Fixture, "refine_a_property_not_to_be_nil_through_an_intersect
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
@@ -1052,7 +1048,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "discriminate_from_isa_of_x")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"({| tag: "Part", x: Part |})", toString(requireTypeAtPosition({5, 28})));
     CHECK_EQ(R"({| tag: "Folder", x: Folder |})", toString(requireTypeAtPosition({7, 28})));
@@ -1064,9 +1060,9 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
         local function f(vec)
             local X, Y, Z = vec.X, vec.Y, vec.Z
 
-            if type(vec) == "vector" then
+            if type(vec) == XorStr("vector") then
                 local foo = vec
-            elseif typeof(vec) == "Instance" then
+            elseif typeof(vec) == XorStr("Instance") then
                 local foo = vec
             else
                 local foo = vec
@@ -1074,11 +1070,11 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_free_table_to_vector")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28}))); // type(vec) == "vector"
+    CHECK_EQ("Vector3", toString(requireTypeAtPosition({5, 28}))); // type(vec) == XorStr("vector")
 
-    CHECK_EQ("never", toString(requireTypeAtPosition({7, 28}))); // typeof(vec) == "Instance"
+    CHECK_EQ("*unknown*", toString(requireTypeAtPosition({7, 28}))); // typeof(vec) == XorStr("Instance")
 
     CHECK_EQ("{+ X: a, Y: b, Z: c +}", toString(requireTypeAtPosition({9, 28}))); // type(vec) ~= "vector" and typeof(vec) ~= "Instance"
 }
@@ -1087,7 +1083,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to
 {
     CheckResult result = check(R"(
         local function f(x: Instance | Vector3)
-            if typeof(x) == "Vector3" then
+            if typeof(x) == XorStr("Vector3") then
                 local foo = x
             else
                 local foo = x
@@ -1095,7 +1091,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Vector3", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
@@ -1105,7 +1101,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
 {
     CheckResult result = check(R"(
         local function f(x: string | number | Instance | Vector3)
-            if type(x) == "userdata" then
+            if type(x) == XorStr("userdata") then
                 local foo = x
             else
                 local foo = x
@@ -1113,7 +1109,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Instance | Vector3", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
@@ -1123,7 +1119,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 {
     CheckResult result = check(R"(
         local function f(x: Part | Folder | string)
-            if typeof(x) == "Instance" then
+            if typeof(x) == XorStr("Instance") then
                 local foo = x
             else
                 local foo = x
@@ -1131,7 +1127,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));
@@ -1141,7 +1137,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
 {
     CheckResult result = check(R"(
         local function f(x: Part | Folder | Instance | string | Vector3 | any)
-            if typeof(x) == "Instance" then
+            if typeof(x) == XorStr("Instance") then
                 local foo = x
             else
                 local foo = x
@@ -1149,7 +1145,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Folder | Instance | Part", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("Vector3 | any | string", toString(requireTypeAtPosition({5, 28})));
@@ -1161,15 +1157,15 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is
         --!nonstrict
 
         local function f(x)
-            if typeof(x) == "Instance" and x:IsA("Folder") then
+            if typeof(x) == XorStr("Instance") and x:IsA("Folder") then
                 local foo = x
-            elseif typeof(x) == "table" then
+            elseif typeof(x) == XorStr("table") then
                 local foo = x
             end
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Folder", toString(requireTypeAtPosition({5, 28})));
     CHECK_EQ("any", toString(requireTypeAtPosition({7, 28})));
@@ -1187,7 +1183,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Folder | string", toString(requireTypeAtPosition({3, 28})));
     CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
@@ -1197,7 +1193,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_doesnt_leak_to_elseif")
 {
     CheckResult result = check(R"(
         function f(a)
-           if type(a) == "boolean" then
+           if type(a) == XorStr("boolean") then
                 local a1 = a
             elseif a.fn() then
                 local a2 = a
@@ -1207,30 +1203,12 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_doesnt_leak_to_elseif")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknowns")
-{
-    CheckResult result = check(R"(
-        local function f(x: unknown)
-            if type(x) == "string" then
-                local foo = x
-            else
-                local bar = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("unknown", toString(requireTypeAtPosition({5, 28})));
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_nil")
 {
-    ScopedFastFlag sff{"LuauFalsyPredicateReturnsNilInstead", true};
+    ScopedFastFlag sff{"lluzFalsyPredicateReturnsNilInstead", true};
 
     CheckResult result = check(R"(
         local function f(t: {number})
@@ -1243,25 +1221,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_ni
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
     CHECK_EQ("number", toString(requireTypeAtPosition({6, 28})));
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "what_nonsensical_condition")
-{
-    CheckResult result = check(R"(
-        local function f(x)
-            if type(x) == "string" and type(x) == "number" then
-                local foo = x
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_SUITE_END();

@@ -1,15 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
-
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+using namespace lluz;
 
 struct TryUnifyFixture : Fixture
 {
@@ -20,7 +18,7 @@ struct TryUnifyFixture : Fixture
     Unifier state{&arena, Mode::Strict, Location{}, Variance::Covariant, unifierState};
 };
 
-TEST_SUITE_BEGIN("TryUnifyTests");
+TEST_SUITE_BEGIN(XorStr("TryUnifyTests"));
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "primitives_unify")
 {
@@ -120,13 +118,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_u
         f(a, b)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("a", toString(requireType("a")));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("b")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("b")));
+    CHECK_EQ("*unknown*", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_constrained")
@@ -138,13 +133,10 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "result_of_failed_typepack_unification_is_con
         local c = f(a, b)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("a", toString(requireType("a")));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("b")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("b")));
+    CHECK_EQ("*unknown*", toString(requireType("b")));
     CHECK_EQ("number", toString(requireType("c")));
 }
 
@@ -163,7 +155,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "typepack_unification_should_trim_free_tails"
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("(number) -> boolean", toString(requireType("f")));
 }
 
@@ -197,11 +189,11 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "variadics_should_use_reversed_properly")
         local x: string = f(1)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
-    CHECK_EQ(toString(tm->givenType), "number");
-    CHECK_EQ(toString(tm->wantedType), "string");
+    CHECK_EQ(toString(tm->givenType), XorStr("number"));
+    CHECK_EQ(toString(tm->wantedType), XorStr("string"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unification")
@@ -211,9 +203,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cli_41095_concat_log_in_sealed_table_unifica
         table.insert()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), "No overload for function accepts 0 arguments.");
-    CHECK_EQ(toString(result.errors[1]), "Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()");
+    lluz_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("No overload for function accepts 0 arguments."));
+    CHECK_EQ(toString(result.errors[1]), XorStr("Available overloads: ({a}, a) -> (); and ({a}, number, a) -> ()"));
 }
 
 TEST_CASE_FIXTURE(TryUnifyFixture, "free_tail_is_grown_properly")

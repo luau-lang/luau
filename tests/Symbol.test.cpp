@@ -1,14 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Symbol.h"
-#include "Luau/Ast.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Symbol.h"
+#include "lluz/Ast.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("SymbolTests");
+TEST_SUITE_BEGIN(XorStr("SymbolTests"));
 
 TEST_CASE("hashing_globals")
 {

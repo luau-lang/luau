@@ -1,5 +1,5 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Parser.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -8,7 +8,7 @@
 
 #include <limits.h>
 
-using namespace Luau;
+using namespace lluz;
 
 namespace
 {
@@ -37,39 +37,39 @@ std::string getParseError(const std::string& code)
     {
         f.parse(code);
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         // in general, tests check only the first error
         return e.getErrors().front().getMessage();
     }
 
-    throw std::runtime_error("Expected a parse error in '" + code + "'");
+    throw std::runtime_error(XorStr("Expected a parse error in '" + code + "'"));
 }
 
 } // namespace
 
-TEST_SUITE_BEGIN("AllocatorTests");
+TEST_SUITE_BEGIN(XorStr("AllocatorTests"));
 
 TEST_CASE("allocator_can_be_moved")
 {
     Counter* c = nullptr;
     auto inner = [&]() {
-        Luau::Allocator allocator;
+        lluz::Allocator allocator;
         c = allocator.alloc<Counter>();
-        Luau::Allocator moved{std::move(allocator)};
+        lluz::Allocator moved{std::move(allocator)};
         return moved;
     };
 
     Counter::instanceCount = 0;
-    Luau::Allocator a{inner()};
+    lluz::Allocator a{inner()};
 
     CHECK_EQ(1, c->id);
 }
 
 TEST_CASE("moved_out_Allocator_can_still_be_used")
 {
-    Luau::Allocator outer;
-    Luau::Allocator inner{std::move(outer)};
+    lluz::Allocator outer;
+    lluz::Allocator inner{std::move(outer)};
 
     int* i = outer.alloc<int>();
     REQUIRE(i != nullptr);
@@ -79,7 +79,7 @@ TEST_CASE("moved_out_Allocator_can_still_be_used")
 
 TEST_CASE("aligns_things")
 {
-    Luau::Allocator alloc;
+    lluz::Allocator alloc;
 
     char* one = alloc.alloc<char>();
     double* two = alloc.alloc<double>();
@@ -89,7 +89,7 @@ TEST_CASE("aligns_things")
 
 TEST_CASE("initial_double_is_aligned")
 {
-    Luau::Allocator alloc;
+    lluz::Allocator alloc;
 
     double* one = alloc.alloc<double>();
     CHECK_EQ(0, reinterpret_cast<intptr_t>(one) & (alignof(double) - 1));
@@ -97,23 +97,155 @@ TEST_CASE("initial_double_is_aligned")
 
 TEST_SUITE_END();
 
-TEST_SUITE_BEGIN("ParserTests");
+TEST_SUITE_BEGIN(XorStr("LexerTests"));
+
+TEST_CASE("broken_string_works")
+{
+    const std::string testInput = "[[";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    Lexeme lexeme = lexer.next();
+    CHECK_EQ(lexeme.type, Lexeme::Type::BrokenString);
+    CHECK_EQ(lexeme.location, lluz::Location(lluz::Position(0, 0), lluz::Position(0, 2)));
+}
+
+TEST_CASE("broken_comment")
+{
+    const std::string testInput = "--[[  ";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    Lexeme lexeme = lexer.next();
+    CHECK_EQ(lexeme.type, Lexeme::Type::BrokenComment);
+    CHECK_EQ(lexeme.location, lluz::Location(lluz::Position(0, 0), lluz::Position(0, 6)));
+}
+
+TEST_CASE("broken_comment_kept")
+{
+    const std::string testInput = "--[[  ";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    lexer.setSkipComments(true);
+    CHECK_EQ(lexer.next().type, Lexeme::Type::BrokenComment);
+}
+
+TEST_CASE("comment_skipped")
+{
+    const std::string testInput = "--  ";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    lexer.setSkipComments(true);
+    CHECK_EQ(lexer.next().type, Lexeme::Type::Eof);
+}
+
+TEST_CASE("multilineCommentWithLexemeInAndAfter")
+{
+    const std::string testInput = "--[[ function \n"
+                                  "]] end";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    Lexeme comment = lexer.next();
+    Lexeme end = lexer.next();
+
+    CHECK_EQ(comment.type, Lexeme::Type::BlockComment);
+    CHECK_EQ(comment.location, lluz::Location(lluz::Position(0, 0), lluz::Position(1, 2)));
+    CHECK_EQ(end.type, Lexeme::Type::ReservedEnd);
+    CHECK_EQ(end.location, lluz::Location(lluz::Position(1, 3), lluz::Position(1, 6)));
+}
+
+TEST_CASE("testBrokenEscapeTolerant")
+{
+    const std::string testInput = "'\\3729472897292378'";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    Lexeme item = lexer.next();
+
+    CHECK_EQ(item.type, Lexeme::QuotedString);
+    CHECK_EQ(item.location, lluz::Location(lluz::Position(0, 0), lluz::Position(0, int(testInput.size()))));
+}
+
+TEST_CASE("testBigDelimiters")
+{
+    const std::string testInput = "--[===[\n"
+                                  "\n"
+                                  "\n"
+                                  "\n"
+                                  "]===]";
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    Lexeme item = lexer.next();
+
+    CHECK_EQ(item.type, Lexeme::Type::BlockComment);
+    CHECK_EQ(item.location, lluz::Location(lluz::Position(0, 0), lluz::Position(4, 5)));
+}
+
+TEST_CASE("lookahead")
+{
+    const std::string testInput = "foo --[[ comment ]] bar : nil end";
+
+    lluz::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+    lexer.setSkipComments(true);
+    lexer.next(); // must call next() before reading data from lexer at least once
+
+    CHECK_EQ(lexer.current().type, Lexeme::Name);
+    CHECK_EQ(lexer.current().name, std::string("foo"));
+    CHECK_EQ(lexer.lookahead().type, Lexeme::Name);
+    CHECK_EQ(lexer.lookahead().name, std::string("bar"));
+
+    lexer.next();
+
+    CHECK_EQ(lexer.current().type, Lexeme::Name);
+    CHECK_EQ(lexer.current().name, std::string("bar"));
+    CHECK_EQ(lexer.lookahead().type, ':');
+
+    lexer.next();
+
+    CHECK_EQ(lexer.current().type, ':');
+    CHECK_EQ(lexer.lookahead().type, Lexeme::ReservedNil);
+
+    lexer.next();
+
+    CHECK_EQ(lexer.current().type, Lexeme::ReservedNil);
+    CHECK_EQ(lexer.lookahead().type, Lexeme::ReservedEnd);
+
+    lexer.next();
+
+    CHECK_EQ(lexer.current().type, Lexeme::ReservedEnd);
+    CHECK_EQ(lexer.lookahead().type, Lexeme::Eof);
+
+    lexer.next();
+
+    CHECK_EQ(lexer.current().type, Lexeme::Eof);
+    CHECK_EQ(lexer.lookahead().type, Lexeme::Eof);
+}
+
+TEST_SUITE_END();
+
+TEST_SUITE_BEGIN(XorStr("ParserTests"));
 
 TEST_CASE_FIXTURE(Fixture, "basic_parse")
 {
-    AstStat* stat = parse("print(\"Hello World!\")");
+    AstStat* stat = parse(XorStr("print(\"Hello World!\")"));
     REQUIRE(stat != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "can_haz_annotations")
 {
-    AstStatBlock* block = parse("local foo: string = \"Hello Types!\"");
+    AstStatBlock* block = parse(XorStr("local foo: string = \"Hello Types!\""));
     REQUIRE(block != nullptr);
 }
 
 TEST_CASE_FIXTURE(Fixture, "local_cannot_have_annotation_with_extensions_disabled")
 {
-    Luau::ParseOptions options;
+    lluz::ParseOptions options;
     options.allowTypeAnnotations = false;
 
     CHECK_THROWS_AS(parse("local foo: string = \"Hello Types!\"", options), std::exception);
@@ -151,7 +283,7 @@ TEST_CASE_FIXTURE(Fixture, "type_names_can_contain_dots")
 
 TEST_CASE_FIXTURE(Fixture, "functions_cannot_have_return_annotations_if_extensions_are_disabled")
 {
-    Luau::ParseOptions options;
+    lluz::ParseOptions options;
     options.allowTypeAnnotations = false;
 
     CHECK_THROWS_AS(parse("function foo(): number return 55 end", options), std::exception);
@@ -214,11 +346,11 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_disambiguate_from_functi
 
     AstTypeReference* ty0 = retTypes.data[0]->as<AstTypeReference>();
     REQUIRE(ty0 != nullptr);
-    REQUIRE(ty0->name == "number");
+    REQUIRE(ty0->name == XorStr("number"));
 
     AstTypeReference* ty1 = retTypes.data[1]->as<AstTypeReference>();
     REQUIRE(ty1 != nullptr);
-    REQUIRE(ty1->name == "string");
+    REQUIRE(ty1->name == XorStr("string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_type_should_parse_as_function_type_annotation_with_no_args")
@@ -246,7 +378,7 @@ TEST_CASE_FIXTURE(Fixture, "function_return_type_should_parse_as_function_type_a
 
     AstTypeReference* ty = funTy->returnTypes.types.data[0]->as<AstTypeReference>();
     REQUIRE(ty != nullptr);
-    REQUIRE(ty->name == "nil");
+    REQUIRE(ty->name == XorStr("nil"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "annotations_can_be_tables")
@@ -396,7 +528,7 @@ TEST_CASE_FIXTURE(Fixture, "return_type_is_an_intersection_type_if_led_with_one_
 
 TEST_CASE_FIXTURE(Fixture, "illegal_type_alias_if_extensions_are_disabled")
 {
-    Luau::ParseOptions options;
+    lluz::ParseOptions options;
     options.allowTypeAnnotations = false;
 
     CHECK_THROWS_AS(parse("type A = number", options), std::exception);
@@ -462,55 +594,55 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_messages")
     CHECK_EQ(getParseError(R"(
             local a: (number, number) -> (string
         )"),
-        "Expected ')' (to close '(' at line 2), got <eof>");
+        XorStr("Expected ')' (to close '(' at line 2), got <eof>"));
 
     CHECK_EQ(getParseError(R"(
             local a: (number, number) -> (
                 string
         )"),
-        "Expected ')' (to close '(' at line 2), got <eof>");
+        XorStr("Expected ')' (to close '(' at line 2), got <eof>"));
 
     CHECK_EQ(getParseError(R"(
             local a: (number, number)
         )"),
-        "Expected '->' when parsing function type, got <eof>");
+        XorStr("Expected '->' when parsing function type, got <eof>"));
 
     CHECK_EQ(getParseError(R"(
             local a: (number, number
         )"),
-        "Expected ')' (to close '(' at line 2), got <eof>");
+        XorStr("Expected ')' (to close '(' at line 2), got <eof>"));
 
     CHECK_EQ(getParseError(R"(
             local a: {foo: string,
         )"),
-        "Expected identifier when parsing table field, got <eof>");
+        XorStr("Expected identifier when parsing table field, got <eof>"));
 
     CHECK_EQ(getParseError(R"(
             local a: {foo: string
         )"),
-        "Expected '}' (to close '{' at line 2), got <eof>");
+        XorStr("Expected '}' (to close '{' at line 2), got <eof>"));
 
     CHECK_EQ(getParseError(R"(
             local a: { [string]: number, [number]: string }
         )"),
-        "Cannot have more than one table indexer");
+        XorStr("Cannot have more than one table indexer"));
 
     CHECK_EQ(getParseError(R"(
             type T = <a>foo
         )"),
-        "Expected '(' when parsing function parameters, got 'foo'");
+        XorStr("Expected '(' when parsing function parameters, got 'foo'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_intersection_and_union_not_allowed")
 {
-    matchParseError("type A = number & string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
+    matchParseError(XorStr("type A = number & string | boolean", "Mixing union and intersection types is not allowed; consider wrapping in parentheses."));
 }
 
 TEST_CASE_FIXTURE(Fixture, "mixed_intersection_and_union_allowed_when_parenthesized")
 {
     try
     {
-        parse("type A = (number & string) | boolean");
+        parse(XorStr("type A = (number & string) | boolean"));
     }
     catch (const ParseErrors& e)
     {
@@ -520,16 +652,16 @@ TEST_CASE_FIXTURE(Fixture, "mixed_intersection_and_union_allowed_when_parenthesi
 
 TEST_CASE_FIXTURE(Fixture, "cannot_write_multiple_values_in_type_groups")
 {
-    matchParseError("type F = ((string, number))", "Expected '->' when parsing function type, got ')'");
-    matchParseError("type F = () -> ((string, number))", "Expected '->' when parsing function type, got ')'");
+    matchParseError(XorStr("type F = ((string, number))", "Expected '->' when parsing function type, got ')'"));
+    matchParseError(XorStr("type F = () -> ((string, number))", "Expected '->' when parsing function type, got ')'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_error_messages")
 {
-    CHECK_EQ(getParseError("type 5 = number"), "Expected identifier when parsing type name, got '5'");
-    CHECK_EQ(getParseError("type A"), "Expected '=' when parsing type alias, got <eof>");
-    CHECK_EQ(getParseError("type A<"), "Expected identifier, got <eof>");
-    CHECK_EQ(getParseError("type A<B"), "Expected '>' (to close '<' at column 7), got <eof>");
+    CHECK_EQ(getParseError(XorStr("type 5 = number"), "Expected identifier when parsing type name, got '5'"));
+    CHECK_EQ(getParseError(XorStr("type A"), "Expected '=' when parsing type alias, got <eof>"));
+    CHECK_EQ(getParseError(XorStr("type A<"), "Expected identifier, got <eof>"));
+    CHECK_EQ(getParseError(XorStr("type A<B"), "Expected '>' (to close '<' at column 7), got <eof>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expression")
@@ -543,7 +675,7 @@ TEST_CASE_FIXTURE(Fixture, "type_assertion_expression")
 // TODO: Set a timer and crash if the timeout is exceeded.
 TEST_CASE_FIXTURE(Fixture, "last_line_does_not_have_to_be_blank")
 {
-    (void)parse("-- print('hello')");
+    (void)parse(XorStr("-- print('hello')"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expression_binds_tightly")
@@ -571,7 +703,7 @@ TEST_CASE_FIXTURE(Fixture, "type_assertion_expression_binds_tightly")
 
 TEST_CASE_FIXTURE(Fixture, "mode_is_unset_if_no_hot_comment")
 {
-    ParseResult result = parseEx("print('Hello World!')");
+    ParseResult result = parseEx(XorStr("print('Hello World!')"));
     CHECK(result.hotcomments.empty());
 }
 
@@ -627,7 +759,7 @@ TEST_CASE_FIXTURE(Fixture, "nocheck_mode")
 
 TEST_CASE_FIXTURE(Fixture, "vertical_space")
 {
-    ParseResult result = parseEx("a()\vb()");
+    ParseResult result = parseEx(XorStr("a()\vb()"));
     CHECK(result.errors.empty());
 }
 
@@ -636,12 +768,12 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_type_name")
     CHECK_EQ(getParseError(R"(
             local a: Foo.=
         )"),
-        "Expected identifier when parsing field name, got '='");
+        XorStr("Expected identifier when parsing field name, got '='"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
 {
-    AstStat* stat = parse("return 1, .5, 1.5, 1e-5, 1.5e-5, 12_345.1_25");
+    AstStat* stat = parse(XorStr("return 1, .5, 1.5, 1e-5, 1.5e-5, 12_345.1_25"));
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -656,7 +788,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_decimal")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
 {
-    AstStat* stat = parse("return 0xab, 0XAB05, 0xff_ff, 0xffffffffffffffff");
+    AstStat* stat = parse(XorStr("return 0xab, 0XAB05, 0xff_ff, 0xffffffffffffffff"));
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -669,7 +801,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_hexadecimal")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 {
-    AstStat* stat = parse("return 0b1, 0b0, 0b101010, 0b1111111111111111111111111111111111111111111111111111111111111111");
+    AstStat* stat = parse(XorStr("return 0b1, 0b0, 0b101010, 0b1111111111111111111111111111111111111111111111111111111111111111"));
     REQUIRE(stat != nullptr);
 
     AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -682,26 +814,26 @@ TEST_CASE_FIXTURE(Fixture, "parse_numbers_binary")
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_error")
 {
-    ScopedFastFlag luauErrorParseIntegerIssues{"LuauErrorParseIntegerIssues", true};
+    ScopedFastFlag lluzErrorParseIntegerIssues{"lluzErrorParseIntegerIssues", true};
 
-    CHECK_EQ(getParseError("return 0b123"), "Malformed number");
-    CHECK_EQ(getParseError("return 123x"), "Malformed number");
-    CHECK_EQ(getParseError("return 0xg"), "Malformed number");
-    CHECK_EQ(getParseError("return 0x0x123"), "Malformed number");
+    CHECK_EQ(getParseError(XorStr("return 0b123"), "Malformed number"));
+    CHECK_EQ(getParseError(XorStr("return 123x"), "Malformed number"));
+    CHECK_EQ(getParseError(XorStr("return 0xg"), "Malformed number"));
+    CHECK_EQ(getParseError(XorStr("return 0x0x123"), "Malformed number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_numbers_range_error")
 {
-    ScopedFastFlag luauErrorParseIntegerIssues{"LuauErrorParseIntegerIssues", true};
+    ScopedFastFlag lluzErrorParseIntegerIssues{"lluzErrorParseIntegerIssues", true};
 
-    CHECK_EQ(getParseError("return 0x10000000000000000"), "Integer number value is out of range");
-    CHECK_EQ(getParseError("return 0b10000000000000000000000000000000000000000000000000000000000000000"), "Integer number value is out of range");
+    CHECK_EQ(getParseError(XorStr("return 0x10000000000000000"), "Integer number value is out of range"));
+    CHECK_EQ(getParseError(XorStr("return 0b10000000000000000000000000000000000000000000000000000000000000000"), "Integer number value is out of range"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "break_return_not_last_error")
 {
-    CHECK_EQ(getParseError("return 0 print(5)"), "Expected <eof>, got 'print'");
-    CHECK_EQ(getParseError("while true do break print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
+    CHECK_EQ(getParseError(XorStr("return 0 print(5)"), "Expected <eof>, got 'print'"));
+    CHECK_EQ(getParseError(XorStr("while true do break print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_unicode")
@@ -709,12 +841,12 @@ TEST_CASE_FIXTURE(Fixture, "error_on_unicode")
     CHECK_EQ(getParseError(R"(
             local ☃ = 10
         )"),
-        "Expected identifier when parsing variable name, got Unicode character U+2603");
+        XorStr("Expected identifier when parsing variable name, got Unicode character U+2603"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "allow_unicode_in_string")
 {
-    ParseResult result = parseEx("local snowman = \"☃\"");
+    ParseResult result = parseEx(XorStr("local snowman = \"☃\""));
     CHECK(result.errors.empty());
 }
 
@@ -723,7 +855,7 @@ TEST_CASE_FIXTURE(Fixture, "error_on_confusable")
     CHECK_EQ(getParseError(R"(
             local pi = 3․13
         )"),
-        "Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)");
+        XorStr("Expected identifier when parsing expression, got Unicode character U+2024 (did you mean '.'?)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_non_utf8_sequence")
@@ -736,9 +868,9 @@ TEST_CASE_FIXTURE(Fixture, "error_on_non_utf8_sequence")
 
 TEST_CASE_FIXTURE(Fixture, "lex_broken_unicode")
 {
-    const std::string testInput = std::string("\xFF\xFE☃․");
+    const std::string testInput = std::string(XorStr("\xFF\xFE☃․"));
 
-    Luau::Allocator alloc;
+    lluz::Allocator alloc;
     AstNameTable table(alloc);
     Lexer lexer(testInput.c_str(), testInput.size(), table);
     Lexeme lexeme = lexer.current();
@@ -746,22 +878,22 @@ TEST_CASE_FIXTURE(Fixture, "lex_broken_unicode")
     lexeme = lexer.next();
     CHECK_EQ(lexeme.type, Lexeme::BrokenUnicode);
     CHECK_EQ(lexeme.codepoint, 0);
-    CHECK_EQ(lexeme.location, Luau::Location(Luau::Position(0, 0), Luau::Position(0, 1)));
+    CHECK_EQ(lexeme.location, lluz::Location(lluz::Position(0, 0), lluz::Position(0, 1)));
 
     lexeme = lexer.next();
     CHECK_EQ(lexeme.type, Lexeme::BrokenUnicode);
     CHECK_EQ(lexeme.codepoint, 0);
-    CHECK_EQ(lexeme.location, Luau::Location(Luau::Position(0, 1), Luau::Position(0, 2)));
+    CHECK_EQ(lexeme.location, lluz::Location(lluz::Position(0, 1), lluz::Position(0, 2)));
 
     lexeme = lexer.next();
     CHECK_EQ(lexeme.type, Lexeme::BrokenUnicode);
     CHECK_EQ(lexeme.codepoint, 0x2603);
-    CHECK_EQ(lexeme.location, Luau::Location(Luau::Position(0, 2), Luau::Position(0, 5)));
+    CHECK_EQ(lexeme.location, lluz::Location(lluz::Position(0, 2), lluz::Position(0, 5)));
 
     lexeme = lexer.next();
     CHECK_EQ(lexeme.type, Lexeme::BrokenUnicode);
     CHECK_EQ(lexeme.codepoint, 0x2024);
-    CHECK_EQ(lexeme.location, Luau::Location(Luau::Position(0, 5), Luau::Position(0, 8)));
+    CHECK_EQ(lexeme.location, lluz::Location(lluz::Position(0, 5), lluz::Position(0, 8)));
 
     lexeme = lexer.next();
     CHECK_EQ(lexeme.type, Lexeme::Eof);
@@ -799,7 +931,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_continue")
 
 TEST_CASE_FIXTURE(Fixture, "continue_not_last_error")
 {
-    CHECK_EQ(getParseError("while true do continue print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'");
+    CHECK_EQ(getParseError(XorStr("while true do continue print(5) end"), "Expected 'end' (to close 'do' at column 12), got 'print'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_export_type")
@@ -832,7 +964,7 @@ TEST_CASE_FIXTURE(Fixture, "export_is_an_identifier_only_when_followed_by_type")
         parse(R"(
             export function a() end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -842,7 +974,7 @@ TEST_CASE_FIXTURE(Fixture, "export_is_an_identifier_only_when_followed_by_type")
 
 TEST_CASE_FIXTURE(Fixture, "incomplete_statement_error")
 {
-    CHECK_EQ(getParseError("fiddlesticks"), "Incomplete statement: expected assignment or a function call");
+    CHECK_EQ(getParseError(XorStr("fiddlesticks"), "Incomplete statement: expected assignment or a function call"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment")
@@ -864,7 +996,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_call")
         parse(R"(
             a() += 5
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -879,7 +1011,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_not_lvalue")
         parse(R"(
             (a) += 5
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -894,7 +1026,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_multiple")
         parse(R"(
             a, b += 5
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -925,7 +1057,7 @@ function ItemCheck(tree)
   end
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -954,7 +1086,7 @@ function BottomUpTree(item, depth)
   end
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -975,7 +1107,7 @@ repeat
   print(3)
 until false
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1007,7 +1139,7 @@ local function ItemCheck(tree)
   end
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1039,7 +1171,7 @@ local function BottomUpTree(item, depth)
     return { item }
   end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1056,7 +1188,7 @@ function stringifyTable(t)
     local entries = {}
     for k, v in pairs(t) do
         -- if we find a nested table, convert that recursively
-        if type(v) == "table" then
+        if type(v) == XorStr("table") then
             v = stringifyTable(v)
         else
             v = tostring(v)
@@ -1072,7 +1204,7 @@ function stringifyTable(t)
     return ("{s}@s"):format(table.concat(entries, ", "), id)
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1091,7 +1223,7 @@ function stringifyTable(t)
     return foo
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1110,7 +1242,7 @@ function stringifyTable(t)
     return foo
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1129,7 +1261,7 @@ function stringifyTable(t)
     return foo
 end
         )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
     catch (const ParseErrors& e)
     {
@@ -1140,64 +1272,64 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_type_group")
 {
-    ScopedFastInt sfis{"LuauRecursionLimit", 20};
+    ScopedFastInt sfis{"lluzRecursionLimit", 20};
 
     matchParseError(
-        "function f(): (((((((((Fail))))))))) end", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+        XorStr("function f(): (((((((((Fail))))))))) end", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile"));
 
     matchParseError("function f(): () -> () -> () -> () -> () -> () -> () -> () -> () -> () -> () end",
-        "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+        XorStr("Exceeded allowed recursion depth; simplify your type annotation to make the code compile"));
 
     matchParseError(
-        "local t: {a: {b: {c: {d: {e: {f: {}}}}}}}", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile");
+        XorStr("local t: {a: {b: {c: {d: {e: {f: {}}}}}}}", "Exceeded allowed recursion depth; simplify your type annotation to make the code compile"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_if_statements")
 {
-    ScopedFastInt sfis{"LuauRecursionLimit", 10};
+    ScopedFastInt sfis{"lluzRecursionLimit", 10};
 
     matchParseErrorPrefix(
         "function f() if true then if true then if true then if true then if true then if true then if true then if true then if true "
         "then if true then if true then end end end end end end end end end end end end",
-        "Exceeded allowed recursion depth;");
+        XorStr("Exceeded allowed recursion depth;"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_changed_elseif_statements")
 {
-    ScopedFastInt sfis{"LuauRecursionLimit", 10};
+    ScopedFastInt sfis{"lluzRecursionLimit", 10};
 
     matchParseErrorPrefix(
         "function f() if false then elseif false then elseif false then elseif false then elseif false then elseif false then elseif "
         "false then elseif false then elseif false then elseif false then elseif false then end end",
-        "Exceeded allowed recursion depth;");
+        XorStr("Exceeded allowed recursion depth;"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions1")
 {
-    ScopedFastInt sfis{"LuauRecursionLimit", 10};
+    ScopedFastInt sfis{"lluzRecursionLimit", 10};
 
     matchParseError("function f() return if true then 1 elseif true then 2 elseif true then 3 elseif true then 4 elseif true then 5 elseif true then "
                     "6 elseif true then 7 elseif true then 8 elseif true then 9 elseif true then 10 else 11 end",
-        "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+        XorStr("Exceeded allowed recursion depth; simplify your expression to make the code compile"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_with_too_many_nested_ifelse_expressions2")
 {
-    ScopedFastInt sfis{"LuauRecursionLimit", 10};
+    ScopedFastInt sfis{"lluzRecursionLimit", 10};
 
     matchParseError(
         "function f() return if if if if if if if if if if true then false else true then false else true then false else true then false else true "
         "then false else true then false else true then false else true then false else true then false else true then 1 else 2 end",
-        "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+        XorStr("Exceeded allowed recursion depth; simplify your expression to make the code compile"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unparenthesized_function_return_type_list")
 {
     matchParseError(
-        "function foo(): string, number end", "Expected a statement, got ','; did you forget to wrap the list of return types in parentheses?");
+        XorStr("function foo(): string, number end", "Expected a statement, got ','; did you forget to wrap the list of return types in parentheses?"));
 
     matchParseError("function foo(): (number) -> string, string",
-        "Expected a statement, got ','; did you forget to wrap the list of return types in parentheses?");
+        XorStr("Expected a statement, got ','; did you forget to wrap the list of return types in parentheses?"));
 
     // Will throw if the parse fails
     parse(R"(
@@ -1221,17 +1353,17 @@ TEST_CASE_FIXTURE(Fixture, "short_array_types")
     CHECK(annotation->props.size == 0);
     REQUIRE(annotation->indexer);
     REQUIRE(annotation->indexer->indexType->is<AstTypeReference>());
-    CHECK(annotation->indexer->indexType->as<AstTypeReference>()->name == "number");
+    CHECK(annotation->indexer->indexType->as<AstTypeReference>()->name == XorStr("number"));
     REQUIRE(annotation->indexer->resultType->is<AstTypeReference>());
-    CHECK(annotation->indexer->resultType->as<AstTypeReference>()->name == "string");
+    CHECK(annotation->indexer->resultType->as<AstTypeReference>()->name == XorStr("string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "short_array_types_must_be_alone")
 {
-    matchParseError("local n: {string, number}", "Expected '}' (to close '{' at column 10), got ','");
-    matchParseError("local n: {[number]: string, number}", "Expected ':' when parsing table field, got '}'");
-    matchParseError("local n: {x: string, number}", "Expected ':' when parsing table field, got '}'");
-    matchParseError("local n: {x: string, nil}", "Expected identifier when parsing table field, got 'nil'");
+    matchParseError(XorStr("local n: {string, number}", "Expected '}' (to close '{' at column 10), got ','"));
+    matchParseError(XorStr("local n: {[number]: string, number}", "Expected ':' when parsing table field, got '}'"));
+    matchParseError(XorStr("local n: {x: string, number}", "Expected ':' when parsing table field, got '}'"));
+    matchParseError(XorStr("local n: {x: string, nil}", "Expected identifier when parsing table field, got 'nil'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "short_array_types_do_not_break_field_names")
@@ -1246,24 +1378,24 @@ TEST_CASE_FIXTURE(Fixture, "short_array_types_do_not_break_field_names")
     REQUIRE(annotation != nullptr);
     REQUIRE(annotation->props.size == 1);
     CHECK(!annotation->indexer);
-    REQUIRE(annotation->props.data[0].name == "string");
+    REQUIRE(annotation->props.data[0].name == XorStr("string"));
     REQUIRE(annotation->props.data[0].type->is<AstTypeReference>());
-    REQUIRE(annotation->props.data[0].type->as<AstTypeReference>()->name == "number");
+    REQUIRE(annotation->props.data[0].type->as<AstTypeReference>()->name == XorStr("number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "short_array_types_are_not_field_names_when_complex")
 {
-    matchParseError("local n: {string | number: number}", "Expected '}' (to close '{' at column 10), got ':'");
+    matchParseError(XorStr("local n: {string | number: number}", "Expected '}' (to close '{' at column 10), got ':'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "nil_can_not_be_a_field_name")
 {
-    matchParseError("local n: {nil: number}", "Expected '}' (to close '{' at column 10), got ':'");
+    matchParseError(XorStr("local n: {nil: number}", "Expected '}' (to close '{' at column 10), got ':'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_literal_call")
 {
-    AstStatBlock* stat = parse("do foo 'bar' end");
+    AstStatBlock* stat = parse(XorStr("do foo 'bar' end"));
     REQUIRE(stat != nullptr);
     AstStatBlock* dob = stat->body.data[0]->as<AstStatBlock>();
     AstStatExpr* stc = dob->body.data[0]->as<AstStatExpr>();
@@ -1272,12 +1404,12 @@ TEST_CASE_FIXTURE(Fixture, "string_literal_call")
     CHECK(ec->args.size == 1);
     AstExprConstantString* arg = ec->args.data[0]->as<AstExprConstantString>();
     REQUIRE(arg != nullptr);
-    CHECK(std::string(arg->value.data, arg->value.size) == "bar");
+    CHECK(std::string(arg->value.data, arg->value.size) == XorStr("bar"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "multiline_strings_newlines")
 {
-    AstStatBlock* stat = parse("return [=[\nfoo\r\nbar\n\nbaz\n]=]");
+    AstStatBlock* stat = parse(XorStr("return [=[\nfoo\r\nbar\n\nbaz\n]=]"));
     REQUIRE(stat != nullptr);
 
     AstStatReturn* ret = stat->body.data[0]->as<AstStatReturn>();
@@ -1285,7 +1417,7 @@ TEST_CASE_FIXTURE(Fixture, "multiline_strings_newlines")
 
     AstExprConstantString* str = ret->list.data[0]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK(std::string(str->value.data, str->value.size) == "foo\nbar\n\nbaz\n");
+    CHECK(std::string(str->value.data, str->value.size) == XorStr("foo\nbar\n\nbaz\n"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_literals_escape")
@@ -1309,28 +1441,28 @@ return
 
     str = ret->list.data[0]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo\n\r");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo\n\r"));
 
     str = ret->list.data[1]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo 4");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo 4"));
 
     str = ret->list.data[2]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo 4");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo 4"));
 
     str = ret->list.data[3]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo ");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo "));
 
     str = ret->list.data[4]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo\xd1\x91");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo\xd1\x91"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_literals_escape_newline")
 {
-    AstStatBlock* stat = parse("return \"foo\\z\n   bar\", \"foo\\\n    bar\", \"foo\\\r\nbar\"");
+    AstStatBlock* stat = parse(XorStr("return \"foo\\z\n   bar\", \"foo\\\n    bar\", \"foo\\\r\nbar\""));
 
     REQUIRE(stat != nullptr);
 
@@ -1342,15 +1474,15 @@ TEST_CASE_FIXTURE(Fixture, "string_literals_escape_newline")
 
     str = ret->list.data[0]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foobar");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foobar"));
 
     str = ret->list.data[1]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo\n    bar");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo\n    bar"));
 
     str = ret->list.data[2]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "foo\nbar");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("foo\nbar"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_literals_escapes")
@@ -1375,27 +1507,27 @@ return
 
     str = ret->list.data[0]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "\xAB");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("\xAB"));
 
     str = ret->list.data[1]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "\xE2\x80\xA4");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("\xE2\x80\xA4"));
 
     str = ret->list.data[2]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "\x79");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("\x79"));
 
     str = ret->list.data[3]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "\x01x");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("\x01x"));
 
     str = ret->list.data[4]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "\t");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("\t"));
 
     str = ret->list.data[5]->as<AstExprConstantString>();
     REQUIRE(str != nullptr);
-    CHECK_EQ(std::string(str->value.data, str->value.size), "\n");
+    CHECK_EQ(std::string(str->value.data, str->value.size), XorStr("\n"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_broken_comment")
@@ -1422,9 +1554,9 @@ TEST_CASE_FIXTURE(Fixture, "string_literals_escapes_broken")
 
 TEST_CASE_FIXTURE(Fixture, "string_literals_broken")
 {
-    matchParseError("return \"", "Malformed string");
-    matchParseError("return \"\\", "Malformed string");
-    matchParseError("return \"\r\r", "Malformed string");
+    matchParseError(XorStr("return \"", "Malformed string"));
+    matchParseError(XorStr("return \"\\", "Malformed string"));
+    matchParseError(XorStr("return \"\r\r", "Malformed string"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "number_literals")
@@ -1518,10 +1650,10 @@ TEST_CASE_FIXTURE(Fixture, "end_extent_doesnt_consume_comments_even_with_capture
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_loop_control")
 {
-    matchParseError("break", "break statement must be inside a loop");
-    matchParseError("repeat local function a() break end until false", "break statement must be inside a loop");
-    matchParseError("continue", "continue statement must be inside a loop");
-    matchParseError("repeat local function a() continue end until false", "continue statement must be inside a loop");
+    matchParseError(XorStr("break", "break statement must be inside a loop"));
+    matchParseError(XorStr("repeat local function a() break end until false", "break statement must be inside a loop"));
+    matchParseError(XorStr("continue", "continue statement must be inside a loop"));
+    matchParseError(XorStr("repeat local function a() continue end until false", "continue statement must be inside a loop"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
@@ -1532,7 +1664,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         (4, 7)
     )",
         "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
-        "statements");
+        XorStr("statements"));
 
     CHECK(result1.errors.size() == 1);
 
@@ -1542,7 +1674,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         (f :: any)['x'] = 2
     )",
         "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
-        "statements");
+        XorStr("statements"));
 
     CHECK(result2.errors.size() == 1);
 
@@ -1553,7 +1685,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         (1, 2)
     )",
         "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
-        "statements");
+        XorStr("statements"));
 
     CHECK(result3.errors.size() == 1);
 
@@ -1564,14 +1696,14 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_confusing_function_call")
         ().y = 5, 6
     )",
         "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of new statement; use ';' to separate "
-        "statements");
+        XorStr("statements"));
 
     CHECK(result4.errors.size() == 1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_varargs")
 {
-    matchParseError("function add(x, y) return ... end", "Cannot use '...' outside of a vararg function");
+    matchParseError(XorStr("function add(x, y) return ... end", "Cannot use '...' outside of a vararg function"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_assignment_lvalue")
@@ -1580,18 +1712,18 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_assignment_lvalue")
         local a, b
         (2), b = b, a
     )",
-        "Assigned expression must be a variable or a field");
+        XorStr("Assigned expression must be a variable or a field"));
 
     matchParseError(R"(
         local a, b
         a, (3) = b, a
     )",
-        "Assigned expression must be a variable or a field");
+        XorStr("Assigned expression must be a variable or a field"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_annotation")
 {
-    matchParseError("local a : 2 = 2", "Expected type, got '2'");
+    matchParseError(XorStr("local a : 2 = 2", "Expected type, got '2'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_declarations")
@@ -1608,22 +1740,22 @@ TEST_CASE_FIXTURE(Fixture, "parse_declarations")
 
     AstStatDeclareGlobal* global = stat->body.data[0]->as<AstStatDeclareGlobal>();
     REQUIRE(global);
-    CHECK(global->name == "foo");
+    CHECK(global->name == XorStr("foo"));
     CHECK(global->type);
 
     AstStatDeclareFunction* func = stat->body.data[1]->as<AstStatDeclareFunction>();
     REQUIRE(func);
-    CHECK(func->name == "bar");
+    CHECK(func->name == XorStr("bar"));
     REQUIRE_EQ(func->params.types.size, 1);
     REQUIRE_EQ(func->retTypes.types.size, 1);
 
     AstStatDeclareFunction* varFunc = stat->body.data[2]->as<AstStatDeclareFunction>();
     REQUIRE(varFunc);
-    CHECK(varFunc->name == "var");
+    CHECK(varFunc->name == XorStr("var"));
     CHECK(varFunc->params.tailType);
 
-    matchParseError("declare function foo(x)", "All declaration parameters must be annotated");
-    matchParseError("declare foo", "Expected ':' when parsing global variable declaration, got <eof>");
+    matchParseError(XorStr("declare function foo(x)", "All declaration parameters must be annotated"));
+    matchParseError(XorStr("declare foo", "Expected ':' when parsing global variable declaration, got <eof>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
@@ -1644,28 +1776,28 @@ TEST_CASE_FIXTURE(Fixture, "parse_class_declarations")
 
     AstStatDeclareClass* declaredClass = stat->body.data[0]->as<AstStatDeclareClass>();
     REQUIRE(declaredClass);
-    CHECK(declaredClass->name == "Foo");
+    CHECK(declaredClass->name == XorStr("Foo"));
     CHECK(!declaredClass->superName);
 
     REQUIRE_EQ(declaredClass->props.size, 2);
 
     AstDeclaredClassProp& prop = declaredClass->props.data[0];
-    CHECK(prop.name == "prop");
+    CHECK(prop.name == XorStr("prop"));
     CHECK(prop.ty->is<AstTypeReference>());
 
     AstDeclaredClassProp& method = declaredClass->props.data[1];
-    CHECK(method.name == "method");
+    CHECK(method.name == XorStr("method"));
     CHECK(method.ty->is<AstTypeFunction>());
 
     AstStatDeclareClass* subclass = stat->body.data[1]->as<AstStatDeclareClass>();
     REQUIRE(subclass);
     REQUIRE(subclass->superName);
-    CHECK(subclass->name == "Bar");
-    CHECK(*subclass->superName == "Foo");
+    CHECK(subclass->name == XorStr("Bar"));
+    CHECK(*subclass->superName == XorStr("Foo"));
 
     REQUIRE_EQ(subclass->props.size, 1);
     AstDeclaredClassProp& prop2 = subclass->props.data[0];
-    CHECK(prop2.name == "prop2");
+    CHECK(prop2.name == XorStr("prop2"));
     CHECK(prop2.ty->is<AstTypeReference>());
 }
 
@@ -1678,7 +1810,7 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
             function method2(self)
         end
         )",
-        "'self' must be present as the unannotated first parameter");
+        XorStr("'self' must be present as the unannotated first parameter"));
 
     REQUIRE_EQ(1, p1.root->body.size);
 
@@ -1693,7 +1825,7 @@ TEST_CASE_FIXTURE(Fixture, "class_method_properties")
             function method2()
         end
         )",
-        "All declaration parameters aside from 'self' must be annotated");
+        XorStr("All declaration parameters aside from 'self' must be annotated"));
 
     REQUIRE_EQ(1, p2.root->body.size);
 
@@ -1745,8 +1877,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_variadics")
 
 TEST_CASE_FIXTURE(Fixture, "variadics_must_be_last")
 {
-    matchParseError("function foo(): (...number, string) end", "Expected ')' (to close '(' at column 17), got ','");
-    matchParseError("type Foo = (...number, string) -> (...string, number)", "Expected ')' (to close '(' at column 12), got ','");
+    matchParseError(XorStr("function foo(): (...number, string) end", "Expected ')' (to close '(' at column 17), got ','"));
+    matchParseError(XorStr("type Foo = (...number, string) -> (...string, number)", "Expected ')' (to close '(' at column 12), got ','"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
@@ -1761,8 +1893,8 @@ TEST_CASE_FIXTURE(Fixture, "variadic_definition_parsing")
 
     REQUIRE(stat != nullptr);
 
-    matchParseError("declare function foo(...)", "All declaration parameters must be annotated");
-    matchParseError("declare class Foo function a(self, ...) end", "All declaration parameters aside from 'self' must be annotated");
+    matchParseError(XorStr("declare function foo(...)", "All declaration parameters must be annotated"));
+    matchParseError(XorStr("declare class Foo function a(self, ...) end", "All declaration parameters aside from 'self' must be annotated"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
@@ -1783,7 +1915,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
 
     AstTypePackGeneric* annot = fn->func->varargAnnotation->as<AstTypePackGeneric>();
     REQUIRE(annot != nullptr);
-    CHECK(annot->genericName == "a");
+    CHECK(annot->genericName == XorStr("a"));
 
     AstStatTypeAlias* alias = stat->body.data[1]->as<AstStatTypeAlias>();
     REQUIRE(alias != nullptr);
@@ -1792,11 +1924,11 @@ TEST_CASE_FIXTURE(Fixture, "generic_pack_parsing")
 
     AstTypePackGeneric* argAnnot = fnTy->argTypes.tailType->as<AstTypePackGeneric>();
     REQUIRE(argAnnot != nullptr);
-    CHECK(argAnnot->genericName == "a");
+    CHECK(argAnnot->genericName == XorStr("a"));
 
     AstTypePackGeneric* retAnnot = fnTy->returnTypes.tailType->as<AstTypePackGeneric>();
     REQUIRE(retAnnot != nullptr);
-    CHECK(retAnnot->genericName == "b");
+    CHECK(retAnnot->genericName == XorStr("b"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_function_declaration_parsing")
@@ -1817,7 +1949,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_function_declaration_parsing")
 TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
 {
     {
-        ParseResult result = parseEx("type MyFunc = (a: number, b: string, c: number) -> string");
+        ParseResult result = parseEx(XorStr("type MyFunc = (a: number, b: string, c: number) -> string"));
 
         AstStatBlock* stat = result.root;
         REQUIRE(stat != nullptr);
@@ -1829,11 +1961,11 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
         REQUIRE_EQ(func->argTypes.types.size, 3);
         REQUIRE_EQ(func->argNames.size, 3);
         REQUIRE(func->argNames.data[2]);
-        CHECK_EQ(func->argNames.data[2]->first, "c");
+        CHECK_EQ(func->argNames.data[2]->first, XorStr("c"));
     }
 
     {
-        ParseResult result = parseEx("type MyFunc = (a: number, string, c: number) -> string");
+        ParseResult result = parseEx(XorStr("type MyFunc = (a: number, string, c: number) -> string"));
 
         AstStatBlock* stat = result.root;
         REQUIRE(stat != nullptr);
@@ -1846,11 +1978,11 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
         REQUIRE_EQ(func->argNames.size, 3);
         REQUIRE(!func->argNames.data[1]);
         REQUIRE(func->argNames.data[2]);
-        CHECK_EQ(func->argNames.data[2]->first, "c");
+        CHECK_EQ(func->argNames.data[2]->first, XorStr("c"));
     }
 
     {
-        ParseResult result = parseEx("type MyFunc = (a: number, string, number) -> string");
+        ParseResult result = parseEx(XorStr("type MyFunc = (a: number, string, number) -> string"));
 
         AstStatBlock* stat = result.root;
         REQUIRE(stat != nullptr);
@@ -1866,7 +1998,7 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
     }
 
     {
-        ParseResult result = parseEx("type MyFunc = (a: number, b: string, c: number) -> (d: number, e: string, f: number) -> string");
+        ParseResult result = parseEx(XorStr("type MyFunc = (a: number, b: string, c: number) -> (d: number, e: string, f: number) -> string"));
 
         AstStatBlock* stat = result.root;
         REQUIRE(stat != nullptr);
@@ -1878,24 +2010,24 @@ TEST_CASE_FIXTURE(Fixture, "function_type_named_arguments")
         REQUIRE_EQ(func->argTypes.types.size, 3);
         REQUIRE_EQ(func->argNames.size, 3);
         REQUIRE(func->argNames.data[2]);
-        CHECK_EQ(func->argNames.data[2]->first, "c");
+        CHECK_EQ(func->argNames.data[2]->first, XorStr("c"));
         AstTypeFunction* funcRet = func->returnTypes.types.data[0]->as<AstTypeFunction>();
         REQUIRE(funcRet != nullptr);
         REQUIRE_EQ(funcRet->argTypes.types.size, 3);
         REQUIRE_EQ(funcRet->argNames.size, 3);
         REQUIRE(func->argNames.data[2]);
-        CHECK_EQ(funcRet->argNames.data[2]->first, "f");
+        CHECK_EQ(funcRet->argNames.data[2]->first, XorStr("f"));
     }
 
     matchParseError("type MyFunc = (a: number, b: string, c: number) -> (d: number, e: string, f: number)",
-        "Expected '->' when parsing function type, got <eof>");
+        XorStr("Expected '->' when parsing function type, got <eof>"));
 
-    matchParseError("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'");
+    matchParseError(XorStr("type MyFunc = (number) -> (d: number) <a, b, c> -> number", "Expected '->' when parsing function type, got '<'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_type_matching_parenthesis")
 {
-    matchParseError("local a: <T>(number -> string", "Expected ')' (to close '(' at column 13), got '->'");
+    matchParseError(XorStr("local a: <T>(number -> string", "Expected ')' (to close '(' at column 13), got '->'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_type_alias_default_type")
@@ -1930,7 +2062,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_type_pack_errors")
 TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 {
     {
-        AstStat* stat = parse("return if true then 1 else 2");
+        AstStat* stat = parse(XorStr("return if true then 1 else 2"));
 
         REQUIRE(stat != nullptr);
         AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -1941,7 +2073,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
     }
 
     {
-        AstStat* stat = parse("return if true then 1 elseif true then 2 else 3");
+        AstStat* stat = parse(XorStr("return if true then 1 elseif true then 2 else 3"));
 
         REQUIRE(stat != nullptr);
         AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -1955,7 +2087,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 
     // Use "else if" as opposed to elseif
     {
-        AstStat* stat = parse("return if true then 1 else if true then 2 else 3");
+        AstStat* stat = parse(XorStr("return if true then 1 else if true then 2 else 3"));
 
         REQUIRE(stat != nullptr);
         AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -1969,7 +2101,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_if_else_expression")
 
     // Use an if-else expression as the conditional expression of an if-else expression
     {
-        AstStat* stat = parse("return if if true then false else true then 1 else 2");
+        AstStat* stat = parse(XorStr("return if if true then false else true then 1 else 2"));
 
         REQUIRE(stat != nullptr);
         AstStatReturn* str = stat->as<AstStatBlock>()->body.data[0]->as<AstStatReturn>();
@@ -1996,16 +2128,16 @@ type C<X...> = Packed<(number, X...)>
 
 TEST_CASE_FIXTURE(Fixture, "invalid_type_forms")
 {
-    ScopedFastFlag luauFixNamedFunctionParse{"LuauFixNamedFunctionParse", true};
+    ScopedFastFlag lluzFixNamedFunctionParse{"lluzFixNamedFunctionParse", true};
 
-    matchParseError("type A = (b: number)", "Expected '->' when parsing function type, got <eof>");
-    matchParseError("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'");
-    matchParseError("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'");
+    matchParseError(XorStr("type A = (b: number)", "Expected '->' when parsing function type, got <eof>"));
+    matchParseError(XorStr("type P<T...> = () -> T... type B = P<(x: number, y: string)>", "Expected '->' when parsing function type, got '>'"));
+    matchParseError(XorStr("type F<T... = (a: string)> = (T...) -> ()", "Expected '->' when parsing function type, got '>'"));
 }
 
 TEST_SUITE_END();
 
-TEST_SUITE_BEGIN("ParseErrorRecovery");
+TEST_SUITE_BEGIN(XorStr("ParseErrorRecovery"));
 
 TEST_CASE_FIXTURE(Fixture, "multiple_parse_errors")
 {
@@ -2015,9 +2147,9 @@ TEST_CASE_FIXTURE(Fixture, "multiple_parse_errors")
 local a = 3 * (
 return a +
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(2, e.getErrors().size());
     }
@@ -2033,9 +2165,9 @@ function a(a, b) return a + b end
 some
 a(2, 5)
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
     }
@@ -2045,10 +2177,10 @@ TEST_CASE_FIXTURE(Fixture, "statement_error_recovery_unexpected")
 {
     try
     {
-        parse(R"(+)");
-        FAIL("Expected ParseErrors to be thrown");
+        parse(RXorStr("(+)"));
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
     }
@@ -2062,9 +2194,9 @@ TEST_CASE_FIXTURE(Fixture, "extra_token_in_consume")
 function test + (a, f) return a + f end
 return test(2, 3)
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
         CHECK_EQ("Expected '(' when parsing function, got '+'", e.getErrors().front().getMessage());
@@ -2079,9 +2211,9 @@ TEST_CASE_FIXTURE(Fixture, "extra_token_in_consume_match")
 function test(a, f+) return a + f end
 return test(2, 3)
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
         CHECK_EQ("Expected ')' (to close '(' at column 14), got '+'", e.getErrors().front().getMessage());
@@ -2098,9 +2230,9 @@ if true then
 then
 end
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
         CHECK_EQ("Expected 'end' (to close 'then' at line 2), got 'then'", e.getErrors().front().getMessage());
@@ -2114,9 +2246,9 @@ TEST_CASE_FIXTURE(Fixture, "extra_table_indexer_recovery")
         parse(R"(
 local a : { [string] : number, [number] : string, count: number }
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
     }
@@ -2124,14 +2256,14 @@ local a : { [string] : number, [number] : string, count: number }
 
 TEST_CASE_FIXTURE(Fixture, "recovery_error_limit_1")
 {
-    ScopedFastInt luauParseErrorLimit("LuauParseErrorLimit", 1);
+    ScopedFastInt lluzParseErrorLimit("lluzParseErrorLimit", 1);
 
     try
     {
-        parse("local a = ");
-        FAIL("Expected ParseErrors to be thrown");
+        parse(XorStr("local a = "));
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(1, e.getErrors().size());
         CHECK_EQ(e.getErrors().front().getMessage(), e.what());
@@ -2140,14 +2272,14 @@ TEST_CASE_FIXTURE(Fixture, "recovery_error_limit_1")
 
 TEST_CASE_FIXTURE(Fixture, "recovery_error_limit_2")
 {
-    ScopedFastInt luauParseErrorLimit("LuauParseErrorLimit", 2);
+    ScopedFastInt lluzParseErrorLimit("lluzParseErrorLimit", 2);
 
     try
     {
-        parse("escape escape escape");
-        FAIL("Expected ParseErrors to be thrown");
+        parse(XorStr("escape escape escape"));
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(3, e.getErrors().size());
         CHECK_EQ("3 parse errors", std::string(e.what()));
@@ -2175,7 +2307,7 @@ TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
         {
             parse(codeWithErrors);
         }
-        catch (const Luau::ParseErrors&)
+        catch (const lluz::ParseErrors&)
         {
         }
 
@@ -2194,9 +2326,9 @@ TEST_CASE_FIXTURE(Fixture, "recovery_of_parenthesized_expressions")
         try
         {
             parse(codeWithErrors);
-            FAIL("Expected ParseErrors to be thrown");
+            FAIL(XorStr("Expected ParseErrors to be thrown"));
         }
-        catch (const Luau::ParseErrors& e)
+        catch (const lluz::ParseErrors& e)
         {
             CHECK_EQ(expectedErrorCount, e.getErrors().size());
             checkAstEquivalence(codeWithErrors, code);
@@ -2303,17 +2435,17 @@ TEST_CASE_FIXTURE(Fixture, "incomplete_method_call_still_yields_an_AstExprIndexN
 TEST_CASE_FIXTURE(Fixture, "recover_confusables")
 {
     // Binary
-    matchParseError("local a = 4 != 10", "Unexpected '!=', did you mean '~='?");
-    matchParseError("local a = true && false", "Unexpected '&&', did you mean 'and'?");
-    matchParseError("local a = false || true", "Unexpected '||', did you mean 'or'?");
+    matchParseError(XorStr("local a = 4 != 10", "Unexpected '!=', did you mean '~='?"));
+    matchParseError(XorStr("local a = true && false", "Unexpected '&&', did you mean 'and'?"));
+    matchParseError(XorStr("local a = false || true", "Unexpected '||', did you mean 'or'?"));
 
     // Unary
-    matchParseError("local a = !false", "Unexpected '!', did you mean 'not'?");
+    matchParseError(XorStr("local a = !false", "Unexpected '!', did you mean 'not'?"));
 
     // Check that separate tokens are not considered as a single one
-    matchParseError("local a = 4 ! = 10", "Expected identifier when parsing expression, got '!'");
-    matchParseError("local a = true & & false", "Expected identifier when parsing expression, got '&'");
-    matchParseError("local a = false | | true", "Expected identifier when parsing expression, got '|'");
+    matchParseError(XorStr("local a = 4 ! = 10", "Expected identifier when parsing expression, got '!'"));
+    matchParseError(XorStr("local a = true & & false", "Expected identifier when parsing expression, got '&'"));
+    matchParseError(XorStr("local a = false | | true", "Expected identifier when parsing expression, got '|'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "capture_comments")
@@ -2382,9 +2514,9 @@ type Fn = (
     string | number | ()
 ) -> any
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ("Expected '->' after '()' when parsing function type; did you mean 'nil'?", e.getErrors().front().getMessage());
     }
@@ -2392,30 +2524,30 @@ type Fn = (
     // If we have arguments or generics, don't use special case
     try
     {
-        parse(R"(type Fn = (any, string | number | (number, number)) -> any)");
-        FAIL("Expected ParseErrors to be thrown");
+        parse(RXorStr("(type Fn = (any, string | number | (number, number)) -> any)"));
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ("Expected '->' when parsing function type, got ')'", e.getErrors().front().getMessage());
     }
 
     try
     {
-        parse(R"(type Fn = (any, string | number | <a>()) -> any)");
-        FAIL("Expected ParseErrors to be thrown");
+        parse(RXorStr("(type Fn = (any, string | number | <a>()) -> any)"));
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ("Expected '->' when parsing function type, got ')'", e.getErrors().front().getMessage());
     }
 
     try
     {
-        parse(R"(type Fn = (any, string | number | <a...>()) -> any)");
-        FAIL("Expected ParseErrors to be thrown");
+        parse(RXorStr("(type Fn = (any, string | number | <a...>()) -> any)"));
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ("Expected '->' when parsing function type, got ')'", e.getErrors().front().getMessage());
     }
@@ -2439,9 +2571,9 @@ TEST_CASE_FIXTURE(Fixture, "generic_type_list_recovery")
 local function foo<T..., U>(a: U, ...: T...): (U, ...T) return a, ... end
 return foo(1, 2 -- to check for a second error after recovery
 )");
-        FAIL("Expected ParseErrors to be thrown");
+        FAIL(XorStr("Expected ParseErrors to be thrown"));
     }
-    catch (const Luau::ParseErrors& e)
+    catch (const lluz::ParseErrors& e)
     {
         CHECK_EQ(2, e.getErrors().size());
         CHECK_EQ("Generic types come before generic type packs", e.getErrors().front().getMessage());
@@ -2516,6 +2648,7 @@ type Z<T> = { a: string | T..., b: number }
 
 TEST_CASE_FIXTURE(Fixture, "recover_function_return_type_annotations")
 {
+    ScopedFastFlag sff{"lluzReturnTypeTokenConfusion", true};
     ParseResult result = tryParse(R"(
 type Custom<A, B, C> = { x: A, y: B, z: C }
 type Packed<A...> = { x: (A...) -> () }
@@ -2525,14 +2658,14 @@ local function f(x: number) -> Custom<string, boolean, number>
 end
     )");
     REQUIRE_EQ(3, result.errors.size());
-    CHECK_EQ(result.errors[0].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
-    CHECK_EQ(result.errors[1].getMessage(), "Return types in function type annotations are written after '->' instead of ':'");
-    CHECK_EQ(result.errors[2].getMessage(), "Function return type annotations are written after ':' instead of '->'");
+    CHECK_EQ(result.errors[0].getMessage(), XorStr("Return types in function type annotations are written after '->' instead of ':'"));
+    CHECK_EQ(result.errors[1].getMessage(), XorStr("Return types in function type annotations are written after '->' instead of ':'"));
+    CHECK_EQ(result.errors[2].getMessage(), XorStr("Function return type annotations are written after ':' instead of '->'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
 {
-    ScopedFastFlag sff{"LuauParserFunctionKeywordAsTypeHelp", true};
+    ScopedFastFlag sff{"lluzParserFunctionKeywordAsTypeHelp", true};
     ParseResult result = tryParse(R"(
         type Foo = function
     )");

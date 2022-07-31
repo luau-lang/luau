@@ -1,21 +1,19 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
-
-TEST_SUITE_BEGIN("TypeInferLoops");
+TEST_SUITE_BEGIN(XorStr("TypeInferLoops"));
 
 TEST_CASE_FIXTURE(Fixture, "for_loop")
 {
@@ -26,7 +24,7 @@ TEST_CASE_FIXTURE(Fixture, "for_loop")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("q"));
 }
@@ -42,7 +40,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("n"));
     CHECK_EQ(*typeChecker.stringType, *requireType("s"));
@@ -59,7 +57,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_next")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("n"));
     CHECK_EQ(*typeChecker.stringType, *requireType("s"));
@@ -75,7 +73,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_with_an_iterator_of_type_any")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
@@ -86,7 +84,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_should_fail_with_non_function_iterator")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Cannot call non-function string", toString(result.errors[0]));
 }
 
@@ -106,7 +104,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
@@ -123,7 +121,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_ch
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
@@ -143,11 +141,8 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
 
     CHECK_EQ(2, result.errors.size());
 
-    TypeId p = requireType("p");
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(p));
-    else
-        CHECK_EQ("<error-type>", toString(p));
+    TypeId p = requireType(XorStr("p"));
+    CHECK_EQ("*unknown*", toString(p));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
@@ -159,7 +154,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     REQUIRE(get<CannotCallNonFunction>(result.errors[0]));
 }
@@ -199,7 +194,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_factory_not_returning_t
         for p in primes3() do print(p) end -- no error
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
@@ -223,7 +218,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args
         for p in prime_iter do print(p) end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
@@ -244,7 +239,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -261,7 +256,7 @@ TEST_CASE_FIXTURE(Fixture, "while_loop")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.numberType, *requireType("i"));
 }
@@ -275,7 +270,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop")
         until true
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.stringType, *requireType("i"));
 }
@@ -288,7 +283,7 @@ TEST_CASE_FIXTURE(Fixture, "repeat_loop_condition_binds_to_its_block")
         until x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "symbols_in_repeat_block_should_not_be_visible_beyond_until_condition")
@@ -301,7 +296,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "symbols_in_repeat_block_should_not_be_visibl
         print(x)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_free")
@@ -316,7 +311,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "varlist_declared_by_for_in_loop_should_be_fr
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "properly_infer_iteratee_is_a_free_table")
@@ -329,7 +324,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "properly_infer_iteratee_is_a_free_table")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_while")
@@ -342,11 +337,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_scope_locals_while")
         print(a) -- oops!
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     UnknownSymbol* us = get<UnknownSymbol>(result.errors[0]);
     REQUIRE(us);
-    CHECK_EQ(us->name, "a");
+    CHECK_EQ(us->name, XorStr("a"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_produces_integral_indices")
@@ -356,7 +351,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_produces_integral_indices")
         for i, e in ipairs({}) do key = i end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     REQUIRE_EQ("number", toString(requireType("key")));
 }
@@ -394,7 +389,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(0, result);
+        lluz_REQUIRE_ERROR_COUNT(0, result);
     }
 
     {
@@ -410,7 +405,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             reachablecodepath(4)
         )");
 
-        LUAU_REQUIRE_ERRORS(result);
+        lluz_REQUIRE_ERRORS(result);
         CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
     }
 
@@ -426,7 +421,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(0, result);
+        lluz_REQUIRE_ERROR_COUNT(0, result);
     }
 
     {
@@ -443,7 +438,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             reachablecodepath(4)
         )");
 
-        LUAU_REQUIRE_ERRORS(result);
+        lluz_REQUIRE_ERRORS(result);
         CHECK(get<FunctionExitsWithoutReturning>(result.errors[0]));
     }
 
@@ -459,7 +454,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "unreachable_code_after_infinite_loop")
             unreachablecodepath(4)
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(0, result);
+        lluz_REQUIRE_ERROR_COUNT(0, result);
     }
 }
 
@@ -473,7 +468,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_typecheck_crash_on_empty_optional")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
@@ -503,7 +498,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    lluz_REQUIRE_ERROR_COUNT(0, result);
     CHECK_EQ(*typeChecker.numberType, *requireType("key"));
 }
 
@@ -517,11 +512,11 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    lluz_REQUIRE_ERROR_COUNT(0, result);
     CHECK_EQ(*typeChecker.nilType, *requireType("extra"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
+TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -529,22 +524,11 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
     CHECK_EQ("Cannot iterate over a table without indexer", ge->message);
-}
-
-TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
-{
-    CheckResult result = check(Mode::Nonstrict, R"(
-        local t = {}
-        for k, v in t do
-        end
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")
@@ -556,7 +540,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    lluz_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_SUITE_END();

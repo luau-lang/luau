@@ -1,8 +1,8 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Frontend.h"
-#include "Luau/RequireTracer.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Frontend.h"
+#include "lluz/RequireTracer.h"
 
 #include "Fixture.h"
 
@@ -10,7 +10,7 @@
 
 #include <algorithm>
 
-using namespace Luau;
+using namespace lluz;
 
 namespace
 {
@@ -49,10 +49,10 @@ struct NaiveFileResolver : NullFileResolver
     {
         if (AstExprGlobal* g = expr->as<AstExprGlobal>())
         {
-            if (g->name == "Modules")
+            if (g->name == XorStr("Modules"))
                 return ModuleInfo{"Modules"};
 
-            if (g->name == "game")
+            if (g->name == XorStr("game"))
                 return ModuleInfo{"game"};
         }
         else if (AstExprIndexName* i = expr->as<AstExprIndexName>())
@@ -66,7 +66,7 @@ struct NaiveFileResolver : NullFileResolver
             {
                 AstName func = call->func->as<AstExprIndexName>()->index;
 
-                if (func == "GetService" && context->name == "game")
+                if (func == XorStr("GetService") && context->name == XorStr("game"))
                     return ModuleInfo{"game/" + std::string(index->value.data, index->value.size)};
             }
         }
@@ -81,12 +81,12 @@ struct FrontendFixture : BuiltinsFixture
 {
     FrontendFixture()
     {
-        addGlobalBinding(typeChecker, "game", frontend.typeChecker.anyType, "@test");
-        addGlobalBinding(typeChecker, "script", frontend.typeChecker.anyType, "@test");
+        addGlobalBinding(typeChecker, XorStr("game", frontend.typeChecker.anyType, "@test"));
+        addGlobalBinding(typeChecker, XorStr("script", frontend.typeChecker.anyType, "@test"));
     }
 };
 
-TEST_SUITE_BEGIN("FrontendTest");
+TEST_SUITE_BEGIN(XorStr("FrontendTest"));
 
 TEST_CASE_FIXTURE(FrontendFixture, "find_a_require")
 {
@@ -96,9 +96,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "find_a_require")
 
     NaiveFileResolver naiveFileResolver;
 
-    auto res = traceRequires(&naiveFileResolver, program, "");
+    auto res = traceRequires(&naiveFileResolver, program, XorStr(""));
     CHECK_EQ(1, res.requireList.size());
-    CHECK_EQ(res.requireList[0].first, "Modules/Foo/Bar");
+    CHECK_EQ(res.requireList[0].first, XorStr("Modules/Foo/Bar"));
 }
 
 // It could be argued that this should not work.
@@ -112,7 +112,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "find_a_require_inside_a_function")
 
     NaiveFileResolver naiveFileResolver;
 
-    auto res = traceRequires(&naiveFileResolver, program, "");
+    auto res = traceRequires(&naiveFileResolver, program, XorStr(""));
     CHECK_EQ(1, res.requireList.size());
 }
 
@@ -137,7 +137,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "real_source")
 
     NaiveFileResolver naiveFileResolver;
 
-    auto res = traceRequires(&naiveFileResolver, program, "");
+    auto res = traceRequires(&naiveFileResolver, program, XorStr(""));
     CHECK_EQ(8, res.requireList.size());
 }
 
@@ -150,12 +150,12 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_dependent_scripts")
         return {b_value = A.hello}
     )";
 
-    frontend.check("game/Gui/Modules/B");
+    frontend.check(XorStr("game/Gui/Modules/B"));
 
     ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
     REQUIRE(bModule != nullptr);
     CHECK(bModule->errors.empty());
-    Luau::dumpErrors(bModule);
+    lluz::dumpErrors(bModule);
 
     auto bExports = first(bModule->getModuleScope()->returnType);
     REQUIRE(!!bExports);
@@ -188,8 +188,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_cyclically_dependent_scr
         return {}
     )";
 
-    CheckResult result1 = frontend.check("game/Gui/Modules/B");
-    LUAU_REQUIRE_ERROR_COUNT(4, result1);
+    CheckResult result1 = frontend.check(XorStr("game/Gui/Modules/B"));
+    lluz_REQUIRE_ERROR_COUNT(4, result1);
 
     CHECK_MESSAGE(get<ModuleHasCyclicDependency>(result1.errors[0]), "Should have been a ModuleHasCyclicDependency: " << toString(result1.errors[0]));
 
@@ -197,8 +197,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "automatically_check_cyclically_dependent_scr
 
     CHECK_MESSAGE(get<ModuleHasCyclicDependency>(result1.errors[2]), "Should have been a ModuleHasCyclicDependency: " << toString(result1.errors[2]));
 
-    CheckResult result2 = frontend.check("game/Gui/Modules/D");
-    LUAU_REQUIRE_ERROR_COUNT(0, result2);
+    CheckResult result2 = frontend.check(XorStr("game/Gui/Modules/D"));
+    lluz_REQUIRE_ERROR_COUNT(0, result2);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "any_annotation_breaks_cycle")
@@ -214,8 +214,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "any_annotation_breaks_cycle")
         return {hello = A.hello}
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/A"));
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "nocheck_modules_are_typed")
@@ -237,8 +237,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_modules_are_typed")
         local five : A.Foo = 5
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/C");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/C"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ModulePtr aModule = frontend.moduleResolver.modules["game/Gui/Modules/A"];
     REQUIRE(bool(aModule));
@@ -269,8 +269,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_detection_between_check_and_nocheck")
         return {hello = A.hello}
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/A"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
@@ -294,8 +294,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "nocheck_cycle_used_by_checked")
         return {a=A, b=B}
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/C");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/C"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ModulePtr cModule = frontend.moduleResolver.modules["game/Gui/Modules/C"];
     REQUIRE(bool(cModule));
@@ -320,8 +320,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_detection_disabled_in_nocheck")
         return {hello = A.hello}
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/A"));
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_errors_can_be_fixed")
@@ -337,8 +337,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_errors_can_be_fixed")
         return {hello = A.hello}
     )";
 
-    CheckResult result1 = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(2, result1);
+    CheckResult result1 = frontend.check(XorStr("game/Gui/Modules/A"));
+    lluz_REQUIRE_ERROR_COUNT(2, result1);
 
     CHECK_MESSAGE(get<ModuleHasCyclicDependency>(result1.errors[0]), "Should have been a ModuleHasCyclicDependency: " << toString(result1.errors[0]));
 
@@ -347,10 +347,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_errors_can_be_fixed")
     fileResolver.source["game/Gui/Modules/B"] = R"(
         return {hello = 42}
     )";
-    frontend.markDirty("game/Gui/Modules/B");
+    frontend.markDirty(XorStr("game/Gui/Modules/B"));
 
-    CheckResult result2 = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_NO_ERRORS(result2);
+    CheckResult result2 = frontend.check(XorStr("game/Gui/Modules/A"));
+    lluz_REQUIRE_NO_ERRORS(result2);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_error_paths")
@@ -366,22 +366,22 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_error_paths")
         return {hello = A.hello}
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/A"));
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     auto ce1 = get<ModuleHasCyclicDependency>(result.errors[0]);
     REQUIRE(ce1);
-    CHECK_EQ(result.errors[0].moduleName, "game/Gui/Modules/B");
+    CHECK_EQ(result.errors[0].moduleName, XorStr("game/Gui/Modules/B"));
     REQUIRE_EQ(ce1->cycle.size(), 2);
-    CHECK_EQ(ce1->cycle[0], "game/Gui/Modules/A");
-    CHECK_EQ(ce1->cycle[1], "game/Gui/Modules/B");
+    CHECK_EQ(ce1->cycle[0], XorStr("game/Gui/Modules/A"));
+    CHECK_EQ(ce1->cycle[1], XorStr("game/Gui/Modules/B"));
 
     auto ce2 = get<ModuleHasCyclicDependency>(result.errors[1]);
     REQUIRE(ce2);
-    CHECK_EQ(result.errors[1].moduleName, "game/Gui/Modules/A");
+    CHECK_EQ(result.errors[1].moduleName, XorStr("game/Gui/Modules/A"));
     REQUIRE_EQ(ce2->cycle.size(), 2);
-    CHECK_EQ(ce2->cycle[0], "game/Gui/Modules/B");
-    CHECK_EQ(ce2->cycle[1], "game/Gui/Modules/A");
+    CHECK_EQ(ce2->cycle[0], XorStr("game/Gui/Modules/B"));
+    CHECK_EQ(ce2->cycle[1], XorStr("game/Gui/Modules/A"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
@@ -390,20 +390,20 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface")
         return {hello = 2}
     )";
 
-    CheckResult result = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["game/A"] = R"(
         local me = require(game.A)
         return {hello = 2}
     )";
-    frontend.markDirty("game/A");
+    frontend.markDirty(XorStr("game/A"));
 
-    result = frontend.check("game/A");
-    LUAU_REQUIRE_ERRORS(result);
+    result = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_ERRORS(result);
 
-    auto ty = requireType("game/A", "me");
-    CHECK_EQ(toString(ty), "any");
+    auto ty = requireType(XorStr("game/A", "me"));
+    CHECK_EQ(toString(ty), XorStr("any"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
@@ -412,36 +412,36 @@ TEST_CASE_FIXTURE(FrontendFixture, "cycle_incremental_type_surface_longer")
         return {mod_a = 2}
     )";
 
-    CheckResult result = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["game/B"] = R"(
         local me = require(game.A)
         return {mod_b = 4}
     )";
 
-    result = frontend.check("game/B");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    result = frontend.check(XorStr("game/B"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["game/A"] = R"(
         local me = require(game.B)
         return {mod_a_prime = 3}
     )";
 
-    frontend.markDirty("game/A");
-    frontend.markDirty("game/B");
+    frontend.markDirty(XorStr("game/A"));
+    frontend.markDirty(XorStr("game/B"));
 
-    result = frontend.check("game/A");
-    LUAU_REQUIRE_ERRORS(result);
+    result = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_ERRORS(result);
 
-    TypeId tyA = requireType("game/A", "me");
-    CHECK_EQ(toString(tyA), "any");
+    TypeId tyA = requireType(XorStr("game/A", "me"));
+    CHECK_EQ(toString(tyA), XorStr("any"));
 
-    result = frontend.check("game/B");
-    LUAU_REQUIRE_ERRORS(result);
+    result = frontend.check(XorStr("game/B"));
+    lluz_REQUIRE_ERRORS(result);
 
-    TypeId tyB = requireType("game/B", "me");
-    CHECK_EQ(toString(tyB), "any");
+    TypeId tyB = requireType(XorStr("game/B", "me"));
+    CHECK_EQ(toString(tyB), XorStr("any"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
@@ -456,7 +456,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
         end
     )";
 
-    frontend.check("Modules/A");
+    frontend.check(XorStr("Modules/A"));
 
     fileResolver.source["Modules/A"] = R"(
         -- We have fixed the lint error, but we did not tell the Frontend that the file is changed!
@@ -465,7 +465,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "dont_reparse_clean_file_when_linting")
 
     configResolver.defaultConfig.enabledLint.enableWarning(LintWarning::Code_ForRange);
 
-    LintResult lintResult = frontend.lint("Modules/A");
+    LintResult lintResult = frontend.lint(XorStr("Modules/A"));
 
     CHECK_EQ(1, lintResult.warnings.size());
 }
@@ -479,16 +479,16 @@ TEST_CASE_FIXTURE(FrontendFixture, "dont_recheck_script_that_hasnt_been_marked_d
         return {b_value = A.hello}
     )";
 
-    frontend.check("game/Gui/Modules/B");
+    frontend.check(XorStr("game/Gui/Modules/B"));
 
     fileResolver.source["game/Gui/Modules/A"] =
         "Massively incorrect syntax haha oops!  However!  The frontend doesn't know that this file needs reparsing!";
 
-    frontend.check("game/Gui/Modules/B");
+    frontend.check(XorStr("game/Gui/Modules/B"));
 
     ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
     CHECK(bModule->errors.empty());
-    Luau::dumpErrors(bModule);
+    lluz::dumpErrors(bModule);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
@@ -500,16 +500,16 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
         return {b_value = A.hello}
     )";
 
-    frontend.check("game/Gui/Modules/B");
+    frontend.check(XorStr("game/Gui/Modules/B"));
 
     fileResolver.source["game/Gui/Modules/A"] = "return {hello='hi!'}";
-    frontend.markDirty("game/Gui/Modules/A");
+    frontend.markDirty(XorStr("game/Gui/Modules/A"));
 
-    frontend.check("game/Gui/Modules/B");
+    frontend.check(XorStr("game/Gui/Modules/B"));
 
     ModulePtr bModule = frontend.moduleResolver.modules["game/Gui/Modules/B"];
     CHECK(bModule->errors.empty());
-    Luau::dumpErrors(bModule);
+    lluz::dumpErrors(bModule);
 
     auto bExports = first(bModule->getModuleScope()->returnType);
     REQUIRE(!!bExports);
@@ -528,12 +528,12 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_has_a_parse_erro
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/B");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = frontend.check(XorStr("Modules/B"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Modules/A", result.errors[0].moduleName);
 
-    CheckResult result2 = frontend.check("Modules/B");
-    LUAU_REQUIRE_ERROR_COUNT(1, result2);
+    CheckResult result2 = frontend.check(XorStr("Modules/B"));
+    lluz_REQUIRE_ERROR_COUNT(1, result2);
     CHECK_EQ(result2.errors[0], result.errors[0]);
 }
 #endif
@@ -542,8 +542,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "produce_errors_for_unchanged_file_with_a_syn
 {
     fileResolver.source["Modules/A"] = "oh no a blatant syntax error!!";
 
-    CheckResult one = frontend.check("Modules/A");
-    CheckResult two = frontend.check("Modules/A");
+    CheckResult one = frontend.check(XorStr("Modules/A"));
+    CheckResult two = frontend.check(XorStr("Modules/A"));
 
     CHECK(!one.errors.empty());
     CHECK(!two.errors.empty());
@@ -553,10 +553,10 @@ TEST_CASE_FIXTURE(FrontendFixture, "produce_errors_for_unchanged_file_with_error
 {
     fileResolver.source["Modules/A"] = "local p: number = 'oh no a type error'";
 
-    frontend.check("Modules/A");
+    frontend.check(XorStr("Modules/A"));
 
     fileResolver.source["Modules/A"] = "local p = 4 -- We have fixed the problem, but we didn't tell the frontend, so it will not recheck this file!";
-    CheckResult secondResult = frontend.check("Modules/A");
+    CheckResult secondResult = frontend.check(XorStr("Modules/A"));
 
     CHECK_EQ(1, secondResult.errors.size());
 }
@@ -574,8 +574,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "reports_errors_from_multiple_sources")
         local b: number = 'another one!  This is quite distressing!'
     )";
 
-    CheckResult result = frontend.check("game/Gui/Modules/B");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CheckResult result = frontend.check(XorStr("game/Gui/Modules/B"));
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK_EQ("game/Gui/Modules/A", result.errors[0].moduleName);
     CHECK_EQ("game/Gui/Modules/B", result.errors[1].moduleName);
@@ -588,8 +588,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "report_require_to_nonexistent_file")
         local B = require(Modules.B)
     )";
 
-    CheckResult result = frontend.check("Modules/A");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = frontend.check(XorStr("Modules/A"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     std::string s = toString(result.errors[0]);
     CHECK_MESSAGE(get<UnknownRequire>(result.errors[0]), "Should have been an UnknownRequire: " << toString(result.errors[0]));
@@ -602,8 +602,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "ignore_require_to_nonexistent_file")
         local B = require(Modules.B) :: any
     )";
 
-    CheckResult result = frontend.check("Modules/A");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("Modules/A"));
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "report_syntax_error_in_required_file")
@@ -614,8 +614,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "report_syntax_error_in_required_file")
         local A = require(Modules.A)
     )";
 
-    CheckResult result = frontend.check("Modules/B");
-    LUAU_REQUIRE_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("Modules/B"));
+    lluz_REQUIRE_ERRORS(result);
 
     CHECK_EQ("Modules/A", result.errors[0].moduleName);
 
@@ -624,7 +624,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "report_syntax_error_in_required_file")
     });
     if (!b)
     {
-        CHECK_MESSAGE(false, "Expected a syntax error!");
+        CHECK_MESSAGE(false, XorStr("Expected a syntax error!"));
         dumpErrors(result);
     }
 }
@@ -642,11 +642,11 @@ TEST_CASE_FIXTURE(FrontendFixture, "re_report_type_error_in_required_file")
         print(A.n)
     )";
 
-    CheckResult result = frontend.check("Modules/B");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = frontend.check(XorStr("Modules/B"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
-    CheckResult result2 = frontend.check("Modules/B");
-    LUAU_REQUIRE_ERROR_COUNT(1, result2);
+    CheckResult result2 = frontend.check(XorStr("Modules/B"));
+    lluz_REQUIRE_ERROR_COUNT(1, result2);
 
     CHECK_EQ("Modules/A", result.errors[0].moduleName);
 }
@@ -665,16 +665,16 @@ TEST_CASE_FIXTURE(FrontendFixture, "accumulate_cached_errors")
         print(A, b)
     )";
 
-    CheckResult result1 = frontend.check("Modules/B");
+    CheckResult result1 = frontend.check(XorStr("Modules/B"));
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result1);
+    lluz_REQUIRE_ERROR_COUNT(2, result1);
 
     CHECK_EQ("Modules/A", result1.errors[0].moduleName);
     CHECK_EQ("Modules/B", result1.errors[1].moduleName);
 
-    CheckResult result2 = frontend.check("Modules/B");
+    CheckResult result2 = frontend.check(XorStr("Modules/B"));
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result2);
+    lluz_REQUIRE_ERROR_COUNT(2, result2);
 
     CHECK_EQ("Modules/A", result2.errors[0].moduleName);
     CHECK_EQ("Modules/B", result2.errors[1].moduleName);
@@ -695,9 +695,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "accumulate_cached_errors_in_consistent_order
         return {}
     )";
 
-    CheckResult result1 = frontend.check("Modules/A");
+    CheckResult result1 = frontend.check(XorStr("Modules/A"));
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result1);
+    lluz_REQUIRE_ERROR_COUNT(4, result1);
 
     CHECK_EQ("Modules/A", result1.errors[2].moduleName);
     CHECK_EQ("Modules/A", result1.errors[3].moduleName);
@@ -705,7 +705,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "accumulate_cached_errors_in_consistent_order
     CHECK_EQ("Modules/B", result1.errors[0].moduleName);
     CHECK_EQ("Modules/B", result1.errors[1].moduleName);
 
-    CheckResult result2 = frontend.check("Modules/A");
+    CheckResult result2 = frontend.check(XorStr("Modules/A"));
     CHECK_EQ(4, result2.errors.size());
 
     for (size_t i = 0; i < result1.errors.size(); ++i)
@@ -737,12 +737,12 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_lint_uses_correct_config")
 
     configResolver.configFiles["Module/A"].enabledLint.enableWarning(LintWarning::Code_ForRange);
 
-    auto result = frontend.lint("Module/A");
+    auto result = frontend.lint(XorStr("Module/A"));
     CHECK_EQ(1, result.warnings.size());
 
     configResolver.configFiles["Module/A"].enabledLint.disableWarning(LintWarning::Code_ForRange);
 
-    auto result2 = frontend.lint("Module/A");
+    auto result2 = frontend.lint(XorStr("Module/A"));
     CHECK_EQ(0, result2.warnings.size());
 
     LintOptions overrideOptions;
@@ -756,6 +756,26 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_lint_uses_correct_config")
     CHECK_EQ(0, result4.warnings.size());
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "lintFragment")
+{
+    LintOptions lintOptions;
+    lintOptions.enableWarning(LintWarning::Code_ForRange);
+
+    auto [_sourceModule, result] = frontend.lintFragment(R"(
+        local t = {}
+
+        for i=#t,1 do
+        end
+
+        for i=#t,1,-1 do
+        end
+    )",
+        lintOptions);
+
+    CHECK_EQ(1, result.warnings.size());
+    CHECK_EQ(0, result.errors.size());
+}
+
 TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 {
     Frontend fe{&fileResolver, &configResolver, {false}};
@@ -764,9 +784,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
         local a = {1,2,3,4,5}
     )";
 
-    CheckResult result = fe.check("Module/A");
+    CheckResult result = fe.check(XorStr("Module/A"));
 
-    ModulePtr module = fe.moduleResolver.getModule("Module/A");
+    ModulePtr module = fe.moduleResolver.getModule(XorStr("Module/A"));
 
     CHECK_EQ(0, module->internalTypes.typeVars.size());
     CHECK_EQ(0, module->internalTypes.typePacks.size());
@@ -784,7 +804,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_f
         local a: {Count: number} = {count='five'}
     )";
 
-    CheckResult result = fe.check("Module/A");
+    CheckResult result = fe.check(XorStr("Module/A"));
 
     REQUIRE_EQ(1, result.errors.size());
 
@@ -817,9 +837,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
         print(A.f(5))       -- OK
     )";
 
-    CheckResult result = frontend.check("Module/B");
+    CheckResult result = frontend.check(XorStr("Module/B"));
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK_EQ(4, result.errors[0].location.begin.line);
     CHECK_EQ(5, result.errors[1].location.begin.line);
@@ -827,13 +847,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "trace_requires_in_nonstrict_mode")
 
 TEST_CASE_FIXTURE(FrontendFixture, "environments")
 {
-    ScopePtr testScope = frontend.addEnvironment("test");
+    ScopePtr testScope = frontend.addEnvironment(XorStr("test"));
 
     unfreeze(typeChecker.globalTypes);
     loadDefinitionFile(typeChecker, testScope, R"(
         export type Foo = number | string
     )",
-        "@test");
+        XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
     fileResolver.source["A"] = R"(
@@ -848,11 +868,11 @@ TEST_CASE_FIXTURE(FrontendFixture, "environments")
 
     fileResolver.environments["A"] = "test";
 
-    CheckResult resultA = frontend.check("A");
-    LUAU_REQUIRE_NO_ERRORS(resultA);
+    CheckResult resultA = frontend.check(XorStr("A"));
+    lluz_REQUIRE_NO_ERRORS(resultA);
 
-    CheckResult resultB = frontend.check("B");
-    LUAU_REQUIRE_ERROR_COUNT(1, resultB);
+    CheckResult resultB = frontend.check(XorStr("B"));
+    lluz_REQUIRE_ERROR_COUNT(1, resultB);
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "ast_node_at_position")
@@ -890,17 +910,17 @@ TEST_CASE_FIXTURE(FrontendFixture, "stats_are_not_reset_between_checks")
         return {foo = 1}
     )";
 
-    CheckResult r1 = frontend.check("Module/A");
-    LUAU_REQUIRE_NO_ERRORS(r1);
+    CheckResult r1 = frontend.check(XorStr("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(r1);
 
     Frontend::Stats stats1 = frontend.stats;
     CHECK_EQ(2, stats1.files);
 
-    frontend.markDirty("Module/A");
-    frontend.markDirty("Module/B");
+    frontend.markDirty(XorStr("Module/A"));
+    frontend.markDirty(XorStr("Module/B"));
 
-    CheckResult r2 = frontend.check("Module/A");
-    LUAU_REQUIRE_NO_ERRORS(r2);
+    CheckResult r2 = frontend.check(XorStr("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(r2);
     Frontend::Stats stats2 = frontend.stats;
 
     CHECK_EQ(4, stats2.files);
@@ -919,18 +939,18 @@ TEST_CASE_FIXTURE(FrontendFixture, "clearStats")
         return {foo = 1}
     )";
 
-    CheckResult r1 = frontend.check("Module/A");
-    LUAU_REQUIRE_NO_ERRORS(r1);
+    CheckResult r1 = frontend.check(XorStr("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(r1);
 
     Frontend::Stats stats1 = frontend.stats;
     CHECK_EQ(2, stats1.files);
 
-    frontend.markDirty("Module/A");
-    frontend.markDirty("Module/B");
+    frontend.markDirty(XorStr("Module/A"));
+    frontend.markDirty(XorStr("Module/B"));
 
     frontend.clearStats();
-    CheckResult r2 = frontend.check("Module/A");
-    LUAU_REQUIRE_NO_ERRORS(r2);
+    CheckResult r2 = frontend.check(XorStr("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(r2);
     Frontend::Stats stats2 = frontend.stats;
 
     CHECK_EQ(2, stats2.files);
@@ -942,13 +962,13 @@ TEST_CASE_FIXTURE(FrontendFixture, "typecheck_twice_for_ast_types")
         local a = 1
     )";
 
-    CheckResult result = frontend.check("Module/A");
+    CheckResult result = frontend.check(XorStr("Module/A"));
 
-    ModulePtr module = frontend.moduleResolver.getModule("Module/A");
+    ModulePtr module = frontend.moduleResolver.getModule(XorStr("Module/A"));
 
     REQUIRE_EQ(module->astTypes.size(), 1);
     auto it = module->astTypes.begin();
-    CHECK_EQ(toString(it->second), "number");
+    CHECK_EQ(toString(it->second), XorStr("number"));
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "imported_table_modification_2")
@@ -977,14 +997,14 @@ local b = require(script.Parent.B)
 a:b() -- this should error, since A doesn't define a:b()
     )";
 
-    CheckResult resultA = frontend.check("Module/A");
-    LUAU_REQUIRE_NO_ERRORS(resultA);
+    CheckResult resultA = frontend.check(XorStr("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(resultA);
 
-    CheckResult resultB = frontend.check("Module/B");
-    LUAU_REQUIRE_ERRORS(resultB);
+    CheckResult resultB = frontend.check(XorStr("Module/B"));
+    lluz_REQUIRE_ERRORS(resultB);
 
-    CheckResult resultC = frontend.check("Module/C");
-    LUAU_REQUIRE_ERRORS(resultC);
+    CheckResult resultC = frontend.check(XorStr("Module/C"));
+    lluz_REQUIRE_ERRORS(resultC);
 }
 
 // This test does not use TEST_CASE_FIXTURE because we need to set a flag before
@@ -992,7 +1012,7 @@ a:b() -- this should error, since A doesn't define a:b()
 TEST_CASE("no_use_after_free_with_type_fun_instantiation")
 {
     // This flag forces this test to crash if there's a UAF in this code.
-    ScopedFastFlag sff_DebugLuauFreezeArena("DebugLuauFreezeArena", true);
+    ScopedFastFlag sff_DebuglluzFreezeArena("DebuglluzFreezeArena", true);
 
     FrontendFixture fix;
 
@@ -1008,7 +1028,7 @@ return false;
 )";
 
     // We don't care about the result. That we haven't crashed is enough.
-    fix.frontend.check("Module/B");
+    fix.frontend.check(XorStr("Module/B"));
 }
 
 TEST_CASE("check_without_builtin_next")
@@ -1021,77 +1041,8 @@ TEST_CASE("check_without_builtin_next")
     fileResolver.source["Module/B"] = "return next";
 
     // We don't care about the result. That we haven't crashed is enough.
-    frontend.check("Module/A");
-    frontend.check("Module/B");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauForceExportSurfacesToBeNormal", true},
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true},
-    };
-
-    fileResolver.source["Module/A"] = R"(
-        type F<T> = (set: G<T>) -> ()
-
-        export type G<T> = {
-            forEach: (a: F<T>) -> (),
-        }
-
-        function X<T>(a: F<T>): ()
-        end
-
-        return X
-    )";
-
-    fileResolver.source["Module/B"] = R"(
-        --!strict
-        local A = require(script.Parent.A)
-
-        export type G<T> = A.G<T>
-
-        return {
-            A = A,
-        }
-    )";
-
-    CheckResult result = frontend.check("Module/B");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauForceExportSurfacesToBeNormal", true},
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true},
-    };
-
-    fileResolver.source["Module/A"] = R"(
-        type KeyOfTestEvents = "test-file-start" | "test-file-success" | "test-file-failure" | "test-case-result"
-        type unknown = any
-
-        export type TestFileEvent<T = KeyOfTestEvents> = (
-            eventName: T,
-            args: any --[[ ROBLOX TODO: Unhandled node for type: TSIndexedAccessType ]] --[[ TestEvents[T] ]]
-        ) -> unknown
-
-        return {}
-    )";
-
-    fileResolver.source["Module/B"] = R"(
-        --!strict
-        local A = require(script.Parent.A)
-
-        export type TestFileEvent = A.TestFileEvent
-    )";
-
-    CheckResult result = frontend.check("Module/B");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
+    frontend.check(XorStr("Module/A"));
+    frontend.check(XorStr("Module/B"));
 }
 
 TEST_SUITE_END();

@@ -1,13 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Fixture.h"
 
-#include "Luau/AstQuery.h"
-#include "Luau/Parser.h"
-#include "Luau/TypeVar.h"
-#include "Luau/TypeAttach.h"
-#include "Luau/Transpiler.h"
+#include "lluz/AstQuery.h"
+#include "lluz/Parser.h"
+#include "lluz/TypeVar.h"
+#include "lluz/TypeAttach.h"
+#include "lluz/Transpiler.h"
 
-#include "Luau/BuiltinDefinitions.h"
+#include "lluz/BuiltinDefinitions.h"
 
 #include "doctest.h"
 
@@ -17,25 +17,25 @@
 
 static const char* mainModuleName = "MainModule";
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+lluz_FASTFLAG(DebugLluDeferredConstraintResolution);
 
-namespace Luau
+namespace lluz
 {
 
 std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr)
 {
     if (AstExprGlobal* g = expr->as<AstExprGlobal>())
     {
-        if (g->name == "game")
+        if (g->name == XorStr("game"))
             return ModuleInfo{"game"};
-        if (g->name == "workspace")
+        if (g->name == XorStr("workspace"))
             return ModuleInfo{"workspace"};
-        if (g->name == "script")
+        if (g->name == XorStr("script"))
             return context ? std::optional<ModuleInfo>(*context) : std::nullopt;
     }
     else if (AstExprIndexName* i = expr->as<AstExprIndexName>(); i && context)
     {
-        if (i->index == "Parent")
+        if (i->index == XorStr("Parent"))
         {
             std::string_view view = context->name;
             size_t lastSeparatorIndex = view.find_last_of('/');
@@ -63,7 +63,7 @@ std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* cont
         {
             AstName func = call->func->as<AstExprIndexName>()->index;
 
-            if (func == "GetService" && context->name == "game")
+            if (func == XorStr("GetService") && context->name == XorStr("game"))
                 return ModuleInfo{"game/" + std::string(index->value.data, index->value.size)};
         }
     }
@@ -86,7 +86,7 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
 }
 
 Fixture::Fixture(bool freeze, bool prepareAutocomplete)
-    : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
+    : sff_DebuglluzFreezeArena("DebuglluzFreezeArena", freeze)
     , frontend(&fileResolver, &configResolver, {/* retainFullTypeGraphs= */ true})
     , typeChecker(frontend.typeChecker)
 {
@@ -94,15 +94,15 @@ Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
     configResolver.defaultConfig.parseOptions.captureComments = true;
 
-    Luau::freeze(frontend.typeChecker.globalTypes);
-    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    lluz::freeze(frontend.typeChecker.globalTypes);
+    lluz::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 
-    Luau::setPrintLine([](auto s) {});
+    lluz::setPrintLine([](auto s) {});
 }
 
 Fixture::~Fixture()
 {
-    Luau::resetPrintLine();
+    lluz::resetPrintLine();
 }
 
 AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& parseOptions)
@@ -123,7 +123,7 @@ AstStatBlock* Fixture::parse(const std::string& source, const ParseOptions& pars
         {
             frontend.lint(*sourceModule);
 
-            typeChecker.check(*sourceModule, sourceModule->mode.value_or(Luau::Mode::Nonstrict));
+            typeChecker.check(*sourceModule, sourceModule->mode.value_or(lluz::Mode::Nonstrict));
         }
 
         throw ParseErrors(result.errors);
@@ -195,7 +195,7 @@ ParseResult Fixture::matchParseError(const std::string& source, const std::strin
     sourceModule.reset(new SourceModule);
     ParseResult result = Parser::parse(source.c_str(), source.length(), *sourceModule->names, *sourceModule->allocator, options);
 
-    CHECK_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
+    CHECK_MESSAGE(!result.errors.empty(), XorStr("Expected a parse error in '" << source << "'"));
 
     if (!result.errors.empty())
     {
@@ -216,7 +216,7 @@ ParseResult Fixture::matchParseErrorPrefix(const std::string& source, const std:
     sourceModule.reset(new SourceModule);
     ParseResult result = Parser::parse(source.c_str(), source.length(), *sourceModule->names, *sourceModule->allocator, options);
 
-    CHECK_MESSAGE(!result.errors.empty(), "Expected a parse error in '" << source << "'");
+    CHECK_MESSAGE(!result.errors.empty(), XorStr("Expected a parse error in '" << source << "'"));
 
     if (!result.errors.empty())
     {
@@ -257,8 +257,8 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
     ModulePtr module = getMainModule();
     REQUIRE(module);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-        return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
+    if (FFlag::DebugLluDeferredConstraintResolution)
+        return linearSearchForBinding(module->getModuleScope2(), name.c_str());
     else
         return lookupName(module->getModuleScope(), name);
 }
@@ -266,7 +266,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
 TypeId Fixture::requireType(const std::string& name)
 {
     std::optional<TypeId> ty = getType(name);
-    REQUIRE_MESSAGE(bool(ty), "Unable to requireType \"" << name << "\"");
+    REQUIRE_MESSAGE(bool(ty), XorStr("Unable to requireType \"" << name << "\""));
     return follow(*ty);
 }
 
@@ -285,7 +285,7 @@ TypeId Fixture::requireType(const ModulePtr& module, const std::string& name)
 TypeId Fixture::requireType(const ScopePtr& scope, const std::string& name)
 {
     std::optional<TypeId> ty = lookupName(scope, name);
-    REQUIRE_MESSAGE(ty, "requireType: No type \"" << name << "\"");
+    REQUIRE_MESSAGE(ty, XorStr("requireType: No type \"" << name << "\""));
     return *ty;
 }
 
@@ -293,14 +293,14 @@ std::optional<TypeId> Fixture::findTypeAtPosition(Position position)
 {
     ModulePtr module = getMainModule();
     SourceModule* sourceModule = getMainSourceModule();
-    return Luau::findTypeAtPosition(*module, *sourceModule, position);
+    return lluz::findTypeAtPosition(*module, *sourceModule, position);
 }
 
 std::optional<TypeId> Fixture::findExpectedTypeAtPosition(Position position)
 {
     ModulePtr module = getMainModule();
     SourceModule* sourceModule = getMainSourceModule();
-    return Luau::findExpectedTypeAtPosition(*module, *sourceModule, position);
+    return lluz::findExpectedTypeAtPosition(*module, *sourceModule, position);
 }
 
 TypeId Fixture::requireTypeAtPosition(Position position)
@@ -330,7 +330,7 @@ std::string Fixture::decorateWithTypes(const std::string& code)
 {
     fileResolver.source[mainModuleName] = code;
 
-    Luau::CheckResult typeInfo = frontend.check(mainModuleName);
+    lluz::CheckResult typeInfo = frontend.check(mainModuleName);
 
     SourceModule* sourceModule = frontend.getSourceModule(mainModuleName);
     attachTypeData(*sourceModule, *frontend.moduleResolver.getModule(mainModuleName));
@@ -346,7 +346,7 @@ void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)
         os << "Error: " << error << std::endl;
 
         std::string_view source = fileResolver.source[error.moduleName];
-        std::vector<std::string_view> lines = Luau::split(source, '\n');
+        std::vector<std::string_view> lines = lluz::split(source, '\n');
 
         if (error.location.begin.line >= lines.size())
         {
@@ -365,9 +365,9 @@ void Fixture::dumpErrors(std::ostream& os, const std::vector<TypeError>& errors)
 
 void Fixture::registerTestTypes()
 {
-    addGlobalBinding(typeChecker, "game", typeChecker.anyType, "@luau");
-    addGlobalBinding(typeChecker, "workspace", typeChecker.anyType, "@luau");
-    addGlobalBinding(typeChecker, "script", typeChecker.anyType, "@luau");
+    addGlobalBinding(typeChecker, XorStr("game", typeChecker.anyType, "@lluz"));
+    addGlobalBinding(typeChecker, XorStr("workspace", typeChecker.anyType, "@lluz"));
+    addGlobalBinding(typeChecker, XorStr("script", typeChecker.anyType, "@lluz"));
 }
 
 void Fixture::dumpErrors(const CheckResult& cr)
@@ -392,13 +392,13 @@ std::string Fixture::getErrors(const CheckResult& cr)
     return ss.str();
 }
 
-void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
+void Fixture::validateErrors(const std::vector<lluz::TypeError>& errors)
 {
     std::ostringstream oss;
 
     // This helps us validate that error stringification doesn't crash, using both user-facing and internal test-only representation
     // Also we exercise error comparison to make sure it's at least able to compare the error equal to itself
-    for (const Luau::TypeError& e : errors)
+    for (const lluz::TypeError& e : errors)
     {
         oss.clear();
         oss << e;
@@ -410,32 +410,32 @@ void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
 LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
 {
     unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
+    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, XorStr("@test"));
     freeze(typeChecker.globalTypes);
 
-    REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
+    REQUIRE_MESSAGE(result.success, XorStr("loadDefinition: unable to load definition file"));
     return result;
 }
 
 BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
     : Fixture(freeze, prepareAutocomplete)
 {
-    Luau::unfreeze(frontend.typeChecker.globalTypes);
-    Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    lluz::unfreeze(frontend.typeChecker.globalTypes);
+    lluz::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
 
     registerBuiltinTypes(frontend.typeChecker);
     if (prepareAutocomplete)
         registerBuiltinTypes(frontend.typeCheckerForAutocomplete);
     registerTestTypes();
 
-    Luau::freeze(frontend.typeChecker.globalTypes);
-    Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
+    lluz::freeze(frontend.typeChecker.globalTypes);
+    lluz::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 }
 
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
-    , cgb(mainModuleName, &arena, NotNull(&ice), frontend.getGlobalScope())
-    , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
+    , cgb(mainModuleName, &arena, NotNull(&ice), frontend.getGlobalScope2())
+    , forceTheFlag{"DebuglluzDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;
 }
@@ -479,17 +479,17 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name)
         return std::nullopt;
 }
 
-std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name)
+std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name)
 {
     while (scope)
     {
         for (const auto& [n, ty] : scope->bindings)
         {
             if (n.astName() == name)
-                return ty.typeId;
+                return ty;
         }
 
-        scope = scope->parent.get();
+        scope = scope->parent;
     }
 
     return std::nullopt;
@@ -502,4 +502,4 @@ void dump(const std::vector<Constraint>& constraints)
         printf("%s\n", toString(c, opts).c_str());
 }
 
-} // namespace Luau
+} // namespace lluz

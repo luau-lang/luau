@@ -1,13 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 using std::nullopt;
 
 struct ClassFixture : BuiltinsFixture
@@ -32,7 +32,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {baseClassInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
-        addGlobalBinding(typeChecker, "BaseClass", baseClassType, "@test");
+        addGlobalBinding(typeChecker, XorStr("BaseClass", baseClassType, "@test"));
 
         TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
@@ -45,7 +45,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {childClassInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
-        addGlobalBinding(typeChecker, "ChildClass", childClassType, "@test");
+        addGlobalBinding(typeChecker, XorStr("ChildClass", childClassType, "@test"));
 
         TypeId grandChildInstanceType = arena.addType(ClassTypeVar{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}, "Test"});
 
@@ -58,7 +58,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {grandChildInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["GrandChild"] = TypeFun{{}, grandChildInstanceType};
-        addGlobalBinding(typeChecker, "GrandChild", childClassType, "@test");
+        addGlobalBinding(typeChecker, XorStr("GrandChild", childClassType, "@test"));
 
         TypeId anotherChildInstanceType = arena.addType(ClassTypeVar{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
@@ -71,7 +71,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {anotherChildInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["AnotherChild"] = TypeFun{{}, anotherChildInstanceType};
-        addGlobalBinding(typeChecker, "AnotherChild", childClassType, "@test");
+        addGlobalBinding(typeChecker, XorStr("AnotherChild", childClassType, "@test"));
 
         TypeId vector2MetaType = arena.addType(TableTypeVar{});
 
@@ -89,7 +89,7 @@ struct ClassFixture : BuiltinsFixture
             {"__add", {makeFunction(arena, nullopt, {vector2InstanceType, vector2InstanceType}, {vector2InstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["Vector2"] = TypeFun{{}, vector2InstanceType};
-        addGlobalBinding(typeChecker, "Vector2", vector2Type, "@test");
+        addGlobalBinding(typeChecker, XorStr("Vector2", vector2Type, "@test"));
 
         for (const auto& [name, tf] : typeChecker.globalScope->exportedTypeBindings)
             persist(tf.type);
@@ -98,7 +98,7 @@ struct ClassFixture : BuiltinsFixture
     }
 };
 
-TEST_SUITE_BEGIN("TypeInferClasses");
+TEST_SUITE_BEGIN(XorStr("TypeInferClasses"));
 
 TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
 {
@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_class")
         local m = BaseClass.StaticMethod()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     REQUIRE_EQ("number", toString(requireType("m")));
 }
@@ -117,7 +117,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_method_of_a_child_class")
         local m = ChildClass.StaticMethod()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     REQUIRE_EQ("number", toString(requireType("m")));
 }
@@ -129,7 +129,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_instance_method")
         local result = i:Method()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("string", toString(requireType("result")));
 }
@@ -141,7 +141,7 @@ TEST_CASE_FIXTURE(ClassFixture, "call_base_method")
         i:BaseMethod(41)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "cannot_call_unknown_method_of_a_class")
@@ -150,7 +150,7 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_call_unknown_method_of_a_class")
         local m = BaseClass.Nope()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "cannot_call_method_of_child_on_base_instance")
@@ -160,7 +160,7 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_call_method_of_child_on_base_instance")
         i:Method()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "we_can_infer_that_a_parameter_must_be_a_particular_class")
@@ -194,7 +194,7 @@ TEST_CASE_FIXTURE(ClassFixture, "we_can_report_when_someone_is_trying_to_use_a_t
         makeClone(oopsies)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm != nullptr);
 
@@ -209,7 +209,7 @@ TEST_CASE_FIXTURE(ClassFixture, "assign_to_prop_of_class")
         v.X = 55
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class")
@@ -219,7 +219,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class")
         local x = 1 + c.BaseField
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class")
@@ -229,7 +229,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class")
         c.BaseField = 444
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class_using_string")
@@ -239,7 +239,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_read_prop_of_base_class_using_string")
         local x = 1 + c["BaseField"]
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
@@ -249,7 +249,7 @@ TEST_CASE_FIXTURE(ClassFixture, "can_assign_to_prop_of_base_class_using_string")
         c["BaseField"] = 444
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "cannot_unify_class_instance_with_primitive")
@@ -259,7 +259,7 @@ TEST_CASE_FIXTURE(ClassFixture, "cannot_unify_class_instance_with_primitive")
         v = 444
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "warn_when_prop_almost_matches")
@@ -268,7 +268,7 @@ TEST_CASE_FIXTURE(ClassFixture, "warn_when_prop_almost_matches")
         Vector2.new(0, 0)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto err = get<UnknownPropButFoundLikeProp>(result.errors[0]);
     REQUIRE(err != nullptr);
@@ -285,7 +285,7 @@ TEST_CASE_FIXTURE(ClassFixture, "classes_can_have_overloaded_operators")
         local c = a + b
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("Vector2", toString(requireType("c")));
 }
@@ -298,7 +298,7 @@ TEST_CASE_FIXTURE(ClassFixture, "classes_without_overloaded_operators_cannot_be_
         local c = a + b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "function_arguments_are_covariant")
@@ -309,7 +309,7 @@ TEST_CASE_FIXTURE(ClassFixture, "function_arguments_are_covariant")
         f(ChildClass.New())
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_arguments_are_contravariant")
@@ -322,7 +322,7 @@ TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_arguments_are_contravaria
         apply(function (c: ChildClass) end) -- 5
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_values_are_covariant")
@@ -337,7 +337,7 @@ TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_values_are_covaria
         end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_type_is_not_contravariant")
@@ -352,7 +352,7 @@ TEST_CASE_FIXTURE(ClassFixture, "higher_order_function_return_type_is_not_contra
         end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(ClassFixture, "table_properties_are_invariant")
@@ -373,7 +373,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_properties_are_invariant")
         g(t2) -- line 13.  Breaks soundness
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(6, result.errors[0].location.begin.line);
     CHECK_EQ(13, result.errors[1].location.begin.line);
 }
@@ -396,7 +396,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_indexers_are_invariant")
         g(t2) -- line 13.  Breaks soundness
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(6, result.errors[0].location.begin.line);
     CHECK_EQ(13, result.errors[1].location.begin.line);
 }
@@ -414,7 +414,7 @@ TEST_CASE_FIXTURE(ClassFixture, "table_class_unification_reports_sane_errors_for
         foo(a)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     REQUIRE_EQ("Key 'w' not found in class 'Vector2'", toString(result.errors[0]));
     REQUIRE_EQ("Key 'x' not found in class 'Vector2'.  Did you mean 'X'?", toString(result.errors[1]));
 }
@@ -427,7 +427,7 @@ TEST_CASE_FIXTURE(ClassFixture, "class_unification_type_mismatch_is_correct_orde
         local foo2: BaseClass = 1
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     REQUIRE_EQ("Type 'BaseClass' could not be converted into 'number'", toString(result.errors[0]));
     REQUIRE_EQ("Type 'number' could not be converted into 'BaseClass'", toString(result.errors[1]));
@@ -442,7 +442,7 @@ local a = b.X + b.Z
 b.X = 2 -- real Vector2.X is also read-only
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    lluz_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[0]));
     CHECK_EQ("Value of type 'Vector2?' could be nil", toString(result.errors[1]));
     CHECK_EQ("Key 'Z' not found in class 'Vector2'", toString(result.errors[2]));
@@ -461,7 +461,7 @@ local b = foo
 b(a)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Type 'Vector2' could not be converted into '{- X: a, Y: string -}'
 caused by:
   Property 'Y' is not compatible. Type 'number' could not be converted into 'string')",
@@ -476,7 +476,7 @@ type ChildClass = { x: number }
 local a: ChildClass = i
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'ChildClass' from 'Test' could not be converted into 'ChildClass' from 'MainModule'", toString(result.errors[0]));
 }
 

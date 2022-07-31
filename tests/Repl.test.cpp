@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lua.h"
 #include "lualib.h"
 
@@ -41,7 +41,7 @@ public:
     // Returns all of the output captured from the pretty printer
     std::string getCapturedOutput()
     {
-        lua_getglobal(L, "capturedoutput");
+        lua_getglobal(L, XorStr("capturedoutput"));
         const char* str = lua_tolstring(L, -1, nullptr);
         std::string result(str);
         lua_pop(L, 1);
@@ -55,7 +55,7 @@ public:
         getCompletions(L, inputPrefix, [&result](const std::string& completion, const std::string& display) {
             result.insert(Completion{completion, display});
         });
-        // Ensure that generating completions doesn't change the position of luau's stack top.
+        // Ensure that generating completions doesn't change the position of lluz's stack top.
         CHECK(top == lua_gettop(L));
 
         return result;
@@ -84,14 +84,14 @@ capturedoutput = ""
 function arraytostring(arr)
     local strings = {} 
     table.foreachi(arr, function(k,v) table.insert(strings, pptostring(v)) end )
-    return "{" .. table.concat(strings, ", ") .. "}"
+    return XorStr("{") .. table.concat(strings, ", ") .. "}"
 end
 
 function pptostring(x)
-    if type(x) == "table" then
+    if type(x) == XorStr("table") then
         -- Just assume array-like tables for now.
         return arraytostring(x)
-    elseif type(x) == "string" then
+    elseif type(x) == XorStr("string") then
         return '"' .. x .. '"'
     else
         return tostring(x)
@@ -116,41 +116,41 @@ end
 )";
 };
 
-TEST_SUITE_BEGIN("ReplPrettyPrint");
+TEST_SUITE_BEGIN(XorStr("ReplPrettyPrint"));
 
 TEST_CASE_FIXTURE(ReplFixture, "AdditionStatement")
 {
-    runCode(L, "return 30 + 12");
-    CHECK(getCapturedOutput() == "42");
+    runCode(L, XorStr("return 30 + 12"));
+    CHECK(getCapturedOutput() == XorStr("42"));
 }
 
 TEST_CASE_FIXTURE(ReplFixture, "TableLiteral")
 {
-    runCode(L, "return {1, 2, 3, 4}");
-    CHECK(getCapturedOutput() == "{1, 2, 3, 4}");
+    runCode(L, XorStr("return {1, 2, 3, 4}"));
+    CHECK(getCapturedOutput() == XorStr("{1, 2, 3, 4}"));
 }
 
 TEST_CASE_FIXTURE(ReplFixture, "StringLiteral")
 {
-    runCode(L, "return 'str'");
-    CHECK(getCapturedOutput() == "\"str\"");
+    runCode(L, XorStr("return 'str'"));
+    CHECK(getCapturedOutput() == XorStr("\"str\""));
 }
 
 TEST_CASE_FIXTURE(ReplFixture, "TableWithStringLiterals")
 {
-    runCode(L, "return {1, 'two', 3, 'four'}");
-    CHECK(getCapturedOutput() == "{1, \"two\", 3, \"four\"}");
+    runCode(L, XorStr("return {1, 'two', 3, 'four'}"));
+    CHECK(getCapturedOutput() == XorStr("{1, \"two\", 3, \"four\"}"));
 }
 
 TEST_CASE_FIXTURE(ReplFixture, "MultipleArguments")
 {
-    runCode(L, "return 3, 'three'");
-    CHECK(getCapturedOutput() == "3\t\"three\"");
+    runCode(L, XorStr("return 3, 'three'"));
+    CHECK(getCapturedOutput() == XorStr("3\t\"three\""));
 }
 
 TEST_SUITE_END();
 
-TEST_SUITE_BEGIN("ReplCodeCompletion");
+TEST_SUITE_BEGIN(XorStr("ReplCodeCompletion"));
 
 TEST_CASE_FIXTURE(ReplFixture, "CompleteGlobalVariables")
 {
@@ -160,7 +160,7 @@ TEST_CASE_FIXTURE(ReplFixture, "CompleteGlobalVariables")
 )");
     {
         // Try to complete globals that are added by the user's script
-        CompletionSet completions = getCompletionSet("myvar");
+        CompletionSet completions = getCompletionSet(XorStr("myvar"));
 
         std::string prefix = "";
         CHECK(completions.size() == 2);
@@ -169,7 +169,7 @@ TEST_CASE_FIXTURE(ReplFixture, "CompleteGlobalVariables")
     }
     {
         // Try completing some builtin functions
-        CompletionSet completions = getCompletionSet("math.m");
+        CompletionSet completions = getCompletionSet(XorStr("math.m"));
 
         std::string prefix = "math.";
         CHECK(completions.size() == 3);
@@ -185,7 +185,7 @@ TEST_CASE_FIXTURE(ReplFixture, "CompleteTableKeys")
         t = { color = "red", size = 1, shape = "circle" }
 )");
     {
-        CompletionSet completions = getCompletionSet("t.");
+        CompletionSet completions = getCompletionSet(XorStr("t."));
 
         std::string prefix = "t.";
         CHECK(completions.size() == 3);
@@ -195,7 +195,7 @@ TEST_CASE_FIXTURE(ReplFixture, "CompleteTableKeys")
     }
 
     {
-        CompletionSet completions = getCompletionSet("t.s");
+        CompletionSet completions = getCompletionSet(XorStr("t.s"));
 
         std::string prefix = "t.";
         CHECK(completions.size() == 2);
@@ -210,7 +210,7 @@ TEST_CASE_FIXTURE(ReplFixture, "StringMethods")
         s = ""
 )");
     {
-        CompletionSet completions = getCompletionSet("s:l");
+        CompletionSet completions = getCompletionSet(XorStr("s:l"));
 
         std::string prefix = "s:";
         CHECK(completions.size() == 2);
@@ -236,7 +236,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexTable")
         t.tkey2 = 4
 )");
     {
-        CompletionSet completions = getCompletionSet("t.t");
+        CompletionSet completions = getCompletionSet(XorStr("t.t"));
 
         std::string prefix = "t.";
         CHECK(completions.size() == 2);
@@ -244,7 +244,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexTable")
         CHECK(checkCompletion(completions, prefix, "tkey2"));
     }
     {
-        CompletionSet completions = getCompletionSet("t.tkey1.data2:re");
+        CompletionSet completions = getCompletionSet(XorStr("t.tkey1.data2:re"));
 
         std::string prefix = "t.tkey1.data2:";
         CHECK(completions.size() == 2);
@@ -252,7 +252,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexTable")
         CHECK(checkCompletion(completions, prefix, "reverse("));
     }
     {
-        CompletionSet completions = getCompletionSet("t.mtk");
+        CompletionSet completions = getCompletionSet(XorStr("t.mtk"));
 
         std::string prefix = "t.";
         CHECK(completions.size() == 2);
@@ -260,7 +260,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexTable")
         CHECK(checkCompletion(completions, prefix, "mtkey2"));
     }
     {
-        CompletionSet completions = getCompletionSet("t.mtkey1.");
+        CompletionSet completions = getCompletionSet(XorStr("t.mtkey1."));
 
         std::string prefix = "t.mtkey1.";
         CHECK(completions.size() == 2);
@@ -276,10 +276,10 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexFunction")
         mt = {}
         mt.__index = function(table, key)
             print("mt.__index called")
-            if key == "foo" then
-                return "FOO"
-            elseif key == "bar" then
-                return "BAR"
+            if key == XorStr("foo") then
+                return XorStr("FOO")
+            elseif key == XorStr("bar") then
+                return XorStr("BAR")
             else
                 return nil
             end
@@ -290,7 +290,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexFunction")
         t.tkey = 0
 )");
     {
-        CompletionSet completions = getCompletionSet("t.t");
+        CompletionSet completions = getCompletionSet(XorStr("t.t"));
 
         std::string prefix = "t.";
         CHECK(completions.size() == 1);
@@ -298,13 +298,13 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMetatableIndexFunction")
     }
     {
         // t.foo is a valid key, but should not be completed because it requires calling an __index function
-        CompletionSet completions = getCompletionSet("t.foo");
+        CompletionSet completions = getCompletionSet(XorStr("t.foo"));
 
         CHECK(completions.size() == 0);
     }
     {
         // t.foo is a valid key, but should not be found because it requires calling an __index function
-        CompletionSet completions = getCompletionSet("t.foo:");
+        CompletionSet completions = getCompletionSet(XorStr("t.foo:"));
 
         CHECK(completions.size() == 0);
     }
@@ -329,7 +329,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMultipleMetatableIndexTables")
         t.tkey = 3
 )");
     {
-        CompletionSet completions = getCompletionSet("t.");
+        CompletionSet completions = getCompletionSet(XorStr("t."));
 
         std::string prefix = "t.";
         CHECK(completions.size() == 4);
@@ -339,7 +339,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMultipleMetatableIndexTables")
         CHECK(checkCompletion(completions, prefix, "mt2key"));
     }
     {
-        CompletionSet completions = getCompletionSet("t.__index.");
+        CompletionSet completions = getCompletionSet(XorStr("t.__index."));
 
         std::string prefix = "t.__index.";
         CHECK(completions.size() == 3);
@@ -348,7 +348,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithMultipleMetatableIndexTables")
         CHECK(checkCompletion(completions, prefix, "mt2key"));
     }
     {
-        CompletionSet completions = getCompletionSet("t.mt2key.");
+        CompletionSet completions = getCompletionSet(XorStr("t.mt2key."));
 
         std::string prefix = "t.mt2key.";
         CHECK(completions.size() == 2);
@@ -364,7 +364,7 @@ TEST_CASE_FIXTURE(ReplFixture, "TableWithDeepMetatableIndexTables")
 function makeChainedTable(count)
     local result = {}
     result.__index = result
-    result[string.format("entry%d", count)] = { count = count }
+    result[string.format(XorStr("entry%d"), count)] = { count = count }
     if count == 0 then
         return result
     else
@@ -377,27 +377,27 @@ t60 = makeChainedTable(60)
 )");
     {
         // Check if entry0 exists
-        CompletionSet completions = getCompletionSet("t30.entry0");
+        CompletionSet completions = getCompletionSet(XorStr("t30.entry0"));
 
         std::string prefix = "t30.";
         CHECK(checkCompletion(completions, prefix, "entry0"));
     }
     {
         // Check if entry0.count exists
-        CompletionSet completions = getCompletionSet("t30.entry0.co");
+        CompletionSet completions = getCompletionSet(XorStr("t30.entry0.co"));
 
         std::string prefix = "t30.entry0.";
         CHECK(checkCompletion(completions, prefix, "count"));
     }
     {
         // Check if entry0 exists.  With the max traversal limit of 50 in the repl, this should fail.
-        CompletionSet completions = getCompletionSet("t60.entry0");
+        CompletionSet completions = getCompletionSet(XorStr("t60.entry0"));
 
         CHECK(completions.size() == 0);
     }
     {
         // Check if entry0.count exists.  With the max traversal limit of 50 in the repl, this should fail.
-        CompletionSet completions = getCompletionSet("t60.entry0.co");
+        CompletionSet completions = getCompletionSet(XorStr("t60.entry0.co"));
 
         CHECK(completions.size() == 0);
     }

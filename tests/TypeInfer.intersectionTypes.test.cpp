@@ -1,16 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
 
-TEST_SUITE_BEGIN("IntersectionTypes");
+TEST_SUITE_BEGIN(XorStr("IntersectionTypes"));
 
 TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
 {
@@ -22,7 +22,7 @@ TEST_CASE_FIXTURE(Fixture, "select_correct_union_fn")
         local c = f("a") -- c is a number
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(requireType("b"), typeChecker.stringType);
     CHECK_EQ(requireType("c"), typeChecker.numberType);
 }
@@ -35,7 +35,7 @@ TEST_CASE_FIXTURE(Fixture, "table_combines")
         local c:A & B = {a=10, b="s"}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_combines_missing")
@@ -67,7 +67,7 @@ TEST_CASE_FIXTURE(Fixture, "table_extra_ok")
         local d:A = c
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fx_intersection_as_argument")
@@ -81,7 +81,7 @@ TEST_CASE_FIXTURE(Fixture, "fx_intersection_as_argument")
         local b = g(f)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fx_union_as_argument_fails")
@@ -108,7 +108,7 @@ TEST_CASE_FIXTURE(Fixture, "argument_is_intersection")
         f(true)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "should_still_pick_an_overload_whose_arguments_are_unions")
@@ -122,7 +122,7 @@ TEST_CASE_FIXTURE(Fixture, "should_still_pick_an_overload_whose_arguments_are_un
         local b1, b2 = f("foo"), f(nil)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*requireType("a1"), *typeChecker.numberType);
     CHECK_EQ(*requireType("a2"), *typeChecker.numberType);
@@ -161,7 +161,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_property_guarante
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const IntersectionTypeVar* r = get<IntersectionTypeVar>(requireType("r"));
     REQUIRE(r);
@@ -185,7 +185,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
         local r = t.x.y.z.thing
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string & string", toString(requireType("r")));
 }
 
@@ -199,7 +199,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number & string", toString(requireType("r"))); // TODO(amccord): This should be an error.
 }
 
@@ -213,7 +213,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_part_missing_
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("r")));
 }
 
@@ -227,7 +227,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_property_of_t
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.anyType, *requireType("r"));
 }
 
@@ -242,11 +242,11 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_all_parts_missing
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     UnknownProperty* up = get<UnknownProperty>(result.errors[0]);
     REQUIRE_MESSAGE(up, result.errors[0].data);
-    CHECK_EQ(up->key, "x");
+    CHECK_EQ(up->key, XorStr("x"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
@@ -259,7 +259,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
         a.x = 10
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
         type X = {}
@@ -269,7 +269,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
         a.x = 10
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
         type X = { x: number }
@@ -280,7 +280,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
         a.x = 10
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
         type A = { x: {y: number} }
@@ -291,7 +291,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write")
         t.x.y = 40
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
@@ -305,11 +305,11 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
         a.z = 10
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table '{| x: number, y: number |}'");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::LluLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[0]), XorStr("Cannot add property 'z' to table '{| x: number, y: number |}'"));
     else
-        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
+        CHECK_EQ(toString(result.errors[0]), XorStr("Cannot add property 'z' to table 'X & Y'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
@@ -329,20 +329,20 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
         function xy:w(a:number) return a * 10 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    lluz_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(string, number) -> string' could not be converted into '(string) -> string'
 caused by:
   Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table '{| x: (number) -> number, y: (string) -> string |}'");
+    if (FFlag::LluLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[1]), XorStr("Cannot add property 'z' to table '{| x: (number) -> number, y: (string) -> string |}'"));
     else
-        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
-    CHECK_EQ(toString(result.errors[2]), "Type 'number' could not be converted into 'string'");
+        CHECK_EQ(toString(result.errors[1]), XorStr("Cannot add property 'z' to table 'X & Y'"));
+    CHECK_EQ(toString(result.errors[2]), XorStr("Type 'number' could not be converted into 'string'"));
 
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table '{| x: (number) -> number, y: (string) -> string |}'");
+    if (FFlag::LluLowerBoundsCalculation)
+        CHECK_EQ(toString(result.errors[3]), XorStr("Cannot add property 'w' to table '{| x: (number) -> number, y: (string) -> string |}'"));
     else
-        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
+        CHECK_EQ(toString(result.errors[3]), XorStr("Cannot add property 'w' to table 'X & Y'"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
@@ -360,13 +360,13 @@ TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
     function xy:w(a:number) return a * 10 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    lluz_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(string, number) -> string' could not be converted into '(string) -> string'
 caused by:
   Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
-    CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'XY'");
-    CHECK_EQ(toString(result.errors[2]), "Type 'number' could not be converted into 'string'");
-    CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'XY'");
+    CHECK_EQ(toString(result.errors[1]), XorStr("Cannot add property 'z' to table 'XY'"));
+    CHECK_EQ(toString(result.errors[2]), XorStr("Type 'number' could not be converted into 'string'"));
+    CHECK_EQ(toString(result.errors[3]), XorStr("Cannot add property 'w' to table 'XY'"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersection_setmetatable")
@@ -376,12 +376,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersection_setmetatable")
         setmetatable(t, {})
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_part")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", false}};
+    ScopedFastFlag flags[] = {{"lluzLowerBoundsCalculation", false}};
 
     CheckResult result = check(R"(
 type X = { x: number }
@@ -393,7 +393,7 @@ type XYZ = X & Y & Z
 local a: XYZ = 3
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'number' could not be converted into 'X & Y & Z'
 caused by:
   Not all intersection parts are compatible. Type 'number' could not be converted into 'X')");
@@ -401,7 +401,7 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", false}};
+    ScopedFastFlag flags[] = {{"lluzLowerBoundsCalculation", false}};
 
     CheckResult result = check(R"(
 type X = { x: number }
@@ -414,8 +414,8 @@ local a: XYZ
 local b: number = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'X & Y & Z' could not be converted into 'number'; none of the intersection parts are compatible)");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), RXorStr("(Type 'X & Y & Z' could not be converted into 'number'; none of the intersection parts are compatible)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "overload_is_not_a_function")
@@ -443,7 +443,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_flattenintersection")
         until _(_)(_)._
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

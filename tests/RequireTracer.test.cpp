@@ -1,12 +1,12 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/RequireTracer.h"
-#include "Luau/Parser.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/RequireTracer.h"
+#include "lluz/Parser.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 namespace
 {
@@ -44,14 +44,14 @@ struct RequireTracerFixture
     Allocator allocator;
     AstNameTable names;
 
-    Luau::TestFileResolver fileResolver;
+    lluz::TestFileResolver fileResolver;
 };
 
 const std::vector<std::string> roots = {"game", "Game", "workspace", "Workspace", "script"};
 
 } // namespace
 
-TEST_SUITE_BEGIN("RequireTracerTest");
+TEST_SUITE_BEGIN(XorStr("RequireTracerTest"));
 
 TEST_CASE_FIXTURE(RequireTracerFixture, "trace_local")
 {
@@ -60,7 +60,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_local")
         require(m)
     )");
 
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+    RequireTraceResult result = traceRequires(&fileResolver, block, XorStr("ModuleName"));
     REQUIRE(!result.exprs.empty());
 
     AstStatLocal* loc = block->body.data[0]->as<AstStatLocal>();
@@ -99,7 +99,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_transitive_local")
 
     REQUIRE_EQ(3, block->body.size);
 
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+    RequireTraceResult result = traceRequires(&fileResolver, block, XorStr("ModuleName"));
 
     AstStatLocal* local = block->body.data[1]->as<AstStatLocal>();
     REQUIRE(local);
@@ -116,7 +116,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "trace_function_arguments")
     )");
     REQUIRE_EQ(1, block->body.size);
 
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+    RequireTraceResult result = traceRequires(&fileResolver, block, XorStr("ModuleName"));
 
     AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
     REQUIRE(local != nullptr);
@@ -138,7 +138,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof")
     )");
     REQUIRE_EQ(1, block->body.size);
 
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+    RequireTraceResult result = traceRequires(&fileResolver, block, XorStr("ModuleName"));
 
     AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
     REQUIRE(local != nullptr);
@@ -153,7 +153,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_typeof")
 
     AstExprIndexName* indexName = typeofAnnotation->expr->as<AstExprIndexName>();
     REQUIRE(indexName != nullptr);
-    REQUIRE_EQ(indexName->index, "UsefulObject");
+    REQUIRE_EQ(indexName->index, XorStr("UsefulObject"));
 
     AstExprCall* call = indexName->expr->as<AstExprCall>();
     REQUIRE(call != nullptr);
@@ -170,7 +170,7 @@ TEST_CASE_FIXTURE(RequireTracerFixture, "follow_string_indexexpr")
     )");
     REQUIRE_EQ(2, block->body.size);
 
-    RequireTraceResult result = traceRequires(&fileResolver, block, "ModuleName");
+    RequireTraceResult result = traceRequires(&fileResolver, block, XorStr("ModuleName"));
 
     AstStatLocal* local = block->body.data[0]->as<AstStatLocal>();
     REQUIRE(local != nullptr);

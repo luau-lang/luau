@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
@@ -9,9 +9,80 @@
 
 #include <algorithm>
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("NonstrictModeTests");
+TEST_SUITE_BEGIN(XorStr("NonstrictModeTests"));
+
+TEST_CASE_FIXTURE(Fixture, "globals")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = true
+        foo = "now i'm a string!"
+    )");
+
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals2")
+{
+    ScopedFastFlag sff[]{
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
+    };
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = function() return 1 end
+        foo = "now i'm a string!"
+    )");
+
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("() -> number", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
+    CHECK_EQ("() -> number", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals_everywhere")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = 1
+
+        if true then
+            bar = 2
+        end
+    )");
+
+    lluz_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("any", toString(requireType("foo")));
+    CHECK_EQ("any", toString(requireType("bar")));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "function_returns_number_or_string")
+{
+    ScopedFastFlag sff[]{{"lluzReturnTypeInferenceInNonstrict", true}, {"lluzLowerBoundsCalculation", true}};
+
+    CheckResult result = check(R"(
+        --!nonstrict
+        local function f()
+            if math.random() > 0.5 then
+                return 5
+            else
+                return XorStr("hi")
+            end
+        end
+    )");
+
+    lluz_REQUIRE_NO_ERRORS(result);
+
+    CHECK("() -> number | string" == toString(requireType("f")));
+}
 
 TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
 {
@@ -20,7 +91,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
         function foo(x, y) end
     )");
 
-    TypeId fooType = requireType("foo");
+    TypeId fooType = requireType(XorStr("foo"));
     REQUIRE(fooType);
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fooType);
@@ -35,8 +106,13 @@ TEST_CASE_FIXTURE(Fixture, "infer_nullary_function")
     REQUIRE_EQ(0, rets.size());
 }
 
-TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_could_return")
+TEST_CASE_FIXTURE(Fixture, "first_return_type_dictates_number_of_return_types")
 {
+    ScopedFastFlag sff[]{
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
         function getMinCardCountForWidth(width)
@@ -48,25 +124,21 @@ TEST_CASE_FIXTURE(Fixture, "infer_the_maximum_number_of_values_the_function_coul
         end
     )");
 
-    TypeId t = requireType("getMinCardCountForWidth");
+    TypeId t = requireType(XorStr("getMinCardCountForWidth"));
     REQUIRE(t);
 
-    REQUIRE_EQ("(any) -> (...any)", toString(t));
+    REQUIRE_EQ("(any) -> number", toString(t));
 }
 
-#if 0
-// Maybe we want this?
 TEST_CASE_FIXTURE(Fixture, "return_annotation_is_still_checked")
 {
     CheckResult result = check(R"(
+        --!nonstrict
         function foo(x): number return 'hello' end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    REQUIRE_NE(*typeChecker.anyType, *requireType("foo"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
-#endif
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
 {
@@ -78,7 +150,7 @@ TEST_CASE_FIXTURE(Fixture, "function_parameters_are_any")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types_are_ok")
@@ -95,7 +167,7 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types_are_ok")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
@@ -105,7 +177,7 @@ TEST_CASE_FIXTURE(Fixture, "locals_are_any_by_default")
         local m = 55
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.anyType, *requireType("m"));
 }
@@ -121,7 +193,7 @@ TEST_CASE_FIXTURE(Fixture, "parameters_having_type_any_are_optional")
         f(5)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
@@ -136,7 +208,7 @@ TEST_CASE_FIXTURE(Fixture, "local_tables_are_not_any")
         T:staticmethod()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("This function does not take self. Did you mean to use a dot instead of a colon?", toString(result.errors[0]));
 }
@@ -150,7 +222,7 @@ TEST_CASE_FIXTURE(Fixture, "offer_a_hint_if_you_use_a_dot_instead_of_a_colon")
         T.method(5)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("This function must be called with self. Did you mean to use a colon instead of a dot?", toString(result.errors[0]));
 }
@@ -163,7 +235,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
         T.foo = 55
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     TableTypeVar* ttv = getMutable<TableTypeVar>(requireType("T"));
 
@@ -186,7 +258,7 @@ TEST_CASE_FIXTURE(Fixture, "inline_table_props_are_also_any")
         }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     TableTypeVar* ttv = getMutable<TableTypeVar>(requireType("T"));
     REQUIRE_MESSAGE(ttv, "Should be a table: " << toString(requireType("T")));
@@ -212,7 +284,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_iterator_variables_are_any")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_insert_and_recursive_calls")
@@ -223,7 +295,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_insert_and_recursive_calls")
             local newList = {}
 
             for _, value in ipairs(list) do
-                if type(value) == "table" then
+                if type(value) == XorStr("table") then
                     table.insert(newList, populateListFromIds(value, normalizedData))
                 else
                     table.insert(newList, normalizedData[value])
@@ -234,7 +306,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_insert_and_recursive_calls")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_return_anything")
@@ -247,11 +319,16 @@ TEST_CASE_FIXTURE(Fixture, "delay_function_does_not_require_its_argument_to_retu
         delay(50, function() end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
 {
+    ScopedFastFlag sff[]{
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
+    };
+
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -266,9 +343,9 @@ TEST_CASE_FIXTURE(Fixture, "inconsistent_module_return_types_are_ok")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    REQUIRE_EQ("any", toString(getMainModule()->getModuleScope()->returnType));
+    REQUIRE_EQ("((any) -> string) | {| foo: any |}", toString(getMainModule()->getModuleScope()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")
@@ -285,7 +362,7 @@ TEST_CASE_FIXTURE(Fixture, "returning_insufficient_return_values")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
@@ -302,7 +379,7 @@ TEST_CASE_FIXTURE(Fixture, "returning_too_many_values")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

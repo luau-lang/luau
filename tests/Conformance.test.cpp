@@ -1,13 +1,13 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lua.h"
 #include "lualib.h"
 #include "luacode.h"
 
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/ModuleResolver.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/StringUtils.h"
-#include "Luau/BytecodeBuilder.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/ModuleResolver.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/StringUtils.h"
+#include "lluz/BytecodeBuilder.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -17,16 +17,6 @@
 #include <math.h>
 
 extern bool verbose;
-extern int optimizationLevel;
-
-static lua_CompileOptions defaultOptions()
-{
-    lua_CompileOptions copts = {};
-    copts.optimizationLevel = optimizationLevel;
-    copts.debugLevel = 1;
-
-    return copts;
-}
 
 static int lua_collectgarbage(lua_State* L)
 {
@@ -62,8 +52,8 @@ static int lua_loadstring(lua_State* L)
     lua_setsafeenv(L, LUA_ENVIRONINDEX, false);
 
     size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(s, l, nullptr, &bytecodeSize);
-    int result = luau_load(L, chunkname, bytecode, bytecodeSize, 0);
+    char* bytecode = lluz_compile(s, l, nullptr, &bytecodeSize);
+    int result = lluz_load(L, chunkname, bytecode, bytecodeSize, 0);
     free(bytecode);
 
     if (result == 0)
@@ -111,11 +101,11 @@ static int lua_vector_index(lua_State* L)
 
     if (strcmp(name, "Dot") == 0)
     {
-        lua_pushcfunction(L, lua_vector_dot, "Dot");
+        lua_pushcfunction(L, lua_vector_dot, XorStr("Dot"));
         return 1;
     }
 
-    luaL_error(L, "%s is not a valid member of vector", name);
+    luaL_error(L, XorStr("%s is not a valid member of vector"), name);
 }
 
 static int lua_vector_namecall(lua_State* L)
@@ -126,7 +116,7 @@ static int lua_vector_namecall(lua_State* L)
             return lua_vector_dot(L);
     }
 
-    luaL_error(L, "%s is not a valid method of vector", luaL_checkstring(L, 1));
+    luaL_error(L, XorStr("%s is not a valid method of vector"), luaL_checkstring(L, 1));
 }
 
 int lua_silence(lua_State* L)
@@ -137,7 +127,7 @@ int lua_silence(lua_State* L)
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr,
-    lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr)
+    lua_State* initialLuaState = nullptr, lua_CompileOptions* copts = nullptr)
 {
     std::string path = __FILE__;
     path.erase(path.find_last_of("\\/"));
@@ -177,9 +167,9 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     lua_pop(L, 1);
 
     // In some configurations we have a larger C stack consumption which trips some conformance tests
-#if defined(LUAU_ENABLE_ASAN) || defined(_NOOPT) || defined(_DEBUG)
+#if defined(lluz_ENABLE_ASAN) || defined(_NOOPT) || defined(_DEBUG)
     lua_pushboolean(L, true);
-    lua_setglobal(L, "limitedstack");
+    lua_setglobal(L, XorStr("limitedstack"));
 #endif
 
     // Extra test-specific setup
@@ -195,16 +185,13 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     // Lua conformance tests treat _G synonymously with getfenv(); for now cater to them
     lua_pushvalue(L, LUA_GLOBALSINDEX);
     lua_pushvalue(L, LUA_GLOBALSINDEX);
-    lua_setfield(L, -1, "_G");
+    lua_setfield(L, -1, XorStr("_G"));
 
     std::string chunkname = "=" + std::string(name);
 
-    // note: luau_compile supports nullptr options, but we need to customize our defaults to improve test coverage
-    lua_CompileOptions opts = options ? *options : defaultOptions();
-
     size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(source.data(), source.size(), &opts, &bytecodeSize);
-    int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
+    char* bytecode = lluz_compile(source.data(), source.size(), copts, &bytecodeSize);
+    int result = lluz_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
@@ -221,7 +208,7 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     if (status == 0)
     {
         REQUIRE(lua_isstring(L, -1));
-        CHECK(std::string(lua_tostring(L, -1)) == "OK");
+        CHECK(std::string(lua_tostring(L, -1)) == XorStr("OK"));
     }
     else
     {
@@ -235,28 +222,28 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     return globalState;
 }
 
-TEST_SUITE_BEGIN("Conformance");
+TEST_SUITE_BEGIN(XorStr("Conformance"));
 
 TEST_CASE("Assert")
 {
-    runConformance("assert.lua");
+    runConformance(XorStr("assert.lua"));
 }
 
 TEST_CASE("Basic")
 {
-    ScopedFastFlag sff("LuauLenTM", true);
+    ScopedFastFlag sff(XorStr("LluLenTM"), true);
 
-    runConformance("basic.lua");
+    runConformance(XorStr("basic.lua"));
 }
 
 TEST_CASE("Math")
 {
-    runConformance("math.lua");
+    runConformance(XorStr("math.lua"));
 }
 
-TEST_CASE("Tables")
+TEST_CASE("Table")
 {
-    runConformance("tables.lua", [](lua_State* L) {
+    runConformance("nextvar.lua", [](lua_State* L) {
         lua_pushcfunction(
             L,
             [](lua_State* L) {
@@ -264,118 +251,117 @@ TEST_CASE("Tables")
                 lua_pushlightuserdata(L, reinterpret_cast<void*>(uintptr_t(v)));
                 return 1;
             },
-            "makelud");
-        lua_setglobal(L, "makelud");
+            XorStr("makelud"));
+        lua_setglobal(L, XorStr("makelud"));
     });
 }
 
 TEST_CASE("PatternMatch")
 {
-    runConformance("pm.lua");
+    runConformance(XorStr("pm.lua"));
 }
 
 TEST_CASE("Sort")
 {
-    runConformance("sort.lua");
+    runConformance(XorStr("sort.lua"));
 }
 
 TEST_CASE("Move")
 {
-    runConformance("move.lua");
+    runConformance(XorStr("move.lua"));
 }
 
 TEST_CASE("Clear")
 {
-    runConformance("clear.lua");
+    runConformance(XorStr("clear.lua"));
 }
 
 TEST_CASE("Strings")
 {
-    runConformance("strings.lua");
+    runConformance(XorStr("strings.lua"));
 }
 
 TEST_CASE("VarArg")
 {
-    runConformance("vararg.lua");
+    runConformance(XorStr("vararg.lua"));
 }
 
 TEST_CASE("Locals")
 {
-    runConformance("locals.lua");
+    runConformance(XorStr("locals.lua"));
 }
 
 TEST_CASE("Literals")
 {
-    runConformance("literals.lua");
+    runConformance(XorStr("literals.lua"));
 }
 
 TEST_CASE("Errors")
 {
-    runConformance("errors.lua");
+    runConformance(XorStr("errors.lua"));
 }
 
 TEST_CASE("Events")
 {
-    ScopedFastFlag sff1("LuauLenTM", true);
-    ScopedFastFlag sff2("LuauBetterNewindex", true);
+    ScopedFastFlag sff("LluLenTM", true);
 
-    runConformance("events.lua");
+    runConformance(XorStr("events.lua"));
 }
 
 TEST_CASE("Constructs")
 {
-    runConformance("constructs.lua");
+    runConformance(XorStr("constructs.lua"));
 }
 
 TEST_CASE("Closure")
 {
-    runConformance("closure.lua");
+    runConformance(XorStr("closure.lua"));
 }
 
 TEST_CASE("Calls")
 {
-    runConformance("calls.lua");
+    runConformance(XorStr("calls.lua"));
 }
 
 TEST_CASE("Attrib")
 {
-    runConformance("attrib.lua");
+    runConformance(XorStr("attrib.lua"));
 }
 
 TEST_CASE("GC")
 {
-    runConformance("gc.lua");
+    runConformance(XorStr("gc.lua"));
 }
 
 TEST_CASE("Bitwise")
 {
-    runConformance("bitwise.lua");
+    runConformance(XorStr("bitwise.lua"));
 }
 
 TEST_CASE("UTF8")
 {
-    runConformance("utf8.lua");
+    runConformance(XorStr("utf8.lua"));
 }
 
 TEST_CASE("Coroutine")
 {
-    runConformance("coroutine.lua");
+    runConformance(XorStr("coroutine.lua"));
 }
 
 static int cxxthrow(lua_State* L)
 {
 #if LUA_USE_LONGJMP
-    luaL_error(L, "oops");
+    luaL_error(L, XorStr("oops"));
 #else
-    throw std::runtime_error("oops");
+    throw std::runtime_error(XorStr("oops"));
 #endif
 }
 
 TEST_CASE("PCall")
 {
     runConformance("pcall.lua", [](lua_State* L) {
-        lua_pushcfunction(L, cxxthrow, "cxxthrow");
-        lua_setglobal(L, "cxxthrow");
+        lua_pushcfunction(L, cxxthrow, XorStr("cxxthrow"));
+        lua_setglobal(L, XorStr("cxxthrow"));
 
         lua_pushcfunction(
             L,
@@ -385,39 +371,41 @@ TEST_CASE("PCall")
                 lua_resumeerror(co, L);
                 return 0;
             },
-            "resumeerror");
-        lua_setglobal(L, "resumeerror");
+            XorStr("resumeerror"));
+        lua_setglobal(L, XorStr("resumeerror"));
     });
 }
 
 TEST_CASE("Pack")
 {
-    runConformance("tpack.lua");
+    runConformance(XorStr("tpack.lua"));
 }
 
 TEST_CASE("Vector")
 {
-    lua_CompileOptions copts = defaultOptions();
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1;
+    copts.debugLevel = 1;
     copts.vectorCtor = "vector";
 
     runConformance(
         "vector.lua",
         [](lua_State* L) {
-            lua_pushcfunction(L, lua_vector, "vector");
-            lua_setglobal(L, "vector");
+            lua_pushcfunction(L, lua_vector, XorStr("vector"));
+            lua_setglobal(L, XorStr("vector"));
 
 #if LUA_VECTOR_SIZE == 4
             lua_pushvector(L, 0.0f, 0.0f, 0.0f, 0.0f);
 #else
             lua_pushvector(L, 0.0f, 0.0f, 0.0f);
 #endif
-            luaL_newmetatable(L, "vector");
+            luaL_newmetatable(L, XorStr("vector"));
 
-            lua_pushstring(L, "__index");
+            lua_pushstring(L, XorStr("__index"));
             lua_pushcfunction(L, lua_vector_index, nullptr);
             lua_settable(L, -3);
 
-            lua_pushstring(L, "__namecall");
+            lua_pushstring(L, XorStr("__namecall"));
             lua_pushcfunction(L, lua_vector_namecall, nullptr);
             lua_settable(L, -3);
 
@@ -428,37 +416,37 @@ TEST_CASE("Vector")
         nullptr, nullptr, &copts);
 }
 
-static void populateRTTI(lua_State* L, Luau::TypeId type)
+static void populateRTTI(lua_State* L, lluz::TypeId type)
 {
-    if (auto p = Luau::get<Luau::PrimitiveTypeVar>(type))
+    if (auto p = lluz::get<lluz::PrimitiveTypeVar>(type))
     {
         switch (p->type)
         {
-        case Luau::PrimitiveTypeVar::Boolean:
-            lua_pushstring(L, "boolean");
+        case lluz::PrimitiveTypeVar::Boolean:
+            lua_pushstring(L, XorStr("boolean"));
             break;
 
-        case Luau::PrimitiveTypeVar::NilType:
-            lua_pushstring(L, "nil");
+        case lluz::PrimitiveTypeVar::NilType:
+            lua_pushstring(L, XorStr("nil"));
             break;
 
-        case Luau::PrimitiveTypeVar::Number:
-            lua_pushstring(L, "number");
+        case lluz::PrimitiveTypeVar::Number:
+            lua_pushstring(L, XorStr("number"));
             break;
 
-        case Luau::PrimitiveTypeVar::String:
-            lua_pushstring(L, "string");
+        case lluz::PrimitiveTypeVar::String:
+            lua_pushstring(L, XorStr("string"));
             break;
 
-        case Luau::PrimitiveTypeVar::Thread:
-            lua_pushstring(L, "thread");
+        case lluz::PrimitiveTypeVar::Thread:
+            lua_pushstring(L, XorStr("thread"));
             break;
 
         default:
-            LUAU_ASSERT(!"Unknown primitive type");
+            lluz_ASSERT(!XorStr("Unknown primitive type"));
         }
     }
-    else if (auto t = Luau::get<Luau::TableTypeVar>(type))
+    else if (auto t = lluz::get<lluz::TableTypeVar>(type))
     {
         lua_newtable(L);
 
@@ -468,36 +456,38 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
             lua_setfield(L, -2, name.c_str());
         }
     }
-    else if (Luau::get<Luau::FunctionTypeVar>(type))
+    else if (lluz::get<lluz::FunctionTypeVar>(type))
     {
-        lua_pushstring(L, "function");
+        lua_pushstring(L, XorStr("function"));
     }
-    else if (Luau::get<Luau::AnyTypeVar>(type))
+    else if (lluz::get<lluz::AnyTypeVar>(type))
     {
-        lua_pushstring(L, "any");
+        lua_pushstring(L, XorStr("any"));
     }
-    else if (auto i = Luau::get<Luau::IntersectionTypeVar>(type))
+    else if (auto i = lluz::get<lluz::IntersectionTypeVar>(type))
     {
         for (const auto& part : i->parts)
-            LUAU_ASSERT(Luau::get<Luau::FunctionTypeVar>(part));
+            lluz_ASSERT(lluz::get<lluz::FunctionTypeVar>(part));
 
-        lua_pushstring(L, "function");
+        lua_pushstring(L, XorStr("function"));
     }
     else
     {
-        LUAU_ASSERT(!"Unknown type");
+        lluz_ASSERT(!XorStr("Unknown type"));
     }
 }
 
 TEST_CASE("Types")
 {
-    runConformance("types.lua", [](lua_State* L) {
-        Luau::NullModuleResolver moduleResolver;
-        Luau::InternalErrorReporter iceHandler;
-        Luau::TypeChecker env(&moduleResolver, &iceHandler);
+    ScopedFastFlag sff("lluzCheckLenMT", true);
 
-        Luau::registerBuiltinTypes(env);
-        Luau::freeze(env.globalTypes);
+    runConformance("types.lua", [](lua_State* L) {
+        lluz::NullModuleResolver moduleResolver;
+        lluz::InternalErrorReporter iceHandler;
+        lluz::TypeChecker env(&moduleResolver, &iceHandler);
+
+        lluz::registerBuiltinTypes(env);
+        lluz::freeze(env.globalTypes);
 
         lua_newtable(L);
 
@@ -507,18 +497,18 @@ TEST_CASE("Types")
             lua_setfield(L, -2, toString(name).c_str());
         }
 
-        lua_setglobal(L, "RTTI");
+        lua_setglobal(L, XorStr("RTTI"));
     });
 }
 
 TEST_CASE("DateTime")
 {
-    runConformance("datetime.lua");
+    runConformance(XorStr("datetime.lua"));
 }
 
 TEST_CASE("Debug")
 {
-    runConformance("debug.lua");
+    runConformance(XorStr("debug.lua"));
 }
 
 TEST_CASE("Debugger")
@@ -529,7 +519,8 @@ TEST_CASE("Debugger")
     breakhits = 0;
     interruptedthread = nullptr;
 
-    lua_CompileOptions copts = defaultOptions();
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1;
     copts.debugLevel = 2;
 
     runConformance(
@@ -572,8 +563,8 @@ TEST_CASE("Debugger")
                     lua_breakpoint(L, -1, line, enabled);
                     return 0;
                 },
-                "breakpoint");
-            lua_setglobal(L, "breakpoint");
+                XorStr("breakpoint"));
+            lua_setglobal(L, XorStr("breakpoint"));
         },
         [](lua_State* L) {
             CHECK(breakhits % 2 == 1);
@@ -665,11 +656,11 @@ TEST_CASE("SameHash")
     // To keep VM and compiler separate, we duplicate the hash function definition
     // This test validates that the hash function in question returns the same results on basic inputs
     // If this is violated, some code may regress in performance due to hash slot misprediction in inline caches
-    CHECK(luaS_hash("", 0) == Luau::BytecodeBuilder::getStringHash({"", 0}));
-    CHECK(luaS_hash("lua", 3) == Luau::BytecodeBuilder::getStringHash({"lua", 3}));
-    CHECK(luaS_hash("luau", 4) == Luau::BytecodeBuilder::getStringHash({"luau", 4}));
-    CHECK(luaS_hash("luaubytecode", 12) == Luau::BytecodeBuilder::getStringHash({"luaubytecode", 12}));
-    CHECK(luaS_hash("luaubytecodehash", 16) == Luau::BytecodeBuilder::getStringHash({"luaubytecodehash", 16}));
+    CHECK(luaS_hash("", 0) == lluz::BytecodeBuilder::getStringHash({"", 0}));
+    CHECK(luaS_hash("lua", 3) == lluz::BytecodeBuilder::getStringHash({"lua", 3}));
+    CHECK(luaS_hash("lluz", 4) == lluz::BytecodeBuilder::getStringHash({"lluz", 4}));
+    CHECK(luaS_hash("lluzbytecode", 12) == lluz::BytecodeBuilder::getStringHash({"lluzbytecode", 12}));
+    CHECK(luaS_hash("lluzbytecodehash", 16) == lluz::BytecodeBuilder::getStringHash({"lluzbytecodehash", 16}));
 
     // Also hash should work on unaligned source data even when hashing long strings
     char buf[128] = {};
@@ -722,12 +713,12 @@ TEST_CASE("ApiTables")
 
     lua_newtable(L);
     lua_pushnumber(L, 123.0);
-    lua_setfield(L, -2, "key");
-    lua_pushstring(L, "test");
+    lua_setfield(L, -2, XorStr("key"));
+    lua_pushstring(L, XorStr("test"));
     lua_rawseti(L, -2, 5);
 
     // lua_gettable
-    lua_pushstring(L, "key");
+    lua_pushstring(L, XorStr("key"));
     CHECK(lua_gettable(L, -2) == LUA_TNUMBER);
     CHECK(lua_tonumber(L, -1) == 123.0);
     lua_pop(L, 1);
@@ -743,7 +734,7 @@ TEST_CASE("ApiTables")
     lua_pop(L, 1);
 
     // lua_rawget
-    lua_pushstring(L, "key");
+    lua_pushstring(L, XorStr("key"));
     CHECK(lua_rawget(L, -2) == LUA_TNUMBER);
     CHECK(lua_tonumber(L, -1) == 123.0);
     lua_pop(L, 1);
@@ -758,12 +749,12 @@ TEST_CASE("ApiTables")
 
 TEST_CASE("ApiCalls")
 {
-    StateRef globalState = runConformance("apicalls.lua");
+    StateRef globalState = runConformance(XorStr("apicalls.lua"));
     lua_State* L = globalState.get();
 
     // lua_call
     {
-        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_getfield(L, LUA_GLOBALSINDEX, XorStr("add"));
         lua_pushnumber(L, 40);
         lua_pushnumber(L, 2);
         lua_call(L, 2, 1);
@@ -774,7 +765,7 @@ TEST_CASE("ApiCalls")
 
     // lua_pcall
     {
-        lua_getfield(L, LUA_GLOBALSINDEX, "add");
+        lua_getfield(L, LUA_GLOBALSINDEX, XorStr("add"));
         lua_pushnumber(L, 40);
         lua_pushnumber(L, 2);
         lua_pcall(L, 2, 1, 0);
@@ -787,11 +778,11 @@ TEST_CASE("ApiCalls")
     {
         lua_State* L2 = lua_newthread(L);
 
-        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_getfield(L2, LUA_GLOBALSINDEX, XorStr("create_with_tm"));
         lua_pushnumber(L2, 42);
         lua_pcall(L2, 1, 1, 0);
 
-        lua_getfield(L2, LUA_GLOBALSINDEX, "create_with_tm");
+        lua_getfield(L2, LUA_GLOBALSINDEX, XorStr("create_with_tm"));
         lua_pushnumber(L2, 42);
         lua_pcall(L2, 1, 1, 0);
 
@@ -808,18 +799,18 @@ TEST_CASE("ApiCalls")
 
     // lua_clonefunction + fenv
     {
-        lua_getfield(L, LUA_GLOBALSINDEX, "getpi");
+        lua_getfield(L, LUA_GLOBALSINDEX, XorStr("getpi"));
         lua_call(L, 0, 1);
         CHECK(lua_tonumber(L, -1) == 3.1415926);
         lua_pop(L, 1);
 
-        lua_getfield(L, LUA_GLOBALSINDEX, "getpi");
+        lua_getfield(L, LUA_GLOBALSINDEX, XorStr("getpi"));
 
         // clone & override env
         lua_clonefunction(L, -1);
         lua_newtable(L);
         lua_pushnumber(L, 42);
-        lua_setfield(L, -2, "pi");
+        lua_setfield(L, -2, XorStr("pi"));
         lua_setfenv(L, -2);
 
         lua_call(L, 0, 1);
@@ -834,12 +825,12 @@ TEST_CASE("ApiCalls")
 
     // lua_clonefunction + upvalues
     {
-        lua_getfield(L, LUA_GLOBALSINDEX, "incuv");
+        lua_getfield(L, LUA_GLOBALSINDEX, XorStr("incuv"));
         lua_call(L, 0, 1);
         CHECK(lua_tonumber(L, -1) == 1);
         lua_pop(L, 1);
 
-        lua_getfield(L, LUA_GLOBALSINDEX, "incuv");
+        lua_getfield(L, LUA_GLOBALSINDEX, XorStr("incuv"));
         // two clones
         lua_clonefunction(L, -1);
         lua_clonefunction(L, -2);
@@ -857,41 +848,6 @@ TEST_CASE("ApiCalls")
         CHECK(lua_tonumber(L, -1) == 4);
         lua_pop(L, 1);
     }
-}
-
-TEST_CASE("ApiAtoms")
-{
-    StateRef globalState(luaL_newstate(), lua_close);
-    lua_State* L = globalState.get();
-
-    lua_callbacks(L)->useratom = [](const char* s, size_t l) -> int16_t {
-        if (strcmp(s, "string") == 0)
-            return 0;
-        if (strcmp(s, "important") == 0)
-            return 1;
-
-        return -1;
-    };
-
-    lua_pushstring(L, "string");
-    lua_pushstring(L, "import");
-    lua_pushstring(L, "ant");
-    lua_concat(L, 2);
-    lua_pushstring(L, "unimportant");
-
-    int a1, a2, a3;
-    const char* s1 = lua_tostringatom(L, -3, &a1);
-    const char* s2 = lua_tostringatom(L, -2, &a2);
-    const char* s3 = lua_tostringatom(L, -1, &a3);
-
-    CHECK(strcmp(s1, "string") == 0);
-    CHECK(a1 == 0);
-
-    CHECK(strcmp(s2, "important") == 0);
-    CHECK(a2 == 1);
-
-    CHECK(strcmp(s3, "unimportant") == 0);
-    CHECK(a3 == -1);
 }
 
 static bool endsWith(const std::string& str, const std::string& suffix)
@@ -924,7 +880,7 @@ TEST_CASE("ExceptionObject")
             CHECK(e.what() != nullptr);
             return ExceptionResult{true, e.what()};
         }
-        return ExceptionResult{false, ""};
+        return ExceptionResult{false, XorStr("")};
     };
 
     auto reallocFunc = [](void* /*ud*/, void* ptr, size_t /*osize*/, size_t nsize) -> void* {
@@ -950,34 +906,34 @@ TEST_CASE("ExceptionObject")
     lua_State* L = globalState.get();
 
     {
-        ExceptionResult result = captureException(L, "infinite_recursion_error");
+        ExceptionResult result = captureException(L, XorStr("infinite_recursion_error"));
         CHECK(result.exceptionGenerated);
     }
 
     {
-        ExceptionResult result = captureException(L, "empty_function");
+        ExceptionResult result = captureException(L, XorStr("empty_function"));
         CHECK_FALSE(result.exceptionGenerated);
     }
 
     {
-        ExceptionResult result = captureException(L, "pass_number_to_error");
+        ExceptionResult result = captureException(L, XorStr("pass_number_to_error"));
         CHECK(result.exceptionGenerated);
         CHECK(endsWith(result.description, "42"));
     }
 
     {
-        ExceptionResult result = captureException(L, "pass_string_to_error");
+        ExceptionResult result = captureException(L, XorStr("pass_string_to_error"));
         CHECK(result.exceptionGenerated);
         CHECK(endsWith(result.description, "string argument"));
     }
 
     {
-        ExceptionResult result = captureException(L, "pass_table_to_error");
+        ExceptionResult result = captureException(L, XorStr("pass_table_to_error"));
         CHECK(result.exceptionGenerated);
     }
 
     {
-        ExceptionResult result = captureException(L, "large_allocation_error");
+        ExceptionResult result = captureException(L, XorStr("large_allocation_error"));
         CHECK(result.exceptionGenerated);
     }
 }
@@ -985,7 +941,7 @@ TEST_CASE("ExceptionObject")
 
 TEST_CASE("IfElseExpression")
 {
-    runConformance("ifelseexpr.lua");
+    runConformance(XorStr("ifelseexpr.lua"));
 }
 
 TEST_CASE("TagMethodError")
@@ -1001,8 +957,9 @@ TEST_CASE("TagMethodError")
 
 TEST_CASE("Coverage")
 {
-    lua_CompileOptions copts = defaultOptions();
-    copts.optimizationLevel = 1; // disable inlining to get fixed expected hit results
+    lua_CompileOptions copts = {};
+    copts.optimizationLevel = 1;
+    copts.debugLevel = 1;
     copts.coverageLevel = 2;
 
     runConformance(
@@ -1011,7 +968,7 @@ TEST_CASE("Coverage")
             lua_pushcfunction(
                 L,
                 [](lua_State* L) -> int {
-                    luaL_argexpected(L, lua_isLfunction(L, 1), 1, "function");
+                    luaL_argexpected(L, lua_isLfunction(L, 1), 1, XorStr("function"));
 
                     lua_newtable(L);
                     lua_getcoverage(L, 1, L, [](void* context, const char* function, int linedefined, int depth, const int* hits, size_t size) {
@@ -1020,13 +977,13 @@ TEST_CASE("Coverage")
                         lua_newtable(L);
 
                         lua_pushstring(L, function);
-                        lua_setfield(L, -2, "name");
+                        lua_setfield(L, -2, XorStr("name"));
 
                         lua_pushinteger(L, linedefined);
-                        lua_setfield(L, -2, "linedefined");
+                        lua_setfield(L, -2, XorStr("linedefined"));
 
                         lua_pushinteger(L, depth);
-                        lua_setfield(L, -2, "depth");
+                        lua_setfield(L, -2, XorStr("depth"));
 
                         for (size_t i = 0; i < size; ++i)
                             if (hits[i] != -1)
@@ -1040,15 +997,15 @@ TEST_CASE("Coverage")
 
                     return 1;
                 },
-                "getcoverage");
-            lua_setglobal(L, "getcoverage");
+                XorStr("getcoverage"));
+            lua_setglobal(L, XorStr("getcoverage"));
         },
         nullptr, nullptr, &copts);
 }
 
 TEST_CASE("StringConversion")
 {
-    runConformance("strconv.lua");
+    runConformance(XorStr("strconv.lua"));
 }
 
 TEST_CASE("GCDump")
@@ -1061,8 +1018,8 @@ TEST_CASE("GCDump")
 
     // push various objects on stack to cover different paths
     lua_createtable(L, 1, 2);
-    lua_pushstring(L, "value");
-    lua_setfield(L, -2, "key");
+    lua_pushstring(L, XorStr("value"));
+    lua_setfield(L, -2, XorStr("key"));
 
     lua_pushinteger(L, 42);
     lua_rawseti(L, -2, 1000);
@@ -1082,7 +1039,7 @@ TEST_CASE("GCDump")
 
     lua_State* CL = lua_newthread(L);
 
-    lua_pushstring(CL, "local x x = {} local function f() x[1] = math.abs(42) end function foo() coroutine.yield() end foo() return f");
+    lua_pushstring(CL, XorStr("local x x = {} local function f() x[1] = math.abs(42) end function foo() coroutine.yield() end foo() return f"));
     lua_loadstring(CL);
     lua_resume(CL, nullptr, 0);
 
@@ -1092,7 +1049,7 @@ TEST_CASE("GCDump")
     const char* path = "/dev/null";
 #endif
 
-    FILE* f = fopen(path, "w");
+    FILE* f = fopen(path, XorStr("w"));
     REQUIRE(f);
 
     luaC_dump(L, f, nullptr);
@@ -1102,9 +1059,6 @@ TEST_CASE("GCDump")
 
 TEST_CASE("Interrupt")
 {
-    lua_CompileOptions copts = defaultOptions();
-    copts.optimizationLevel = 1; // disable loop unrolling to get fixed expected hit results
-
     static const int expectedhits[] = {
         2,
         9,
@@ -1155,8 +1109,7 @@ TEST_CASE("Interrupt")
         },
         [](lua_State* L) {
             CHECK(index == 5); // a single yield point
-        },
-        nullptr, &copts);
+        });
 
     CHECK(index == int(std::size(expectedhits)));
 }
@@ -1199,10 +1152,6 @@ TEST_CASE("UserdataApi")
     CHECK(lua_touserdatatagged(L, -1, 41) == nullptr);
     CHECK(lua_userdatatag(L, -1) == 42);
 
-    lua_setuserdatatag(L, -1, 43);
-    CHECK(lua_userdatatag(L, -1) == 43);
-    lua_setuserdatatag(L, -1, 42);
-
     // user data with inline dtor
     void* ud3 = lua_newuserdatadtor(L, 4, [](void* data) {
         dtorhits += *(int*)data;
@@ -1222,7 +1171,7 @@ TEST_CASE("UserdataApi")
 
 TEST_CASE("Iter")
 {
-    runConformance("iter.lua");
+    runConformance(XorStr("iter.lua"));
 }
 
 const int kInt64Tag = 1;
@@ -1236,7 +1185,7 @@ static int64_t getInt64(lua_State* L, int idx)
     if (lua_isnumber(L, idx))
         return lua_tointeger(L, idx);
 
-    luaL_typeerror(L, 1, "int64");
+    luaL_typeerror(L, 1, XorStr("int64"));
 }
 
 static void pushInt64(lua_State* L, int64_t value)
@@ -1262,7 +1211,7 @@ TEST_CASE("Userdata")
             [](lua_State* L) {
                 void* p = lua_touserdatatagged(L, 1, kInt64Tag);
                 if (!p)
-                    luaL_typeerror(L, 1, "int64");
+                    luaL_typeerror(L, 1, XorStr("int64"));
 
                 const char* name = luaL_checkstring(L, 2);
 
@@ -1272,10 +1221,10 @@ TEST_CASE("Userdata")
                     return 1;
                 }
 
-                luaL_error(L, "unknown field %s", name);
+                luaL_error(L, XorStr("unknown field %s"), name);
             },
             nullptr);
-        lua_setfield(L, -2, "__index");
+        lua_setfield(L, -2, XorStr("__index"));
 
         // __newindex
         lua_pushcfunction(
@@ -1283,7 +1232,7 @@ TEST_CASE("Userdata")
             [](lua_State* L) {
                 void* p = lua_touserdatatagged(L, 1, kInt64Tag);
                 if (!p)
-                    luaL_typeerror(L, 1, "int64");
+                    luaL_typeerror(L, 1, XorStr("int64"));
 
                 const char* name = luaL_checkstring(L, 2);
 
@@ -1294,10 +1243,10 @@ TEST_CASE("Userdata")
                     return 0;
                 }
 
-                luaL_error(L, "unknown field %s", name);
+                luaL_error(L, XorStr("unknown field %s"), name);
             },
             nullptr);
-        lua_setfield(L, -2, "__newindex");
+        lua_setfield(L, -2, XorStr("__newindex"));
 
         // __eq
         lua_pushcfunction(
@@ -1307,7 +1256,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__eq");
+        lua_setfield(L, -2, XorStr("__eq"));
 
         // __lt
         lua_pushcfunction(
@@ -1317,7 +1266,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__lt");
+        lua_setfield(L, -2, XorStr("__lt"));
 
         // __le
         lua_pushcfunction(
@@ -1327,7 +1276,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__le");
+        lua_setfield(L, -2, XorStr("__le"));
 
         // __add
         lua_pushcfunction(
@@ -1337,7 +1286,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__add");
+        lua_setfield(L, -2, XorStr("__add"));
 
         // __sub
         lua_pushcfunction(
@@ -1347,7 +1296,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__sub");
+        lua_setfield(L, -2, XorStr("__sub"));
 
         // __mul
         lua_pushcfunction(
@@ -1357,7 +1306,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__mul");
+        lua_setfield(L, -2, XorStr("__mul"));
 
         // __div
         lua_pushcfunction(
@@ -1368,7 +1317,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__div");
+        lua_setfield(L, -2, XorStr("__div"));
 
         // __mod
         lua_pushcfunction(
@@ -1379,7 +1328,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__mod");
+        lua_setfield(L, -2, XorStr("__mod"));
 
         // __pow
         lua_pushcfunction(
@@ -1389,7 +1338,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__pow");
+        lua_setfield(L, -2, XorStr("__pow"));
 
         // __unm
         lua_pushcfunction(
@@ -1399,7 +1348,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__unm");
+        lua_setfield(L, -2, XorStr("__unm"));
 
         // __tostring
         lua_pushcfunction(
@@ -1411,7 +1360,7 @@ TEST_CASE("Userdata")
                 return 1;
             },
             nullptr);
-        lua_setfield(L, -2, "__tostring");
+        lua_setfield(L, -2, XorStr("__tostring"));
 
         // ctor
         lua_pushcfunction(
@@ -1421,8 +1370,8 @@ TEST_CASE("Userdata")
                 pushInt64(L, int64_t(v));
                 return 1;
             },
-            "int64");
-        lua_setglobal(L, "int64");
+            XorStr("int64"));
+        lua_setglobal(L, XorStr("int64"));
     });
 }
 

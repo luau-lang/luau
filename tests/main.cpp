@@ -1,5 +1,5 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Common.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Common.h"
 
 #define DOCTEST_CONFIG_IMPLEMENT
 // Our calls to parseOption/parseFlag don't provide a prefix so set the prefix to the empty string.
@@ -23,12 +23,9 @@
 
 #include <optional>
 
-// Indicates if verbose output is enabled; can be overridden via --verbose
-// Currently, this enables output from 'print', but other verbose output could be enabled eventually.
+// Indicates if verbose output is enabled.
+// Currently, this enables  output from lua's 'print', but other verbose output could be enabled eventually.
 bool verbose = false;
-
-// Default optimization level for conformance test; can be overridden via -On
-int optimizationLevel = 1;
 
 static bool skipFastFlag(const char* flagName)
 {
@@ -61,9 +58,9 @@ static bool debuggerPresent()
 static int testAssertionHandler(const char* expr, const char* file, int line, const char* function)
 {
     if (debuggerPresent())
-	    LUAU_DEBUGBREAK();
+        lluz_DEBUGBREAK();
 
-    ADD_FAIL_AT(file, line, "Assertion failed: ", std::string(expr));
+    ADD_FAIL_AT(file, line, "Assertion failed: ", expr);
     return 1;
 }
 
@@ -103,7 +100,7 @@ struct BoostLikeReporter : doctest::IReporter
     // called when a test case has ended
     void test_case_end(const doctest::CurrentTestCaseStats& tc) override
     {
-        LUAU_ASSERT(currentTest);
+        lluz_ASSERT(currentTest);
 
         printf("Leaving test case \"%s\"\n", currentTest->m_name);
         printf("Leaving test suite \"%s\"\n", currentTest->m_test_suite);
@@ -114,7 +111,7 @@ struct BoostLikeReporter : doctest::IReporter
     // called when an exception is thrown from the test case (or it crashes)
     void test_case_exception(const doctest::TestCaseException& e) override
     {
-        LUAU_ASSERT(currentTest);
+        lluz_ASSERT(currentTest);
 
         printf("%s(%d): FATAL: Unhandled exception %s\n", currentTest->m_file.c_str(), currentTest->m_line, e.error_string.c_str());
     }
@@ -174,7 +171,7 @@ static FValueResult<bool> parseFFlag(std::string_view view)
 {
     // If we have a flag name but there's no provided value, we default to true.
     auto [name, value] = parseFValueHelper(view);
-    bool state = value ? *value == "true" : true;
+    bool state = value ? *value == XorStr("true") : true;
     if (value && value != "true" && value != "false")
         std::cerr << "Ignored '" << name << "' because '" << *value << "' is not a valid FFlag state." << std::endl;
 
@@ -184,7 +181,7 @@ static FValueResult<bool> parseFFlag(std::string_view view)
 template<typename T>
 static void setFastValue(const std::string& name, T value)
 {
-    for (Luau::FValue<T>* fvalue = Luau::FValue<T>::list; fvalue; fvalue = fvalue->next)
+    for (lluz::FValue<T>* fvalue = lluz::FValue<T>::list; fvalue; fvalue = fvalue->next)
         if (fvalue->name == name)
             fvalue->value = value;
 }
@@ -194,12 +191,12 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
     for (const doctest::String& flag : flags)
     {
         std::string_view view = flag.c_str();
-        if (view == "true" || view == "false")
+        if (view == XorStr("true") || view == XorStr("false"))
         {
-            for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+            for (lluz::FValue<bool>* flag = lluz::FValue<bool>::list; flag; flag = flag->next)
             {
                 if (!skipFastFlag(flag->name))
-                    flag->value = view == "true";
+                    flag->value = view == XorStr("true");
             }
 
             continue;
@@ -208,15 +205,15 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
         if (view.size() >= 2 && view[0] == 'D' && view[1] == 'F')
             view.remove_prefix(1);
 
-        if (view.substr(0, 4) == "FInt")
+        if (view.substr(0, 4) == XorStr("FInt"))
         {
             auto [name, value] = parseFInt(view.substr(4));
             setFastValue(name, value);
         }
         else
         {
-            // We want to prevent the footgun where '--fflags=LuauSomeFlag' is ignored. We'll assume that this was declared as FFlag.
-            auto [name, value] = parseFFlag(view.substr(0, 5) == "FFlag" ? view.substr(5) : view);
+            // We want to prevent the footgun where '--fflags=lluzSomeFlag' is ignored. We'll assume that this was declared as FFlag.
+            auto [name, value] = parseFFlag(view.substr(0, 5) == XorStr("FFlag") ? view.substr(5) : view);
             setFastValue(name, value);
         }
     }
@@ -224,7 +221,7 @@ static void setFastFlags(const std::vector<doctest::String>& flags)
 
 int main(int argc, char** argv)
 {
-    Luau::assertHandler() = testAssertionHandler;
+    lluz::assertHandler() = testAssertionHandler;
 
     doctest::registerReporter<BoostLikeReporter>("boost", 0, true);
 
@@ -234,7 +231,7 @@ int main(int argc, char** argv)
 
     if (doctest::parseFlag(argc, argv, "--list-fflags"))
     {
-        for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
+        for (lluz::FValue<bool>* flag = lluz::FValue<bool>::list; flag; flag = flag->next)
         {
             if (skipFastFlag(flag->name))
                 continue;
@@ -250,15 +247,6 @@ int main(int argc, char** argv)
     if (doctest::parseFlag(argc, argv, "--verbose"))
     {
         verbose = true;
-    }
-
-    int level = -1;
-    if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
-    {
-        if (level < 0 || level > 2)
-            std::cerr << "Optimization level must be between 0 and 2 inclusive." << std::endl;
-        else
-            optimizationLevel = level;
     }
 
     if (std::vector<doctest::String> flags; doctest::parseCommaSepArgs(argc, argv, "--fflags=", flags))
@@ -290,11 +278,12 @@ int main(int argc, char** argv)
     int result = context.run();
     if (doctest::parseFlag(argc, argv, "--help") || doctest::parseFlag(argc, argv, "-h"))
     {
-        printf("Additional command line options:\n");
-        printf(" -O[n]                                 Changes default optimization level (1) for conformance runs\n");
-        printf(" --verbose                             Enables verbose output (e.g. lua 'print' statements)\n");
-        printf(" --fflags=                             Sets specified fast flags\n");
-        printf(" --list-fflags                         List all fast flags\n");
+        printf(XorStr("Additional command line options:\n"));
+        printf(XorStr(" --verbose                             Enables verbose output (e.g. lua 'print' statements)\n"));
+        printf(XorStr(" --fflags=                             Sets specified fast flags\n"));
+        printf(XorStr(" --list-fflags                         List all fast flags\n"));
     }
     return result;
 }
+
+

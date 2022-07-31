@@ -1,15 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Fixture.h"
 
 #include "doctest.h"
-#include "Luau/BuiltinDefinitions.h"
+#include "lluz/BuiltinDefinitions.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+lluz_FASTFLAG(DebugLluDeferredConstraintResolution)
 
-TEST_SUITE_BEGIN("TypeAliases");
+TEST_SUITE_BEGIN(XorStr("TypeAliases"));
 
 TEST_CASE_FIXTURE(Fixture, "basic_alias")
 {
@@ -18,7 +18,7 @@ TEST_CASE_FIXTURE(Fixture, "basic_alias")
         local x: T = 1
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("x")));
 }
 
@@ -33,7 +33,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_type_alias")
         local g: F = f
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1?", toString(requireType("g")));
 }
 
@@ -44,7 +44,7 @@ TEST_CASE_FIXTURE(Fixture, "names_are_ascribed")
         local x: T
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("T", toString(requireType("x")));
 }
 
@@ -69,8 +69,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
         type T = number
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::DebugLuauDeferredConstraintResolution)
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::DebugLluDeferredConstraintResolution)
     {
         CHECK(result.errors[0] == TypeError{
                                       Location{{1, 21}, {1, 26}},
@@ -103,7 +103,7 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_whe
         node.Parent = 1
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -123,7 +123,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
         y.g.i = y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
@@ -138,7 +138,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
         y.g.i = y
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_errors")
@@ -153,10 +153,10 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_errors")
         y.g.i = y
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
     // We had a UAF in this example caused by not cloning type function arguments
-    ModulePtr module = frontend.moduleResolver.getModule("MainModule");
+    ModulePtr module = frontend.moduleResolver.getModule(XorStr("MainModule"));
     unfreeze(module->interfaceTypes);
     copyErrors(module->errors, module->interfaceTypes);
     freeze(module->interfaceTypes);
@@ -178,7 +178,7 @@ TEST_CASE_FIXTURE(Fixture, "use_table_name_and_generic_params_in_errors")
         a = b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -195,7 +195,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_stop_typechecking_after_reporting_duplicate_typ
         local foo: string = 1 -- "Type 'number' could not be converted into 'string'"
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_type")
@@ -206,7 +206,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
         local l: Wrapped = 2
         )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -222,7 +222,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_type_alias_of_recursive_template_table_typ
         local l: Wrapped = 2
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -240,7 +240,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_38393_recursive_intersection_oom")
         _(_)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")
@@ -250,7 +250,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_fwd_declaration_is_precise")
         type Id<T> = T
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
@@ -272,7 +272,7 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_generic")
     CHECK_EQ(expected, decorateWithTypes(code));
     CheckResult result = check(code);
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
@@ -284,7 +284,7 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_function_types")
         local b: B
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("t1 where t1 = () -> (number, () -> (string, t1))", toString(requireType("a")));
     CHECK_EQ("t1 where t1 = () -> (string, () -> (number, t1))", toString(requireType("b")));
@@ -309,7 +309,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_param_remap")
     CHECK_EQ(expected, decorateWithTypes(code));
     CheckResult result = check(code);
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "export_type_and_type_alias_are_duplicates")
@@ -319,11 +319,11 @@ TEST_CASE_FIXTURE(Fixture, "export_type_and_type_alias_are_duplicates")
         type Foo = number
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
     REQUIRE(dtd);
-    CHECK_EQ(dtd->name, "Foo");
+    CHECK_EQ(dtd->name, XorStr("Foo"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "reported_location_is_correct_when_type_alias_are_duplicates")
@@ -335,11 +335,11 @@ TEST_CASE_FIXTURE(Fixture, "reported_location_is_correct_when_type_alias_are_dup
         type B = number
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
     REQUIRE(dtd);
-    CHECK_EQ(dtd->name, "B");
+    CHECK_EQ(dtd->name, XorStr("B"));
     CHECK_EQ(dtd->previousLocation.begin.line + 1, 3);
 }
 
@@ -357,7 +357,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto e = get<TypeMismatch>(result.errors[0]);
     CHECK_EQ("Node<T>?", toString(e->givenType));
@@ -383,32 +383,32 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_multi_assign")
         local b: Bar.myvec3
     )";
 
-    CheckResult result = frontend.check("workspace/C");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("workspace/C"));
+    lluz_REQUIRE_NO_ERRORS(result);
     ModulePtr m = frontend.moduleResolver.modules["workspace/C"];
 
     REQUIRE(m != nullptr);
 
-    std::optional<TypeId> aTypeId = lookupName(m->getModuleScope(), "a");
+    std::optional<TypeId> aTypeId = lookupName(m->getModuleScope(), XorStr("a"));
     REQUIRE(aTypeId);
-    const Luau::TableTypeVar* aType = get<TableTypeVar>(follow(*aTypeId));
+    const lluz::TableTypeVar* aType = get<TableTypeVar>(follow(*aTypeId));
     REQUIRE(aType);
     REQUIRE(aType->props.size() == 2);
 
-    std::optional<TypeId> bTypeId = lookupName(m->getModuleScope(), "b");
+    std::optional<TypeId> bTypeId = lookupName(m->getModuleScope(), XorStr("b"));
     REQUIRE(bTypeId);
-    const Luau::TableTypeVar* bType = get<TableTypeVar>(follow(*bTypeId));
+    const lluz::TableTypeVar* bType = get<TableTypeVar>(follow(*bTypeId));
     REQUIRE(bType);
     REQUIRE(bType->props.size() == 3);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
 {
-    CheckResult result = check("type t10<x> = typeof(table)");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("type t10<x> = typeof(table)"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = getGlobalBinding(frontend.typeChecker, "table");
-    CHECK_EQ(toString(ty), "table");
+    TypeId ty = getGlobalBinding(frontend.typeChecker, XorStr("table"));
+    CHECK_EQ(toString(ty), XorStr("table"));
 
     const TableTypeVar* ttv = get<TableTypeVar>(ty);
     REQUIRE(ttv);
@@ -423,11 +423,11 @@ type Cool = { a: number, b: string }
 local c: Cool = { a = 1, b = "s" }
 type NotCool<x> = Cool
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeId> ty = requireType("c");
+    std::optional<TypeId> ty = requireType(XorStr("c"));
     REQUIRE(ty);
-    CHECK_EQ(toString(*ty), "Cool");
+    CHECK_EQ(toString(*ty), XorStr("Cool"));
 
     const TableTypeVar* ttv = get<TableTypeVar>(*ty);
     REQUIRE(ttv);
@@ -443,15 +443,15 @@ type NotCool = Cool
 local c: Cool = { a = 1, b = "s" }
 local d: NotCool = { a = 1, b = "s" }
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeId> ty = requireType("c");
+    std::optional<TypeId> ty = requireType(XorStr("c"));
     REQUIRE(ty);
-    CHECK_EQ(toString(*ty), "Cool");
+    CHECK_EQ(toString(*ty), XorStr("Cool"));
 
-    ty = requireType("d");
+    ty = requireType(XorStr("d"));
     REQUIRE(ty);
-    CHECK_EQ(toString(*ty), "NotCool");
+    CHECK_EQ(toString(*ty), XorStr("NotCool"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_local_synthetic_mutation")
@@ -460,14 +460,14 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_local_synthetic_mutation")
 local c = { a = 1, b = "s" }
 type Cool = typeof(c)
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeId> ty = requireType("c");
+    std::optional<TypeId> ty = requireType(XorStr("c"));
     REQUIRE(ty);
 
     const TableTypeVar* ttv = get<TableTypeVar>(*ty);
     REQUIRE(ttv);
-    CHECK_EQ(ttv->name, "Cool");
+    CHECK_EQ(ttv->name, XorStr("Cool"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_of_an_imported_recursive_type")
@@ -477,19 +477,19 @@ export type X = { a: number, b: X? }
 return {}
     )";
 
-    CheckResult aResult = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(aResult);
+    CheckResult aResult = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
 local Import = require(game.A)
 type X = Import.X
     )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
+    lluz_REQUIRE_NO_ERRORS(bResult);
 
-    std::optional<TypeId> ty1 = lookupImportedType("Import", "X");
+    std::optional<TypeId> ty1 = lookupImportedType(XorStr("Import", "X"));
     REQUIRE(ty1);
 
-    std::optional<TypeId> ty2 = lookupType("X");
+    std::optional<TypeId> ty2 = lookupType(XorStr("X"));
     REQUIRE(ty2);
 
     CHECK_EQ(follow(*ty1), follow(*ty2));
@@ -502,19 +502,19 @@ export type X<T, U> = { a: T, b: U, C: X<T, U>? }
 return {}
     )";
 
-    CheckResult aResult = frontend.check("game/A");
-    LUAU_REQUIRE_NO_ERRORS(aResult);
+    CheckResult aResult = frontend.check(XorStr("game/A"));
+    lluz_REQUIRE_NO_ERRORS(aResult);
 
     CheckResult bResult = check(R"(
 local Import = require(game.A)
 type X<T, U> = Import.X<T, U>
     )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
+    lluz_REQUIRE_NO_ERRORS(bResult);
 
-    std::optional<TypeId> ty1 = lookupImportedType("Import", "X");
+    std::optional<TypeId> ty1 = lookupImportedType(XorStr("Import", "X"));
     REQUIRE(ty1);
 
-    std::optional<TypeId> ty2 = lookupType("X");
+    std::optional<TypeId> ty2 = lookupType(XorStr("X"));
     REQUIRE(ty2);
 
     CHECK_EQ(toString(*ty1, {true}), toString(*ty2, {true}));
@@ -523,16 +523,16 @@ type X<T, U> = Import.X<T, U>
 local Import = require(game.A)
 type X<T, U> = Import.X<U, T>
     )");
-    LUAU_REQUIRE_NO_ERRORS(bResult);
+    lluz_REQUIRE_NO_ERRORS(bResult);
 
-    ty1 = lookupImportedType("Import", "X");
+    ty1 = lookupImportedType(XorStr("Import", "X"));
     REQUIRE(ty1);
 
-    ty2 = lookupType("X");
+    ty2 = lookupType(XorStr("X"));
     REQUIRE(ty2);
 
-    CHECK_EQ(toString(*ty1, {true}), "t1 where t1 = {| C: t1?, a: T, b: U |}");
-    CHECK_EQ(toString(*ty2, {true}), "{| C: t1, a: U, b: T |} where t1 = {| C: t1, a: U, b: T |}?");
+    CHECK_EQ(toString(*ty1, {true}), XorStr("t1 where t1 = {| C: t1?, a: T, b: U |}"));
+    CHECK_EQ(toString(*ty2, {true}), XorStr("{| C: t1, a: U, b: T |} where t1 = {| C: t1, a: U, b: T |}?"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "module_export_free_type_leak")
@@ -545,7 +545,7 @@ end
 export type f = typeof(get())
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "module_export_wrapped_free_type_leak")
@@ -558,7 +558,7 @@ end
 export type f = typeof(get())
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 
@@ -569,7 +569,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_ok")
         type Forest<T> = {Tree<T>}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
@@ -580,7 +580,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_1")
         type Forest<T> = {Tree<{T}>}
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
@@ -591,7 +591,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_restriction_not_ok_2")
         type Tree<T> = { data: T, children: Forest<T> }
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
@@ -601,7 +601,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_ok")
         type Tree2<U,T> = { data: U, children: {Tree1<T,U>} }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
@@ -611,7 +611,7 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_types_swapsies_not_ok")
         type Tree2<T,U> = { data: U, children: {Tree1<T,U>} }
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
@@ -624,7 +624,7 @@ TEST_CASE_FIXTURE(Fixture, "free_variables_from_typeof_in_aliases")
         type ContainsContainsFree = { that: ContainsFree<number> }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "non_recursive_aliases_that_reuse_a_generic_name")
@@ -636,7 +636,7 @@ TEST_CASE_FIXTURE(Fixture, "non_recursive_aliases_that_reuse_a_generic_name")
         local p: Tuple<number, string>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("{number | string}", toString(requireType("p"), {true}));
 }
@@ -672,7 +672,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_quantify_unresolved_aliases")
         export type Key = typeof(newkey(newKeyPool(), 1))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 /*
@@ -688,7 +688,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_typevars_are_not_considered_to_escape_their_
         type Exclude<T, V> = T
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 /*
@@ -711,13 +711,13 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
 
     CHECK_EQ("{| foo: number |}", toString(requireType("d"), {true}));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_unification_with_any_2")
 {
     ScopedFastFlag sff[] = {
-        {"DebugLuauSharedSelf", true},
+        {"DebuglluzSharedSelf", true},
     };
 
     CheckResult result = check(R"(
@@ -742,7 +742,7 @@ TEST_CASE_FIXTURE(Fixture, "forward_declared_alias_is_not_clobbered_by_prior_uni
     )");
 
     // TODO: shared self causes this test to break in bizarre ways.
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
@@ -751,7 +751,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_ok")
         type Tree<T> = { data: T, children: {Tree<T>} }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
@@ -761,7 +761,7 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
         type Tree<T> = { data: T, children: {Tree<{T}>} }
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
 
 #include <string.h>
 
@@ -9,13 +9,13 @@ template<typename T>
 struct ScopedFValue
 {
 private:
-    Luau::FValue<T>* value = nullptr;
+    lluz::FValue<T>* value = nullptr;
     T oldValue = T();
 
 public:
     ScopedFValue(const char* name, T newValue)
     {
-        for (Luau::FValue<T>* v = Luau::FValue<T>::list; v; v = v->next)
+        for (lluz::FValue<T>* v = lluz::FValue<T>::list; v; v = v->next)
             if (strcmp(v->name, name) == 0)
             {
                 value = v;
@@ -24,7 +24,7 @@ public:
                 break;
             }
 
-        LUAU_ASSERT(value);
+        lluz_ASSERT(value);
     }
 
     ScopedFValue(const ScopedFValue&) = delete;

@@ -1,23 +1,23 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TopoSortStatements.h"
-#include "Luau/Transpiler.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TopoSortStatements.h"
+#include "lluz/Transpiler.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 static std::vector<AstStat*> toposort(AstStatBlock& block)
 {
     std::vector<AstStat*> result{block.body.begin(), block.body.end()};
 
-    Luau::toposort(result);
+    lluz::toposort(result);
 
     return result;
 }
 
-TEST_SUITE_BEGIN("TopoSortTests");
+TEST_SUITE_BEGIN(XorStr("TopoSortTests"));
 
 TEST_CASE_FIXTURE(Fixture, "sorts")
 {
@@ -345,7 +345,7 @@ TEST_CASE_FIXTURE(Fixture, "return_comes_last")
 
         local function confuseCompiler() return module.foo() end
 
-        module.foo = function() return "" end
+        module.foo = function() return XorStr("") end
 
         function module.bar(x:number)
             confuseCompiler()
@@ -370,7 +370,7 @@ TEST_CASE_FIXTURE(Fixture, "break_comes_last")
 repeat
 local module = {}
 local function confuseCompiler() return module.foo() end
-module.foo = function() return "" end
+module.foo = function() return XorStr("") end
 break
 until true
     )");
@@ -394,7 +394,7 @@ TEST_CASE_FIXTURE(Fixture, "continue_comes_last")
 repeat
 local module = {}
 local function confuseCompiler() return module.foo() end
-module.foo = function() return "" end
+module.foo = function() return XorStr("") end
 continue
 until true
     )");

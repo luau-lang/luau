@@ -1,15 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/Scope.h"
-#include "Luau/ToDot.h"
+#include "lluz/Scope.h"
+#include "lluz/ToDot.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+lluz_FASTFLAG(LluLowerBoundsCalculation)
 
-using namespace Luau;
+using namespace lluz;
 
 struct ToDotClassFixture : Fixture
 {
@@ -40,7 +40,7 @@ struct ToDotClassFixture : Fixture
     }
 };
 
-TEST_SUITE_BEGIN("ToDot");
+TEST_SUITE_BEGIN(XorStr("ToDot"));
 
 TEST_CASE_FIXTURE(Fixture, "primitive")
 {
@@ -49,7 +49,7 @@ local a: nil
 local b: number
 local c: any
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_NE("nil", toDot(requireType("a")));
 
@@ -84,9 +84,9 @@ TEST_CASE_FIXTURE(Fixture, "bound")
 local a = 444
 local b = a
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeId> ty = getType("b");
+    std::optional<TypeId> ty = getType(XorStr("b"));
     REQUIRE(bool(ty));
 
     ToDotOptions opts;
@@ -104,14 +104,14 @@ TEST_CASE_FIXTURE(Fixture, "function")
     CheckResult result = check(R"(
 local function f(a, ...: string) return a end
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a, ...string) -> a", toString(requireType("f")));
 
     ToDotOptions opts;
     opts.showPointers = false;
 
-    if (FFlag::LuauLowerBoundsCalculation)
+    if (FFlag::LluLowerBoundsCalculation)
     {
         CHECK_EQ(R"(digraph graphname {
 n1 [label="FunctionTypeVar 1"];
@@ -158,7 +158,7 @@ TEST_CASE_FIXTURE(Fixture, "union")
     CheckResult result = check(R"(
 local a: string | number
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -177,7 +177,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection")
     CheckResult result = check(R"(
 local a: string & number -- uninhabited
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -197,7 +197,7 @@ TEST_CASE_FIXTURE(Fixture, "table")
 type A<T, U...> = { x: T, y: (U...) -> (), [string]: any }
 local a: A<number, ...string>
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -232,7 +232,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "metatable")
     CheckResult result = check(R"(
 local a: typeof(setmetatable({}, {}))
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -287,7 +287,7 @@ TEST_CASE_FIXTURE(ToDotClassFixture, "class")
     CheckResult result = check(R"(
 local a: ChildClass
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToDotOptions opts;
     opts.showPointers = false;
@@ -375,9 +375,9 @@ local b
 b.x = 2
 b = a
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeId> ty = getType("b");
+    std::optional<TypeId> ty = getType(XorStr("b"));
     REQUIRE(bool(ty));
 
     ToDotOptions opts;

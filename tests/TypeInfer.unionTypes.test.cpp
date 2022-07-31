@@ -1,17 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+lluz_FASTFLAG(LluLowerBoundsCalculation)
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("UnionTypes");
+TEST_SUITE_BEGIN(XorStr("UnionTypes"));
 
 TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")
 {
@@ -27,7 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "return_types_can_be_disjoint")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     const FunctionTypeVar* utv = get<FunctionTypeVar>(requireType("most_of_the_natural_numbers"));
     REQUIRE(utv != nullptr);
@@ -39,7 +38,7 @@ TEST_CASE_FIXTURE(Fixture, "allow_specific_assign")
         local a:number|string = 22
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "allow_more_specific_assign")
@@ -49,7 +48,7 @@ TEST_CASE_FIXTURE(Fixture, "allow_more_specific_assign")
         local b:number|string|nil = a
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "disallow_less_specific_assign")
@@ -60,7 +59,7 @@ TEST_CASE_FIXTURE(Fixture, "disallow_less_specific_assign")
         a = b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "disallow_less_specific_assign2")
@@ -82,7 +81,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_arguments")
         f("s")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_arguments_table")
@@ -92,7 +91,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_arguments_table")
         a = {a="ok"}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_arguments_table2")
@@ -111,7 +110,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_takes_optional_arguments")
         error("message", 2)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_optional_argument_enforces_type")
@@ -133,7 +132,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_property_guaranteed_to_ex
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.numberType, *requireType("r"));
 }
 
@@ -147,7 +146,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_mixed_types")
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number | string", toString(requireType("r")));
 }
 
@@ -161,7 +160,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_works_at_arbitrary_depth")
         local r = t.x.y.z.thing
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number | string", toString(requireType("r")));
 }
 
@@ -175,7 +174,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_optional_property")
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number?", toString(requireType("r")));
 }
 
@@ -189,21 +188,18 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
         local r = t.x
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     MissingUnionProperty* mup = get<MissingUnionProperty>(result.errors[0]);
     REQUIRE(mup);
     CHECK_EQ(mup->type, requireType("t"));
     REQUIRE(mup->missing.size() == 1);
-    std::optional<TypeId> bTy = lookupType("B");
+    std::optional<TypeId> bTy = lookupType(XorStr("B"));
     REQUIRE(bTy);
     CHECK_EQ(mup->missing[0], *bTy);
-    CHECK_EQ(mup->key, "x");
+    CHECK_EQ(mup->key, XorStr("x"));
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("r")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("r")));
+    CHECK_EQ("*unknown*", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any")
@@ -216,7 +212,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any"
         local r = t.x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.anyType, *requireType("r"));
 }
 
@@ -237,7 +233,7 @@ TEST_CASE_FIXTURE(Fixture, "union_equality_comparisons")
         local z = a == c
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_union_members")
@@ -250,7 +246,7 @@ local bf = b
 local c = bf.a.y
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(*typeChecker.numberType, *requireType("c"));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
@@ -265,7 +261,7 @@ TEST_CASE_FIXTURE(Fixture, "optional_union_functions")
         local c = b.foo(1, 2)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(*typeChecker.numberType, *requireType("c"));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
@@ -280,7 +276,7 @@ local b: A? = a
 local c = b:foo(1, 2)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(*typeChecker.numberType, *requireType("c"));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
@@ -294,7 +290,7 @@ local function f(a: number, b: typeof(x), c: typeof(x)) return -a end
 return f()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
@@ -312,7 +308,7 @@ local c = b.x
 local d = b.y
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    lluz_REQUIRE_ERROR_COUNT(3, result);
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[1]));
     CHECK_EQ("Key 'y' not found in table 'A'", toString(result.errors[2]));
@@ -326,7 +322,7 @@ local a: A? = {1, 2, 3}
 local b = a[1]
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 
@@ -338,7 +334,7 @@ local a: A? = function(a) return -a end
 local b = a(4)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Value of type '((number) -> number)?' could be nil", toString(result.errors[0]));
 }
 
@@ -350,7 +346,7 @@ local a: A? = { x = 2 }
 a.x = 2
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 
     result = check(R"(
@@ -359,8 +355,8 @@ local a: A? = { x = 2, y = 3 }
 a.x = 2
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauLowerBoundsCalculation)
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    if (FFlag::LluLowerBoundsCalculation)
         CHECK_EQ("Value of type '{| x: number, y: number |}?' could be nil", toString(result.errors[0]));
     else
         CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", toString(result.errors[0]));
@@ -374,7 +370,7 @@ local a: A? = {1, 2, 3}
 local b = #a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Value of type 'A?' could be nil", toString(result.errors[0]));
 }
 
@@ -395,7 +391,7 @@ local d = c.y
 local e = a.z
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(4, result);
+    lluz_REQUIRE_ERROR_COUNT(4, result);
     CHECK_EQ("Key 'y' is missing from 'C', 'D' in the type 'A | B | C | D'", toString(result.errors[0]));
 
     CHECK_EQ("Value of type '(A | B | C | D)?' could be nil", toString(result.errors[1]));
@@ -414,7 +410,7 @@ local y: { x: number, y: A | B }
 y = x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     result = check(R"(
 local x = { x = 3 }
@@ -427,7 +423,7 @@ y.y = a
 y = x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_sealed_table_union_check")
@@ -446,7 +442,7 @@ y.y = 5
 local oh : boolean = t.y
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_union_part")
@@ -462,7 +458,7 @@ local a: XYZ
 local b: { w: number } = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'X | Y | Z' could not be converted into '{| w: number |}'
 caused by:
   Not all union options are compatible. Table type 'X' not compatible with type '{| w: number |}' because the former is missing field 'w')");
@@ -480,8 +476,8 @@ type XYZ = X | Y | Z
 local a: XYZ = { w = 4 }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'a' could not be converted into 'X | Y | Z'; none of the union options are compatible)");
+    lluz_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), RXorStr("(Type 'a' could not be converted into 'X | Y | Z'; none of the union options are compatible)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_optional")
@@ -492,7 +488,7 @@ type X = { x: number }
 local a: X? = { w = 4 }
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'a' could not be converted into 'X?'
 caused by:
   None of the union options are compatible. For example: Table type 'a' not compatible with type 'X' because the former is missing field 'x')");
@@ -511,7 +507,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_allow_cyclic_unions_to_be_inferred")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
@@ -530,15 +526,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     // NOTE: union normalization will improve this message
-    if (FFlag::LuauLowerBoundsCalculation)
+    if (FFlag::LluLowerBoundsCalculation)
         CHECK_EQ(toString(result.errors[0]), "Type '(string) -> number' could not be converted into '(number) -> string'\n"
                                              "caused by:\n"
-                                             "  Argument #1 type is not compatible. Type 'number' could not be converted into 'string'");
+                                             XorStr("  Argument #1 type is not compatible. Type 'number' could not be converted into 'string'"));
     else
         CHECK_EQ(toString(result.errors[0]),
-            R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
+            RXorStr("(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)"));
 }
 
 

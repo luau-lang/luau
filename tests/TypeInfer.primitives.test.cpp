@@ -1,27 +1,24 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauDeduceFindMatchReturnTypes)
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+using namespace lluz;
 
-using namespace Luau;
-
-TEST_SUITE_BEGIN("TypeInferPrimitives");
+TEST_SUITE_BEGIN(XorStr("TypeInferPrimitives"));
 
 TEST_CASE_FIXTURE(Fixture, "cannot_call_primitives")
 {
-    CheckResult result = check("local foo = 5    foo()");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = check(XorStr("local foo = 5    foo()"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     REQUIRE(get<CannotCallNonFunction>(result.errors[0]) != nullptr);
 }
@@ -33,7 +30,7 @@ TEST_CASE_FIXTURE(Fixture, "string_length")
         local t = #s
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("t")));
 }
 
@@ -44,16 +41,13 @@ TEST_CASE_FIXTURE(Fixture, "string_index")
         local t = s[4]
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     NotATable* nat = get<NotATable>(result.errors[0]);
     REQUIRE(nat);
     CHECK_EQ("string", toString(nat->ty));
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("t")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("t")));
+    CHECK_EQ("*unknown*", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_method")
@@ -86,10 +80,7 @@ TEST_CASE_FIXTURE(Fixture, "string_function_other")
     )");
     CHECK_EQ(0, result.errors.size());
 
-    if (FFlag::LuauDeduceFindMatchReturnTypes)
-        CHECK_EQ(toString(requireType("p")), "string");
-    else
-        CHECK_EQ(toString(requireType("p")), "string?");
+    CHECK_EQ(toString(requireType(XorStr("p")), "string?"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")
@@ -101,9 +92,9 @@ function x:y(z: number)
 end
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), "Cannot add method to non-table type 'number'");
-    CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
+    lluz_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(toString(result.errors[0]), XorStr("Cannot add method to non-table type 'number'"));
+    CHECK_EQ(toString(result.errors[1]), XorStr("Type 'number' could not be converted into 'string'"));
 }
 
 TEST_SUITE_END();

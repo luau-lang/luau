@@ -1,11 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 
@@ -13,45 +13,44 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
-LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
+lluz_FASTFLAG(LluFixLocationSpanTableIndexExpr);
+lluz_FASTFLAG(DebugLluDeferredConstraintResolution);
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("TypeInfer");
+TEST_SUITE_BEGIN(XorStr("TypeInfer"));
 
 TEST_CASE_FIXTURE(Fixture, "tc_hello_world")
 {
-    CheckResult result = check("local a = 7");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local a = 7"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId aType = requireType("a");
+    TypeId aType = requireType(XorStr("a"));
     CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::Number);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_propagation")
 {
-    CheckResult result = check("local a = 7   local b = a");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local a = 7   local b = a"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId bType = requireType("b");
+    TypeId bType = requireType(XorStr("b"));
     CHECK_EQ(getPrimitiveType(bType), PrimitiveTypeVar::Number);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error")
 {
-    CheckResult result = check("local a = 7   local b = 'hi'   a = b");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = check(XorStr("local a = 7   local b = 'hi'   a = b"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 35}, Position{0, 36}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_error_2")
 {
-    CheckResult result = check("local a = 7   a = 'hi'");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = check(XorStr("local a = 7   a = 'hi'"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 18}, Position{0, 22}}, TypeMismatch{
                                                                                           requireType("a"),
@@ -61,10 +60,10 @@ TEST_CASE_FIXTURE(Fixture, "tc_error_2")
 
 TEST_CASE_FIXTURE(Fixture, "infer_locals_with_nil_value")
 {
-    CheckResult result = check("local f = nil; f = 'hello world'");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local f = nil; f = 'hello world'"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = requireType("f");
+    TypeId ty = requireType(XorStr("f"));
     CHECK_EQ(getPrimitiveType(ty), PrimitiveTypeVar::String);
 }
 
@@ -77,7 +76,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
         f("foo")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("number", toString(requireType("a")));
 }
@@ -85,28 +84,29 @@ TEST_CASE_FIXTURE(Fixture, "infer_locals_via_assignment_from_its_call_site")
 TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauDeferredConstraintResolution", false},
-        {"LuauLowerBoundsCalculation", true},
+        {"DebuglluzDeferredConstraintResolution", false},
+        {"lluzReturnTypeInferenceInNonstrict", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
         --!nocheck
         function f(x)
-            return x
+            return 5
         end
          -- we get type information even if there's type errors
         f(1, 2)
     )");
 
-    CHECK_EQ("(any) -> (...any)", toString(requireType("f")));
+    CHECK_EQ("(any) -> number", toString(requireType("f")));
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "expr_statement")
 {
-    CheckResult result = check("local foo = 5    foo()");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = check(XorStr("local foo = 5    foo()"));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "if_statement")
@@ -122,7 +122,7 @@ TEST_CASE_FIXTURE(Fixture, "if_statement")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(*typeChecker.stringType, *requireType("a"));
     CHECK_EQ(*typeChecker.numberType, *requireType("b"));
@@ -140,7 +140,7 @@ TEST_CASE_FIXTURE(Fixture, "statements_are_topologically_sorted")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
@@ -156,7 +156,7 @@ TEST_CASE_FIXTURE(Fixture, "unify_nearly_identical_recursive_types")
         o = p
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "warn_on_lowercase_parent_property")
@@ -165,7 +165,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "warn_on_lowercase_parent_property")
         local M = require(script.parent.DoesNotMatter)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto ed = get<DeprecatedApiUsed>(result.errors[0]);
     REQUIRE(ed);
@@ -180,7 +180,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "weird_case")
         local d = math.deg(f())
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_ice_when_failing_the_occurs_check")
@@ -190,7 +190,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_ice_when_failing_the_occurs_check")
         local s
         s(s, 'a')
     )");
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    lluz_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_traverse_a_cyclic_type")
@@ -202,7 +202,7 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_does_not_recurse_forever_if_asked_to_tr
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 #if 0
@@ -228,7 +228,7 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
         local f = err
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     UnknownProperty* err = get<UnknownProperty>(result.errors[0]);
     REQUIRE(err != nullptr);
@@ -236,23 +236,12 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     CHECK_EQ("x", err->key);
 
     // TODO: Should we assert anything about these tests when DCR is being used?
-    if (!FFlag::DebugLuauDeferredConstraintResolution)
+    if (!FFlag::DebugLluDeferredConstraintResolution)
     {
-        if (FFlag::LuauSpecialTypesAsterisked)
-        {
-            CHECK_EQ("*error-type*", toString(requireType("c")));
-            CHECK_EQ("*error-type*", toString(requireType("d")));
-            CHECK_EQ("*error-type*", toString(requireType("e")));
-            CHECK_EQ("*error-type*", toString(requireType("f")));
-        }
-        else
-        {
-            CHECK_EQ("<error-type>", toString(requireType("c")));
-            CHECK_EQ("<error-type>", toString(requireType("d")));
-            CHECK_EQ("<error-type>", toString(requireType("e")));
-            CHECK_EQ("<error-type>", toString(requireType("f")));
-        }
-
+        CHECK_EQ("*unknown*", toString(requireType("c")));
+        CHECK_EQ("*unknown*", toString(requireType("d")));
+        CHECK_EQ("*unknown*", toString(requireType("e")));
+        CHECK_EQ("*unknown*", toString(requireType("f")));
     }
 }
 
@@ -268,7 +257,7 @@ TEST_CASE_FIXTURE(Fixture, "should_be_able_to_infer_this_without_stack_overflowi
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
@@ -301,7 +290,7 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
         return x4
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     ModulePtr module = getMainModule();
 
     // If we're not careful about copying, this ends up with O(2^N) types rather than O(N)
@@ -313,7 +302,7 @@ TEST_CASE_FIXTURE(Fixture, "exponential_blowup_from_copying_types")
 // checker. We also want it to somewhat match up with production values, so we push up the parser recursion limit a little bit instead.
 TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
 {
-#if defined(LUAU_ENABLE_ASAN)
+#if defined(lluz_ENABLE_ASAN)
     int limit = 250;
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 350;
@@ -321,17 +310,17 @@ TEST_CASE_FIXTURE(Fixture, "check_type_infer_recursion_count")
     int limit = 600;
 #endif
 
-    ScopedFastInt sfi{"LuauCheckRecursionLimit", limit};
+    ScopedFastInt sfi{"lluzCheckRecursionLimit", limit};
 
-    CheckResult result = check("function f() return " + rep("{a=", limit) + "'a'" + rep("}", limit) + " end");
+    CheckResult result = check(XorStr("function f() return XorStr(" + rep("){a=", limit) + "'a'" + rep("}", limit) + " end"));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
 {
-#if defined(LUAU_ENABLE_ASAN)
+#if defined(lluz_ENABLE_ASAN)
     int limit = 250;
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 350;
@@ -339,60 +328,31 @@ TEST_CASE_FIXTURE(Fixture, "check_block_recursion_limit")
     int limit = 600;
 #endif
 
-    ScopedFastInt luauRecursionLimit{"LuauRecursionLimit", limit + 100};
-    ScopedFastInt luauCheckRecursionLimit{"LuauCheckRecursionLimit", limit - 100};
+    ScopedFastInt lluzRecursionLimit{"lluzRecursionLimit", limit + 100};
+    ScopedFastInt lluzCheckRecursionLimit{"lluzCheckRecursionLimit", limit - 100};
 
     CheckResult result = check(rep("do ", limit) + "local a = 1" + rep(" end", limit));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 {
-#if defined(LUAU_ENABLE_ASAN)
+#if defined(lluz_ENABLE_ASAN)
     int limit = 250;
 #elif defined(_DEBUG) || defined(_NOOPT)
     int limit = 300;
 #else
     int limit = 600;
 #endif
-    ScopedFastInt luauRecursionLimit{"LuauRecursionLimit", limit + 100};
-    ScopedFastInt luauCheckRecursionLimit{"LuauCheckRecursionLimit", limit - 100};
+    ScopedFastInt lluzRecursionLimit{"lluzRecursionLimit", limit + 100};
+    ScopedFastInt lluzCheckRecursionLimit{"lluzCheckRecursionLimit", limit - 100};
 
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
-}
-
-TEST_CASE_FIXTURE(Fixture, "globals")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = true
-        foo = "now i'm a string!"
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("any", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "globals2")
-{
-    CheckResult result = check(R"(
-        --!nonstrict
-        foo = function() return 1 end
-        foo = "now i'm a string!"
-    )");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ("() -> (...any)", toString(tm->wantedType));
-    CHECK_EQ("string", toString(tm->givenType));
-    CHECK_EQ("() -> (...any)", toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
@@ -402,7 +362,7 @@ TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
         foo = true
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     UnknownSymbol* us = get<UnknownSymbol>(result.errors[0]);
     REQUIRE(us);
@@ -419,11 +379,11 @@ TEST_CASE_FIXTURE(Fixture, "correctly_scope_locals_do")
         local b = a -- oops!
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     UnknownSymbol* us = get<UnknownSymbol>(result.errors[0]);
     REQUIRE(us);
-    CHECK_EQ(us->name, "a");
+    CHECK_EQ(us->name, XorStr("a"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "checking_should_not_ice")
@@ -496,17 +456,17 @@ TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery")
         local x =
         local a = 7
     )");
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
-    TypeId aType = requireType("a");
+    TypeId aType = requireType(XorStr("a"));
     CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::Number);
 }
 
 // Check that type checker knows about error expressions
 TEST_CASE_FIXTURE(Fixture, "tc_after_error_recovery_no_assert")
 {
-    CheckResult result = check("function +() local _ = true end");
-    LUAU_REQUIRE_ERRORS(result);
+    CheckResult result = check(XorStr("function +() local _ = true end"));
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_in_error")
@@ -518,7 +478,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
             return t.
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        lluz_REQUIRE_ERROR_COUNT(1, result);
     }
 
     {
@@ -528,7 +488,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
             export type = string
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        lluz_REQUIRE_ERROR_COUNT(2, result);
     }
 
     {
@@ -537,7 +497,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
             function string.() end
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
+        lluz_REQUIRE_ERROR_COUNT(1, result);
     }
 
     {
@@ -547,7 +507,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
             local function () end
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        lluz_REQUIRE_ERROR_COUNT(2, result);
     }
 
     {
@@ -558,7 +518,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tc_after_error_recovery_no_replacement_name_
             function dm.() end
         )");
 
-        LUAU_REQUIRE_ERROR_COUNT(2, result);
+        lluz_REQUIRE_ERROR_COUNT(2, result);
     }
 }
 
@@ -570,7 +530,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "index_expr_should_be_checked")
         print(foo[(true).x])
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     UnknownProperty* up = get<UnknownProperty>(result.errors[0]); // Should probably be NotATable
     REQUIRE(up);
@@ -586,7 +546,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_nested_unions_with_optionals")
         local b: number = a
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ(typeChecker.numberType, tm->wantedType);
@@ -600,7 +560,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_39932_use_unifier_in_ensure_methods")
         local y = x[1] - x[2]
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_report_type_errors_within_an_AstStatError")
@@ -609,7 +569,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_report_type_errors_within_an_AstStatError")
         foo
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_report_type_errors_within_an_AstExprError")
@@ -618,7 +578,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_report_type_errors_within_an_AstExprError")
         local a = foo:
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_ice_on_astexprerror")
@@ -627,10 +587,10 @@ TEST_CASE_FIXTURE(Fixture, "dont_ice_on_astexprerror")
         local foo = -;
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_resolves_symbols_the_same_way_lua_does")
+TEST_CASE_FIXTURE(Fixture, "lluz_resolves_symbols_the_same_way_lua_does")
 {
     CheckResult result = check(R"(
         --!strict
@@ -641,7 +601,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_resolves_symbols_the_same_way_lua_does")
         local foo: string = 'hello'
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     auto e = result.errors.front();
     REQUIRE_MESSAGE(get<UnknownSymbol>(e) != nullptr, "Expected UnknownSymbol, but got " << e);
@@ -658,15 +618,11 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
         _(nil)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
-    std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
+    std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType(XorStr("t0"));
     REQUIRE(t0);
-
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(t0->type));
-    else
-        CHECK_EQ("<error-type>", toString(t0->type));
+    CHECK_EQ("*unknown*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -687,7 +643,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_stack_overflow_from_isoptional2")
         local t: ({})|(t0)
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_infinite_loop_when_trying_to_unify_uh_this")
@@ -701,7 +657,7 @@ TEST_CASE_FIXTURE(Fixture, "no_infinite_loop_when_trying_to_unify_uh_this")
         _()
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
@@ -718,7 +674,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_heap_use_after_free_error")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_type_assertion_value_type")
@@ -729,7 +685,7 @@ local function f()
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_assignment_value_types")
@@ -744,7 +700,7 @@ local c: {number|string}
 b, c = {2, "s"}, {"b", 4}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_assignment_value_types_mutable_lval")
@@ -755,7 +711,7 @@ a.x = 2
 a = setmetatable(a, { __call = function(x) end })
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_through_group_expr")
@@ -765,14 +721,14 @@ local function f(a: (number, number) -> number) return a(1, 3) end
 f(((function(a, b) return a + b end)))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions1")
 {
-    CheckResult result = check(R"(local a = if true then "true" else "false")");
-    LUAU_REQUIRE_NO_ERRORS(result);
-    TypeId aType = requireType("a");
+    CheckResult result = check(RXorStr("(local a = if true then "true" else "false")"));
+    lluz_REQUIRE_NO_ERRORS(result);
+    TypeId aType = requireType(XorStr("a"));
     CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
 }
 
@@ -782,17 +738,17 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions2")
     CheckResult result = check(R"(
 local a = if false then "a" elseif false then "b" else "c"
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
-    TypeId aType = requireType("a");
+    lluz_REQUIRE_NO_ERRORS(result);
+    TypeId aType = requireType(XorStr("a"));
     CHECK_EQ(getPrimitiveType(aType), PrimitiveTypeVar::String);
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_type_union")
 {
-    CheckResult result = check(R"(local a: number? = if true then 42 else nil)");
+    CheckResult result = check(RXorStr("(local a: number? = if true then 42 else nil)"));
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("a"), {true}), "number?");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("a"), {true}), "number?"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_1")
@@ -802,8 +758,8 @@ type X = {number | string}
 local a: X = if true then {"1", 2, 3} else {4, 5, 6}
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("a"), {true}), "{number | string}");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("a"), {true}), "{number | string}"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_2")
@@ -812,7 +768,7 @@ TEST_CASE_FIXTURE(Fixture, "tc_if_else_expressions_expected_type_2")
 local a: number? = if true then 1 else nil
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tc_if_else_expressions_expected_type_3")
@@ -826,7 +782,7 @@ local function times<T>(n: any, f: () -> T)
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 /*
@@ -899,7 +855,7 @@ local b = getIt()
 local c = a or b
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "bound_typepack_promote")
@@ -951,7 +907,7 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         end
 
         function Policies:getStoreFieldName(specifier: FieldSpecifier): string
-            return ""
+            return XorStr("")
         end
 
         function Policies:readField(options: ReadFieldOptions)
@@ -964,12 +920,12 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 {
-    ScopedFastInt sfi("LuauTypeInferRecursionLimit", 2);
+    ScopedFastInt sfi("lluzTypeInferRecursionLimit", 2);
 
     CheckResult result = check(R"(
         function complex()
@@ -981,7 +937,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
     CHECK_EQ("Code is too complex to typecheck! Consider simplifying the code around this area", toString(result.errors[0]));
 }
 
@@ -1005,7 +961,7 @@ TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
         return obj
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 /**
@@ -1015,7 +971,7 @@ TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
 TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_table")
 {
     ScopedFastFlag flag[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -1036,7 +992,7 @@ TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_
         local B = A:f()
 
         function B.g(t)
-            assert(type(t) == "table")
+            assert(type(t) == XorStr("table"))
             assert(t.prop ~= nil)
         end
 
@@ -1056,7 +1012,7 @@ end
     )");
 
     auto node = findNodeAtPosition(*getMainSourceModule(), {2, 16});
-    auto ty = lookupType("alias");
+    auto ty = lookupType(XorStr("alias"));
     REQUIRE(node);
     REQUIRE(node->is<AstExprFunction>());
     REQUIRE(ty);

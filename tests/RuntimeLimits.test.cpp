@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
 /* Tests in this source file are meant to be a bellwether to verify that the numeric limits we've set are sufficient for
  * most real-world scripts.
@@ -13,14 +13,14 @@
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
 
 struct LimitFixture : BuiltinsFixture
 {
 #if defined(_NOOPT) || defined(_DEBUG)
-    ScopedFastInt LuauTypeInferRecursionLimit{"LuauTypeInferRecursionLimit", 100};
+    ScopedFastInt lluzTypeInferRecursionLimit{"lluzTypeInferRecursionLimit", 100};
 #endif
 };
 
@@ -33,7 +33,7 @@ bool hasError(const CheckResult& result, T* = nullptr)
     return it != result.errors.end();
 }
 
-TEST_SUITE_BEGIN("RuntimeLimits");
+TEST_SUITE_BEGIN(XorStr("RuntimeLimits"));
 
 TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
 {
@@ -48,22 +48,22 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
         local lazyGet = TS.import(script, script.Parent.Parent, "util", "lazyLoad").lazyGet
         local unit = TS.import(script, script.Parent.Parent, "util", "Unit").unit
         local Iterator
-        lazyGet("Iterator", function(c)
+        lazyGet(XorStr("Iterator"), function(c)
             Iterator = c
         end)
         local Option
-        lazyGet("Option", function(c)
+        lazyGet(XorStr("Option"), function(c)
             Option = c
         end)
         local Vec
-        lazyGet("Vec", function(c)
+        lazyGet(XorStr("Vec"), function(c)
             Vec = c
         end)
         local Result
         do
             Result = setmetatable({}, {
                 __tostring = function()
-                    return "Result"
+                    return XorStr("Result")
                 end,
             })
             Result.__index = Result
@@ -254,9 +254,9 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
         end
         resultMeta.__tostring = function(result)
             return result:match(function(ok)
-                return "Result.ok(" .. tostring(ok) .. ")"
+                return XorStr("Result.ok(") .. tostring(ok) .. ")"
             end, function(err)
-                return "Result.err(" .. tostring(err) .. ")"
+                return XorStr("Result.err(") .. tostring(err) .. ")"
             end)
         end
         return {
@@ -267,8 +267,8 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
     CheckResult result = check(src);
     CodeTooComplex ctc;
 
-    if (FFlag::LuauLowerBoundsCalculation)
-        LUAU_REQUIRE_ERRORS(result);
+    if (FFlag::LluLowerBoundsCalculation)
+        lluz_REQUIRE_ERRORS(result);
     else
         CHECK(hasError(result, &ctc));
 }

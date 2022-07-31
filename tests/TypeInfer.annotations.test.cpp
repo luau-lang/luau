@@ -1,32 +1,32 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("AnnotationTests");
+TEST_SUITE_BEGIN(XorStr("AnnotationTests"));
 
 TEST_CASE_FIXTURE(Fixture, "check_against_annotations")
 {
-    CheckResult result = check("local a: number = \"Hello Types!\"");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CheckResult result = check(XorStr("local a: number = \"Hello Types!\""));
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "check_multi_assign")
 {
-    CheckResult result = check("local a: number, b: string = \"994\", 888");
+    CheckResult result = check(XorStr("local a: number, b: string = \"994\", 888"));
     CHECK_EQ(2, result.errors.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "successful_check")
 {
-    CheckResult result = check("local a: number, b: string = 994, \"eight eighty eight\"");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local a: number, b: string = 994, \"eight eighty eight\""));
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
@@ -37,7 +37,7 @@ TEST_CASE_FIXTURE(Fixture, "variable_type_is_supertype")
         local y: number? = x
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_parameters_can_have_annotations")
@@ -50,7 +50,7 @@ TEST_CASE_FIXTURE(Fixture, "function_parameters_can_have_annotations")
         local four = double(2)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_parameter_annotations_are_checked")
@@ -63,7 +63,7 @@ TEST_CASE_FIXTURE(Fixture, "function_parameter_annotations_are_checked")
         local four = double("two")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_annotations_are_checked")
@@ -74,9 +74,9 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotations_are_checked")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId fiftyType = requireType("fifty");
+    TypeId fiftyType = requireType(XorStr("fifty"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fiftyType);
     REQUIRE(ftv != nullptr);
 
@@ -97,7 +97,7 @@ TEST_CASE_FIXTURE(Fixture, "function_return_multret_annotations_are_checked")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_annotation_should_disambiguate_into_function_type_return_and_checked")
@@ -108,7 +108,7 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotation_should_disambiguate_into_
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_return_annotation_should_continuously_parse_return_annotation_and_checked")
@@ -123,7 +123,7 @@ TEST_CASE_FIXTURE(Fixture, "function_return_annotation_should_continuously_parse
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
@@ -132,7 +132,7 @@ TEST_CASE_FIXTURE(Fixture, "unknown_type_reference_generates_error")
         local x: IDoNotExist
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0] == TypeError{
                                   Location{{1, 17}, {1, 28}},
                                   getMainSourceModule()->name,
@@ -153,7 +153,7 @@ TEST_CASE_FIXTURE(Fixture, "typeof_variable_type_annotation_should_return_its_ty
         local foo2: Foo
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(requireType("foo"), requireType("foo2"));
 }
 
@@ -169,7 +169,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_type_of_value_a_via_typeof_with_assignment")
     CHECK_EQ(*typeChecker.numberType, *requireType("a"));
     CHECK_EQ(*typeChecker.numberType, *requireType("b"));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(result.errors[0], (TypeError{Location{Position{4, 12}, Position{4, 17}}, TypeMismatch{typeChecker.numberType, typeChecker.stringType}}));
 }
 
@@ -180,7 +180,7 @@ TEST_CASE_FIXTURE(Fixture, "table_annotation")
         local y = x.a
         local z = x.b
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(PrimitiveTypeVar::Number, getPrimitiveType(follow(requireType("y"))));
     CHECK_EQ(PrimitiveTypeVar::String, getPrimitiveType(follow(requireType("z"))));
@@ -191,11 +191,11 @@ TEST_CASE_FIXTURE(Fixture, "function_annotation")
     CheckResult result = check(R"(
         local f: (number, string) -> number
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     dumpErrors(result);
 
-    TypeId fType = requireType("f");
+    TypeId fType = requireType(XorStr("f"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(fType));
 
     REQUIRE(ftv != nullptr);
@@ -204,19 +204,19 @@ TEST_CASE_FIXTURE(Fixture, "function_annotation")
 TEST_CASE_FIXTURE(Fixture, "function_annotation_with_a_defined_function")
 {
     CheckResult result = check(R"(
-        local f: (number, number) -> string = function(a: number, b: number) return "" end
+        local f: (number, number) -> string = function(a: number, b: number) return XorStr("") end
     )");
 
-    TypeId fType = requireType("f");
+    TypeId fType = requireType(XorStr("f"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(fType));
 
     REQUIRE(ftv != nullptr);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expr")
 {
-    CheckResult result = check("local a = 55 :: any");
+    CheckResult result = check(XorStr("local a = 55 :: any"));
     REQUIRE_EQ("any", toString(requireType("a")));
 }
 
@@ -227,7 +227,7 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_does_not_propagate_type_info")
         local b = a :: number
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("any", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
@@ -240,7 +240,7 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_is_bidirectional")
         local b = a :: number
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number?", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
@@ -252,7 +252,7 @@ TEST_CASE_FIXTURE(Fixture, "as_expr_warns_on_unrelated_cast")
         local a = 55 :: string
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Cannot cast 'number' into 'string' because the types are unrelated", toString(result.errors[0]));
     CHECK_EQ("string", toString(requireType("a")));
@@ -267,19 +267,19 @@ TEST_CASE_FIXTURE(Fixture, "type_annotations_inside_function_bodies")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_counter_annotation")
 {
-    CheckResult result1 = check(R"( for i: number = 0, 50 do end )");
-    LUAU_REQUIRE_NO_ERRORS(result1);
+    CheckResult result1 = check(RXorStr("( for i: number = 0, 50 do end )"));
+    lluz_REQUIRE_NO_ERRORS(result1);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_loop_counter_annotation_is_checked")
 {
-    CheckResult result2 = check(R"( for i: string = 0, 10 do end )");
+    CheckResult result2 = check(RXorStr("( for i: string = 0, 10 do end )"));
     CHECK_EQ(1, result2.errors.size());
 }
 
@@ -289,7 +289,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_should_alias_to_number")
         type A = number
         local a: A = 10
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_B_should_check_with_another_aliases_until_a_non_aliased_type")
@@ -299,7 +299,7 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_B_should_check_with_another_aliases_until
         type B = A
         local b: B = 10
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_aliasing_to_number_should_not_check_given_a_string")
@@ -308,7 +308,7 @@ TEST_CASE_FIXTURE(Fixture, "type_aliasing_to_number_should_not_check_given_a_str
         type A = number
         local a: A = "fail"
     )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "self_referential_type_alias")
@@ -317,16 +317,16 @@ TEST_CASE_FIXTURE(Fixture, "self_referential_type_alias")
         type O = { x: number, incr: (O) -> number }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    std::optional<TypeFun> res = getMainModule()->getModuleScope()->lookupType("O");
+    std::optional<TypeFun> res = getMainModule()->getModuleScope()->lookupType(XorStr("O"));
     REQUIRE(res);
 
     TypeId oType = follow(res->type);
     const TableTypeVar* oTable = get<TableTypeVar>(oType);
     REQUIRE(oTable);
 
-    std::optional<Property> incr = get(oTable->props, "incr");
+    std::optional<Property> incr = get(oTable->props, XorStr("incr"));
     REQUIRE(incr);
 
     const FunctionTypeVar* incrFunc = get<FunctionTypeVar>(incr->type);
@@ -344,11 +344,11 @@ TEST_CASE_FIXTURE(Fixture, "define_generic_type_alias")
         type Array<T> = {[number]: T}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ModulePtr mainModule = getMainModule();
 
-    auto it = mainModule->getModuleScope()->privateTypeBindings.find("Array");
+    auto it = mainModule->getModuleScope()->privateTypeBindings.find(XorStr("Array"));
     REQUIRE(it != mainModule->getModuleScope()->privateTypeBindings.end());
 
     TypeFun& tf = it->second;
@@ -364,7 +364,7 @@ TEST_CASE_FIXTURE(Fixture, "use_generic_type_alias")
         p[2] = 'hello'                  -- 4 Error.
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(4, result.errors[0].location.begin.line);
     CHECK(nullptr != get<TypeMismatch>(result.errors[0]));
@@ -379,11 +379,11 @@ TEST_CASE_FIXTURE(Fixture, "two_type_params")
         local b = m[9]                  -- error here
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(4, result.errors[0].location.begin.line);
 
-    CHECK_EQ(toString(requireType("a")), "number");
+    CHECK_EQ(toString(requireType(XorStr("a")), "number"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_many_type_params")
@@ -393,7 +393,7 @@ TEST_CASE_FIXTURE(Fixture, "too_many_type_params")
         local a: Callback<number, number, string> = function(i) return true, 4 end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(2, result.errors[0].location.begin.line);
 
     IncorrectGenericParameterCount* igpc = get<IncorrectGenericParameterCount>(result.errors[0]);
@@ -412,10 +412,10 @@ TEST_CASE_FIXTURE(Fixture, "duplicate_type_param_name")
         type Oopsies<T, T> = {a: T, b: T}
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     auto dgp = get<DuplicateGenericParameter>(result.errors[0]);
     REQUIRE(dgp);
-    CHECK_EQ(dgp->parameterName, "T");
+    CHECK_EQ(dgp->parameterName, XorStr("T"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_expr")
@@ -426,7 +426,7 @@ TEST_CASE_FIXTURE(Fixture, "typeof_expr")
         local m: typeof(id(77))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("number", toString(requireType("m")));
 }
 
@@ -440,7 +440,7 @@ TEST_CASE_FIXTURE(Fixture, "corecursive_types_error_on_tight_loop")
         local bb:B
     )");
 
-    TypeId fType = requireType("aa");
+    TypeId fType = requireType(XorStr("aa"));
     const AnyTypeVar* ftv = get<AnyTypeVar>(follow(fType));
     REQUIRE(ftv != nullptr);
     REQUIRE(!result.errors.empty());
@@ -456,9 +456,9 @@ TEST_CASE_FIXTURE(Fixture, "type_alias_always_resolve_to_a_real_type")
         local aa:A
     )");
 
-    TypeId fType = requireType("aa");
+    TypeId fType = requireType(XorStr("aa"));
     REQUIRE(follow(fType) == typeChecker.numberType);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
@@ -471,7 +471,7 @@ TEST_CASE_FIXTURE(Fixture, "interface_types_belong_to_interface_arena")
         return {n=n}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     Module& mod = *getMainModule();
 
@@ -497,13 +497,13 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases_are_cloned_properly")
     CheckResult result = check(R"(
         export type Array<T> = { [number]: T }
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
     Module& mod = *getMainModule();
     const auto& typeBindings = mod.getModuleScope()->exportedTypeBindings;
 
-    auto it = typeBindings.find("Array");
+    auto it = typeBindings.find(XorStr("Array"));
     REQUIRE(typeBindings.end() != it);
     const TypeFun& array = it->second;
 
@@ -529,7 +529,7 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
         return {a=a, b=b}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     Module& mod = *getMainModule();
 
@@ -557,7 +557,7 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
 {
-    addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
+    addGlobalBinding(frontend.typeChecker, XorStr("script", frontend.typeChecker.anyType, "@test"));
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -576,14 +576,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/Main");
+    CheckResult result = frontend.check(XorStr("Modules/Main"));
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
 {
-    addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
+    addGlobalBinding(frontend.typeChecker, XorStr("script", frontend.typeChecker.anyType, "@test"));
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -602,14 +602,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/Main");
+    CheckResult result = frontend.check(XorStr("Modules/Main"));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
 {
-    addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
+    addGlobalBinding(frontend.typeChecker, XorStr("script", frontend.typeChecker.anyType, "@test"));
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -626,9 +626,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
         return {}
     )";
 
-    CheckResult result = frontend.check("Modules/Main");
+    CheckResult result = frontend.check(XorStr("Modules/Main"));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 namespace
@@ -638,8 +638,8 @@ struct AssertionCatcher
     AssertionCatcher()
     {
         tripped = 0;
-        oldhook = Luau::assertHandler();
-        Luau::assertHandler() = [](const char* expr, const char* file, int line, const char* function) -> int {
+        oldhook = lluz::assertHandler();
+        lluz::assertHandler() = [](const char* expr, const char* file, int line, const char* function) -> int {
             ++tripped;
             return 0;
         };
@@ -647,38 +647,38 @@ struct AssertionCatcher
 
     ~AssertionCatcher()
     {
-        Luau::assertHandler() = oldhook;
+        lluz::assertHandler() = oldhook;
     }
 
     static int tripped;
-    Luau::AssertHandler oldhook;
+    lluz::AssertHandler oldhook;
 };
 
 int AssertionCatcher::tripped;
 } // namespace
 
-TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice")
+TEST_CASE_FIXTURE(Fixture, "lluz_ice_triggers_an_ice")
 {
     ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", false},
+        {"DebuglluzMagicTypes", true},
+        {"lluzUseInternalCompilerErrorException", false},
     };
 
     AssertionCatcher ac;
 
     CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
+            local a: _lluz_ice = 55
         )"),
         std::runtime_error);
 
-    LUAU_ASSERT(1 == AssertionCatcher::tripped);
+    lluz_ASSERT(1 == AssertionCatcher::tripped);
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_handler")
+TEST_CASE_FIXTURE(Fixture, "lluz_ice_triggers_an_ice_handler")
 {
     ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", false},
+        {"DebuglluzMagicTypes", true},
+        {"lluzUseInternalCompilerErrorException", false},
     };
 
     bool caught = false;
@@ -688,35 +688,35 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_handler")
     };
 
     CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
+            local a: _lluz_ice = 55
         )"),
         std::runtime_error);
 
     CHECK_EQ(true, caught);
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
+TEST_CASE_FIXTURE(Fixture, "lluz_ice_triggers_an_ice_exception_with_flag")
 {
     ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", true},
+        {"DebuglluzMagicTypes", true},
+        {"lluzUseInternalCompilerErrorException", true},
     };
 
     AssertionCatcher ac;
 
     CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
+            local a: _lluz_ice = 55
         )"),
         InternalCompilerError);
 
-    LUAU_ASSERT(1 == AssertionCatcher::tripped);
+    lluz_ASSERT(1 == AssertionCatcher::tripped);
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler")
+TEST_CASE_FIXTURE(Fixture, "lluz_ice_triggers_an_ice_exception_with_flag_handler")
 {
     ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", true},
+        {"DebuglluzMagicTypes", true},
+        {"lluzUseInternalCompilerErrorException", true},
     };
 
     bool caught = false;
@@ -726,44 +726,44 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
     };
 
     CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
+            local a: _lluz_ice = 55
         )"),
         InternalCompilerError);
 
     CHECK_EQ(true, caught);
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
+TEST_CASE_FIXTURE(Fixture, "lluz_ice_is_not_special_without_the_flag")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", false};
+    ScopedFastFlag sffs{"DebuglluzMagicTypes", false};
 
     // We only care that this does not throw
     check(R"(
-        local a: _luau_ice = 55
+        local a: _lluz_ice = 55
     )");
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
+TEST_CASE_FIXTURE(BuiltinsFixture, "lluz_print_is_magic_if_the_flag_is_set")
 {
-    // Luau::resetPrintLine();
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
+    // lluz::resetPrintLine();
+    ScopedFastFlag sffs{"DebuglluzMagicTypes", true};
 
     CheckResult result = check(R"(
-        local a: _luau_print<typeof(math.abs)>
+        local a: _lluz_print<typeof(math.abs)>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "luau_print_is_not_special_without_the_flag")
+TEST_CASE_FIXTURE(Fixture, "lluz_print_is_not_special_without_the_flag")
 {
-    ScopedFastFlag sffs{"DebugLuauMagicTypes", false};
+    ScopedFastFlag sffs{"DebuglluzMagicTypes", false};
 
     CheckResult result = check(R"(
-        local a: _luau_print<number>
+        local a: _lluz_print<number>
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_type_fun_should_not_trip_rbxassert")
@@ -773,7 +773,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_type_fun_should_not_trip_rbxassert")
         local foo: Foo<number>
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 #if 0
@@ -788,7 +788,7 @@ TEST_CASE_FIXTURE(Fixture, "pulling_a_type_from_value_dont_falsely_create_occurs
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 #endif
 
@@ -798,7 +798,7 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_on_cyclic_union_typevar")
         type T = T | T
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     OccursCheckFailed* ocf = get<OccursCheckFailed>(result.errors[0]);
     REQUIRE(ocf);
@@ -810,7 +810,7 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_on_cyclic_intersection_typevar")
         type T = T & T
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     OccursCheckFailed* ocf = get<OccursCheckFailed>(result.errors[0]);
     REQUIRE(ocf);
@@ -823,7 +823,7 @@ TEST_CASE_FIXTURE(Fixture, "instantiation_clone_has_to_follow")
         export type t0<t0> = ({})&({_:{[any]:number},})
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

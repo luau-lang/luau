@@ -1,19 +1,19 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/AstQuery.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
+#include "lluz/AstQuery.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Scope.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("TypeInferOOP");
+TEST_SUITE_BEGIN(XorStr("TypeInferOOP"));
 
 TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defined_with_colon")
 {
@@ -26,7 +26,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_not_defi
         someTable.Function1() -- Argument count mismatch
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     REQUIRE(get<CountMismatch>(result.errors[0]));
 }
@@ -42,7 +42,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_it_wont_
         someTable.Function2() -- Argument count mismatch
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     REQUIRE(get<CountMismatch>(result.errors[0]));
 }
@@ -56,7 +56,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_suggest_using_colon_rather_than_dot_if_another_
         T.method(4)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "method_depends_on_table")
@@ -71,7 +71,7 @@ TEST_CASE_FIXTURE(Fixture, "method_depends_on_table")
         function f() x:m() end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
@@ -90,7 +90,7 @@ TEST_CASE_FIXTURE(Fixture, "methods_are_topologically_sorted")
         local a, b = T:foo()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     dumpErrors(result);
 
     CHECK_EQ(PrimitiveTypeVar::Number, getPrimitiveType(requireType("a")));
@@ -181,7 +181,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "object_constructor_can_refer_to_method_of_se
         -- foo.fooConn()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfSealed")
@@ -193,7 +193,7 @@ function x:y(z: number)
 end
 )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "nonstrict_self_mismatch_tail")
@@ -209,7 +209,7 @@ TEST_CASE_FIXTURE(Fixture, "nonstrict_self_mismatch_tail")
 
         bar(2)
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "inferred_methods_of_free_tables_have_the_same_level_as_the_enclosing_table")
@@ -265,11 +265,11 @@ function test()
     local n = c:getx()
     local nn = c.x
 
-    print(string.format("%d %d", n, nn))
+    print(string.format(XorStr("%d %d"), n, nn))
 end
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

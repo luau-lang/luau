@@ -1,17 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TypeInfer.h"
-#include "Luau/BuiltinDefinitions.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TypeInfer.h"
+#include "lluz/BuiltinDefinitions.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
 
-TEST_SUITE_BEGIN("BuiltinTests");
+TEST_SUITE_BEGIN(XorStr("BuiltinTests"));
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "math_things_are_defined")
 {
@@ -48,7 +47,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_things_are_defined")
         local a31 = math.random
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_check")
@@ -61,7 +60,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
         local c: string, d: number = next(t)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_check")
@@ -73,7 +72,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_c
         local it: (Map<string, number>, string | nil) -> (string, number), t: Map<string, number>, i: nil = pairs(map)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_iterator_should_infer_types_and_type_check")
@@ -85,7 +84,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_iterator_should_infer_types_and_type_
         local it: (Map<number, string>, number) -> (number, string), t: Map<number, string>, i: number = ipairs(array)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_remove_optionally_returns_generic")
@@ -95,8 +94,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_dot_remove_optionally_returns_generic"
         local n = table.remove(t, 7)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("n")), "number?");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("n")), "number?"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_concat_returns_string")
@@ -105,7 +104,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_concat_returns_string")
         local r = table.concat({1,2,3,4}, ",", 2);
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.stringType, *requireType("r"));
 }
 
@@ -116,7 +115,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort")
         table.sort(t)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
@@ -128,7 +127,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_predicate")
         table.sort(t, p)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
@@ -140,7 +139,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "sort_with_bad_predicate")
         table.sort(t, p)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(R"(Type '(number, number) -> boolean' could not be converted into '((a, a) -> boolean)?'
 caused by:
   None of the union options are compatible. For example: Type '(number, number) -> boolean' could not be converted into '(a, a) -> boolean'
@@ -152,10 +151,10 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "strings_have_methods")
 {
     CheckResult result = check(R"LUA(
-        local s = ("RoactHostChangeEvent(%s)"):format("hello")
+        local s = ("RoactHostChangeEvent(%s)"):format(XorStr("hello"))
     )LUA");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.stringType, *requireType("s"));
 }
 
@@ -165,7 +164,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "math_max_variatic")
         local n = math.max(1,2,3,4,5,6,7,8,9,0)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.numberType, *requireType("n"));
 }
 
@@ -184,7 +183,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_tables_sealed")
     CheckResult result = check(R"LUA(
         local b = bit32
     )LUA");
-    TypeId bit32 = requireType("b");
+    TypeId bit32 = requireType(XorStr("b"));
     REQUIRE(bit32 != nullptr);
     const TableTypeVar* bit32t = get<TableTypeVar>(bit32);
     REQUIRE(bit32t != nullptr);
@@ -345,7 +344,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lua_51_exported_globals_all_exist")
     )");
 
     dumpErrors(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
@@ -353,7 +352,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_unpacks_arg_types_correctly")
     CheckResult result = check(R"(
         setmetatable({}, setmetatable({}, {}))
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_2_args_overload")
@@ -364,7 +363,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
         local s = t[1]
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(typeChecker.stringType, requireType("s"));
 }
 
@@ -376,7 +375,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_correctly_infers_type_of_array_
         local s = t[1]
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("string", toString(requireType("s")));
 }
 
@@ -386,7 +385,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack")
         local t = table.pack(1, "foo", true)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("{| [number]: boolean | number | string, n: number |}", toString(requireType("t")));
 }
 
@@ -395,13 +394,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_variadic")
     CheckResult result = check(R"(
 --!strict
 function f(): (string, ...number)
-    return "str", 2, 3, 4
+    return XorStr("str"), 2, 3, 4
 end
 
 local t = table.pack(f())
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("{| [number]: number | string, n: number |}", toString(requireType("t")));
 }
 
@@ -411,14 +410,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_pack_reduce")
         local t = table.pack(1, 2, true)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("{| [number]: boolean | number, n: number |}", toString(requireType("t")));
 
     result = check(R"(
         local t = table.pack("a", "b", "c")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("{| [number]: string, n: number |}", toString(requireType("t")));
 }
 
@@ -428,13 +427,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gcinfo")
         local n = gcinfo()
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.numberType, *requireType("n"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "getfenv")
 {
-    LUAU_REQUIRE_NO_ERRORS(check("getfenv(1)"));
+    lluz_REQUIRE_NO_ERRORS(check("getfenv(1)"));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
@@ -445,7 +444,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "os_time_takes_optional_date_table")
         local n3 = os.time({ year = 2020, month = 4, day = 20, hour = 0, min = 0, sec = 0, isdst = true })
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.numberType, *requireType("n1"));
     CHECK_EQ(*typeChecker.numberType, *requireType("n2"));
     CHECK_EQ(*typeChecker.numberType, *requireType("n3"));
@@ -457,7 +456,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
         local co = coroutine.create(function() end)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.threadType, *requireType("co"));
 }
 
@@ -476,7 +475,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
         local answer = coroutine.resume(co, 3)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_wrap_anything_goes")
@@ -495,7 +494,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_wrap_anything_goes")
         local answer = f(3)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_should_not_mutate_persisted_types")
@@ -506,9 +505,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_should_not_mutate_persisted_typ
         setmetatable(string, {})
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
-    auto stringType = requireType("string");
+    auto stringType = requireType(XorStr("string"));
     auto ttv = get<TableTypeVar>(stringType);
     REQUIRE(ttv);
 }
@@ -518,7 +517,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_types_inference")
     CheckResult result = check(R"(
         --!strict
         function f(a, b, c)
-            return string.format("%f %d %s", a, b, c)
+            return string.format(XorStr("%f %d %s"), a, b, c)
         end
     )");
 
@@ -530,13 +529,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_arg_count_mismatch")
 {
     CheckResult result = check(R"(
         --!strict
-        string.format("%f %d %s")
-        string.format("%s", "hi", 42)
-        string.format("%s", "hi", 42, ...)
-        string.format("%s", "hi", ...)
+        string.format(XorStr("%f %d %s"))
+        string.format(XorStr("%s"), "hi", 42)
+        string.format(XorStr("%s"), "hi", 42, ...)
+        string.format(XorStr("%s"), "hi", ...)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(3, result);
+    lluz_REQUIRE_ERROR_COUNT(3, result);
     CHECK_EQ(result.errors[0].location.begin.line, 2);
     CHECK_EQ(result.errors[1].location.begin.line, 3);
     CHECK_EQ(result.errors[2].location.begin.line, 4);
@@ -546,10 +545,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
 {
     CheckResult result = check(R"(
         --!strict
-        string.format("%s", 123)
+        string.format(XorStr("%s"), 123)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ(tm->wantedType, typeChecker.stringType);
@@ -566,7 +565,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall")
         )
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("boolean", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
@@ -578,7 +577,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "see_thru_select")
         local a:number, b:boolean = select(2,"hi", 10, true)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "see_thru_select_count")
@@ -588,7 +587,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "see_thru_select_count")
     )");
 
     dumpErrors(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_decimal_argument_is_rounded_down")
@@ -597,7 +596,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_decimal_argument_is_rounded_down
         local a: number, b: boolean = select(2.9, "foo", 1, true)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 // Could be flaky if the fix has regressed.
@@ -613,7 +612,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[0]));
     CHECK_EQ("Argument count mismatch. Function expects 1 argument, but none are specified", toString(result.errors[1]));
 }
@@ -624,7 +623,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
         select(5432598430953240958)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<GenericError>(result.errors[0]));
     CHECK_EQ("bad argument #1 to select (index out of range)", toString(result.errors[0]));
 }
@@ -635,7 +634,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_slightly_out_of_range")
         select(3, "a", 1)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     REQUIRE(get<GenericError>(result.errors[0]));
     CHECK_EQ("bad argument #1 to select (index out of range)", toString(result.errors[0]));
 }
@@ -651,7 +650,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
         local foo, bar, baz, quux = select(1, f("foo", true))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("any", toString(requireType("foo")));
     CHECK_EQ("any", toString(requireType("bar")));
@@ -670,7 +669,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
         local foo, bar, baz, quux = select(1, "foo", f("bar", true))
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("any", toString(requireType("foo")));
     CHECK_EQ("any", toString(requireType("bar")));
@@ -680,9 +679,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
 TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 {
-    CheckResult result = check("local _ = ('%s'):format(5)");
+    CheckResult result = check(XorStr("local _ = ('%s'):format(5)"));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
@@ -693,10 +692,10 @@ TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 {
     CheckResult result = check(R"(
-        local _ = ("%s"):format("%d", "hello")
+        local _ = ("%s"):format(XorStr("%d"), "hello")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
 }
@@ -704,10 +703,10 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
 {
     CheckResult result = check(R"(
-        local _ = ("%s %d").format("%d %s", "A type error", 2)
+        local _ = ("%s %d").format(XorStr("%d %s"), "A type error", 2)
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    lluz_REQUIRE_ERROR_COUNT(2, result);
 
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
@@ -727,7 +726,7 @@ debug.traceback(co, "msg")
 debug.traceback(co, "msg", 1)
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "debug_info_is_crazy")
@@ -741,7 +740,7 @@ debug.info(co, 1, "n")
 debug.info(f, "n")
 )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "aliased_string_format")
@@ -751,7 +750,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "aliased_string_format")
         local s = fmt("%d", "oops")
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
@@ -771,7 +770,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_lib_self_noself")
         local a0 = string.packsize("ff")
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_definition")
@@ -784,7 +783,7 @@ for c in ("hey"):gmatch("(.)") do
 end
 )_");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_on_variadic")
@@ -797,7 +796,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_on_variadic")
         local a, b, c = select(f())
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("any", toString(requireType("a")));
     CHECK_EQ("any", toString(requireType("b")));
     CHECK_EQ("any", toString(requireType("c")));
@@ -807,14 +806,14 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_report_all_type_errors_at_corr
 {
     CheckResult result = check(R"(
         ("%s%d%s"):format(1, "hello", true)
-        string.format("%s%d%s", 1, "hello", true)
+        string.format(XorStr("%s%d%s"), 1, "hello", true)
     )");
 
     TypeId stringType = typeChecker.stringType;
     TypeId numberType = typeChecker.numberType;
     TypeId booleanType = typeChecker.booleanType;
 
-    LUAU_REQUIRE_ERROR_COUNT(6, result);
+    lluz_REQUIRE_ERROR_COUNT(6, result);
 
     CHECK_EQ(Location(Position{1, 26}, Position{1, 27}), result.errors[0].location);
     CHECK_EQ(TypeErrorData(TypeMismatch{stringType, numberType}), result.errors[0].data);
@@ -842,7 +841,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type")
         local b: number = tonumber('asdf')
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number?' could not be converted into 'number'", toString(result.errors[0]));
 }
 
@@ -853,7 +852,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tonumber_returns_optional_number_type2")
         local b: number = tonumber('asdf') or 1
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_add_definitions_to_persistent_types")
@@ -863,15 +862,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_add_definitions_to_persistent_types")
         local function g(x) return math.sin(x) end
         f = g
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId fType = requireType("f");
+    TypeId fType = requireType(XorStr("f"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fType);
     REQUIRE(fType);
     REQUIRE(fType->persistent);
     REQUIRE(!ftv->definition);
 
-    TypeId gType = requireType("g");
+    TypeId gType = requireType(XorStr("g"));
     const FunctionTypeVar* gtv = get<FunctionTypeVar>(gType);
     REQUIRE(gType);
     REQUIRE(!gType->persistent);
@@ -886,8 +885,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauLowerBoundsCalculation)
+    lluz_REQUIRE_NO_ERRORS(result);
+    if (FFlag::LluLowerBoundsCalculation)
         CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
     else
         CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
@@ -901,7 +900,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
 }
 
@@ -913,7 +912,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types_even_from_type_pa
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("(...number?) -> (number, ...number?)", toString(requireType("f")));
 }
 
@@ -925,8 +924,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_returns_false_and_string_iff_it_knows
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("(nil) -> (never, ...never)", toString(requireType("f")));
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(nil) -> nil", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
@@ -947,30 +946,27 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
         local d = tf1.b
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Key 'b' not found in table '{| a: number |}'", toString(result.errors[0]));
 
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("d")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("d")));
+    CHECK_EQ("*unknown*", toString(requireType("d")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
-    ScopedFastFlag sff{"LuauSetMetaTableArgsCheck", true};
+    ScopedFastFlag sff{"lluzSetMetaTableArgsCheck", true};
     CheckResult result = check(R"(
 local a = {b=setmetatable}
 a.b()
 a:b()
 a:b({})
     )");
-    LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function expects 2 arguments, but none are specified");
-    CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function expects 2 arguments, but only 1 is specified");
+    lluz_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 0}, {2, 5}}, CountMismatch{2, 0}}));
+    CHECK_EQ(result.errors[1], (TypeError{Location{{3, 0}, {3, 5}}, CountMismatch{2, 1}}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
@@ -978,13 +974,13 @@ TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
     CheckResult result = check(R"(
 local function f(a: typeof(f)) end
 )");
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Unknown global 'f'", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
 {
-    TypeId mathTy = requireType(typeChecker.globalScope, "math");
+    TypeId mathTy = requireType(typeChecker.globalScope, XorStr("math"));
     REQUIRE(mathTy);
     TableTypeVar* ttv = getMutable<TableTypeVar>(mathTy);
     REQUIRE(ttv);
@@ -992,9 +988,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "no_persistent_typelevel_change")
     REQUIRE(ftv);
     auto original = ftv->level;
 
-    CheckResult result = check("local a = math.frexp");
+    CheckResult result = check(XorStr("local a = math.frexp"));
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK(ftv->level.level == original.level);
     CHECK(ftv->level.subLevel == original.subLevel);
 }
@@ -1009,252 +1005,7 @@ local function f(x: string)
 end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types")
-{
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c = string.gmatch("This is a string", "(.()(%a+))")()
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types2")
-{
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c = ("This is a string"):gmatch("(.()(%a+))")()
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
-{
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c, d = string.gmatch("T(his)() is a string", ".")()
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
-    REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
-    CHECK_EQ(acm->expected, 1);
-    CHECK_EQ(acm->actual, 4);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens")
-{
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c, d = string.gmatch("T(his) is a string", "((.)%b()())")()
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
-    REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
-    CHECK_EQ(acm->expected, 3);
-    CHECK_EQ(acm->actual, 4);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "string");
-    CHECK_EQ(toString(requireType("c")), "number");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_ignored")
-{
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c = string.gmatch("T(his)() is a string", "(T[()])()")()
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
-    REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
-    CHECK_EQ(acm->expected, 2);
-    CHECK_EQ(acm->actual, 3);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_set_containing_lbracket")
-{
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b = string.gmatch("[[[", "()([[])")()
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("a")), "number");
-    CHECK_EQ(toString(requireType("b")), "string");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_leading_end_bracket_is_part_of_set")
-{
-    CheckResult result = check(R"END(
-        -- An immediate right-bracket following a left-bracket is included within the set;
-        -- thus, '[]]'' is the set containing ']', and '[]' is an invalid set missing an enclosing
-        -- right-bracket. We detect an invalid set in this case and fall back to to default gmatch
-        -- typing.
-        local foo = string.gmatch("T[hi%]s]]]() is a string", "([]s)")
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_invalid_pattern_fallback_to_builtin")
-{
-    CheckResult result = check(R"END(
-        local foo = string.gmatch("T(his)() is a string", ")")
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_invalid_pattern_fallback_to_builtin2")
-{
-    CheckResult result = check(R"END(
-        local foo = string.gmatch("T(his)() is a string", "[")
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types")
-{
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c = string.match("This is a string", "(.()(%a+))")
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
-{
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local a, b, c = string.match("This is a string", "(.()(%a+))", "this should be a number")
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ(toString(tm->wantedType), "number?");
-    CHECK_EQ(toString(tm->givenType), "string");
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
-{
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))")
-    )END");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-    CHECK_EQ(toString(requireType("d")), "number?");
-    CHECK_EQ(toString(requireType("e")), "number?");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types2")
-{
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", "this should be a number")
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ(toString(tm->wantedType), "number?");
-    CHECK_EQ(toString(tm->givenType), "string");
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-    CHECK_EQ(toString(requireType("d")), "number?");
-    CHECK_EQ(toString(requireType("e")), "number?");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
-{
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", 1, "this should be a bool")
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE(tm);
-    CHECK_EQ(toString(tm->wantedType), "boolean?");
-    CHECK_EQ(toString(tm->givenType), "string");
-
-    CHECK_EQ(toString(requireType("a")), "string");
-    CHECK_EQ(toString(requireType("b")), "number");
-    CHECK_EQ(toString(requireType("c")), "string");
-    CHECK_EQ(toString(requireType("d")), "number?");
-    CHECK_EQ(toString(requireType("e")), "number?");
-}
-
-TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
-{
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
-    CheckResult result = check(R"END(
-        local d, e, a, b = string.find("This is a string", "(.()(%a+))", 1, true)
-    )END");
-
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
-    REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
-    CHECK_EQ(acm->expected, 2);
-    CHECK_EQ(acm->actual, 4);
-
-    CHECK_EQ(toString(requireType("d")), "number?");
-    CHECK_EQ(toString(requireType("e")), "number?");
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -1,17 +1,17 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-#include "Luau/Normalize.h"
-#include "Luau/BuiltinDefinitions.h"
+#include "lluz/Normalize.h"
+#include "lluz/BuiltinDefinitions.h"
 
-using namespace Luau;
+using namespace lluz;
 
 struct NormalizeFixture : Fixture
 {
-    ScopedFastFlag sff1{"LuauLowerBoundsCalculation", true};
+    ScopedFastFlag sff1{"lluzLowerBoundsCalculation", true};
 };
 
 void createSomeClasses(TypeChecker& typeChecker)
@@ -55,7 +55,7 @@ static bool isSubtype(TypeId a, TypeId b)
     return isSubtype(a, b, ice);
 }
 
-TEST_SUITE_BEGIN("isSubtype");
+TEST_SUITE_BEGIN(XorStr("isSubtype"));
 
 TEST_CASE_FIXTURE(NormalizeFixture, "primitives")
 {
@@ -67,10 +67,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "primitives")
         local d = "world"
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
-    TypeId d = requireType("d");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
+    TypeId d = requireType(XorStr("d"));
 
     CHECK(isSubtype(b, a));
     CHECK(isSubtype(d, c));
@@ -87,10 +87,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions")
         function d(x: number): number? return x end
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
-    TypeId d = requireType("d");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
+    TypeId d = requireType(XorStr("d"));
 
     CHECK(isSubtype(b, a));
     CHECK(isSubtype(c, a));
@@ -101,12 +101,12 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions")
 TEST_CASE_FIXTURE(NormalizeFixture, "functions_and_any")
 {
     check(R"(
-        function a(n: number) return "string" end
+        function a(n: number) return XorStr("string") end
         function b(q: any) return 5 :: any end
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     // Intuition:
     //    We cannot use b where a is required because we cannot rely on b to return a string.
@@ -128,8 +128,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_functions_of_different_arit
         local t: T
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     CHECK(!isSubtype(a, b)); // !!
     CHECK(!isSubtype(b, a));
@@ -146,9 +146,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity")
         local c: () -> number
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
 
     CHECK(!isSubtype(b, a));
     CHECK(!isSubtype(c, a));
@@ -178,9 +178,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity_but_option
         local c: (number, number?) -> ()
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
 
     /*
      * (number) -> () </: (number?) -> ()
@@ -228,9 +228,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity_but_any_is
         local c: (number, any) -> ()
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
 
     /*
      * (number) -> () </: (number?) -> ()
@@ -276,8 +276,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "variadic_functions_with_no_head")
         local b: (...number?) -> ()
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     CHECK(isSubtype(b, a));
     CHECK(!isSubtype(a, b));
@@ -291,8 +291,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "variadic_function_with_head")
         local b: (number, number) -> ()
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     CHECK(!isSubtype(b, a));
     CHECK(isSubtype(a, b));
@@ -308,10 +308,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union")
         local d: number?
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
-    TypeId d = requireType("d");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
+    TypeId d = requireType(XorStr("d"));
 
     CHECK(isSubtype(b, a));
     CHECK(!isSubtype(a, b));
@@ -333,8 +333,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_with_union_prop")
         local b: {x: number?}
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
@@ -347,8 +347,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_with_any_prop")
         local b: {x: any}
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
@@ -363,10 +363,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection")
         local d: number & nil
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
-    TypeId d = requireType("d");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
+    TypeId d = requireType(XorStr("d"));
 
     CHECK(!isSubtype(b, a));
     CHECK(isSubtype(a, b));
@@ -385,8 +385,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_and_intersection")
             local b: number | nil
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
 
     CHECK(!isSubtype(b, a));
     CHECK(isSubtype(a, b));
@@ -411,10 +411,10 @@ TEST_CASE_FIXTURE(NormalizeFixture, "tables")
         local d: {x: number, y: number}
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
-    TypeId d = requireType("d");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
+    TypeId d = requireType(XorStr("d"));
 
     CHECK(isSubtype(a, b));
     CHECK(!isSubtype(b, a));
@@ -438,9 +438,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_indexers_are_invariant")
         local c: {[string]: number}
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
 
     CHECK(!isSubtype(b, a));
     CHECK(!isSubtype(a, b));
@@ -457,9 +457,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "mismatched_indexers")
         local c: {}
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
 
     CHECK(isSubtype(b, a));
     CHECK(!isSubtype(a, b));
@@ -487,11 +487,11 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_table")
         local e: E
     )");
 
-    TypeId a = requireType("a");
-    TypeId b = requireType("b");
-    TypeId c = requireType("c");
-    TypeId d = requireType("d");
-    TypeId e = requireType("e");
+    TypeId a = requireType(XorStr("a"));
+    TypeId b = requireType(XorStr("b"));
+    TypeId c = requireType(XorStr("c"));
+    TypeId d = requireType(XorStr("d"));
+    TypeId e = requireType(XorStr("e"));
 
     CHECK(isSubtype(b, a));
     CHECK(!isSubtype(a, b));
@@ -537,8 +537,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "metatable" * doctest::expected_failures{1})
         local b: {method: (any) -> ()}
      )");
 
-     TypeId a = requireType("a");
-     TypeId b = requireType("b");
+     TypeId a = requireType(XorStr("a"));
+     TypeId b = requireType(XorStr("b"));
 
      CHECK(isSubtype(a, b));
 }
@@ -556,7 +556,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_tables")
 
 TEST_SUITE_END();
 
-TEST_SUITE_BEGIN("Normalize");
+TEST_SUITE_BEGIN(XorStr("Normalize"));
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_disjoint_tables")
 {
@@ -601,7 +601,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_with_overlapping_field_that_has_a_sub
     ModulePtr mainModule = getMainModule();
     unfreeze(mainModule->internalTypes);
 
-    TypeId tType = requireType("t");
+    TypeId tType = requireType(XorStr("t"));
     normalize(tType, tempModule, *typeChecker.iceHandler);
 
     CHECK_EQ("{| x: number? |}", toString(tType, {true}));
@@ -620,7 +620,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_functions")
 TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
 {
     ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzReturnTypeInferenceInNonstrict", true},
     };
 
     check(R"(
@@ -641,7 +642,7 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
         end
     )");
 
-    CHECK_EQ("(any, any) -> (...any)", toString(getMainModule()->getModuleScope()->returnType));
+    CHECK_EQ("(any, any) -> (any, any) -> any", toString(getMainModule()->getModuleScope()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_is_not_a_constrained_intersection")
@@ -665,7 +666,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function")
         local a = apply(function(x: number) return x + x end, 5)
     )");
 
-    TypeId aType = requireType("a");
+    TypeId aType = requireType(XorStr("a"));
     CHECK_MESSAGE(isNumber(follow(aType)), "Expected a number but got ", toString(aType));
 }
 
@@ -682,7 +683,7 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", false}};
+    ScopedFastFlag flags[] = {{"lluzLowerBoundsCalculation", true}, {"lluzNormalizeFlagIsConservative", false}};
 
     check(R"(
         type Fiber = {
@@ -692,14 +693,14 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
         local f: Fiber
     )");
 
-    TypeId t = requireType("f");
+    TypeId t = requireType(XorStr("f"));
     CHECK(t->normal);
 }
 
 // Unfortunately, getting this right in the general case is difficult.
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", true}};
+    ScopedFastFlag flags[] = {{"lluzLowerBoundsCalculation", true}, {"lluzNormalizeFlagIsConservative", true}};
 
     check(R"(
         type Fiber = {
@@ -709,14 +710,14 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
         local f: Fiber
     )");
 
-    TypeId t = requireType("f");
+    TypeId t = requireType(XorStr("f"));
     CHECK(!t->normal);
 }
 
 TEST_CASE_FIXTURE(Fixture, "variadic_tail_is_marked_normal")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -725,9 +726,9 @@ TEST_CASE_FIXTURE(Fixture, "variadic_tail_is_marked_normal")
         local w: Weirdo
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId t = requireType("w");
+    TypeId t = requireType(XorStr("w"));
     auto ftv = get<FunctionTypeVar>(t);
     REQUIRE(ftv);
 
@@ -749,75 +750,16 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = requireType("Cyclic");
+    TypeId ty = requireType(XorStr("Cyclic"));
     CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
-}
-
-TEST_CASE_FIXTURE(Fixture, "cyclic_union")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauFixNormalizationOfCyclicUnions", true},
-    };
-
-    CheckResult result = check(R"(
-        type T = {T?}?
-
-        local a: T
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK("t1? where t1 = {t1?}" == toString(requireType("a")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "cyclic_intersection")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauFixNormalizationOfCyclicUnions", true},
-    };
-
-    CheckResult result = check(R"(
-        type T = {T & {}}
-
-        local a: T
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    // FIXME: We are not properly normalizing this type, but we are at least not improperly discarding information
-    CHECK("t1 where t1 = {{t1 & {|  |}}}" == toString(requireType("a"), {true}));
-}
-
-TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_indexers")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauFixNormalizationOfCyclicUnions", true},
-    };
-
-    CheckResult result = check(R"(
-        type A = {number}
-        type B = {string}
-
-        type C = A & B
-
-        local a: C
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    // FIXME: We are not properly normalizing this type, but we are at least not improperly discarding information
-    CHECK("{number & string}" == toString(requireType("a"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -830,7 +772,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK("<a, b>(a, b) -> a | b" == toString(requireType("fussy")));
 }
@@ -838,7 +780,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
 TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_intersection_of_intersections")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -854,9 +796,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_intersection_of_intersections")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId h = requireType("h");
+    TypeId h = requireType(XorStr("h"));
 
     CHECK("() -> (() -> number) | ((number) -> number) | ((string) -> number)" == toString(h));
 }
@@ -864,7 +806,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_intersection_of_intersections")
 TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersection")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -881,7 +823,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
         local t: T
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK("{|  |}" == toString(requireType("x"), {true}));
     CHECK("{| y: number |}" == toString(requireType("y"), {true}));
@@ -893,8 +835,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersection_2")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -911,9 +853,9 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId t = requireType("strange");
+    TypeId t = requireType(XorStr("strange"));
     auto ftv = get<FunctionTypeVar>(t);
     REQUIRE(ftv != nullptr);
 
@@ -934,8 +876,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersection_3")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -952,9 +894,9 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId t = requireType("strange");
+    TypeId t = requireType(XorStr("strange"));
     auto ftv = get<FunctionTypeVar>(t);
     REQUIRE(ftv != nullptr);
 
@@ -974,8 +916,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersection_4")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -994,9 +936,9 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId t = requireType("strange");
+    TypeId t = requireType(XorStr("strange"));
     auto ftv = get<FunctionTypeVar>(t);
     REQUIRE(ftv != nullptr);
 
@@ -1016,8 +958,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 TEST_CASE_FIXTURE(Fixture, "nested_table_normalization_with_non_table__no_ice")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeCombineTableFix", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzNormalizeCombineTableFix", true},
     };
     // CLI-52787
     // ends up combining {_:any} with any, recursively
@@ -1026,12 +968,12 @@ TEST_CASE_FIXTURE(Fixture, "nested_table_normalization_with_non_table__no_ice")
         export type t0 = any & { _: {_:any} } & { _:any }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "visiting_a_type_twice_is_not_considered_normal")
 {
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+    ScopedFastFlag sff{"lluzLowerBoundsCalculation", true};
 
     CheckResult result = check(R"(
         --!strict
@@ -1046,33 +988,33 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "visiting_a_type_twice_is_not_considered_norm
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("<a>(() -> a, a) -> ()", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_failure_instersection_combine_must_follow")
 {
     ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
+        {"lluzLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
         export type t0 = {_:{_:any} & {_:any|string}} & {_:{_:{}}}
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "fuzz_failure_bound_type_is_normal_but_not_its_bounded_to")
 {
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+    ScopedFastFlag sff{"lluzLowerBoundsCalculation", true};
 
     CheckResult result = check(R"(
         type t252 = ((t0<t252...>)|(any))|(any)
         type t0 = t252<t0<any,t24...>,t24...>
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 }
 
 // We had an issue where a normal BoundTypeVar might point at a non-normal BoundTypeVar if it in turn pointed to a
@@ -1080,8 +1022,8 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_failure_bound_type_is_normal_but_not_its_bounde
 TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their_pointee_is_normal")
 {
     ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzNormalizeFlagIsConservative", true},
     };
 
     CheckResult result = check(R"(
@@ -1108,63 +1050,25 @@ export type t0 = { a: Child }
 export type t1 = { a: typeof(string.byte) }
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_combine_on_bound_self")
 {
+    ScopedFastFlag lluzNormalizeCombineEqFix{"lluzNormalizeCombineEqFix", true};
+
     CheckResult result = check(R"(
 export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
-}
-
-TEST_CASE_FIXTURE(Fixture, "normalize_unions_containing_never")
-{
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
-
-    CheckResult result = check(R"(
-        type Foo = string | never
-        local foo: Foo
-    )");
-
-    CHECK_EQ("string", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "normalize_unions_containing_unknown")
-{
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
-
-    CheckResult result = check(R"(
-        type Foo = string | unknown
-        local foo: Foo
-    )");
-
-    CHECK_EQ("unknown", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "any_wins_the_battle_over_unknown_in_unions")
-{
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
-
-    CheckResult result = check(R"(
-        type Foo = unknown | any
-        local foo: Foo
-
-        type Bar = any | unknown
-        local bar: Bar
-    )");
-
-    CHECK_EQ("any", toString(requireType("foo")));
-    CHECK_EQ("any", toString(requireType("bar")));
+    lluz_REQUIRE_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_does_not_convert_ever")
 {
     ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
+        {"lluzLowerBoundsCalculation", true},
+        {"lluzQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(
@@ -1175,13 +1079,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_does_not_convert_ever")
             end
             type Ret = typeof(f())
             if math.random() > 0.5 then
-                return "something"
+                return XorStr("something")
             end
-            return "something" :: Ret
+            return XorStr("something") :: Ret
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("() -> boolean | string", toString(requireType("f")));
 }
 

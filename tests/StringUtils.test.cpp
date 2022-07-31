@@ -1,5 +1,5 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/StringUtils.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/StringUtils.h"
 
 #include "doctest.h"
 
@@ -11,7 +11,7 @@ using LevenshteinMatrix = std::vector<std::vector<size_t>>;
 
 std::string format(std::string_view a, std::string_view b, size_t expected, size_t actual)
 {
-    return "Distance of '" + std::string(a) + "' and '" + std::string(b) + "': expected " + std::to_string(expected) + ", got " +
+    return XorStr("Distance of '") + std::string(a) + "' and '" + std::string(b) + "': expected " + std::to_string(expected) + ", got " +
            std::to_string(actual);
 }
 
@@ -25,7 +25,7 @@ void compareLevenshtein(LevenshteinMatrix distances, std::string_view a, std::st
             std::string_view currentA = a.substr(0, x);
             std::string_view currentB = b.substr(0, y);
 
-            size_t actual = Luau::editDistance(currentA, currentB);
+            size_t actual = lluz::editDistance(currentA, currentB);
             size_t expected = distances[x][y];
             CHECK_MESSAGE(actual == expected, format(currentA, currentB, expected, actual));
         }
@@ -33,7 +33,7 @@ void compareLevenshtein(LevenshteinMatrix distances, std::string_view a, std::st
 }
 } // namespace
 
-TEST_SUITE_BEGIN("StringUtilsTest");
+TEST_SUITE_BEGIN(XorStr("StringUtilsTest"));
 
 #if 0
 // This unit test is only used to measure how performant the current levenshtein distance algorithm is.
@@ -48,13 +48,13 @@ TEST_CASE("BenchmarkLevenshteinDistance")
     // - are real words,
     // - have common prefix and suffix, and
     // - are sufficiently long enough to stress test with
-    std::string_view a("Intercalate");
-    std::string_view b("Interchangeable");
+    std::string_view a(XorStr("Intercalate"));
+    std::string_view b(XorStr("Interchangeable"));
 
     auto start = std::chrono::steady_clock::now();
 
     for (int i = 0; i < count; ++i)
-        Luau::editDistance(a, b);
+        lluz::editDistance(a, b);
 
     auto end = std::chrono::steady_clock::now();
     auto time = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
@@ -75,7 +75,7 @@ TEST_CASE("LevenshteinDistanceKittenSitting")
         {6, 6, 5, 4, 3, 3, 2, 3}, // N
     };
 
-    compareLevenshtein(distances, "kitten", "sitting");
+    compareLevenshtein(distances, XorStr("kitten", "sitting"));
 }
 
 TEST_CASE("LevenshteinDistanceSaturdaySunday")
@@ -92,17 +92,17 @@ TEST_CASE("LevenshteinDistanceSaturdaySunday")
         {8, 7, 6, 6, 5, 4, 3}, // Y
     };
 
-    compareLevenshtein(distances, "saturday", "sunday");
+    compareLevenshtein(distances, XorStr("saturday", "sunday"));
 }
 
 TEST_CASE("EditDistanceIsAgnosticOfArgumentOrdering")
 {
-    CHECK_EQ(Luau::editDistance("blox", "block"), Luau::editDistance("block", "blox"));
+    CHECK_EQ(lluz::editDistance("blox", "block"), lluz::editDistance("block", "blox"));
 }
 
 TEST_CASE("AreWeUsingDistanceWithAdjacentTranspositionsAndNotOptimalStringAlignment")
 {
-    size_t distance = Luau::editDistance("CA", "ABC");
+    size_t distance = lluz::editDistance(XorStr("CA", "ABC"));
     CHECK_EQ(distance, 2);
 }
 

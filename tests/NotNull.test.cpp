@@ -1,4 +1,4 @@
-#include "Luau/NotNull.h"
+#include "lluz/NotNull.h"
 
 #include "doctest.h"
 
@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <string>
 
-using Luau::NotNull;
+using lluz::NotNull;
 
 namespace
 {
@@ -39,7 +39,7 @@ int foo(NotNull<int> p)
 
 void bar(int* q) {}
 
-TEST_SUITE_BEGIN("NotNull");
+TEST_SUITE_BEGIN(XorStr("NotNull"));
 
 TEST_CASE("basic_stuff")
 {

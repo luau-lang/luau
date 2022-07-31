@@ -1,23 +1,22 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Luau/Scope.h"
-#include "Luau/ToString.h"
+#include "lluz/Scope.h"
+#include "lluz/ToString.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
+lluz_FASTFLAG(LluRecursiveTypeParameterRestriction);
 
-TEST_SUITE_BEGIN("ToString");
+TEST_SUITE_BEGIN(XorStr("ToString"));
 
 TEST_CASE_FIXTURE(Fixture, "primitive")
 {
-    CheckResult result = check("local a = nil    local b = 44    local c = 'lalala'    local d = true");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local a = nil    local b = 44    local c = 'lalala'    local d = true"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     // A variable without an annotation and with a nil literal should infer as 'free', not 'nil'
     CHECK_NE("nil", toString(requireType("a")));
@@ -29,16 +28,16 @@ TEST_CASE_FIXTURE(Fixture, "primitive")
 
 TEST_CASE_FIXTURE(Fixture, "bound_types")
 {
-    CheckResult result = check("local a = 444    local b = a");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local a = 444    local b = a"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("number", toString(requireType("b")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_types")
 {
-    CheckResult result = check("local a");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local a"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("a", toString(requireType("a")));
 }
@@ -63,6 +62,7 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
 
 TEST_CASE_FIXTURE(Fixture, "empty_table")
 {
+    ScopedFastFlag lluzToStringTableBracesNewlines("lluzToStringTableBracesNewlines", true);
     CheckResult result = check(R"(
         local a: {}
     )");
@@ -77,6 +77,7 @@ TEST_CASE_FIXTURE(Fixture, "empty_table")
 
 TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 {
+    ScopedFastFlag lluzToStringTableBracesNewlines("lluzToStringTableBracesNewlines", true);
     CheckResult result = check(R"(
         local a: { prop: string, anotherProp: number, thirdProp: boolean }
     )");
@@ -120,7 +121,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
         type NamedMetatable = typeof(createTbl())
     )");
 
-    TypeId ty = requireType("createTbl");
+    TypeId ty = requireType(XorStr("createTbl"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
     REQUIRE(ftv);
     CHECK_EQ("createTbl(): NamedMetatable", toStringNamedFunction("createTbl", *ftv));
@@ -166,7 +167,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_parenthesized_only_if_needed")
     auto utv = TypeVar{UnionTypeVar{{typeChecker.numberType, typeChecker.stringType}}};
     auto itv = TypeVar{IntersectionTypeVar{{&utv, typeChecker.booleanType}}};
 
-    CHECK_EQ(toString(&itv), "(number | string) & boolean");
+    CHECK_EQ(toString(&itv), XorStr("(number | string) & boolean"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_parenthesized_only_if_needed")
@@ -174,7 +175,7 @@ TEST_CASE_FIXTURE(Fixture, "union_parenthesized_only_if_needed")
     auto itv = TypeVar{IntersectionTypeVar{{typeChecker.numberType, typeChecker.stringType}}};
     auto utv = TypeVar{UnionTypeVar{{&itv, typeChecker.booleanType}}};
 
-    CHECK_EQ(toString(&utv), "(number & string) | boolean");
+    CHECK_EQ(toString(&utv), XorStr("(number & string) | boolean"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_intersections")
@@ -188,8 +189,8 @@ TEST_CASE_FIXTURE(Fixture, "functions_are_always_parenthesized_in_unions_or_inte
     auto utv = TypeVar{UnionTypeVar{{&ns2sn, &sn2ns}}};
     auto itv = TypeVar{IntersectionTypeVar{{&ns2sn, &sn2ns}}};
 
-    CHECK_EQ(toString(&utv), "((number, string) -> (string, number)) | ((string, number) -> (number, string))");
-    CHECK_EQ(toString(&itv), "((number, string) -> (string, number)) & ((string, number) -> (number, string))");
+    CHECK_EQ(toString(&utv), XorStr("((number, string) -> (string, number)) | ((string, number) -> (number, string))"));
+    CHECK_EQ(toString(&itv), XorStr("((number, string) -> (string, number)) & ((string, number) -> (number, string))"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersections_respects_use_line_breaks")
@@ -236,7 +237,7 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_table_type_when_length_is_exceeded
     ToStringOptions o;
     o.exhaustive = false;
     o.maxTableLength = 40;
-    CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 10 more ... }");
+    CHECK_EQ(toString(&tv, o), XorStr("{ a: number, b: number, c: number, d: number, e: number, ... 10 more ... }"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaustive")
@@ -250,7 +251,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_is_still_capped_when_exhaust
     ToStringOptions o;
     o.exhaustive = true;
     o.maxTableLength = 40;
-    CHECK_EQ(toString(&tv, o), "{ a: number, b: number, c: number, d: number, e: number, ... 2 more ... }");
+    CHECK_EQ(toString(&tv, o), XorStr("{ a: number, b: number, c: number, d: number, e: number, ... 2 more ... }"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
@@ -261,23 +262,15 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions o;
     o.exhaustive = false;
     o.maxTypeLength = 40;
-    CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-    CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    if (FFlag::LuauSpecialTypesAsterisked)
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-    }
+    CHECK_EQ(toString(requireType(XorStr("f0"), o), "() -> ()"));
+    CHECK_EQ(toString(requireType(XorStr("f1"), o), "(() -> ()) -> () -> ()"));
+    CHECK_EQ(toString(requireType(XorStr("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>"));
+    CHECK_EQ(toString(requireType(XorStr("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
@@ -288,24 +281,15 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         function f2(f) return f or f1 end
         function f3(f) return f or f2 end
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions o;
     o.exhaustive = true;
     o.maxTypeLength = 40;
-    CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-    CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    if (FFlag::LuauSpecialTypesAsterisked)
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-    }
-
+    CHECK_EQ(toString(requireType(XorStr("f0"), o), "() -> ()"));
+    CHECK_EQ(toString(requireType(XorStr("f1"), o), "(() -> ()) -> () -> ()"));
+    CHECK_EQ(toString(requireType(XorStr("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>"));
+    CHECK_EQ(toString(requireType(XorStr("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
@@ -318,7 +302,7 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table
 
     ToStringOptions o;
     o.maxTableLength = 40;
-    CHECK_EQ(toString(&tv, o), "{| a: number, b: number, c: number, d: number, e: number, ... 5 more ... |}");
+    CHECK_EQ(toString(&tv, o), XorStr("{| a: number, b: number, c: number, d: number, e: number, ... 5 more ... |}"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_cyclic_union_type_bails_early")
@@ -360,16 +344,16 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_array_uses_array_syntax")
 TEST_CASE_FIXTURE(Fixture, "generic_packs_are_stringified_differently_from_generic_types")
 {
     TypePackVar tpv{GenericTypePack{"a"}};
-    CHECK_EQ(toString(&tpv), "a...");
+    CHECK_EQ(toString(&tpv), XorStr("a..."));
 
     TypeVar tv{GenericTypeVar{"a"}};
-    CHECK_EQ(toString(&tv), "a");
+    CHECK_EQ(toString(&tv), XorStr("a"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names")
 {
-    CheckResult result = check("type MyFunc = (a: number, string, c: number) -> string; local a : MyFunc");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("type MyFunc = (a: number, string, c: number) -> string; local a : MyFunc"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions opts;
     opts.functionTypeArguments = true;
@@ -378,8 +362,8 @@ TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names")
 
 TEST_CASE_FIXTURE(Fixture, "function_type_with_argument_names_generic")
 {
-    CheckResult result = check("local function f<a...>(n: number, ...: a...): (a...) return ... end");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = check(XorStr("local function f<a...>(n: number, ...: a...): (a...) return ... end"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions opts;
     opts.functionTypeArguments = true;
@@ -396,7 +380,7 @@ type Table = typeof(tbl)
 type Foo = typeof(tbl.foo)
 local u: Foo
 )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     ToStringOptions opts;
     opts.functionTypeArguments = true;
@@ -414,7 +398,7 @@ TEST_CASE_FIXTURE(Fixture, "generate_friendly_names_for_inferred_generics")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("<a>(a) -> a", toString(requireType("id")));
 
@@ -432,9 +416,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId id3Type = requireType("id3");
+    TypeId id3Type = requireType(XorStr("id3"));
     ToStringResult nameData = toStringDetailed(id3Type);
 
     REQUIRE_EQ(3, nameData.nameMap.typeVars.size());
@@ -456,7 +440,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
-    ScopedFastFlag sff2{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff2{"DebuglluzSharedSelf", true};
 
     CheckResult result = check(R"(
         local base = {}
@@ -469,9 +453,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
         local inst = {}
         setmetatable(inst, {__index=child})
     )");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    TypeId tType = requireType("inst");
+    TypeId tType = requireType(XorStr("inst"));
     ToStringResult r = toStringDetailed(tType);
     CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
     CHECK_EQ(0, r.nameMap.typeVars.size());
@@ -514,11 +498,8 @@ TEST_CASE_FIXTURE(Fixture, "toStringErrorPack")
 local function target(callback: nil) return callback(4, "hello") end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("(nil) -> (*error-type*)", toString(requireType("target")));
-    else
-        CHECK_EQ("(nil) -> (<error-type>)", toString(requireType("target")));
+    lluz_REQUIRE_ERRORS(result);
+    CHECK_EQ("(nil) -> (*unknown*)", toString(requireType("target")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
@@ -527,8 +508,8 @@ TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
 function foo(a, b) return a(b) end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(requireType("foo")), "<a, b...>((a) -> (b...), a) -> (b...)");
+    lluz_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType(XorStr("foo")), "<a, b...>((a) -> (b...), a) -> (b...)"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_TypePack")
@@ -561,7 +542,7 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union"
         local g: F = f
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("t1 where t1 = ((() -> number)?) -> t1?", toString(requireType("g")));
 }
@@ -573,7 +554,7 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_inters
         local a: ((number) -> ()) & typeof(f)
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ("((number) -> ()) & t1 where t1 = () -> t1", toString(requireType("a")));
 }
@@ -585,7 +566,7 @@ TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
     ttv->name = "Table";
     ttv->instantiatedTypeParams.push_back(&tableTy);
 
-    CHECK_EQ(toString(tableTy), "Table<Table>");
+    CHECK_EQ(toString(tableTy), XorStr("Table<Table>"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
@@ -594,7 +575,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_id")
         local function id(x) return x end
     )");
 
-    TypeId ty = requireType("id");
+    TypeId ty = requireType(XorStr("id"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("id<a>(x: a): a", toStringNamedFunction("id", *ftv));
@@ -612,7 +593,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_map")
         end
     )");
 
-    TypeId ty = requireType("map");
+    TypeId ty = requireType(XorStr("map"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("map<a, b>(arr: {a}, fn: (a) -> b): {b}", toStringNamedFunction("map", *ftv));
@@ -628,7 +609,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_generic_pack")
         end
     )");
 
-    TypeId ty = requireType("test");
+    TypeId ty = requireType(XorStr("test"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("test<T..., U...>(...: T...): U...", toStringNamedFunction("test", *ftv));
@@ -649,7 +630,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics")
         end
     )");
 
-    TypeId ty = requireType("f");
+    TypeId ty = requireType(XorStr("f"));
     auto ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("f<a, b...>(x: a, ...: any): (a, a, b...)", toStringNamedFunction("f", *ftv));
@@ -663,7 +644,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics2")
         end
     )");
 
-    TypeId ty = requireType("f");
+    TypeId ty = requireType(XorStr("f"));
     auto ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("f(): ...number", toStringNamedFunction("f", *ftv));
@@ -677,7 +658,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_variadics3")
         end
     )");
 
-    TypeId ty = requireType("f");
+    TypeId ty = requireType(XorStr("f"));
     auto ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("f(): (string, ...number)", toStringNamedFunction("f", *ftv));
@@ -689,7 +670,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_type_annotation_has_partial_ar
         local f: (number, y: number) -> number
     )");
 
-    TypeId ty = requireType("f");
+    TypeId ty = requireType(XorStr("f"));
     auto ftv = get<FunctionTypeVar>(follow(ty));
 
     CHECK_EQ("f(_: number, y: number): number", toStringNamedFunction("f", *ftv));
@@ -702,7 +683,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_type_params")
         end
     )");
 
-    TypeId ty = requireType("f");
+    TypeId ty = requireType(XorStr("f"));
     auto ftv = get<FunctionTypeVar>(follow(ty));
 
     ToStringOptions opts;
@@ -716,7 +697,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
         local function test(a, b : string, ... : number) return a end
     )");
 
-    TypeId ty = requireType("test");
+    TypeId ty = requireType(XorStr("test"));
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
 
     ToStringOptions opts;
@@ -727,7 +708,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")
 {
     ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
+        {"lluzAlwaysQuantify", true},
     };
 
     CheckResult result = check(R"(
@@ -740,7 +721,7 @@ TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauSharedSelf", true},
+        {"DebuglluzSharedSelf", true},
     };
 
     CheckResult result = check(R"(
@@ -749,7 +730,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
         end
     )");
 
-    TypeId parentTy = requireType("foo");
+    TypeId parentTy = requireType(XorStr("foo"));
     auto ttv = get<TableTypeVar>(follow(parentTy));
     auto ftv = get<FunctionTypeVar>(ttv->props.at("method").type);
 
@@ -759,7 +740,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_include_self_param")
 TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
 {
     ScopedFastFlag sff[]{
-        {"DebugLuauSharedSelf", true},
+        {"DebuglluzSharedSelf", true},
     };
 
     CheckResult result = check(R"(
@@ -768,7 +749,7 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
         end
     )");
 
-    TypeId parentTy = requireType("foo");
+    TypeId parentTy = requireType(XorStr("foo"));
     auto ttv = get<TableTypeVar>(follow(parentTy));
     auto ftv = get<FunctionTypeVar>(ttv->props.at("method").type);
 

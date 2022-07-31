@@ -1,18 +1,18 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Clone.h"
-#include "Luau/Module.h"
-#include "Luau/Scope.h"
-#include "Luau/RecursionCounter.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Clone.h"
+#include "lluz/Module.h"
+#include "lluz/Scope.h"
+#include "lluz/RecursionCounter.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+lluz_FASTFLAG(LluLowerBoundsCalculation);
 
-TEST_SUITE_BEGIN("ModuleTests");
+TEST_SUITE_BEGIN(XorStr("ModuleTests"));
 
 TEST_CASE_FIXTURE(Fixture, "is_within_comment")
 {
@@ -78,14 +78,14 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
     /* The inferred type of Cyclic is {get: () -> Cyclic}
      *
      * Assert that the return type of get() is the same as the outer table.
      */
 
-    TypeId counterType = requireType("Cyclic");
+    TypeId counterType = requireType(XorStr("Cyclic"));
 
     TypeArena dest;
     CloneState cloneState;
@@ -106,7 +106,7 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     REQUIRE(methodReturnType);
 
     CHECK_EQ(methodReturnType, counterCopy);
-    if (FFlag::LuauLowerBoundsCalculation)
+    if (FFlag::LluLowerBoundsCalculation)
         CHECK_EQ(3, dest.typePacks.size()); // function args, its return type, and the hidden any... pack
     else
         CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
@@ -119,9 +119,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
         return {sign=math.sign}
     )");
     dumpErrors(result);
-    LUAU_REQUIRE_NO_ERRORS(result);
+    lluz_REQUIRE_NO_ERRORS(result);
 
-    ModulePtr module = frontend.moduleResolver.getModule("MainModule");
+    ModulePtr module = frontend.moduleResolver.getModule(XorStr("MainModule"));
     std::optional<TypeId> exports = first(module->getModuleScope()->returnType);
     REQUIRE(bool(exports));
 
@@ -255,8 +255,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
         return a;
     )";
 
-    CheckResult result = frontend.check("Module/A");
-    LUAU_REQUIRE_NO_ERRORS(result);
+    CheckResult result = frontend.check(XorStr("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(result);
 
     fileResolver.source["Module/B"] = R"(
         --!nonstrict
@@ -264,9 +264,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
         return a.foo(5)
     )";
 
-    result = frontend.check("Module/B");
+    result = frontend.check(XorStr("Module/B"));
 
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    lluz_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ("This function must be called with self. Did you mean to use a colon instead of a dot?", toString(result.errors[0]));
 }
@@ -278,7 +278,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 #else
     int limit = 400;
 #endif
-    ScopedFastInt luauTypeCloneRecursionLimit{"LuauTypeCloneRecursionLimit", limit};
+    ScopedFastInt lluzTypeCloneRecursionLimit{"lluzTypeCloneRecursionLimit", limit};
 
     TypeArena src;
 
@@ -301,6 +301,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")
 {
+    ScopedFastFlag lluzNonCopyableTypeVarFields{"lluzNonCopyableTypeVarFields", true};
+
     fileResolver.source["Module/A"] = R"(
 export type A = B
 type B = A
@@ -309,12 +311,12 @@ type B = A
     FrontendOptions opts;
     opts.retainFullTypeGraphs = false;
     CheckResult result = frontend.check("Module/A", opts);
-    LUAU_REQUIRE_ERRORS(result);
+    lluz_REQUIRE_ERRORS(result);
 
-    auto mod = frontend.moduleResolver.getModule("Module/A");
-    auto it = mod->getModuleScope()->exportedTypeBindings.find("A");
+    auto mod = frontend.moduleResolver.getModule(XorStr("Module/A"));
+    auto it = mod->getModuleScope()->exportedTypeBindings.find(XorStr("A"));
     REQUIRE(it != mod->getModuleScope()->exportedTypeBindings.end());
-    CHECK(toString(it->second.type) == "any");
+    CHECK(toString(it->second.type) == XorStr("any"));
 }
 
 TEST_SUITE_END();

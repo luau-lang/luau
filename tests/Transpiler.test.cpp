@@ -1,17 +1,17 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Parser.h"
-#include "Luau/TypeAttach.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/Transpiler.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Parser.h"
+#include "lluz/TypeAttach.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/Transpiler.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("TranspilerTests");
+TEST_SUITE_BEGIN(XorStr("TranspilerTests"));
 
 TEST_CASE("test_1")
 {
@@ -197,7 +197,7 @@ TEST_CASE("method_definitions")
 
 TEST_CASE("spaces_between_keywords_even_if_it_pushes_the_line_estimation_off")
 {
-    // Luau::Parser doesn't exactly preserve the string representation of numbers in Lua, so we can find ourselves
+    // lluz::Parser doesn't exactly preserve the string representation of numbers in Lua, so we can find ourselves
     // falling out of sync with the original code.  We need to push keywords out so that there's at least one space between them.
     const std::string code = R"( if math.abs(raySlope) < .01 then return 0 end )";
     const std::string expected = R"( if math.abs(raySlope) < 0.01 then return 0 end)";

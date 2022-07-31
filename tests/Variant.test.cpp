@@ -1,12 +1,12 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Variant.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Variant.h"
 
 #include <string>
 #include <ostream>
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 struct Foo
 {
@@ -32,7 +32,7 @@ struct Bar
 
 int Bar::count = 0;
 
-TEST_SUITE_BEGIN("Variant");
+TEST_SUITE_BEGIN(XorStr("Variant"));
 
 TEST_CASE("DefaultCtor")
 {
@@ -94,42 +94,42 @@ TEST_CASE("NonPOD")
     std::string s1 = "hello";
     Variant<std::string, int> v1 = s1;
 
-    CHECK(*get_if<std::string>(&v1) == "hello");
+    CHECK(*get_if<std::string>(&v1) == XorStr("hello"));
 
     // initialize (move)
-    Variant<std::string, int> v2 = std::string("hello");
+    Variant<std::string, int> v2 = std::string(XorStr("hello"));
 
-    CHECK(*get_if<std::string>(&v2) == "hello");
+    CHECK(*get_if<std::string>(&v2) == XorStr("hello"));
 
     // move-assign
-    v2 = std::string("this is a long string that doesn't fit into the small buffer");
+    v2 = std::string(XorStr("this is a long string that doesn't fit into the small buffer"));
 
-    CHECK(*get_if<std::string>(&v2) == "this is a long string that doesn't fit into the small buffer");
+    CHECK(*get_if<std::string>(&v2) == XorStr("this is a long string that doesn't fit into the small buffer"));
 
     // copy-assign
-    std::string s2("this is another long string, and this time we're copying it");
+    std::string s2(XorStr("this is another long string, and this time we're copying it"));
     v2 = s2;
 
-    CHECK(*get_if<std::string>(&v2) == "this is another long string, and this time we're copying it");
+    CHECK(*get_if<std::string>(&v2) == XorStr("this is another long string, and this time we're copying it"));
 
     // copy ctor
     Variant<std::string, int> v3 = v2;
 
-    CHECK(*get_if<std::string>(&v2) == "this is another long string, and this time we're copying it");
-    CHECK(*get_if<std::string>(&v3) == "this is another long string, and this time we're copying it");
+    CHECK(*get_if<std::string>(&v2) == XorStr("this is another long string, and this time we're copying it"));
+    CHECK(*get_if<std::string>(&v3) == XorStr("this is another long string, and this time we're copying it"));
 
     // move ctor
     Variant<std::string, int> v4 = std::move(v3);
 
-    CHECK(*get_if<std::string>(&v2) == "this is another long string, and this time we're copying it");
-    CHECK(*get_if<std::string>(&v3) == ""); // moved-from variant has an empty string now
-    CHECK(*get_if<std::string>(&v4) == "this is another long string, and this time we're copying it");
+    CHECK(*get_if<std::string>(&v2) == XorStr("this is another long string, and this time we're copying it"));
+    CHECK(*get_if<std::string>(&v3) == XorStr("")); // moved-from variant has an empty string now
+    CHECK(*get_if<std::string>(&v4) == XorStr("this is another long string, and this time we're copying it"));
 }
 
 TEST_CASE("Equality")
 {
-    Variant<int, std::string> v1 = std::string("hi");
-    Variant<int, std::string> v2 = std::string("me");
+    Variant<int, std::string> v1 = std::string(XorStr("hi"));
+    Variant<int, std::string> v2 = std::string(XorStr("me"));
     Variant<int, std::string> v3 = 1;
     Variant<int, std::string> v4 = 0;
     Variant<int, std::string> v5;
@@ -169,7 +169,7 @@ struct IncrementVisitor
 
 TEST_CASE("Visit")
 {
-    Variant<std::string, int> v1 = std::string("123");
+    Variant<std::string, int> v1 = std::string(XorStr("123"));
     Variant<std::string, int> v2 = 45;
     const Variant<std::string, int>& v1c = v1;
     const Variant<std::string, int>& v2c = v2;
@@ -186,19 +186,19 @@ TEST_CASE("Visit")
             r1 += ToStringVisitor()(v);
         },
         v2c);
-    CHECK(r1 == "12345");
+    CHECK(r1 == XorStr("12345"));
 
     // value-returning visitor, const variants
     std::string r2;
     r2 += visit(ToStringVisitor(), v1c);
     r2 += visit(ToStringVisitor(), v2c);
-    CHECK(r2 == "12345");
+    CHECK(r2 == XorStr("12345"));
 
     // void-returning visitor, mutable variant
     visit(IncrementVisitor(), v1);
     visit(IncrementVisitor(), v2);
-    CHECK(visit(ToStringVisitor(), v1) == "1231");
-    CHECK(visit(ToStringVisitor(), v2) == "46");
+    CHECK(visit(ToStringVisitor(), v1) == XorStr("1231"));
+    CHECK(visit(ToStringVisitor(), v2) == XorStr("46"));
 
     // value-returning visitor, mutable variant
     std::string r3;
@@ -214,7 +214,7 @@ TEST_CASE("Visit")
             return ToStringVisitor()(v);
         },
         v2);
-    CHECK(r3 == "1231147");
+    CHECK(r3 == XorStr("1231147"));
 }
 
 TEST_SUITE_END();
