@@ -1,9 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Ast.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Ast.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
 
-namespace Luau
+#include "..\..\..\..\Security\XorString.h"
+
+namespace lluz
 {
 
 static void visitTypeList(AstVisitor* visitor, const AstTypeList& list)
@@ -237,14 +239,14 @@ std::string toString(AstExprUnary::Op op)
     switch (op)
     {
     case AstExprUnary::Minus:
-        return "-";
+        return XorStr("-");
     case AstExprUnary::Not:
-        return "not";
+        return XorStr("not");
     case AstExprUnary::Len:
-        return "#";
+        return XorStr("#");
     default:
-        LUAU_ASSERT(false);
-        return ""; // MSVC requires this even though the switch/case is exhaustive
+        lluz_ASSERT(false);
+        return XorStr(""); // MSVC requires this even though the switch/case is exhaustive
     }
 }
 
@@ -270,38 +272,38 @@ std::string toString(AstExprBinary::Op op)
     switch (op)
     {
     case AstExprBinary::Add:
-        return "+";
+        return XorStr("+");
     case AstExprBinary::Sub:
-        return "-";
+        return XorStr("-");
     case AstExprBinary::Mul:
-        return "*";
+        return XorStr("*");
     case AstExprBinary::Div:
-        return "/";
+        return XorStr("/");
     case AstExprBinary::Mod:
-        return "%";
+        return XorStr("%");
     case AstExprBinary::Pow:
-        return "^";
+        return XorStr("^");
     case AstExprBinary::Concat:
-        return "..";
+        return XorStr("..");
     case AstExprBinary::CompareNe:
-        return "~=";
+        return XorStr("~=");
     case AstExprBinary::CompareEq:
-        return "==";
+        return XorStr("==");
     case AstExprBinary::CompareLt:
-        return "<";
+        return XorStr("<");
     case AstExprBinary::CompareLe:
-        return "<=";
+        return XorStr("<=");
     case AstExprBinary::CompareGt:
-        return ">";
+        return XorStr(">");
     case AstExprBinary::CompareGe:
-        return ">=";
+        return XorStr(">=");
     case AstExprBinary::And:
-        return "and";
+        return XorStr("and");
     case AstExprBinary::Or:
-        return "or";
+        return XorStr("or");
     default:
-        LUAU_ASSERT(false);
-        return ""; // MSVC requires this even though the switch/case is exhaustive
+        lluz_ASSERT(false);
+        return XorStr(""); // MSVC requires this even though the switch/case is exhaustive
     }
 }
 
@@ -790,7 +792,7 @@ AstTypeFunction::AstTypeFunction(const Location& location, const AstArray<AstGen
     , argNames(argNames)
     , returnTypes(returnTypes)
 {
-    LUAU_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
+    lluz_ASSERT(argNames.size == 0 || argNames.size == argTypes.types.size);
 }
 
 void AstTypeFunction::visit(AstVisitor* visitor)
@@ -935,4 +937,4 @@ AstName getIdentifier(AstExpr* node)
     return AstName();
 }
 
-} // namespace Luau
+} // namespace lluz

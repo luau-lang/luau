@@ -1,14 +1,16 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/StringUtils.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/StringUtils.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <array>
 #include <vector>
 #include <string>
 #include <string.h>
 
-namespace Luau
+namespace lluz
 {
 
 void vformatAppend(std::string& ret, const char* fmt, va_list args)
@@ -59,7 +61,7 @@ template<typename String>
 static std::string joinImpl(const std::vector<String>& segments, std::string_view delimiter)
 {
     if (segments.empty())
-        return "";
+        return XorStr("");
 
     size_t len = (segments.size() - 1) * delimiter.size();
     for (const auto& sv : segments)
@@ -81,7 +83,7 @@ static std::string joinImpl(const std::vector<String>& segments, std::string_vie
         dest += it->size();
     }
 
-    LUAU_ASSERT(dest == result.data() + len);
+    lluz_ASSERT(dest == result.data() + len);
 
     return result;
 }
@@ -276,11 +278,11 @@ std::string escape(std::string_view s)
                 r += '\\';
                 break;
             default:
-                Luau::formatAppend(r, "%03u", c);
+                lluz::formatAppend(r, "%03u", c);
             }
         }
     }
 
     return r;
 }
-} // namespace Luau
+} // namespace lluz

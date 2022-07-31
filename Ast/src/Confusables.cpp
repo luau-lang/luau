@@ -1,10 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Confusables.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Confusables.h"
 
 #include <algorithm>
 #include <array>
 
-namespace Luau
+namespace lluz
 {
 
 struct Confusable
@@ -1815,4 +1815,4 @@ const char* findConfusable(uint32_t codepoint)
     return (it != std::end(kConfusables) && it->codepoint == codepoint) ? it->text : nullptr;
 }
 
-} // namespace Luau
+} // namespace lluz

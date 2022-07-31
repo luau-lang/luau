@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/TimeTrace.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/TimeTrace.h"
 
-#include "Luau/StringUtils.h"
+#include "lluz/StringUtils.h"
 
 #include <mutex>
 #include <string>
@@ -24,9 +24,10 @@
 #endif
 
 #include <time.h>
+#include "../../../../Security/Lazy_Importer.h"
 
-LUAU_FASTFLAGVARIABLE(DebugLuauTimeTracing, false)
-namespace Luau
+lluz_FASTFLAGVARIABLE(DebugLluTimeTracing, false)
+namespace lluz
 {
 namespace TimeTrace
 {
@@ -34,7 +35,7 @@ static double getClockPeriod()
 {
 #if defined(_WIN32)
     LARGE_INTEGER result = {};
-    QueryPerformanceFrequency(&result);
+    LI_FN(QueryPerformanceFrequency).in(LI_MODULE("kernel32.dll").cached())(&result);
     return 1.0 / double(result.QuadPart);
 #elif defined(__APPLE__)
     mach_timebase_info_data_t result = {};
@@ -51,7 +52,7 @@ static double getClockTimestamp()
 {
 #if defined(_WIN32)
     LARGE_INTEGER result = {};
-    QueryPerformanceCounter(&result);
+    LI_FN(QueryPerformanceCounter).in(LI_MODULE("kernel32.dll").cached())(&result);
     return double(result.QuadPart);
 #elif defined(__APPLE__)
     return double(mach_absolute_time());
@@ -80,11 +81,11 @@ uint32_t getClockMicroseconds()
     return uint32_t((getClockTimestamp() - start) * period);
 }
 } // namespace TimeTrace
-} // namespace Luau
+} // namespace lluz
 
-#if defined(LUAU_ENABLE_TIME_TRACE)
+#if defined(lluz_ENABLE_TIME_TRACE)
 
-namespace Luau
+namespace lluz
 {
 namespace TimeTrace
 {
@@ -122,7 +123,7 @@ uint16_t createToken(GlobalContext& context, const char* name, const char* categ
 {
     std::scoped_lock lock(context.mutex);
 
-    LUAU_ASSERT(context.tokens.size() < 64 * 1024);
+    lluz_ASSERT(context.tokens.size() < 64 * 1024);
 
     context.tokens.push_back({name, category});
     return uint16_t(context.tokens.size() - 1);
@@ -151,12 +152,12 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
 
     if (!context.traceFile)
     {
-        context.traceFile = fopen("trace.json", "w");
+        context.traceFile = fopen(XorStr("trace.json", "w"));
 
         if (!context.traceFile)
             return;
 
-        fprintf(context.traceFile, "[\n");
+        fprintf(context.traceFile, XorStr("[\n"));
     }
 
     std::string temp;
@@ -177,13 +178,13 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
         {
             if (unfinishedArgs)
             {
-                formatAppend(temp, "}");
+                formatAppend(temp, XorStr("}"));
                 unfinishedArgs = false;
             }
 
             if (unfinishedEnter)
             {
-                formatAppend(temp, "},\n");
+                formatAppend(temp, XorStr("},\n"));
                 unfinishedEnter = false;
             }
 
@@ -197,12 +198,12 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
         case EventType::Leave:
             if (unfinishedArgs)
             {
-                formatAppend(temp, "}");
+                formatAppend(temp, XorStr("}"));
                 unfinishedArgs = false;
             }
             if (unfinishedEnter)
             {
-                formatAppend(temp, "},\n");
+                formatAppend(temp, XorStr("},\n"));
                 unfinishedEnter = false;
             }
 
@@ -212,7 +213,7 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
                 ev.data.microsec, threadId);
             break;
         case EventType::ArgName:
-            LUAU_ASSERT(unfinishedEnter);
+            lluz_ASSERT(unfinishedEnter);
 
             if (!unfinishedArgs)
             {
@@ -225,7 +226,7 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
             }
             break;
         case EventType::ArgValue:
-            LUAU_ASSERT(unfinishedArgs);
+            lluz_ASSERT(unfinishedArgs);
             formatAppend(temp, R"("%s")", rawData + ev.data.dataPos);
             break;
         }
@@ -240,12 +241,12 @@ void flushEvents(GlobalContext& context, uint32_t threadId, const std::vector<Ev
 
     if (unfinishedArgs)
     {
-        formatAppend(temp, "}");
+        formatAppend(temp, XorStr("}"));
         unfinishedArgs = false;
     }
     if (unfinishedEnter)
     {
-        formatAppend(temp, "},\n");
+        formatAppend(temp, XorStr("},\n"));
         unfinishedEnter = false;
     }
 
@@ -261,9 +262,9 @@ ThreadContext& getThreadContext()
 
 uint16_t createScopeData(const char* name, const char* category)
 {
-    return createToken(Luau::TimeTrace::getGlobalContext(), name, category);
+    return createToken(lluz::TimeTrace::getGlobalContext(), name, category);
 }
 } // namespace TimeTrace
-} // namespace Luau
+} // namespace lluz
 
 #endif

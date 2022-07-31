@@ -1,12 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Lexer.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Lexer.h"
 
-#include "Luau/Confusables.h"
-#include "Luau/StringUtils.h"
+#include "lluz/Confusables.h"
+#include "lluz/StringUtils.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <limits.h>
 
-namespace Luau
+namespace lluz
 {
 
 Allocator::Allocator()
@@ -89,7 +91,7 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
     , length(unsigned(size))
     , data(data)
 {
-    LUAU_ASSERT(type == RawString || type == QuotedString || type == Number || type == Comment || type == BlockComment);
+    lluz_ASSERT(type == RawString || type == QuotedString || type == Number || type == Comment || type == BlockComment);
 }
 
 Lexeme::Lexeme(const Location& location, Type type, const char* name)
@@ -98,7 +100,7 @@ Lexeme::Lexeme(const Location& location, Type type, const char* name)
     , length(0)
     , name(name)
 {
-    LUAU_ASSERT(type == Name || (type >= Reserved_BEGIN && type < Lexeme::Reserved_END));
+    lluz_ASSERT(type == Name || (type >= Reserved_BEGIN && type < Lexeme::Reserved_END));
 }
 
 static const char* kReserved[] = {"and", "break", "do", "else", "elseif", "end", "false", "for", "function", "if", "in", "local", "nil", "not", "or",
@@ -109,92 +111,92 @@ std::string Lexeme::toString() const
     switch (type)
     {
     case Eof:
-        return "<eof>";
+        return XorStr("<eof>");
 
     case Equal:
-        return "'=='";
+        return XorStr("'=='");
 
     case LessEqual:
-        return "'<='";
+        return XorStr("'<='");
 
     case GreaterEqual:
-        return "'>='";
+        return XorStr("'>='");
 
     case NotEqual:
-        return "'~='";
+        return XorStr("'~='");
 
     case Dot2:
-        return "'..'";
+        return XorStr("'..'");
 
     case Dot3:
-        return "'...'";
+        return XorStr("'...'");
 
     case SkinnyArrow:
-        return "'->'";
+        return XorStr("'->'");
 
     case DoubleColon:
-        return "'::'";
+        return XorStr("'::'");
 
     case AddAssign:
-        return "'+='";
+        return XorStr("'+='");
 
     case SubAssign:
-        return "'-='";
+        return XorStr("'-='");
 
     case MulAssign:
-        return "'*='";
+        return XorStr("'*='");
 
     case DivAssign:
-        return "'/='";
+        return XorStr("'/='");
 
     case ModAssign:
-        return "'%='";
+        return XorStr("'%='");
 
     case PowAssign:
-        return "'^='";
+        return XorStr("'^='");
 
     case ConcatAssign:
-        return "'..='";
+        return XorStr("'..='");
 
     case RawString:
     case QuotedString:
-        return data ? format("\"%.*s\"", length, data) : "string";
+        return data ? format(XorStr("\"%.*s\""), length, data) : "string";
 
     case Number:
-        return data ? format("'%.*s'", length, data) : "number";
+        return data ? format(XorStr("'%.*s'"), length, data) : "number";
 
     case Name:
-        return name ? format("'%s'", name) : "identifier";
+        return name ? format(XorStr("'%s'"), name) : "identifier";
 
     case Comment:
-        return "comment";
+        return XorStr("comment");
 
     case BrokenString:
-        return "malformed string";
+        return XorStr("malformed string");
 
     case BrokenComment:
-        return "unfinished comment";
+        return XorStr("unfinished comment");
 
     case BrokenUnicode:
         if (codepoint)
         {
             if (const char* confusable = findConfusable(codepoint))
-                return format("Unicode character U+%x (did you mean '%s'?)", codepoint, confusable);
+                return format(XorStr("Unicode character U+%x (did you mean '%s'?)"), codepoint, confusable);
 
-            return format("Unicode character U+%x", codepoint);
+            return format(XorStr("Unicode character U+%x"), codepoint);
         }
         else
         {
-            return "invalid UTF-8 sequence";
+            return XorStr("invalid UTF-8 sequence");
         }
 
     default:
         if (type < Char_END)
-            return format("'%c'", type);
+            return format(XorStr("'%c'"), type);
         else if (type >= Reserved_BEGIN && type < Reserved_END)
-            return format("'%s'", kReserved[type - Reserved_BEGIN]);
+            return format(XorStr("'%s'"), kReserved[type - Reserved_BEGIN]);
         else
-            return "<unknown>";
+            return XorStr("<unknown>");
     }
 }
 
@@ -231,7 +233,7 @@ AstName AstNameTable::addStatic(const char* name, Lexeme::Type type)
 {
     AstNameTable::Entry entry = {AstName(name), uint32_t(strlen(name)), type};
 
-    LUAU_ASSERT(!data.contains(entry));
+    lluz_ASSERT(!data.contains(entry));
     data.insert(entry);
 
     return entry.value;
@@ -405,13 +407,13 @@ bool Lexer::isReserved(const std::string& word)
     return false;
 }
 
-LUAU_FORCEINLINE
+lluz_FORCEINLINE
 char Lexer::peekch() const
 {
     return (offset < bufferSize) ? buffer[offset] : 0;
 }
 
-LUAU_FORCEINLINE
+lluz_FORCEINLINE
 char Lexer::peekch(unsigned int lookahead) const
 {
     return (offset + lookahead < bufferSize) ? buffer[offset + lookahead] : 0;
@@ -437,7 +439,7 @@ Lexeme Lexer::readCommentBody()
 {
     Position start = position();
 
-    LUAU_ASSERT(peekch(0) == '-' && peekch(1) == '-');
+    lluz_ASSERT(peekch(0) == '-' && peekch(1) == '-');
     consume();
     consume();
 
@@ -469,7 +471,7 @@ int Lexer::skipLongSeparator()
 {
     char start = peekch();
 
-    LUAU_ASSERT(start == '[' || start == ']');
+    lluz_ASSERT(start == '[' || start == ']');
     consume();
 
     int count = 0;
@@ -486,7 +488,7 @@ int Lexer::skipLongSeparator()
 Lexeme Lexer::readLongString(const Position& start, int sep, Lexeme::Type ok, Lexeme::Type broken)
 {
     // skip (second) [
-    LUAU_ASSERT(peekch() == '[');
+    lluz_ASSERT(peekch() == '[');
     consume();
 
     unsigned int startOffset = offset;
@@ -497,11 +499,11 @@ Lexeme Lexer::readLongString(const Position& start, int sep, Lexeme::Type ok, Le
         {
             if (skipLongSeparator() == sep)
             {
-                LUAU_ASSERT(peekch() == ']');
+                lluz_ASSERT(peekch() == ']');
                 consume(); // skip (second) ]
 
                 unsigned int endOffset = offset - sep - 2;
-                LUAU_ASSERT(endOffset >= startOffset);
+                lluz_ASSERT(endOffset >= startOffset);
 
                 return Lexeme(Location(start, position()), ok, &buffer[startOffset], endOffset - startOffset);
             }
@@ -520,7 +522,7 @@ Lexeme Lexer::readQuotedString()
     Position start = position();
 
     char delimiter = peekch();
-    LUAU_ASSERT(delimiter == '\'' || delimiter == '"');
+    lluz_ASSERT(delimiter == '\'' || delimiter == '"');
     consume();
 
     unsigned int startOffset = offset;
@@ -570,7 +572,7 @@ Lexeme Lexer::readQuotedString()
 
 Lexeme Lexer::readNumber(const Position& start, unsigned int startOffset)
 {
-    LUAU_ASSERT(isDigit(peekch()));
+    lluz_ASSERT(isDigit(peekch()));
 
     // This function does not do the number parsing - it only skips a number-like pattern.
     // It uses the same logic as Lua stock lexer; the resulting string is later converted
@@ -596,7 +598,7 @@ Lexeme Lexer::readNumber(const Position& start, unsigned int startOffset)
 
 std::pair<AstName, Lexeme::Type> Lexer::readName()
 {
-    LUAU_ASSERT(isAlpha(peekch()) || peekch() == '_');
+    lluz_ASSERT(isAlpha(peekch()) || peekch() == '_');
 
     unsigned int startOffset = offset;
 
@@ -855,7 +857,7 @@ Lexeme Lexer::readNext()
     }
 }
 
-LUAU_NOINLINE Lexeme Lexer::readUtf8Error()
+lluz_NOINLINE Lexeme Lexer::readUtf8Error()
 {
     Position start = position();
     uint32_t codepoint = 0;
@@ -1083,7 +1085,7 @@ bool Lexer::fixupQuotedString(std::string& data)
         }
     }
 
-    LUAU_ASSERT(write <= size);
+    lluz_ASSERT(write <= size);
     data.resize(write);
 
     return true;
@@ -1138,4 +1140,4 @@ void Lexer::fixupMultilineString(std::string& data)
     data.resize(dst - &data[0]);
 }
 
-} // namespace Luau
+} // namespace lluz
