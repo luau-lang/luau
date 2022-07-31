@@ -1,14 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
 #include "ValueTracking.h"
 
-namespace Luau
+namespace lluz
 {
 struct CompileOptions;
 }
 
-namespace Luau
+namespace lluz
 {
 namespace Compile
 {
@@ -35,9 +35,7 @@ struct Builtin
 };
 
 Builtin getBuiltin(AstExpr* node, const DenseHashMap<AstName, Global>& globals, const DenseHashMap<AstLocal*, Variable>& variables);
-
-void analyzeBuiltins(DenseHashMap<AstExprCall*, int>& result, const DenseHashMap<AstName, Global>& globals,
-    const DenseHashMap<AstLocal*, Variable>& variables, const CompileOptions& options, AstNode* root);
+int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& options);
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz

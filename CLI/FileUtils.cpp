@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "FileUtils.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -24,7 +24,7 @@
 static std::wstring fromUtf8(const std::string& path)
 {
     size_t result = MultiByteToWideChar(CP_UTF8, 0, path.data(), int(path.size()), nullptr, 0);
-    LUAU_ASSERT(result);
+    lluz_ASSERT(result);
 
     std::wstring buf(result, L'\0');
     MultiByteToWideChar(CP_UTF8, 0, path.data(), int(path.size()), &buf[0], int(buf.size()));
@@ -35,7 +35,7 @@ static std::wstring fromUtf8(const std::string& path)
 static std::string toUtf8(const std::wstring& path)
 {
     size_t result = WideCharToMultiByte(CP_UTF8, 0, path.data(), int(path.size()), nullptr, 0, nullptr, nullptr);
-    LUAU_ASSERT(result);
+    lluz_ASSERT(result);
 
     std::string buf(result, '\0');
     WideCharToMultiByte(CP_UTF8, 0, path.data(), int(path.size()), &buf[0], int(buf.size()), nullptr, nullptr);
@@ -47,9 +47,9 @@ static std::string toUtf8(const std::wstring& path)
 std::optional<std::string> readFile(const std::string& name)
 {
 #ifdef _WIN32
-    FILE* file = _wfopen(fromUtf8(name).c_str(), L"rb");
+    FILE* file = _wfopen(fromUtf8(name).c_str(), LXorStr("rb"));
 #else
-    FILE* file = fopen(name.c_str(), "rb");
+    FILE* file = fopen(name.c_str(), XorStr("rb"));
 #endif
 
     if (!file)
@@ -106,7 +106,7 @@ static void joinPaths(std::basic_string<Ch>& str, const Ch* lhs, const Ch* rhs)
 #ifdef _WIN32
 static bool traverseDirectoryRec(const std::wstring& path, const std::function<void(const std::string& name)>& callback)
 {
-    std::wstring query = path + std::wstring(L"/*");
+    std::wstring query = path + std::wstring(LXorStr("/*"));
 
     WIN32_FIND_DATAW data;
     HANDLE h = FindFirstFileW(query.c_str(), &data);
@@ -232,7 +232,7 @@ std::string joinPaths(const std::string& lhs, const std::string& rhs)
 
 std::optional<std::string> getParentPath(const std::string& path)
 {
-    if (path == "" || path == "." || path == "/")
+    if (path == XorStr("") || path == XorStr(".") || path == XorStr("/"))
         return std::nullopt;
 
 #ifdef _WIN32
@@ -243,20 +243,20 @@ std::optional<std::string> getParentPath(const std::string& path)
     size_t slash = path.find_last_of("\\/", path.size() - 1);
 
     if (slash == 0)
-        return "/";
+        return XorStr("/");
 
     if (slash != std::string::npos)
         return path.substr(0, slash);
 
-    return "";
+    return XorStr("");
 }
 
 static std::string getExtension(const std::string& path)
 {
-    size_t dot = path.find_last_of(".\\/");
+    size_t dot = path.find_last_of(XorStr(".\\/"));
 
     if (dot == std::string::npos || path[dot] != '.')
-        return "";
+        return XorStr("");
 
     return path.substr(dot);
 }
@@ -277,7 +277,7 @@ std::vector<std::string> getSourceFiles(int argc, char** argv)
             traverseDirectory(argv[i], [&](const std::string& name) {
                 std::string ext = getExtension(name);
 
-                if (ext == ".lua" || ext == ".luau")
+                if (ext == XorStr(".lua") || ext == XorStr(".lluz"))
                     files.push_back(name);
             });
         }

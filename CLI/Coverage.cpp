@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Coverage.h"
 
 #include "lua.h"
@@ -59,14 +59,14 @@ void coverageDump(const char* path)
 {
     lua_State* L = gCoverage.L;
 
-    FILE* f = fopen(path, "w");
+    FILE* f = fopen(path, XorStr("w"));
     if (!f)
     {
         fprintf(stderr, "Error opening coverage %s\n", path);
         return;
     }
 
-    fprintf(f, "TN:\n");
+    fprintf(f, XorStr("TN:\n"));
 
     for (int fref : gCoverage.functions)
     {
@@ -77,7 +77,7 @@ void coverageDump(const char* path)
 
         fprintf(f, "SF:%s\n", ar.short_src);
         lua_getcoverage(L, -1, f, coverageCallback);
-        fprintf(f, "end_of_record\n");
+        fprintf(f, XorStr("end_of_record\n"));
 
         lua_pop(L, 1);
     }

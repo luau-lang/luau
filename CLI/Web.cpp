@@ -1,9 +1,9 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lua.h"
 #include "lualib.h"
 #include "luacode.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
 
 #include <string>
 
@@ -19,8 +19,8 @@ static void setupState(lua_State* L)
 static std::string runCode(lua_State* L, const std::string& source)
 {
     size_t bytecodeSize = 0;
-    char* bytecode = luau_compile(source.data(), source.length(), nullptr, &bytecodeSize);
-    int result = luau_load(L, "=stdin", bytecode, bytecodeSize, 0);
+    char* bytecode = lluz_compile(source.data(), source.length(), nullptr, &bytecodeSize);
+    int result = lluz_load(L, "=stdin", bytecode, bytecodeSize, 0);
     free(bytecode);
 
     if (result != 0)
@@ -48,8 +48,8 @@ static std::string runCode(lua_State* L, const std::string& source)
 
         if (n)
         {
-            luaL_checkstack(T, LUA_MINSTACK, "too many results to print");
-            lua_getglobal(T, "print");
+            luaL_checkstack(T, LUA_MINSTACK, XorStr("too many results to print"));
+            lua_getglobal(T, XorStr("print"));
             lua_insert(T, 1);
             lua_pcall(T, n, 0, 0);
         }
@@ -90,8 +90,8 @@ static std::string runCode(lua_State* L, const std::string& source)
 extern "C" const char* executeScript(const char* source)
 {
     // setup flags
-    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-        if (strncmp(flag->name, "Luau", 4) == 0)
+    for (lluz::FValue<bool>* flag = lluz::FValue<bool>::list; flag; flag = flag->next)
+        if (strncmp(flag->name, "lluz", 4) == 0)
             flag->value = true;
 
     // create new state

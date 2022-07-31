@@ -1,20 +1,19 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/ModuleResolver.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/Frontend.h"
-#include "Luau/TypeAttach.h"
-#include "Luau/Transpiler.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/ModuleResolver.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/Frontend.h"
+#include "lluz/TypeAttach.h"
+#include "lluz/Transpiler.h"
 
 #include "FileUtils.h"
-#include "Flags.h"
 
 #ifdef CALLGRIND
 #include <valgrind/callgrind.h>
 #endif
 
-LUAU_FASTFLAG(DebugLuauTimeTracing)
-LUAU_FASTFLAG(LuauTypeMismatchModuleNameResolution)
+lluz_FASTFLAG(DebugLluTimeTracing)
+lluz_FASTFLAG(LluTypeMismatchModuleNameResolution)
 
 enum class ReportFormat
 {
@@ -23,7 +22,7 @@ enum class ReportFormat
     Gnu,
 };
 
-static void report(ReportFormat format, const char* name, const Luau::Location& loc, const char* type, const char* message)
+static void report(ReportFormat format, const char* name, const lluz::Location& loc, const char* type, const char* message)
 {
     switch (format)
     {
@@ -49,41 +48,41 @@ static void report(ReportFormat format, const char* name, const Luau::Location& 
     }
 }
 
-static void reportError(const Luau::Frontend& frontend, ReportFormat format, const Luau::TypeError& error)
+static void reportError(const lluz::Frontend& frontend, ReportFormat format, const lluz::TypeError& error)
 {
     std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(error.moduleName);
 
-    if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
-        report(format, humanReadableName.c_str(), error.location, "SyntaxError", syntaxError->message.c_str());
-    else if (FFlag::LuauTypeMismatchModuleNameResolution)
-        report(format, humanReadableName.c_str(), error.location, "TypeError",
-            Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str());
+    if (const lluz::SyntaxError* syntaxError = lluz::get_if<lluz::SyntaxError>(&error.data))
+        report(format, humanReadableName.c_str(), error.location, XorStr("SyntaxError"), syntaxError->message.c_str());
+    else if (FFlag::LluTypeMismatchModuleNameResolution)
+        report(format, humanReadableName.c_str(), error.location, XorStr("TypeError"),
+            lluz::toString(error, lluz::TypeErrorToStringOptions{frontend.fileResolver}).c_str());
     else
-        report(format, humanReadableName.c_str(), error.location, "TypeError", Luau::toString(error).c_str());
+        report(format, humanReadableName.c_str(), error.location, XorStr("TypeError"), lluz::toString(error).c_str());
 }
 
-static void reportWarning(ReportFormat format, const char* name, const Luau::LintWarning& warning)
+static void reportWarning(ReportFormat format, const char* name, const lluz::LintWarning& warning)
 {
-    report(format, name, warning.location, Luau::LintWarning::getName(warning.code), warning.text.c_str());
+    report(format, name, warning.location, lluz::LintWarning::getName(warning.code), warning.text.c_str());
 }
 
-static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat format, bool annotate)
+static bool analyzeFile(lluz::Frontend& frontend, const char* name, ReportFormat format, bool annotate)
 {
-    Luau::CheckResult cr;
+    lluz::CheckResult cr;
 
     if (frontend.isDirty(name))
         cr = frontend.check(name);
 
     if (!frontend.getSourceModule(name))
     {
-        fprintf(stderr, "Error opening %s\n", name);
+        fprintf(stderr, XorStr("Error opening %s\n"), name);
         return false;
     }
 
     for (auto& error : cr.errors)
         reportError(frontend, format, error);
 
-    Luau::LintResult lr = frontend.lint(name);
+    lluz::LintResult lr = frontend.lint(name);
 
     std::string humanReadableName = frontend.fileResolver->getHumanReadableModuleName(name);
     for (auto& error : lr.errors)
@@ -93,12 +92,12 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
 
     if (annotate)
     {
-        Luau::SourceModule* sm = frontend.getSourceModule(name);
-        Luau::ModulePtr m = frontend.moduleResolver.getModule(name);
+        lluz::SourceModule* sm = frontend.getSourceModule(name);
+        lluz::ModulePtr m = frontend.moduleResolver.getModule(name);
 
-        Luau::attachTypeData(*sm, *m);
+        lluz::attachTypeData(*sm, *m);
 
-        std::string annotated = Luau::transpileWithTypes(*sm->root);
+        std::string annotated = lluz::transpileWithTypes(*sm->root);
 
         printf("%s", annotated.c_str());
     }
@@ -108,58 +107,58 @@ static bool analyzeFile(Luau::Frontend& frontend, const char* name, ReportFormat
 
 static void displayHelp(const char* argv0)
 {
-    printf("Usage: %s [--mode] [options] [file list]\n", argv0);
-    printf("\n");
-    printf("Available modes:\n");
-    printf("  omitted: typecheck and lint input files\n");
-    printf("  --annotate: typecheck input files and output source with type annotations\n");
-    printf("\n");
-    printf("Available options:\n");
-    printf("  --formatter=plain: report analysis errors in Luacheck-compatible format\n");
-    printf("  --formatter=gnu: report analysis errors in GNU-compatible format\n");
-    printf("  --mode=strict: default to strict mode when typechecking\n");
-    printf("  --timetrace: record compiler time tracing information into trace.json\n");
+    printf(XorStr("Usage: %s [--mode] [options] [file list]\n"), argv0);
+    printf(XorStr("\n"));
+    printf(XorStr("Available modes:\n"));
+    printf(XorStr("  omitted: typecheck and lint input files\n"));
+    printf(XorStr("  --annotate: typecheck input files and output source with type annotations\n"));
+    printf(XorStr("\n"));
+    printf(XorStr("Available options:\n"));
+    printf(XorStr("  --formatter=plain: report analysis errors in Luacheck-compatible format\n"));
+    printf(XorStr("  --formatter=gnu: report analysis errors in GNU-compatible format\n"));
+    printf(XorStr("  --mode=strict: default to strict mode when typechecking\n"));
+    printf(XorStr("  --timetrace: record compiler time tracing information into trace.json\n"));
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
 {
-    printf("%s(%d): ASSERTION FAILED: %s\n", file, line, expr);
+    printf(XorStr("%s(%d): ASSERTION FAILED: %s\n"), file, line, expr);
     return 1;
 }
 
-struct CliFileResolver : Luau::FileResolver
+struct CliFileResolver : lluz::FileResolver
 {
-    std::optional<Luau::SourceCode> readSource(const Luau::ModuleName& name) override
+    std::optional<lluz::SourceCode> readSource(const lluz::ModuleName& name) override
     {
-        Luau::SourceCode::Type sourceType;
+        lluz::SourceCode::Type sourceType;
         std::optional<std::string> source = std::nullopt;
 
         // If the module name is "-", then read source from stdin
-        if (name == "-")
+        if (name == XorStr("-"))
         {
             source = readStdin();
-            sourceType = Luau::SourceCode::Script;
+            sourceType = lluz::SourceCode::Script;
         }
         else
         {
             source = readFile(name);
-            sourceType = Luau::SourceCode::Module;
+            sourceType = lluz::SourceCode::Module;
         }
 
         if (!source)
             return std::nullopt;
 
-        return Luau::SourceCode{*source, sourceType};
+        return lluz::SourceCode{*source, sourceType};
     }
 
-    std::optional<Luau::ModuleInfo> resolveModule(const Luau::ModuleInfo* context, Luau::AstExpr* node) override
+    std::optional<lluz::ModuleInfo> resolveModule(const lluz::ModuleInfo* context, lluz::AstExpr* node) override
     {
-        if (Luau::AstExprConstantString* expr = node->as<Luau::AstExprConstantString>())
+        if (lluz::AstExprConstantString* expr = node->as<lluz::AstExprConstantString>())
         {
-            Luau::ModuleName name = std::string(expr->value.data, expr->value.size) + ".luau";
+            lluz::ModuleName name = std::string(expr->value.data, expr->value.size) + ".lluz";
             if (!readFile(name))
             {
-                // fall back to .lua if a module with .luau doesn't exist
+                // fall back to .lua if a module with .lluz doesn't exist
                 name = std::string(expr->value.data, expr->value.size) + ".lua";
             }
 
@@ -169,27 +168,27 @@ struct CliFileResolver : Luau::FileResolver
         return std::nullopt;
     }
 
-    std::string getHumanReadableModuleName(const Luau::ModuleName& name) const override
+    std::string getHumanReadableModuleName(const lluz::ModuleName& name) const override
     {
-        if (name == "-")
-            return "stdin";
+        if (name == XorStr("-"))
+            return XorStr("stdin");
         return name;
     }
 };
 
-struct CliConfigResolver : Luau::ConfigResolver
+struct CliConfigResolver : lluz::ConfigResolver
 {
-    Luau::Config defaultConfig;
+    lluz::Config defaultConfig;
 
-    mutable std::unordered_map<std::string, Luau::Config> configCache;
+    mutable std::unordered_map<std::string, lluz::Config> configCache;
     mutable std::vector<std::pair<std::string, std::string>> configErrors;
 
-    CliConfigResolver(Luau::Mode mode)
+    CliConfigResolver(lluz::Mode mode)
     {
         defaultConfig.mode = mode;
     }
 
-    const Luau::Config& getConfig(const Luau::ModuleName& name) const override
+    const lluz::Config& getConfig(const lluz::ModuleName& name) const override
     {
         std::optional<std::string> path = getParentPath(name);
         if (!path)
@@ -198,20 +197,20 @@ struct CliConfigResolver : Luau::ConfigResolver
         return readConfigRec(*path);
     }
 
-    const Luau::Config& readConfigRec(const std::string& path) const
+    const lluz::Config& readConfigRec(const std::string& path) const
     {
         auto it = configCache.find(path);
         if (it != configCache.end())
             return it->second;
 
         std::optional<std::string> parent = getParentPath(path);
-        Luau::Config result = parent ? readConfigRec(*parent) : defaultConfig;
+        lluz::Config result = parent ? readConfigRec(*parent) : defaultConfig;
 
-        std::string configPath = joinPaths(path, Luau::kConfigName);
+        std::string configPath = joinPaths(path, lluz::kConfigName);
 
         if (std::optional<std::string> contents = readFile(configPath))
         {
-            std::optional<std::string> error = Luau::parseConfig(*contents, result);
+            std::optional<std::string> error = lluz::parseConfig(*contents, result);
             if (error)
                 configErrors.push_back({configPath, *error});
         }
@@ -222,18 +221,20 @@ struct CliConfigResolver : Luau::ConfigResolver
 
 int main(int argc, char** argv)
 {
-    Luau::assertHandler() = assertionHandler;
+    lluz::assertHandler() = assertionHandler;
 
-    setLuauFlagsDefault();
+    for (lluz::FValue<bool>* flag = lluz::FValue<bool>::list; flag; flag = flag->next)
+        if (strncmp(flag->name, XorStr("lluz"), 4) == 0)
+            flag->value = true;
 
-    if (argc >= 2 && strcmp(argv[1], "--help") == 0)
+    if (argc >= 2 && strcmp(argv[1], XorStr("--help")) == 0)
     {
         displayHelp(argv[0]);
         return 0;
     }
 
     ReportFormat format = ReportFormat::Default;
-    Luau::Mode mode = Luau::Mode::Nonstrict;
+    lluz::Mode mode = lluz::Mode::Nonstrict;
     bool annotate = false;
 
     for (int i = 1; i < argc; ++i)
@@ -246,32 +247,30 @@ int main(int argc, char** argv)
         else if (strcmp(argv[i], "--formatter=gnu") == 0)
             format = ReportFormat::Gnu;
         else if (strcmp(argv[i], "--mode=strict") == 0)
-            mode = Luau::Mode::Strict;
+            mode = lluz::Mode::Strict;
         else if (strcmp(argv[i], "--annotate") == 0)
             annotate = true;
         else if (strcmp(argv[i], "--timetrace") == 0)
-            FFlag::DebugLuauTimeTracing.value = true;
-        else if (strncmp(argv[i], "--fflags=", 9) == 0)
-            setLuauFlags(argv[i] + 9);
+            FFlag::DebugLluTimeTracing.value = true;
     }
 
-#if !defined(LUAU_ENABLE_TIME_TRACE)
-    if (FFlag::DebugLuauTimeTracing)
+#if !defined(lluz_ENABLE_TIME_TRACE)
+    if (FFlag::DebugLluTimeTracing)
     {
-        fprintf(stderr, "To run with --timetrace, Luau has to be built with LUAU_ENABLE_TIME_TRACE enabled\n");
+        printf(XorStr("To run with --timetrace, lluz has to be built with lluz_ENABLE_TIME_TRACE enabled\n"));
         return 1;
     }
 #endif
 
-    Luau::FrontendOptions frontendOptions;
+    lluz::FrontendOptions frontendOptions;
     frontendOptions.retainFullTypeGraphs = annotate;
 
     CliFileResolver fileResolver;
     CliConfigResolver configResolver(mode);
-    Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
+    lluz::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
-    Luau::registerBuiltinTypes(frontend.typeChecker);
-    Luau::freeze(frontend.typeChecker.globalTypes);
+    lluz::registerBuiltinTypes(frontend.typeChecker);
+    lluz::freeze(frontend.typeChecker.globalTypes);
 
 #ifdef CALLGRIND
     CALLGRIND_ZERO_STATS;

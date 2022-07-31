@@ -1,11 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include <optional>
 
-#include "Luau/Common.h"
-#include "Luau/Ast.h"
-#include "Luau/JsonEncoder.h"
-#include "Luau/Parser.h"
-#include "Luau/ParseOptions.h"
+#include "lluz/Common.h"
+#include "lluz/Ast.h"
+#include "lluz/JsonEncoder.h"
+#include "lluz/Parser.h"
+#include "lluz/ParseOptions.h"
 
 #include "FileUtils.h"
 
@@ -22,10 +22,10 @@ static int assertionHandler(const char* expr, const char* file, int line, const 
 
 int main(int argc, char** argv)
 {
-    Luau::assertHandler() = assertionHandler;
+    lluz::assertHandler() = assertionHandler;
 
-    for (Luau::FValue<bool>* flag = Luau::FValue<bool>::list; flag; flag = flag->next)
-        if (strncmp(flag->name, "Luau", 4) == 0)
+    for (lluz::FValue<bool>* flag = lluz::FValue<bool>::list; flag; flag = flag->next)
+        if (strncmp(flag->name, "lluz", 4) == 0)
             flag->value = true;
 
     if (argc >= 2 && strcmp(argv[1], "--help") == 0)
@@ -58,28 +58,27 @@ int main(int argc, char** argv)
 
     std::string source = *maybeSource;
 
-    Luau::Allocator allocator;
-    Luau::AstNameTable names(allocator);
+    lluz::Allocator allocator;
+    lluz::AstNameTable names(allocator);
 
-    Luau::ParseOptions options;
-    options.captureComments = true;
+    lluz::ParseOptions options;
     options.supportContinueStatement = true;
     options.allowTypeAnnotations = true;
     options.allowDeclarationSyntax = true;
 
-    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
+    lluz::ParseResult parseResult = lluz::Parser::parse(source.data(), source.size(), names, allocator, options);
 
     if (parseResult.errors.size() > 0)
     {
-        fprintf(stderr, "Parse errors were encountered:\n");
-        for (const Luau::ParseError& error : parseResult.errors)
+        fprintf(stderr, XorStr("Parse errors were encountered:\n"));
+        for (const lluz::ParseError& error : parseResult.errors)
         {
             fprintf(stderr, "  %s - %s\n", toString(error.getLocation()).c_str(), error.getMessage().c_str());
         }
-        fprintf(stderr, "\n");
+        fprintf(stderr, XorStr("\n"));
     }
 
-    printf("%s", Luau::toJson(parseResult.root, parseResult.commentLocations).c_str());
+    printf("%s", lluz::toJson(parseResult.root).c_str());
 
     return parseResult.errors.size() > 0 ? 1 : 0;
 }

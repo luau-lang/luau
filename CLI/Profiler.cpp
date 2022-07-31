@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "lua.h"
 
-#include "Luau/DenseHash.h"
+#include "lluz/DenseHash.h"
 
 #include <thread>
 #include <atomic>
@@ -24,7 +24,7 @@ struct Profiler
     std::string stackScratch;
 
     // statistics, updated by trigger
-    Luau::DenseHashMap<std::string, uint64_t> data{""};
+    lluz::DenseHashMap<std::string, uint64_t> data{""};
     uint64_t gc[16] = {};
 } gProfiler;
 
@@ -112,7 +112,7 @@ void profilerStop()
 
 void profilerDump(const char* path)
 {
-    FILE* f = fopen(path, "wb");
+    FILE* f = fopen(path, XorStr("wb"));
     if (!f)
     {
         fprintf(stderr, "Error opening profile %s\n", path);
@@ -150,6 +150,6 @@ void profilerDump(const char* path)
                 printf(", %s %.2f%%", luaC_statename(int(i)), double(p) / double(totalgc) * 100);
         }
 
-        printf("\n");
+        printf(XorStr("\n"));
     }
 }

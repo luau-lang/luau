@@ -1,12 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "CostModel.h"
 
-#include "Luau/Common.h"
-#include "Luau/DenseHash.h"
+#include "lluz/Common.h"
+#include "lluz/DenseHash.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <limits.h>
 
-namespace Luau
+namespace lluz
 {
 namespace Compile
 {
@@ -113,14 +115,11 @@ struct Cost
 
 struct CostVisitor : AstVisitor
 {
-    const DenseHashMap<AstExprCall*, int>& builtins;
-
     DenseHashMap<AstLocal*, uint64_t> vars;
     Cost result;
 
-    CostVisitor(const DenseHashMap<AstExprCall*, int>& builtins)
-        : builtins(builtins)
-        , vars(nullptr)
+    CostVisitor()
+        : vars(nullptr)
     {
     }
 
@@ -151,21 +150,14 @@ struct CostVisitor : AstVisitor
         }
         else if (AstExprCall* expr = node->as<AstExprCall>())
         {
-            // builtin cost modeling is different from regular calls because we use FASTCALL to compile these
-            // thus we use a cheaper baseline, don't account for function, and assume constant/local copy is free
-            bool builtin = builtins.find(expr) != nullptr;
-            bool builtinShort = builtin && expr->args.size <= 2; // FASTCALL1/2
-
-            Cost cost = builtin ? 2 : 3;
-
-            if (!builtin)
-                cost += model(expr->func);
+            Cost cost = 3;
+            cost += model(expr->func);
 
             for (size_t i = 0; i < expr->args.size; ++i)
             {
                 Cost ac = model(expr->args.data[i]);
                 // for constants/locals we still need to copy them to the argument list
-                cost += ac.model == 0 && !builtinShort ? Cost(1) : ac;
+                cost += ac.model == 0 ? Cost(1) : ac;
             }
 
             return cost;
@@ -217,7 +209,7 @@ struct CostVisitor : AstVisitor
         }
         else
         {
-            LUAU_ASSERT(!"Unknown expression type");
+            lluz_ASSERT(!"Unknown expression type");
             return {};
         }
     }
@@ -337,9 +329,9 @@ struct CostVisitor : AstVisitor
     }
 };
 
-uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount, const DenseHashMap<AstExprCall*, int>& builtins)
+uint64_t modelCost(AstNode* root, AstLocal* const* vars, size_t varCount)
 {
-    CostVisitor visitor{builtins};
+    CostVisitor visitor;
     for (size_t i = 0; i < varCount && i < 7; ++i)
         visitor.vars[vars[i]] = 0xffull << (i * 8 + 8);
 
@@ -379,4 +371,4 @@ int getTripCount(double from, double to, double step)
 }
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz

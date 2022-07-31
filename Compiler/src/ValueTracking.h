@@ -1,15 +1,15 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Ast.h"
-#include "Luau/DenseHash.h"
+#include "lluz/Ast.h"
+#include "lluz/DenseHash.h"
 
-namespace Luau
+namespace lluz
 {
 class AstNameTable;
 }
 
-namespace Luau
+namespace lluz
 {
 namespace Compile
 {
@@ -39,4 +39,4 @@ inline Global getGlobalState(const DenseHashMap<AstName, Global>& globals, AstNa
 }
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz

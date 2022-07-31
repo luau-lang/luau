@@ -1,19 +1,19 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "luacode.h"
 
-#include "Luau/Compiler.h"
+#include "lluz/Compiler.h"
 
 #include <string.h>
 
-char* luau_compile(const char* source, size_t size, lua_CompileOptions* options, size_t* outsize)
+char* lluz_compile(const char* source, size_t size, lua_CompileOptions* options, size_t* outsize)
 {
-    LUAU_ASSERT(outsize);
+    lluz_ASSERT(outsize);
 
-    Luau::CompileOptions opts;
+    lluz::CompileOptions opts;
 
     if (options)
     {
-        static_assert(sizeof(lua_CompileOptions) == sizeof(Luau::CompileOptions), "C and C++ interface must match");
+        static_assert(sizeof(lua_CompileOptions) == sizeof(lluz::CompileOptions), "C and C++ interface must match");
         memcpy(static_cast<void*>(&opts), options, sizeof(opts));
     }
 

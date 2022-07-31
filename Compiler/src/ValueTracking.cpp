@@ -1,9 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "ValueTracking.h"
 
-#include "Luau/Lexer.h"
+#include "lluz/Lexer.h"
 
-namespace Luau
+#include "..\..\..\..\Security\XorString.h"
+
+namespace lluz
 {
 namespace Compile
 {
@@ -84,7 +86,7 @@ struct ValueVisitor : AstVisitor
 
 void assignMutable(DenseHashMap<AstName, Global>& globals, const AstNameTable& names, const char** mutableGlobals)
 {
-    if (AstName name = names.get("_G"); name.value)
+    if (AstName name = names.get(XorStr("_G")); name.value)
         globals[name] = Global::Mutable;
 
     if (mutableGlobals)
@@ -100,4 +102,4 @@ void trackValues(DenseHashMap<AstName, Global>& globals, DenseHashMap<AstLocal*,
 }
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz

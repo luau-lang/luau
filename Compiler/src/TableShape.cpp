@@ -1,7 +1,9 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "TableShape.h"
 
-namespace Luau
+#include "..\..\..\..\Security\XorString.h"
+
+namespace lluz
 {
 namespace Compile
 {
@@ -17,7 +19,7 @@ static AstExprTable* getTableHint(AstExpr* expr)
 
     // setmetatable(table literal, ...)
     if (AstExprCall* call = expr->as<AstExprCall>(); call && !call->self && call->args.size == 2)
-        if (AstExprGlobal* func = call->func->as<AstExprGlobal>(); func && func->name == "setmetatable")
+        if (AstExprGlobal* func = call->func->as<AstExprGlobal>(); func && func->name == XorStr("setmetatable"))
             if (AstExprTable* table = call->args.data[0]->as<AstExprTable>())
                 return table;
 
@@ -155,4 +157,4 @@ void predictTableShapes(DenseHashMap<AstExprTable*, TableShape>& shapes, AstNode
 }
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz

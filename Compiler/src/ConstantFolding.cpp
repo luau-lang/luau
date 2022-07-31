@@ -1,18 +1,18 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "ConstantFolding.h"
 
-#include "BuiltinFolding.h"
+#include "..\..\..\..\Security\XorString.h"
 
 #include <math.h>
 
-namespace Luau
+namespace lluz
 {
 namespace Compile
 {
 
 static bool constantsEqual(const Constant& la, const Constant& ra)
 {
-    LUAU_ASSERT(la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown);
+    lluz_ASSERT(la.type != Constant::Type_Unknown && ra.type != Constant::Type_Unknown);
 
     switch (la.type)
     {
@@ -29,7 +29,7 @@ static bool constantsEqual(const Constant& la, const Constant& ra)
         return ra.type == Constant::Type_String && la.stringLength == ra.stringLength && memcmp(la.valueString, ra.valueString, la.stringLength) == 0;
 
     default:
-        LUAU_ASSERT(!"Unexpected constant type in comparison");
+        lluz_ASSERT(!"Unexpected constant type in comparison");
         return false;
     }
 }
@@ -63,7 +63,7 @@ static void foldUnary(Constant& result, AstExprUnary::Op op, const Constant& arg
         break;
 
     default:
-        LUAU_ASSERT(!"Unexpected unary operation");
+        lluz_ASSERT(!"Unexpected unary operation");
     }
 }
 
@@ -185,7 +185,7 @@ static void foldBinary(Constant& result, AstExprBinary::Op op, const Constant& l
         break;
 
     default:
-        LUAU_ASSERT(!"Unexpected binary operation");
+        lluz_ASSERT(!"Unexpected binary operation");
     }
 }
 
@@ -195,18 +195,13 @@ struct ConstantVisitor : AstVisitor
     DenseHashMap<AstLocal*, Variable>& variables;
     DenseHashMap<AstLocal*, Constant>& locals;
 
-    const DenseHashMap<AstExprCall*, int>* builtins;
-
     bool wasEmpty = false;
 
-    std::vector<Constant> builtinArgs;
-
-    ConstantVisitor(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-        DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins)
+    ConstantVisitor(
+        DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstLocal*, Constant>& locals)
         : constants(constants)
         , variables(variables)
         , locals(locals)
-        , builtins(builtins)
     {
         // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
         wasEmpty = constants.empty() && locals.empty();
@@ -260,37 +255,8 @@ struct ConstantVisitor : AstVisitor
         {
             analyze(expr->func);
 
-            if (const int* bfid = builtins ? builtins->find(expr) : nullptr)
-            {
-                // since recursive calls to analyze() may reuse the vector we need to be careful and preserve existing contents
-                size_t offset = builtinArgs.size();
-                bool canFold = true;
-
-                builtinArgs.reserve(offset + expr->args.size);
-
-                for (size_t i = 0; i < expr->args.size; ++i)
-                {
-                    Constant ac = analyze(expr->args.data[i]);
-
-                    if (ac.type == Constant::Type_Unknown)
-                        canFold = false;
-                    else
-                        builtinArgs.push_back(ac);
-                }
-
-                if (canFold)
-                {
-                    LUAU_ASSERT(builtinArgs.size() == offset + expr->args.size);
-                    result = foldBuiltin(*bfid, builtinArgs.data() + offset, expr->args.size);
-                }
-
-                builtinArgs.resize(offset);
-            }
-            else
-            {
-                for (size_t i = 0; i < expr->args.size; ++i)
-                    analyze(expr->args.data[i]);
-            }
+            for (size_t i = 0; i < expr->args.size; ++i)
+                analyze(expr->args.data[i]);
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
@@ -351,7 +317,7 @@ struct ConstantVisitor : AstVisitor
         }
         else
         {
-            LUAU_ASSERT(!"Unknown expression type");
+            lluz_ASSERT(!"Unknown expression type");
         }
 
         recordConstant(constants, node, result);
@@ -374,7 +340,7 @@ struct ConstantVisitor : AstVisitor
     {
         // note: we rely on trackValues to have been run before us
         Variable* v = variables.find(local);
-        LUAU_ASSERT(v);
+        lluz_ASSERT(v);
 
         if (!v->written)
         {
@@ -431,11 +397,11 @@ struct ConstantVisitor : AstVisitor
 };
 
 void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, AstNode* root)
+    DenseHashMap<AstLocal*, Constant>& locals, AstNode* root)
 {
-    ConstantVisitor visitor{constants, variables, locals, builtins};
+    ConstantVisitor visitor{constants, variables, locals};
     root->visit(&visitor);
 }
 
 } // namespace Compile
-} // namespace Luau
+} // namespace lluz

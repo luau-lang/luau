@@ -1,12 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BytecodeBuilder.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BytecodeBuilder.h"
 
-#include "Luau/StringUtils.h"
+#include "lluz/StringUtils.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <algorithm>
 #include <string.h>
 
-namespace Luau
+namespace lluz
 {
 
 static_assert(LBC_VERSION_TARGET >= LBC_VERSION_MIN && LBC_VERSION_TARGET <= LBC_VERSION_MAX, "Invalid bytecode version setup");
@@ -19,7 +21,7 @@ static const int kMaxJumpDistance = 1 << 23;
 
 static int log2(int v)
 {
-    LUAU_ASSERT(v);
+    lluz_ASSERT(v);
 
     int r = 0;
 
@@ -53,7 +55,7 @@ static void writeVarInt(std::string& ss, unsigned int value)
     } while (value);
 }
 
-static int getOpLength(LuauOpcode op)
+static int getOpLength(lluzOpcode op)
 {
     switch (op)
     {
@@ -84,7 +86,7 @@ static int getOpLength(LuauOpcode op)
     }
 }
 
-inline bool isJumpD(LuauOpcode op)
+inline bool isJumpD(lluzOpcode op)
 {
     switch (op)
     {
@@ -115,22 +117,11 @@ inline bool isJumpD(LuauOpcode op)
     }
 }
 
-inline bool isSkipC(LuauOpcode op)
+inline bool isSkipC(lluzOpcode op)
 {
     switch (op)
     {
     case LOP_LOADB:
-        return true;
-
-    default:
-        return false;
-    }
-}
-
-inline bool isFastCall(LuauOpcode op)
-{
-    switch (op)
-    {
     case LOP_FASTCALL:
     case LOP_FASTCALL1:
     case LOP_FASTCALL2:
@@ -144,16 +135,14 @@ inline bool isFastCall(LuauOpcode op)
 
 static int getJumpTarget(uint32_t insn, uint32_t pc)
 {
-    LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
+    lluzOpcode op = lluzOpcode(lluz_INSN_OP(insn));
 
     if (isJumpD(op))
-        return int(pc + LUAU_INSN_D(insn) + 1);
-    else if (isFastCall(op))
-        return int(pc + LUAU_INSN_C(insn) + 2);
-    else if (isSkipC(op) && LUAU_INSN_C(insn))
-        return int(pc + LUAU_INSN_C(insn) + 1);
+        return int(pc + lluz_INSN_D(insn) + 1);
+    else if (isSkipC(op) && lluz_INSN_C(insn))
+        return int(pc + lluz_INSN_C(insn) + 1);
     else if (op == LOP_JUMPX)
-        return int(pc + LUAU_INSN_E(insn) + 1);
+        return int(pc + lluz_INSN_E(insn) + 1);
     else
         return -1;
 }
@@ -215,7 +204,7 @@ BytecodeBuilder::BytecodeBuilder(BytecodeEncoder* encoder)
     , stringTable({nullptr, 0})
     , encoder(encoder)
 {
-    LUAU_ASSERT(stringTable.find(StringRef{"", 0}) == nullptr);
+    lluz_ASSERT(stringTable.find(StringRef{"", 0}) == nullptr);
 
     // preallocate some buffers that are very likely to grow anyway; this works around std::vector's inefficient growth policy for small arrays
     insns.reserve(32);
@@ -227,7 +216,7 @@ BytecodeBuilder::BytecodeBuilder(BytecodeEncoder* encoder)
 
 uint32_t BytecodeBuilder::beginFunction(uint8_t numparams, bool isvararg)
 {
-    LUAU_ASSERT(currentFunction == ~0u);
+    lluz_ASSERT(currentFunction == ~0u);
 
     uint32_t id = uint32_t(functions.size());
 
@@ -247,14 +236,14 @@ uint32_t BytecodeBuilder::beginFunction(uint8_t numparams, bool isvararg)
 
 void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
 {
-    LUAU_ASSERT(currentFunction != ~0u);
+    lluz_ASSERT(currentFunction != ~0u);
 
     Function& func = functions[currentFunction];
 
     func.maxstacksize = maxstacksize;
     func.numupvalues = numupvalues;
 
-#ifdef LUAU_ASSERTENABLED
+#ifdef lluz_ASSERTENABLED
     validate();
 #endif
 
@@ -289,7 +278,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
 
 void BytecodeBuilder::setMainFunction(uint32_t fid)
 {
-    LUAU_ASSERT(fid < functions.size());
+    lluz_ASSERT(fid < functions.size());
 
     mainFunction = fid;
 }
@@ -418,7 +407,7 @@ int16_t BytecodeBuilder::addChildFunction(uint32_t fid)
     return int16_t(id);
 }
 
-void BytecodeBuilder::emitABC(LuauOpcode op, uint8_t a, uint8_t b, uint8_t c)
+void BytecodeBuilder::emitABC(lluzOpcode op, uint8_t a, uint8_t b, uint8_t c)
 {
     uint32_t insn = uint32_t(op) | (a << 8) | (b << 16) | (c << 24);
 
@@ -426,7 +415,7 @@ void BytecodeBuilder::emitABC(LuauOpcode op, uint8_t a, uint8_t b, uint8_t c)
     lines.push_back(debugLine);
 }
 
-void BytecodeBuilder::emitAD(LuauOpcode op, uint8_t a, int16_t d)
+void BytecodeBuilder::emitAD(lluzOpcode op, uint8_t a, int16_t d)
 {
     uint32_t insn = uint32_t(op) | (a << 8) | (uint16_t(d) << 16);
 
@@ -434,7 +423,7 @@ void BytecodeBuilder::emitAD(LuauOpcode op, uint8_t a, int16_t d)
     lines.push_back(debugLine);
 }
 
-void BytecodeBuilder::emitE(LuauOpcode op, int32_t e)
+void BytecodeBuilder::emitE(lluzOpcode op, int32_t e)
 {
     uint32_t insn = uint32_t(op) | (uint32_t(e) << 8);
 
@@ -455,15 +444,15 @@ size_t BytecodeBuilder::emitLabel()
 
 bool BytecodeBuilder::patchJumpD(size_t jumpLabel, size_t targetLabel)
 {
-    LUAU_ASSERT(jumpLabel < insns.size());
+    lluz_ASSERT(jumpLabel < insns.size());
 
     unsigned int jumpInsn = insns[jumpLabel];
     (void)jumpInsn;
 
-    LUAU_ASSERT(isJumpD(LuauOpcode(LUAU_INSN_OP(jumpInsn))));
-    LUAU_ASSERT(LUAU_INSN_D(jumpInsn) == 0);
+    lluz_ASSERT(isJumpD(lluzOpcode(lluz_INSN_OP(jumpInsn))));
+    lluz_ASSERT(lluz_INSN_D(jumpInsn) == 0);
 
-    LUAU_ASSERT(targetLabel <= insns.size());
+    lluz_ASSERT(targetLabel <= insns.size());
 
     int offset = int(targetLabel) - int(jumpLabel) - 1;
 
@@ -487,13 +476,13 @@ bool BytecodeBuilder::patchJumpD(size_t jumpLabel, size_t targetLabel)
 
 bool BytecodeBuilder::patchSkipC(size_t jumpLabel, size_t targetLabel)
 {
-    LUAU_ASSERT(jumpLabel < insns.size());
+    lluz_ASSERT(jumpLabel < insns.size());
 
     unsigned int jumpInsn = insns[jumpLabel];
     (void)jumpInsn;
 
-    LUAU_ASSERT(isSkipC(LuauOpcode(LUAU_INSN_OP(jumpInsn))) || isFastCall(LuauOpcode(LUAU_INSN_OP(jumpInsn))));
-    LUAU_ASSERT(LUAU_INSN_C(jumpInsn) == 0);
+    lluz_ASSERT(isSkipC(lluzOpcode(lluz_INSN_OP(jumpInsn))));
+    lluz_ASSERT(lluz_INSN_C(jumpInsn) == 0);
 
     int offset = int(targetLabel) - int(jumpLabel) - 1;
 
@@ -574,7 +563,7 @@ void BytecodeBuilder::addDebugRemark(const char* format, ...)
 
 void BytecodeBuilder::finalize()
 {
-    LUAU_ASSERT(bytecode.empty());
+    lluz_ASSERT(bytecode.empty());
 
     // preallocate space for bytecode blob
     size_t capacity = 16;
@@ -589,7 +578,7 @@ void BytecodeBuilder::finalize()
 
     // assemble final bytecode blob
     uint8_t version = getVersion();
-    LUAU_ASSERT(version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX);
+    lluz_ASSERT(version >= LBC_VERSION_MIN && version <= LBC_VERSION_MAX);
 
     bytecode = char(version);
 
@@ -600,13 +589,13 @@ void BytecodeBuilder::finalize()
     for (const Function& func : functions)
         bytecode += func.data;
 
-    LUAU_ASSERT(mainFunction < functions.size());
+    lluz_ASSERT(mainFunction < functions.size());
     writeVarInt(bytecode, mainFunction);
 }
 
 void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
 {
-    LUAU_ASSERT(id < functions.size());
+    lluz_ASSERT(id < functions.size());
     const Function& func = functions[id];
 
     // header
@@ -620,10 +609,10 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
 
     for (size_t i = 0; i < insns.size();)
     {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
-        LUAU_ASSERT(op < LOP__COUNT);
+        uint8_t op = lluz_INSN_OP(insns[i]);
+        lluz_ASSERT(op < LOP__COUNT);
 
-        int oplen = getOpLength(LuauOpcode(op));
+        int oplen = getOpLength(lluzOpcode(op));
         uint8_t openc = encoder ? encoder->encodeOp(op) : op;
 
         writeInt(ss, openc | (insns[i] & ~0xff));
@@ -681,7 +670,7 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
             break;
 
         default:
-            LUAU_ASSERT(!"Unsupported constant type");
+            lluz_ASSERT(!"Unsupported constant type");
         }
     }
 
@@ -746,7 +735,7 @@ void BytecodeBuilder::writeFunction(std::string& ss, uint32_t id) const
 
 void BytecodeBuilder::writeLineInfo(std::string& ss) const
 {
-    LUAU_ASSERT(!lines.empty());
+    lluz_ASSERT(!lines.empty());
 
     // this function encodes lines inside each span as a 8-bit delta to span baseline
     // span is always a power of two; depending on the line info input, it may need to be as low as 1
@@ -812,7 +801,7 @@ void BytecodeBuilder::writeLineInfo(std::string& ss) const
     for (size_t i = 0; i < lines.size(); ++i)
     {
         int delta = lines[i] - baseline[i >> logspan];
-        LUAU_ASSERT(delta >= 0 && delta <= 255);
+        lluz_ASSERT(delta >= 0 && delta <= 255);
 
         writeByte(ss, uint8_t(delta) - lastOffset);
         lastOffset = uint8_t(delta);
@@ -833,7 +822,7 @@ void BytecodeBuilder::writeStringTable(std::string& ss) const
 
     for (auto& p : stringTable)
     {
-        LUAU_ASSERT(p.second > 0 && p.second <= strings.size());
+        lluz_ASSERT(p.second > 0 && p.second <= strings.size());
         strings[p.second - 1] = p.first;
     }
 
@@ -848,21 +837,21 @@ void BytecodeBuilder::writeStringTable(std::string& ss) const
 
 uint32_t BytecodeBuilder::getImportId(int32_t id0)
 {
-    LUAU_ASSERT(unsigned(id0) < 1024);
+    lluz_ASSERT(unsigned(id0) < 1024);
 
     return (1u << 30) | (id0 << 20);
 }
 
 uint32_t BytecodeBuilder::getImportId(int32_t id0, int32_t id1)
 {
-    LUAU_ASSERT(unsigned(id0 | id1) < 1024);
+    lluz_ASSERT(unsigned(id0 | id1) < 1024);
 
     return (2u << 30) | (id0 << 20) | (id1 << 10);
 }
 
 uint32_t BytecodeBuilder::getImportId(int32_t id0, int32_t id1, int32_t id2)
 {
-    LUAU_ASSERT(unsigned(id0 | id1 | id2) < 1024);
+    lluz_ASSERT(unsigned(id0 | id1 | id2) < 1024);
 
     return (3u << 30) | (id0 << 20) | (id1 << 10) | id2;
 }
@@ -900,21 +889,21 @@ void BytecodeBuilder::foldJumps()
 
         // follow jump target through forward unconditional jumps
         // we only follow forward jumps to make sure the process terminates
-        uint32_t targetLabel = jumpLabel + 1 + LUAU_INSN_D(jumpInsn);
-        LUAU_ASSERT(targetLabel < insns.size());
+        uint32_t targetLabel = jumpLabel + 1 + lluz_INSN_D(jumpInsn);
+        lluz_ASSERT(targetLabel < insns.size());
         uint32_t targetInsn = insns[targetLabel];
 
-        while (LUAU_INSN_OP(targetInsn) == LOP_JUMP && LUAU_INSN_D(targetInsn) >= 0)
+        while (lluz_INSN_OP(targetInsn) == LOP_JUMP && lluz_INSN_D(targetInsn) >= 0)
         {
-            targetLabel = targetLabel + 1 + LUAU_INSN_D(targetInsn);
-            LUAU_ASSERT(targetLabel < insns.size());
+            targetLabel = targetLabel + 1 + lluz_INSN_D(targetInsn);
+            lluz_ASSERT(targetLabel < insns.size());
             targetInsn = insns[targetLabel];
         }
 
         int offset = int(targetLabel) - int(jumpLabel) - 1;
 
         // for unconditional jumps to RETURN, we can replace JUMP with RETURN
-        if (LUAU_INSN_OP(jumpInsn) == LOP_JUMP && LUAU_INSN_OP(targetInsn) == LOP_RETURN)
+        if (lluz_INSN_OP(jumpInsn) == LOP_JUMP && lluz_INSN_OP(targetInsn) == LOP_RETURN)
         {
             insns[jumpLabel] = targetInsn;
             lines[jumpLabel] = lines[targetLabel];
@@ -961,7 +950,7 @@ void BytecodeBuilder::expandJumps()
     std::vector<uint32_t> newinsns;
     std::vector<int> newlines;
 
-    LUAU_ASSERT(insns.size() == lines.size());
+    lluz_ASSERT(insns.size() == lines.size());
     newinsns.reserve(insns.size());
     newlines.reserve(insns.size());
 
@@ -970,8 +959,8 @@ void BytecodeBuilder::expandJumps()
 
     for (size_t i = 0; i < insns.size();)
     {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
-        LUAU_ASSERT(op < LOP__COUNT);
+        uint8_t op = lluz_INSN_OP(insns[i]);
+        lluz_ASSERT(op < LOP__COUNT);
 
         if (currentJump < jumps.size() && jumps[currentJump].source == i)
         {
@@ -992,7 +981,7 @@ void BytecodeBuilder::expandJumps()
             currentJump++;
         }
 
-        int oplen = getOpLength(LuauOpcode(op));
+        int oplen = getOpLength(lluzOpcode(op));
 
         // copy instruction and line info to the new stream
         for (int j = 0; j < oplen; ++j)
@@ -1006,8 +995,8 @@ void BytecodeBuilder::expandJumps()
         }
     }
 
-    LUAU_ASSERT(currentJump == jumps.size());
-    LUAU_ASSERT(pendingTrampolines > 0);
+    lluz_ASSERT(currentJump == jumps.size());
+    lluz_ASSERT(pendingTrampolines > 0);
 
     // now we need to recompute offsets for jump instructions - we could not do this in the first pass because the offsets are between *target*
     // instructions
@@ -1022,7 +1011,7 @@ void BytecodeBuilder::expandJumps()
             uint32_t& insnt = newinsns[remap[jump.source] - 1];
             uint32_t& insnj = newinsns[remap[jump.source]];
 
-            LUAU_ASSERT(LUAU_INSN_OP(insnt) == LOP_JUMPX);
+            lluz_ASSERT(lluz_INSN_OP(insnt) == LOP_JUMPX);
 
             // patch JUMPX to JUMPX to target location; note that newoffset is the offset of the jump *relative to OP*, so we need to add 1 to make it
             // relative to JUMPX
@@ -1040,17 +1029,17 @@ void BytecodeBuilder::expandJumps()
             uint32_t& insn = newinsns[remap[jump.source]];
 
             // make sure jump instruction had the correct offset before we started
-            LUAU_ASSERT(LUAU_INSN_D(insn) == offset);
+            lluz_ASSERT(lluz_INSN_D(insn) == offset);
 
             // patch instruction with the new offset
-            LUAU_ASSERT(int16_t(newoffset) == newoffset);
+            lluz_ASSERT(int16_t(newoffset) == newoffset);
 
             insn &= 0xffff;
             insn |= uint16_t(newoffset) << 16;
         }
     }
 
-    LUAU_ASSERT(pendingTrampolines == 0);
+    lluz_ASSERT(pendingTrampolines == 0);
 
     // this was hard, but we're done.
     insns.swap(newinsns);
@@ -1073,17 +1062,17 @@ uint8_t BytecodeBuilder::getVersion()
     return LBC_VERSION_TARGET;
 }
 
-#ifdef LUAU_ASSERTENABLED
+#ifdef lluz_ASSERTENABLED
 void BytecodeBuilder::validate() const
 {
-#define VREG(v) LUAU_ASSERT(unsigned(v) < func.maxstacksize)
-#define VREGRANGE(v, count) LUAU_ASSERT(unsigned(v + (count < 0 ? 0 : count)) <= func.maxstacksize)
-#define VUPVAL(v) LUAU_ASSERT(unsigned(v) < func.numupvalues)
-#define VCONST(v, kind) LUAU_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
-#define VCONSTANY(v) LUAU_ASSERT(unsigned(v) < constants.size())
-#define VJUMP(v) LUAU_ASSERT(size_t(i + 1 + v) < insns.size() && insnvalid[i + 1 + v])
+#define VREG(v) lluz_ASSERT(unsigned(v) < func.maxstacksize)
+#define VREGRANGE(v, count) lluz_ASSERT(unsigned(v + (count < 0 ? 0 : count)) <= func.maxstacksize)
+#define VUPVAL(v) lluz_ASSERT(unsigned(v) < func.numupvalues)
+#define VCONST(v, kind) lluz_ASSERT(unsigned(v) < constants.size() && constants[v].type == Constant::Type_##kind)
+#define VCONSTANY(v) lluz_ASSERT(unsigned(v) < constants.size())
+#define VJUMP(v) lluz_ASSERT(size_t(i + 1 + v) < insns.size() && insnvalid[i + 1 + v])
 
-    LUAU_ASSERT(currentFunction != ~0u);
+    lluz_ASSERT(currentFunction != ~0u);
 
     const Function& func = functions[currentFunction];
 
@@ -1092,12 +1081,12 @@ void BytecodeBuilder::validate() const
 
     for (size_t i = 0; i < insns.size();)
     {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
+        uint8_t op = lluz_INSN_OP(insns[i]);
 
         insnvalid[i] = true;
 
-        i += getOpLength(LuauOpcode(op));
-        LUAU_ASSERT(i <= insns.size());
+        i += getOpLength(lluzOpcode(op));
+        lluz_ASSERT(i <= insns.size());
     }
 
     std::vector<uint8_t> openCaptures;
@@ -1106,126 +1095,126 @@ void BytecodeBuilder::validate() const
     for (size_t i = 0; i < insns.size();)
     {
         uint32_t insn = insns[i];
-        uint8_t op = LUAU_INSN_OP(insn);
+        uint8_t op = lluz_INSN_OP(insn);
 
         switch (op)
         {
         case LOP_LOADNIL:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             break;
 
         case LOP_LOADB:
-            VREG(LUAU_INSN_A(insn));
-            LUAU_ASSERT(LUAU_INSN_B(insn) == 0 || LUAU_INSN_B(insn) == 1);
-            VJUMP(LUAU_INSN_C(insn));
+            VREG(lluz_INSN_A(insn));
+            lluz_ASSERT(lluz_INSN_B(insn) == 0 || lluz_INSN_B(insn) == 1);
+            VJUMP(lluz_INSN_C(insn));
             break;
 
         case LOP_LOADN:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             break;
 
         case LOP_LOADK:
-            VREG(LUAU_INSN_A(insn));
-            VCONSTANY(LUAU_INSN_D(insn));
+            VREG(lluz_INSN_A(insn));
+            VCONSTANY(lluz_INSN_D(insn));
             break;
 
         case LOP_MOVE:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
             break;
 
         case LOP_GETGLOBAL:
         case LOP_SETGLOBAL:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             VCONST(insns[i + 1], String);
             break;
 
         case LOP_GETUPVAL:
         case LOP_SETUPVAL:
-            VREG(LUAU_INSN_A(insn));
-            VUPVAL(LUAU_INSN_B(insn));
+            VREG(lluz_INSN_A(insn));
+            VUPVAL(lluz_INSN_B(insn));
             break;
 
         case LOP_CLOSEUPVALS:
-            VREG(LUAU_INSN_A(insn));
-            while (openCaptures.size() && openCaptures.back() >= LUAU_INSN_A(insn))
+            VREG(lluz_INSN_A(insn));
+            while (openCaptures.size() && openCaptures.back() >= lluz_INSN_A(insn))
                 openCaptures.pop_back();
             break;
 
         case LOP_GETIMPORT:
-            VREG(LUAU_INSN_A(insn));
-            VCONST(LUAU_INSN_D(insn), Import);
+            VREG(lluz_INSN_A(insn));
+            VCONST(lluz_INSN_D(insn), Import);
             // TODO: check insn[i + 1] for conformance with 10-bit import encoding
             break;
 
         case LOP_GETTABLE:
         case LOP_SETTABLE:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
-            VREG(LUAU_INSN_C(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
+            VREG(lluz_INSN_C(insn));
             break;
 
         case LOP_GETTABLEKS:
         case LOP_SETTABLEKS:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
             VCONST(insns[i + 1], String);
             break;
 
         case LOP_GETTABLEN:
         case LOP_SETTABLEN:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
             break;
 
         case LOP_NEWCLOSURE:
         {
-            VREG(LUAU_INSN_A(insn));
-            LUAU_ASSERT(unsigned(LUAU_INSN_D(insn)) < protos.size());
-            LUAU_ASSERT(protos[LUAU_INSN_D(insn)] < functions.size());
-            unsigned int numupvalues = functions[protos[LUAU_INSN_D(insn)]].numupvalues;
+            VREG(lluz_INSN_A(insn));
+            lluz_ASSERT(unsigned(lluz_INSN_D(insn)) < protos.size());
+            lluz_ASSERT(protos[lluz_INSN_D(insn)] < functions.size());
+            unsigned int numupvalues = functions[protos[lluz_INSN_D(insn)]].numupvalues;
 
             for (unsigned int j = 0; j < numupvalues; ++j)
             {
-                LUAU_ASSERT(i + 1 + j < insns.size());
+                lluz_ASSERT(i + 1 + j < insns.size());
                 uint32_t cinsn = insns[i + 1 + j];
-                LUAU_ASSERT(LUAU_INSN_OP(cinsn) == LOP_CAPTURE);
+                lluz_ASSERT(lluz_INSN_OP(cinsn) == LOP_CAPTURE);
             }
         }
         break;
 
         case LOP_NAMECALL:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
             VCONST(insns[i + 1], String);
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 2]) == LOP_CALL);
+            lluz_ASSERT(lluz_INSN_OP(insns[i + 2]) == LOP_CALL);
             break;
 
         case LOP_CALL:
         {
-            int nparams = LUAU_INSN_B(insn) - 1;
-            int nresults = LUAU_INSN_C(insn) - 1;
-            VREG(LUAU_INSN_A(insn));
-            VREGRANGE(LUAU_INSN_A(insn) + 1, nparams); // 1..nparams
-            VREGRANGE(LUAU_INSN_A(insn), nresults);    // 1..nresults
+            int nparams = lluz_INSN_B(insn) - 1;
+            int nresults = lluz_INSN_C(insn) - 1;
+            VREG(lluz_INSN_A(insn));
+            VREGRANGE(lluz_INSN_A(insn) + 1, nparams); // 1..nparams
+            VREGRANGE(lluz_INSN_A(insn), nresults);    // 1..nresults
         }
         break;
 
         case LOP_RETURN:
         {
-            int nresults = LUAU_INSN_B(insn) - 1;
-            VREGRANGE(LUAU_INSN_A(insn), nresults); // 0..nresults-1
+            int nresults = lluz_INSN_B(insn) - 1;
+            VREGRANGE(lluz_INSN_A(insn), nresults); // 0..nresults-1
         }
         break;
 
         case LOP_JUMP:
-            VJUMP(LUAU_INSN_D(insn));
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_JUMPIF:
         case LOP_JUMPIFNOT:
-            VREG(LUAU_INSN_A(insn));
-            VJUMP(LUAU_INSN_D(insn));
+            VREG(lluz_INSN_A(insn));
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_JUMPIFEQ:
@@ -1234,16 +1223,16 @@ void BytecodeBuilder::validate() const
         case LOP_JUMPIFNOTEQ:
         case LOP_JUMPIFNOTLE:
         case LOP_JUMPIFNOTLT:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             VREG(insns[i + 1]);
-            VJUMP(LUAU_INSN_D(insn));
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_JUMPIFEQK:
         case LOP_JUMPIFNOTEQK:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             VCONSTANY(insns[i + 1]);
-            VJUMP(LUAU_INSN_D(insn));
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_ADD:
@@ -1252,9 +1241,9 @@ void BytecodeBuilder::validate() const
         case LOP_DIV:
         case LOP_MOD:
         case LOP_POW:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
-            VREG(LUAU_INSN_C(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
+            VREG(lluz_INSN_C(insn));
             break;
 
         case LOP_ADDK:
@@ -1263,152 +1252,152 @@ void BytecodeBuilder::validate() const
         case LOP_DIVK:
         case LOP_MODK:
         case LOP_POWK:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
-            VCONST(LUAU_INSN_C(insn), Number);
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
+            VCONST(lluz_INSN_C(insn), Number);
             break;
 
         case LOP_AND:
         case LOP_OR:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
-            VREG(LUAU_INSN_C(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
+            VREG(lluz_INSN_C(insn));
             break;
 
         case LOP_ANDK:
         case LOP_ORK:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
-            VCONSTANY(LUAU_INSN_C(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
+            VCONSTANY(lluz_INSN_C(insn));
             break;
 
         case LOP_CONCAT:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
-            VREG(LUAU_INSN_C(insn));
-            LUAU_ASSERT(LUAU_INSN_B(insn) <= LUAU_INSN_C(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
+            VREG(lluz_INSN_C(insn));
+            lluz_ASSERT(lluz_INSN_B(insn) <= lluz_INSN_C(insn));
             break;
 
         case LOP_NOT:
         case LOP_MINUS:
         case LOP_LENGTH:
-            VREG(LUAU_INSN_A(insn));
-            VREG(LUAU_INSN_B(insn));
+            VREG(lluz_INSN_A(insn));
+            VREG(lluz_INSN_B(insn));
             break;
 
         case LOP_NEWTABLE:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             break;
 
         case LOP_DUPTABLE:
-            VREG(LUAU_INSN_A(insn));
-            VCONST(LUAU_INSN_D(insn), Table);
+            VREG(lluz_INSN_A(insn));
+            VCONST(lluz_INSN_D(insn), Table);
             break;
 
         case LOP_SETLIST:
         {
-            int count = LUAU_INSN_C(insn) - 1;
-            VREG(LUAU_INSN_A(insn));
-            VREGRANGE(LUAU_INSN_B(insn), count);
+            int count = lluz_INSN_C(insn) - 1;
+            VREG(lluz_INSN_A(insn));
+            VREGRANGE(lluz_INSN_B(insn), count);
         }
         break;
 
         case LOP_FORNPREP:
         case LOP_FORNLOOP:
             // for loop protocol: A, A+1, A+2 are used for iteration
-            VREG(LUAU_INSN_A(insn) + 2);
-            VJUMP(LUAU_INSN_D(insn));
+            VREG(lluz_INSN_A(insn) + 2);
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_FORGPREP:
             // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
-            VREG(LUAU_INSN_A(insn) + 2 + 1);
-            VJUMP(LUAU_INSN_D(insn));
+            VREG(lluz_INSN_A(insn) + 2 + 1);
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_FORGLOOP:
             // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, ... are loop variables
-            VREG(LUAU_INSN_A(insn) + 2 + uint8_t(insns[i + 1]));
-            VJUMP(LUAU_INSN_D(insn));
-            LUAU_ASSERT(uint8_t(insns[i + 1]) >= 1);
+            VREG(lluz_INSN_A(insn) + 2 + uint8_t(insns[i + 1]));
+            VJUMP(lluz_INSN_D(insn));
+            lluz_ASSERT(uint8_t(insns[i + 1]) >= 1);
             break;
 
         case LOP_FORGPREP_INEXT:
         case LOP_FORGLOOP_INEXT:
         case LOP_FORGPREP_NEXT:
         case LOP_FORGLOOP_NEXT:
-            VREG(LUAU_INSN_A(insn) + 4); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, A+4 are loop variables
-            VJUMP(LUAU_INSN_D(insn));
+            VREG(lluz_INSN_A(insn) + 4); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, A+4 are loop variables
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_GETVARARGS:
         {
-            int nresults = LUAU_INSN_B(insn) - 1;
-            VREGRANGE(LUAU_INSN_A(insn), nresults); // 0..nresults-1
+            int nresults = lluz_INSN_B(insn) - 1;
+            VREGRANGE(lluz_INSN_A(insn), nresults); // 0..nresults-1
         }
         break;
 
         case LOP_DUPCLOSURE:
         {
-            VREG(LUAU_INSN_A(insn));
-            VCONST(LUAU_INSN_D(insn), Closure);
-            unsigned int proto = constants[LUAU_INSN_D(insn)].valueClosure;
-            LUAU_ASSERT(proto < functions.size());
+            VREG(lluz_INSN_A(insn));
+            VCONST(lluz_INSN_D(insn), Closure);
+            unsigned int proto = constants[lluz_INSN_D(insn)].valueClosure;
+            lluz_ASSERT(proto < functions.size());
             unsigned int numupvalues = functions[proto].numupvalues;
 
             for (unsigned int j = 0; j < numupvalues; ++j)
             {
-                LUAU_ASSERT(i + 1 + j < insns.size());
+                lluz_ASSERT(i + 1 + j < insns.size());
                 uint32_t cinsn = insns[i + 1 + j];
-                LUAU_ASSERT(LUAU_INSN_OP(cinsn) == LOP_CAPTURE);
-                LUAU_ASSERT(LUAU_INSN_A(cinsn) == LCT_VAL || LUAU_INSN_A(cinsn) == LCT_UPVAL);
+                lluz_ASSERT(lluz_INSN_OP(cinsn) == LOP_CAPTURE);
+                lluz_ASSERT(lluz_INSN_A(cinsn) == LCT_VAL || lluz_INSN_A(cinsn) == LCT_UPVAL);
             }
         }
         break;
 
         case LOP_PREPVARARGS:
-            LUAU_ASSERT(LUAU_INSN_A(insn) == func.numparams);
-            LUAU_ASSERT(func.isvararg);
+            lluz_ASSERT(lluz_INSN_A(insn) == func.numparams);
+            lluz_ASSERT(func.isvararg);
             break;
 
         case LOP_BREAK:
             break;
 
         case LOP_JUMPBACK:
-            VJUMP(LUAU_INSN_D(insn));
+            VJUMP(lluz_INSN_D(insn));
             break;
 
         case LOP_LOADKX:
-            VREG(LUAU_INSN_A(insn));
+            VREG(lluz_INSN_A(insn));
             VCONSTANY(insns[i + 1]);
             break;
 
         case LOP_JUMPX:
-            VJUMP(LUAU_INSN_E(insn));
+            VJUMP(lluz_INSN_E(insn));
             break;
 
         case LOP_FASTCALL:
-            VJUMP(LUAU_INSN_C(insn));
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            VJUMP(lluz_INSN_C(insn));
+            lluz_ASSERT(lluz_INSN_OP(insns[i + 1 + lluz_INSN_C(insn)]) == LOP_CALL);
             break;
 
         case LOP_FASTCALL1:
-            VREG(LUAU_INSN_B(insn));
-            VJUMP(LUAU_INSN_C(insn));
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            VREG(lluz_INSN_B(insn));
+            VJUMP(lluz_INSN_C(insn));
+            lluz_ASSERT(lluz_INSN_OP(insns[i + 1 + lluz_INSN_C(insn)]) == LOP_CALL);
             break;
 
         case LOP_FASTCALL2:
-            VREG(LUAU_INSN_B(insn));
-            VJUMP(LUAU_INSN_C(insn));
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            VREG(lluz_INSN_B(insn));
+            VJUMP(lluz_INSN_C(insn));
+            lluz_ASSERT(lluz_INSN_OP(insns[i + 1 + lluz_INSN_C(insn)]) == LOP_CALL);
             VREG(insns[i + 1]);
             break;
 
         case LOP_FASTCALL2K:
-            VREG(LUAU_INSN_B(insn));
-            VJUMP(LUAU_INSN_C(insn));
-            LUAU_ASSERT(LUAU_INSN_OP(insns[i + 1 + LUAU_INSN_C(insn)]) == LOP_CALL);
+            VREG(lluz_INSN_B(insn));
+            VJUMP(lluz_INSN_C(insn));
+            lluz_ASSERT(lluz_INSN_OP(insns[i + 1 + lluz_INSN_C(insn)]) == LOP_CALL);
             VCONSTANY(insns[i + 1]);
             break;
 
@@ -1416,39 +1405,39 @@ void BytecodeBuilder::validate() const
             break;
 
         case LOP_CAPTURE:
-            switch (LUAU_INSN_A(insn))
+            switch (lluz_INSN_A(insn))
             {
             case LCT_VAL:
-                VREG(LUAU_INSN_B(insn));
+                VREG(lluz_INSN_B(insn));
                 break;
 
             case LCT_REF:
-                VREG(LUAU_INSN_B(insn));
-                openCaptures.push_back(LUAU_INSN_B(insn));
+                VREG(lluz_INSN_B(insn));
+                openCaptures.push_back(lluz_INSN_B(insn));
                 break;
 
             case LCT_UPVAL:
-                VUPVAL(LUAU_INSN_B(insn));
+                VUPVAL(lluz_INSN_B(insn));
                 break;
 
             default:
-                LUAU_ASSERT(!"Unsupported capture type");
+                lluz_ASSERT(!XorStr("Unsupported capture type"));
             }
             break;
 
         default:
-            LUAU_ASSERT(!"Unsupported opcode");
+            lluz_ASSERT(!XorStr("Unsupported opcode"));
         }
 
-        i += getOpLength(LuauOpcode(op));
-        LUAU_ASSERT(i <= insns.size());
+        i += getOpLength(lluzOpcode(op));
+        lluz_ASSERT(i <= insns.size());
     }
 
     // all CAPTURE REF instructions must have a CLOSEUPVALS instruction after them in the bytecode stream
     // this doesn't guarantee safety as it doesn't perform basic block based analysis, but if this fails
     // then the bytecode is definitely unsafe to run since the compiler won't generate backwards branches
     // except for loop edges
-    LUAU_ASSERT(openCaptures.empty());
+    lluz_ASSERT(openCaptures.empty());
 
 #undef VREG
 #undef VREGEND
@@ -1463,94 +1452,94 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 {
     uint32_t insn = *code++;
 
-    switch (LUAU_INSN_OP(insn))
+    switch (lluz_INSN_OP(insn))
     {
     case LOP_LOADNIL:
-        formatAppend(result, "LOADNIL R%d\n", LUAU_INSN_A(insn));
+        formatAppend(result, "LOADNIL R%d\n", lluz_INSN_A(insn));
         break;
 
     case LOP_LOADB:
-        if (LUAU_INSN_C(insn))
-            formatAppend(result, "LOADB R%d %d +%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        if (lluz_INSN_C(insn))
+            formatAppend(result, "LOADB R%d %d +%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         else
-            formatAppend(result, "LOADB R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+            formatAppend(result, "LOADB R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_LOADN:
-        formatAppend(result, "LOADN R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "LOADN R%d %d\n", lluz_INSN_A(insn), lluz_INSN_D(insn));
         break;
 
     case LOP_LOADK:
-        formatAppend(result, "LOADK R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "LOADK R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_D(insn));
         break;
 
     case LOP_MOVE:
-        formatAppend(result, "MOVE R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "MOVE R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_GETGLOBAL:
-        formatAppend(result, "GETGLOBAL R%d K%d\n", LUAU_INSN_A(insn), *code++);
+        formatAppend(result, "GETGLOBAL R%d K%d\n", lluz_INSN_A(insn), *code++);
         break;
 
     case LOP_SETGLOBAL:
-        formatAppend(result, "SETGLOBAL R%d K%d\n", LUAU_INSN_A(insn), *code++);
+        formatAppend(result, "SETGLOBAL R%d K%d\n", lluz_INSN_A(insn), *code++);
         break;
 
     case LOP_GETUPVAL:
-        formatAppend(result, "GETUPVAL R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "GETUPVAL R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_SETUPVAL:
-        formatAppend(result, "SETUPVAL R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "SETUPVAL R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_CLOSEUPVALS:
-        formatAppend(result, "CLOSEUPVALS R%d\n", LUAU_INSN_A(insn));
+        formatAppend(result, "CLOSEUPVALS R%d\n", lluz_INSN_A(insn));
         break;
 
     case LOP_GETIMPORT:
-        formatAppend(result, "GETIMPORT R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "GETIMPORT R%d %d\n", lluz_INSN_A(insn), lluz_INSN_D(insn));
         code++; // AUX
         break;
 
     case LOP_GETTABLE:
-        formatAppend(result, "GETTABLE R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "GETTABLE R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_SETTABLE:
-        formatAppend(result, "SETTABLE R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "SETTABLE R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_GETTABLEKS:
-        formatAppend(result, "GETTABLEKS R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code++);
+        formatAppend(result, "GETTABLEKS R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), *code++);
         break;
 
     case LOP_SETTABLEKS:
-        formatAppend(result, "SETTABLEKS R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code++);
+        formatAppend(result, "SETTABLEKS R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), *code++);
         break;
 
     case LOP_GETTABLEN:
-        formatAppend(result, "GETTABLEN R%d R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn) + 1);
+        formatAppend(result, "GETTABLEN R%d R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn) + 1);
         break;
 
     case LOP_SETTABLEN:
-        formatAppend(result, "SETTABLEN R%d R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn) + 1);
+        formatAppend(result, "SETTABLEN R%d R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn) + 1);
         break;
 
     case LOP_NEWCLOSURE:
-        formatAppend(result, "NEWCLOSURE R%d P%d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "NEWCLOSURE R%d P%d\n", lluz_INSN_A(insn), lluz_INSN_D(insn));
         break;
 
     case LOP_NAMECALL:
-        formatAppend(result, "NAMECALL R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), *code++);
+        formatAppend(result, "NAMECALL R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), *code++);
         break;
 
     case LOP_CALL:
-        formatAppend(result, "CALL R%d %d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn) - 1, LUAU_INSN_C(insn) - 1);
+        formatAppend(result, "CALL R%d %d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn) - 1, lluz_INSN_C(insn) - 1);
         break;
 
     case LOP_RETURN:
-        formatAppend(result, "RETURN R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn) - 1);
+        formatAppend(result, "RETURN R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn) - 1);
         break;
 
     case LOP_JUMP:
@@ -1558,172 +1547,172 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_JUMPIF:
-        formatAppend(result, "JUMPIF R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "JUMPIF R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_JUMPIFNOT:
-        formatAppend(result, "JUMPIFNOT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "JUMPIFNOT R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_JUMPIFEQ:
-        formatAppend(result, "JUMPIFEQ R%d R%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFEQ R%d R%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPIFLE:
-        formatAppend(result, "JUMPIFLE R%d R%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFLE R%d R%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPIFLT:
-        formatAppend(result, "JUMPIFLT R%d R%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFLT R%d R%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPIFNOTEQ:
-        formatAppend(result, "JUMPIFNOTEQ R%d R%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFNOTEQ R%d R%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPIFNOTLE:
-        formatAppend(result, "JUMPIFNOTLE R%d R%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFNOTLE R%d R%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPIFNOTLT:
-        formatAppend(result, "JUMPIFNOTLT R%d R%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFNOTLT R%d R%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_ADD:
-        formatAppend(result, "ADD R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ADD R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_SUB:
-        formatAppend(result, "SUB R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "SUB R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_MUL:
-        formatAppend(result, "MUL R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "MUL R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_DIV:
-        formatAppend(result, "DIV R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "DIV R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_MOD:
-        formatAppend(result, "MOD R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "MOD R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_POW:
-        formatAppend(result, "POW R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "POW R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_ADDK:
-        formatAppend(result, "ADDK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ADDK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_SUBK:
-        formatAppend(result, "SUBK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "SUBK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_MULK:
-        formatAppend(result, "MULK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "MULK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_DIVK:
-        formatAppend(result, "DIVK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "DIVK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_MODK:
-        formatAppend(result, "MODK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "MODK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_POWK:
-        formatAppend(result, "POWK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "POWK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_AND:
-        formatAppend(result, "AND R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "AND R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_OR:
-        formatAppend(result, "OR R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "OR R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_ANDK:
-        formatAppend(result, "ANDK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ANDK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_ORK:
-        formatAppend(result, "ORK R%d R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "ORK R%d R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_CONCAT:
-        formatAppend(result, "CONCAT R%d R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn));
+        formatAppend(result, "CONCAT R%d R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn));
         break;
 
     case LOP_NOT:
-        formatAppend(result, "NOT R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "NOT R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_MINUS:
-        formatAppend(result, "MINUS R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "MINUS R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_LENGTH:
-        formatAppend(result, "LENGTH R%d R%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn));
+        formatAppend(result, "LENGTH R%d R%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn));
         break;
 
     case LOP_NEWTABLE:
-        formatAppend(result, "NEWTABLE R%d %d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn) == 0 ? 0 : 1 << (LUAU_INSN_B(insn) - 1), *code++);
+        formatAppend(result, "NEWTABLE R%d %d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn) == 0 ? 0 : 1 << (lluz_INSN_B(insn) - 1), *code++);
         break;
 
     case LOP_DUPTABLE:
-        formatAppend(result, "DUPTABLE R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "DUPTABLE R%d %d\n", lluz_INSN_A(insn), lluz_INSN_D(insn));
         break;
 
     case LOP_SETLIST:
-        formatAppend(result, "SETLIST R%d R%d %d [%d]\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), LUAU_INSN_C(insn) - 1, *code++);
+        formatAppend(result, "SETLIST R%d R%d %d [%d]\n", lluz_INSN_A(insn), lluz_INSN_B(insn), lluz_INSN_C(insn) - 1, *code++);
         break;
 
     case LOP_FORNPREP:
-        formatAppend(result, "FORNPREP R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORNPREP R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FORNLOOP:
-        formatAppend(result, "FORNLOOP R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORNLOOP R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FORGPREP:
-        formatAppend(result, "FORGPREP R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORGPREP R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FORGLOOP:
-        formatAppend(result, "FORGLOOP R%d L%d %d%s\n", LUAU_INSN_A(insn), targetLabel, uint8_t(*code), int(*code) < 0 ? " [inext]" : "");
+        formatAppend(result, XorStr("FORGLOOP R%d L%d %d%s\n", lluz_INSN_A(insn), targetLabel, uint8_t(*code), int(*code) < 0 ? " [inext]" : ""));
         code++;
         break;
 
     case LOP_FORGPREP_INEXT:
-        formatAppend(result, "FORGPREP_INEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORGPREP_INEXT R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FORGLOOP_INEXT:
-        formatAppend(result, "FORGLOOP_INEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORGLOOP_INEXT R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FORGPREP_NEXT:
-        formatAppend(result, "FORGPREP_NEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORGPREP_NEXT R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FORGLOOP_NEXT:
-        formatAppend(result, "FORGLOOP_NEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FORGLOOP_NEXT R%d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_GETVARARGS:
-        formatAppend(result, "GETVARARGS R%d %d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn) - 1);
+        formatAppend(result, "GETVARARGS R%d %d\n", lluz_INSN_A(insn), lluz_INSN_B(insn) - 1);
         break;
 
     case LOP_DUPCLOSURE:
-        formatAppend(result, "DUPCLOSURE R%d K%d\n", LUAU_INSN_A(insn), LUAU_INSN_D(insn));
+        formatAppend(result, "DUPCLOSURE R%d K%d\n", lluz_INSN_A(insn), lluz_INSN_D(insn));
         break;
 
     case LOP_BREAK:
-        formatAppend(result, "BREAK\n");
+        formatAppend(result, XorStr("BREAK\n"));
         break;
 
     case LOP_JUMPBACK:
@@ -1731,7 +1720,7 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_LOADKX:
-        formatAppend(result, "LOADKX R%d K%d\n", LUAU_INSN_A(insn), *code++);
+        formatAppend(result, "LOADKX R%d K%d\n", lluz_INSN_A(insn), *code++);
         break;
 
     case LOP_JUMPX:
@@ -1739,48 +1728,48 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         break;
 
     case LOP_FASTCALL:
-        formatAppend(result, "FASTCALL %d L%d\n", LUAU_INSN_A(insn), targetLabel);
+        formatAppend(result, "FASTCALL %d L%d\n", lluz_INSN_A(insn), targetLabel);
         break;
 
     case LOP_FASTCALL1:
-        formatAppend(result, "FASTCALL1 %d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), targetLabel);
+        formatAppend(result, "FASTCALL1 %d R%d L%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), targetLabel);
         break;
     case LOP_FASTCALL2:
     {
         uint32_t aux = *code++;
-        formatAppend(result, "FASTCALL2 %d R%d R%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), aux, targetLabel);
+        formatAppend(result, "FASTCALL2 %d R%d R%d L%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), aux, targetLabel);
         break;
     }
     case LOP_FASTCALL2K:
     {
         uint32_t aux = *code++;
-        formatAppend(result, "FASTCALL2K %d R%d K%d L%d\n", LUAU_INSN_A(insn), LUAU_INSN_B(insn), aux, targetLabel);
+        formatAppend(result, "FASTCALL2K %d R%d K%d L%d\n", lluz_INSN_A(insn), lluz_INSN_B(insn), aux, targetLabel);
         break;
     }
 
     case LOP_COVERAGE:
-        formatAppend(result, "COVERAGE\n");
+        formatAppend(result, XorStr("COVERAGE\n"));
         break;
 
     case LOP_CAPTURE:
         formatAppend(result, "CAPTURE %s %c%d\n",
-            LUAU_INSN_A(insn) == LCT_UPVAL ? "UPVAL"
-            : LUAU_INSN_A(insn) == LCT_REF ? "REF"
-            : LUAU_INSN_A(insn) == LCT_VAL ? "VAL"
+            lluz_INSN_A(insn) == LCT_UPVAL ? "UPVAL"
+            : lluz_INSN_A(insn) == LCT_REF ? "REF"
+            : lluz_INSN_A(insn) == LCT_VAL ? "VAL"
                                            : "",
-            LUAU_INSN_A(insn) == LCT_UPVAL ? 'U' : 'R', LUAU_INSN_B(insn));
+            lluz_INSN_A(insn) == LCT_UPVAL ? 'U' : 'R', lluz_INSN_B(insn));
         break;
 
     case LOP_JUMPIFEQK:
-        formatAppend(result, "JUMPIFEQK R%d K%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFEQK R%d K%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPIFNOTEQK:
-        formatAppend(result, "JUMPIFNOTEQK R%d K%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        formatAppend(result, "JUMPIFNOTEQK R%d K%d L%d\n", lluz_INSN_A(insn), *code++, targetLabel);
         break;
 
     default:
-        LUAU_ASSERT(!"Unsupported opcode");
+        lluz_ASSERT(!"Unsupported opcode");
     }
 }
 
@@ -1800,9 +1789,9 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
         {
             const DebugLocal& l = debugLocals[i];
 
-            LUAU_ASSERT(l.startpc < l.endpc);
-            LUAU_ASSERT(l.startpc < lines.size());
-            LUAU_ASSERT(l.endpc <= lines.size()); // endpc is exclusive in the debug info, but it's more intuitive to print inclusive data
+            lluz_ASSERT(l.startpc < l.endpc);
+            lluz_ASSERT(l.startpc < lines.size());
+            lluz_ASSERT(l.endpc <= lines.size()); // endpc is exclusive in the debug info, but it's more intuitive to print inclusive data
 
             // it would be nice to emit name as well but it requires reverse lookup through stringtable
             formatAppend(result, "local %d: reg %d, start pc %d line %d, end pc %d line %d\n", int(i), l.reg, l.startpc, lines[l.startpc],
@@ -1819,12 +1808,12 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
 
         if (target >= 0)
         {
-            LUAU_ASSERT(size_t(target) < insns.size());
+            lluz_ASSERT(size_t(target) < insns.size());
             labels[target] = 0;
         }
 
-        i += getOpLength(LuauOpcode(LUAU_INSN_OP(insns[i])));
-        LUAU_ASSERT(i <= insns.size());
+        i += getOpLength(lluzOpcode(lluz_INSN_OP(insns[i])));
+        lluz_ASSERT(i <= insns.size());
     }
 
     int nextLabel = 0;
@@ -1837,7 +1826,7 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
     for (size_t i = 0; i < insns.size();)
     {
         const uint32_t* code = &insns[i];
-        uint8_t op = LUAU_INSN_OP(*code);
+        uint8_t op = lluz_INSN_OP(*code);
 
         if (op == LOP_PREPVARARGS)
         {
@@ -1861,7 +1850,7 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
 
             if (line > 0 && line != lastLine)
             {
-                LUAU_ASSERT(size_t(line - 1) < dumpSource.size());
+                lluz_ASSERT(size_t(line - 1) < dumpSource.size());
                 formatAppend(result, "%5d: %s\n", line, dumpSource[line - 1].c_str());
                 lastLine = line;
             }
@@ -1877,8 +1866,8 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
 
         dumpInstruction(code, result, target >= 0 ? labels[target] : -1);
 
-        i += getOpLength(LuauOpcode(op));
-        LUAU_ASSERT(i <= insns.size());
+        i += getOpLength(lluzOpcode(op));
+        lluz_ASSERT(i <= insns.size());
     }
 
     return result;
@@ -1912,7 +1901,7 @@ void BytecodeBuilder::setDumpSource(const std::string& source)
 
 std::string BytecodeBuilder::dumpFunction(uint32_t id) const
 {
-    LUAU_ASSERT(id < functions.size());
+    lluz_ASSERT(id < functions.size());
 
     return functions[id].dump;
 }
@@ -1934,4 +1923,4 @@ std::string BytecodeBuilder::dumpEverything() const
     return result;
 }
 
-} // namespace Luau
+} // namespace lluz
