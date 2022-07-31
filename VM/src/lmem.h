@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -6,6 +6,8 @@
 
 struct lua_Page;
 union GCObject;
+
+void setup_luau_mem();
 
 #define luaM_newgco(L, t, size, memcat) cast_to(t*, luaM_newgco_(L, size, memcat))
 #define luaM_freegco(L, p, size, memcat, page) luaM_freegco_(L, obj2gco(p), size, memcat, page)

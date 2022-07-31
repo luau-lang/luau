@@ -1,6 +1,8 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <stdlib.h>
 
@@ -58,7 +60,7 @@ void luaL_sandboxthread(lua_State* L)
 
     lua_newtable(L);
     lua_pushvalue(L, LUA_GLOBALSINDEX);
-    lua_setfield(L, -2, "__index");
+    lua_setfield(L, -2, XorStr("__index"));
     lua_setreadonly(L, -1, true);
 
     lua_setmetatable(L, -2);

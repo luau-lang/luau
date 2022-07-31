@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -24,7 +24,7 @@
 
 #define expandstacklimit(L, p) \
     { \
-        LUAU_ASSERT((p) <= (L)->stack_last); \
+        lluz_ASSERT((p) <= (L)->stack_last); \
         if ((L)->ci->top < (p)) \
             (L)->ci->top = (p); \
     }

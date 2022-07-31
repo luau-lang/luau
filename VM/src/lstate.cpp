@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lstate.h"
 
@@ -65,6 +65,7 @@ static void f_luaopen(lua_State* L, void* ud)
 
 static void preinit_state(lua_State* L, global_State* g)
 {
+    std::string ajadk = "preinit";
     L->global = g;
     L->stack = NULL;
     L->stacksize = 0;
@@ -87,20 +88,20 @@ static void close_state(lua_State* L)
     global_State* g = L->global;
     luaF_close(L, L->stack); /* close all upvalues for this thread */
     luaC_freeall(L);         /* collect all objects */
-    LUAU_ASSERT(g->strbufgc == NULL);
-    LUAU_ASSERT(g->strt.nuse == 0);
+    lluz_ASSERT(g->strbufgc == NULL);
+    lluz_ASSERT(g->strt.nuse == 0);
     luaM_freearray(L, L->global->strt.hash, L->global->strt.size, TString*, 0);
     freestack(L, L);
     for (int i = 0; i < LUA_SIZECLASSES; i++)
     {
-        LUAU_ASSERT(g->freepages[i] == NULL);
-        LUAU_ASSERT(g->freegcopages[i] == NULL);
+        lluz_ASSERT(g->freepages[i] == NULL);
+        lluz_ASSERT(g->freegcopages[i] == NULL);
     }
-    LUAU_ASSERT(g->allgcopages == NULL);
-    LUAU_ASSERT(g->totalbytes == sizeof(LG));
-    LUAU_ASSERT(g->memcatbytes[0] == sizeof(LG));
+    lluz_ASSERT(g->allgcopages == NULL);
+    lluz_ASSERT(g->totalbytes == sizeof(LG));
+    lluz_ASSERT(g->memcatbytes[0] == sizeof(LG));
     for (int i = 1; i < LUA_MEMORY_CATEGORIES; i++)
-        LUAU_ASSERT(g->memcatbytes[i] == 0);
+        lluz_ASSERT(g->memcatbytes[i] == 0);
     (*g->frealloc)(g->ud, L, sizeof(LG), 0);
 }
 
@@ -113,14 +114,14 @@ lua_State* luaE_newthread(lua_State* L)
     stack_init(L1, L);                  /* init stack */
     L1->gt = L->gt;                     /* share table of globals */
     L1->singlestep = L->singlestep;
-    LUAU_ASSERT(iswhite(obj2gco(L1)));
+    lluz_ASSERT(iswhite(obj2gco(L1)));
     return L1;
 }
 
 void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
 {
     luaF_close(L1, L1->stack); /* close all upvalues for this thread */
-    LUAU_ASSERT(L1->openupval == NULL);
+    lluz_ASSERT(L1->openupval == NULL);
     global_State* g = L->global;
     if (g->cb.userthread)
         g->cb.userthread(NULL, L1);

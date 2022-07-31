@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -64,18 +64,22 @@ enum lua_Type
     LUA_TNIL = 0,     /* must be 0 due to lua_isnoneornil */
     LUA_TBOOLEAN = 1, /* must be 1 due to l_isfalse */
 
-
+    
+    // THESE SHUFFLE
+    LUA_TVECTOR,
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
-    LUA_TVECTOR,
+    // -------------
 
     LUA_TSTRING, /* all types above this must be value types, all types below this must be GC types - see iscollectable */
 
-
-    LUA_TTABLE,
-    LUA_TFUNCTION,
+    
+    // THESE SHUFFLE
     LUA_TUSERDATA,
     LUA_TTHREAD,
+    LUA_TFUNCTION,
+    LUA_TTABLE,
+    // ----------------
 
     /* values below this line are used in GCObject tags but may never show up in TValue type tags */
     LUA_TPROTO,
@@ -87,7 +91,7 @@ enum lua_Type
 };
 // clang-format on
 
-/* type of numbers in Luau */
+/* type of numbers in lluz */
 typedef double lua_Number;
 
 /* type for integer functions */
@@ -207,9 +211,9 @@ LUA_API int lua_setmetatable(lua_State* L, int objindex);
 LUA_API int lua_setfenv(lua_State* L, int idx);
 
 /*
-** `load' and `call' functions (load and run Luau bytecode)
+** `load' and `call' functions (load and run lluz bytecode)
 */
-LUA_API int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env);
+LUA_API int lluz_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env);
 LUA_API void lua_call(lua_State* L, int nargs, int nresults);
 LUA_API int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc);
 
@@ -300,7 +304,6 @@ LUA_API uintptr_t lua_encodepointer(lua_State* L, uintptr_t p);
 
 LUA_API double lua_clock();
 
-LUA_API void lua_setuserdatatag(lua_State* L, int idx, int tag);
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*));
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);
@@ -373,7 +376,7 @@ LUA_API const char* lua_getupvalue(lua_State* L, int funcindex, int n);
 LUA_API const char* lua_setupvalue(lua_State* L, int funcindex, int n);
 
 LUA_API void lua_singlestep(lua_State* L, int enabled);
-LUA_API int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
+LUA_API void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled);
 
 typedef void (*lua_Coverage)(void* context, const char* function, int linedefined, int depth, const int* hits, size_t size);
 
@@ -393,7 +396,7 @@ struct lua_Debug
     unsigned char nparams;      /* (a) number of parameters */
     char isvararg;              /* (a) */
     char short_src[LUA_IDSIZE]; /* (s) */
-    void* userdata;             /* only valid in luau_callhook */
+    void* userdata;             /* only valid in lluz_callhook */
 };
 
 /* }====================================================================== */
@@ -405,7 +408,7 @@ struct lua_Debug
  * can only be changed when the VM is not running any code */
 struct lua_Callbacks
 {
-    void* userdata; /* arbitrary userdata pointer that is never overwritten by Luau */
+    void* userdata; /* arbitrary userdata pointer that is never overwritten by lluz */
 
     void (*interrupt)(lua_State* L, int gc);  /* gets called at safepoints (loop back edges, call/ret, gc) if set */
     void (*panic)(lua_State* L, int errcode); /* gets called when an unprotected error is raised (if longjmp is used) */

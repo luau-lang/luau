@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -33,12 +33,12 @@ inline bool luai_vecisnan(const float* a)
 #endif
 }
 
-LUAU_FASTMATH_BEGIN
+lluz_FASTMATH_BEGIN
 inline double luai_nummod(double a, double b)
 {
     return a - floor(a / b) * b;
 }
-LUAU_FASTMATH_END
+lluz_FASTMATH_END
 
 #define luai_num2int(i, d) ((i) = (int)(d))
 

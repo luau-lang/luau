@@ -1,9 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
 #include "lcommon.h"
 #include "lnumutils.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #define ALLONES ~0u
 #define NBITS int(8 * sizeof(unsigned))
@@ -147,10 +149,10 @@ static int fieldargs(lua_State* L, int farg, int* width)
 {
     int f = luaL_checkinteger(L, farg);
     int w = luaL_optinteger(L, farg + 1, 1);
-    luaL_argcheck(L, 0 <= f, farg, "field cannot be negative");
-    luaL_argcheck(L, 0 < w, farg + 1, "width must be positive");
+    luaL_argcheck(L, 0 <= f, farg, XorStr("field cannot be negative"));
+    luaL_argcheck(L, 0 < w, farg + 1, XorStr("width must be positive"));
     if (f + w > NBITS)
-        luaL_error(L, "trying to access non-existent bits");
+        luaL_error(L, XorStr("trying to access non-existent bits"));
     *width = w;
     return f;
 }
@@ -211,20 +213,20 @@ static int b_countrz(lua_State* L)
 }
 
 static const luaL_Reg bitlib[] = {
-    {"arshift", b_arshift},
-    {"band", b_and},
-    {"bnot", b_not},
-    {"bor", b_or},
-    {"bxor", b_xor},
-    {"btest", b_test},
-    {"extract", b_extract},
-    {"lrotate", b_lrot},
-    {"lshift", b_lshift},
-    {"replace", b_replace},
-    {"rrotate", b_rrot},
-    {"rshift", b_rshift},
-    {"countlz", b_countlz},
-    {"countrz", b_countrz},
+    {XorStr("arshift"), b_arshift},
+    {XorStr("band"), b_and},
+    {XorStr("bnot"), b_not},
+    {XorStr("bor"), b_or},
+    {XorStr("bxor"), b_xor},
+    {XorStr("btest"), b_test},
+    {XorStr("extract"), b_extract},
+    {XorStr("lrotate"), b_lrot},
+    {XorStr("lshift"), b_lshift},
+    {XorStr("replace"), b_replace},
+    {XorStr("rrotate"), b_rrot},
+    {XorStr("rshift"), b_rshift},
+    {XorStr("countlz"), b_countlz},
+    {XorStr("countrz"), b_countrz},
     {NULL, NULL},
 };
 

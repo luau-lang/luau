@@ -727,20 +727,16 @@ assert((function() local abs = math.abs function foo(...) return abs(...) end re
 -- NOTE: getfenv breaks fastcalls for the remainder of the source! hence why this is delayed until the end
 function testgetfenv()
     getfenv()
-
-    -- declare constant so that at O2 this test doesn't interfere with constant folding which we can't deoptimize
-    local negfive negfive = -5
-
     -- getfenv breaks fastcalls (we assume we can't rely on knowing the semantics), but behavior shouldn't change
-    assert((function() return math.abs(negfive) end)() == 5)
-    assert((function() local abs = math.abs return abs(negfive) end)() == 5)
-    assert((function() local abs = math.abs function foo() return abs(negfive) end return foo() end)() == 5)
+    assert((function() return math.abs(-5) end)() == 5)
+    assert((function() local abs = math.abs return abs(-5) end)() == 5)
+    assert((function() local abs = math.abs function foo() return abs(-5) end return foo() end)() == 5)
 
     -- ... unless you actually reassign the function :D
     getfenv().math = { abs = function(n) return n*n end }
-    assert((function() return math.abs(negfive) end)() == 25)
-    assert((function() local abs = math.abs return abs(negfive) end)() == 25)
-    assert((function() local abs = math.abs function foo() return abs(negfive) end return foo() end)() == 25)
+    assert((function() return math.abs(-5) end)() == 25)
+    assert((function() local abs = math.abs return abs(-5) end)() == 25)
+    assert((function() local abs = math.abs function foo() return abs(-5) end return foo() end)() == 25)
 end
 
 -- you need to have enough arguments and arguments of the right type; if you don't, we'll fallback to the regular code. This checks coercions

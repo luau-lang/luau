@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -15,7 +15,7 @@ typedef union GCObject GCObject;
 */
 // clang-format off
 #define CommonHeader \
-     uint8_t tt; uint8_t marked; uint8_t memcat
+     uint8_t memcat; uint8_t tt; uint8_t marked
 // clang-format on
 
 /*
@@ -81,9 +81,9 @@ typedef struct lua_TValue
 /*
 ** for internal debug only
 */
-#define checkconsistency(obj) LUAU_ASSERT(!iscollectable(obj) || (ttype(obj) == (obj)->value.gc->gch.tt))
+#define checkconsistency(obj) lluz_ASSERT(!iscollectable(obj) || (ttype(obj) == (obj)->value.gc->gch.tt))
 
-#define checkliveness(g, obj) LUAU_ASSERT(!iscollectable(obj) || ((ttype(obj) == (obj)->value.gc->gch.tt) && !isdead(g, (obj)->value.gc)))
+#define checkliveness(g, obj) lluz_ASSERT(!iscollectable(obj) || ((ttype(obj) == (obj)->value.gc->gch.tt) && !isdead(g, (obj)->value.gc)))
 
 /* Macros to set values */
 #define setnilvalue(obj) ((obj)->tt = LUA_TNIL)
@@ -294,7 +294,7 @@ typedef struct Proto
     int linedefined;
 
 
-    uint8_t nups; /* number of upvalues */
+    uint8_t nups;
     uint8_t numparams;
     uint8_t is_vararg;
     uint8_t maxstacksize;

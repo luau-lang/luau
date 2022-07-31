@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lvm.h"
 
@@ -10,6 +10,8 @@
 #include "lmem.h"
 #include "lbytecode.h"
 #include "lapi.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <string.h>
 
@@ -35,7 +37,7 @@ struct TempBuffer
 
     T& operator[](size_t index)
     {
-        LUAU_ASSERT(index < count);
+        lluz_ASSERT(index < count);
         return data[index];
     }
 };
@@ -124,7 +126,7 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
         // luaD_pcall will make sure that if any C/Lua calls during import resolution fail, the thread state is restored back
         int oldTop = lua_gettop(L);
         int status = luaD_pcall(L, &ResolveImport::run, &ri, savestack(L, L->top), 0);
-        LUAU_ASSERT(oldTop + 1 == lua_gettop(L)); // if an error occurred, luaD_pcall saves it on stack
+        lluz_ASSERT(oldTop + 1 == lua_gettop(L)); // if an error occurred, luaD_pcall saves it on stack
 
         if (status != 0)
         {
@@ -139,7 +141,7 @@ static void resolveImportSafe(lua_State* L, Table* env, TValue* k, uint32_t id)
     }
 }
 
-int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env)
+int lluz_load(lua_State* L, const char* chunkname, const char* data, size_t size, int env)
 {
     size_t offset = 0;
 
@@ -150,7 +152,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     {
         char chunkid[LUA_IDSIZE];
         luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
-        lua_pushfstring(L, "%s%.*s", chunkid, int(size - offset), data + offset);
+        lua_pushfstring(L, XorStr("%s%.*s"), chunkid, int(size - offset), data + offset);
         return 1;
     }
 
@@ -158,7 +160,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     {
         char chunkid[LUA_IDSIZE];
         luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
-        lua_pushfstring(L, "%s: bytecode version mismatch (expected [%d..%d], got %d)", chunkid, LBC_VERSION_MIN, LBC_VERSION_MAX, version);
+        lua_pushfstring(L, XorStr("%s: bytecode version mismatch (expected [%d..%d], got %d)"), chunkid, LBC_VERSION_MIN, LBC_VERSION_MAX, version);
         return 1;
     }
 
@@ -187,7 +189,6 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     // proto table
     unsigned int protoCount = readVarInt(data, size, offset);
     TempBuffer<Proto*> protos(L, protoCount);
-
     for (unsigned int i = 0; i < protoCount; ++i)
     {
         Proto* p = luaF_newproto(L);
@@ -277,7 +278,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             }
 
             default:
-                LUAU_ASSERT(!"Unexpected constant kind");
+                lluz_ASSERT(!"Unexpected constant kind");
             }
         }
 

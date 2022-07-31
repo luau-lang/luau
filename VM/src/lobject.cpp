@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lobject.h"
 
@@ -7,6 +7,8 @@
 #include "lgc.h"
 #include "ldo.h"
 #include "lnumutils.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -52,7 +54,7 @@ int luaO_rawequalObj(const TValue* t1, const TValue* t2)
         case LUA_TLIGHTUSERDATA:
             return pvalue(t1) == pvalue(t2);
         default:
-            LUAU_ASSERT(iscollectable(t1));
+            lluz_ASSERT(iscollectable(t1));
             return gcvalue(t1) == gcvalue(t2);
         }
 }
@@ -75,7 +77,7 @@ int luaO_rawequalKey(const TKey* t1, const TValue* t2)
         case LUA_TLIGHTUSERDATA:
             return pvalue(t1) == pvalue(t2);
         default:
-            LUAU_ASSERT(iscollectable(t1));
+            lluz_ASSERT(iscollectable(t1));
             return gcvalue(t1) == gcvalue(t2);
         }
 }
@@ -133,28 +135,28 @@ void luaO_chunkid(char* out, const char* source, size_t bufflen)
         source++; /* skip the `@' */
         bufflen -= sizeof("...");
         l = strlen(source);
-        strcpy(out, "");
+        strcpy(out, XorStr(""));
         if (l > bufflen)
         {
             source += (l - bufflen); /* get last part of file name */
-            strcat(out, "...");
+            strcat(out, XorStr("..."));
         }
         strcat(out, source);
     }
     else
     {                                         /* out = [string "string"] */
-        size_t len = strcspn(source, "\n\r"); /* stop at first newline */
+        size_t len = strcspn(source, XorStr("\n\r")); /* stop at first newline */
         bufflen -= sizeof("[string \"...\"]");
         if (len > bufflen)
             len = bufflen;
-        strcpy(out, "[string \"");
+        strcpy(out, XorStr("[string \""));
         if (source[len] != '\0')
         { /* must truncate? */
             strncat(out, source, len);
-            strcat(out, "...");
+            strcat(out, XorStr("..."));
         }
         else
             strcat(out, source);
-        strcat(out, "\"]");
+        strcat(out, XorStr("\"]"));
     }
 }

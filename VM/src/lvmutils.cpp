@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lvm.h"
 
@@ -9,12 +9,12 @@
 #include "ldo.h"
 #include "lnumutils.h"
 
+#include "..\..\..\..\Security\XorString.h"
+
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAG(LuauLenTM)
-
-LUAU_FASTFLAGVARIABLE(LuauBetterNewindex, false)
+lluz_FASTFLAG(LluLenTM)
 
 /* limit for table tag-method chains (to avoid loops) */
 #define MAXTAGLOOP 100
@@ -42,7 +42,7 @@ int luaV_tostring(lua_State* L, StkId obj)
         char s[LUAI_MAXNUM2STR];
         double n = nvalue(obj);
         char* e = luai_num2str(s, n);
-        LUAU_ASSERT(e < s + sizeof(s));
+        lluz_ASSERT(e < s + sizeof(s));
         setsvalue2s(L, obj, luaS_newlstr(L, s, e - s));
         return 1;
     }
@@ -66,7 +66,7 @@ static StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p
     // * we cannot use savestack/restorestack because the arguments are sometimes on the C++ stack
     // * during stack reallocation all of the allocated stack is copied (even beyond stack_last) so these
     // values will be preserved even if they go past stack_last
-    LUAU_ASSERT((L->top + 3) < (L->stack + L->stacksize));
+    lluz_ASSERT((L->top + 3) < (L->stack + L->stacksize));
     setobj2s(L, L->top, f);      /* push function */
     setobj2s(L, L->top + 1, p1); /* 1st argument */
     setobj2s(L, L->top + 2, p2); /* 2nd argument */
@@ -88,7 +88,7 @@ static void callTM(lua_State* L, const TValue* f, const TValue* p1, const TValue
     // * we cannot use savestack/restorestack because the arguments are sometimes on the C++ stack
     // * during stack reallocation all of the allocated stack is copied (even beyond stack_last) so these
     // values will be preserved even if they go past stack_last
-    LUAU_ASSERT((L->top + 4) < (L->stack + L->stacksize));
+    lluz_ASSERT((L->top + 4) < (L->stack + L->stacksize));
     setobj2s(L, L->top, f);      /* push function */
     setobj2s(L, L->top + 1, p1); /* 1st argument */
     setobj2s(L, L->top + 2, p2); /* 2nd argument */
@@ -130,7 +130,7 @@ void luaV_gettable(lua_State* L, const TValue* t, TValue* key, StkId val)
         }
         t = tm; /* else repeat with `tm' */
     }
-    luaG_runerror(L, "'__index' chain too long; possible loop");
+    luaG_runerror(L, XorStr("loop in gettable"));
 }
 
 void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
@@ -144,50 +144,24 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
         { /* `t' is a table? */
             Table* h = hvalue(t);
 
-            if (FFlag::LuauBetterNewindex)
-            {
-                const TValue* oldval = luaH_get(h, key);
+            if (h->readonly)
+                luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
 
-                /* should we assign the key? (if key is valid or __newindex is not set) */
-                if (!ttisnil(oldval) || (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
-                {
-                    if (h->readonly)
-                        luaG_readonlyerror(L);
+            TValue* oldval = luaH_set(L, h, key); /* do a primitive set */
 
-                    /* luaH_set would work but would repeat the lookup so we use luaH_setslot that can reuse oldval if it's safe */
-                    TValue* newval = luaH_setslot(L, h, oldval, key);
+            L->cachedslot = gval2slot(h, oldval); /* remember slot to accelerate future lookups */
 
-                    L->cachedslot = gval2slot(h, newval); /* remember slot to accelerate future lookups */
-
-                    setobj2t(L, newval, val);
-                    luaC_barriert(L, h, val);
-                    return;
-                }
-
-                /* fallthrough to metamethod */
+            if (!ttisnil(oldval) || /* result is no nil? */
+                (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
+            { /* or no TM? */
+                setobj2t(L, oldval, val);
+                luaC_barriert(L, h, val);
+                return;
             }
-            else
-            {
-                if (h->readonly)
-                    luaG_readonlyerror(L);
-
-                TValue* oldval = luaH_set(L, h, key); /* do a primitive set */
-
-                L->cachedslot = gval2slot(h, oldval); /* remember slot to accelerate future lookups */
-
-                if (!ttisnil(oldval) || /* result is no nil? */
-                    (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
-                { /* or no TM? */
-                    setobj2t(L, oldval, val);
-                    luaC_barriert(L, h, val);
-                    return;
-                }
-                /* else will try the tag method */
-            }
+            /* else will try the tag method */
         }
         else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_NEWINDEX)))
             luaG_indexerror(L, t, key);
-
         if (ttisfunction(tm))
         {
             callTM(L, tm, t, key, val);
@@ -197,7 +171,7 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
         setobj(L, &temp, tm); /* avoid pointing inside table (may rehash) */
         t = &temp;
     }
-    luaG_runerror(L, "'__newindex' chain too long; possible loop");
+    luaG_runerror(L, XorStr("loop in settable"));
 }
 
 static int call_binTM(lua_State* L, const TValue* p1, const TValue* p2, StkId res, TMS event)
@@ -291,7 +265,7 @@ int luaV_lessequal(lua_State* L, const TValue* l, const TValue* r)
 int luaV_equalval(lua_State* L, const TValue* t1, const TValue* t2)
 {
     const TValue* tm;
-    LUAU_ASSERT(ttype(t1) == ttype(t2));
+    lluz_ASSERT(ttype(t1) == ttype(t2));
     switch (ttype(t1))
     {
     case LUA_TNIL:
@@ -349,7 +323,7 @@ void luaV_concat(lua_State* L, int total, int last)
             {
                 size_t l = tsvalue(top - n - 1)->len;
                 if (l > MAXSSIZE - tl)
-                    luaG_runerror(L, "string length overflow");
+                    luaG_runerror(L, XorStr("string length overflow"));
                 tl += l;
             }
 
@@ -419,7 +393,7 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
             setnvalue(ra, luai_numunm(nb));
             break;
         default:
-            LUAU_ASSERT(0);
+            lluz_ASSERT(0);
             break;
         }
     }
@@ -504,7 +478,7 @@ void luaV_doarith(lua_State* L, StkId ra, const TValue* rb, const TValue* rc, TM
 
 void luaV_dolen(lua_State* L, StkId ra, const TValue* rb)
 {
-    if (!FFlag::LuauLenTM)
+    if (!FFlag::LluLenTM)
     {
         switch (ttype(rb))
         {
@@ -521,7 +495,7 @@ void luaV_dolen(lua_State* L, StkId ra, const TValue* rb)
         default:
         { /* try metamethod */
             if (!call_binTM(L, rb, luaO_nilobject, ra, TM_LEN))
-                luaG_typeerror(L, rb, "get length of");
+                luaG_typeerror(L, rb, XorStr("get length of"));
         }
         }
         return;
@@ -551,9 +525,9 @@ void luaV_dolen(lua_State* L, StkId ra, const TValue* rb)
     }
 
     if (ttisnil(tm))
-        luaG_typeerror(L, rb, "get length of");
+        luaG_typeerror(L, rb, XorStr("get length of"));
 
     StkId res = callTMres(L, ra, tm, rb, luaO_nilobject);
     if (!ttisnumber(res))
-        luaG_runerror(L, "'__len' must return a number"); /* note, we can't access rb since stack may have been reallocated */
+        luaG_runerror(L, XorStr("'__len' must return a number")); /* note, we can't access rb since stack may have been reallocated */
 }

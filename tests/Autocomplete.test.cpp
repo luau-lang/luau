@@ -1,10 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Autocomplete.h"
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeInfer.h"
-#include "Luau/TypeVar.h"
-#include "Luau/VisitTypeVar.h"
-#include "Luau/StringUtils.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Autocomplete.h"
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/TypeInfer.h"
+#include "lluz/TypeVar.h"
+#include "lluz/VisitTypeVar.h"
+#include "lluz/StringUtils.h"
 
 #include "Fixture.h"
 
@@ -12,10 +12,10 @@
 
 #include <map>
 
-LUAU_FASTFLAG(LuauTraceTypesInNonstrictMode2)
-LUAU_FASTFLAG(LuauSetMetatableDoesNotTimeTravel)
+lluz_FASTFLAG(LluTraceTypesInNonstrictMode2)
+lluz_FASTFLAG(LluSetMetatableDoesNotTimeTravel)
 
-using namespace Luau;
+using namespace lluz;
 
 static std::optional<AutocompleteEntryMap> nullCallback(std::string tag, std::optional<const ClassTypeVar*> ptr)
 {
@@ -32,12 +32,12 @@ struct ACFixtureImpl : BaseType
 
     AutocompleteResult autocomplete(unsigned row, unsigned column)
     {
-        return Luau::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
+        return lluz::autocomplete(this->frontend, "MainModule", Position{row, column}, nullCallback);
     }
 
     AutocompleteResult autocomplete(char marker)
     {
-        return Luau::autocomplete(this->frontend, "MainModule", getPosition(marker), nullCallback);
+        return lluz::autocomplete(this->frontend, "MainModule", getPosition(marker), nullCallback);
     }
 
     CheckResult check(const std::string& source)
@@ -52,8 +52,8 @@ struct ACFixtureImpl : BaseType
         {
             if (prevChar == '@')
             {
-                LUAU_ASSERT("Illegal marker character" && c >= '0' && c <= '9');
-                LUAU_ASSERT("Duplicate marker found" && markerPosition.count(c) == 0);
+                lluz_ASSERT("Illegal marker character" && c >= '0' && c <= '9');
+                lluz_ASSERT("Duplicate marker found" && markerPosition.count(c) == 0);
                 markerPosition.insert(std::pair{c, curPos});
             }
             else if (c == '@')
@@ -75,7 +75,7 @@ struct ACFixtureImpl : BaseType
             }
             prevChar = c;
         }
-        LUAU_ASSERT("Digit expected after @ symbol" && prevChar != '@');
+        lluz_ASSERT("Digit expected after @ symbol" && prevChar != '@');
 
         return BaseType::check(filteredSource);
     }
@@ -84,17 +84,17 @@ struct ACFixtureImpl : BaseType
     {
         TypeChecker& typeChecker = this->frontend.typeCheckerForAutocomplete;
         unfreeze(typeChecker.globalTypes);
-        LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
+        LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, XorStr("@test"));
         freeze(typeChecker.globalTypes);
 
-        REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
+        REQUIRE_MESSAGE(result.success, XorStr("loadDefinition: unable to load definition file"));
         return result;
     }
 
     const Position& getPosition(char marker) const
     {
         auto i = markerPosition.find(marker);
-        LUAU_ASSERT(i != markerPosition.end());
+        lluz_ASSERT(i != markerPosition.end());
         return i->second;
     }
 
@@ -118,11 +118,11 @@ struct ACBuiltinsFixture : ACFixtureImpl<BuiltinsFixture>
 {
 };
 
-TEST_SUITE_BEGIN("AutocompleteTest");
+TEST_SUITE_BEGIN(XorStr("AutocompleteTest"));
 
 TEST_CASE_FIXTURE(ACFixture, "empty_program")
 {
-    check(" @1");
+    check(XorStr(" @1"));
 
     auto ac = autocomplete('1');
 
@@ -133,7 +133,7 @@ TEST_CASE_FIXTURE(ACFixture, "empty_program")
 
 TEST_CASE_FIXTURE(ACFixture, "local_initializer")
 {
-    check("local a = @1");
+    check(XorStr("local a = @1"));
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("table"));
@@ -142,7 +142,7 @@ TEST_CASE_FIXTURE(ACFixture, "local_initializer")
 
 TEST_CASE_FIXTURE(ACFixture, "leave_numbers_alone")
 {
-    check("local a = 3.@11");
+    check(XorStr("local a = 3.@11"));
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.empty());
@@ -150,7 +150,7 @@ TEST_CASE_FIXTURE(ACFixture, "leave_numbers_alone")
 
 TEST_CASE_FIXTURE(ACFixture, "user_defined_globals")
 {
-    check("local myLocal = 4; @1");
+    check(XorStr("local myLocal = 4; @1"));
 
     auto ac = autocomplete('1');
 
@@ -393,7 +393,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "get_string_completions")
 
 TEST_CASE_FIXTURE(ACFixture, "get_suggestions_for_new_statement")
 {
-    check("@1");
+    check(XorStr("@1"));
 
     auto ac = autocomplete('1');
 
@@ -486,11 +486,11 @@ TEST_CASE_FIXTURE(ACFixture, "bias_toward_inner_scope")
 
 TEST_CASE_FIXTURE(ACFixture, "recommend_statement_starting_keywords")
 {
-    check("@1");
+    check(XorStr("@1"));
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("local"));
 
-    check("local i = @1");
+    check(XorStr("local i = @1"));
     auto ac2 = autocomplete('1');
     CHECK(!ac2.entryMap.count("local"));
 }
@@ -551,7 +551,7 @@ TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_within_a_broken_co
 
 TEST_CASE_FIXTURE(ACFixture, "dont_offer_any_suggestions_from_within_a_broken_comment_at_the_very_end_of_the_file")
 {
-    check("--[[@1");
+    check(XorStr("--[[@1"));
 
     auto ac = autocomplete('1');
     CHECK_EQ(0, ac.entryMap.size());
@@ -1191,16 +1191,16 @@ export type B = { z: number, w: number }
 return {}
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
 
     fileResolver.source["Module/B"] = R"(
 local aaa = require(script.Parent.A)
 local a: aa
     )";
 
-    frontend.check("Module/B");
+    frontend.check(XorStr("Module/B"));
 
-    auto ac = Luau::autocomplete(frontend, "Module/B", Position{2, 11}, nullCallback);
+    auto ac = lluz::autocomplete(frontend, "Module/B", Position{2, 11}, nullCallback);
 
     CHECK(ac.entryMap.count("aaa"));
 }
@@ -1213,16 +1213,16 @@ export type B = { z: number, w: number }
 return {}
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
 
     fileResolver.source["Module/B"] = R"(
 local aaa = require(script.Parent.A)
 local a: aaa.
     )";
 
-    frontend.check("Module/B");
+    frontend.check(XorStr("Module/B"));
 
-    auto ac = Luau::autocomplete(frontend, "Module/B", Position{2, 13}, nullCallback);
+    auto ac = lluz::autocomplete(frontend, "Module/B", Position{2, 13}, nullCallback);
 
     CHECK_EQ(2, ac.entryMap.size());
     CHECK(ac.entryMap.count("A"));
@@ -1473,7 +1473,7 @@ local b: s@1 = "str"
     CHECK(ac.entryMap["string"].typeCorrect == TypeCorrectKind::Correct);
 
     check(R"(
-local function f() return "str" end
+local function f() return XorStr("str") end
 local b: s@1 = f()
     )");
 
@@ -1571,7 +1571,7 @@ local b: (number, ...s@1) = function(a: number, ...: string) return a end
     CHECK(ac.entryMap["string"].typeCorrect == TypeCorrectKind::Correct);
 
     check(R"(
-local b: (number) -> ...s@1 = function(a: number): ...string return "a", "b", "c" end
+local b: (number) -> ...s@1 = function(a: number): ...string return XorStr("a"), "b", "c" end
     )");
 
     ac = autocomplete('1');
@@ -1863,16 +1863,16 @@ local function b(a: ((done) -> number) -> number) return a(function(done) return
 return {a = a, b = b}
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
 
     fileResolver.source["Module/B"] = R"(
 local ex = require(script.Parent.A)
 ex.a(function(x:
     )";
 
-    frontend.check("Module/B");
+    frontend.check(XorStr("Module/B"));
 
-    auto ac = Luau::autocomplete(frontend, "Module/B", Position{2, 16}, nullCallback);
+    auto ac = lluz::autocomplete(frontend, "Module/B", Position{2, 16}, nullCallback);
 
     CHECK(!ac.entryMap.count("done"));
 
@@ -1881,9 +1881,9 @@ local ex = require(script.Parent.A)
 ex.b(function(x:
     )";
 
-    frontend.check("Module/C");
+    frontend.check(XorStr("Module/C"));
 
-    ac = Luau::autocomplete(frontend, "Module/C", Position{2, 16}, nullCallback);
+    ac = lluz::autocomplete(frontend, "Module/C", Position{2, 16}, nullCallback);
 
     CHECK(!ac.entryMap.count("(done) -> number"));
 }
@@ -1897,16 +1897,16 @@ local function b(a: ((done) -> number) -> number) return a(function(done) return
 return {a = a, b = b}
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
 
     fileResolver.source["Module/B"] = R"(
 local ex = require(script.Parent.A)
 ex.a(function(x:
     )";
 
-    frontend.check("Module/B");
+    frontend.check(XorStr("Module/B"));
 
-    auto ac = Luau::autocomplete(frontend, "Module/B", Position{2, 16}, nullCallback);
+    auto ac = lluz::autocomplete(frontend, "Module/B", Position{2, 16}, nullCallback);
 
     CHECK(!ac.entryMap.count("done"));
     CHECK(ac.entryMap.count("ex.done"));
@@ -1917,9 +1917,9 @@ local ex = require(script.Parent.A)
 ex.b(function(x:
     )";
 
-    frontend.check("Module/C");
+    frontend.check(XorStr("Module/C"));
 
-    ac = Luau::autocomplete(frontend, "Module/C", Position{2, 16}, nullCallback);
+    ac = lluz::autocomplete(frontend, "Module/C", Position{2, 16}, nullCallback);
 
     CHECK(!ac.entryMap.count("(done) -> number"));
     CHECK(ac.entryMap.count("(ex.done) -> number"));
@@ -2224,34 +2224,59 @@ export type other = { z: number, w: number }
 return {}
     )";
 
-    LUAU_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
+    lluz_REQUIRE_NO_ERRORS(frontend.check("Module/A"));
 
     fileResolver.source["Module/B"] = R"(
 local aaa = require(script.Parent.A)
 local a: aaa.do
     )";
 
-    frontend.check("Module/B");
+    frontend.check(XorStr("Module/B"));
 
-    auto ac = Luau::autocomplete(frontend, "Module/B", Position{2, 15}, nullCallback);
+    auto ac = lluz::autocomplete(frontend, "Module/B", Position{2, 15}, nullCallback);
 
     CHECK_EQ(2, ac.entryMap.size());
     CHECK(ac.entryMap.count("done"));
     CHECK(ac.entryMap.count("other"));
 }
 
-
-TEST_CASE_FIXTURE(ACFixture, "comments")
+TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteSource")
 {
-    fileResolver.source["Comments"] = "--!str";
+    std::string_view source = R"(
+        local a = table. -- Line 1
+        --             | Column 23
+    )";
 
-    auto ac = Luau::autocomplete(frontend, "Comments", Position{0, 6}, nullCallback);
+    auto ac = autocompleteSource(frontend, source, Position{1, 24}, nullCallback).result;
+
+    CHECK_EQ(17, ac.entryMap.size());
+    CHECK(ac.entryMap.count("find"));
+    CHECK(ac.entryMap.count("pack"));
+    CHECK(!ac.entryMap.count("math"));
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_require")
+{
+    std::string_view source = R"(
+        local a = require(w -- Line 1
+        --                 | Column 27
+    )";
+
+    // CLI-43699 require shouldn't crash inside autocompleteSource
+    auto ac = autocompleteSource(frontend, source, Position{1, 27}, nullCallback).result;
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_comments")
+{
+    std::string_view source = "--!str";
+
+    auto ac = autocompleteSource(frontend, source, Position{0, 6}, nullCallback).result;
     CHECK_EQ(0, ac.entryMap.size());
 }
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteProp_index_function_metamethod_is_variadic")
 {
-    fileResolver.source["Module/A"] = R"(
+    std::string_view source = R"(
         type Foo = {x: number}
         local t = {}
         setmetatable(t, {
@@ -2264,7 +2289,7 @@ TEST_CASE_FIXTURE(ACBuiltinsFixture, "autocompleteProp_index_function_metamethod
         --          | Column 20
     )";
 
-    auto ac = Luau::autocomplete(frontend, "Module/A", Position{9, 20}, nullCallback);
+    auto ac = autocompleteSource(frontend, source, Position{9, 20}, nullCallback).result;
     REQUIRE_EQ(1, ac.entryMap.size());
     CHECK(ac.entryMap.count("x"));
 }
@@ -2353,36 +2378,35 @@ end
     CHECK(ac.entryMap.count("elsewhere"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "not_the_var_we_are_defining")
+TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_not_the_var_we_are_defining")
 {
-    fileResolver.source["Module/A"] = "abc,de";
+    std::string_view source = "abc,de";
 
-    auto ac = Luau::autocomplete(frontend, "Module/A", Position{0, 6}, nullCallback);
+    auto ac = autocompleteSource(frontend, source, Position{0, 6}, nullCallback).result;
     CHECK(!ac.entryMap.count("de"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "recursive_function_global")
+TEST_CASE_FIXTURE(ACFixture, "autocompleteSource_recursive_function")
 {
-    fileResolver.source["global"] = R"(function abc()
+    {
+        std::string_view global = R"(function abc()
 
 end
 )";
 
-    auto ac = Luau::autocomplete(frontend, "global", Position{1, 0}, nullCallback);
-    CHECK(ac.entryMap.count("abc"));
-}
+        auto ac = autocompleteSource(frontend, global, Position{1, 0}, nullCallback).result;
+        CHECK(ac.entryMap.count("abc"));
+    }
 
-
-
-TEST_CASE_FIXTURE(ACFixture, "recursive_function_local")
-{
-    fileResolver.source["local"] = R"(local function abc()
+    {
+        std::string_view local = R"(local function abc()
 
 end
 )";
 
-    auto ac = Luau::autocomplete(frontend, "local", Position{1, 0}, nullCallback);
-    CHECK(ac.entryMap.count("abc"));
+        auto ac = autocompleteSource(frontend, local, Position{1, 0}, nullCallback).result;
+        CHECK(ac.entryMap.count("abc"));
+    }
 }
 
 TEST_CASE_FIXTURE(ACFixture, "suggest_table_keys")
@@ -2516,7 +2540,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_documentation_symbols")
     auto ac = autocomplete('1');
 
     REQUIRE(ac.entryMap.count("x"));
-    CHECK_EQ(ac.entryMap["x"].documentationSymbol, "@test/global/y.x");
+    CHECK_EQ(ac.entryMap[XorStr("x"].documentationSymbol, "@test/global/y.x"));
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_ifelse_expressions")
@@ -2632,14 +2656,14 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_first_function_arg_expected_type")
 {
     check(R"(
 local function foo1() return 1 end
-local function foo2() return "1" end
+local function foo2() return XorStr("1") end
 
-local function bar0() return "got" .. a end
-local function bar1(a: number) return "got " .. a end
-local function bar2(a: number, b: string) return "got " .. a .. b end
+local function bar0() return XorStr("got") .. a end
+local function bar1(a: number) return XorStr("got ") .. a end
+local function bar2(a: number, b: string) return XorStr("got ") .. a .. b end
 
 local t = {}
-function t:bar1(a: number) return "got " .. a end
+function t:bar1(a: number) return XorStr("got ") .. a end
 
 local r1 = bar0(@1)
 local r2 = bar1(@2)
@@ -2779,7 +2803,7 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")
     check(R"(
         type tagged = {tag:"cat", fieldx:number} | {tag:"dog", fieldy:number}
         local x: tagged = {tag="cat", fieldx=2}
-        if x.tag == "@1" or "@2" ~= x.tag then end
+        if x.tag == XorStr("@1") or "@2" ~= x.tag then end
     )");
 
     auto ac = autocomplete('1');
@@ -2845,7 +2869,7 @@ local abc = b@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_on_class")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     loadDefinition(R"(
 declare class Foo
@@ -2883,25 +2907,9 @@ t.@1
     }
 }
 
-TEST_CASE_FIXTURE(ACFixture, "do_compatible_self_calls")
-{
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
-    check(R"(
-local t = {}
-function t:m() end
-t:@1
-    )");
-
-    auto ac = autocomplete('1');
-
-    REQUIRE(ac.entryMap.count("m"));
-    CHECK(!ac.entryMap["m"].wrongIndexType);
-}
-
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     check(R"(
 local t = {}
@@ -2917,7 +2925,7 @@ t:@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_2")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     check(R"(
 local f: (() -> number) & ((number) -> number) = function(x: number?) return 2 end
@@ -2932,7 +2940,7 @@ t:@1
     CHECK(ac.entryMap["f"].wrongIndexType);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "do_wrong_compatible_self_calls")
+TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_provisional")
 {
     check(R"(
 local t = {}
@@ -2947,26 +2955,9 @@ t:@1
     CHECK(!ac.entryMap["m"].wrongIndexType);
 }
 
-TEST_CASE_FIXTURE(ACFixture, "no_wrong_compatible_self_calls_with_generics")
-{
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
-    check(R"(
-local t = {}
-function t.m<T>(a: T) end
-t:@1
-    )");
-
-    auto ac = autocomplete('1');
-
-    REQUIRE(ac.entryMap.count("m"));
-    // While this call is compatible with the type, this requires instantiation of a generic type which we don't perform
-    CHECK(ac.entryMap["m"].wrongIndexType);
-}
-
 TEST_CASE_FIXTURE(ACFixture, "string_prim_self_calls_are_fine")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     check(R"(
 local s = "hello"
@@ -2985,7 +2976,7 @@ s:@1
 
 TEST_CASE_FIXTURE(ACFixture, "string_prim_non_self_calls_are_avoided")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     check(R"(
 local s = "hello"
@@ -3002,7 +2993,7 @@ s.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_non_self_calls_are_fine")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     check(R"(
 string.@1
@@ -3033,7 +3024,7 @@ table.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_self_calls_are_invalid")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
+    ScopedFastFlag selfCallAutocompleteFix2{"lluzSelfCallAutocompleteFix2", true};
 
     check(R"(
 string:@1
@@ -3045,11 +3036,8 @@ string:@1
     CHECK(ac.entryMap["byte"].wrongIndexType == true);
     REQUIRE(ac.entryMap.count("char"));
     CHECK(ac.entryMap["char"].wrongIndexType == true);
-
-    // We want the next test to evaluate to 'true', but we have to allow function defined with 'self' to be callable with ':'
-    // We may change the definition of the string metatable to not use 'self' types in the future (like byte/char/pack/unpack)
     REQUIRE(ac.entryMap.count("sub"));
-    CHECK(ac.entryMap["sub"].wrongIndexType == false);
+    CHECK(ac.entryMap["sub"].wrongIndexType == true);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "source_module_preservation_and_invalidation")

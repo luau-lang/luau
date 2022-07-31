@@ -1,6 +1,8 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <string.h>
 #include <time.h>
@@ -70,7 +72,7 @@ static int getfield(lua_State* L, const char* key, int d)
     else
     {
         if (d < 0)
-            luaL_error(L, "field '%s' missing in date table", key);
+            luaL_error(L, XorStr("field '%s' missing in date table"), key);
         res = d;
     }
     lua_pop(L, 1);
@@ -79,7 +81,7 @@ static int getfield(lua_State* L, const char* key, int d)
 
 static int os_date(lua_State* L)
 {
-    const char* s = luaL_optstring(L, 1, "%c");
+    const char* s = luaL_optstring(L, 1, XorStr("%c"));
     time_t t = luaL_opt(L, (time_t)luaL_checknumber, 2, time(NULL));
 
     struct tm tm;
@@ -128,7 +130,7 @@ static int os_date(lua_State* L)
             }
             else if (strchr(LUA_STRFTIMEOPTIONS, *(s + 1)) == 0)
             {
-                luaL_argerror(L, 1, "invalid conversion specifier");
+                luaL_argerror(L, 1, XorStr("invalid conversion specifier"));
             }
             else
             {
@@ -160,7 +162,7 @@ static int os_time(lua_State* L)
         ts.tm_mday = getfield(L, "day", -1);
         ts.tm_mon = getfield(L, "month", -1) - 1;
         ts.tm_year = getfield(L, "year", -1) - 1900;
-        ts.tm_isdst = getboolfield(L, "isdst");
+        ts.tm_isdst = getboolfield(L, XorStr("isdst"));
 
         // Note: upstream Lua uses mktime() here which assumes input is local time, but we prefer UTC for consistency
         t = timegm(&ts);
@@ -179,10 +181,10 @@ static int os_difftime(lua_State* L)
 }
 
 static const luaL_Reg syslib[] = {
-    {"clock", os_clock},
-    {"date", os_date},
-    {"difftime", os_difftime},
-    {"time", os_time},
+    {XorStr("clock"), os_clock},
+    {XorStr("date"), os_date},
+    {XorStr("difftime"), os_difftime},
+    {XorStr("time"), os_time},
     {NULL, NULL},
 };
 

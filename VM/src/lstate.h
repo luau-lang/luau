@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -226,13 +226,15 @@ struct lua_State
 
     bool singlestep; /* call debugstep hook after each instruction */
 
-
-    StkId top;                                        /* first free slot in the stack */
-    StkId base;                                       /* base of current function */
+    // THESE SHUFFLE ---------------------
     global_State* global;
-    CallInfo* ci;                                     /* call info for current function */
-    StkId stack_last;                                 /* last free slot in the stack */
-    StkId stack;                                     /* stack base */
+    StkId top;
+    StkId base;
+
+    CallInfo* ci;
+    StkId stack;
+    StkId stack_last;
+    //----------------------------------------------------
 
 
     CallInfo* end_ci;                          /* points after end of ci array*/
@@ -246,14 +248,14 @@ struct lua_State
     unsigned short nCcalls;     /* number of nested C calls */
     unsigned short baseCcalls; /* nested C calls when resuming coroutine */
 
-    int cachedslot;    /* when table operations or INDEX/NEWINDEX is invoked from Luau, what is the expected slot for lookup? */
+    int cachedslot;    /* when table operations or INDEX/NEWINDEX is invoked from lluz, what is the expected slot for lookup? */
 
-
-    Table* gt;           /* table of globals */
-    UpVal* openupval;    /* list of open upvalues in this stack */
+    // THESE SHUFFLE ---------------------
+    Table* gt;
+    UpVal* openupval;
     GCObject* gclist;
-
-    TString* namecall; /* when invoked from Luau using NAMECALL, what method do we need to invoke? */
+    TString* namecall;
+    //----------------------------------------------------
 
     void* userdata;
 };

@@ -1,6 +1,6 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Config.h"
-#include "Luau/Frontend.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Config.h"
+#include "lluz/Frontend.h"
 
 #include "Fixture.h"
 #include "ScopedFlags.h"
@@ -9,9 +9,9 @@
 
 #include <iostream>
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("ConfigTest");
+TEST_SUITE_BEGIN(XorStr("ConfigTest"));
 
 TEST_CASE("language_mode")
 {
@@ -19,7 +19,7 @@ TEST_CASE("language_mode")
     auto err = parseConfig(R"({"languageMode":"strict"})", config);
     REQUIRE(!err);
 
-    CHECK_EQ(int(Luau::Mode::Strict), int(config.mode));
+    CHECK_EQ(int(lluz::Mode::Strict), int(config.mode));
 }
 
 TEST_CASE("disable_a_lint_rule")
@@ -57,7 +57,7 @@ TEST_CASE("noinfer_is_still_allowed")
     auto err = parseConfig(R"( {"language": {"mode": "noinfer"}} )", config, true);
     REQUIRE(!err);
 
-    CHECK_EQ(int(Luau::Mode::NoCheck), int(config.mode));
+    CHECK_EQ(int(lluz::Mode::NoCheck), int(config.mode));
 }
 
 TEST_CASE("lint_warnings_are_ordered")
@@ -130,8 +130,8 @@ TEST_CASE("extra_globals")
     REQUIRE(!err);
 
     REQUIRE(config.globals.size() == 2);
-    CHECK(config.globals[0] == "it");
-    CHECK(config.globals[1] == "__DEV__");
+    CHECK(config.globals[0] == XorStr("it"));
+    CHECK(config.globals[1] == XorStr("__DEV__"));
 }
 
 TEST_CASE("lint_rules_compat")

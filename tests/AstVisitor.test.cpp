@@ -1,11 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Fixture.h"
 
-#include "Luau/Ast.h"
+#include "lluz/Ast.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 namespace
 {
@@ -50,7 +50,7 @@ public:
 
 } // namespace
 
-TEST_SUITE_BEGIN("AstVisitorTest");
+TEST_SUITE_BEGIN(XorStr("AstVisitorTest"));
 
 TEST_CASE_FIXTURE(Fixture, "TypeAnnotationsAreNotVisited")
 {

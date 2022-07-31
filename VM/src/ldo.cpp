@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "ldo.h"
 
@@ -7,6 +7,8 @@
 #include "lgc.h"
 #include "lmem.h"
 #include "lvm.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #if LUA_USE_LONGJMP
 #include <setjmp.h>
@@ -33,11 +35,11 @@ struct lua_jmpbuf
 
 /* use POSIX versions of setjmp/longjmp if possible: they don't save/restore signal mask and are therefore faster */
 #if defined(__linux__) || defined(__APPLE__)
-#define LUAU_SETJMP(buf) _setjmp(buf)
-#define LUAU_LONGJMP(buf, code) _longjmp(buf, code)
+#define lluz_SETJMP(buf) _setjmp(buf)
+#define lluz_LONGJMP(buf, code) _longjmp(buf, code)
 #else
-#define LUAU_SETJMP(buf) setjmp(buf)
-#define LUAU_LONGJMP(buf, code) longjmp(buf, code)
+#define lluz_SETJMP(buf) setjmp(buf)
+#define lluz_LONGJMP(buf, code) longjmp(buf, code)
 #endif
 
 int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)
@@ -47,7 +49,7 @@ int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)
     jb.status = 0;
     L->global->errorjmp = &jb;
 
-    if (LUAU_SETJMP(jb.buf) == 0)
+    if (lluz_SETJMP(jb.buf) == 0)
         f(L, ud);
 
     L->global->errorjmp = jb.prev;
@@ -59,7 +61,7 @@ l_noret luaD_throw(lua_State* L, int errcode)
     if (lua_jmpbuf* jb = L->global->errorjmp)
     {
         jb->status = errcode;
-        LUAU_LONGJMP(jb->buf, 1);
+        lluz_LONGJMP(jb->buf, 1);
     }
 
     if (L->global->cb.panic)
@@ -92,15 +94,15 @@ public:
         switch (status)
         {
         case LUA_ERRRUN:
-            return "lua_exception: LUA_ERRRUN (no string/number provided as description)";
+            return XorStr("lua_exception: LUA_ERRRUN (no string/number provided as description)");
         case LUA_ERRSYNTAX:
-            return "lua_exception: LUA_ERRSYNTAX (no string/number provided as description)";
+            return XorStr("lua_exception: LUA_ERRSYNTAX (no string/number provided as description)");
         case LUA_ERRMEM:
-            return "lua_exception: " LUA_MEMERRMSG;
+            return XorStr("lua_exception: " LUA_MEMERRMSG);
         case LUA_ERRERR:
-            return "lua_exception: " LUA_ERRERRMSG;
+            return XorStr("lua_exception: " LUA_ERRERRMSG);
         default:
-            return "lua_exception: unexpected exception status";
+            return XorStr("lua_exception: unexpected exception status");
         }
     }
 
@@ -130,7 +132,7 @@ int luaD_rawrunprotected(lua_State* L, Pfunc f, void* ud)
     }
     catch (std::exception& e)
     {
-        // Luau will never throw this, but this can catch exceptions that escape from C++ implementations of external functions
+        // lluz will never throw this, but this can catch exceptions that escape from C++ implementations of external functions
         try
         {
             // there's no exception object on stack; let's push the error on stack so that error handling below can proceed
@@ -173,7 +175,7 @@ void luaD_reallocstack(lua_State* L, int newsize)
 {
     TValue* oldstack = L->stack;
     int realsize = newsize + EXTRA_STACK;
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
+    lluz_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
     luaM_reallocarray(L, L->stack, L->stacksize, realsize, TValue, L->memcat);
     TValue* newstack = L->stack;
     for (int i = L->stacksize; i < realsize; i++)
@@ -212,7 +214,7 @@ CallInfo* luaD_growCI(lua_State* L)
     luaD_reallocCI(L, L->size_ci >= LUAI_MAXCALLS ? hardlimit : request < LUAI_MAXCALLS ? request : LUAI_MAXCALLS);
 
     if (L->size_ci > LUAI_MAXCALLS)
-        luaG_runerror(L, "stack overflow");
+        luaG_runerror(L, XorStr("stack overflow"));
 
     return ++L->ci;
 }
@@ -223,7 +225,7 @@ void luaD_checkCstack(lua_State* L)
     const int hardlimit = LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3);
 
     if (L->nCcalls == LUAI_MAXCCALLS)
-        luaG_runerror(L, "C stack overflow");
+        luaG_runerror(L, XorStr("C stack overflow"));
     else if (L->nCcalls >= hardlimit)
         luaD_throw(L, LUA_ERRERR); /* error while handling stack error */
 }
@@ -239,15 +241,15 @@ void luaD_call(lua_State* L, StkId func, int nResults)
     if (++L->nCcalls >= LUAI_MAXCCALLS)
         luaD_checkCstack(L);
 
-    if (luau_precall(L, func, nResults) == PCRLUA)
+    if (lluz_precall(L, func, nResults) == PCRLUA)
     {                                        /* is a Lua function? */
-        L->ci->flags |= LUA_CALLINFO_RETURN; /* luau_execute will stop after returning from the stack frame */
+        L->ci->flags |= LUA_CALLINFO_RETURN; /* lluz_execute will stop after returning from the stack frame */
 
         int oldactive = luaC_threadactive(L);
         l_setbit(L->stackstate, THREAD_ACTIVEBIT);
         luaC_checkthreadsleep(L);
 
-        luau_execute(L); /* call it */
+        lluz_execute(L); /* call it */
 
         if (!oldactive)
             resetbit(L->stackstate, THREAD_ACTIVEBIT);
@@ -286,13 +288,13 @@ static void resume_continue(lua_State* L)
     // unroll Lua/C combined stack, processing continuations
     while (L->status == 0 && L->ci > L->base_ci)
     {
-        LUAU_ASSERT(L->baseCcalls == L->nCcalls);
+        lluz_ASSERT(L->baseCcalls == L->nCcalls);
 
         Closure* cl = curr_func(L);
 
         if (cl->isC)
         {
-            LUAU_ASSERT(cl->c.cont);
+            lluz_ASSERT(cl->c.cont);
 
             // C continuation; we expect this to be followed by Lua continuations
             int n = cl->c.cont(L, 0);
@@ -301,12 +303,12 @@ static void resume_continue(lua_State* L)
             if (L->status == LUA_BREAK)
                 break;
 
-            luau_poscall(L, L->top - n);
+            lluz_poscall(L, L->top - n);
         }
         else
         {
             // Lua continuation; it terminates at the end of the stack or at another C continuation
-            luau_execute(L);
+            lluz_execute(L);
         }
     }
 }
@@ -318,11 +320,11 @@ static void resume(lua_State* L, void* ud)
     if (L->status == 0)
     {
         // start coroutine
-        LUAU_ASSERT(L->ci == L->base_ci && firstArg >= L->base);
+        lluz_ASSERT(L->ci == L->base_ci && firstArg >= L->base);
         if (firstArg == L->base)
-            luaG_runerror(L, "cannot resume dead coroutine");
+            luaG_runerror(L, XorStr("cannot resume dead coroutine"));
 
-        if (luau_precall(L, firstArg - 1, LUA_MULTRET) != PCRLUA)
+        if (lluz_precall(L, firstArg - 1, LUA_MULTRET) != PCRLUA)
             return;
 
         L->ci->flags |= LUA_CALLINFO_RETURN;
@@ -330,7 +332,7 @@ static void resume(lua_State* L, void* ud)
     else
     {
         // resume from previous yield or break
-        LUAU_ASSERT(L->status == LUA_YIELD || L->status == LUA_BREAK);
+        lluz_ASSERT(L->status == LUA_YIELD || L->status == LUA_BREAK);
         L->status = 0;
 
         Closure* cl = curr_func(L);
@@ -341,7 +343,7 @@ static void resume(lua_State* L, void* ud)
             if (!cl->c.cont)
             {
                 // finish interrupted execution of `OP_CALL'
-                luau_poscall(L, firstArg);
+                lluz_poscall(L, firstArg);
             }
         }
         else
@@ -375,9 +377,9 @@ static void resume_handle(lua_State* L, void* ud)
     CallInfo* ci = (CallInfo*)ud;
     Closure* cl = ci_func(ci);
 
-    LUAU_ASSERT(ci->flags & LUA_CALLINFO_HANDLE);
-    LUAU_ASSERT(cl->isC && cl->c.cont);
-    LUAU_ASSERT(L->status != 0);
+    lluz_ASSERT(ci->flags & LUA_CALLINFO_HANDLE);
+    lluz_ASSERT(cl->isC && cl->c.cont);
+    lluz_ASSERT(L->status != 0);
 
     // restore nCcalls back to base since this might not have happened during error handling
     L->nCcalls = L->baseCcalls;
@@ -410,7 +412,7 @@ static void resume_handle(lua_State* L, void* ud)
     luaF_close(L, L->base);
 
     // finish cont call and restore stack to previous ci top
-    luau_poscall(L, L->top - n);
+    lluz_poscall(L, L->top - n);
 
     // run remaining continuations from the stack; typically resumes pcalls
     resume_continue(L);
@@ -445,11 +447,11 @@ int lua_resume(lua_State* L, lua_State* from, int nargs)
 {
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
-        return resume_error(L, "cannot resume non-suspended coroutine");
+        return resume_error(L, XorStr("cannot resume non-suspended coroutine"));
 
     L->nCcalls = from ? from->nCcalls : 0;
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        return resume_error(L, "C stack overflow");
+        return resume_error(L, XorStr("C stack overflow"));
 
     L->baseCcalls = ++L->nCcalls;
     l_setbit(L->stackstate, THREAD_ACTIVEBIT);
@@ -474,11 +476,11 @@ int lua_resumeerror(lua_State* L, lua_State* from)
 {
     int status;
     if (L->status != LUA_YIELD && L->status != LUA_BREAK && (L->status != 0 || L->ci != L->base_ci))
-        return resume_error(L, "cannot resume non-suspended coroutine");
+        return resume_error(L, XorStr("cannot resume non-suspended coroutine"));
 
     L->nCcalls = from ? from->nCcalls : 0;
     if (L->nCcalls >= LUAI_MAXCCALLS)
-        return resume_error(L, "C stack overflow");
+        return resume_error(L, XorStr("C stack overflow"));
 
     L->baseCcalls = ++L->nCcalls;
     l_setbit(L->stackstate, THREAD_ACTIVEBIT);
@@ -502,7 +504,7 @@ int lua_resumeerror(lua_State* L, lua_State* from)
 int lua_yield(lua_State* L, int nresults)
 {
     if (L->nCcalls > L->baseCcalls)
-        luaG_runerror(L, "attempt to yield across metamethod/C-call boundary");
+        luaG_runerror(L, XorStr("attempt to yield across metamethod/C-call boundary"));
     L->base = L->top - nresults; /* protect stack slots below */
     L->status = LUA_YIELD;
     return -1;
@@ -511,7 +513,7 @@ int lua_yield(lua_State* L, int nresults)
 int lua_break(lua_State* L)
 {
     if (L->nCcalls > L->baseCcalls)
-        luaG_runerror(L, "attempt to break across metamethod/C-call boundary");
+        luaG_runerror(L, XorStr("attempt to break across metamethod/C-call boundary"));
     L->status = LUA_BREAK;
     return -1;
 }
@@ -533,7 +535,7 @@ static void callerrfunc(lua_State* L, void* ud)
 
 static void restore_stack_limit(lua_State* L)
 {
-    LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
+    lluz_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
     if (L->size_ci > LUAI_MAXCALLS)
     { /* there was an overflow? */
         int inuse = cast_int(L->ci - L->base_ci);

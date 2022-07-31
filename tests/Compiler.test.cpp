@@ -1,7 +1,7 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/Compiler.h"
-#include "Luau/BytecodeBuilder.h"
-#include "Luau/StringUtils.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/Compiler.h"
+#include "lluz/BytecodeBuilder.h"
+#include "lluz/StringUtils.h"
 
 #include "ScopedFlags.h"
 
@@ -10,52 +10,52 @@
 #include <sstream>
 #include <string_view>
 
-namespace Luau
+namespace lluz
 {
 std::string rep(const std::string& s, size_t n);
 }
 
-using namespace Luau;
+using namespace lluz;
 
 static std::string compileFunction(const char* source, uint32_t id, int optimizationLevel = 1)
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::CompileOptions options;
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::CompileOptions options;
     options.optimizationLevel = optimizationLevel;
-    Luau::compileOrThrow(bcb, source, options);
+    lluz::compileOrThrow(bcb, source, options);
 
     return bcb.dumpFunction(id);
 }
 
 static std::string compileFunction0(const char* source)
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, source);
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, source);
 
     return bcb.dumpFunction(0);
 }
 
 static std::string compileFunction0Coverage(const char* source, int level)
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
 
-    Luau::CompileOptions opts;
+    lluz::CompileOptions opts;
     opts.coverageLevel = level;
-    Luau::compileOrThrow(bcb, source, opts);
+    lluz::compileOrThrow(bcb, source, opts);
 
     return bcb.dumpFunction(0);
 }
 
-TEST_SUITE_BEGIN("Compiler");
+TEST_SUITE_BEGIN(XorStr("Compiler"));
 
 TEST_CASE("CompileToBytecode")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, "return 5, 6.5");
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, XorStr("return 5, 6.5"));
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 LOADN R0 5
@@ -74,9 +74,9 @@ RETURN R0 1
 
 TEST_CASE("BasicFunction")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, "local function foo(a, b) return b end");
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, XorStr("local function foo(a, b) return b end"));
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 DUPCLOSURE R0 K0
@@ -90,9 +90,9 @@ RETURN R1 1
 
 TEST_CASE("BasicFunctionCall")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, "local function foo(a, b) return b end function test() return foo(2) end");
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, XorStr("local function foo(a, b) return b end function test() return foo(2) end"));
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 GETUPVAL R0 0
@@ -165,8 +165,8 @@ LOADN R1 1
 FASTCALL2K 18 R1 K0 L0
 LOADK R2 K0
 GETIMPORT R0 3
-CALL R0 2 -1
-L0: RETURN R0 -1
+L0: CALL R0 2 -1
+RETURN R0 -1
 )");
 }
 
@@ -261,7 +261,7 @@ L1: RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
+    ScopedFastFlag sff("lluzCompileNoIpairs", true);
 
     // basic for loop: variable directly refers to internal iteration index (R2)
     CHECK_EQ("\n" + compileFunction0("for i=1,5 do print(i) end"), R"(
@@ -349,7 +349,7 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
+    ScopedFastFlag sff("lluzCompileNoIpairs", true);
 
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
@@ -830,9 +830,9 @@ RETURN R0 1
 
 TEST_CASE("CaptureSelf")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, R"(
 local MaterialsListClass = {}
 
 function MaterialsListClass:_MakeToolTip(guiElement, text)
@@ -1662,8 +1662,8 @@ L2: RETURN R0 0
     // it's however invalid to use locals if they are defined after continue
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, R"(
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, R"(
 repeat
     local r = math.random()
     if r > 0.5 then
@@ -1673,13 +1673,13 @@ repeat
 until rr < 0.5
 )");
 
-        CHECK(!"Expected CompileError");
+        CHECK(!XorStr("Expected CompileError"));
     }
-    catch (Luau::CompileError& e)
+    catch (lluz::CompileError& e)
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 8);
         CHECK_EQ(
-            std::string(e.what()), "Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it");
+            std::string(e.what()), XorStr("Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it"));
     }
 
     // but it's okay if continue is inside a non-repeat..until loop, or inside a loop that doesn't use the local (here `continue` just terminates
@@ -1724,8 +1724,8 @@ RETURN R0 0
     // but not if the function just refers to an upvalue
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, R"(
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, R"(
 repeat
     local r = math.random()
     if r > 0.5 then
@@ -1735,13 +1735,13 @@ repeat
 until (function() return rr end)() < 0.5
 )");
 
-        CHECK(!"Expected CompileError");
+        CHECK(!XorStr("Expected CompileError"));
     }
-    catch (Luau::CompileError& e)
+    catch (lluz::CompileError& e)
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 8);
         CHECK_EQ(
-            std::string(e.what()), "Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it");
+            std::string(e.what()), XorStr("Local rr used in the repeat..until condition is undefined because continue statement on line 5 jumps over it"));
     }
 
     // unless that upvalue is from an outer scope
@@ -1790,18 +1790,18 @@ TEST_CASE("LoopContinueUntilOops")
     // this used to crash the compiler :(
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, R"(
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, R"(
 local _
 repeat
 continue
 until not _
 )");
     }
-    catch (Luau::CompileError& e)
+    catch (lluz::CompileError& e)
     {
         CHECK_EQ(
-            std::string(e.what()), "Local _ used in the repeat..until condition is undefined because continue statement on line 4 jumps over it");
+            std::string(e.what()), XorStr("Local _ used in the repeat..until condition is undefined because continue statement on line 4 jumps over it"));
     }
 }
 
@@ -2008,62 +2008,62 @@ TEST_CASE("RecursionParse")
 {
     // The test forcibly pushes the stack limit during compilation; in NoOpt, the stack consumption is much larger so we need to reduce the limit to
     // not overflow the C stack. When ASAN is enabled, stack consumption increases even more.
-#if defined(LUAU_ENABLE_ASAN)
-    ScopedFastInt flag("LuauRecursionLimit", 200);
+#if defined(lluz_ENABLE_ASAN)
+    ScopedFastInt flag("lluzRecursionLimit", 200);
 #elif defined(_NOOPT) || defined(_DEBUG)
-    ScopedFastInt flag("LuauRecursionLimit", 300);
+    ScopedFastInt flag("lluzRecursionLimit", 300);
 #endif
 
-    Luau::BytecodeBuilder bcb;
+    lluz::BytecodeBuilder bcb;
 
     try
     {
-        Luau::compileOrThrow(bcb, "a=" + rep("{", 1500) + rep("}", 1500));
-        CHECK(!"Expected exception");
+        lluz::compileOrThrow(bcb, "a=" + rep("{", 1500) + rep("}", 1500));
+        CHECK(!XorStr("Expected exception"));
     }
     catch (std::exception& e)
     {
-        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
-    }
-
-    try
-    {
-        Luau::compileOrThrow(bcb, "function a" + rep(".a", 1500) + "() end");
-        CHECK(!"Expected exception");
-    }
-    catch (std::exception& e)
-    {
-        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your function name to make the code compile");
+        CHECK_EQ(std::string(e.what()), XorStr("Exceeded allowed recursion depth; simplify your expression to make the code compile"));
     }
 
     try
     {
-        Luau::compileOrThrow(bcb, "a=1" + rep("+1", 1500));
-        CHECK(!"Expected exception");
+        lluz::compileOrThrow(bcb, XorStr("function a" + rep(".a", 1500) + "() end"));
+        CHECK(!XorStr("Expected exception"));
     }
     catch (std::exception& e)
     {
-        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+        CHECK_EQ(std::string(e.what()), XorStr("Exceeded allowed recursion depth; simplify your function name to make the code compile"));
     }
 
     try
     {
-        Luau::compileOrThrow(bcb, "a=" + rep("(", 1500) + "1" + rep(")", 1500));
-        CHECK(!"Expected exception");
+        lluz::compileOrThrow(bcb, "a=1" + rep("+1", 1500));
+        CHECK(!XorStr("Expected exception"));
     }
     catch (std::exception& e)
     {
-        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+        CHECK_EQ(std::string(e.what()), XorStr("Exceeded allowed recursion depth; simplify your expression to make the code compile"));
     }
 
     try
     {
-        Luau::compileOrThrow(bcb, rep("do ", 1500) + "print()" + rep(" end", 1500));
-        CHECK(!"Expected exception");
+        lluz::compileOrThrow(bcb, "a=" + rep("(", 1500) + "1" + rep(")", 1500));
+        CHECK(!XorStr("Expected exception"));
     }
     catch (std::exception& e)
     {
-        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
+        CHECK_EQ(std::string(e.what()), XorStr("Exceeded allowed recursion depth; simplify your expression to make the code compile"));
+    }
+
+    try
+    {
+        lluz::compileOrThrow(bcb, rep("do ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!XorStr("Expected exception"));
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), XorStr("Exceeded allowed recursion depth; simplify your block to make the code compile"));
     }
 }
 
@@ -2100,18 +2100,18 @@ FASTCALL2 18 R0 R1 L0
 MOVE R5 R0
 MOVE R6 R1
 GETIMPORT R4 2
-CALL R4 2 1
-L0: FASTCALL2 19 R4 R2 L1
+L0: CALL R4 2 1
+FASTCALL2 19 R4 R2 L1
 MOVE R5 R2
 GETIMPORT R3 4
-CALL R3 2 -1
-L1: RETURN R3 -1
+L1: CALL R3 2 -1
+RETURN R3 -1
 )");
 }
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
+    ScopedFastFlag sff("lluzCompileNoIpairs", true);
 
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
@@ -2258,17 +2258,17 @@ RETURN R1 1
 
 TEST_CASE("TypeAliasing")
 {
-    Luau::BytecodeBuilder bcb;
-    Luau::CompileOptions options;
-    Luau::ParseOptions parseOptions;
-    CHECK_NOTHROW(Luau::compileOrThrow(bcb, "type A = number local a: A = 1", options, parseOptions));
+    lluz::BytecodeBuilder bcb;
+    lluz::CompileOptions options;
+    lluz::ParseOptions parseOptions;
+    CHECK_NOTHROW(lluz::compileOrThrow(bcb, "type A = number local a: A = 1", options, parseOptions));
 }
 
 TEST_CASE("DebugLineInfo")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 local kSelectedBiomes = {
     ['Mountains'] = true,
     ['Canyons'] = true,
@@ -2322,9 +2322,9 @@ return result
 
 TEST_CASE("DebugLineInfoFor")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 for
 i
 in
@@ -2353,9 +2353,9 @@ end
 
 TEST_CASE("DebugLineInfoWhile")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 local count = 0
 while true do
     count += 1
@@ -2411,9 +2411,9 @@ until f == 0
 
 TEST_CASE("DebugLineInfoSubTable")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 local Value1, Value2, Value3 = ...
 local Table = {}
 
@@ -2442,9 +2442,9 @@ Table.SubTable["Key"] = {
 
 TEST_CASE("DebugLineInfoCall")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 local Foo = ...
 
 Foo:Bar(
@@ -2466,9 +2466,9 @@ Foo:Bar(
 
 TEST_CASE("DebugLineInfoCallChain")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 local Foo = ...
 
 Foo
@@ -2494,9 +2494,9 @@ Foo
 
 TEST_CASE("DebugLineInfoFastCall")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
 local Foo, Bar = ...
 
 return
@@ -2511,16 +2511,16 @@ return
 5: MOVE R3 R0
 5: MOVE R4 R1
 5: GETIMPORT R2 2
-5: CALL R2 2 -1
-5: L0: RETURN R2 -1
+5: L0: CALL R2 2 -1
+5: RETURN R2 -1
 )");
 }
 
 TEST_CASE("DebugLineInfoAssignment")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines);
-    Luau::compileOrThrow(bcb, R"(
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines);
+    lluz::compileOrThrow(bcb, R"(
    local a = { b = { c = { d = 3 } } }
 
 a
@@ -2566,11 +2566,11 @@ end
 return result
 )";
 
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source);
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Source);
     bcb.setDumpSource(source);
 
-    Luau::compileOrThrow(bcb, source);
+    lluz::compileOrThrow(bcb, source);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
     2: local kSelectedBiomes = {
@@ -2646,14 +2646,14 @@ function foo(e, f)
 end
 )";
 
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Lines | Luau::BytecodeBuilder::Dump_Locals);
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Lines | lluz::BytecodeBuilder::Dump_Locals);
     bcb.setDumpSource(source);
 
-    Luau::CompileOptions options;
+    lluz::CompileOptions options;
     options.debugLevel = 2;
 
-    Luau::compileOrThrow(bcb, source, options);
+    lluz::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(1), R"(
 local 0: reg 5, start pc 5 line 5, end pc 8 line 5
@@ -2699,15 +2699,15 @@ local 8: reg 3, start pc 35 line 21, end pc 35 line 21
 
 TEST_CASE("DebugRemarks")
 {
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Remarks);
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code | lluz::BytecodeBuilder::Dump_Remarks);
 
     uint32_t fid = bcb.beginFunction(0);
 
-    bcb.addDebugRemark("test remark #%d", 1);
+    bcb.addDebugRemark(XorStr("test remark #%d"), 1);
     bcb.emitABC(LOP_LOADNIL, 0, 0, 0);
-    bcb.addDebugRemark("test remark #%d", 2);
-    bcb.addDebugRemark("test remark #%d", 3);
+    bcb.addDebugRemark(XorStr("test remark #%d"), 2);
+    bcb.addDebugRemark(XorStr("test remark #%d"), 3);
     bcb.emitABC(LOP_RETURN, 0, 1, 0);
 
     bcb.endFunction(1, 0);
@@ -2828,8 +2828,8 @@ TEST_CASE("FastcallBytecode")
 LOADN R1 -5
 FASTCALL1 2 R1 L0
 GETIMPORT R0 2
-CALL R0 1 -1
-L0: RETURN R0 -1
+L0: CALL R0 1 -1
+RETURN R0 -1
 )");
 
     // call through a local variable
@@ -2838,8 +2838,8 @@ GETIMPORT R0 2
 LOADN R2 -5
 FASTCALL1 2 R2 L0
 MOVE R1 R0
-CALL R1 1 -1
-L0: RETURN R1 -1
+L0: CALL R1 1 -1
+RETURN R1 -1
 )");
 
     // call through an upvalue
@@ -2847,8 +2847,8 @@ L0: RETURN R1 -1
 LOADN R1 -5
 FASTCALL1 2 R1 L0
 GETUPVAL R0 0
-CALL R0 1 -1
-L0: RETURN R0 -1
+L0: CALL R0 1 -1
+RETURN R0 -1
 )");
 
     // mutating the global in the script breaks the optimization
@@ -2893,8 +2893,8 @@ LOADK R1 K0
 FASTCALL1 57 R1 L0
 GETIMPORT R0 2
 GETVARARGS R2 -1
-CALL R0 -1 1
-L0: RETURN R0 1
+L0: CALL R0 -1 1
+RETURN R0 1
 )");
 
     // more complex example: select inside a for loop bound + select from a iterator
@@ -2912,16 +2912,16 @@ LOADK R5 K0
 FASTCALL1 57 R5 L0
 GETIMPORT R4 2
 GETVARARGS R6 -1
-CALL R4 -1 1
-L0: MOVE R1 R4
+L0: CALL R4 -1 1
+MOVE R1 R4
 LOADN R2 1
 FORNPREP R1 L3
 L1: FASTCALL1 57 R3 L2
 GETIMPORT R4 2
 MOVE R5 R3
 GETVARARGS R6 -1
-CALL R4 -1 1
-L2: ADD R0 R0 R4
+L2: CALL R4 -1 1
+ADD R0 R0 R4
 FORNLOOP R1 L1
 L3: RETURN R0 1
 )");
@@ -2962,13 +2962,13 @@ select("#",1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
 
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, source);
-        CHECK(!"Expected exception");
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, source);
+        CHECK(!XorStr("Expected exception"));
     }
     catch (std::exception& e)
     {
-        CHECK_EQ(std::string(e.what()), "Out of registers when trying to allocate 265 registers: exceeded limit 255");
+        CHECK_EQ(std::string(e.what()), XorStr("Out of registers when trying to allocate 265 registers: exceeded limit 255"));
     }
 }
 
@@ -2981,13 +2981,13 @@ end
 
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, source);
-        CHECK(!"Expected exception");
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, source);
+        CHECK(!XorStr("Expected exception"));
     }
     catch (std::exception& e)
     {
-        CHECK_EQ(std::string(e.what()), "Out of registers when trying to allocate 1 registers: exceeded limit 255");
+        CHECK_EQ(std::string(e.what()), XorStr("Out of registers when trying to allocate 1 registers: exceeded limit 255"));
     }
 }
 
@@ -2998,12 +2998,12 @@ TEST_CASE("AsConstant")
 return (1 + 2) :: number
 )";
 
-    Luau::CompileOptions options;
-    Luau::ParseOptions parseOptions;
+    lluz::CompileOptions options;
+    lluz::ParseOptions parseOptions;
 
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, source, options, parseOptions);
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, source, options, parseOptions);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 LOADN R0 3
@@ -3116,22 +3116,22 @@ TEST_CASE("OutOfLocals")
         formatAppend(source, "local foo%d\n", i);
     }
 
-    source += "local bar\n";
+    source += XorStr("local bar\n");
 
-    Luau::CompileOptions options;
+    lluz::CompileOptions options;
     options.debugLevel = 2; // make sure locals aren't elided by requesting their debug info
 
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, source, options);
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, source, options);
 
-        CHECK(!"Expected CompileError");
+        CHECK(!XorStr("Expected CompileError"));
     }
-    catch (Luau::CompileError& e)
+    catch (lluz::CompileError& e)
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 201);
-        CHECK_EQ(std::string(e.what()), "Out of local registers when trying to allocate bar: exceeded limit 200");
+        CHECK_EQ(std::string(e.what()), XorStr("Out of local registers when trying to allocate bar: exceeded limit 200"));
     }
 }
 
@@ -3145,7 +3145,7 @@ TEST_CASE("OutOfUpvalues")
         formatAppend(source, "foo%d = 42\n", i);
     }
 
-    source += "function foo()\n";
+    source += XorStr("function foo()\n");
 
     for (int i = 0; i < 150; ++i)
     {
@@ -3153,26 +3153,26 @@ TEST_CASE("OutOfUpvalues")
         formatAppend(source, "bar%d = 42\n", i);
     }
 
-    source += "function bar()\n";
+    source += XorStr("function bar()\n");
 
     for (int i = 0; i < 150; ++i)
     {
         formatAppend(source, "print(foo%d, bar%d)\n", i, i);
     }
 
-    source += "end\nend\n";
+    source += XorStr("end\nend\n");
 
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, source);
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, source);
 
-        CHECK(!"Expected CompileError");
+        CHECK(!XorStr("Expected CompileError"));
     }
-    catch (Luau::CompileError& e)
+    catch (lluz::CompileError& e)
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 201);
-        CHECK_EQ(std::string(e.what()), "Out of upvalue registers when trying to allocate foo100: exceeded limit 200");
+        CHECK_EQ(std::string(e.what()), XorStr("Out of upvalue registers when trying to allocate foo100: exceeded limit 200"));
     }
 }
 
@@ -3180,33 +3180,33 @@ TEST_CASE("OutOfRegisters")
 {
     std::string source;
 
-    source += "print(\n";
+    source += XorStr("print(\n");
 
     for (int i = 0; i < 150; ++i)
     {
         formatAppend(source, "%d,\n", i);
     }
 
-    source += "table.pack(\n";
+    source += XorStr("table.pack(\n");
 
     for (int i = 0; i < 150; ++i)
     {
         formatAppend(source, "%d,\n", i);
     }
 
-    source += "42))\n";
+    source += XorStr("42))\n");
 
     try
     {
-        Luau::BytecodeBuilder bcb;
-        Luau::compileOrThrow(bcb, source);
+        lluz::BytecodeBuilder bcb;
+        lluz::compileOrThrow(bcb, source);
 
-        CHECK(!"Expected CompileError");
+        CHECK(!XorStr("Expected CompileError"));
     }
-    catch (Luau::CompileError& e)
+    catch (lluz::CompileError& e)
     {
         CHECK_EQ(e.getLocation().begin.line + 1, 152);
-        CHECK_EQ(std::string(e.what()), "Out of registers when trying to allocate 152 registers: exceeded limit 255");
+        CHECK_EQ(std::string(e.what()), XorStr("Out of registers when trying to allocate 152 registers: exceeded limit 255"));
     }
 }
 
@@ -3220,11 +3220,11 @@ TEST_CASE("FastCallImportFallback")
         formatAppend(source, "t[%d] = \"%d\"\n", i, i);
     }
 
-    source += "return math.abs(-1)\n";
+    source += XorStr("return math.abs(-1)\n");
 
     std::string code = compileFunction0(source.c_str());
 
-    std::vector<std::string_view> insns = Luau::split(code, '\n');
+    std::vector<std::string_view> insns = lluz::split(code, '\n');
 
     std::string fragment;
     for (size_t i = 9; i > 1; --i)
@@ -3242,7 +3242,7 @@ LOADN R2 -1
 FASTCALL1 2 R2 L0
 GETGLOBAL R3 K1024
 GETTABLEKS R1 R3 K1025
-CALL R1 1 -1
+L0: CALL R1 1 -1
 )");
 }
 
@@ -3378,19 +3378,19 @@ RETURN R0 0
 TEST_CASE("JumpTrampoline")
 {
     std::string source;
-    source += "local sum = 0\n";
-    source += "for i=1,3 do\n";
+    source += XorStr("local sum = 0\n");
+    source += XorStr("for i=1,3 do\n");
     for (int i = 0; i < 10000; ++i)
     {
-        source += "sum = sum + i\n";
-        source += "if sum > 150000 then break end\n";
+        source += XorStr("sum = sum + i\n");
+        source += XorStr("if sum > 150000 then break end\n");
     }
-    source += "end\n";
-    source += "return sum\n";
+    source += XorStr("end\n");
+    source += XorStr("return sum\n");
 
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::compileOrThrow(bcb, source.c_str());
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::compileOrThrow(bcb, source.c_str());
 
     std::stringstream bcs(bcb.dumpFunction(0));
 
@@ -3446,8 +3446,8 @@ L14543: RETURN R0 1
 TEST_CASE("CompileBytecode")
 {
     // This is a coverage test, it just exercises bytecode dumping for correct and malformed code
-    Luau::compile("return 5");
-    Luau::compile("this is not valid lua, right?");
+    lluz::compile(XorStr("return 5"));
+    lluz::compile(XorStr("this is not valid lua, right?"));
 }
 
 TEST_CASE("NestedNamecall")
@@ -3793,8 +3793,6 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
-    ScopedFastFlag sff("LuauCompileFreeReassign", true);
-
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -3942,10 +3940,11 @@ LOADN R2 1
 LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L5
-L4: GETIMPORT R3 1
-NEWCLOSURE R4 P2
-CAPTURE VAL R2
-CALL R3 1 0
+L4: MOVE R3 R2
+GETIMPORT R4 1
+NEWCLOSURE R5 P2
+CAPTURE VAL R3
+CALL R4 1 0
 FORNLOOP R0 L4
 L5: RETURN R0 0
 )");
@@ -3990,12 +3989,12 @@ RETURN R0 0
 )");
 
     // Check we can add them back
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::CompileOptions options;
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::CompileOptions options;
     const char* mutableGlobals[] = {"Game", "Workspace", "game", "plugin", "script", "shared", "workspace", NULL};
     options.mutableGlobals = &mutableGlobals[0];
-    Luau::compileOrThrow(bcb, source, options);
+    lluz::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 GETIMPORT R0 1
@@ -4032,11 +4031,11 @@ TEST_CASE("ConstantsNoFolding")
 {
     const char* source = "return nil, true, 42, 'hello'";
 
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::CompileOptions options;
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::CompileOptions options;
     options.optimizationLevel = 0;
-    Luau::compileOrThrow(bcb, source, options);
+    lluz::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 LOADNIL R0
@@ -4051,12 +4050,12 @@ TEST_CASE("VectorFastCall")
 {
     const char* source = "return Vector3.new(1, 2, 3)";
 
-    Luau::BytecodeBuilder bcb;
-    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code);
-    Luau::CompileOptions options;
+    lluz::BytecodeBuilder bcb;
+    bcb.setDumpFlags(lluz::BytecodeBuilder::Dump_Code);
+    lluz::CompileOptions options;
     options.vectorLib = "Vector3";
     options.vectorCtor = "new";
-    Luau::compileOrThrow(bcb, source, options);
+    lluz::compileOrThrow(bcb, source, options);
 
     CHECK_EQ("\n" + bcb.dumpFunction(0), R"(
 LOADN R1 1
@@ -4064,8 +4063,8 @@ LOADN R2 2
 LOADN R3 3
 FASTCALL 54 L0
 GETIMPORT R0 2
-CALL R0 3 -1
-L0: RETURN R0 -1
+L0: CALL R0 3 -1
+RETURN R0 -1
 )");
 }
 
@@ -4348,8 +4347,8 @@ L1: RETURN R0 0
 TEST_CASE("LoopUnrollControlFlow")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 50},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {"lluzCompileLoopUnrollThreshold", 50},
+        {"lluzCompileLoopUnrollThresholdMaxBoost", 300},
     };
 
     // break jumps to the end
@@ -4415,7 +4414,7 @@ L2: RETURN R0 0
     // continue needs to properly close upvalues
     CHECK_EQ("\n" + compileFunction(R"(
 for i=1,1 do
-    local j = global(i)
+    local j = math.abs(i)
     print(function() return j end)
     if math.random() < 0.5 then
         continue
@@ -4425,20 +4424,21 @@ end
 )",
                         1, 2),
         R"(
-GETIMPORT R0 1
 LOADN R1 1
-CALL R0 1 1
-GETIMPORT R1 3
+FASTCALL1 2 R1 L0
+GETIMPORT R0 2
+L0: CALL R0 1 1
+GETIMPORT R1 4
 NEWCLOSURE R2 P0
 CAPTURE REF R0
 CALL R1 1 0
 GETIMPORT R1 6
 CALL R1 0 1
 LOADK R2 K7
-JUMPIFNOTLT R1 R2 L0
+JUMPIFNOTLT R1 R2 L1
 CLOSEUPVALS R0
 RETURN R0 0
-L0: ADDK R0 R0 K8
+L1: ADDK R0 R0 K8
 CLOSEUPVALS R0
 RETURN R0 0
 )");
@@ -4485,8 +4485,8 @@ RETURN R0 0
 TEST_CASE("LoopUnrollCost")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+        {"lluzCompileLoopUnrollThreshold", 25},
+        {"lluzCompileLoopUnrollThresholdMaxBoost", 300},
     };
 
     // loops with short body
@@ -4625,11 +4625,11 @@ FORNPREP R1 L3
 L0: FASTCALL1 24 R3 L1
 MOVE R6 R3
 GETIMPORT R5 2
-CALL R5 1 -1
-L1: FASTCALL 2 L2
+L1: CALL R5 1 -1
+FASTCALL 2 L2
 GETIMPORT R4 4
-CALL R4 -1 1
-L2: SETTABLE R4 R0 R3
+L2: CALL R4 -1 1
+SETTABLE R4 R0 R3
 FORNLOOP R1 L0
 L3: RETURN R0 1
 )");
@@ -4657,131 +4657,6 @@ MOVE R5 R3
 CALL R4 1 0
 FORNLOOP R0 L0
 L1: RETURN R0 0
-)");
-}
-
-TEST_CASE("LoopUnrollCostBuiltins")
-{
-    ScopedFastInt sfis[] = {
-        {"LuauCompileLoopUnrollThreshold", 25},
-        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
-    };
-
-    // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
-    CHECK_EQ("\n" + compileFunction(R"(
-function cipher(block, nonce)
-    for i = 0,3 do
-        block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff)
-    end
-end
-)",
-                        0, 2),
-        R"(
-FASTCALL2K 39 R1 K0 L0
-MOVE R4 R1
-LOADK R5 K0
-GETIMPORT R3 3
-CALL R3 2 1
-L0: FASTCALL2K 29 R3 K4 L1
-LOADK R4 K4
-GETIMPORT R2 6
-CALL R2 2 1
-L1: SETTABLEN R2 R0 1
-FASTCALL2K 39 R1 K7 L2
-MOVE R4 R1
-LOADK R5 K7
-GETIMPORT R3 3
-CALL R3 2 1
-L2: FASTCALL2K 29 R3 K4 L3
-LOADK R4 K4
-GETIMPORT R2 6
-CALL R2 2 1
-L3: SETTABLEN R2 R0 2
-FASTCALL2K 39 R1 K8 L4
-MOVE R4 R1
-LOADK R5 K8
-GETIMPORT R3 3
-CALL R3 2 1
-L4: FASTCALL2K 29 R3 K4 L5
-LOADK R4 K4
-GETIMPORT R2 6
-CALL R2 2 1
-L5: SETTABLEN R2 R0 3
-FASTCALL2K 39 R1 K9 L6
-MOVE R4 R1
-LOADK R5 K9
-GETIMPORT R3 3
-CALL R3 2 1
-L6: FASTCALL2K 29 R3 K4 L7
-LOADK R4 K4
-GETIMPORT R2 6
-CALL R2 2 1
-L7: SETTABLEN R2 R0 4
-RETURN R0 0
-)");
-
-    // note that if we break compiler's ability to reason about bit32 builtin the loop is no longer unrolled as it's too expensive
-    CHECK_EQ("\n" + compileFunction(R"(
-bit32 = {}
-
-function cipher(block, nonce)
-    for i = 0,3 do
-        block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff)
-    end
-end
-)",
-                        0, 2),
-        R"(
-LOADN R4 0
-LOADN R2 3
-LOADN R3 1
-FORNPREP R2 L1
-L0: ADDK R5 R4 K0
-GETGLOBAL R7 K1
-GETTABLEKS R6 R7 K2
-GETGLOBAL R8 K1
-GETTABLEKS R7 R8 K3
-MOVE R8 R1
-MULK R9 R4 K4
-CALL R7 2 1
-LOADN R8 255
-CALL R6 2 1
-SETTABLE R6 R0 R5
-FORNLOOP R2 L0
-L1: RETURN R0 0
-)");
-
-    // additionally, if we pass too many constants the builtin stops being cheap because of argument setup
-    CHECK_EQ("\n" + compileFunction(R"(
-function cipher(block, nonce)
-    for i = 0,3 do
-        block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff, 0xff, 0xff, 0xff, 0xff)
-    end
-end
-)",
-                        0, 2),
-        R"(
-LOADN R4 0
-LOADN R2 3
-LOADN R3 1
-FORNPREP R2 L3
-L0: ADDK R5 R4 K0
-MULK R9 R4 K1
-FASTCALL2 39 R1 R9 L1
-MOVE R8 R1
-GETIMPORT R7 4
-CALL R7 2 1
-L1: LOADN R8 255
-LOADN R9 255
-LOADN R10 255
-LOADN R11 255
-LOADN R12 255
-FASTCALL 29 L2
-GETIMPORT R6 6
-CALL R6 6 1
-L2: SETTABLE R6 R0 R5
-FORNLOOP R2 L0
-L3: RETURN R0 0
 )");
 }
 
@@ -5341,8 +5216,8 @@ DUPCLOSURE R0 K0
 LOADK R3 K1
 FASTCALL1 20 R3 L0
 GETIMPORT R2 4
-CALL R2 1 2
-L0: ADD R1 R2 R3
+L0: CALL R2 1 2
+ADD R1 R2 R3
 RETURN R1 1
 )");
 
@@ -5462,9 +5337,9 @@ RETURN R3 1
 TEST_CASE("InlineThresholds")
 {
     ScopedFastInt sfis[] = {
-        {"LuauCompileInlineThreshold", 25},
-        {"LuauCompileInlineThresholdMaxBoost", 300},
-        {"LuauCompileInlineDepth", 2},
+        {"lluzCompileInlineThreshold", 25},
+        {"lluzCompileInlineThresholdMaxBoost", 300},
+        {"lluzCompileInlineDepth", 2},
     };
 
     // this function has enormous register pressure (50 regs) so we choose not to inline it
@@ -5608,14 +5483,14 @@ NEWTABLE R2 0 0
 FASTCALL2K 49 R2 K1 L0
 LOADK R3 K1
 GETIMPORT R1 3
-CALL R1 2 0
-L0: NEWTABLE R1 0 0
+L0: CALL R1 2 0
+NEWTABLE R1 0 0
 NEWTABLE R3 0 0
 FASTCALL2 49 R3 R1 L1
 MOVE R4 R1
 GETIMPORT R2 3
-CALL R2 2 0
-L1: RETURN R0 0
+L1: CALL R2 2 0
+RETURN R0 0
 )");
 }
 
@@ -5884,348 +5759,6 @@ return (x), y :: number
         R"(
 GETVARARGS R0 2
 RETURN R0 2
-)");
-}
-
-TEST_CASE("OptimizationLevel")
-{
-    // at optimization level 1, no inlining is performed
-    CHECK_EQ("\n" + compileFunction(R"(
-local function foo(a)
-    return a
-end
-
-return foo(42)
-)",
-                        1, 1),
-        R"(
-DUPCLOSURE R0 K0
-MOVE R1 R0
-LOADN R2 42
-CALL R1 1 -1
-RETURN R1 -1
-)");
-
-    // you can override the level from 1 to 2 to force it
-    CHECK_EQ("\n" + compileFunction(R"(
---!optimize 2
-local function foo(a)
-    return a
-end
-
-return foo(42)
-)",
-                        1, 1),
-        R"(
-DUPCLOSURE R0 K0
-LOADN R1 42
-RETURN R1 1
-)");
-
-    // you can also override it externally
-    CHECK_EQ("\n" + compileFunction(R"(
-local function foo(a)
-    return a
-end
-
-return foo(42)
-)",
-                        1, 2),
-        R"(
-DUPCLOSURE R0 K0
-LOADN R1 42
-RETURN R1 1
-)");
-
-    // ... after which you can downgrade it back via hot comment
-    CHECK_EQ("\n" + compileFunction(R"(
---!optimize 1
-local function foo(a)
-    return a
-end
-
-return foo(42)
-)",
-                        1, 2),
-        R"(
-DUPCLOSURE R0 K0
-MOVE R1 R0
-LOADN R2 42
-CALL R1 1 -1
-RETURN R1 -1
-)");
-}
-
-TEST_CASE("BuiltinFolding")
-{
-    CHECK_EQ("\n" + compileFunction(R"(
-return
-    math.abs(-42),
-    math.acos(1),
-    math.asin(0),
-    math.atan2(0, 1),
-    math.atan(0),
-    math.ceil(1.5),
-    math.cosh(0),
-    math.cos(0),
-    math.deg(3.14159265358979323846),
-    math.exp(0),
-    math.floor(-1.5),
-    math.fmod(7, 3),
-    math.ldexp(0.5, 3),
-    math.log10(100),
-    math.log(1),
-    math.log(4, 2),
-    math.log(27, 3),
-    math.max(1, 2, 3),
-    math.min(1, 2, 3),
-    math.pow(3, 3),
-    math.floor(math.rad(180)),
-    math.sinh(0),
-    math.sin(0),
-    math.sqrt(9),
-    math.tanh(0),
-    math.tan(0),
-    bit32.arshift(-10, 1),
-    bit32.arshift(10, 1),
-    bit32.band(1, 3),
-    bit32.bnot(-2),
-    bit32.bor(1, 2),
-    bit32.bxor(3, 7),
-    bit32.btest(1, 3),
-    bit32.extract(100, 1, 3),
-    bit32.lrotate(100, -1),
-    bit32.lshift(100, 1),
-    bit32.replace(100, 5, 1, 3),
-    bit32.rrotate(100, -1),
-    bit32.rshift(100, 1),
-    type(100),
-    string.byte("a"),
-    string.byte("abc", 2),
-    string.len("abc"),
-    typeof(true),
-    math.clamp(-1, 0, 1),
-    math.sign(77),
-    math.round(7.6),
-    (type("fin"))
-)",
-                        0, 2),
-        R"(
-LOADN R0 42
-LOADN R1 0
-LOADN R2 0
-LOADN R3 0
-LOADN R4 0
-LOADN R5 2
-LOADN R6 1
-LOADN R7 1
-LOADN R8 180
-LOADN R9 1
-LOADN R10 -2
-LOADN R11 1
-LOADN R12 4
-LOADN R13 2
-LOADN R14 0
-LOADN R15 2
-LOADN R16 3
-LOADN R17 3
-LOADN R18 1
-LOADN R19 27
-LOADN R20 3
-LOADN R21 0
-LOADN R22 0
-LOADN R23 3
-LOADN R24 0
-LOADN R25 0
-LOADK R26 K0
-LOADN R27 5
-LOADN R28 1
-LOADN R29 1
-LOADN R30 3
-LOADN R31 4
-LOADB R32 1
-LOADN R33 2
-LOADN R34 50
-LOADN R35 200
-LOADN R36 106
-LOADN R37 200
-LOADN R38 50
-LOADK R39 K1
-LOADN R40 97
-LOADN R41 98
-LOADN R42 3
-LOADK R43 K2
-LOADN R44 0
-LOADN R45 1
-LOADN R46 8
-LOADK R47 K3
-RETURN R0 48
-)");
-}
-
-TEST_CASE("BuiltinFoldingProhibited")
-{
-    CHECK_EQ("\n" + compileFunction(R"(
-return
-    math.abs(),
-    math.max(1, true),
-    string.byte("abc", 42),
-    bit32.rshift(10, 42)
-)",
-                        0, 2),
-        R"(
-FASTCALL 2 L0
-GETIMPORT R0 2
-CALL R0 0 1
-L0: LOADN R2 1
-FASTCALL2K 18 R2 K3 L1
-LOADK R3 K3
-GETIMPORT R1 5
-CALL R1 2 1
-L1: LOADK R3 K6
-FASTCALL2K 41 R3 K7 L2
-LOADK R4 K7
-GETIMPORT R2 10
-CALL R2 2 1
-L2: LOADN R4 10
-FASTCALL2K 39 R4 K7 L3
-LOADK R5 K7
-GETIMPORT R3 13
-CALL R3 2 -1
-L3: RETURN R0 -1
-)");
-}
-
-TEST_CASE("BuiltinFoldingMultret")
-{
-    CHECK_EQ("\n" + compileFunction(R"(
-local NoLanes: Lanes = --[[                             ]] 0b0000000000000000000000000000000
-local OffscreenLane: Lane = --[[                        ]] 0b1000000000000000000000000000000
-
-local function getLanesToRetrySynchronouslyOnError(root: FiberRoot): Lanes
-    local everythingButOffscreen = bit32.band(root.pendingLanes, bit32.bnot(OffscreenLane))
-    if everythingButOffscreen ~= NoLanes then
-        return everythingButOffscreen
-    end
-    if bit32.band(everythingButOffscreen, OffscreenLane) ~= 0 then
-        return OffscreenLane
-    end
-    return NoLanes
-end
-)",
-                        0, 2),
-        R"(
-GETTABLEKS R2 R0 K0
-FASTCALL2K 29 R2 K1 L0
-LOADK R3 K1
-GETIMPORT R1 4
-CALL R1 2 1
-L0: JUMPIFEQK R1 K5 L1
-RETURN R1 1
-L1: FASTCALL2K 29 R1 K6 L2
-MOVE R3 R1
-LOADK R4 K6
-GETIMPORT R2 4
-CALL R2 2 1
-L2: JUMPIFEQK R2 K5 L3
-LOADK R2 K6
-RETURN R2 1
-L3: LOADN R2 0
-RETURN R2 1
-)");
-
-    // Note: similarly, here we should have folded the return value but haven't because it's the last call in the sequence
-    CHECK_EQ("\n" + compileFunction(R"(
-return math.abs(-42)
-)",
-                        0, 2),
-        R"(
-LOADN R0 42
-RETURN R0 1
-)");
-}
-
-TEST_CASE("LocalReassign")
-{
-    ScopedFastFlag sff("LuauCompileFreeReassign", true);
-
-    // locals can be re-assigned and the register gets reused
-    CHECK_EQ("\n" + compileFunction0(R"(
-local function test(a, b)
-    local c = a
-    return c + b
-end
-)"), R"(
-ADD R2 R0 R1
-RETURN R2 1
-)");
-
-    // this works if the expression is using type casts or grouping
-    CHECK_EQ("\n" + compileFunction0(R"(
-local function test(a, b)
-    local c = (a :: number)
-    return c + b
-end
-)"), R"(
-ADD R2 R0 R1
-RETURN R2 1
-)");
-
-    // the optimization requires that neither local is mutated
-    CHECK_EQ("\n" + compileFunction0(R"(
-local function test(a, b)
-    local c = a
-    c += 0
-    local d = b
-    b += 0
-    return c + d
-end
-)"), R"(
-MOVE R2 R0
-ADDK R2 R2 K0
-MOVE R3 R1
-ADDK R1 R1 K0
-ADD R4 R2 R3
-RETURN R4 1
-)");
-
-    // sanity check for two values
-    CHECK_EQ("\n" + compileFunction0(R"(
-local function test(a, b)
-    local c = a
-    local d = b
-    return c + d
-end
-)"), R"(
-ADD R2 R0 R1
-RETURN R2 1
-)");
-
-    // note: we currently only support this for single assignments
-    CHECK_EQ("\n" + compileFunction0(R"(
-local function test(a, b)
-    local c, d = a, b
-    return c + d
-end
-)"), R"(
-MOVE R2 R0
-MOVE R3 R1
-ADD R4 R2 R3
-RETURN R4 1
-)");
-
-    // of course, captures capture the original register as well (by value since it's immutable)
-    CHECK_EQ("\n" + compileFunction(R"(
-local function test(a, b)
-    local c = a
-    local d = b
-    return function() return c + d end
-end
-)", 1), R"(
-NEWCLOSURE R2 P0
-CAPTURE VAL R0
-CAPTURE VAL R1
-RETURN R2 1
 )");
 }
 

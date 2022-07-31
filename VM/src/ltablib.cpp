@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
@@ -9,6 +9,8 @@
 #include "lgc.h"
 #include "ldebug.h"
 #include "lvm.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 static int foreachi(lua_State* L)
 {
@@ -79,7 +81,7 @@ static void moveelements(lua_State* L, int srct, int dstt, int f, int e, int t)
     Table* dst = hvalue(L->base + (dstt - 1));
 
     if (dst->readonly)
-        luaG_readonlyerror(L);
+        luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
 
     int n = e - f + 1; /* number of elements to move */
 
@@ -156,7 +158,7 @@ static int tinsert(lua_State* L)
     }
     default:
     {
-        luaL_error(L, "wrong number of arguments to 'insert'");
+        luaL_error(L, XorStr("wrong number of arguments to 'insert'"));
     }
     }
     lua_rawseti(L, 1, pos); /* t[pos] = v */
@@ -197,14 +199,14 @@ static int tmove(lua_State* L)
 
     if (e >= f)
     { /* otherwise, nothing to move */
-        luaL_argcheck(L, f > 0 || e < INT_MAX + f, 3, "too many elements to move");
+        luaL_argcheck(L, f > 0 || e < INT_MAX + f, 3, XorStr("too many elements to move"));
         int n = e - f + 1; /* number of elements to move */
-        luaL_argcheck(L, t <= INT_MAX - n + 1, 4, "destination wrap around");
+        luaL_argcheck(L, t <= INT_MAX - n + 1, 4, XorStr("destination wrap around"));
 
         Table* dst = hvalue(L->base + (tt - 1));
 
         if (dst->readonly) /* also checked in moveelements, but this blocks resizes of r/o tables */
-            luaG_readonlyerror(L);
+            luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
 
         if (t > 0 && (t - 1) <= dst->sizearray && (t - 1 + n) > dst->sizearray)
         { /* grow the destination table array */
@@ -221,7 +223,7 @@ static void addfield(lua_State* L, luaL_Buffer* b, int i)
 {
     lua_rawgeti(L, 1, i);
     if (!lua_isstring(L, -1))
-        luaL_error(L, "invalid value (%s) at index %d in table for 'concat'", luaL_typename(L, -1), i);
+        luaL_error(L, XorStr("invalid value (%s) at index %d in table for 'concat'"), luaL_typename(L, -1), i);
     luaL_addvalue(b);
 }
 
@@ -277,7 +279,7 @@ static int tunpack(lua_State* L)
         return 0;                 /* empty range */
     unsigned n = (unsigned)e - i; /* number of elements minus 1 (avoid overflows) */
     if (n >= (unsigned int)INT_MAX || !lua_checkstack(L, (int)(++n)))
-        luaL_error(L, "too many results to unpack");
+        luaL_error(L, XorStr("too many results to unpack"));
 
     // fast-path: direct array-to-stack copy
     if (i == 1 && int(n) <= t->sizearray)
@@ -369,14 +371,14 @@ static void auxsort(lua_State* L, int l, int u)
             while (lua_rawgeti(L, 1, ++i), sort_comp(L, -1, -2))
             {
                 if (i >= u)
-                    luaL_error(L, "invalid order function for sorting");
+                    luaL_error(L, XorStr("invalid order function for sorting"));
                 lua_pop(L, 1); /* remove a[i] */
             }
             /* repeat --j until a[j] <= P */
             while (lua_rawgeti(L, 1, --j), sort_comp(L, -3, -1))
             {
                 if (j <= l)
-                    luaL_error(L, "invalid order function for sorting");
+                    luaL_error(L, XorStr("invalid order function for sorting"));
                 lua_pop(L, 1); /* remove a[j] */
             }
             if (j < i)
@@ -411,7 +413,7 @@ static int sort(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
     int n = lua_objlen(L, 1);
-    luaL_checkstack(L, 40, ""); /* assume array is smaller than 2^40 */
+    luaL_checkstack(L, 40, XorStr("")); /* assume array is smaller than 2^40 */
     if (!lua_isnoneornil(L, 2)) /* is there a 2nd argument? */
         luaL_checktype(L, 2, LUA_TFUNCTION);
     lua_settop(L, 2); /* make sure there is two arguments */
@@ -425,7 +427,7 @@ static int tcreate(lua_State* L)
 {
     int size = luaL_checkinteger(L, 1);
     if (size < 0)
-        luaL_argerror(L, 1, "size out of range");
+        luaL_argerror(L, 1, XorStr("size out of range"));
 
     if (!lua_isnoneornil(L, 2))
     {
@@ -454,7 +456,7 @@ static int tfind(lua_State* L)
     luaL_checkany(L, 2);
     int init = luaL_optinteger(L, 3, 1);
     if (init < 1)
-        luaL_argerror(L, 3, "index out of range");
+        luaL_argerror(L, 3, XorStr("index out of range"));
 
     Table* t = hvalue(L->base);
     StkId v = L->base + 1;
@@ -482,7 +484,7 @@ static int tclear(lua_State* L)
 
     Table* tt = hvalue(L->base);
     if (tt->readonly)
-        luaG_readonlyerror(L);
+        luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
 
     luaH_clear(tt);
     return 0;
@@ -491,8 +493,8 @@ static int tclear(lua_State* L)
 static int tfreeze(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
-    luaL_argcheck(L, !lua_getreadonly(L, 1), 1, "table is already frozen");
-    luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
+    luaL_argcheck(L, !lua_getreadonly(L, 1), 1, XorStr("table is already frozen"));
+    luaL_argcheck(L, !luaL_getmetafield(L, 1, XorStr("__metatable")), 1, XorStr("table has a protected metatable"));
 
     lua_setreadonly(L, 1, true);
 
@@ -511,7 +513,7 @@ static int tisfrozen(lua_State* L)
 static int tclone(lua_State* L)
 {
     luaL_checktype(L, 1, LUA_TTABLE);
-    luaL_argcheck(L, !luaL_getmetafield(L, 1, "__metatable"), 1, "table has a protected metatable");
+    luaL_argcheck(L, !luaL_getmetafield(L, 1, XorStr("__metatable")), 1, XorStr("table has a protected metatable"));
 
     Table* tt = luaH_clone(L, hvalue(L->base));
 
@@ -523,23 +525,23 @@ static int tclone(lua_State* L)
 }
 
 static const luaL_Reg tab_funcs[] = {
-    {"concat", tconcat},
-    {"foreach", foreach},
-    {"foreachi", foreachi},
-    {"getn", getn},
-    {"maxn", maxn},
-    {"insert", tinsert},
-    {"remove", tremove},
-    {"sort", sort},
-    {"pack", tpack},
-    {"unpack", tunpack},
-    {"move", tmove},
-    {"create", tcreate},
-    {"find", tfind},
-    {"clear", tclear},
-    {"freeze", tfreeze},
-    {"isfrozen", tisfrozen},
-    {"clone", tclone},
+    {XorStr("concat"), tconcat},
+    {XorStr("foreach"), foreach},
+    {XorStr("foreachi"), foreachi},
+    {XorStr("getn"), getn},
+    {XorStr("maxn"), maxn},
+    {XorStr("insert"), tinsert},
+    {XorStr("remove"), tremove},
+    {XorStr("sort"), sort},
+    {XorStr("pack"), tpack},
+    {XorStr("unpack"), tunpack},
+    {XorStr("move"), tmove},
+    {XorStr("create"), tcreate},
+    {XorStr("find"), tfind},
+    {XorStr("clear"), tclear},
+    {XorStr("freeze"), tfreeze},
+    {XorStr("isfrozen"), tisfrozen},
+    {XorStr("clone"), tclone},
     {NULL, NULL},
 };
 
@@ -548,8 +550,8 @@ int luaopen_table(lua_State* L)
     luaL_register(L, LUA_TABLIBNAME, tab_funcs);
 
     // Lua 5.1 compat
-    lua_pushcfunction(L, tunpack, "unpack");
-    lua_setglobal(L, "unpack");
+    lua_pushcfunction(L, tunpack, XorStr("unpack"));
+    lua_setglobal(L, XorStr("unpack"));
 
     return 1;
 }

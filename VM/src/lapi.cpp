@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lapi.h"
 
@@ -11,6 +11,9 @@
 #include "ludata.h"
 #include "lvm.h"
 #include "lnumutils.h"
+
+#include "..\..\..\..\Security\XorString.h"
+#include "..\..\..\..\Special\PointerEncryptions.h"
 
 #include <string.h>
 
@@ -38,8 +41,8 @@ const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Ri
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
 
-const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
-                         "$URL: luau-lang.org $\n";
+const char* lluz_ident = "$lluz: Copyright (C) 2019-2022 Roblox Corporation $\n"
+                         "$URL: lluz-lang.org $\n";
 
 #define api_checknelems(L, n) api_check(L, (n) <= (L->top - L->base))
 
@@ -51,12 +54,6 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
         L->top++; \
     }
 
-#define updateatom(L, ts) \
-    { \
-        if (ts->atom == ATOM_UNDEF) \
-            ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1; \
-    }
-
 static Table* getcurrenv(lua_State* L)
 {
     if (L->ci == L->base_ci) /* no enclosing function? */
@@ -65,7 +62,7 @@ static Table* getcurrenv(lua_State* L)
         return curr_func(L)->env;
 }
 
-static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
+static lluz_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
 {
     api_check(L, lua_ispseudo(idx));
     switch (idx)
@@ -91,7 +88,7 @@ static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
     }
 }
 
-static LUAU_FORCEINLINE TValue* index2addr(lua_State* L, int idx)
+static lluz_FORCEINLINE TValue* index2addr(lua_State* L, int idx)
 {
     if (idx > 0)
     {
@@ -447,25 +444,19 @@ const char* lua_tostringatom(lua_State* L, int idx, int* atom)
     StkId o = index2addr(L, idx);
     if (!ttisstring(o))
         return NULL;
-    TString* s = tsvalue(o);
+    const TString* s = tsvalue(o);
     if (atom)
-    {
-        updateatom(L, s);
         *atom = s->atom;
-    }
     return getstr(s);
 }
 
 const char* lua_namecallatom(lua_State* L, int* atom)
 {
-    TString* s = L->namecall;
+    const TString* s = L->namecall;
     if (!s)
         return NULL;
     if (atom)
-    {
-        updateatom(L, s);
         *atom = s->atom;
-    }
     return getstr(s);
 }
 
@@ -653,7 +644,7 @@ void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, in
     while (nup--)
         setobj2n(L, &cl->c.upvals[nup], L->top + nup);
     setclvalue(L, L->top, cl);
-    LUAU_ASSERT(iswhite(obj2gco(cl)));
+    lluz_ASSERT(iswhite(obj2gco(cl)));
     api_incr_top(L);
     return;
 }
@@ -851,7 +842,7 @@ void lua_rawset(lua_State* L, int idx)
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     if (hvalue(t)->readonly)
-        luaG_readonlyerror(L);
+        luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
     setobj2t(L, luaH_set(L, hvalue(t), L->top - 2), L->top - 1);
     luaC_barriert(L, hvalue(t), L->top - 1);
     L->top -= 2;
@@ -864,7 +855,7 @@ void lua_rawseti(lua_State* L, int idx, int n)
     StkId o = index2addr(L, idx);
     api_check(L, ttistable(o));
     if (hvalue(o)->readonly)
-        luaG_readonlyerror(L);
+        luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
     setobj2t(L, luaH_setnum(L, hvalue(o), n), L->top - 1);
     luaC_barriert(L, hvalue(o), L->top - 1);
     L->top--;
@@ -887,7 +878,7 @@ int lua_setmetatable(lua_State* L, int objindex)
     case LUA_TTABLE:
     {
         if (hvalue(obj)->readonly)
-            luaG_readonlyerror(L);
+            luaG_runerror(L, XorStr("Attempt to modify a readonly table"));
         hvalue(obj)->metatable = mt;
         if (mt)
             luaC_objbarrier(L, hvalue(obj), mt);
@@ -1199,7 +1190,7 @@ void* lua_newuserdatatagged(lua_State* L, size_t sz, int tag)
     api_check(L, unsigned(tag) < LUA_UTAG_LIMIT || tag == UTAG_PROXY);
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
-    Udata* u = luaU_newudata(L, sz, tag);
+    Udata* u = lluz_newudata(L, sz, tag);
     setuvalue(L, L->top, u);
     api_incr_top(L);
     return u->data;
@@ -1209,7 +1200,7 @@ void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
 {
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
-    Udata* u = luaU_newudata(L, sz + sizeof(dtor), UTAG_IDTOR);
+    Udata* u = lluz_newudata(L, sz + sizeof(dtor), UTAG_IDTOR);
     memcpy(&u->data + sz, &dtor, sizeof(dtor));
     setuvalue(L, L->top, u);
     api_incr_top(L);
@@ -1227,7 +1218,7 @@ static const char* aux_upvalue(StkId fi, int n, TValue** val)
         if (!(1 <= n && n <= f->nupvalues))
             return NULL;
         *val = &f->c.upvals[n - 1];
-        return "";
+        return XorStr("");
     }
     else
     {
@@ -1315,14 +1306,6 @@ void lua_unref(lua_State* L, int ref)
     setnvalue(slot, g->registryfree); /* NB: no barrier needed because value isn't collectable */
     g->registryfree = ref;
     return;
-}
-
-void lua_setuserdatatag(lua_State* L, int idx, int tag)
-{
-    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
-    StkId o = index2addr(L, idx);
-    api_check(L, ttisuserdata(o));
-    uvalue(o)->tag = uint8_t(tag);
 }
 
 void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))

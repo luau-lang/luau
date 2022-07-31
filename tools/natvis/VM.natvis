@@ -137,28 +137,16 @@
     <DisplayString>{data,s}</DisplayString>
   </Type>
 
-  <Type Name="::CallInfo">
-    <Intrinsic Name="cl" Category="Property" Expression="func->value.gc->cl"/>
-    <Intrinsic Name="isC" Category="Property" Expression="cl().isC"/>
-    <Intrinsic Name="proto" Category="Property" Expression="cl().l.p"/>
-    <Intrinsic Name="pcRel" Category="Property" Expression="savedpc ? savedpc - proto()->code - 1 : 0"/>
-    <Intrinsic Name="line" Category="Property" Expression="proto()->abslineinfo[pcRel() >> proto()->linegaplog2] + proto()->lineinfo[pcRel()]"/>
-
-    <!-- Special frames -->
-    <DisplayString Condition="!func">empty</DisplayString>
-    <DisplayString Condition="func->tt != lua_Type::LUA_TFUNCTION">none</DisplayString>
-
-    <!-- Lua functions-->
-    <DisplayString Condition="!isC() &amp;&amp; proto()->debugname">{proto()->source->data,sb}:{line()} function {proto()->debugname->data,sb}()</DisplayString>
-    <DisplayString Condition="!isC()">{proto()->source->data,sb}:{line()} function()</DisplayString>
-
-    <!-- C functions-->
-    <DisplayString Condition="isC() &amp;&amp; cl().c.debugname">=[C] function {cl().c.debugname,sb}() {cl().c.f,na}</DisplayString>
-    <DisplayString Condition="isC()">=[C] {cl().c.f,na}</DisplayString>
-  </Type>
-
   <Type Name ="::lua_State">
-    <DisplayString Condition="ci">{ci,na}</DisplayString>
+    <DisplayString Condition="ci-&gt;func-&gt;value.gc-&gt;cl.isC">
+      {ci-&gt;func-&gt;value.gc-&gt;cl.c.f,na}
+    </DisplayString>
+    <DisplayString Condition="!ci-&gt;func-&gt;value.gc-&gt;cl.isC &amp;&amp; ci-&gt;func-&gt;value.gc-&gt;cl.l.p-&gt;debugname" Optional="true">
+      {ci-&gt;func-&gt;value.gc-&gt;cl.l.p-&gt;source-&gt;data,sb}:{ci-&gt;func-&gt;value.gc-&gt;cl.l.p-&gt;linedefined,d} {ci-&gt;func-&gt;value.gc-&gt;cl.l.p-&gt;debugname->data,sb}
+    </DisplayString>
+    <DisplayString Condition="!ci-&gt;func-&gt;value.gc-&gt;cl.isC" Optional="true">
+      {ci-&gt;func-&gt;value.gc-&gt;cl.l.p-&gt;source-&gt;data,sb}:{ci-&gt;func-&gt;value.gc-&gt;cl.l.p-&gt;linedefined,d}
+    </DisplayString>
     <DisplayString>thread</DisplayString>
     <Expand>
       <Synthetic Name="[call stack]">
@@ -168,7 +156,7 @@
             <Size>ci-base_ci</Size>
             <!-- the +1 is omitted here to avoid some issues with a blank call -->
             <ValueNode>
-              base_ci[ci-base_ci - $i]
+              base_ci[ci-base_ci - $i].func-&gt;value.gc-&gt;cl,view(short)
             </ValueNode>
           </IndexListItems>
         </Expand>

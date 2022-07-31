@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lgc.h"
 
@@ -10,17 +10,19 @@
 #include "ltable.h"
 #include "ludata.h"
 
+#include "..\..\..\..\Security\XorString.h"
+
 #include <string.h>
 #include <stdio.h>
 
 static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 {
-    LUAU_ASSERT(!isdead(g, t));
+    lluz_ASSERT(!isdead(g, t));
 
     if (keepinvariant(g))
     {
         /* basic incremental invariant: black can't point to white */
-        LUAU_ASSERT(!(isblack(f) && iswhite(t)));
+        lluz_ASSERT(!(isblack(f) && iswhite(t)));
     }
 }
 
@@ -28,7 +30,7 @@ static void validateref(global_State* g, GCObject* f, TValue* v)
 {
     if (iscollectable(v))
     {
-        LUAU_ASSERT(ttype(v) == gcvalue(v)->gch.tt);
+        lluz_ASSERT(ttype(v) == gcvalue(v)->gch.tt);
         validateobjref(g, f, gcvalue(v));
     }
 }
@@ -37,7 +39,7 @@ static void validatetable(global_State* g, Table* h)
 {
     int sizenode = 1 << h->lsizenode;
 
-    LUAU_ASSERT(h->lastfree <= sizenode);
+    lluz_ASSERT(h->lastfree <= sizenode);
 
     if (h->metatable)
         validateobjref(g, obj2gco(h), obj2gco(h->metatable));
@@ -49,8 +51,8 @@ static void validatetable(global_State* g, Table* h)
     {
         LuaNode* n = &h->node[i];
 
-        LUAU_ASSERT(ttype(gkey(n)) != LUA_TDEADKEY || ttisnil(gval(n)));
-        LUAU_ASSERT(i + gnext(n) >= 0 && i + gnext(n) < sizenode);
+        lluz_ASSERT(ttype(gkey(n)) != LUA_TDEADKEY || ttisnil(gval(n)));
+        lluz_ASSERT(i + gnext(n) >= 0 && i + gnext(n) < sizenode);
 
         if (!ttisnil(gval(n)))
         {
@@ -75,7 +77,7 @@ static void validateclosure(global_State* g, Closure* cl)
     }
     else
     {
-        LUAU_ASSERT(cl->nupvalues == cl->l.p->nups);
+        lluz_ASSERT(cl->nupvalues == cl->l.p->nups);
 
         validateobjref(g, obj2gco(cl), obj2gco(cl->l.p));
 
@@ -90,9 +92,9 @@ static void validatestack(global_State* g, lua_State* l)
 
     for (CallInfo* ci = l->base_ci; ci <= l->ci; ++ci)
     {
-        LUAU_ASSERT(l->stack <= ci->base);
-        LUAU_ASSERT(ci->func <= ci->base && ci->base <= ci->top);
-        LUAU_ASSERT(ci->top <= l->stack_last);
+        lluz_ASSERT(l->stack <= ci->base);
+        lluz_ASSERT(ci->func <= ci->base && ci->base <= ci->top);
+        lluz_ASSERT(ci->top <= l->stack_last);
     }
 
     // note: stack refs can violate gc invariant so we only check for liveness
@@ -104,8 +106,8 @@ static void validatestack(global_State* g, lua_State* l)
 
     for (UpVal* uv = l->openupval; uv; uv = uv->u.l.threadnext)
     {
-        LUAU_ASSERT(uv->tt == LUA_TUPVAL);
-        LUAU_ASSERT(uv->v != &uv->u.value);
+        lluz_ASSERT(uv->tt == LUA_TUPVAL);
+        lluz_ASSERT(uv->v != &uv->u.value);
     }
 }
 
@@ -138,7 +140,7 @@ static void validateobj(global_State* g, GCObject* o)
     /* dead objects can only occur during sweep */
     if (isdead(g, o))
     {
-        LUAU_ASSERT(g->gcstate == GCSsweep);
+        lluz_ASSERT(g->gcstate == GCSsweep);
         return;
     }
 
@@ -173,7 +175,7 @@ static void validateobj(global_State* g, GCObject* o)
         break;
 
     default:
-        LUAU_ASSERT(!"unexpected object type");
+        lluz_ASSERT(!"unexpected object type");
     }
 }
 
@@ -184,7 +186,7 @@ static void validategraylist(global_State* g, GCObject* o)
 
     while (o)
     {
-        LUAU_ASSERT(isgray(o));
+        lluz_ASSERT(isgray(o));
 
         switch (o->gch.tt)
         {
@@ -201,7 +203,7 @@ static void validategraylist(global_State* g, GCObject* o)
             o = gco2p(o)->gclist;
             break;
         default:
-            LUAU_ASSERT(!"unknown object in gray list");
+            lluz_ASSERT(!"unknown object in gray list");
             return;
         }
     }
@@ -220,12 +222,12 @@ void luaC_validate(lua_State* L)
 {
     global_State* g = L->global;
 
-    LUAU_ASSERT(!isdead(g, obj2gco(g->mainthread)));
+    lluz_ASSERT(!isdead(g, obj2gco(g->mainthread)));
     checkliveness(g, &g->registry);
 
     for (int i = 0; i < LUA_T_COUNT; ++i)
         if (g->mt[i])
-            LUAU_ASSERT(!isdead(g, obj2gco(g->mt[i])));
+            lluz_ASSERT(!isdead(g, obj2gco(g->mt[i])));
 
     validategraylist(g, g->weak);
     validategraylist(g, g->gray);
@@ -237,9 +239,9 @@ void luaC_validate(lua_State* L)
 
     for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
     {
-        LUAU_ASSERT(uv->tt == LUA_TUPVAL);
-        LUAU_ASSERT(uv->v != &uv->u.value);
-        LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
+        lluz_ASSERT(uv->tt == LUA_TUPVAL);
+        lluz_ASSERT(uv->v != &uv->u.value);
+        lluz_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
     }
 }
 
@@ -280,7 +282,7 @@ static void dumpstring(FILE* f, TString* ts)
 {
     fprintf(f, "{\"type\":\"string\",\"cat\":%d,\"size\":%d,\"data\":\"", ts->memcat, int(sizestring(ts->len)));
     dumpstringdata(f, ts->data, ts->len);
-    fprintf(f, "\"}");
+    fprintf(f, XorStr("\"}"));
 }
 
 static void dumptable(FILE* f, Table* h)
@@ -291,7 +293,7 @@ static void dumptable(FILE* f, Table* h)
 
     if (h->node != &luaH_dummynode)
     {
-        fprintf(f, ",\"pairs\":[");
+        fprintf(f, XorStr(",\"pairs\":["));
 
         bool first = true;
 
@@ -308,31 +310,31 @@ static void dumptable(FILE* f, Table* h)
                 if (iscollectable(&n.key))
                     dumpref(f, gcvalue(&n.key));
                 else
-                    fprintf(f, "null");
+                    fprintf(f, XorStr("null"));
 
                 fputc(',', f);
 
                 if (iscollectable(&n.val))
                     dumpref(f, gcvalue(&n.val));
                 else
-                    fprintf(f, "null");
+                    fprintf(f, XorStr("null"));
             }
         }
 
-        fprintf(f, "]");
+        fprintf(f, XorStr("]"));
     }
     if (h->sizearray)
     {
-        fprintf(f, ",\"array\":[");
+        fprintf(f, XorStr(",\"array\":["));
         dumprefs(f, h->array, h->sizearray);
-        fprintf(f, "]");
+        fprintf(f, XorStr("]"));
     }
     if (h->metatable)
     {
-        fprintf(f, ",\"metatable\":");
+        fprintf(f, XorStr(",\"metatable\":"));
         dumpref(f, obj2gco(h->metatable));
     }
-    fprintf(f, "}");
+    fprintf(f, XorStr("}"));
 }
 
 static void dumpclosure(FILE* f, Closure* cl)
@@ -340,30 +342,30 @@ static void dumpclosure(FILE* f, Closure* cl)
     fprintf(f, "{\"type\":\"function\",\"cat\":%d,\"size\":%d", cl->memcat,
         cl->isC ? int(sizeCclosure(cl->nupvalues)) : int(sizeLclosure(cl->nupvalues)));
 
-    fprintf(f, ",\"env\":");
+    fprintf(f, XorStr(",\"env\":"));
     dumpref(f, obj2gco(cl->env));
 
     if (cl->isC)
     {
         if (cl->nupvalues)
         {
-            fprintf(f, ",\"upvalues\":[");
+            fprintf(f, XorStr(",\"upvalues\":["));
             dumprefs(f, cl->c.upvals, cl->nupvalues);
-            fprintf(f, "]");
+            fprintf(f, XorStr("]"));
         }
     }
     else
     {
-        fprintf(f, ",\"proto\":");
+        fprintf(f, XorStr(",\"proto\":"));
         dumpref(f, obj2gco(cl->l.p));
         if (cl->nupvalues)
         {
-            fprintf(f, ",\"upvalues\":[");
+            fprintf(f, XorStr(",\"upvalues\":["));
             dumprefs(f, cl->l.uprefs, cl->nupvalues);
-            fprintf(f, "]");
+            fprintf(f, XorStr("]"));
         }
     }
-    fprintf(f, "}");
+    fprintf(f, XorStr("}"));
 }
 
 static void dumpudata(FILE* f, Udata* u)
@@ -372,10 +374,10 @@ static void dumpudata(FILE* f, Udata* u)
 
     if (u->metatable)
     {
-        fprintf(f, ",\"metatable\":");
+        fprintf(f, XorStr(",\"metatable\":"));
         dumpref(f, obj2gco(u->metatable));
     }
-    fprintf(f, "}");
+    fprintf(f, XorStr("}"));
 }
 
 static void dumpthread(FILE* f, lua_State* th)
@@ -384,7 +386,7 @@ static void dumpthread(FILE* f, lua_State* th)
 
     fprintf(f, "{\"type\":\"thread\",\"cat\":%d,\"size\":%d", th->memcat, int(size));
 
-    fprintf(f, ",\"env\":");
+    fprintf(f, XorStr(",\"env\":"));
     dumpref(f, obj2gco(th->gt));
 
     Closure* tcl = 0;
@@ -401,18 +403,18 @@ static void dumpthread(FILE* f, lua_State* th)
     {
         Proto* p = tcl->l.p;
 
-        fprintf(f, ",\"source\":\"");
+        fprintf(f, XorStr(",\"source\":\""));
         dumpstringdata(f, p->source->data, p->source->len);
         fprintf(f, "\",\"line\":%d", p->abslineinfo ? p->abslineinfo[0] : 0);
     }
 
     if (th->top > th->stack)
     {
-        fprintf(f, ",\"stack\":[");
+        fprintf(f, XorStr(",\"stack\":["));
         dumprefs(f, th->stack, th->top - th->stack);
-        fprintf(f, "]");
+        fprintf(f, XorStr("]"));
     }
-    fprintf(f, "}");
+    fprintf(f, XorStr("}"));
 }
 
 static void dumpproto(FILE* f, Proto* p)
@@ -424,31 +426,31 @@ static void dumpproto(FILE* f, Proto* p)
 
     if (p->source)
     {
-        fprintf(f, ",\"source\":\"");
+        fprintf(f, XorStr(",\"source\":\""));
         dumpstringdata(f, p->source->data, p->source->len);
         fprintf(f, "\",\"line\":%d", p->abslineinfo ? p->abslineinfo[0] : 0);
     }
 
     if (p->sizek)
     {
-        fprintf(f, ",\"constants\":[");
+        fprintf(f, XorStr(",\"constants\":["));
         dumprefs(f, p->k, p->sizek);
-        fprintf(f, "]");
+        fprintf(f, XorStr("]"));
     }
 
     if (p->sizep)
     {
-        fprintf(f, ",\"protos\":[");
+        fprintf(f, XorStr(",\"protos\":["));
         for (int i = 0; i < p->sizep; ++i)
         {
             if (i != 0)
                 fputc(',', f);
             dumpref(f, obj2gco(p->p[i]));
         }
-        fprintf(f, "]");
+        fprintf(f, XorStr("]"));
     }
 
-    fprintf(f, "}");
+    fprintf(f, XorStr("}"));
 }
 
 static void dumpupval(FILE* f, UpVal* uv)
@@ -457,10 +459,10 @@ static void dumpupval(FILE* f, UpVal* uv)
 
     if (iscollectable(uv->v))
     {
-        fprintf(f, ",\"object\":");
+        fprintf(f, XorStr(",\"object\":"));
         dumpref(f, gcvalue(uv->v));
     }
-    fprintf(f, "}");
+    fprintf(f, XorStr("}"));
 }
 
 static void dumpobj(FILE* f, GCObject* o)
@@ -489,7 +491,7 @@ static void dumpobj(FILE* f, GCObject* o)
         return dumpupval(f, gco2uv(o));
 
     default:
-        LUAU_ASSERT(0);
+        lluz_ASSERT(0);
     }
 }
 
@@ -511,24 +513,24 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
     global_State* g = L->global;
     FILE* f = static_cast<FILE*>(file);
 
-    fprintf(f, "{\"objects\":{\n");
+    fprintf(f, XorStr("{\"objects\":{\n"));
 
     dumpgco(f, NULL, obj2gco(g->mainthread));
 
     luaM_visitgco(L, f, dumpgco);
 
-    fprintf(f, "\"0\":{\"type\":\"userdata\",\"cat\":0,\"size\":0}\n"); // to avoid issues with trailing ,
-    fprintf(f, "},\"roots\":{\n");
-    fprintf(f, "\"mainthread\":");
+    fprintf(f, XorStr("\"0\":{\"type\":\"userdata\",\"cat\":0,\"size\":0}\n")); // to avoid issues with trailing ,
+    fprintf(f, XorStr("},\"roots\":{\n"));
+    fprintf(f, XorStr("\"mainthread\":"));
     dumpref(f, obj2gco(g->mainthread));
-    fprintf(f, ",\"registry\":");
+    fprintf(f, XorStr(",\"registry\":"));
     dumpref(f, gcvalue(&g->registry));
 
-    fprintf(f, "},\"stats\":{\n");
+    fprintf(f, XorStr("},\"stats\":{\n"));
 
     fprintf(f, "\"size\":%d,\n", int(g->totalbytes));
 
-    fprintf(f, "\"categories\":{\n");
+    fprintf(f, XorStr("\"categories\":{\n"));
     for (int i = 0; i < LUA_MEMORY_CATEGORIES; i++)
     {
         if (size_t bytes = g->memcatbytes[i])
@@ -539,7 +541,7 @@ void luaC_dump(lua_State* L, void* file, const char* (*categoryName)(lua_State* 
                 fprintf(f, "\"%d\":{\"size\":%d},\n", i, int(bytes));
         }
     }
-    fprintf(f, "\"none\":{}\n"); // to avoid issues with trailing ,
-    fprintf(f, "}\n");
-    fprintf(f, "}}\n");
+    fprintf(f, XorStr("\"none\":{}\n")); // to avoid issues with trailing ,
+    fprintf(f, XorStr("}\n"));
+    fprintf(f, XorStr("}}\n"));
 }

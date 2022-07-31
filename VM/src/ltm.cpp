@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "ltm.h"
 
@@ -8,55 +8,57 @@
 #include "ltable.h"
 #include "lgc.h"
 
+#include "..\..\..\..\Security\XorString.h"
+
 #include <string.h>
 
 // clang-format off
 const char* const luaT_typenames[] = {
     /* ORDER TYPE */
-    "nil",
-    "boolean",
+    XorStr("nil"),
+    XorStr("boolean"),
 
     
-    "userdata",
-    "number",
-    "vector",
+    XorStr("userdata"),
+    XorStr("number"),
+    XorStr("vector"),
 
-    "string",
+    XorStr("string"),
 
     
-    "table",
-    "function",
-    "userdata",
-    "thread",
+    XorStr("table"),
+    XorStr("function"),
+    XorStr("userdata"),
+    XorStr("thread"),
 };
 
 const char* const luaT_eventname[] = {
     /* ORDER TM */
     
-    "__index",
-    "__newindex",
-    "__mode",
-    "__namecall",
-    "__call",
-    "__iter",
-    "__len",
+    XorStr("__index"),
+    XorStr("__newindex"),
+    XorStr("__mode"),
+    XorStr("__namecall"),
+    XorStr("__call"),
+    XorStr("__iter"),
+    XorStr("__len"),
 
-    "__eq",
-
-    
-    "__add",
-    "__sub",
-    "__mul",
-    "__div",
-    "__mod",
-    "__pow",
-    "__unm",
+    XorStr("__eq"),
 
     
-    "__lt",
-    "__le",
-    "__concat",
-    "__type",
+    XorStr("__add"),
+    XorStr("__sub"),
+    XorStr("__mul"),
+    XorStr("__div"),
+    XorStr("__mod"),
+    XorStr("__pow"),
+    XorStr("__unm"),
+
+    
+    XorStr("__lt"),
+    XorStr("__le"),
+    XorStr("__concat"),
+    XorStr("__type"),
 };
 // clang-format on
 
@@ -86,7 +88,7 @@ void luaT_init(lua_State* L)
 const TValue* luaT_gettm(Table* events, TMS event, TString* ename)
 {
     const TValue* tm = luaH_getstr(events, ename);
-    LUAU_ASSERT(event <= TM_EQ);
+    lluz_ASSERT(event <= TM_EQ);
     if (ttisnil(tm))
     {                                              /* no tag method? */
         events->tmcache |= cast_byte(1u << event); /* cache this fact */

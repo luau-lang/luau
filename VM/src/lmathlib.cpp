@@ -1,8 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
 #include "lstate.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <math.h>
 #include <time.h>
@@ -241,7 +243,7 @@ static int math_random(lua_State* L)
     case 1:
     { /* only upper limit */
         int u = luaL_checkinteger(L, 1);
-        luaL_argcheck(L, 1 <= u, 1, "interval is empty");
+        luaL_argcheck(L, 1 <= u, 1, XorStr("interval is empty"));
 
         uint64_t x = uint64_t(u) * pcg32_random(&g->rngstate);
         int r = int(1 + (x >> 32));
@@ -252,17 +254,17 @@ static int math_random(lua_State* L)
     { /* lower and upper limits */
         int l = luaL_checkinteger(L, 1);
         int u = luaL_checkinteger(L, 2);
-        luaL_argcheck(L, l <= u, 2, "interval is empty");
+        luaL_argcheck(L, l <= u, 2, XorStr("interval is empty"));
 
         uint32_t ul = uint32_t(u) - uint32_t(l);
-        luaL_argcheck(L, ul < UINT_MAX, 2, "interval is too large"); // -INT_MIN..INT_MAX interval can result in integer overflow
+        luaL_argcheck(L, ul < UINT_MAX, 2, XorStr("interval is too large")); // -INT_MIN..INT_MAX interval can result in integer overflow
         uint64_t x = uint64_t(ul + 1) * pcg32_random(&g->rngstate);
         int r = int(l + (x >> 32));
         lua_pushinteger(L, r); /* int between `l' and `u' */
         break;
     }
     default:
-        luaL_error(L, "wrong number of arguments");
+        luaL_error(L, XorStr("wrong number of arguments"));
     }
     return 1;
 }
@@ -367,7 +369,7 @@ static int math_clamp(lua_State* L)
     double min = luaL_checknumber(L, 2);
     double max = luaL_checknumber(L, 3);
 
-    luaL_argcheck(L, min <= max, 3, "max must be greater than or equal to min");
+    luaL_argcheck(L, min <= max, 3, XorStr("max must be greater than or equal to min"));
 
     double r = v < min ? min : v;
     r = r > max ? max : r;
@@ -390,38 +392,38 @@ static int math_round(lua_State* L)
 }
 
 static const luaL_Reg mathlib[] = {
-    {"abs", math_abs},
-    {"acos", math_acos},
-    {"asin", math_asin},
-    {"atan2", math_atan2},
-    {"atan", math_atan},
-    {"ceil", math_ceil},
-    {"cosh", math_cosh},
-    {"cos", math_cos},
-    {"deg", math_deg},
-    {"exp", math_exp},
-    {"floor", math_floor},
-    {"fmod", math_fmod},
-    {"frexp", math_frexp},
-    {"ldexp", math_ldexp},
-    {"log10", math_log10},
-    {"log", math_log},
-    {"max", math_max},
-    {"min", math_min},
-    {"modf", math_modf},
-    {"pow", math_pow},
-    {"rad", math_rad},
-    {"random", math_random},
-    {"randomseed", math_randomseed},
-    {"sinh", math_sinh},
-    {"sin", math_sin},
-    {"sqrt", math_sqrt},
-    {"tanh", math_tanh},
-    {"tan", math_tan},
-    {"noise", math_noise},
-    {"clamp", math_clamp},
-    {"sign", math_sign},
-    {"round", math_round},
+    {XorStr("abs"), math_abs},
+    {XorStr("acos"), math_acos},
+    {XorStr("asin"), math_asin},
+    {XorStr("atan2"), math_atan2},
+    {XorStr("atan"), math_atan},
+    {XorStr("ceil"), math_ceil},
+    {XorStr("cosh"), math_cosh},
+    {XorStr("cos"), math_cos},
+    {XorStr("deg"), math_deg},
+    {XorStr("exp"), math_exp},
+    {XorStr("floor"), math_floor},
+    {XorStr("fmod"), math_fmod},
+    {XorStr("frexp"), math_frexp},
+    {XorStr("ldexp"), math_ldexp},
+    {XorStr("log10"), math_log10},
+    {XorStr("log"), math_log},
+    {XorStr("max"), math_max},
+    {XorStr("min"), math_min},
+    {XorStr("modf"), math_modf},
+    {XorStr("pow"), math_pow},
+    {XorStr("rad"), math_rad},
+    {XorStr("random"), math_random},
+    {XorStr("randomseed"), math_randomseed},
+    {XorStr("sinh"), math_sinh},
+    {XorStr("sin"), math_sin},
+    {XorStr("sqrt"), math_sqrt},
+    {XorStr("tanh"), math_tanh},
+    {XorStr("tan"), math_tan},
+    {XorStr("noise"), math_noise},
+    {XorStr("clamp"), math_clamp},
+    {XorStr("sign"), math_sign},
+    {XorStr("round"), math_round},
     {NULL, NULL},
 };
 
@@ -438,8 +440,8 @@ int luaopen_math(lua_State* L)
 
     luaL_register(L, LUA_MATHLIBNAME, mathlib);
     lua_pushnumber(L, PI);
-    lua_setfield(L, -2, "pi");
+    lua_setfield(L, -2, XorStr("pi"));
     lua_pushnumber(L, HUGE_VAL);
-    lua_setfield(L, -2, "huge");
+    lua_setfield(L, -2, XorStr("huge"));
     return 1;
 }

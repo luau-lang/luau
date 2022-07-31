@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lfunc.h"
 
@@ -71,7 +71,7 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     UpVal* p;
     while (*pp != NULL && (p = *pp)->v >= level)
     {
-        LUAU_ASSERT(p->v != &p->u.value);
+        lluz_ASSERT(p->v != &p->u.value);
         if (p->v == level)
         {                                /* found a corresponding upvalue? */
             if (isdead(g, obj2gco(p)))   /* is it dead? */
@@ -102,13 +102,13 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     uv->u.l.next = g->uvhead.u.l.next;
     uv->u.l.next->u.l.prev = uv;
     g->uvhead.u.l.next = uv;
-    LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
+    lluz_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
     return uv;
 }
 void luaF_unlinkupval(UpVal* uv)
 {
     // unlink upvalue from the global open upvalue list
-    LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
+    lluz_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
     uv->u.l.next->u.l.prev = uv->u.l.prev;
     uv->u.l.prev->u.l.next = uv->u.l.next;
 
@@ -133,7 +133,7 @@ void luaF_close(lua_State* L, StkId level)
     while (L->openupval != NULL && (uv = L->openupval)->v >= level)
     {
         GCObject* o = obj2gco(uv);
-        LUAU_ASSERT(!isblack(o) && uv->v != &uv->u.value);
+        lluz_ASSERT(!isblack(o) && uv->v != &uv->u.value);
 
         // by removing the upvalue from global/thread open upvalue lists, L->openupval will be pointing to the next upvalue
         luaF_unlinkupval(uv);

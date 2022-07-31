@@ -1,4 +1,4 @@
-Luau ![CI](https://github.com/Roblox/luau/workflows/build/badge.svg) [![codecov](https://codecov.io/gh/Roblox/luau/branch/master/graph/badge.svg?token=S3U44WN416)](https://codecov.io/gh/Roblox/luau)
+Luau ![CI](https://github.com/Roblox/luau/workflows/build/badge.svg) [![Coverage](https://coveralls.io/repos/github/Roblox/luau/badge.svg?branch=master&t=2PXMow)](https://coveralls.io/github/Roblox/luau?branch=master)
 ====
 
 Luau (lowercase u, /ˈlu.aʊ/) is a fast, small, safe, gradually typed embeddable scripting language derived from [Lua](https://lua.org).

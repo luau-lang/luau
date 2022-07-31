@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "ludata.h"
 
@@ -7,7 +7,7 @@
 
 #include <string.h>
 
-Udata* luaU_newudata(lua_State* L, size_t s, int tag)
+Udata* lluz_newudata(lua_State* L, size_t s, int tag)
 {
     if (s > INT_MAX - sizeof(Udata))
         luaM_toobig(L);
@@ -15,12 +15,12 @@ Udata* luaU_newudata(lua_State* L, size_t s, int tag)
     luaC_init(L, u, LUA_TUSERDATA);
     u->len = int(s);
     u->metatable = NULL;
-    LUAU_ASSERT(tag >= 0 && tag <= 255);
+    lluz_ASSERT(tag >= 0 && tag <= 255);
     u->tag = uint8_t(tag);
     return u;
 }
 
-void luaU_freeudata(lua_State* L, Udata* u, lua_Page* page)
+void lluz_freeudata(lua_State* L, Udata* u, lua_Page* page)
 {
     if (u->tag < LUA_UTAG_LIMIT)
     {

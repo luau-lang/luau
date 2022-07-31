@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "ldebug.h"
 
@@ -9,10 +9,10 @@
 #include "ldo.h"
 #include "lbytecode.h"
 
+#include "..\..\..\..\Security\XorString.h"
+
 #include <string.h>
 #include <stdio.h>
-
-LUAU_FASTFLAGVARIABLE(LuauDebuggerBreakpointHitOnNextBestLine, false);
 
 static const char* getfuncname(Closure* f);
 
@@ -177,7 +177,7 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
     else if (unsigned(level) < unsigned(L->ci - L->base_ci))
     {
         ci = L->ci - level;
-        LUAU_ASSERT(ttisfunction(ci->func));
+        lluz_ASSERT(ttisfunction(ci->func));
         f = clvalue(ci->func);
     }
     if (f)
@@ -218,14 +218,14 @@ l_noret luaG_typeerrorL(lua_State* L, const TValue* o, const char* op)
 {
     const char* t = luaT_objtypename(L, o);
 
-    luaG_runerror(L, "attempt to %s a %s value", op, t);
+    luaG_runerror(L, XorStr("attempt to %s a %s value"), op, t);
 }
 
 l_noret luaG_forerrorL(lua_State* L, const TValue* o, const char* what)
 {
     const char* t = luaT_objtypename(L, o);
 
-    luaG_runerror(L, "invalid 'for' %s (number expected, got %s)", what, t);
+    luaG_runerror(L, XorStr("invalid 'for' %s (number expected, got %s)"), what, t);
 }
 
 l_noret luaG_concaterror(lua_State* L, StkId p1, StkId p2)
@@ -233,7 +233,7 @@ l_noret luaG_concaterror(lua_State* L, StkId p1, StkId p2)
     const char* t1 = luaT_objtypename(L, p1);
     const char* t2 = luaT_objtypename(L, p2);
 
-    luaG_runerror(L, "attempt to concatenate %s with %s", t1, t2);
+    luaG_runerror(L, XorStr("attempt to concatenate %s with %s"), t1, t2);
 }
 
 l_noret luaG_aritherror(lua_State* L, const TValue* p1, const TValue* p2, TMS op)
@@ -243,9 +243,9 @@ l_noret luaG_aritherror(lua_State* L, const TValue* p1, const TValue* p2, TMS op
     const char* opname = luaT_eventname[op] + 2; // skip __ from metamethod name
 
     if (t1 == t2)
-        luaG_runerror(L, "attempt to perform arithmetic (%s) on %s", opname, t1);
+        luaG_runerror(L, XorStr("attempt to perform arithmetic (%s) on %s"), opname, t1);
     else
-        luaG_runerror(L, "attempt to perform arithmetic (%s) on %s and %s", opname, t1, t2);
+        luaG_runerror(L, XorStr("attempt to perform arithmetic (%s) on %s and %s"), opname, t1, t2);
 }
 
 l_noret luaG_ordererror(lua_State* L, const TValue* p1, const TValue* p2, TMS op)
@@ -254,7 +254,7 @@ l_noret luaG_ordererror(lua_State* L, const TValue* p1, const TValue* p2, TMS op
     const char* t2 = luaT_objtypename(L, p2);
     const char* opname = (op == TM_LT) ? "<" : (op == TM_LE) ? "<=" : "==";
 
-    luaG_runerror(L, "attempt to compare %s %s %s", t1, opname, t2);
+    luaG_runerror(L, XorStr("attempt to compare %s %s %s"), t1, opname, t2);
 }
 
 l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
@@ -264,14 +264,9 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
     const TString* key = ttisstring(p2) ? tsvalue(p2) : 0;
 
     if (key && key->len <= 64) // limit length to make sure we don't generate very long error messages for very long keys
-        luaG_runerror(L, "attempt to index %s with '%s'", t1, getstr(key));
+        luaG_runerror(L, XorStr("attempt to index %s with '%s'"), t1, getstr(key));
     else
-        luaG_runerror(L, "attempt to index %s with %s", t1, t2);
-}
-
-l_noret luaG_readonlyerror(lua_State* L)
-{
-    luaG_runerror(L, "attempt to modify a readonly table");
+        luaG_runerror(L, XorStr("attempt to index %s with %s"), t1, t2);
 }
 
 static void pusherror(lua_State* L, const char* msg)
@@ -282,7 +277,7 @@ static void pusherror(lua_State* L, const char* msg)
         char buff[LUA_IDSIZE]; /* add file:line information */
         luaO_chunkid(buff, getstr(getluaproto(ci)->source), LUA_IDSIZE);
         int line = currentline(L, ci);
-        luaO_pushfstring(L, "%s:%d: %s", buff, line, msg);
+        luaO_pushfstring(L, XorStr("%s:%d: %s"), buff, line, msg);
     }
     else
     {
@@ -314,7 +309,7 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
         for (int i = 0; i < p->sizecode; ++i)
         {
             // note: we keep prologue as is, instead opting to break at the first meaningful instruction
-            if (LUAU_INSN_OP(p->code[i]) == LOP_PREPVARARGS)
+            if (lluz_INSN_OP(p->code[i]) == LOP_PREPVARARGS)
                 continue;
 
             if (luaG_getline(p, i) != line)
@@ -325,15 +320,15 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
             {
                 p->debuginsn = luaM_newarray(L, p->sizecode, uint8_t, p->memcat);
                 for (int j = 0; j < p->sizecode; ++j)
-                    p->debuginsn[j] = LUAU_INSN_OP(p->code[j]);
+                    p->debuginsn[j] = lluz_INSN_OP(p->code[j]);
             }
 
-            uint8_t op = enable ? LOP_BREAK : LUAU_INSN_OP(p->debuginsn[i]);
+            uint8_t op = enable ? LOP_BREAK : lluz_INSN_OP(p->debuginsn[i]);
 
             // patch just the opcode byte, leave arguments alone
             p->code[i] &= ~0xff;
             p->code[i] |= op;
-            LUAU_ASSERT(LUAU_INSN_OP(p->code[i]) == op);
+            lluz_ASSERT(lluz_INSN_OP(p->code[i]) == op);
 
             // note: this is important!
             // we only patch the *first* instruction in each proto that's attributed to a given line
@@ -356,12 +351,12 @@ bool luaG_onbreak(lua_State* L)
     if (!isLua(L->ci))
         return false;
 
-    return LUAU_INSN_OP(*L->ci->savedpc) == LOP_BREAK;
+    return lluz_INSN_OP(*L->ci->savedpc) == LOP_BREAK;
 }
 
 int luaG_getline(Proto* p, int pc)
 {
-    LUAU_ASSERT(pc >= 0 && pc < p->sizecode);
+    lluz_ASSERT(pc >= 0 && pc < p->sizecode);
 
     if (!p->lineinfo)
         return 0;
@@ -372,6 +367,14 @@ int luaG_getline(Proto* p, int pc)
 void lua_singlestep(lua_State* L, int enabled)
 {
     L->singlestep = bool(enabled);
+}
+
+void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
+{
+    const TValue* func = luaA_toobject(L, funcindex);
+    api_check(L, ttisfunction(func) && !clvalue(func)->isC);
+
+    luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
 }
 
 static int getmaxline(Proto* p)
@@ -393,71 +396,6 @@ static int getmaxline(Proto* p)
     return result;
 }
 
-// Find the line number with instructions. If the provided line doesn't have any instruction, it should return the next line number with
-// instructions.
-static int getnextline(Proto* p, int line)
-{
-    int closest = -1;
-    if (p->lineinfo)
-    {
-        for (int i = 0; i < p->sizecode; ++i)
-        {
-            // note: we keep prologue as is, instead opting to break at the first meaningful instruction
-            if (LUAU_INSN_OP(p->code[i]) == LOP_PREPVARARGS)
-                continue;
-
-            int current = luaG_getline(p, i);
-            if (current >= line)
-            {
-                closest = current;
-                break;
-            }
-        }
-    }
-
-    for (int i = 0; i < p->sizep; ++i)
-    {
-        // Find the closest line number to the intended one.
-        int candidate = getnextline(p->p[i], line);
-        if (closest == -1 || (candidate >= line && candidate < closest))
-        {
-            closest = candidate;
-        }
-    }
-
-    return closest;
-}
-
-int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
-{
-    int target = -1;
-
-    if (FFlag::LuauDebuggerBreakpointHitOnNextBestLine)
-    {
-        const TValue* func = luaA_toobject(L, funcindex);
-        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
-
-        Proto* p = clvalue(func)->l.p;
-        // Find line number to add the breakpoint to.
-        target = getnextline(p, line);
-
-        if (target != -1)
-        {
-            // Add breakpoint on the exact line
-            luaG_breakpoint(L, p, target, bool(enabled));
-        }
-    }
-    else
-    {
-        const TValue* func = luaA_toobject(L, funcindex);
-        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
-
-        luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
-    }
-
-    return target;
-}
-
 static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)
 {
     memset(buffer, -1, size * sizeof(int));
@@ -465,13 +403,13 @@ static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* con
     for (int i = 0; i < p->sizecode; ++i)
     {
         Instruction insn = p->code[i];
-        if (LUAU_INSN_OP(insn) != LOP_COVERAGE)
+        if (lluz_INSN_OP(insn) != LOP_COVERAGE)
             continue;
 
         int line = luaG_getline(p, i);
-        int hits = LUAU_INSN_E(insn);
+        int hits = lluz_INSN_E(insn);
 
-        LUAU_ASSERT(size_t(line) < size);
+        lluz_ASSERT(size_t(line) < size);
         buffer[line] = buffer[line] < hits ? hits : buffer[line];
     }
 
@@ -529,23 +467,23 @@ const char* lua_debugtrace(lua_State* L)
         if (ar.currentline > 0)
         {
             char line[32];
-            snprintf(line, sizeof(line), ":%d", ar.currentline);
+            sprintf(line, ":%d", ar.currentline);
 
             offset = append(buf, sizeof(buf), offset, line);
         }
 
         if (ar.name)
         {
-            offset = append(buf, sizeof(buf), offset, " function ");
+            offset = append(buf, sizeof(buf), offset, XorStr(" function "));
             offset = append(buf, sizeof(buf), offset, ar.name);
         }
 
-        offset = append(buf, sizeof(buf), offset, "\n");
+        offset = append(buf, sizeof(buf), offset, XorStr("\n"));
 
         if (depth > limit1 + limit2 && level == limit1 - 1)
         {
             char skip[32];
-            snprintf(skip, sizeof(skip), "... (+%d frames)\n", int(depth - limit1 - limit2));
+            sprintf(skip, XorStr("... (+%d frames)\n"), int(depth - limit1 - limit2));
 
             offset = append(buf, sizeof(buf), offset, skip);
 
@@ -553,7 +491,7 @@ const char* lua_debugtrace(lua_State* L)
         }
     }
 
-    LUAU_ASSERT(offset < sizeof(buf));
+    lluz_ASSERT(offset < sizeof(buf));
     buf[offset] = '\0';
 
     return buf;

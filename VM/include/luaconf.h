@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -13,11 +13,11 @@
 // To force MSVC2017+ to generate SSE2 code for some stdlib functions we need to locally enable /fp:fast
 // Note that /fp:fast changes the semantics of floating point comparisons so this is only safe to do for functions without ones
 #if defined(_MSC_VER) && !defined(__clang__)
-#define LUAU_FASTMATH_BEGIN __pragma(float_control(precise, off, push))
-#define LUAU_FASTMATH_END __pragma(float_control(pop))
+#define lluz_FASTMATH_BEGIN __pragma(float_control(precise, off, push))
+#define lluz_FASTMATH_END __pragma(float_control(pop))
 #else
-#define LUAU_FASTMATH_BEGIN
-#define LUAU_FASTMATH_END
+#define lluz_FASTMATH_BEGIN
+#define lluz_FASTMATH_END
 #endif
 
 // Used on functions that have a printf-like interface to validate them statically

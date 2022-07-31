@@ -380,8 +380,7 @@ assert(ecall(function() return "a" + "b" end) == "attempt to perform arithmetic 
 assert(ecall(function() return 1 > nil end) == "attempt to compare nil < number") -- note reversed order (by design)
 assert(ecall(function() return "a" <= 5 end) == "attempt to compare string <= number")
 
-assert(ecall(function() local t = {} t[nil] = 2 end) == "table index is nil")
-assert(ecall(function() local t = {} t[0/0] = 2 end) == "table index is NaN")
+assert(ecall(function() local t = {} setmetatable(t, { __newindex = function(t,i,v) end }) t[nil] = 2 end) == "table index is nil")
 
 -- for loop type errors
 assert(ecall(function() for i='a',2 do end end) == "invalid 'for' initial value (number expected, got string)")

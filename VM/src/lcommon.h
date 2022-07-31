@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -7,13 +7,13 @@
 
 #include "luaconf.h"
 
-#include "Luau/Common.h"
+#include "lluz/Common.h"
 
 typedef LUAI_USER_ALIGNMENT_T L_Umaxalign;
 
 /* internal assertions for in-house debugging */
-#define check_exp(c, e) (LUAU_ASSERT(c), (e))
-#define api_check(l, e) LUAU_ASSERT(e)
+#define check_exp(c, e) (lluz_ASSERT(c), (e))
+#define api_check(l, e) lluz_ASSERT(e)
 
 #ifndef cast_to
 #define cast_to(t, exp) ((t)(exp))

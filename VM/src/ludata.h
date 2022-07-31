@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
@@ -12,5 +12,5 @@
 
 #define sizeudata(len) (offsetof(Udata, data) + len)
 
-LUAI_FUNC Udata* luaU_newudata(lua_State* L, size_t s, int tag);
-LUAI_FUNC void luaU_freeudata(lua_State* L, Udata* u, struct lua_Page* page);
+LUAI_FUNC Udata* lluz_newudata(lua_State* L, size_t s, int tag);
+LUAI_FUNC void lluz_freeudata(lua_State* L, Udata* u, struct lua_Page* page);

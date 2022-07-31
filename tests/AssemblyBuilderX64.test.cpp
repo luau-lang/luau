@@ -1,22 +1,22 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/AssemblyBuilderX64.h"
-#include "Luau/StringUtils.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/AssemblyBuilderX64.h"
+#include "lluz/StringUtils.h"
 
 #include "doctest.h"
 
 #include <functional>
 #include <string.h>
 
-using namespace Luau::CodeGen;
+using namespace lluz::CodeGen;
 
 std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
 {
     std::string result = "{";
 
     for (size_t i = 0; i < bytecode.size(); i++)
-        Luau::formatAppend(result, "%s0x%02x", i == 0 ? "" : ", ", bytecode[i]);
+        lluz::formatAppend(result, "%s0x%02x", i == 0 ? "" : ", ", bytecode[i]);
 
-    return result.append("}");
+    return result.append(XorStr("}"));
 }
 
 class AssemblyBuilderX64Fixture
@@ -38,7 +38,7 @@ public:
     }
 };
 
-TEST_SUITE_BEGIN("x64Assembly");
+TEST_SUITE_BEGIN(XorStr("x64Assembly"));
 
 #define SINGLE_COMPARE(inst, ...) \
     check( \
@@ -155,13 +155,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseBinaryInstructionForms")
     SINGLE_COMPARE(add(qword[rax + r13 * 2 + 0x1b], rsi), 0x4a, 0x01, 0x74, 0x68, 0x1b);
     SINGLE_COMPARE(add(qword[rbp + rbx * 2], rsi), 0x48, 0x01, 0x74, 0x5d, 0x00);
     SINGLE_COMPARE(add(qword[rsp + r10 * 2 + 0x1b], r10), 0x4e, 0x01, 0x54, 0x54, 0x1b);
-
-    // [addr], imm
-    SINGLE_COMPARE(add(byte[rax], 2), 0x80, 0x00, 0x02);
-    SINGLE_COMPARE(add(dword[rax], 2), 0x83, 0x00, 0x02);
-    SINGLE_COMPARE(add(dword[rax], 0xabcd), 0x81, 0x00, 0xcd, 0xab, 0x00, 0x00);
-    SINGLE_COMPARE(add(qword[rax], 2), 0x48, 0x83, 0x00, 0x02);
-    SINGLE_COMPARE(add(qword[rax], 0xabcd), 0x48, 0x81, 0x00, 0xcd, 0xab, 0x00, 0x00);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseUnaryInstructionForms")
@@ -220,16 +213,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
     SINGLE_COMPARE(lea(rax, qword[r13 + r12 * 4 + 4]), 0x4b, 0x8d, 0x44, 0xa5, 0x04);
 }
 
-TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfAbsoluteJumps")
-{
-    SINGLE_COMPARE(jmp(rax), 0x48, 0xff, 0xe0);
-    SINGLE_COMPARE(jmp(r14), 0x49, 0xff, 0xe6);
-    SINGLE_COMPARE(jmp(qword[r14 + rdx * 4]), 0x49, 0xff, 0x24, 0x96);
-    SINGLE_COMPARE(call(rax), 0x48, 0xff, 0xd0);
-    SINGLE_COMPARE(call(r14), 0x49, 0xff, 0xd6);
-    SINGLE_COMPARE(call(qword[r14 + rdx * 4]), 0x49, 0xff, 0x14, 0x96);
-}
-
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
 {
     // Jump back
@@ -277,23 +260,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
         {0xe9, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xe7, 0x3e});
 }
 
-TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelCall")
-{
-    check(
-        [](AssemblyBuilderX64& build) {
-            Label fnB;
-
-            build.and_(rcx, 0x3e);
-            build.call(fnB);
-            build.ret();
-
-            build.setLabel(fnB);
-            build.lea(rax, qword[rcx + 0x1f]);
-            build.ret();
-        },
-        {0x48, 0x83, 0xe1, 0x3e, 0xe8, 0x01, 0x00, 0x00, 0x00, 0xc3, 0x48, 0x8d, 0x41, 0x1f, 0xc3});
-}
-
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
 {
     SINGLE_COMPARE(vaddpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xa9, 0x58, 0xc6);
@@ -311,13 +277,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
     SINGLE_COMPARE(vaddps(xmm9, xmm12, xmmword[r9 + r14 * 2 + 0x1c]), 0xc4, 0x01, 0x98, 0x58, 0x4c, 0x71, 0x1c);
     SINGLE_COMPARE(vaddps(ymm1, ymm2, ymm3), 0xc4, 0xe1, 0xec, 0x58, 0xcb);
     SINGLE_COMPARE(vaddps(ymm9, ymm12, ymmword[r9 + r14 * 2 + 0x1c]), 0xc4, 0x01, 0x9c, 0x58, 0x4c, 0x71, 0x1c);
-
-    // Coverage for other instructions that follow the same pattern
-    SINGLE_COMPARE(vsubsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xab, 0x5c, 0xc6);
-    SINGLE_COMPARE(vmulsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xab, 0x59, 0xc6);
-    SINGLE_COMPARE(vdivsd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xab, 0x5e, 0xc6);
-
-    SINGLE_COMPARE(vxorpd(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xa9, 0x57, 0xc6);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXUnaryMergeInstructionForms")
@@ -332,9 +291,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXUnaryMergeInstructionForms")
     SINGLE_COMPARE(vsqrtsd(xmm8, xmm10, qword[r9]), 0xc4, 0x41, 0xab, 0x51, 0x01);
     SINGLE_COMPARE(vsqrtss(xmm8, xmm10, xmm14), 0xc4, 0x41, 0xaa, 0x51, 0xc6);
     SINGLE_COMPARE(vsqrtss(xmm8, xmm10, dword[r9]), 0xc4, 0x41, 0xaa, 0x51, 0x01);
-
-    // Coverage for other instructions that follow the same pattern
-    SINGLE_COMPARE(vcomisd(xmm8, xmm10), 0xc4, 0x41, 0xf9, 0x2f, 0xc2);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXMoveInstructionForms")
@@ -357,11 +313,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXMoveInstructionForms")
     SINGLE_COMPARE(vmovups(xmm8, xmmword[r9]), 0xc4, 0x41, 0xf8, 0x10, 0x01);
     SINGLE_COMPARE(vmovups(xmmword[r9], xmm10), 0xc4, 0x41, 0xf8, 0x11, 0x11);
     SINGLE_COMPARE(vmovups(ymm8, ymmword[r9]), 0xc4, 0x41, 0xfc, 0x10, 0x01);
-}
-
-TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
-{
-    SINGLE_COMPARE(int3(), 0xcc);
 }
 
 TEST_CASE("LogTest")
@@ -388,7 +339,6 @@ TEST_CASE("LogTest")
     build.vmovapd(xmmword[rax], xmm11);
     build.pop(r12);
     build.ret();
-    build.int3();
 
     build.finalize();
 
@@ -411,7 +361,6 @@ TEST_CASE("LogTest")
  vmovapd     xmmword ptr [rax],xmm11
  pop         r12
  ret
- int3
 )";
     CHECK(same);
 }
@@ -448,13 +397,13 @@ TEST_CASE("ConstantStorage")
 
     build.finalize();
 
-    LUAU_ASSERT(build.data.size() == 12004);
+    lluz_ASSERT(build.data.size() == 12004);
 
     for (int i = 0; i <= 3000; i++)
     {
         float v;
         memcpy(&v, &build.data[build.data.size() - (i + 1) * sizeof(float)], sizeof(v));
-        LUAU_ASSERT(v == float(i));
+        lluz_ASSERT(v == float(i));
     }
 }
 

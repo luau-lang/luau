@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
@@ -8,6 +8,8 @@
 #include "lapi.h"
 #include "lgc.h"
 #include "lnumutils.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <string.h>
 
@@ -25,7 +27,7 @@ static const char* currfuncname(lua_State* L)
     Closure* cl = L->ci > L->base_ci ? curr_func(L) : NULL;
     const char* debugname = cl && cl->isC ? cl->c.debugname + 0 : NULL;
 
-    if (debugname && strcmp(debugname, "__namecall") == 0)
+    if (debugname && strcmp(debugname, XorStr("__namecall")) == 0)
         return L->namecall ? getstr(L->namecall) : NULL;
     else
         return debugname;
@@ -36,9 +38,9 @@ l_noret luaL_argerrorL(lua_State* L, int narg, const char* extramsg)
     const char* fname = currfuncname(L);
 
     if (fname)
-        luaL_error(L, "invalid argument #%d to '%s' (%s)", narg, fname, extramsg);
+        luaL_error(L, XorStr("invalid argument #%d to '%s' (%s)"), narg, fname, extramsg);
     else
-        luaL_error(L, "invalid argument #%d (%s)", narg, extramsg);
+        luaL_error(L, XorStr("invalid argument #%d (%s)"), narg, extramsg);
 }
 
 l_noret luaL_typeerrorL(lua_State* L, int narg, const char* tname)
@@ -49,16 +51,16 @@ l_noret luaL_typeerrorL(lua_State* L, int narg, const char* tname)
     if (obj)
     {
         if (fname)
-            luaL_error(L, "invalid argument #%d to '%s' (%s expected, got %s)", narg, fname, tname, luaT_objtypename(L, obj));
+            luaL_error(L, XorStr("invalid argument #%d to '%s' (%s expected, got %s)"), narg, fname, tname, luaT_objtypename(L, obj));
         else
-            luaL_error(L, "invalid argument #%d (%s expected, got %s)", narg, tname, luaT_objtypename(L, obj));
+            luaL_error(L, XorStr("invalid argument #%d (%s expected, got %s)"), narg, tname, luaT_objtypename(L, obj));
     }
     else
     {
         if (fname)
-            luaL_error(L, "missing argument #%d to '%s' (%s expected)", narg, fname, tname);
+            luaL_error(L, XorStr("missing argument #%d to '%s' (%s expected)"), narg, fname, tname);
         else
-            luaL_error(L, "missing argument #%d (%s expected)", narg, tname);
+            luaL_error(L, XorStr("missing argument #%d (%s expected)"), narg, tname);
     }
 }
 
@@ -72,7 +74,7 @@ void luaL_where(lua_State* L, int level)
     lua_Debug ar;
     if (lua_getinfo(L, level, "sl", &ar) && ar.currentline > 0)
     {
-        lua_pushfstring(L, "%s:%d: ", ar.short_src, ar.currentline);
+        lua_pushfstring(L, XorStr("%s:%d: "), ar.short_src, ar.currentline);
         return;
     }
     lua_pushliteral(L, ""); /* else, no information available... */
@@ -98,7 +100,7 @@ int luaL_checkoption(lua_State* L, int narg, const char* def, const char* const 
     for (i = 0; lst[i]; i++)
         if (strcmp(lst[i], name) == 0)
             return i;
-    const char* msg = lua_pushfstring(L, "invalid option '%s'", name);
+    const char* msg = lua_pushfstring(L, XorStr("invalid option '%s'"), name);
     luaL_argerrorL(L, narg, msg);
 }
 
@@ -135,7 +137,7 @@ void* luaL_checkudata(lua_State* L, int ud, const char* tname)
 void luaL_checkstack(lua_State* L, int space, const char* mes)
 {
     if (!lua_checkstack(L, space))
-        luaL_error(L, "stack overflow (%s)", mes);
+        luaL_error(L, XorStr("stack overflow (%s)"), mes);
 }
 
 void luaL_checktype(lua_State* L, int narg, int t)
@@ -147,7 +149,7 @@ void luaL_checktype(lua_State* L, int narg, int t)
 void luaL_checkany(lua_State* L, int narg)
 {
     if (lua_type(L, narg) == LUA_TNONE)
-        luaL_error(L, "missing argument #%d", narg);
+        luaL_error(L, XorStr("missing argument #%d"), narg);
 }
 
 const char* luaL_checklstring(lua_State* L, int narg, size_t* len)
@@ -283,14 +285,14 @@ void luaL_register(lua_State* L, const char* libname, const luaL_Reg* l)
     {
         int size = libsize(l);
         /* check whether lib already exists */
-        luaL_findtable(L, LUA_REGISTRYINDEX, "_LOADED", 1);
+        luaL_findtable(L, LUA_REGISTRYINDEX, XorStr("_LOADED"), 1);
         lua_getfield(L, -1, libname); /* get _LOADED[libname] */
         if (!lua_istable(L, -1))
         {                  /* not found? */
             lua_pop(L, 1); /* remove previous result */
             /* try global variable (and create one if it does not exist) */
             if (luaL_findtable(L, LUA_GLOBALSINDEX, libname, size) != NULL)
-                luaL_error(L, "name conflict for module '%s'", libname);
+                luaL_error(L, XorStr("name conflict for module '%s'"), libname);
             lua_pushvalue(L, -1);
             lua_setfield(L, -3, libname); /* _LOADED[libname] = new table */
         }
@@ -351,7 +353,7 @@ static size_t getnextbuffersize(lua_State* L, size_t currentsize, size_t desired
 
     // check for size overflow
     if (SIZE_MAX - desiredsize < currentsize)
-        luaL_error(L, "buffer too large");
+        luaL_error(L, XorStr("buffer too large"));
 
     // growth factor might not be enough to satisfy the desired size
     if (newsize < desiredsize)
@@ -382,7 +384,7 @@ char* luaL_extendbuffer(luaL_Buffer* B, size_t additionalsize, int boxloc)
     lua_State* L = B->L;
 
     if (B->storage)
-        LUAU_ASSERT(B->storage == tsvalue(L->top + boxloc));
+        lluz_ASSERT(B->storage == tsvalue(L->top + boxloc));
 
     char* base = B->storage ? B->storage->data : B->buffer;
 
@@ -474,10 +476,10 @@ void luaL_pushresultsize(luaL_Buffer* B, size_t size)
 
 const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
 {
-    if (luaL_callmeta(L, idx, "__tostring")) /* is there a metafield? */
+    if (luaL_callmeta(L, idx, XorStr("__tostring"))) /* is there a metafield? */
     {
         if (!lua_isstring(L, -1))
-            luaL_error(L, "'__tostring' must return a string");
+            luaL_error(L, XorStr("'__tostring' must return a string"));
         return lua_tolstring(L, -1, len);
     }
 
@@ -522,7 +524,7 @@ const char* luaL_tolstring(lua_State* L, int idx, size_t* len)
     {
         const void* ptr = lua_topointer(L, idx);
         unsigned long long enc = lua_encodepointer(L, uintptr_t(ptr));
-        lua_pushfstring(L, "%s: 0x%016llx", luaL_typename(L, idx), enc);
+        lua_pushfstring(L, XorStr("%s: 0x%016llx"), luaL_typename(L, idx), enc);
         break;
     }
     }

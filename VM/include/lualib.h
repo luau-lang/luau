@@ -1,8 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #pragma once
 
 #include "lua.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #define luaL_error(L, fmt, ...) luaL_errorL(L, fmt, ##__VA_ARGS__)
 #define luaL_typeerror(L, narg, tname) luaL_typeerrorL(L, narg, tname)
@@ -88,7 +90,7 @@ typedef struct luaL_Buffer luaL_Buffer;
 // in general, functions expect the mutable string buffer to be placed on top of the stack (top-1)
 // with the exception of luaL_addvalue that expects the value at the top and string buffer further away (top-2)
 // functions that accept a 'boxloc' support string buffer placement at any location in the stack
-// all the buffer users we have in Luau match this pattern, but it's something to keep in mind for new uses of buffers
+// all the buffer users we have in lluz match this pattern, but it's something to keep in mind for new uses of buffers
 
 #define luaL_addchar(B, c) ((void)((B)->p < (B)->end || luaL_extendbuffer(B, 1, -1)), (*(B)->p++ = (char)(c)))
 #define luaL_addstring(B, s) luaL_addlstring(B, s, strlen(s))
@@ -105,28 +107,28 @@ LUALIB_API void luaL_pushresultsize(luaL_Buffer* B, size_t size);
 /* builtin libraries */
 LUALIB_API int luaopen_base(lua_State* L);
 
-#define LUA_COLIBNAME "coroutine"
+#define LUA_COLIBNAME XorStr("coroutine")
 LUALIB_API int luaopen_coroutine(lua_State* L);
 
-#define LUA_TABLIBNAME "table"
+#define LUA_TABLIBNAME XorStr("table")
 LUALIB_API int luaopen_table(lua_State* L);
 
-#define LUA_OSLIBNAME "os"
+#define LUA_OSLIBNAME XorStr("os")
 LUALIB_API int luaopen_os(lua_State* L);
 
-#define LUA_STRLIBNAME "string"
+#define LUA_STRLIBNAME XorStr("string")
 LUALIB_API int luaopen_string(lua_State* L);
 
-#define LUA_BITLIBNAME "bit32"
+#define LUA_BITLIBNAME XorStr("bit32")
 LUALIB_API int luaopen_bit32(lua_State* L);
 
-#define LUA_UTF8LIBNAME "utf8"
+#define LUA_UTF8LIBNAME XorStr("utf8")
 LUALIB_API int luaopen_utf8(lua_State* L);
 
-#define LUA_MATHLIBNAME "math"
+#define LUA_MATHLIBNAME XorStr("math")
 LUALIB_API int luaopen_math(lua_State* L);
 
-#define LUA_DBLIBNAME "debug"
+#define LUA_DBLIBNAME XorStr("debug")
 LUALIB_API int luaopen_debug(lua_State* L);
 
 /* open all builtin libraries */

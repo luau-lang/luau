@@ -1,9 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
 #include "lstate.h"
 #include "lvm.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #define CO_RUN 0 /* running */
 #define CO_SUS 1 /* suspended */
@@ -13,7 +15,7 @@
 #define CO_STATUS_ERROR -1
 #define CO_STATUS_BREAK -2
 
-static const char* const statnames[] = {"running", "suspended", "normal", "dead"};
+static const char* const statnames[] = {XorStr("running"), XorStr("suspended"), XorStr("normal"), XorStr("dead")};
 
 static int auxstatus(lua_State* L, lua_State* co)
 {
@@ -35,7 +37,7 @@ static int auxstatus(lua_State* L, lua_State* co)
 static int costatus(lua_State* L)
 {
     lua_State* co = lua_tothread(L, 1);
-    luaL_argexpected(L, co, 1, "thread");
+    luaL_argexpected(L, co, 1, XorStr("thread"));
     lua_pushstring(L, statnames[auxstatus(L, co)]);
     return 1;
 }
@@ -48,7 +50,7 @@ static int auxresume(lua_State* L, lua_State* co, int narg)
         int status = auxstatus(L, co);
         if (status != CO_SUS)
         {
-            lua_pushfstring(L, "cannot resume %s coroutine", statnames[status]);
+            lua_pushfstring(L, XorStr("cannot resume %s coroutine"), statnames[status]);
             return CO_STATUS_ERROR;
         }
     }
@@ -56,7 +58,7 @@ static int auxresume(lua_State* L, lua_State* co, int narg)
     if (narg)
     {
         if (!lua_checkstack(co, narg))
-            luaL_error(L, "too many arguments to resume");
+            luaL_error(L, XorStr("too many arguments to resume"));
         lua_xmove(L, co, narg);
     }
 
@@ -70,7 +72,7 @@ static int auxresume(lua_State* L, lua_State* co, int narg)
         {
             /* +1 accounts for true/false status in resumefinish */
             if (nres + 1 > LUA_MINSTACK && !lua_checkstack(L, nres + 1))
-                luaL_error(L, "too many results to resume");
+                luaL_error(L, XorStr("too many results to resume"));
             lua_xmove(co, L, nres); /* move yielded values */
         }
         return nres;
@@ -90,7 +92,7 @@ static int interruptThread(lua_State* L, lua_State* co)
 {
     // notify the debugger that the thread was suspended
     if (L->global->cb.debuginterrupt)
-        luau_callhook(L, L->global->cb.debuginterrupt, co);
+        lluz_callhook(L, L->global->cb.debuginterrupt, co);
 
     return lua_break(L);
 }
@@ -101,7 +103,7 @@ static int auxresumecont(lua_State* L, lua_State* co)
     {
         int nres = cast_int(co->top - co->base);
         if (!lua_checkstack(L, nres + 1))
-            luaL_error(L, "too many results to resume");
+            luaL_error(L, XorStr("too many results to resume"));
         lua_xmove(co, L, nres); /* move yielded values */
         return nres;
     }
@@ -132,7 +134,7 @@ static int coresumefinish(lua_State* L, int r)
 static int coresumey(lua_State* L)
 {
     lua_State* co = lua_tothread(L, 1);
-    luaL_argexpected(L, co, 1, "thread");
+    luaL_argexpected(L, co, 1, XorStr("thread"));
     int narg = cast_int(L->top - L->base) - 1;
     int r = auxresume(L, co, narg);
 
@@ -145,7 +147,7 @@ static int coresumey(lua_State* L)
 static int coresumecont(lua_State* L, int status)
 {
     lua_State* co = lua_tothread(L, 1);
-    luaL_argexpected(L, co, 1, "thread");
+    luaL_argexpected(L, co, 1, XorStr("thread"));
 
     // if coroutine still hasn't yielded after the break, break current thread again
     if (co->status == LUA_BREAK)
@@ -234,11 +236,11 @@ static int coyieldable(lua_State* L)
 static int coclose(lua_State* L)
 {
     lua_State* co = lua_tothread(L, 1);
-    luaL_argexpected(L, co, 1, "thread");
+    luaL_argexpected(L, co, 1, XorStr("thread"));
 
     int status = auxstatus(L, co);
     if (status != CO_DEAD && status != CO_SUS)
-        luaL_error(L, "cannot close %s coroutine", statnames[status]);
+        luaL_error(L, XorStr("cannot close %s coroutine"), statnames[status]);
 
     if (co->status == LUA_OK || co->status == LUA_YIELD)
     {
@@ -257,13 +259,13 @@ static int coclose(lua_State* L)
 }
 
 static const luaL_Reg co_funcs[] = {
-    {"create", cocreate},
-    {"running", corunning},
-    {"status", costatus},
-    {"wrap", cowrap},
-    {"yield", coyield},
-    {"isyieldable", coyieldable},
-    {"close", coclose},
+    {XorStr("create"), cocreate},
+    {XorStr("running"), corunning},
+    {XorStr("status"), costatus},
+    {XorStr("wrap"), cowrap},
+    {XorStr("yield"), coyield},
+    {XorStr("isyieldable"), coyieldable},
+    {XorStr("close"), coclose},
     {NULL, NULL},
 };
 
@@ -271,8 +273,8 @@ int luaopen_coroutine(lua_State* L)
 {
     luaL_register(L, LUA_COLIBNAME, co_funcs);
 
-    lua_pushcclosurek(L, coresumey, "resume", 0, coresumecont);
-    lua_setfield(L, -2, "resume");
+    lua_pushcclosurek(L, coresumey, XorStr("resume"), 0, coresumecont);
+    lua_setfield(L, -2, XorStr("resume"));
 
     return 1;
 }

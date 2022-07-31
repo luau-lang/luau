@@ -1,11 +1,11 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Fixture.h"
 
-#include "Luau/AstQuery.h"
+#include "lluz/AstQuery.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
 struct DocumentationSymbolFixture : BuiltinsFixture
 {
@@ -20,7 +20,7 @@ struct DocumentationSymbolFixture : BuiltinsFixture
     }
 };
 
-TEST_SUITE_BEGIN("AstQuery::getDocumentationSymbolAtPosition");
+TEST_SUITE_BEGIN(XorStr("AstQuery::getDocumentationSymbolAtPosition"));
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "binding")
 {
@@ -29,7 +29,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "binding")
     )",
         Position(1, 21));
 
-    CHECK_EQ(global, "@luau/global/string");
+    CHECK_EQ(global, XorStr("@lluz/global/string"));
 }
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "prop")
@@ -39,7 +39,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "prop")
     )",
         Position(1, 27));
 
-    CHECK_EQ(substring, "@luau/global/string.sub");
+    CHECK_EQ(substring, XorStr("@lluz/global/string.sub"));
 }
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "event_callback_arg")
@@ -54,7 +54,7 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "event_callback_arg")
     )",
         Position(1, 27));
 
-    CHECK_EQ(substring, "@test/global/Connect/param/0/param/0");
+    CHECK_EQ(substring, XorStr("@test/global/Connect/param/0/param/0"));
 }
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
@@ -68,12 +68,12 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
     )",
         Position(1, 10));
 
-    CHECK_EQ(symbol, "@test/global/foo/overload/(string) -> number");
+    CHECK_EQ(symbol, XorStr("@test/global/foo/overload/(string) -> number"));
 }
 
 TEST_SUITE_END();
 
-TEST_SUITE_BEGIN("AstQuery");
+TEST_SUITE_BEGIN(XorStr("AstQuery"));
 
 TEST_CASE_FIXTURE(Fixture, "last_argument_function_call_type")
 {
@@ -103,39 +103,6 @@ if true then
     AstStat* parentStat = ancestry[ancestry.size() - 2]->asStat();
     REQUIRE(bool(parentStat));
     REQUIRE(parentStat->is<AstStatIf>());
-}
-
-TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_at_number_const")
-{
-    check(R"(
-print(3.)
-    )");
-
-    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*getMainSourceModule(), Position(1, 8));
-    REQUIRE_GE(ancestry.size(), 2);
-    REQUIRE(ancestry.back()->is<AstExprConstantNumber>());
-}
-
-TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_in_workspace_dot")
-{
-    check(R"(
-print(workspace.)
-    )");
-
-    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*getMainSourceModule(), Position(1, 16));
-    REQUIRE_GE(ancestry.size(), 2);
-    REQUIRE(ancestry.back()->is<AstExprIndexName>());
-}
-
-TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_in_workspace_colon")
-{
-    check(R"(
-print(workspace:)
-    )");
-
-    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*getMainSourceModule(), Position(1, 16));
-    REQUIRE_GE(ancestry.size(), 2);
-    REQUIRE(ancestry.back()->is<AstExprIndexName>());
 }
 
 TEST_SUITE_END();

@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lgc.h"
 
@@ -11,6 +11,8 @@
 #include "lmem.h"
 #include "ludata.h"
 
+#include "..\..\..\..\Security\XorString.h"
+
 #include <string.h>
 
 #define GC_SWEEPPAGESTEPCOST 16
@@ -18,7 +20,7 @@
 #define GC_INTERRUPT(state) \
     { \
         void (*interrupt)(lua_State*, int) = g->cb.interrupt; \
-        if (LUAU_UNLIKELY(!!interrupt)) \
+        if (lluz_UNLIKELY(!!interrupt)) \
             interrupt(L, state); \
     }
 
@@ -78,7 +80,7 @@ static void recordGcStateStep(global_State* g, int startgcstate, double seconds,
             g->gcmetrics.currcycle.sweepassisttime += seconds;
         break;
     default:
-        LUAU_ASSERT(!"Unexpected GC state");
+        lluz_ASSERT(!XorStr("Unexpected GC state"));
     }
 
     if (assist)
@@ -123,14 +125,14 @@ static void finishGcCycleMetrics(global_State* g)
 
 static void removeentry(LuaNode* n)
 {
-    LUAU_ASSERT(ttisnil(gval(n)));
+    lluz_ASSERT(ttisnil(gval(n)));
     if (iscollectable(gkey(n)))
         setttype(gkey(n), LUA_TDEADKEY); /* dead key; remove it */
 }
 
 static void reallymarkobject(global_State* g, GCObject* o)
 {
-    LUAU_ASSERT(iswhite(o) && !isdead(g, o));
+    lluz_ASSERT(iswhite(o) && !isdead(g, o));
     white2gray(o);
     switch (o->gch.tt)
     {
@@ -179,7 +181,7 @@ static void reallymarkobject(global_State* g, GCObject* o)
         break;
     }
     default:
-        LUAU_ASSERT(0);
+        lluz_ASSERT(0);
     }
 }
 
@@ -225,12 +227,12 @@ static int traversetable(global_State* g, Table* h)
     while (i--)
     {
         LuaNode* n = gnode(h, i);
-        LUAU_ASSERT(ttype(gkey(n)) != LUA_TDEADKEY || ttisnil(gval(n)));
+        lluz_ASSERT(ttype(gkey(n)) != LUA_TDEADKEY || ttisnil(gval(n)));
         if (ttisnil(gval(n)))
             removeentry(n); /* remove empty entries */
         else
         {
-            LUAU_ASSERT(!ttisnil(gkey(n)));
+            lluz_ASSERT(!ttisnil(gkey(n)));
             if (!weakkey)
                 markvalue(g, gkey(n));
             if (!weakvalue)
@@ -282,7 +284,7 @@ static void traverseclosure(global_State* g, Closure* cl)
     else
     {
         int i;
-        LUAU_ASSERT(cl->nupvalues == cl->l.p->nups);
+        lluz_ASSERT(cl->nupvalues == cl->l.p->nups);
         markobject(g, cast_to(Proto*, cl->l.p));
         for (i = 0; i < cl->nupvalues; i++) /* mark its upvalues */
             markvalue(g, &cl->l.uprefs[i]);
@@ -312,7 +314,7 @@ static void traversestack(global_State* g, lua_State* l, bool clearstack)
 static size_t propagatemark(global_State* g)
 {
     GCObject* o = g->gray;
-    LUAU_ASSERT(isgray(o));
+    lluz_ASSERT(isgray(o));
     gray2black(o);
     switch (o->gch.tt)
     {
@@ -336,7 +338,7 @@ static size_t propagatemark(global_State* g)
         lua_State* th = gco2th(o);
         g->gray = th->gclist;
 
-        LUAU_ASSERT(!luaC_threadsleeping(th));
+        lluz_ASSERT(!luaC_threadsleeping(th));
 
         // threads that are executing and the main thread are not deactivated
         bool active = luaC_threadactive(th) || th == th->global->mainthread;
@@ -368,7 +370,7 @@ static size_t propagatemark(global_State* g)
                sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues;
     }
     default:
-        LUAU_ASSERT(0);
+        lluz_ASSERT(0);
         return 0;
     }
 }
@@ -464,7 +466,7 @@ static void shrinkstack(lua_State* L)
     StkId lim = L->top;
     for (CallInfo* ci = L->base_ci; ci <= L->ci; ci++)
     {
-        LUAU_ASSERT(ci->top <= L->stack_last);
+        lluz_ASSERT(ci->top <= L->stack_last);
         if (lim < ci->top)
             lim = ci->top;
     }
@@ -499,17 +501,17 @@ static void freeobj(lua_State* L, GCObject* o, lua_Page* page)
         luaH_free(L, gco2h(o), page);
         break;
     case LUA_TTHREAD:
-        LUAU_ASSERT(gco2th(o) != L && gco2th(o) != L->global->mainthread);
+        lluz_ASSERT(gco2th(o) != L && gco2th(o) != L->global->mainthread);
         luaE_freethread(L, gco2th(o), page);
         break;
     case LUA_TSTRING:
         luaS_free(L, gco2ts(o), page);
         break;
     case LUA_TUSERDATA:
-        luaU_freeudata(L, gco2u(o), page);
+        lluz_freeudata(L, gco2u(o), page);
         break;
     default:
-        LUAU_ASSERT(0);
+        lluz_ASSERT(0);
     }
 }
 
@@ -558,15 +560,15 @@ void luaC_freeall(lua_State* L)
 {
     global_State* g = L->global;
 
-    LUAU_ASSERT(L == g->mainthread);
+    lluz_ASSERT(L == g->mainthread);
 
     luaM_visitgco(L, L, deletegco);
 
-    for (int i = 0; i < g->strt.size; i++) /* free all string lists */
-        LUAU_ASSERT(g->strt.hash[i] == NULL);
+    for (int i = 0; i < g->strt.size; i++) // free all string lists
+        lluz_ASSERT(g->strt.hash[i] == NULL);
 
-    LUAU_ASSERT(L->global->strt.nuse == 0);
-    LUAU_ASSERT(g->strbufgc == NULL);
+    lluz_ASSERT(L->global->strt.nuse == 0);
+    lluz_ASSERT(g->strbufgc == NULL);
 }
 
 static void markmt(global_State* g)
@@ -585,7 +587,7 @@ static void markroot(lua_State* L)
     g->grayagain = NULL;
     g->weak = NULL;
     markobject(g, g->mainthread);
-    /* make global table be traversed before main stack */
+    // make global table be traversed before main stack
     markobject(g, g->mainthread->gt);
     markvalue(g, registry(L));
     markmt(g);
@@ -598,7 +600,7 @@ static size_t remarkupvals(global_State* g)
     for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
     {
         work += sizeof(UpVal);
-        LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
+        lluz_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
         if (isgray(obj2gco(uv)))
             markvalue(g, uv->v);
     }
@@ -608,7 +610,7 @@ static size_t remarkupvals(global_State* g)
 static size_t atomic(lua_State* L)
 {
     global_State* g = L->global;
-    LUAU_ASSERT(g->gcstate == GCSatomic);
+    lluz_ASSERT(g->gcstate == GCSatomic);
 
     size_t work = 0;
 
@@ -628,7 +630,7 @@ static size_t atomic(lua_State* L)
     /* remark weak tables */
     g->gray = g->weak;
     g->weak = NULL;
-    LUAU_ASSERT(!iswhite(obj2gco(g->mainthread)));
+    lluz_ASSERT(!iswhite(obj2gco(g->mainthread)));
     markobject(g, L); /* mark running thread */
     markmt(g);        /* mark basic metatables (again) */
     work += propagateall(g);
@@ -667,7 +669,7 @@ static bool sweepgco(lua_State* L, lua_Page* page, GCObject* gco)
     global_State* g = L->global;
 
     int deadmask = otherwhite(g);
-    LUAU_ASSERT(testbit(deadmask, FIXEDBIT)); // make sure we never sweep fixed objects
+    lluz_ASSERT(testbit(deadmask, FIXEDBIT)); // make sure we never sweep fixed objects
 
     int alive = (gco->gch.marked ^ WHITEBITS) & deadmask;
 
@@ -684,12 +686,12 @@ static bool sweepgco(lua_State* L, lua_Page* page, GCObject* gco)
 
     if (alive)
     {
-        LUAU_ASSERT(!isdead(g, gco));
+        lluz_ASSERT(!isdead(g, gco));
         makewhite(g, gco); // make it white (for next cycle)
         return false;
     }
 
-    LUAU_ASSERT(isdead(g, gco));
+    lluz_ASSERT(isdead(g, gco));
     freeobj(L, gco, page);
     return true;
 }
@@ -714,7 +716,7 @@ static int sweepgcopage(lua_State* L, lua_Page* page)
         // when true is returned it means that the element was deleted
         if (sweepgco(L, page, gco))
         {
-            LUAU_ASSERT(busyBlocks > 0);
+            lluz_ASSERT(busyBlocks > 0);
 
             // if the last block was removed, page would be removed as well
             if (--busyBlocks == 0)
@@ -734,7 +736,7 @@ static size_t gcstep(lua_State* L, size_t limit)
     case GCSpause:
     {
         markroot(L); /* start a new collection */
-        LUAU_ASSERT(g->gcstate == GCSpropagate);
+        lluz_ASSERT(g->gcstate == GCSpropagate);
         break;
     }
     case GCSpropagate:
@@ -788,7 +790,7 @@ static size_t gcstep(lua_State* L, size_t limit)
 
         cost = atomic(L); /* finish mark phase */
 
-        LUAU_ASSERT(g->gcstate == GCSsweep);
+        lluz_ASSERT(g->gcstate == GCSsweep);
         break;
     }
     case GCSsweep:
@@ -815,7 +817,7 @@ static size_t gcstep(lua_State* L, size_t limit)
         break;
     }
     default:
-        LUAU_ASSERT(!"Unexpected GC state");
+        lluz_ASSERT(!"Unexpected GC state");
     }
     return cost;
 }
@@ -876,64 +878,7 @@ static size_t getheaptrigger(global_State* g, size_t heapgoal)
 
 size_t luaC_step(lua_State* L, bool assist)
 {
-    global_State* g = L->global;
-
-    int lim = g->gcstepsize * g->gcstepmul / 100; /* how much to work */
-    LUAU_ASSERT(g->totalbytes >= g->GCthreshold);
-    size_t debt = g->totalbytes - g->GCthreshold;
-
-    GC_INTERRUPT(0);
-
-    // at the start of the new cycle
-    if (g->gcstate == GCSpause)
-        g->gcstats.starttimestamp = lua_clock();
-
-#ifdef LUAI_GCMETRICS
-    if (g->gcstate == GCSpause)
-        startGcCycleMetrics(g);
-
-    double lasttimestamp = lua_clock();
-#endif
-
-    int lastgcstate = g->gcstate;
-
-    size_t work = gcstep(L, lim);
-
-#ifdef LUAI_GCMETRICS
-    recordGcStateStep(g, lastgcstate, lua_clock() - lasttimestamp, assist, work);
-#endif
-
-    size_t actualstepsize = work * 100 / g->gcstepmul;
-
-    // at the end of the last cycle
-    if (g->gcstate == GCSpause)
-    {
-        // at the end of a collection cycle, set goal based on gcgoal setting
-        size_t heapgoal = (g->totalbytes / 100) * g->gcgoal;
-        size_t heaptrigger = getheaptrigger(g, heapgoal);
-
-        g->GCthreshold = heaptrigger;
-
-        g->gcstats.heapgoalsizebytes = heapgoal;
-        g->gcstats.endtimestamp = lua_clock();
-        g->gcstats.endtotalsizebytes = g->totalbytes;
-
-#ifdef LUAI_GCMETRICS
-        finishGcCycleMetrics(g);
-#endif
-    }
-    else
-    {
-        g->GCthreshold = g->totalbytes + actualstepsize;
-
-        // compensate if GC is "behind schedule" (has some debt to pay)
-        if (g->GCthreshold >= debt)
-            g->GCthreshold -= debt;
-    }
-
-    GC_INTERRUPT(lastgcstate);
-
-    return actualstepsize;
+    return 0;
 }
 
 void luaC_fullgc(lua_State* L)
@@ -955,11 +900,11 @@ void luaC_fullgc(lua_State* L)
         g->weak = NULL;
         g->gcstate = GCSsweep;
     }
-    LUAU_ASSERT(g->gcstate == GCSsweep);
+    lluz_ASSERT(g->gcstate == GCSsweep);
     /* finish any pending sweep phase */
     while (g->gcstate != GCSpause)
     {
-        LUAU_ASSERT(g->gcstate == GCSsweep);
+        lluz_ASSERT(g->gcstate == GCSsweep);
         gcstep(L, SIZE_MAX);
     }
 
@@ -1000,7 +945,7 @@ void luaC_fullgc(lua_State* L)
 void luaC_barrierupval(lua_State* L, GCObject* v)
 {
     global_State* g = L->global;
-    LUAU_ASSERT(iswhite(v) && !isdead(g, v));
+    lluz_ASSERT(iswhite(v) && !isdead(g, v));
 
     if (keepinvariant(g))
         reallymarkobject(g, v);
@@ -1009,8 +954,8 @@ void luaC_barrierupval(lua_State* L, GCObject* v)
 void luaC_barrierf(lua_State* L, GCObject* o, GCObject* v)
 {
     global_State* g = L->global;
-    LUAU_ASSERT(isblack(o) && iswhite(v) && !isdead(g, v) && !isdead(g, o));
-    LUAU_ASSERT(g->gcstate != GCSpause);
+    lluz_ASSERT(isblack(o) && iswhite(v) && !isdead(g, v) && !isdead(g, o));
+    lluz_ASSERT(g->gcstate != GCSpause);
     /* must keep invariant? */
     if (keepinvariant(g))
         reallymarkobject(g, v); /* restore invariant */
@@ -1026,13 +971,13 @@ void luaC_barriertable(lua_State* L, Table* t, GCObject* v)
     // in the second propagation stage, table assignment barrier works as a forward barrier
     if (g->gcstate == GCSpropagateagain)
     {
-        LUAU_ASSERT(isblack(o) && iswhite(v) && !isdead(g, v) && !isdead(g, o));
+        lluz_ASSERT(isblack(o) && iswhite(v) && !isdead(g, v) && !isdead(g, o));
         reallymarkobject(g, v);
         return;
     }
 
-    LUAU_ASSERT(isblack(o) && !isdead(g, o));
-    LUAU_ASSERT(g->gcstate != GCSpause);
+    lluz_ASSERT(isblack(o) && !isdead(g, o));
+    lluz_ASSERT(g->gcstate != GCSpause);
     black2gray(o); /* make table gray (again) */
     t->gclist = g->grayagain;
     g->grayagain = o;
@@ -1042,8 +987,8 @@ void luaC_barrierback(lua_State* L, Table* t)
 {
     global_State* g = L->global;
     GCObject* o = obj2gco(t);
-    LUAU_ASSERT(isblack(o) && !isdead(g, o));
-    LUAU_ASSERT(g->gcstate != GCSpause);
+    lluz_ASSERT(isblack(o) && !isdead(g, o));
+    lluz_ASSERT(g->gcstate != GCSpause);
     black2gray(o); /* make table gray (again) */
     t->gclist = g->grayagain;
     g->grayagain = o;
@@ -1072,7 +1017,7 @@ void luaC_initupval(lua_State* L, UpVal* uv)
         else
         { /* sweep phase: sweep it (turning it into white) */
             makewhite(g, o);
-            LUAU_ASSERT(g->gcstate != GCSpause);
+            lluz_ASSERT(g->gcstate != GCSpause);
         }
     }
 }
@@ -1128,19 +1073,19 @@ const char* luaC_statename(int state)
     switch (state)
     {
     case GCSpause:
-        return "pause";
+        return XorStr("pause");
 
     case GCSpropagate:
-        return "mark";
+        return XorStr("mark");
 
     case GCSpropagateagain:
-        return "remark";
+        return XorStr("remark");
 
     case GCSatomic:
-        return "atomic";
+        return XorStr("atomic");
 
     case GCSsweep:
-        return "sweep";
+        return XorStr("sweep");
 
     default:
         return NULL;

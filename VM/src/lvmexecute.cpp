@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lvm.h"
 
@@ -14,9 +14,11 @@
 #include "lnumutils.h"
 #include "lbytecode.h"
 
+#include "..\..\..\..\Security\XorString.h"
+
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
+lluz_FASTFLAGVARIABLE(LluLenTM, false)
 
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
@@ -33,13 +35,13 @@ LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
 // 3. VM_PROTECT macro saves savedpc and restores base for you; most external calls need to be wrapped into that. However, it does NOT restore
 // ra/rb/rc!
 // 4. When copying an object to any existing object as a field, generally speaking you need to call luaC_barrier! Be careful with all setobj calls
-// 5. To make 4 easier to follow, please use setobj2s for copies to stack, setobj2t for writes to tables, and setobj for other copies.
+// 5. To make 4 easier to follow, please use setobj2s for copies to stack and setobj for other copies.
 // 6. You can define HARDSTACKTESTS in llimits.h which will aggressively realloc stack; with address sanitizer this should be effective at finding
 // stack corruption bugs
 // 7. Many external Lua functions can call GC! GC will *not* traverse pointers to new objects that aren't reachable from Lua root. Be careful when
 // creating new Lua objects, store them to stack soon.
 
-// When calling luau_callTM, we usually push the arguments to the top of the stack.
+// When calling lluz_callTM, we usually push the arguments to the top of the stack.
 // This is safe to do for complicated reasons:
 // - stack guarantees EXTRA_STACK room beyond stack_last (see luaD_reallocstack)
 // - stack reallocation copies values past stack_last
@@ -61,14 +63,14 @@ LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
 // a cheaper version of VM_PROTECT that can be called before the external call.
 #define VM_PROTECT_PC() L->ci->savedpc = pc
 
-#define VM_REG(i) (LUAU_ASSERT(unsigned(i) < unsigned(L->top - base)), &base[i])
-#define VM_KV(i) (LUAU_ASSERT(unsigned(i) < unsigned(cl->l.p->sizek)), &k[i])
-#define VM_UV(i) (LUAU_ASSERT(unsigned(i) < unsigned(cl->nupvalues)), &cl->l.uprefs[i])
+#define VM_REG(i) (lluz_ASSERT(unsigned(i) < unsigned(L->top - base)), &base[i])
+#define VM_KV(i) (lluz_ASSERT(unsigned(i) < unsigned(cl->l.p->sizek)), &k[i])
+#define VM_UV(i) (lluz_ASSERT(unsigned(i) < unsigned(cl->nupvalues)), &cl->l.uprefs[i])
 
 #define VM_PATCH_C(pc, slot) *const_cast<Instruction*>(pc) = ((uint8_t(slot) << 24) | (0x00ffffffu & *(pc)))
 #define VM_PATCH_E(pc, slot) *const_cast<Instruction*>(pc) = ((uint32_t(slot) << 8) | (0x000000ffu & *(pc)))
 
-// NOTE: If debugging the Luau code, disable this macro to prevent timeouts from
+// NOTE: If debugging the lluz code, disable this macro to prevent timeouts from
 // occurring when tracing code in Visual Studio / XCode
 #if 0
 #define VM_INTERRUPT()
@@ -76,7 +78,7 @@ LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
 #define VM_INTERRUPT() \
     { \
         void (*interrupt)(lua_State*, int) = L->global->cb.interrupt; \
-        if (LUAU_UNLIKELY(!!interrupt)) \
+        if (lluz_UNLIKELY(!!interrupt)) \
         { /* the interrupt hook is called right before we advance pc */ \
             VM_PROTECT(L->ci->savedpc++; interrupt(L, -1)); \
             if (L->status != 0) \
@@ -119,7 +121,7 @@ LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
 #endif
 
 /**
- * These macros help dispatching Luau opcodes using either case
+ * These macros help dispatching lluz opcodes using either case
  * statements or computed goto.
  * VM_CASE(op) Generates either a case statement or a label
  * VM_NEXT() fetch a byte and dispatch or jump to the beginning of the switch statement
@@ -128,7 +130,7 @@ LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
  */
 #if VM_USE_CGOTO
 #define VM_CASE(op) CASE_##op:
-#define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[LUAU_INSN_OP(*pc)])
+#define VM_NEXT() goto*(SingleStep ? &&dispatch : kDispatchTable[lluz_INSN_OP(*pc)])
 #define VM_CONTINUE(op) goto* kDispatchTable[uint8_t(op)]
 #else
 #define VM_CASE(op) case op:
@@ -138,35 +140,35 @@ LUAU_FASTFLAGVARIABLE(LuauLenTM, false)
     goto dispatchContinue
 #endif
 
-LUAU_NOINLINE static void luau_prepareFORN(lua_State* L, StkId plimit, StkId pstep, StkId pinit)
+lluz_NOINLINE static void lluz_prepareFORN(lua_State* L, StkId plimit, StkId pstep, StkId pinit)
 {
     if (!ttisnumber(pinit) && !luaV_tonumber(pinit, pinit))
-        luaG_forerror(L, pinit, "initial value");
+        luaG_forerror(L, pinit, XorStr("initial value"));
     if (!ttisnumber(plimit) && !luaV_tonumber(plimit, plimit))
-        luaG_forerror(L, plimit, "limit");
+        luaG_forerror(L, plimit, XorStr("limit"));
     if (!ttisnumber(pstep) && !luaV_tonumber(pstep, pstep))
-        luaG_forerror(L, pstep, "step");
+        luaG_forerror(L, pstep, XorStr("step"));
 }
 
-LUAU_NOINLINE static bool luau_loopFORG(lua_State* L, int a, int c)
+lluz_NOINLINE static bool lluz_loopFORG(lua_State* L, int a, int c)
 {
     // note: it's safe to push arguments past top for complicated reasons (see top of the file)
     StkId ra = &L->base[a];
-    LUAU_ASSERT(ra + 3 <= L->top);
+    lluz_ASSERT(ra + 3 <= L->top);
 
     setobjs2s(L, ra + 3 + 2, ra + 2);
     setobjs2s(L, ra + 3 + 1, ra + 1);
     setobjs2s(L, ra + 3, ra);
 
     L->top = ra + 3 + 3; /* func. + 2 args (state and index) */
-    LUAU_ASSERT(L->top <= L->stack_last);
+    lluz_ASSERT(L->top <= L->stack_last);
 
     luaD_call(L, ra + 3, c);
     L->top = L->ci->top;
 
     // recompute ra since stack might have been reallocated
     ra = &L->base[a];
-    LUAU_ASSERT(ra < L->top);
+    lluz_ASSERT(ra < L->top);
 
     // copy first variable back into the iteration index
     setobjs2s(L, ra + 2, ra + 3);
@@ -176,7 +178,7 @@ LUAU_NOINLINE static bool luau_loopFORG(lua_State* L, int a, int c)
 
 // calls a C function f with no yielding support; optionally save one resulting value to the res register
 // the function and arguments have to already be pushed to L->top
-LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
+lluz_NOINLINE static void lluz_callTM(lua_State* L, int nparams, int res)
 {
     ++L->nCcalls;
 
@@ -195,17 +197,17 @@ LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
     ci->savedpc = NULL;
     ci->flags = 0;
     ci->nresults = (res >= 0);
-    LUAU_ASSERT(ci->top <= L->stack_last);
+    lluz_ASSERT(ci->top <= L->stack_last);
 
-    LUAU_ASSERT(ttisfunction(ci->func));
-    LUAU_ASSERT(clvalue(ci->func)->isC);
+    lluz_ASSERT(ttisfunction(ci->func));
+    lluz_ASSERT(clvalue(ci->func)->isC);
 
     L->base = fun + 1;
-    LUAU_ASSERT(L->top == L->base + nparams);
+    lluz_ASSERT(L->top == L->base + nparams);
 
     lua_CFunction func = clvalue(fun)->c.f;
     int n = func(L);
-    LUAU_ASSERT(n >= 0); // yields should have been blocked by nCcalls
+    lluz_ASSERT(n >= 0); // yields should have been blocked by nCcalls
 
     // ci is our callinfo, cip is our parent
     // note that we read L->ci again since it may have been reallocated by the call
@@ -231,18 +233,18 @@ LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
     --L->nCcalls;
 }
 
-LUAU_NOINLINE static void luau_tryfuncTM(lua_State* L, StkId func)
+lluz_NOINLINE static void lluz_tryfuncTM(lua_State* L, StkId func)
 {
     const TValue* tm = luaT_gettmbyobj(L, func, TM_CALL);
     if (!ttisfunction(tm))
-        luaG_typeerror(L, func, "call");
+        luaG_typeerror(L, func, XorStr("call"));
     for (StkId p = L->top; p > func; p--) /* open space for metamethod */
         setobjs2s(L, p, p - 1);
     L->top++;              /* stack space pre-allocated by the caller */
     setobj2s(L, func, tm); /* tag method is the new function to be called */
 }
 
-LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
+lluz_NOINLINE void lluz_callhook(lua_State* L, lua_Hook hook, void* userdata)
 {
     ptrdiff_t base = savestack(L, L->base);
     ptrdiff_t top = savestack(L, L->top);
@@ -258,7 +260,7 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
 
     luaD_checkstack(L, LUA_MINSTACK); /* ensure minimum stack size */
     L->ci->top = L->top + LUA_MINSTACK;
-    LUAU_ASSERT(L->ci->top <= L->stack_last);
+    lluz_ASSERT(L->ci->top <= L->stack_last);
 
     // note: the pc expectations of the hook are matching the general "pc points to next instruction"
     // however, for the hook to be able to continue execution from the same point, this is called with savedpc at the *current* instruction
@@ -287,20 +289,20 @@ LUAU_NOINLINE void luau_callhook(lua_State* L, lua_Hook hook, void* userdata)
     }
     else if (status == LUA_BREAK)
     {
-        LUAU_ASSERT(L->status != LUA_BREAK); // hook shouldn't break again
+        lluz_ASSERT(L->status != LUA_BREAK); // hook shouldn't break again
 
         L->status = LUA_BREAK;
         L->base = restorestack(L, base);
     }
 }
 
-inline bool luau_skipstep(uint8_t op)
+inline bool lluz_skipstep(uint8_t op)
 {
     return op == LOP_PREPVARARGS || op == LOP_BREAK;
 }
 
 template<bool SingleStep>
-static void luau_execute(lua_State* L)
+static void lluz_execute(lua_State* L)
 {
 #if VM_USE_CGOTO
     static const void* kDispatchTable[256] = {VM_DISPATCH_TABLE()};
@@ -313,9 +315,9 @@ static void luau_execute(lua_State* L)
     TValue* k;
     const Instruction* pc;
 
-    LUAU_ASSERT(isLua(L->ci));
-    LUAU_ASSERT(luaC_threadactive(L));
-    LUAU_ASSERT(!luaC_threadsleeping(L));
+    lluz_ASSERT(isLua(L->ci));
+    lluz_ASSERT(luaC_threadactive(L));
+    lluz_ASSERT(!luaC_threadsleeping(L));
 
     pc = L->ci->savedpc;
     cl = clvalue(L->ci->func);
@@ -328,15 +330,15 @@ static void luau_execute(lua_State* L)
     dispatch:
         // Note: this code doesn't always execute! on some platforms we use computed goto which bypasses all of this unless we run in single-step mode
         // Therefore only ever put assertions here.
-        LUAU_ASSERT(base == L->base && L->base == L->ci->base);
-        LUAU_ASSERT(base <= L->top && L->top <= L->stack + L->stacksize);
+        lluz_ASSERT(base == L->base && L->base == L->ci->base);
+        lluz_ASSERT(base <= L->top && L->top <= L->stack + L->stacksize);
 
         // ... and singlestep logic :)
         if (SingleStep)
         {
-            if (L->global->cb.debugstep && !luau_skipstep(LUAU_INSN_OP(*pc)))
+            if (L->global->cb.debugstep && !lluz_skipstep(lluz_INSN_OP(*pc)))
             {
-                VM_PROTECT(luau_callhook(L, L->global->cb.debugstep, NULL));
+                VM_PROTECT(lluz_callhook(L, L->global->cb.debugstep, NULL));
 
                 // allow debugstep hook to put thread into error/yield state
                 if (L->status != 0)
@@ -344,12 +346,12 @@ static void luau_execute(lua_State* L)
             }
 
 #if VM_USE_CGOTO
-            VM_CONTINUE(LUAU_INSN_OP(*pc));
+            VM_CONTINUE(lluz_INSN_OP(*pc));
 #endif
         }
 
 #if !VM_USE_CGOTO
-        size_t dispatchOp = LUAU_INSN_OP(*pc);
+        size_t dispatchOp = lluz_INSN_OP(*pc);
 
     dispatchContinue:
         switch (dispatchOp)
@@ -358,14 +360,14 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_NOP)
             {
                 Instruction insn = *pc++;
-                LUAU_ASSERT(insn == 0);
+                lluz_ASSERT(insn == 0);
                 VM_NEXT();
             }
 
             VM_CASE(LOP_LOADNIL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 setnilvalue(ra);
                 VM_NEXT();
@@ -374,29 +376,29 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_LOADB)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
-                setbvalue(ra, LUAU_INSN_B(insn));
+                setbvalue(ra, lluz_INSN_B(insn));
 
-                pc += LUAU_INSN_C(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_C(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
             VM_CASE(LOP_LOADN)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
-                setnvalue(ra, LUAU_INSN_D(insn));
+                setnvalue(ra, lluz_INSN_D(insn));
                 VM_NEXT();
             }
 
             VM_CASE(LOP_LOADK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* kv = VM_KV(LUAU_INSN_D(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                TValue* kv = VM_KV(lluz_INSN_D(insn));
 
                 setobj2s(L, ra, kv);
                 VM_NEXT();
@@ -405,8 +407,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_MOVE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
 
                 setobj2s(L, ra, rb);
                 VM_NEXT();
@@ -415,17 +417,17 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_GETGLOBAL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(kv));
+                lluz_ASSERT(ttisstring(kv));
 
                 // fast-path: value is in expected slot
                 Table* h = cl->env;
-                int slot = LUAU_INSN_C(insn) & h->nodemask8;
+                int slot = lluz_INSN_C(insn) & h->nodemask8;
                 LuaNode* n = &h->node[slot];
 
-                if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv)) && !ttisnil(gval(n)))
+                if (lluz_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv)) && !ttisnil(gval(n)))
                 {
                     setobj2s(L, ra, gval(n));
                     VM_NEXT();
@@ -446,19 +448,19 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_SETGLOBAL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(kv));
+                lluz_ASSERT(ttisstring(kv));
 
                 // fast-path: value is in expected slot
                 Table* h = cl->env;
-                int slot = LUAU_INSN_C(insn) & h->nodemask8;
+                int slot = lluz_INSN_C(insn) & h->nodemask8;
                 LuaNode* n = &h->node[slot];
 
-                if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n)) && !h->readonly))
+                if (lluz_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n)) && !h->readonly))
                 {
-                    setobj2t(L, gval(n), ra);
+                    setobj(L, gval(n), ra);
                     luaC_barriert(L, h, ra);
                     VM_NEXT();
                 }
@@ -478,8 +480,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_GETUPVAL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* ur = VM_UV(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                TValue* ur = VM_UV(lluz_INSN_B(insn));
                 TValue* v = ttisupval(ur) ? upvalue(ur)->v : ur;
 
                 setobj2s(L, ra, v);
@@ -489,8 +491,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_SETUPVAL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* ur = VM_UV(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                TValue* ur = VM_UV(lluz_INSN_B(insn));
                 UpVal* uv = upvalue(ur);
 
                 setobj(L, uv->v, ra);
@@ -502,7 +504,7 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_CLOSEUPVALS)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 if (L->openupval && L->openupval->v >= ra)
                     luaF_close(L, ra);
@@ -512,8 +514,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_GETIMPORT)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* kv = VM_KV(LUAU_INSN_D(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                TValue* kv = VM_KV(lluz_INSN_D(insn));
 
                 // fast-path: import resolution was successful and closure environment is "safe" for import
                 if (!ttisnil(kv) && cl->env->safeenv)
@@ -527,7 +529,7 @@ static void luau_execute(lua_State* L)
                     uint32_t aux = *pc++;
 
                     VM_PROTECT(luaV_getimport(L, cl->env, k, aux, /* propagatenil= */ false));
-                    ra = VM_REG(LUAU_INSN_A(insn)); // previous call may change the stack
+                    ra = VM_REG(lluz_INSN_A(insn)); // previous call may change the stack
 
                     setobj2s(L, ra, L->top - 1);
                     L->top--;
@@ -538,22 +540,22 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_GETTABLEKS)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(kv));
+                lluz_ASSERT(ttisstring(kv));
 
                 // fast-path: built-in table
                 if (ttistable(rb))
                 {
                     Table* h = hvalue(rb);
 
-                    int slot = LUAU_INSN_C(insn) & h->nodemask8;
+                    int slot = lluz_INSN_C(insn) & h->nodemask8;
                     LuaNode* n = &h->node[slot];
 
                     // fast-path: value is in expected slot
-                    if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
+                    if (lluz_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
                     {
                         setobj2s(L, ra, gval(n));
                         VM_NEXT();
@@ -590,15 +592,15 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = fasttm(L, uvalue(rb)->metatable, TM_INDEX)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, kv);
                         L->top = top + 3;
 
-                        L->cachedslot = LUAU_INSN_C(insn);
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        L->cachedslot = lluz_INSN_C(insn);
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
                         VM_PATCH_C(pc - 2, L->cachedslot);
                         VM_NEXT();
@@ -627,52 +629,56 @@ static void luau_execute(lua_State* L)
                         if (fn && ttisfunction(fn) && clvalue(fn)->isC)
                         {
                             // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                            LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                            lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                             StkId top = L->top;
                             setobj2s(L, top + 0, fn);
                             setobj2s(L, top + 1, rb);
                             setobj2s(L, top + 2, kv);
                             L->top = top + 3;
 
-                            L->cachedslot = LUAU_INSN_C(insn);
-                            VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                            L->cachedslot = lluz_INSN_C(insn);
+                            VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                             // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
                             VM_PATCH_C(pc - 2, L->cachedslot);
                             VM_NEXT();
                         }
-
-                        // fall through to slow path
+                        else
+                        {
+                            // slow-path, may invoke Lua calls via __index metamethod
+                            VM_PROTECT(luaV_gettable(L, rb, kv, ra));
+                            VM_NEXT();
+                        }
                     }
-
-                    // fall through to slow path
+                    else
+                    {
+                        // slow-path, may invoke Lua calls via __index metamethod
+                        VM_PROTECT(luaV_gettable(L, rb, kv, ra));
+                        VM_NEXT();
+                    }
                 }
-
-                // slow-path, may invoke Lua calls via __index metamethod
-                VM_PROTECT(luaV_gettable(L, rb, kv, ra));
-                VM_NEXT();
             }
 
             VM_CASE(LOP_SETTABLEKS)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(kv));
+                lluz_ASSERT(ttisstring(kv));
 
                 // fast-path: built-in table
                 if (ttistable(rb))
                 {
                     Table* h = hvalue(rb);
 
-                    int slot = LUAU_INSN_C(insn) & h->nodemask8;
+                    int slot = lluz_INSN_C(insn) & h->nodemask8;
                     LuaNode* n = &h->node[slot];
 
                     // fast-path: value is in expected slot
-                    if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n)) && !h->readonly))
+                    if (lluz_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n)) && !h->readonly))
                     {
-                        setobj2t(L, gval(n), ra);
+                        setobj(L, gval(n), ra);
                         luaC_barriert(L, h, ra);
                         VM_NEXT();
                     }
@@ -684,7 +690,7 @@ static void luau_execute(lua_State* L)
                         int cachedslot = gval2slot(h, res);
                         // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
                         VM_PATCH_C(pc - 2, cachedslot);
-                        setobj2t(L, res, ra);
+                        setobj(L, res, ra);
                         luaC_barriert(L, h, ra);
                         VM_NEXT();
                     }
@@ -705,7 +711,7 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = fasttm(L, uvalue(rb)->metatable, TM_NEWINDEX)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 4 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 4 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
@@ -713,8 +719,8 @@ static void luau_execute(lua_State* L)
                         setobj2s(L, top + 3, ra);
                         L->top = top + 4;
 
-                        L->cachedslot = LUAU_INSN_C(insn);
-                        VM_PROTECT(luau_callTM(L, 3, -1));
+                        L->cachedslot = lluz_INSN_C(insn);
+                        VM_PROTECT(lluz_callTM(L, 3, -1));
                         // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
                         VM_PATCH_C(pc - 2, L->cachedslot);
                         VM_NEXT();
@@ -731,9 +737,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_GETTABLE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path: array lookup
                 if (ttistable(rb) && ttisnumber(rc))
@@ -744,26 +750,32 @@ static void luau_execute(lua_State* L)
                     int index = int(indexd);
 
                     // index has to be an exact integer and in-bounds for the array portion
-                    if (LUAU_LIKELY(unsigned(index - 1) < unsigned(h->sizearray) && !h->metatable && double(index) == indexd))
+                    if (lluz_LIKELY(unsigned(index - 1) < unsigned(h->sizearray) && !h->metatable && double(index) == indexd))
                     {
                         setobj2s(L, ra, &h->array[unsigned(index - 1)]);
                         VM_NEXT();
                     }
-
-                    // fall through to slow path
+                    else
+                    {
+                        // slow-path: handles out of bounds array lookups and non-integer numeric keys
+                        VM_PROTECT(luaV_gettable(L, rb, rc, ra));
+                        VM_NEXT();
+                    }
                 }
-
-                // slow-path: handles out of bounds array lookups, non-integer numeric keys, non-array table lookup, __index MT calls
-                VM_PROTECT(luaV_gettable(L, rb, rc, ra));
-                VM_NEXT();
+                else
+                {
+                    // slow-path: handles non-array table lookup as well as __index MT calls
+                    VM_PROTECT(luaV_gettable(L, rb, rc, ra));
+                    VM_NEXT();
+                }
             }
 
             VM_CASE(LOP_SETTABLE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path: array assign
                 if (ttistable(rb) && ttisnumber(rc))
@@ -774,40 +786,44 @@ static void luau_execute(lua_State* L)
                     int index = int(indexd);
 
                     // index has to be an exact integer and in-bounds for the array portion
-                    if (LUAU_LIKELY(unsigned(index - 1) < unsigned(h->sizearray) && !h->metatable && !h->readonly && double(index) == indexd))
+                    if (lluz_LIKELY(unsigned(index - 1) < unsigned(h->sizearray) && !h->metatable && !h->readonly && double(index) == indexd))
                     {
                         setobj2t(L, &h->array[unsigned(index - 1)], ra);
                         luaC_barriert(L, h, ra);
                         VM_NEXT();
                     }
-
-                    // fall through to slow path
+                    else
+                    {
+                        // slow-path: handles out of bounds array assignments and non-integer numeric keys
+                        VM_PROTECT(luaV_settable(L, rb, rc, ra));
+                        VM_NEXT();
+                    }
                 }
-
-                // slow-path: handles out of bounds array assignments, non-integer numeric keys, non-array table access, __newindex MT calls
-                VM_PROTECT(luaV_settable(L, rb, rc, ra));
-                VM_NEXT();
+                else
+                {
+                    // slow-path: handles non-array table access as well as __newindex MT calls
+                    VM_PROTECT(luaV_settable(L, rb, rc, ra));
+                    VM_NEXT();
+                }
             }
 
             VM_CASE(LOP_GETTABLEN)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                int c = LUAU_INSN_C(insn);
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                int c = lluz_INSN_C(insn);
 
                 // fast-path: array lookup
                 if (ttistable(rb))
                 {
                     Table* h = hvalue(rb);
 
-                    if (LUAU_LIKELY(unsigned(c) < unsigned(h->sizearray) && !h->metatable))
+                    if (lluz_LIKELY(unsigned(c) < unsigned(h->sizearray) && !h->metatable))
                     {
                         setobj2s(L, ra, &h->array[c]);
                         VM_NEXT();
                     }
-
-                    // fall through to slow path
                 }
 
                 // slow-path: handles out of bounds array lookups
@@ -820,23 +836,21 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_SETTABLEN)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                int c = LUAU_INSN_C(insn);
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                int c = lluz_INSN_C(insn);
 
                 // fast-path: array assign
                 if (ttistable(rb))
                 {
                     Table* h = hvalue(rb);
 
-                    if (LUAU_LIKELY(unsigned(c) < unsigned(h->sizearray) && !h->metatable && !h->readonly))
+                    if (lluz_LIKELY(unsigned(c) < unsigned(h->sizearray) && !h->metatable && !h->readonly))
                     {
                         setobj2t(L, &h->array[c], ra);
                         luaC_barriert(L, h, ra);
                         VM_NEXT();
                     }
-
-                    // fall through to slow path
                 }
 
                 // slow-path: handles out of bounds array lookups
@@ -849,10 +863,10 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_NEWCLOSURE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
-                Proto* pv = cl->l.p->p[LUAU_INSN_D(insn)];
-                LUAU_ASSERT(unsigned(LUAU_INSN_D(insn)) < unsigned(cl->l.p->sizep));
+                Proto* pv = cl->l.p->p[lluz_INSN_D(insn)];
+                lluz_ASSERT(unsigned(lluz_INSN_D(insn)) < unsigned(cl->l.p->sizep));
 
                 // note: we save closure to stack early in case the code below wants to capture it by value
                 Closure* ncl = luaF_newLclosure(L, pv->nups, cl->env, pv);
@@ -861,24 +875,24 @@ static void luau_execute(lua_State* L)
                 for (int ui = 0; ui < pv->nups; ++ui)
                 {
                     Instruction uinsn = *pc++;
-                    LUAU_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
+                    lluz_ASSERT(lluz_INSN_OP(uinsn) == LOP_CAPTURE);
 
-                    switch (LUAU_INSN_A(uinsn))
+                    switch (lluz_INSN_A(uinsn))
                     {
                     case LCT_VAL:
-                        setobj(L, &ncl->l.uprefs[ui], VM_REG(LUAU_INSN_B(uinsn)));
+                        setobj(L, &ncl->l.uprefs[ui], VM_REG(lluz_INSN_B(uinsn)));
                         break;
 
                     case LCT_REF:
-                        setupvalue(L, &ncl->l.uprefs[ui], luaF_findupval(L, VM_REG(LUAU_INSN_B(uinsn))));
+                        setupvalue(L, &ncl->l.uprefs[ui], luaF_findupval(L, VM_REG(lluz_INSN_B(uinsn))));
                         break;
 
                     case LCT_UPVAL:
-                        setobj(L, &ncl->l.uprefs[ui], VM_UV(LUAU_INSN_B(uinsn)));
+                        setobj(L, &ncl->l.uprefs[ui], VM_UV(lluz_INSN_B(uinsn)));
                         break;
 
                     default:
-                        LUAU_ASSERT(!"Unknown upvalue capture type");
+                        lluz_ASSERT(!"Unknown upvalue capture type");
                     }
                 }
 
@@ -889,11 +903,11 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_NAMECALL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
-                LUAU_ASSERT(ttisstring(kv));
+                lluz_ASSERT(ttisstring(kv));
 
                 if (ttistable(rb))
                 {
@@ -914,7 +928,7 @@ static void luau_execute(lua_State* L)
                     }
                     // fast-path: key is absent from the base, table has an __index table, and it has the result in the expected slot
                     else if (gnext(n) == 0 && (mt = fasttm(L, hvalue(rb)->metatable, TM_INDEX)) && ttistable(mt) &&
-                             (mtn = &hvalue(mt)->node[LUAU_INSN_C(insn) & hvalue(mt)->nodemask8]) && ttisstring(gkey(mtn)) &&
+                             (mtn = &hvalue(mt)->node[lluz_INSN_C(insn) & hvalue(mt)->nodemask8]) && ttisstring(gkey(mtn)) &&
                              tsvalue(gkey(mtn)) == tsvalue(kv) && !ttisnil(gval(mtn)))
                     {
                         // note: order of copies allows rb to alias ra+1 or ra
@@ -925,7 +939,7 @@ static void luau_execute(lua_State* L)
                     {
                         // slow-path: handles full table lookup
                         setobj2s(L, ra + 1, rb);
-                        L->cachedslot = LUAU_INSN_C(insn);
+                        L->cachedslot = lluz_INSN_C(insn);
                         VM_PROTECT(luaV_gettable(L, rb, kv, ra));
                         // save cachedslot to accelerate future lookups; patches currently executing instruction since pc-2 rolls back two pc++
                         VM_PATCH_C(pc - 2, L->cachedslot);
@@ -948,11 +962,11 @@ static void luau_execute(lua_State* L)
                     else if ((tmi = fasttm(L, mt, TM_INDEX)) && ttistable(tmi))
                     {
                         Table* h = hvalue(tmi);
-                        int slot = LUAU_INSN_C(insn) & h->nodemask8;
+                        int slot = lluz_INSN_C(insn) & h->nodemask8;
                         LuaNode* n = &h->node[slot];
 
                         // fast-path: metatable with __index that has method in expected slot
-                        if (LUAU_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
+                        if (lluz_LIKELY(ttisstring(gkey(n)) && tsvalue(gkey(n)) == tsvalue(kv) && !ttisnil(gval(n))))
                         {
                             // note: order of copies allows rb to alias ra+1 or ra
                             setobj2s(L, ra + 1, rb);
@@ -977,25 +991,25 @@ static void luau_execute(lua_State* L)
                 }
 
                 // intentional fallthrough to CALL
-                LUAU_ASSERT(LUAU_INSN_OP(*pc) == LOP_CALL);
+                lluz_ASSERT(lluz_INSN_OP(*pc) == LOP_CALL);
             }
 
             VM_CASE(LOP_CALL)
             {
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
-                int nparams = LUAU_INSN_B(insn) - 1;
-                int nresults = LUAU_INSN_C(insn) - 1;
+                int nparams = lluz_INSN_B(insn) - 1;
+                int nresults = lluz_INSN_C(insn) - 1;
 
                 StkId argtop = L->top;
                 argtop = (nparams == LUA_MULTRET) ? argtop : ra + 1 + nparams;
 
                 // slow-path: not a function call
-                if (LUAU_UNLIKELY(!ttisfunction(ra)))
+                if (lluz_UNLIKELY(!ttisfunction(ra)))
                 {
-                    VM_PROTECT(luau_tryfuncTM(L, ra));
+                    VM_PROTECT(lluz_tryfuncTM(L, ra));
                     argtop++; // __call adds an extra self
                 }
 
@@ -1018,7 +1032,7 @@ static void luau_execute(lua_State* L)
                 // crucially, we can't use ra/argtop after this line
                 luaD_checkstack(L, ccl->stacksize);
 
-                LUAU_ASSERT(ci->top <= L->stack_last);
+                lluz_ASSERT(ci->top <= L->stack_last);
 
                 if (!ccl->isC)
                 {
@@ -1077,8 +1091,8 @@ static void luau_execute(lua_State* L)
             {
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
-                StkId ra = &base[LUAU_INSN_A(insn)]; // note: this can point to L->top if b == LUA_MULTRET making VM_REG unsafe to use
-                int b = LUAU_INSN_B(insn) - 1;
+                StkId ra = &base[lluz_INSN_A(insn)]; // note: this can point to L->top if b == LUA_MULTRET making VM_REG unsafe to use
+                int b = lluz_INSN_B(insn) - 1;
 
                 // ci is our callinfo, cip is our parent
                 CallInfo* ci = L->ci;
@@ -1106,13 +1120,13 @@ static void luau_execute(lua_State* L)
                 L->top = (nresults == LUA_MULTRET) ? res : cip->top;
 
                 // we're done!
-                if (LUAU_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
+                if (lluz_UNLIKELY(ci->flags & LUA_CALLINFO_RETURN))
                 {
                     L->top = res;
                     goto exit;
                 }
 
-                LUAU_ASSERT(isLua(L->ci));
+                lluz_ASSERT(isLua(L->ci));
 
                 // reentry
                 pc = cip->savedpc;
@@ -1126,28 +1140,28 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
 
-                pc += LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
             VM_CASE(LOP_JUMPIF)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
-                pc += l_isfalse(ra) ? 0 : LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += l_isfalse(ra) ? 0 : lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
             VM_CASE(LOP_JUMPIFNOT)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
-                pc += l_isfalse(ra) ? LUAU_INSN_D(insn) : 0;
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += l_isfalse(ra) ? lluz_INSN_D(insn) : 0;
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
@@ -1155,7 +1169,7 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 StkId rb = VM_REG(aux);
 
                 // Note that all jumps below jump by 1 in the "false" case to skip over aux
@@ -1164,35 +1178,35 @@ static void luau_execute(lua_State* L)
                     switch (ttype(ra))
                     {
                     case LUA_TNIL:
-                        pc += LUAU_INSN_D(insn);
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += lluz_INSN_D(insn);
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TBOOLEAN:
-                        pc += bvalue(ra) == bvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += bvalue(ra) == bvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TLIGHTUSERDATA:
-                        pc += pvalue(ra) == pvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += pvalue(ra) == pvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TNUMBER:
-                        pc += nvalue(ra) == nvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += nvalue(ra) == nvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TVECTOR:
-                        pc += luai_veceq(vvalue(ra), vvalue(rb)) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += luai_veceq(vvalue(ra), vvalue(rb)) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TSTRING:
                     case LUA_TFUNCTION:
                     case LUA_TTHREAD:
-                        pc += gcvalue(ra) == gcvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += gcvalue(ra) == gcvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TTABLE:
@@ -1203,8 +1217,8 @@ static void luau_execute(lua_State* L)
 
                             if (!fn)
                             {
-                                pc += hvalue(ra) == hvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                                pc += hvalue(ra) == hvalue(rb) ? lluz_INSN_D(insn) : 1;
+                                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                                 VM_NEXT();
                             }
                         }
@@ -1219,14 +1233,14 @@ static void luau_execute(lua_State* L)
 
                             if (!fn)
                             {
-                                pc += uvalue(ra) == uvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                                pc += uvalue(ra) == uvalue(rb) ? lluz_INSN_D(insn) : 1;
+                                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                                 VM_NEXT();
                             }
                             else if (ttisfunction(fn) && clvalue(fn)->isC)
                             {
                                 // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                                LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                                lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                                 StkId top = L->top;
                                 setobj2s(L, top + 0, fn);
                                 setobj2s(L, top + 1, ra);
@@ -1234,9 +1248,9 @@ static void luau_execute(lua_State* L)
                                 int res = int(top - base);
                                 L->top = top + 3;
 
-                                VM_PROTECT(luau_callTM(L, 2, res));
-                                pc += !l_isfalse(&base[res]) ? LUAU_INSN_D(insn) : 1;
-                                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                                VM_PROTECT(lluz_callTM(L, 2, res));
+                                pc += !l_isfalse(&base[res]) ? lluz_INSN_D(insn) : 1;
+                                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                                 VM_NEXT();
                             }
                         }
@@ -1251,14 +1265,14 @@ static void luau_execute(lua_State* L)
                     int res;
                     VM_PROTECT(res = luaV_equalval(L, ra, rb));
 
-                    pc += (res == 1) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += (res == 1) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
                 {
                     pc += 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -1267,7 +1281,7 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 StkId rb = VM_REG(aux);
 
                 // Note that all jumps below jump by 1 in the "true" case to skip over aux
@@ -1277,34 +1291,34 @@ static void luau_execute(lua_State* L)
                     {
                     case LUA_TNIL:
                         pc += 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TBOOLEAN:
-                        pc += bvalue(ra) != bvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += bvalue(ra) != bvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TLIGHTUSERDATA:
-                        pc += pvalue(ra) != pvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += pvalue(ra) != pvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TNUMBER:
-                        pc += nvalue(ra) != nvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += nvalue(ra) != nvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TVECTOR:
-                        pc += !luai_veceq(vvalue(ra), vvalue(rb)) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += !luai_veceq(vvalue(ra), vvalue(rb)) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TSTRING:
                     case LUA_TFUNCTION:
                     case LUA_TTHREAD:
-                        pc += gcvalue(ra) != gcvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += gcvalue(ra) != gcvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TTABLE:
@@ -1315,8 +1329,8 @@ static void luau_execute(lua_State* L)
 
                             if (!fn)
                             {
-                                pc += hvalue(ra) != hvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                                pc += hvalue(ra) != hvalue(rb) ? lluz_INSN_D(insn) : 1;
+                                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                                 VM_NEXT();
                             }
                         }
@@ -1331,14 +1345,14 @@ static void luau_execute(lua_State* L)
 
                             if (!fn)
                             {
-                                pc += uvalue(ra) != uvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                                pc += uvalue(ra) != uvalue(rb) ? lluz_INSN_D(insn) : 1;
+                                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                                 VM_NEXT();
                             }
                             else if (ttisfunction(fn) && clvalue(fn)->isC)
                             {
                                 // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                                LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                                lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                                 StkId top = L->top;
                                 setobj2s(L, top + 0, fn);
                                 setobj2s(L, top + 1, ra);
@@ -1346,9 +1360,9 @@ static void luau_execute(lua_State* L)
                                 int res = int(top - base);
                                 L->top = top + 3;
 
-                                VM_PROTECT(luau_callTM(L, 2, res));
-                                pc += l_isfalse(&base[res]) ? LUAU_INSN_D(insn) : 1;
-                                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                                VM_PROTECT(lluz_callTM(L, 2, res));
+                                pc += l_isfalse(&base[res]) ? lluz_INSN_D(insn) : 1;
+                                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                                 VM_NEXT();
                             }
                         }
@@ -1363,14 +1377,14 @@ static void luau_execute(lua_State* L)
                     int res;
                     VM_PROTECT(res = luaV_equalval(L, ra, rb));
 
-                    pc += (res == 0) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += (res == 0) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
                 {
-                    pc += LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += lluz_INSN_D(insn);
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -1379,22 +1393,22 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 StkId rb = VM_REG(aux);
 
                 // fast-path: number
                 // Note that all jumps below jump by 1 in the "false" case to skip over aux
                 if (ttisnumber(ra) && ttisnumber(rb))
                 {
-                    pc += nvalue(ra) <= nvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += nvalue(ra) <= nvalue(rb) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 // fast-path: string
                 else if (ttisstring(ra) && ttisstring(rb))
                 {
-                    pc += luaV_strcmp(tsvalue(ra), tsvalue(rb)) <= 0 ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += luaV_strcmp(tsvalue(ra), tsvalue(rb)) <= 0 ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
@@ -1402,8 +1416,8 @@ static void luau_execute(lua_State* L)
                     int res;
                     VM_PROTECT(res = luaV_lessequal(L, ra, rb));
 
-                    pc += (res == 1) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += (res == 1) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -1412,22 +1426,22 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 StkId rb = VM_REG(aux);
 
                 // fast-path: number
                 // Note that all jumps below jump by 1 in the "true" case to skip over aux
                 if (ttisnumber(ra) && ttisnumber(rb))
                 {
-                    pc += !(nvalue(ra) <= nvalue(rb)) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += !(nvalue(ra) <= nvalue(rb)) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 // fast-path: string
                 else if (ttisstring(ra) && ttisstring(rb))
                 {
-                    pc += !(luaV_strcmp(tsvalue(ra), tsvalue(rb)) <= 0) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += !(luaV_strcmp(tsvalue(ra), tsvalue(rb)) <= 0) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
@@ -1435,8 +1449,8 @@ static void luau_execute(lua_State* L)
                     int res;
                     VM_PROTECT(res = luaV_lessequal(L, ra, rb));
 
-                    pc += (res == 0) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += (res == 0) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -1445,22 +1459,22 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 StkId rb = VM_REG(aux);
 
                 // fast-path: number
                 // Note that all jumps below jump by 1 in the "false" case to skip over aux
                 if (ttisnumber(ra) && ttisnumber(rb))
                 {
-                    pc += nvalue(ra) < nvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += nvalue(ra) < nvalue(rb) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 // fast-path: string
                 else if (ttisstring(ra) && ttisstring(rb))
                 {
-                    pc += luaV_strcmp(tsvalue(ra), tsvalue(rb)) < 0 ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += luaV_strcmp(tsvalue(ra), tsvalue(rb)) < 0 ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
@@ -1468,8 +1482,8 @@ static void luau_execute(lua_State* L)
                     int res;
                     VM_PROTECT(res = luaV_lessthan(L, ra, rb));
 
-                    pc += (res == 1) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += (res == 1) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -1478,22 +1492,22 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 StkId rb = VM_REG(aux);
 
                 // fast-path: number
                 // Note that all jumps below jump by 1 in the "true" case to skip over aux
                 if (ttisnumber(ra) && ttisnumber(rb))
                 {
-                    pc += !(nvalue(ra) < nvalue(rb)) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += !(nvalue(ra) < nvalue(rb)) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 // fast-path: string
                 else if (ttisstring(ra) && ttisstring(rb))
                 {
-                    pc += !(luaV_strcmp(tsvalue(ra), tsvalue(rb)) < 0) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += !(luaV_strcmp(tsvalue(ra), tsvalue(rb)) < 0) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
@@ -1501,8 +1515,8 @@ static void luau_execute(lua_State* L)
                     int res;
                     VM_PROTECT(res = luaV_lessthan(L, ra, rb));
 
-                    pc += (res == 0) ? LUAU_INSN_D(insn) : 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += (res == 0) ? lluz_INSN_D(insn) : 1;
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -1510,9 +1524,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_ADD)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb) && ttisnumber(rc))
@@ -1534,14 +1548,14 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = luaT_gettmbyobj(L, rb, TM_ADD)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, rc);
                         L->top = top + 3;
 
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -1556,9 +1570,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_SUB)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb) && ttisnumber(rc))
@@ -1580,14 +1594,14 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = luaT_gettmbyobj(L, rb, TM_SUB)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, rc);
                         L->top = top + 3;
 
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -1602,9 +1616,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_MUL)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb) && ttisnumber(rc))
@@ -1641,14 +1655,14 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rbc) && (fn = luaT_gettmbyobj(L, rbc, TM_MUL)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, rc);
                         L->top = top + 3;
 
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -1663,9 +1677,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_DIV)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb) && ttisnumber(rc))
@@ -1702,14 +1716,14 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rbc) && (fn = luaT_gettmbyobj(L, rbc, TM_DIV)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, rc);
                         L->top = top + 3;
 
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -1724,9 +1738,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_MOD)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb) && ttisnumber(rc))
@@ -1747,9 +1761,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_POW)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb) && ttisnumber(rc))
@@ -1768,9 +1782,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_ADDK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -1789,9 +1803,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_SUBK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -1810,9 +1824,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_MULK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -1834,14 +1848,14 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = luaT_gettmbyobj(L, rb, TM_MUL)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, kv);
                         L->top = top + 3;
 
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -1856,9 +1870,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_DIVK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -1880,14 +1894,14 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = luaT_gettmbyobj(L, rb, TM_DIV)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 3 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 3 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         setobj2s(L, top + 2, kv);
                         L->top = top + 3;
 
-                        VM_PROTECT(luau_callTM(L, 2, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 2, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -1902,9 +1916,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_MODK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -1925,9 +1939,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_POWK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -1952,9 +1966,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_AND)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 setobj2s(L, ra, l_isfalse(rb) ? rb : rc);
                 VM_NEXT();
@@ -1963,9 +1977,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_OR)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                StkId rc = VM_REG(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                StkId rc = VM_REG(lluz_INSN_C(insn));
 
                 setobj2s(L, ra, l_isfalse(rb) ? rc : rb);
                 VM_NEXT();
@@ -1974,9 +1988,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_ANDK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 setobj2s(L, ra, l_isfalse(rb) ? rb : kv);
                 VM_NEXT();
@@ -1985,9 +1999,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_ORK)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
-                TValue* kv = VM_KV(LUAU_INSN_C(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
+                TValue* kv = VM_KV(lluz_INSN_C(insn));
 
                 setobj2s(L, ra, l_isfalse(rb) ? kv : rb);
                 VM_NEXT();
@@ -1996,13 +2010,13 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_CONCAT)
             {
                 Instruction insn = *pc++;
-                int b = LUAU_INSN_B(insn);
-                int c = LUAU_INSN_C(insn);
+                int b = lluz_INSN_B(insn);
+                int c = lluz_INSN_C(insn);
 
                 // This call may realloc the stack! So we need to query args further down
                 VM_PROTECT(luaV_concat(L, c - b + 1, c));
 
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 setobjs2s(L, ra, base + b);
                 VM_PROTECT(luaC_checkGC(L));
@@ -2012,8 +2026,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_NOT)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
 
                 int res = l_isfalse(rb);
                 setbvalue(ra, res);
@@ -2023,8 +2037,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_MINUS)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
 
                 // fast-path
                 if (ttisnumber(rb))
@@ -2045,13 +2059,13 @@ static void luau_execute(lua_State* L)
                     if (ttisuserdata(rb) && (fn = luaT_gettmbyobj(L, rb, TM_UNM)) && ttisfunction(fn) && clvalue(fn)->isC)
                     {
                         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-                        LUAU_ASSERT(L->top + 2 < L->stack + L->stacksize);
+                        lluz_ASSERT(L->top + 2 < L->stack + L->stacksize);
                         StkId top = L->top;
                         setobj2s(L, top + 0, fn);
                         setobj2s(L, top + 1, rb);
                         L->top = top + 2;
 
-                        VM_PROTECT(luau_callTM(L, 1, LUAU_INSN_A(insn)));
+                        VM_PROTECT(lluz_callTM(L, 1, lluz_INSN_A(insn)));
                         VM_NEXT();
                     }
                     else
@@ -2066,15 +2080,15 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_LENGTH)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = VM_REG(LUAU_INSN_B(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = VM_REG(lluz_INSN_B(insn));
 
                 // fast-path #1: tables
                 if (ttistable(rb))
                 {
                     Table* h = hvalue(rb);
 
-                    if (!FFlag::LuauLenTM || fastnotm(h->metatable, TM_LEN))
+                    if (!FFlag::LluLenTM || fastnotm(h->metatable, TM_LEN))
                     {
                         setnvalue(ra, cast_num(luaH_getn(h)));
                         VM_NEXT();
@@ -2104,8 +2118,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_NEWTABLE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                int b = LUAU_INSN_B(insn);
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                int b = lluz_INSN_B(insn);
                 uint32_t aux = *pc++;
 
                 sethvalue(L, ra, luaH_new(L, aux, b == 0 ? 0 : (1 << (b - 1))));
@@ -2116,8 +2130,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_DUPTABLE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* kv = VM_KV(LUAU_INSN_D(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                TValue* kv = VM_KV(lluz_INSN_D(insn));
 
                 sethvalue(L, ra, luaH_clone(L, hvalue(kv)));
                 VM_PROTECT(luaC_checkGC(L));
@@ -2127,9 +2141,9 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_SETLIST)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                StkId rb = &base[LUAU_INSN_B(insn)]; // note: this can point to L->top if c == LUA_MULTRET making VM_REG unsafe to use
-                int c = LUAU_INSN_C(insn) - 1;
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                StkId rb = &base[lluz_INSN_B(insn)]; // note: this can point to L->top if c == LUA_MULTRET making VM_REG unsafe to use
+                int c = lluz_INSN_C(insn) - 1;
                 uint32_t index = *pc++;
 
                 if (c == LUA_MULTRET)
@@ -2159,15 +2173,13 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FORNPREP)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 if (!ttisnumber(ra + 0) || !ttisnumber(ra + 1) || !ttisnumber(ra + 2))
                 {
                     // slow-path: can convert arguments to numbers and trigger Lua errors
-                    // Note: this doesn't reallocate stack so we don't need to recompute ra/base
-                    VM_PROTECT_PC();
-
-                    luau_prepareFORN(L, ra + 0, ra + 1, ra + 2);
+                    // Note: this doesn't reallocate stack so we don't need to recompute ra
+                    VM_PROTECT(lluz_prepareFORN(L, ra + 0, ra + 1, ra + 2));
                 }
 
                 double limit = nvalue(ra + 0);
@@ -2175,8 +2187,8 @@ static void luau_execute(lua_State* L)
                 double idx = nvalue(ra + 2);
 
                 // Note: make sure the loop condition is exactly the same between this and LOP_FORNLOOP so that we handle NaN/etc. consistently
-                pc += (step > 0 ? idx <= limit : limit <= idx) ? 0 : LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += (step > 0 ? idx <= limit : limit <= idx) ? 0 : lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
@@ -2184,8 +2196,8 @@ static void luau_execute(lua_State* L)
             {
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                LUAU_ASSERT(ttisnumber(ra + 0) && ttisnumber(ra + 1) && ttisnumber(ra + 2));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                lluz_ASSERT(ttisnumber(ra + 0) && ttisnumber(ra + 1) && ttisnumber(ra + 2));
 
                 double limit = nvalue(ra + 0);
                 double step = nvalue(ra + 1);
@@ -2196,8 +2208,8 @@ static void luau_execute(lua_State* L)
                 // Note: make sure the loop condition is exactly the same between this and LOP_FORNPREP so that we handle NaN/etc. consistently
                 if (step > 0 ? idx <= limit : limit <= idx)
                 {
-                    pc += LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += lluz_INSN_D(insn);
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
                 else
@@ -2210,7 +2222,7 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FORGPREP)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 if (ttisfunction(ra))
                 {
@@ -2226,13 +2238,13 @@ static void luau_execute(lua_State* L)
                         setobj2s(L, ra, fn);
 
                         L->top = ra + 2; /* func + self arg */
-                        LUAU_ASSERT(L->top <= L->stack_last);
+                        lluz_ASSERT(L->top <= L->stack_last);
 
                         VM_PROTECT(luaD_call(L, ra, 3));
                         L->top = L->ci->top;
 
                         /* recompute ra since stack might have been reallocated */
-                        ra = VM_REG(LUAU_INSN_A(insn));
+                        ra = VM_REG(lluz_INSN_A(insn));
 
                         /* protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP */
                         if (ttisnil(ra))
@@ -2258,8 +2270,8 @@ static void luau_execute(lua_State* L)
                     }
                 }
 
-                pc += LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
@@ -2267,7 +2279,7 @@ static void luau_execute(lua_State* L)
             {
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 uint32_t aux = *pc;
 
                 // fast-path: builtin table iteration
@@ -2282,7 +2294,7 @@ static void luau_execute(lua_State* L)
 
                     // clear extra variables since we might have more than two
                     // note: while aux encodes ipairs bit, when set we always use 2 variables, so it's safe to check this via a signed comparison
-                    if (LUAU_UNLIKELY(int(aux) > 2))
+                    if (lluz_UNLIKELY(int(aux) > 2))
                         for (int i = 2; i < int(aux); ++i)
                             setnilvalue(ra + 3 + i);
 
@@ -2304,8 +2316,8 @@ static void luau_execute(lua_State* L)
                             setnvalue(ra + 3, double(index + 1));
                             setobj2s(L, ra + 4, e);
 
-                            pc += LUAU_INSN_D(insn);
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            pc += lluz_INSN_D(insn);
+                            lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                             VM_NEXT();
                         }
 
@@ -2325,8 +2337,8 @@ static void luau_execute(lua_State* L)
                             getnodekey(L, ra + 3, n);
                             setobj2s(L, ra + 4, gval(n));
 
-                            pc += LUAU_INSN_D(insn);
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            pc += lluz_INSN_D(insn);
+                            lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                             VM_NEXT();
                         }
 
@@ -2345,20 +2357,20 @@ static void luau_execute(lua_State* L)
                     setobjs2s(L, ra + 3, ra);
 
                     L->top = ra + 3 + 3; /* func + 2 args (state and index) */
-                    LUAU_ASSERT(L->top <= L->stack_last);
+                    lluz_ASSERT(L->top <= L->stack_last);
 
                     VM_PROTECT(luaD_call(L, ra + 3, uint8_t(aux)));
                     L->top = L->ci->top;
 
                     // recompute ra since stack might have been reallocated
-                    ra = VM_REG(LUAU_INSN_A(insn));
+                    ra = VM_REG(lluz_INSN_A(insn));
 
                     // copy first variable back into the iteration index
                     setobjs2s(L, ra + 2, ra + 3);
 
                     // note that we need to increment pc by 1 to exit the loop since we need to skip over aux
-                    pc += ttisnil(ra + 3) ? 1 : LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += ttisnil(ra + 3) ? 1 : lluz_INSN_D(insn);
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -2366,7 +2378,7 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FORGPREP_INEXT)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 // fast-path: ipairs/inext
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnumber(ra + 2) && nvalue(ra + 2) == 0.0)
@@ -2380,8 +2392,8 @@ static void luau_execute(lua_State* L)
                     VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
                 }
 
-                pc += LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
@@ -2389,7 +2401,7 @@ static void luau_execute(lua_State* L)
             {
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 // fast-path: ipairs/inext
                 if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
@@ -2407,8 +2419,8 @@ static void luau_execute(lua_State* L)
                             setnvalue(ra + 3, double(index + 1));
                             setobj2s(L, ra + 4, &h->array[index]);
 
-                            pc += LUAU_INSN_D(insn);
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            pc += lluz_INSN_D(insn);
+                            lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                             VM_NEXT();
                         }
                         else
@@ -2427,10 +2439,10 @@ static void luau_execute(lua_State* L)
                 {
                     // slow-path; can call Lua/C generators
                     bool stop;
-                    VM_PROTECT(stop = luau_loopFORG(L, LUAU_INSN_A(insn), 2));
+                    VM_PROTECT(stop = lluz_loopFORG(L, lluz_INSN_A(insn), 2));
 
-                    pc += stop ? 0 : LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += stop ? 0 : lluz_INSN_D(insn);
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -2438,7 +2450,7 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FORGPREP_NEXT)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 // fast-path: pairs/next
                 if (cl->env->safeenv && ttistable(ra + 1) && ttisnil(ra + 2))
@@ -2452,8 +2464,8 @@ static void luau_execute(lua_State* L)
                     VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
                 }
 
-                pc += LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
@@ -2461,7 +2473,7 @@ static void luau_execute(lua_State* L)
             {
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
 
                 // fast-path: pairs/next
                 if (ttisnil(ra) && ttistable(ra + 1) && ttislightuserdata(ra + 2))
@@ -2481,8 +2493,8 @@ static void luau_execute(lua_State* L)
                             setnvalue(ra + 3, double(index + 1));
                             setobj2s(L, ra + 4, &h->array[index]);
 
-                            pc += LUAU_INSN_D(insn);
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            pc += lluz_INSN_D(insn);
+                            lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                             VM_NEXT();
                         }
 
@@ -2500,8 +2512,8 @@ static void luau_execute(lua_State* L)
                             getnodekey(L, ra + 3, n);
                             setobj2s(L, ra + 4, gval(n));
 
-                            pc += LUAU_INSN_D(insn);
-                            LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                            pc += lluz_INSN_D(insn);
+                            lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                             VM_NEXT();
                         }
 
@@ -2515,10 +2527,10 @@ static void luau_execute(lua_State* L)
                 {
                     // slow-path; can call Lua/C generators
                     bool stop;
-                    VM_PROTECT(stop = luau_loopFORG(L, LUAU_INSN_A(insn), 2));
+                    VM_PROTECT(stop = lluz_loopFORG(L, lluz_INSN_A(insn), 2));
 
-                    pc += stop ? 0 : LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += stop ? 0 : lluz_INSN_D(insn);
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -2526,13 +2538,13 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_GETVARARGS)
             {
                 Instruction insn = *pc++;
-                int b = LUAU_INSN_B(insn) - 1;
+                int b = lluz_INSN_B(insn) - 1;
                 int n = cast_int(base - L->ci->func) - cl->l.p->numparams - 1;
 
                 if (b == LUA_MULTRET)
                 {
                     VM_PROTECT(luaD_checkstack(L, n));
-                    StkId ra = VM_REG(LUAU_INSN_A(insn)); // previous call may change the stack
+                    StkId ra = VM_REG(lluz_INSN_A(insn)); // previous call may change the stack
 
                     for (int j = 0; j < n; j++)
                         setobjs2s(L, ra + j, base - n + j);
@@ -2542,7 +2554,7 @@ static void luau_execute(lua_State* L)
                 }
                 else
                 {
-                    StkId ra = VM_REG(LUAU_INSN_A(insn));
+                    StkId ra = VM_REG(lluz_INSN_A(insn));
 
                     for (int j = 0; j < b && j < n; j++)
                         setobjs2s(L, ra + j, base - n + j);
@@ -2555,8 +2567,8 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_DUPCLOSURE)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
-                TValue* kv = VM_KV(LUAU_INSN_D(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
+                TValue* kv = VM_KV(lluz_INSN_D(insn));
 
                 Closure* kcl = clvalue(kv);
 
@@ -2573,10 +2585,10 @@ static void luau_execute(lua_State* L)
                 for (int ui = 0; ui < kcl->nupvalues; ++ui)
                 {
                     Instruction uinsn = pc[ui];
-                    LUAU_ASSERT(LUAU_INSN_OP(uinsn) == LOP_CAPTURE);
-                    LUAU_ASSERT(LUAU_INSN_A(uinsn) == LCT_VAL || LUAU_INSN_A(uinsn) == LCT_UPVAL);
+                    lluz_ASSERT(lluz_INSN_OP(uinsn) == LOP_CAPTURE);
+                    lluz_ASSERT(lluz_INSN_A(uinsn) == LCT_VAL || lluz_INSN_A(uinsn) == LCT_UPVAL);
 
-                    TValue* uv = (LUAU_INSN_A(uinsn) == LCT_VAL) ? VM_REG(LUAU_INSN_B(uinsn)) : VM_UV(LUAU_INSN_B(uinsn));
+                    TValue* uv = (lluz_INSN_A(uinsn) == LCT_VAL) ? VM_REG(lluz_INSN_B(uinsn)) : VM_UV(lluz_INSN_B(uinsn));
 
                     // check if the existing closure is safe to reuse
                     if (ncl == kcl && luaO_rawequalObj(&ncl->l.uprefs[ui], uv))
@@ -2610,13 +2622,13 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_PREPVARARGS)
             {
                 Instruction insn = *pc++;
-                int numparams = LUAU_INSN_A(insn);
+                int numparams = lluz_INSN_A(insn);
 
                 // all fixed parameters are copied after the top so we need more stack space
                 VM_PROTECT(luaD_checkstack(L, cl->stacksize + numparams));
 
                 // the caller must have filled extra fixed arguments with nil
-                LUAU_ASSERT(cast_int(L->top - base) >= numparams);
+                lluz_ASSERT(cast_int(L->top - base) >= numparams);
 
                 // move fixed parameters to final position
                 StkId fixed = base; /* first fixed argument */
@@ -2642,15 +2654,15 @@ static void luau_execute(lua_State* L)
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
 
-                pc += LUAU_INSN_D(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_D(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
             VM_CASE(LOP_LOADKX)
             {
                 Instruction insn = *pc++;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 uint32_t aux = *pc++;
                 TValue* kv = VM_KV(aux);
 
@@ -2663,29 +2675,29 @@ static void luau_execute(lua_State* L)
                 VM_INTERRUPT();
                 Instruction insn = *pc++;
 
-                pc += LUAU_INSN_E(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                pc += lluz_INSN_E(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                 VM_NEXT();
             }
 
             VM_CASE(LOP_FASTCALL)
             {
                 Instruction insn = *pc++;
-                int bfid = LUAU_INSN_A(insn);
-                int skip = LUAU_INSN_C(insn);
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
+                int bfid = lluz_INSN_A(insn);
+                int skip = lluz_INSN_C(insn);
+                lluz_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
 
                 Instruction call = pc[skip];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                lluz_ASSERT(lluz_INSN_OP(call) == LOP_CALL);
 
-                StkId ra = VM_REG(LUAU_INSN_A(call));
+                StkId ra = VM_REG(lluz_INSN_A(call));
 
-                int nparams = LUAU_INSN_B(call) - 1;
-                int nresults = LUAU_INSN_C(call) - 1;
+                int nparams = lluz_INSN_B(call) - 1;
+                int nresults = lluz_INSN_C(call) - 1;
 
                 nparams = (nparams == LUA_MULTRET) ? int(L->top - ra - 1) : nparams;
 
-                luau_FastFunction f = luauF_table[bfid];
+                lluz_FastFunction f = lluzF_table[bfid];
 
                 if (cl->env->safeenv && f)
                 {
@@ -2698,7 +2710,7 @@ static void luau_execute(lua_State* L)
                         L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
                     }
                     else
@@ -2717,7 +2729,7 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_COVERAGE)
             {
                 Instruction insn = *pc++;
-                int hits = LUAU_INSN_E(insn);
+                int hits = lluz_INSN_E(insn);
 
                 // update hits with saturated add and patch the instruction in place
                 hits = (hits < (1 << 23) - 1) ? hits + 1 : hits;
@@ -2728,15 +2740,15 @@ static void luau_execute(lua_State* L)
 
             VM_CASE(LOP_CAPTURE)
             {
-                LUAU_ASSERT(!"CAPTURE is a pseudo-opcode and must be executed as part of NEWCLOSURE");
-                LUAU_UNREACHABLE();
+                lluz_ASSERT(!"CAPTURE is a pseudo-opcode and must be executed as part of NEWCLOSURE");
+                lluz_UNREACHABLE();
             }
 
             VM_CASE(LOP_JUMPIFEQK)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 TValue* rb = VM_KV(aux);
 
                 // Note that all jumps below jump by 1 in the "false" case to skip over aux
@@ -2745,34 +2757,34 @@ static void luau_execute(lua_State* L)
                     switch (ttype(ra))
                     {
                     case LUA_TNIL:
-                        pc += LUAU_INSN_D(insn);
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += lluz_INSN_D(insn);
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TBOOLEAN:
-                        pc += bvalue(ra) == bvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += bvalue(ra) == bvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TNUMBER:
-                        pc += nvalue(ra) == nvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += nvalue(ra) == nvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TSTRING:
-                        pc += gcvalue(ra) == gcvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += gcvalue(ra) == gcvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     default:;
                     }
 
-                    LUAU_ASSERT(!"Constant is expected to be of primitive type");
+                    lluz_ASSERT(!"Constant is expected to be of primitive type");
                 }
                 else
                 {
                     pc += 1;
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -2781,7 +2793,7 @@ static void luau_execute(lua_State* L)
             {
                 Instruction insn = *pc++;
                 uint32_t aux = *pc;
-                StkId ra = VM_REG(LUAU_INSN_A(insn));
+                StkId ra = VM_REG(lluz_INSN_A(insn));
                 TValue* rb = VM_KV(aux);
 
                 // Note that all jumps below jump by 1 in the "true" case to skip over aux
@@ -2791,33 +2803,33 @@ static void luau_execute(lua_State* L)
                     {
                     case LUA_TNIL:
                         pc += 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TBOOLEAN:
-                        pc += bvalue(ra) != bvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += bvalue(ra) != bvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TNUMBER:
-                        pc += nvalue(ra) != nvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += nvalue(ra) != nvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     case LUA_TSTRING:
-                        pc += gcvalue(ra) != gcvalue(rb) ? LUAU_INSN_D(insn) : 1;
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        pc += gcvalue(ra) != gcvalue(rb) ? lluz_INSN_D(insn) : 1;
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
 
                     default:;
                     }
 
-                    LUAU_ASSERT(!"Constant is expected to be of primitive type");
+                    lluz_ASSERT(!"Constant is expected to be of primitive type");
                 }
                 else
                 {
-                    pc += LUAU_INSN_D(insn);
-                    LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                    pc += lluz_INSN_D(insn);
+                    lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                     VM_NEXT();
                 }
             }
@@ -2825,21 +2837,21 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FASTCALL1)
             {
                 Instruction insn = *pc++;
-                int bfid = LUAU_INSN_A(insn);
-                TValue* arg = VM_REG(LUAU_INSN_B(insn));
-                int skip = LUAU_INSN_C(insn);
+                int bfid = lluz_INSN_A(insn);
+                TValue* arg = VM_REG(lluz_INSN_B(insn));
+                int skip = lluz_INSN_C(insn);
 
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
+                lluz_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
 
                 Instruction call = pc[skip];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                lluz_ASSERT(lluz_INSN_OP(call) == LOP_CALL);
 
-                StkId ra = VM_REG(LUAU_INSN_A(call));
+                StkId ra = VM_REG(lluz_INSN_A(call));
 
                 int nparams = 1;
-                int nresults = LUAU_INSN_C(call) - 1;
+                int nresults = lluz_INSN_C(call) - 1;
 
-                luau_FastFunction f = luauF_table[bfid];
+                lluz_FastFunction f = lluzF_table[bfid];
 
                 if (cl->env->safeenv && f)
                 {
@@ -2852,7 +2864,7 @@ static void luau_execute(lua_State* L)
                         L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
                     }
                     else
@@ -2871,23 +2883,23 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FASTCALL2)
             {
                 Instruction insn = *pc++;
-                int bfid = LUAU_INSN_A(insn);
-                int skip = LUAU_INSN_C(insn) - 1;
+                int bfid = lluz_INSN_A(insn);
+                int skip = lluz_INSN_C(insn) - 1;
                 uint32_t aux = *pc++;
-                TValue* arg1 = VM_REG(LUAU_INSN_B(insn));
+                TValue* arg1 = VM_REG(lluz_INSN_B(insn));
                 TValue* arg2 = VM_REG(aux);
 
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
+                lluz_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
 
                 Instruction call = pc[skip];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                lluz_ASSERT(lluz_INSN_OP(call) == LOP_CALL);
 
-                StkId ra = VM_REG(LUAU_INSN_A(call));
+                StkId ra = VM_REG(lluz_INSN_A(call));
 
                 int nparams = 2;
-                int nresults = LUAU_INSN_C(call) - 1;
+                int nresults = lluz_INSN_C(call) - 1;
 
-                luau_FastFunction f = luauF_table[bfid];
+                lluz_FastFunction f = lluzF_table[bfid];
 
                 if (cl->env->safeenv && f)
                 {
@@ -2900,7 +2912,7 @@ static void luau_execute(lua_State* L)
                         L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
                     }
                     else
@@ -2919,23 +2931,23 @@ static void luau_execute(lua_State* L)
             VM_CASE(LOP_FASTCALL2K)
             {
                 Instruction insn = *pc++;
-                int bfid = LUAU_INSN_A(insn);
-                int skip = LUAU_INSN_C(insn) - 1;
+                int bfid = lluz_INSN_A(insn);
+                int skip = lluz_INSN_C(insn) - 1;
                 uint32_t aux = *pc++;
-                TValue* arg1 = VM_REG(LUAU_INSN_B(insn));
+                TValue* arg1 = VM_REG(lluz_INSN_B(insn));
                 TValue* arg2 = VM_KV(aux);
 
-                LUAU_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
+                lluz_ASSERT(unsigned(pc - cl->l.p->code + skip) < unsigned(cl->l.p->sizecode));
 
                 Instruction call = pc[skip];
-                LUAU_ASSERT(LUAU_INSN_OP(call) == LOP_CALL);
+                lluz_ASSERT(lluz_INSN_OP(call) == LOP_CALL);
 
-                StkId ra = VM_REG(LUAU_INSN_A(call));
+                StkId ra = VM_REG(lluz_INSN_A(call));
 
                 int nparams = 2;
-                int nresults = LUAU_INSN_C(call) - 1;
+                int nresults = lluz_INSN_C(call) - 1;
 
-                luau_FastFunction f = luauF_table[bfid];
+                lluz_FastFunction f = lluzF_table[bfid];
 
                 if (cl->env->safeenv && f)
                 {
@@ -2948,7 +2960,7 @@ static void luau_execute(lua_State* L)
                         L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
-                        LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
+                        lluz_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
                         VM_NEXT();
                     }
                     else
@@ -2966,14 +2978,14 @@ static void luau_execute(lua_State* L)
 
             VM_CASE(LOP_BREAK)
             {
-                LUAU_ASSERT(cl->l.p->debuginsn);
+                lluz_ASSERT(cl->l.p->debuginsn);
 
                 uint8_t op = cl->l.p->debuginsn[unsigned(pc - cl->l.p->code)];
-                LUAU_ASSERT(op != LOP_BREAK);
+                lluz_ASSERT(op != LOP_BREAK);
 
                 if (L->global->cb.debugbreak)
                 {
-                    VM_PROTECT(luau_callhook(L, L->global->cb.debugbreak, NULL));
+                    VM_PROTECT(lluz_callhook(L, L->global->cb.debugbreak, NULL));
 
                     // allow debugbreak hook to put thread into error/yield state
                     if (L->status != 0)
@@ -2985,8 +2997,8 @@ static void luau_execute(lua_State* L)
 
 #if !VM_USE_CGOTO
         default:
-            LUAU_ASSERT(!"Unknown opcode");
-            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
+            lluz_ASSERT(!"Unknown opcode");
+            lluz_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
 #endif
         }
     }
@@ -2994,19 +3006,19 @@ static void luau_execute(lua_State* L)
 exit:;
 }
 
-void luau_execute(lua_State* L)
+void lluz_execute(lua_State* L)
 {
     if (L->singlestep)
-        luau_execute<true>(L);
+        lluz_execute<true>(L);
     else
-        luau_execute<false>(L);
+        lluz_execute<false>(L);
 }
 
-int luau_precall(lua_State* L, StkId func, int nresults)
+int lluz_precall(lua_State* L, StkId func, int nresults)
 {
     if (!ttisfunction(func))
     {
-        luau_tryfuncTM(L, func);
+        lluz_tryfuncTM(L, func);
         // L->top is incremented by tryfuncTM
     }
 
@@ -3024,7 +3036,7 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     // Note: L->top is assigned externally
 
     luaD_checkstack(L, ccl->stacksize);
-    LUAU_ASSERT(ci->top <= L->stack_last);
+    lluz_ASSERT(ci->top <= L->stack_last);
 
     if (!ccl->isC)
     {
@@ -3073,7 +3085,7 @@ int luau_precall(lua_State* L, StkId func, int nresults)
     }
 }
 
-void luau_poscall(lua_State* L, StkId first)
+void lluz_poscall(lua_State* L, StkId first)
 {
     // finish interrupted execution of `OP_CALL'
     // ci is our callinfo, cip is our parent

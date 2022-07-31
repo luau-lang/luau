@@ -1,8 +1,10 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lualib.h"
 
 #include "lvm.h"
+
+#include "..\..\..\..\Security\XorString.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -35,7 +37,7 @@ static int db_info(lua_State* L)
     if (lua_isnumber(L, arg + 1))
     {
         level = (int)lua_tointeger(L, arg + 1);
-        luaL_argcheck(L, level >= 0, arg + 1, "level can't be negative");
+        luaL_argcheck(L, level >= 0, arg + 1, XorStr("level can't be negative"));
     }
     else if (arg == 0 && lua_isfunction(L, 1))
     {
@@ -43,7 +45,7 @@ static int db_info(lua_State* L)
         level = -lua_gettop(L);
     }
     else
-        luaL_argerror(L, arg + 1, "function or level expected");
+        luaL_argerror(L, arg + 1, XorStr("function or level expected"));
 
     const char* options = luaL_checkstring(L, arg + 2);
 
@@ -59,7 +61,7 @@ static int db_info(lua_State* L)
         if (unsigned(*it - 'a') < 26)
         {
             if (occurs[*it - 'a'])
-                luaL_argerror(L, arg + 2, "duplicate option");
+                luaL_argerror(L, arg + 2, XorStr("duplicate option"));
             occurs[*it - 'a'] = true;
         }
 
@@ -76,7 +78,7 @@ static int db_info(lua_State* L)
             break;
 
         case 'n':
-            lua_pushstring(L, ar.name ? ar.name : "");
+            lua_pushstring(L, ar.name ? ar.name : XorStr(""));
             results++;
             break;
 
@@ -95,7 +97,7 @@ static int db_info(lua_State* L)
             break;
 
         default:
-            luaL_argerror(L, arg + 2, "invalid option");
+            luaL_argerror(L, arg + 2, XorStr("invalid option"));
         }
     }
 
@@ -108,7 +110,7 @@ static int db_traceback(lua_State* L)
     lua_State* L1 = getthread(L, &arg);
     const char* msg = luaL_optstring(L, arg + 1, NULL);
     int level = luaL_optinteger(L, arg + 2, (L == L1) ? 1 : 0);
-    luaL_argcheck(L, level >= 0, arg + 2, "level can't be negative");
+    luaL_argcheck(L, level >= 0, arg + 2, XorStr("level can't be negative"));
 
     luaL_Buffer buf;
     luaL_buffinit(L, &buf);
@@ -116,11 +118,11 @@ static int db_traceback(lua_State* L)
     if (msg)
     {
         luaL_addstring(&buf, msg);
-        luaL_addstring(&buf, "\n");
+        luaL_addstring(&buf, XorStr("\n"));
     }
 
     lua_Debug ar;
-    for (int i = level; lua_getinfo(L1, i, "sln", &ar); ++i)
+    for (int i = level; lua_getinfo(L1, i, XorStr("sln"), &ar); ++i)
     {
         if (strcmp(ar.what, "C") == 0)
             continue;
@@ -130,19 +132,20 @@ static int db_traceback(lua_State* L)
 
         if (ar.currentline > 0)
         {
-            char line[32]; // manual conversion for performance
-            char* lineend = line + sizeof(line);
-            char* lineptr = lineend;
-            for (unsigned int r = ar.currentline; r > 0; r /= 10)
-                *--lineptr = '0' + (r % 10);
+            char line[32];
+#ifdef _MSC_VER
+            _itoa(ar.currentline, line, 10); // 5x faster than sprintf
+#else
+            sprintf(line, "%d", ar.currentline);
+#endif
 
             luaL_addchar(&buf, ':');
-            luaL_addlstring(&buf, lineptr, lineend - lineptr);
+            luaL_addstring(&buf, line);
         }
 
         if (ar.name)
         {
-            luaL_addstring(&buf, " function ");
+            luaL_addstring(&buf, XorStr(" function "));
             luaL_addstring(&buf, ar.name);
         }
 
@@ -154,8 +157,8 @@ static int db_traceback(lua_State* L)
 }
 
 static const luaL_Reg dblib[] = {
-    {"info", db_info},
-    {"traceback", db_traceback},
+    {XorStr("info"), db_info},
+    {XorStr("traceback"), db_traceback},
     {NULL, NULL},
 };
 

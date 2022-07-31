@@ -1,4 +1,4 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
 // This code is based on Lua 5.x implementation licensed under MIT License; see lua_LICENSE.txt for details
 #include "lstring.h"
 
@@ -57,7 +57,7 @@ void luaS_resize(lua_State* L, int newsize)
             TString* next = p->next; /* save next */
             unsigned int h = p->hash;
             int h1 = lmod(h, newsize); /* new position */
-            LUAU_ASSERT(cast_int(h % newsize) == lmod(h, newsize));
+            lluz_ASSERT(cast_int(h % newsize) == lmod(h, newsize));
             p->next = newhash[h1]; /* chain it */
             newhash[h1] = p;
             p = next;
@@ -82,7 +82,7 @@ static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
     ts->memcat = L->activememcat;
     memcpy(ts->data, str, l);
     ts->data[l] = '\0'; /* ending 0 */
-    ts->atom = ATOM_UNDEF;
+    ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, l) : -1;
     tb = &L->global->strt;
     h = lmod(h, tb->size);
     ts->next = tb->hash[h]; /* chain new entry */
@@ -121,7 +121,7 @@ static void unlinkstrbuf(lua_State* L, TString* ts)
         }
     }
 
-    LUAU_ASSERT(!"failed to find string buffer");
+    lluz_ASSERT(!"failed to find string buffer");
 }
 
 TString* luaS_bufstart(lua_State* L, size_t size)
@@ -163,7 +163,9 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
 
     ts->hash = h;
     ts->data[ts->len] = '\0'; // ending 0
-    ts->atom = ATOM_UNDEF;
+
+    // Complete string object
+    ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1;
     ts->next = tb->hash[bucket]; // chain new entry
     tb->hash[bucket] = ts;
 

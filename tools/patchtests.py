@@ -16,11 +16,7 @@ state = 0
 # parse input into errors[] with the state machine; this is using doctest output and expects multi-line match failures
 for line in input:
     if state == 0:
-        if sys.platform == "win32":
-            match = re.match("[^(]+\((\d+)\): ERROR: CHECK_EQ", line)
-        else:
-            match = re.match("tests/[^:]+:(\d+): ERROR: CHECK_EQ", line)
-
+        match = re.match("tests/[^:]+:(\d+): ERROR: CHECK_EQ", line)
         if match:
             error_line = int(match[1])
             state = 1
@@ -56,16 +52,12 @@ result = []
 
 current = 0
 index = 0
-target = 0
 
 while index < len(source):
     line = source[index]
     error = errors[current] if current < len(errors) else None
 
-    if error:
-        target = error[0] if sys.platform != "win32" else error[0] - len(error[1]) - 1
-
-    if not error or index < target or line != error[1][0]:
+    if not error or index < error[0] or line != error[1][0]:
         result.append(line)
         index += 1
     else:

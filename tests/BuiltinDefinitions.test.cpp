@@ -1,14 +1,14 @@
-// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/BuiltinDefinitions.h"
-#include "Luau/TypeVar.h"
+// This file is part of the lluz programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "lluz/BuiltinDefinitions.h"
+#include "lluz/TypeVar.h"
 
 #include "Fixture.h"
 
 #include "doctest.h"
 
-using namespace Luau;
+using namespace lluz;
 
-TEST_SUITE_BEGIN("BuiltinDefinitionsTest");
+TEST_SUITE_BEGIN(XorStr("BuiltinDefinitionsTest"));
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
 {
@@ -17,7 +17,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "lib_documentation_symbols")
     for (const auto& [name, binding] : typeChecker.globalScope->bindings)
     {
         std::string nameString(name.c_str());
-        std::string expectedRootSymbol = "@luau/global/" + nameString;
+        std::string expectedRootSymbol = "@lluz/global/" + nameString;
         std::optional<std::string> actualRootSymbol = binding.documentationSymbol;
         CHECK_MESSAGE(
             actualRootSymbol == expectedRootSymbol, "expected symbol ", expectedRootSymbol, " for global ", nameString, ", got ", actualRootSymbol);
