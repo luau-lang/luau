@@ -63,7 +63,7 @@ static lua_State* replState = NULL;
 #ifdef _WIN32
 BOOL WINAPI sigintHandler(DWORD signal)
 {
-    if (signal == CTRL_C_EVENT && replState
+    if (signal == CTRL_C_EVENT && replState)
         lua_callbacks(replState)->interrupt = &sigintCallback;
     return TRUE;
 }
