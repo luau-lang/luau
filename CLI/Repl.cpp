@@ -19,14 +19,13 @@
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
+
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 
-#ifndef _WIN32
-#include <csignal>
-#endif
-
 #include <locale.h>
+#include <signal.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
@@ -48,23 +47,31 @@ enum class CompileFormat
 constexpr int MaxTraversalLimit = 50;
 
 // Ctrl-C handling
-void sigint_callback(lua_State* L, int k) {
-    lua_callbacks(L)->interrupt = NULL;    
+static void sigintCallback(lua_State* L, int gc)
+{
+    if (gc >= 0)
+        return;
+
+    lua_callbacks(L)->interrupt = NULL;
+
+    lua_rawcheckstack(L, 1); // reserve space for error string
     luaL_error(L, "Execution interrupted");
-};
-lua_State* repl_lua_state = NULL;
-#ifndef _WIN32
-static void handle_sig(int signum) {
-    if(signum == SIGINT && repl_lua_state != NULL) {
-        lua_callbacks(repl_lua_state)->interrupt = &sigint_callback;
-    }
+}
+
+static lua_State* replState = NULL;
+
+#ifdef _WIN32
+BOOL WINAPI sigintHandler(DWORD signal)
+{
+    if (signal == CTRL_C_EVENT && replState
+        lua_callbacks(replState)->interrupt = &sigintCallback;
+    return TRUE;
 }
 #else
-BOOL WINAPI handle_sig(DWORD signal) {
-    if(signal == CTRL_C_EVENT && repl_lua_state != NULL) {
-        lua_callbacks(repl_lua_state)->interrupt = &sigint_callback;
-    }
-    return TRUE;
+static void sigintHandler(int signum)
+{
+    if (signum == SIGINT && replState)
+        lua_callbacks(replState)->interrupt = &sigintCallback;
 }
 #endif
 
@@ -518,12 +525,13 @@ static void runRepl()
 
     setupState(L);
 
-    repl_lua_state = L;
-    #ifndef _WIN32
-    signal(SIGINT, handle_sig);
-    #else
-    SetConsoleCtrlHandler(handle_sig, TRUE);
-    #endif
+    // setup Ctrl+C handling
+    replState = L;
+#ifdef _WIN32
+    SetConsoleCtrlHandler(sigintHandler, TRUE);
+#else
+    signal(SIGINT, sigintHandler);
+#endif
 
     luaL_sandboxthread(L);
     runReplImpl(L);
