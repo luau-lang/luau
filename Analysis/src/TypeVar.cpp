@@ -1058,7 +1058,7 @@ ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {
-    const char* options = "cdiouxXeEfgGqs";
+    const char* options = "cdiouxXeEfgGqs*";
 
     std::vector<TypeId> result;
 
