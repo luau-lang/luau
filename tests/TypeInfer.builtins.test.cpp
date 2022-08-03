@@ -556,6 +556,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
     CHECK_EQ(tm->givenType, typeChecker.numberType);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier")
+{
+    CheckResult result = check(R"(
+        --!strict
+        string.format("%* %* %* %*", "string", 1, true, function() end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall")
 {
     CheckResult result = check(R"(
