@@ -1081,7 +1081,7 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
             if (data[i] == 'q' || data[i] == 's')
                 result.push_back(typechecker.stringType);
             else if (data[i] == '*')
-                result.push_back(typechecker.anyType);
+                result.push_back(typechecker.unknownType);
             else if (strchr(options, data[i]))
                 result.push_back(typechecker.numberType);
             else
