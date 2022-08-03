@@ -1072,7 +1072,7 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
                 continue;
 
             // we just ignore all characters (including flags/precision) up until first alphabetic character
-            while (i < size && !(data[i] > 0 && (isalpha(data[i])) || data[i] == '*'))
+            while (i < size && !(data[i] > 0 && (isalpha(data[i]) || data[i] == '*')))
                 i++;
 
             if (i == size)
