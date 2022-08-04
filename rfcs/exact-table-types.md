@@ -38,11 +38,11 @@ getx(t : {x: number}) return x end`, we treat is as _sealed_ and _inexact_ meani
 parameter will _not_ change, but call sites to the function will permit tables that have _more_
 properties than the ones listed. Within the body of the function however, the typechecker should
 only permit the use of properties explicitly listed in the type since it was annotated. If the type
-was instead inferred, a dual condition should be true --- the properties explicitly listed in
-the type are precisely the ones whose existence the function depends on. Meanwhile, when a table
-type is used for a local definition, it is given an _unsealed_ and _exact_ type meaning we always
-know _precisely_ the set of properties it has, but that the type itself is stateful and assignments
-are allowed to grow the set of properties the table has.
+was instead inferred, a dual condition should be true --- the properties explicitly listed in the
+type are precisely the ones whose existence the function depends on. Meanwhile, when a table type is
+used for a local definition, it is given an _unsealed_ and _exact_ type meaning we always know
+_precisely_ the set of properties it has, but that the type itself is stateful and assignments are
+allowed to grow the set of properties the table has.
 
 This alludes to a gap of two sorts of table types: __sealed, exact tables_ and _unsealed, inexact
 tables_. We believe the latter is undesirable in the sense that there does not appear to be a
@@ -100,9 +100,9 @@ their difference is not something we can distinguish contextually in general (as
 _sealed_ and _unsealed_), we have to propose a syntax for them. This proposal posits that the best
 path forward is to make sealed, exact tables the default table that you get when you write, e.g. `{
 x: number, y: number }` as an annotation on a parameter or in a type alias. To annotate a table as
-inexact and therefore open to extension, we would include an ellipsis in the type, e.g. `{ x:
-number, y: number, ...}`. This was originally proposed as an alternative design in the [width
-subtyping][width-subtyping] proposal.
+inexact and therefore open to having additional properties, we would include an ellipsis in the
+type, e.g. `{ x: number, y: number, ...}`. This was originally proposed as an alternative design in
+the [width subtyping][width-subtyping] proposal.
 
 There are a few apparent benefits to this approach. First, it means that a programmer designing an
 API has to make a conscious decision that "yes, in fact, it is sensible to treat all of the unlisted
