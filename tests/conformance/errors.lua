@@ -388,4 +388,11 @@ assert(ecall(function() for i='a',2 do end end) == "invalid 'for' initial value 
 assert(ecall(function() for i=1,'a' do end end) == "invalid 'for' limit (number expected, got string)")
 assert(ecall(function() for i=1,2,'a' do end end) == "invalid 'for' step (number expected, got string)")
 
+-- method call errors
+assert(ecall(function() ({}):foo() end) == "attempt to call missing method 'foo' of table")
+assert(ecall(function() (""):foo() end) == "attempt to call missing method 'foo' of string")
+assert(ecall(function() (42):foo() end) == "attempt to index number with 'foo'")
+assert(ecall(function() ({foo=42}):foo() end) == "attempt to call a number value")
+assert(ecall(function() local ud = newproxy(true) getmetatable(ud).__index = {} ud:foo() end) == "attempt to call missing method 'foo' of userdata")
+
 return('OK')

@@ -42,6 +42,8 @@ struct ConstraintGraphBuilder
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
     // Type packs resolved from type annotations. Analogous to astTypePacks.
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
+    // Defining scopes for AST nodes.
+    DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
 
     int recursionCount = 0;
 
@@ -107,6 +109,9 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatAssign* assign);
     void visit(const ScopePtr& scope, AstStatIf* ifStatement);
     void visit(const ScopePtr& scope, AstStatTypeAlias* alias);
+    void visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
+    void visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
+    void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
 
     TypePackId checkExprList(const ScopePtr& scope, const AstArray<AstExpr*>& exprs);
 
@@ -153,9 +158,10 @@ struct ConstraintGraphBuilder
      * Resolves a type from its AST annotation.
      * @param scope the scope that the type annotation appears within.
      * @param ty the AST annotation to resolve.
+     * @param topLevel whether the annotation is a "top-level" annotation.
      * @return the type of the AST annotation.
      **/
-    TypeId resolveType(const ScopePtr& scope, AstType* ty);
+    TypeId resolveType(const ScopePtr& scope, AstType* ty, bool topLevel = false);
 
     /**
      * Resolves a type pack from its AST annotation.

@@ -305,7 +305,6 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
         CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
         CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
     }
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
@@ -726,10 +725,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 
 TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
-    };
-
     CheckResult result = check(R"(
         function foo<a>(x: a, y) end
     )");

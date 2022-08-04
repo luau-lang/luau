@@ -65,28 +65,6 @@ struct Anyification : Substitution
     }
 };
 
-// A substitution which replaces the type parameters of a type function by arguments
-struct ApplyTypeFunction : Substitution
-{
-    ApplyTypeFunction(TypeArena* arena, TypeLevel level)
-        : Substitution(TxnLog::empty(), arena)
-        , level(level)
-        , encounteredForwardedType(false)
-    {
-    }
-
-    TypeLevel level;
-    bool encounteredForwardedType;
-    std::unordered_map<TypeId, TypeId> typeArguments;
-    std::unordered_map<TypePackId, TypePackId> typePackArguments;
-    bool ignoreChildren(TypeId ty) override;
-    bool ignoreChildren(TypePackId tp) override;
-    bool isDirty(TypeId ty) override;
-    bool isDirty(TypePackId tp) override;
-    TypeId clean(TypeId ty) override;
-    TypePackId clean(TypePackId tp) override;
-};
-
 struct GenericTypeDefinitions
 {
     std::vector<GenericTypeDefinition> genericTypes;

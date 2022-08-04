@@ -4,8 +4,6 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCompileRawlen, false)
-
 namespace Luau
 {
 namespace Compile
@@ -57,7 +55,7 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
         return LBF_RAWGET;
     if (builtin.isGlobal("rawequal"))
         return LBF_RAWEQUAL;
-    if (FFlag::LuauCompileRawlen && builtin.isGlobal("rawlen"))
+    if (builtin.isGlobal("rawlen"))
         return LBF_RAWLEN;
 
     if (builtin.isGlobal("unpack"))

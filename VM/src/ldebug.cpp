@@ -86,7 +86,7 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     const LocVar* var = fp ? luaF_getlocal(fp, n, currentpc(L, ci)) : NULL;
     if (var)
         setobjs2s(L, ci->base + var->reg, L->top - 1);
-    L->top--; /* pop value */
+    L->top--; // pop value
     const char* name = var ? getstr(var->varname) : NULL;
     return name;
 }
@@ -269,6 +269,13 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
         luaG_runerror(L, "attempt to index %s with %s", t1, t2);
 }
 
+l_noret luaG_methoderror(lua_State* L, const TValue* p1, const TString* p2)
+{
+    const char* t1 = luaT_objtypename(L, p1);
+
+    luaG_runerror(L, "attempt to call missing method '%s' of %s", getstr(p2), t1);
+}
+
 l_noret luaG_readonlyerror(lua_State* L)
 {
     luaG_runerror(L, "attempt to modify a readonly table");
@@ -279,7 +286,7 @@ static void pusherror(lua_State* L, const char* msg)
     CallInfo* ci = L->ci;
     if (isLua(ci))
     {
-        char buff[LUA_IDSIZE]; /* add file:line information */
+        char buff[LUA_IDSIZE]; // add file:line information
         luaO_chunkid(buff, getstr(getluaproto(ci)->source), LUA_IDSIZE);
         int line = currentline(L, ci);
         luaO_pushfstring(L, "%s:%d: %s", buff, line, msg);

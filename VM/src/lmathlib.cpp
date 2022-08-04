@@ -195,7 +195,7 @@ static int math_ldexp(lua_State* L)
 
 static int math_min(lua_State* L)
 {
-    int n = lua_gettop(L); /* number of arguments */
+    int n = lua_gettop(L); // number of arguments
     double dmin = luaL_checknumber(L, 1);
     int i;
     for (i = 2; i <= n; i++)
@@ -210,7 +210,7 @@ static int math_min(lua_State* L)
 
 static int math_max(lua_State* L)
 {
-    int n = lua_gettop(L); /* number of arguments */
+    int n = lua_gettop(L); // number of arguments
     double dmax = luaL_checknumber(L, 1);
     int i;
     for (i = 2; i <= n; i++)
@@ -227,29 +227,29 @@ static int math_random(lua_State* L)
 {
     global_State* g = L->global;
     switch (lua_gettop(L))
-    { /* check number of arguments */
+    { // check number of arguments
     case 0:
-    { /* no arguments */
+    { // no arguments
         // Using ldexp instead of division for speed & clarity.
         // See http://mumble.net/~campbell/tmp/random_real.c for details on generating doubles from integer ranges.
         uint32_t rl = pcg32_random(&g->rngstate);
         uint32_t rh = pcg32_random(&g->rngstate);
         double rd = ldexp(double(rl | (uint64_t(rh) << 32)), -64);
-        lua_pushnumber(L, rd); /* number between 0 and 1 */
+        lua_pushnumber(L, rd); // number between 0 and 1
         break;
     }
     case 1:
-    { /* only upper limit */
+    { // only upper limit
         int u = luaL_checkinteger(L, 1);
         luaL_argcheck(L, 1 <= u, 1, "interval is empty");
 
         uint64_t x = uint64_t(u) * pcg32_random(&g->rngstate);
         int r = int(1 + (x >> 32));
-        lua_pushinteger(L, r); /* int between 1 and `u' */
+        lua_pushinteger(L, r); // int between 1 and `u'
         break;
     }
     case 2:
-    { /* lower and upper limits */
+    { // lower and upper limits
         int l = luaL_checkinteger(L, 1);
         int u = luaL_checkinteger(L, 2);
         luaL_argcheck(L, l <= u, 2, "interval is empty");
@@ -258,7 +258,7 @@ static int math_random(lua_State* L)
         luaL_argcheck(L, ul < UINT_MAX, 2, "interval is too large"); // -INT_MIN..INT_MAX interval can result in integer overflow
         uint64_t x = uint64_t(ul + 1) * pcg32_random(&g->rngstate);
         int r = int(l + (x >> 32));
-        lua_pushinteger(L, r); /* int between `l' and `u' */
+        lua_pushinteger(L, r); // int between `l' and `u'
         break;
     }
     default:

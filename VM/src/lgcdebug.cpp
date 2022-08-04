@@ -19,7 +19,7 @@ static void validateobjref(global_State* g, GCObject* f, GCObject* t)
 
     if (keepinvariant(g))
     {
-        /* basic incremental invariant: black can't point to white */
+        // basic incremental invariant: black can't point to white
         LUAU_ASSERT(!(isblack(f) && iswhite(t)));
     }
 }
@@ -135,7 +135,7 @@ static void validateproto(global_State* g, Proto* f)
 
 static void validateobj(global_State* g, GCObject* o)
 {
-    /* dead objects can only occur during sweep */
+    // dead objects can only occur during sweep
     if (isdead(g, o))
     {
         LUAU_ASSERT(g->gcstate == GCSsweep);

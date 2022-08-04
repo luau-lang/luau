@@ -37,6 +37,14 @@
 // Note that Luau runtime doesn't provide indefinite bytecode compatibility: support for older versions gets removed over time. As such, bytecode isn't a durable storage format and it's expected
 // that Luau users can recompile bytecode from source on Luau version upgrades if necessary.
 
+// # Bytecode version history
+//
+// Note: due to limitations of the versioning scheme, some bytecode blobs that carry version 2 are using features from version 3. Starting from version 3, version should be sufficient to indicate bytecode compatibility.
+//
+// Version 1: Baseline version for the open-source release. Supported until 0.521.
+// Version 2: Adds Proto::linedefined. Currently supported.
+// Version 3: Adds FORGPREP/JUMPXEQK* and enhances AUX encoding for FORGLOOP. Removes FORGLOOP_NEXT/INEXT and JUMPIFEQK/JUMPIFNOTEQK. Currently supported.
+
 // Bytecode opcode, part of the instruction header
 enum LuauOpcode
 {
@@ -367,6 +375,20 @@ enum LuauOpcode
     // D: jump offset (-32768..32767)
     LOP_FORGPREP,
 
+    // JUMPXEQKNIL, JUMPXEQKB: jumps to target offset if the comparison with constant is true (or false, see AUX)
+    // A: source register 1
+    // D: jump offset (-32768..32767; 0 means "next instruction" aka "don't jump")
+    // AUX: constant value (for boolean) in low bit, NOT flag (that flips comparison result) in high bit
+    LOP_JUMPXEQKNIL,
+    LOP_JUMPXEQKB,
+
+    // JUMPXEQKN, JUMPXEQKS: jumps to target offset if the comparison with constant is true (or false, see AUX)
+    // A: source register 1
+    // D: jump offset (-32768..32767; 0 means "next instruction" aka "don't jump")
+    // AUX: constant table index in low 24 bits, NOT flag (that flips comparison result) in high bit
+    LOP_JUMPXEQKN,
+    LOP_JUMPXEQKS,
+
     // Enum entry for number of opcodes, not a valid opcode by itself!
     LOP__COUNT
 };
@@ -391,7 +413,7 @@ enum LuauBytecodeTag
 {
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 2,
-    LBC_VERSION_MAX = 2,
+    LBC_VERSION_MAX = 3,
     LBC_VERSION_TARGET = 2,
     // Types of constant table entries
     LBC_CONSTANT_NIL = 0,
