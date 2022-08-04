@@ -67,6 +67,13 @@ struct TypeChecker2 : public AstVisitor
         return follow(*ty);
     }
 
+    TypePackId lookupPackAnnotation(AstTypePack* annotation)
+    {
+        TypePackId* tp = module->astResolvedTypePacks.find(annotation);
+        LUAU_ASSERT(tp);
+        return follow(*tp);
+    }
+
     TypePackId reconstructPack(AstArray<AstExpr*> exprs, TypeArena& arena)
     {
         if (exprs.size == 0)
@@ -363,12 +370,153 @@ struct TypeChecker2 : public AstVisitor
     bool visit(AstTypeReference* ty) override
     {
         Scope* scope = findInnermostScope(ty->location);
+        LUAU_ASSERT(scope);
 
         // TODO: Imported types
-        // TODO: Generic types
-        if (!scope->lookupTypeBinding(ty->name.value))
+
+        std::optional<TypeFun> alias = scope->lookupTypeBinding(ty->name.value);
+
+        if (alias.has_value())
         {
-            reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
+            size_t typesRequired = alias->typeParams.size();
+            size_t packsRequired = alias->typePackParams.size();
+
+            bool hasDefaultTypes = std::any_of(alias->typeParams.begin(), alias->typeParams.end(), [](auto&& el) {
+                return el.defaultValue.has_value();
+            });
+
+            bool hasDefaultPacks = std::any_of(alias->typePackParams.begin(), alias->typePackParams.end(), [](auto&& el) {
+                return el.defaultValue.has_value();
+            });
+
+            if (!ty->hasParameterList)
+            {
+                if ((!alias->typeParams.empty() && !hasDefaultTypes) || (!alias->typePackParams.empty() && !hasDefaultPacks))
+                {
+                    reportError(GenericError{"Type parameter list is required"}, ty->location);
+                }
+            }
+
+            size_t typesProvided = 0;
+            size_t extraTypes = 0;
+            size_t packsProvided = 0;
+
+            for (const AstTypeOrPack& p : ty->parameters)
+            {
+                if (p.type)
+                {
+                    if (packsProvided != 0)
+                    {
+                        reportError(GenericError{"Type parameters must come before type pack parameters"}, ty->location);
+                    }
+
+                    if (typesProvided < typesRequired)
+                    {
+                        typesProvided += 1;
+                    }
+                    else
+                    {
+                        extraTypes += 1;
+                    }
+                }
+                else if (p.typePack)
+                {
+                    TypePackId tp = lookupPackAnnotation(p.typePack);
+
+                    if (typesProvided < typesRequired && size(tp) == 1 && finite(tp) && first(tp))
+                    {
+                        typesProvided += 1;
+                    }
+                    else
+                    {
+                        packsProvided += 1;
+                    }
+                }
+            }
+
+            if (extraTypes != 0 && packsProvided == 0)
+            {
+                packsProvided += 1;
+            }
+
+            for (size_t i = typesProvided; i < typesRequired; ++i)
+            {
+                if (alias->typeParams[i].defaultValue)
+                {
+                    typesProvided += 1;
+                }
+            }
+
+            for (size_t i = packsProvided; i < packsProvided; ++i)
+            {
+                if (alias->typePackParams[i].defaultValue)
+                {
+                    packsProvided += 1;
+                }
+            }
+
+            if (extraTypes == 0 && packsProvided + 1 == packsRequired)
+            {
+                packsProvided += 1;
+            }
+
+            if (typesProvided != typesRequired || packsProvided != packsRequired)
+            {
+                reportError(IncorrectGenericParameterCount{
+                                /* name */ ty->name.value,
+                                /* typeFun */ *alias,
+                                /* actualParameters */ typesProvided,
+                                /* actualPackParameters */ packsProvided,
+                            },
+                    ty->location);
+            }
+        }
+        else
+        {
+            if (scope->lookupTypePackBinding(ty->name.value))
+            {
+                reportError(
+                    SwappedGenericTypeParameter{
+                        ty->name.value,
+                        SwappedGenericTypeParameter::Kind::Type,
+                    },
+                    ty->location);
+            }
+            else
+            {
+                reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
+            }
+        }
+
+        return true;
+    }
+
+    bool visit(AstTypePack*) override
+    {
+        return true;
+    }
+
+    bool visit(AstTypePackGeneric* tp) override
+    {
+        Scope* scope = findInnermostScope(tp->location);
+        LUAU_ASSERT(scope);
+
+        std::optional<TypePackId> alias = scope->lookupTypePackBinding(tp->genericName.value);
+        if (!alias.has_value())
+        {
+            if (scope->lookupTypeBinding(tp->genericName.value))
+            {
+                reportError(
+                    SwappedGenericTypeParameter{
+                        tp->genericName.value,
+                        SwappedGenericTypeParameter::Kind::Pack,
+                    },
+                    tp->location);
+            }
+            else
+            {
+                reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
+            }
         }
 
         return true;

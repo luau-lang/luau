@@ -139,6 +139,8 @@ struct FindDirty : Tarjan
 {
     std::vector<bool> dirty;
 
+    void clearTarjan();
+
     // Get/set the dirty bit for an index (grows the vector if needed)
     bool getDirty(int index);
     void setDirty(int index, bool d);
@@ -176,6 +178,8 @@ public:
     TypeArena* arena;
     DenseHashMap<TypeId, TypeId> newTypes{nullptr};
     DenseHashMap<TypePackId, TypePackId> newPacks{nullptr};
+    DenseHashSet<TypeId> replacedTypes{nullptr};
+    DenseHashSet<TypePackId> replacedTypePacks{nullptr};
 
     std::optional<TypeId> substitute(TypeId ty);
     std::optional<TypePackId> substitute(TypePackId tp);

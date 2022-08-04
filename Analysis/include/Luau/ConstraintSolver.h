@@ -17,15 +17,35 @@ namespace Luau
 // never dereference this pointer.
 using BlockedConstraintId = const void*;
 
+struct InstantiationSignature
+{
+    TypeFun fn;
+    std::vector<TypeId> arguments;
+    std::vector<TypePackId> packArguments;
+
+    bool operator==(const InstantiationSignature& rhs) const;
+    bool operator!=(const InstantiationSignature& rhs) const
+    {
+        return !((*this) == rhs);
+    }
+};
+
+struct HashInstantiationSignature
+{
+    size_t operator()(const InstantiationSignature& signature) const;
+};
+
 struct ConstraintSolver
 {
     TypeArena* arena;
     InternalErrorReporter iceReporter;
-    // The entire set of constraints that the solver is trying to resolve. It
-    // is important to not add elements to this vector, lest the underlying
-    // storage that we retain pointers to be mutated underneath us.
-    const std::vector<NotNull<Constraint>> constraints;
+    // The entire set of constraints that the solver is trying to resolve.
+    std::vector<NotNull<Constraint>> constraints;
     NotNull<Scope> rootScope;
+
+    // Constraints that the solver has generated, rather than sourcing from the
+    // scope tree.
+    std::vector<std::unique_ptr<Constraint>> solverConstraints;
 
     // This includes every constraint that has not been fully solved.
     // A constraint can be both blocked and unsolved, for instance.
@@ -37,6 +57,8 @@ struct ConstraintSolver
     std::unordered_map<NotNull<const Constraint>, size_t> blockedConstraints;
     // A mapping of type/pack pointers to the constraints they block.
     std::unordered_map<BlockedConstraintId, std::vector<NotNull<const Constraint>>> blocked;
+    // Memoized instantiations of type aliases.
+    DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
 
     ConstraintSolverLogger logger;
 
@@ -62,6 +84,7 @@ struct ConstraintSolver
     bool tryDispatch(const UnaryConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const BinaryConstraint& c, NotNull<const Constraint> constraint, bool force);
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**
@@ -101,6 +124,11 @@ struct ConstraintSolver
      * @param superPack the super-type pack to unify.
      */
     void unify(TypePackId subPack, TypePackId superPack);
+
+    /** Pushes a new solver constraint to the solver.
+     * @param cv the body of the constraint.
+     **/
+    void pushConstraint(ConstraintV cv);
 
 private:
     /**

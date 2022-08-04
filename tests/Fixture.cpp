@@ -410,7 +410,7 @@ void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
 LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
 {
     unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(source, "@test");
     freeze(typeChecker.globalTypes);
 
     REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");

@@ -99,6 +99,11 @@ public:
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*blocked*"));
     }
 
+    AstType* operator()(const PendingExpansionTypeVar& petv)
+    {
+        return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*pending-expansion*"));
+    }
+
     AstType* operator()(const ConstrainedTypeVar& ctv)
     {
         AstArray<AstType*> types;

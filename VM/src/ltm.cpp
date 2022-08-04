@@ -12,7 +12,7 @@
 
 // clang-format off
 const char* const luaT_typenames[] = {
-    /* ORDER TYPE */
+    // ORDER TYPE
     "nil",
     "boolean",
 
@@ -31,7 +31,7 @@ const char* const luaT_typenames[] = {
 };
 
 const char* const luaT_eventname[] = {
-    /* ORDER TM */
+    // ORDER TM
     
     "__index",
     "__newindex",
@@ -70,12 +70,12 @@ void luaT_init(lua_State* L)
     for (i = 0; i < LUA_T_COUNT; i++)
     {
         L->global->ttname[i] = luaS_new(L, luaT_typenames[i]);
-        luaS_fix(L->global->ttname[i]); /* never collect these names */
+        luaS_fix(L->global->ttname[i]); // never collect these names
     }
     for (i = 0; i < TM_N; i++)
     {
         L->global->tmname[i] = luaS_new(L, luaT_eventname[i]);
-        luaS_fix(L->global->tmname[i]); /* never collect these names */
+        luaS_fix(L->global->tmname[i]); // never collect these names
     }
 }
 
@@ -88,8 +88,8 @@ const TValue* luaT_gettm(Table* events, TMS event, TString* ename)
     const TValue* tm = luaH_getstr(events, ename);
     LUAU_ASSERT(event <= TM_EQ);
     if (ttisnil(tm))
-    {                                              /* no tag method? */
-        events->tmcache |= cast_byte(1u << event); /* cache this fact */
+    {                                              // no tag method?
+        events->tmcache |= cast_byte(1u << event); // cache this fact
         return NULL;
     }
     else

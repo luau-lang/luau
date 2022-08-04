@@ -252,7 +252,6 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
             CHECK_EQ("<error-type>", toString(requireType("e")));
             CHECK_EQ("<error-type>", toString(requireType("f")));
         }
-
     }
 }
 

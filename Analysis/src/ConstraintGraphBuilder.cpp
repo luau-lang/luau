@@ -70,11 +70,11 @@ void ConstraintGraphBuilder::visit(AstStatBlock* block)
     prepopulateGlobalScope(scope, block);
 
     // TODO: We should share the global scope.
-    rootScope->typeBindings["nil"] = singletonTypes.nilType;
-    rootScope->typeBindings["number"] = singletonTypes.numberType;
-    rootScope->typeBindings["string"] = singletonTypes.stringType;
-    rootScope->typeBindings["boolean"] = singletonTypes.booleanType;
-    rootScope->typeBindings["thread"] = singletonTypes.threadType;
+    rootScope->typeBindings["nil"] = TypeFun{singletonTypes.nilType};
+    rootScope->typeBindings["number"] = TypeFun{singletonTypes.numberType};
+    rootScope->typeBindings["string"] = TypeFun{singletonTypes.stringType};
+    rootScope->typeBindings["boolean"] = TypeFun{singletonTypes.booleanType};
+    rootScope->typeBindings["thread"] = TypeFun{singletonTypes.threadType};
 
     visitBlockWithoutChildScope(scope, block);
 }
@@ -87,6 +87,53 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
     {
         reportCodeTooComplex(block->location);
         return;
+    }
+
+    std::unordered_map<Name, Location> aliasDefinitionLocations;
+
+    // In order to enable mutually-recursive type aliases, we need to
+    // populate the type bindings before we actually check any of the
+    // alias statements. Since we're not ready to actually resolve
+    // any of the annotations, we just use a fresh type for now.
+    for (AstStat* stat : block->body)
+    {
+        if (auto alias = stat->as<AstStatTypeAlias>())
+        {
+            if (scope->typeBindings.count(alias->name.value) != 0)
+            {
+                auto it = aliasDefinitionLocations.find(alias->name.value);
+                LUAU_ASSERT(it != aliasDefinitionLocations.end());
+                reportError(alias->location, DuplicateTypeDefinition{alias->name.value, it->second});
+                continue;
+            }
+
+            bool hasGenerics = alias->generics.size > 0 || alias->genericPacks.size > 0;
+
+            ScopePtr defnScope = scope;
+            if (hasGenerics)
+            {
+                defnScope = childScope(alias->location, scope);
+            }
+
+            TypeId initialType = freshType(scope);
+            TypeFun initialFun = TypeFun{initialType};
+
+            for (const auto& [name, gen] : createGenerics(defnScope, alias->generics))
+            {
+                initialFun.typeParams.push_back(gen);
+                defnScope->typeBindings[name] = TypeFun{gen.ty};
+            }
+
+            for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks))
+            {
+                initialFun.typePackParams.push_back(genPack);
+                defnScope->typePackBindings[name] = genPack.tp;
+            }
+
+            scope->typeBindings[alias->name.value] = std::move(initialFun);
+            astTypeAliasDefiningScopes[alias] = defnScope;
+            aliasDefinitionLocations[alias->name.value] = alias->location;
+        }
     }
 
     for (AstStat* stat : block->body)
@@ -117,6 +164,12 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
         visit(scope, i);
     else if (auto a = stat->as<AstStatTypeAlias>())
         visit(scope, a);
+    else if (auto s = stat->as<AstStatDeclareGlobal>())
+        visit(scope, s);
+    else if (auto s = stat->as<AstStatDeclareClass>())
+        visit(scope, s);
+    else if (auto s = stat->as<AstStatDeclareFunction>())
+        visit(scope, s);
     else
         LUAU_ASSERT(0);
 }
@@ -133,7 +186,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
         if (local->annotation)
         {
             location = local->annotation->location;
-            TypeId annotation = resolveType(scope, local->annotation);
+            TypeId annotation = resolveType(scope, local->annotation, /* topLevel */ true);
             addConstraint(scope, SubtypeConstraint{ty, annotation});
         }
 
@@ -171,11 +224,10 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
 {
-    auto checkNumber = [&](AstExpr* expr)
-    {
+    auto checkNumber = [&](AstExpr* expr) {
         if (!expr)
             return;
-        
+
         TypeId t = check(scope, expr);
         addConstraint(scope, SubtypeConstraint{t, singletonTypes.numberType});
     };
@@ -307,19 +359,6 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatBlock* block)
 {
     ScopePtr innerScope = childScope(block->location, scope);
 
-    // In order to enable mutually-recursive type aliases, we need to
-    // populate the type bindings before we actually check any of the
-    // alias statements. Since we're not ready to actually resolve
-    // any of the annotations, we just use a fresh type for now.
-    for (AstStat* stat : block->body)
-    {
-        if (auto alias = stat->as<AstStatTypeAlias>())
-        {
-            TypeId initialType = freshType(scope);
-            scope->typeBindings[alias->name.value] = initialType;
-        }
-    }
-
     visitBlockWithoutChildScope(innerScope, block);
 }
 
@@ -348,27 +387,46 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alias)
 {
     // TODO: Exported type aliases
-    // TODO: Generic type aliases
 
-    auto it = scope->typeBindings.find(alias->name.value);
-    // This should always be here since we do a separate pass over the
-    // AST to set up typeBindings. If it's not, we've somehow skipped
-    // this alias in that first pass.
-    LUAU_ASSERT(it != scope->typeBindings.end());
-    if (it == scope->typeBindings.end())
+    auto bindingIt = scope->typeBindings.find(alias->name.value);
+    ScopePtr* defnIt = astTypeAliasDefiningScopes.find(alias);
+    // These will be undefined if the alias was a duplicate definition, in which
+    // case we just skip over it.
+    if (bindingIt == scope->typeBindings.end() || defnIt == nullptr)
     {
-        ice->ice("Type alias does not have a pre-populated binding", alias->location);
+        return;
     }
 
-    TypeId ty = resolveType(scope, alias->type);
+    ScopePtr resolvingScope = *defnIt;
+    TypeId ty = resolveType(resolvingScope, alias->type, /* topLevel */ true);
+
+    LUAU_ASSERT(get<FreeTypeVar>(bindingIt->second.type));
 
     // Rather than using a subtype constraint, we instead directly bind
     // the free type we generated in the first pass to the resolved type.
     // This prevents a case where you could cause another constraint to
     // bind the free alias type to an unrelated type, causing havoc.
-    asMutable(it->second)->ty.emplace<BoundTypeVar>(ty);
+    asMutable(bindingIt->second.type)->ty.emplace<BoundTypeVar>(ty);
 
     addConstraint(scope, NameConstraint{ty, alias->name.value});
+}
+
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* global)
+{
+    LUAU_ASSERT(global->type);
+
+    TypeId globalTy = resolveType(scope, global->type);
+    scope->bindings[global->name] = Binding{globalTy, global->location};
+}
+
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* global)
+{
+    LUAU_ASSERT(false); // TODO: implement
+}
+
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction* global)
+{
+    LUAU_ASSERT(false); // TODO: implement
 }
 
 TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs)
@@ -707,7 +765,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         for (const auto& [name, g] : genericDefinitions)
         {
             genericTypes.push_back(g.ty);
-            signatureScope->typeBindings[name] = g.ty;
+            signatureScope->typeBindings[name] = TypeFun{g.ty};
         }
 
         for (const auto& [name, g] : genericPackDefinitions)
@@ -745,7 +803,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
 
         if (local->annotation)
         {
-            TypeId argAnnotation = resolveType(signatureScope, local->annotation);
+            TypeId argAnnotation = resolveType(signatureScope, local->annotation, /* topLevel */ true);
             addConstraint(signatureScope, SubtypeConstraint{t, argAnnotation});
         }
     }
@@ -784,20 +842,65 @@ void ConstraintGraphBuilder::checkFunctionBody(const ScopePtr& scope, AstExprFun
     }
 }
 
-TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty)
+TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, bool topLevel)
 {
     TypeId result = nullptr;
 
     if (auto ref = ty->as<AstTypeReference>())
     {
         // TODO: Support imported types w/ require tracing.
-        // TODO: Support generic type references.
         LUAU_ASSERT(!ref->prefix);
-        LUAU_ASSERT(!ref->hasParameterList);
 
-        // TODO: If it doesn't exist, should we introduce a free binding?
-        // This is probably important for handling type aliases.
-        result = scope->lookupTypeBinding(ref->name.value).value_or(singletonTypes.errorRecoveryType());
+        std::optional<TypeFun> alias = scope->lookupTypeBinding(ref->name.value);
+
+        if (alias.has_value())
+        {
+            // If the alias is not generic, we don't need to set up a blocked
+            // type and an instantiation constraint.
+            if (alias->typeParams.empty() && alias->typePackParams.empty())
+            {
+                result = alias->type;
+            }
+            else
+            {
+                std::vector<TypeId> parameters;
+                std::vector<TypePackId> packParameters;
+
+                for (const AstTypeOrPack& p : ref->parameters)
+                {
+                    // We do not enforce the ordering of types vs. type packs here;
+                    // that is done in the parser.
+                    if (p.type)
+                    {
+                        parameters.push_back(resolveType(scope, p.type));
+                    }
+                    else if (p.typePack)
+                    {
+                        packParameters.push_back(resolveTypePack(scope, p.typePack));
+                    }
+                    else
+                    {
+                        // This indicates a parser bug: one of these two pointers
+                        // should be set.
+                        LUAU_ASSERT(false);
+                    }
+                }
+
+                result = arena->addType(PendingExpansionTypeVar{*alias, parameters, packParameters});
+
+                if (topLevel)
+                {
+                    addConstraint(scope, TypeAliasExpansionConstraint{
+                                             /* target */ result,
+                                         });
+                }
+            }
+        }
+        else
+        {
+            reportError(ty->location, UnknownSymbol{ref->name.value, UnknownSymbol::Context::Type});
+            result = singletonTypes.errorRecoveryType();
+        }
     }
     else if (auto tab = ty->as<AstTypeTable>())
     {
@@ -846,7 +949,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty)
             for (const auto& [name, g] : genericDefinitions)
             {
                 genericTypes.push_back(g.ty);
-                signatureScope->typeBindings[name] = g.ty;
+                signatureScope->typeBindings[name] = TypeFun{g.ty};
             }
 
             for (const auto& [name, g] : genericPackDefinitions)
@@ -956,7 +1059,15 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTyp
     }
     else if (auto gen = tp->as<AstTypePackGeneric>())
     {
-        result = arena->addTypePack(TypePackVar{GenericTypePack{scope.get(), gen->genericName.value}});
+        if (std::optional<TypePackId> lookup = scope->lookupTypePackBinding(gen->genericName.value))
+        {
+            result = *lookup;
+        }
+        else
+        {
+            reportError(tp->location, UnknownSymbol{gen->genericName.value, UnknownSymbol::Context::Type});
+            result = singletonTypes.errorRecoveryTypePack();
+        }
     }
     else
     {

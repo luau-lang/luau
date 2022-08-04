@@ -122,7 +122,7 @@ std::optional<TypeId> Scope::lookup(Symbol sym)
     }
 }
 
-std::optional<TypeId> Scope::lookupTypeBinding(const Name& name)
+std::optional<TypeFun> Scope::lookupTypeBinding(const Name& name)
 {
     Scope* s = this;
     while (s)

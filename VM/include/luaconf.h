@@ -33,14 +33,14 @@
 #define LUA_NORETURN __attribute__((__noreturn__))
 #endif
 
-/* Can be used to reconfigure visibility/exports for public APIs */
+// Can be used to reconfigure visibility/exports for public APIs
 #ifndef LUA_API
 #define LUA_API extern
 #endif
 
 #define LUALIB_API LUA_API
 
-/* Can be used to reconfigure visibility for internal APIs */
+// Can be used to reconfigure visibility for internal APIs
 #if defined(__GNUC__)
 #define LUAI_FUNC __attribute__((visibility("hidden"))) extern
 #define LUAI_DATA LUAI_FUNC
@@ -49,67 +49,67 @@
 #define LUAI_DATA extern
 #endif
 
-/* Can be used to reconfigure internal error handling to use longjmp instead of C++ EH */
+// Can be used to reconfigure internal error handling to use longjmp instead of C++ EH
 #ifndef LUA_USE_LONGJMP
 #define LUA_USE_LONGJMP 0
 #endif
 
-/* LUA_IDSIZE gives the maximum size for the description of the source */
+// LUA_IDSIZE gives the maximum size for the description of the source
 #ifndef LUA_IDSIZE
 #define LUA_IDSIZE 256
 #endif
 
-/* LUA_MINSTACK is the guaranteed number of Lua stack slots available to a C function */
+// LUA_MINSTACK is the guaranteed number of Lua stack slots available to a C function
 #ifndef LUA_MINSTACK
 #define LUA_MINSTACK 20
 #endif
 
-/* LUAI_MAXCSTACK limits the number of Lua stack slots that a C function can use */
+// LUAI_MAXCSTACK limits the number of Lua stack slots that a C function can use
 #ifndef LUAI_MAXCSTACK
 #define LUAI_MAXCSTACK 8000
 #endif
 
-/* LUAI_MAXCALLS limits the number of nested calls */
+// LUAI_MAXCALLS limits the number of nested calls
 #ifndef LUAI_MAXCALLS
 #define LUAI_MAXCALLS 20000
 #endif
 
-/* LUAI_MAXCCALLS is the maximum depth for nested C calls; this limit depends on native stack size */
+// LUAI_MAXCCALLS is the maximum depth for nested C calls; this limit depends on native stack size
 #ifndef LUAI_MAXCCALLS
 #define LUAI_MAXCCALLS 200
 #endif
 
-/* buffer size used for on-stack string operations; this limit depends on native stack size */
+// buffer size used for on-stack string operations; this limit depends on native stack size
 #ifndef LUA_BUFFERSIZE
 #define LUA_BUFFERSIZE 512
 #endif
 
-/* number of valid Lua userdata tags */
+// number of valid Lua userdata tags
 #ifndef LUA_UTAG_LIMIT
 #define LUA_UTAG_LIMIT 128
 #endif
 
-/* upper bound for number of size classes used by page allocator */
+// upper bound for number of size classes used by page allocator
 #ifndef LUA_SIZECLASSES
 #define LUA_SIZECLASSES 32
 #endif
 
-/* available number of separate memory categories */
+// available number of separate memory categories
 #ifndef LUA_MEMORY_CATEGORIES
 #define LUA_MEMORY_CATEGORIES 256
 #endif
 
-/* minimum size for the string table (must be power of 2) */
+// minimum size for the string table (must be power of 2)
 #ifndef LUA_MINSTRTABSIZE
 #define LUA_MINSTRTABSIZE 32
 #endif
 
-/* maximum number of captures supported by pattern matching */
+// maximum number of captures supported by pattern matching
 #ifndef LUA_MAXCAPTURES
 #define LUA_MAXCAPTURES 32
 #endif
 
-/* }================================================================== */
+// }==================================================================
 
 /*
 @@ LUAI_USER_ALIGNMENT_T is a type that requires maximum alignment.
@@ -126,6 +126,6 @@
         long l; \
     }
 
-#define LUA_VECTOR_SIZE 3 /* must be 3 or 4 */
+#define LUA_VECTOR_SIZE 3 // must be 3 or 4
 
 #define LUA_EXTRA_SIZE LUA_VECTOR_SIZE - 2
