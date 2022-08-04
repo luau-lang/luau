@@ -37,17 +37,15 @@ class Handler(x.ContentHandler):
 
         elif name == "OverallResultsAsserts":
             if self.currentTest:
-                failed = 0 != safeParseInt(attrs["failures"])
+                passed = 0 == safeParseInt(attrs["failures"])
 
                 dottedName = ".".join(self.currentTest)
-                shouldFail = dottedName in self.failList
 
-                if failed and not shouldFail:
-                    print("UNEXPECTED: {} should have passed".format(dottedName))
-                elif not failed and shouldFail:
-                    print("UNEXPECTED: {} should have failed".format(dottedName))
-
-                self.results[dottedName] = not failed
+                # Sometimes we get multiple XML trees for the same test. All of
+                # them must report a pass in order for us to consider the test
+                # to have passed.
+                r = self.results.get(dottedName, True)
+                self.results[dottedName] = r and passed
 
         elif name == 'OverallResultsTestCases':
             self.numSkippedTests = safeParseInt(attrs.get("skipped", 0))
@@ -103,6 +101,12 @@ def main():
         x.parse(p.stdout, handler)
 
     p.wait()
+
+    for testName, passed in handler.results.items():
+        if passed and testName in failList:
+            print('UNEXPECTED: {} should have failed'.format(testName))
+        elif not passed and testName not in failList:
+            print('UNEXPECTED: {} should have passed'.format(testName))
 
     if args.write:
         newFailList = sorted(

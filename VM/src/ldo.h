@@ -34,12 +34,12 @@
 #define saveci(L, p) ((char*)(p) - (char*)L->base_ci)
 #define restoreci(L, n) ((CallInfo*)((char*)L->base_ci + (n)))
 
-/* results from luaD_precall */
-#define PCRLUA 0   /* initiated a call to a Lua function */
-#define PCRC 1     /* did a call to a C function */
-#define PCRYIELD 2 /* C function yielded */
+// results from luaD_precall
+#define PCRLUA 0   // initiated a call to a Lua function
+#define PCRC 1     // did a call to a C function
+#define PCRYIELD 2 // C function yielded
 
-/* type of protected functions, to be ran by `runprotected' */
+// type of protected functions, to be ran by `runprotected'
 typedef void (*Pfunc)(lua_State* L, void* ud);
 
 LUAI_FUNC CallInfo* luaD_growCI(lua_State* L);

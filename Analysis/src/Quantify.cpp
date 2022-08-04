@@ -7,7 +7,6 @@
 #include "Luau/TxnLog.h"
 #include "Luau/VisitTypeVar.h"
 
-LUAU_FASTFLAG(LuauAlwaysQuantify);
 LUAU_FASTFLAG(DebugLuauSharedSelf)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauQuantifyConstrained, false)
@@ -203,16 +202,8 @@ void quantify(TypeId ty, TypeLevel level)
 
         FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
         LUAU_ASSERT(ftv);
-        if (FFlag::LuauAlwaysQuantify)
-        {
-            ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
-            ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
-        }
-        else
-        {
-            ftv->generics = q.generics;
-            ftv->genericPacks = q.genericPacks;
-        }
+        ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
+        ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
     }
 }
 
@@ -223,16 +214,8 @@ void quantify(TypeId ty, Scope* scope)
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
     LUAU_ASSERT(ftv);
-    if (FFlag::LuauAlwaysQuantify)
-    {
-        ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
-        ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
-    }
-    else
-    {
-        ftv->generics = q.generics;
-        ftv->genericPacks = q.genericPacks;
-    }
+    ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
+    ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
 
     if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
         ftv->hasNoGenerics = true;

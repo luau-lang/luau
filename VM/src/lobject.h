@@ -49,7 +49,7 @@ typedef struct lua_TValue
     int tt;
 } TValue;
 
-/* Macros to test type */
+// Macros to test type
 #define ttisnil(o) (ttype(o) == LUA_TNIL)
 #define ttisnumber(o) (ttype(o) == LUA_TNUMBER)
 #define ttisstring(o) (ttype(o) == LUA_TSTRING)
@@ -62,7 +62,7 @@ typedef struct lua_TValue
 #define ttisvector(o) (ttype(o) == LUA_TVECTOR)
 #define ttisupval(o) (ttype(o) == LUA_TUPVAL)
 
-/* Macros to access values */
+// Macros to access values
 #define ttype(o) ((o)->tt)
 #define gcvalue(o) check_exp(iscollectable(o), (o)->value.gc)
 #define pvalue(o) check_exp(ttislightuserdata(o), (o)->value.p)
@@ -85,7 +85,7 @@ typedef struct lua_TValue
 
 #define checkliveness(g, obj) LUAU_ASSERT(!iscollectable(obj) || ((ttype(obj) == (obj)->value.gc->gch.tt) && !isdead(g, (obj)->value.gc)))
 
-/* Macros to set values */
+// Macros to set values
 #define setnilvalue(obj) ((obj)->tt = LUA_TNIL)
 
 #define setnvalue(obj, x) \
@@ -200,18 +200,18 @@ typedef struct lua_TValue
 ** different types of sets, according to destination
 */
 
-/* from stack to (same) stack */
+// from stack to (same) stack
 #define setobjs2s setobj
-/* to stack (not from same stack) */
+// to stack (not from same stack)
 #define setobj2s setobj
 #define setsvalue2s setsvalue
 #define sethvalue2s sethvalue
 #define setptvalue2s setptvalue
-/* from table to same table */
+// from table to same table
 #define setobjt2t setobj
-/* to table */
+// to table
 #define setobj2t setobj
-/* to new object */
+// to new object
 #define setobj2n setobj
 #define setsvalue2n setsvalue
 
@@ -219,7 +219,7 @@ typedef struct lua_TValue
 
 #define iscollectable(o) (ttype(o) >= LUA_TSTRING)
 
-typedef TValue* StkId; /* index to stack elements */
+typedef TValue* StkId; // index to stack elements
 
 /*
 ** String headers for string table
@@ -269,13 +269,13 @@ typedef struct Proto
     CommonHeader;
 
 
-    TValue* k;              /* constants used by the function */
-    Instruction* code;      /* function bytecode */
-    struct Proto** p;       /* functions defined inside the function */
-    uint8_t* lineinfo;      /* for each instruction, line number as a delta from baseline */
-    int* abslineinfo;       /* baseline line info, one entry for each 1<<linegaplog2 instructions; allocated after lineinfo */
-    struct LocVar* locvars; /* information about local variables */
-    TString** upvalues;     /* upvalue names */
+    TValue* k;              // constants used by the function
+    Instruction* code;      // function bytecode
+    struct Proto** p;       // functions defined inside the function
+    uint8_t* lineinfo;      // for each instruction, line number as a delta from baseline
+    int* abslineinfo;       // baseline line info, one entry for each 1<<linegaplog2 instructions; allocated after lineinfo
+    struct LocVar* locvars; // information about local variables
+    TString** upvalues;     // upvalue names
     TString* source;
 
     TString* debugname;
@@ -294,7 +294,7 @@ typedef struct Proto
     int linedefined;
 
 
-    uint8_t nups; /* number of upvalues */
+    uint8_t nups; // number of upvalues
     uint8_t numparams;
     uint8_t is_vararg;
     uint8_t maxstacksize;
@@ -304,9 +304,9 @@ typedef struct Proto
 typedef struct LocVar
 {
     TString* varname;
-    int startpc; /* first point where variable is active */
-    int endpc;   /* first point where variable is dead */
-    uint8_t reg; /* register slot, relative to base, where variable is stored */
+    int startpc; // first point where variable is active
+    int endpc;   // first point where variable is dead
+    uint8_t reg; // register slot, relative to base, where variable is stored
 } LocVar;
 
 /*
@@ -317,19 +317,19 @@ typedef struct UpVal
 {
     CommonHeader;
     // 1 (x86) or 5 (x64) byte padding
-    TValue* v; /* points to stack or to its own value */
+    TValue* v; // points to stack or to its own value
     union
     {
-        TValue value; /* the value (when closed) */
+        TValue value; // the value (when closed)
         struct
         {
-            /* global double linked list (when open) */
+            // global double linked list (when open)
             struct UpVal* prev;
             struct UpVal* next;
 
-            /* thread double linked list (when open) */
+            // thread double linked list (when open)
             struct UpVal* threadnext;
-            /* note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State */
+            // note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State
             struct UpVal** threadprev;
         } l;
     } u;
@@ -381,7 +381,7 @@ typedef struct TKey
     ::Value value;
     int extra[LUA_EXTRA_SIZE];
     unsigned tt : 4;
-    int next : 28; /* for chaining */
+    int next : 28; // for chaining
 } TKey;
 
 typedef struct LuaNode
@@ -390,7 +390,7 @@ typedef struct LuaNode
     TKey key;
 } LuaNode;
 
-/* copy a value into a key */
+// copy a value into a key
 #define setnodekey(L, node, obj) \
     { \
         LuaNode* n_ = (node); \
@@ -401,7 +401,7 @@ typedef struct LuaNode
         checkliveness(L->global, i_o); \
     }
 
-/* copy a value from a key */
+// copy a value from a key
 #define getnodekey(L, obj, node) \
     { \
         TValue* i_o = (obj); \
@@ -418,22 +418,22 @@ typedef struct Table
     CommonHeader;
 
 
-    uint8_t tmcache;    /* 1<<p means tagmethod(p) is not present */
-    uint8_t readonly;   /* sandboxing feature to prohibit writes to table */
-    uint8_t safeenv;    /* environment doesn't share globals with other scripts */
-    uint8_t lsizenode;  /* log2 of size of `node' array */
-    uint8_t nodemask8; /* (1<<lsizenode)-1, truncated to 8 bits */
+    uint8_t tmcache;    // 1<<p means tagmethod(p) is not present
+    uint8_t readonly;   // sandboxing feature to prohibit writes to table
+    uint8_t safeenv;    // environment doesn't share globals with other scripts
+    uint8_t lsizenode;  // log2 of size of `node' array
+    uint8_t nodemask8; // (1<<lsizenode)-1, truncated to 8 bits
 
-    int sizearray; /* size of `array' array */
+    int sizearray; // size of `array' array
     union
     {
-        int lastfree;  /* any free position is before this position */
-        int aboundary; /* negated 'boundary' of `array' array; iff aboundary < 0 */
+        int lastfree;  // any free position is before this position
+        int aboundary; // negated 'boundary' of `array' array; iff aboundary < 0
     };
 
 
     struct Table* metatable;
-    TValue* array;  /* array part */
+    TValue* array;  // array part
     LuaNode* node;
     GCObject* gclist;
 } Table;

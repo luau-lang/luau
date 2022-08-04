@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCompileBytecodeV3, false)
+
 namespace Luau
 {
 
@@ -77,6 +79,10 @@ static int getOpLength(LuauOpcode op)
     case LOP_JUMPIFNOTEQK:
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
         return 2;
 
     default:
@@ -108,6 +114,10 @@ inline bool isJumpD(LuauOpcode op)
     case LOP_JUMPBACK:
     case LOP_JUMPIFEQK:
     case LOP_JUMPIFNOTEQK:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
         return true;
 
     default:
@@ -1069,6 +1079,9 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::LuauCompileBytecodeV3)
+        return 3;
+
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
     return LBC_VERSION_TARGET;
 }
@@ -1243,6 +1256,24 @@ void BytecodeBuilder::validate() const
         case LOP_JUMPIFNOTEQK:
             VREG(LUAU_INSN_A(insn));
             VCONSTANY(insns[i + 1]);
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
+        case LOP_JUMPXEQKNIL:
+        case LOP_JUMPXEQKB:
+            VREG(LUAU_INSN_A(insn));
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
+        case LOP_JUMPXEQKN:
+            VREG(LUAU_INSN_A(insn));
+            VCONST(insns[i + 1] & 0xffffff, Number);
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
+        case LOP_JUMPXEQKS:
+            VREG(LUAU_INSN_A(insn));
+            VCONST(insns[i + 1] & 0xffffff, String);
             VJUMP(LUAU_INSN_D(insn));
             break;
 
@@ -1777,6 +1808,26 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_JUMPIFNOTEQK:
         formatAppend(result, "JUMPIFNOTEQK R%d K%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        break;
+
+    case LOP_JUMPXEQKNIL:
+        formatAppend(result, "JUMPXEQKNIL R%d L%d%s\n", LUAU_INSN_A(insn), targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
+        break;
+
+    case LOP_JUMPXEQKB:
+        formatAppend(result, "JUMPXEQKB R%d %d L%d%s\n", LUAU_INSN_A(insn), *code & 1, targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
+        break;
+
+    case LOP_JUMPXEQKN:
+        formatAppend(result, "JUMPXEQKN R%d K%d L%d%s\n", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
+        break;
+
+    case LOP_JUMPXEQKS:
+        formatAppend(result, "JUMPXEQKS R%d K%d L%d%s\n", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
         break;
 
     default:

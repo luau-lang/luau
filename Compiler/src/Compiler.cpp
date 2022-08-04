@@ -26,6 +26,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 LUAU_FASTFLAGVARIABLE(LuauCompileNoIpairs, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileFreeReassign, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileXEQ, false)
 
 namespace Luau
 {
@@ -1008,9 +1009,8 @@ struct Compiler
     size_t compileCompareJump(AstExprBinary* expr, bool not_ = false)
     {
         RegScope rs(this);
-        LuauOpcode opc = getJumpOpCompare(expr->op, not_);
 
-        bool isEq = (opc == LOP_JUMPIFEQ || opc == LOP_JUMPIFNOTEQ);
+        bool isEq = (expr->op == AstExprBinary::CompareEq || expr->op == AstExprBinary::CompareNe);
         AstExpr* left = expr->left;
         AstExpr* right = expr->right;
 
@@ -1022,36 +1022,112 @@ struct Compiler
                 std::swap(left, right);
         }
 
-        uint8_t rl = compileExprAuto(left, rs);
-        int32_t rr = -1;
-
-        if (isEq && operandIsConstant)
+        if (FFlag::LuauCompileXEQ)
         {
-            if (opc == LOP_JUMPIFEQ)
-                opc = LOP_JUMPIFEQK;
-            else if (opc == LOP_JUMPIFNOTEQ)
-                opc = LOP_JUMPIFNOTEQK;
+            uint8_t rl = compileExprAuto(left, rs);
 
-            rr = getConstantIndex(right);
-            LUAU_ASSERT(rr >= 0);
+            if (isEq && operandIsConstant)
+            {
+                const Constant* cv = constants.find(right);
+                LUAU_ASSERT(cv && cv->type != Constant::Type_Unknown);
+
+                LuauOpcode opc = LOP_NOP;
+                int32_t cid = -1;
+                uint32_t flip = (expr->op == AstExprBinary::CompareEq) == not_ ? 0x80000000 : 0;
+
+                switch (cv->type)
+                {
+                case Constant::Type_Nil:
+                    opc = LOP_JUMPXEQKNIL;
+                    cid = 0;
+                    break;
+
+                case Constant::Type_Boolean:
+                    opc = LOP_JUMPXEQKB;
+                    cid = cv->valueBoolean;
+                    break;
+
+                case Constant::Type_Number:
+                    opc = LOP_JUMPXEQKN;
+                    cid = getConstantIndex(right);
+                    break;
+
+                case Constant::Type_String:
+                    opc = LOP_JUMPXEQKS;
+                    cid = getConstantIndex(right);
+                    break;
+
+                default:
+                    LUAU_ASSERT(!"Unexpected constant type");
+                }
+
+                if (cid < 0)
+                    CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+                size_t jumpLabel = bytecode.emitLabel();
+
+                bytecode.emitAD(opc, rl, 0);
+                bytecode.emitAux(cid | flip);
+
+                return jumpLabel;
+            }
+            else
+            {
+                LuauOpcode opc = getJumpOpCompare(expr->op, not_);
+
+                uint8_t rr = compileExprAuto(right, rs);
+
+                size_t jumpLabel = bytecode.emitLabel();
+
+                if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
+                {
+                    bytecode.emitAD(opc, rr, 0);
+                    bytecode.emitAux(rl);
+                }
+                else
+                {
+                    bytecode.emitAD(opc, rl, 0);
+                    bytecode.emitAux(rr);
+                }
+
+                return jumpLabel;
+            }
         }
         else
-            rr = compileExprAuto(right, rs);
-
-        size_t jumpLabel = bytecode.emitLabel();
-
-        if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
         {
-            bytecode.emitAD(opc, uint8_t(rr), 0);
-            bytecode.emitAux(rl);
-        }
-        else
-        {
-            bytecode.emitAD(opc, rl, 0);
-            bytecode.emitAux(rr);
-        }
+            LuauOpcode opc = getJumpOpCompare(expr->op, not_);
 
-        return jumpLabel;
+            uint8_t rl = compileExprAuto(left, rs);
+            int32_t rr = -1;
+
+            if (isEq && operandIsConstant)
+            {
+                if (opc == LOP_JUMPIFEQ)
+                    opc = LOP_JUMPIFEQK;
+                else if (opc == LOP_JUMPIFNOTEQ)
+                    opc = LOP_JUMPIFNOTEQK;
+
+                rr = getConstantIndex(right);
+                LUAU_ASSERT(rr >= 0);
+            }
+            else
+                rr = compileExprAuto(right, rs);
+
+            size_t jumpLabel = bytecode.emitLabel();
+
+            if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
+            {
+                bytecode.emitAD(opc, uint8_t(rr), 0);
+                bytecode.emitAux(rl);
+            }
+            else
+            {
+                bytecode.emitAD(opc, rl, 0);
+                bytecode.emitAux(rr);
+            }
+
+            return jumpLabel;
+        }
     }
 
     int32_t getConstantNumber(AstExpr* node)

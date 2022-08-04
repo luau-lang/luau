@@ -109,8 +109,8 @@ static int lua_loadstring(lua_State* L)
         return 1;
 
     lua_pushnil(L);
-    lua_insert(L, -2); /* put before error message */
-    return 2;          /* return nil plus error message */
+    lua_insert(L, -2); // put before error message
+    return 2;          // return nil plus error message
 }
 
 static int finishrequire(lua_State* L)

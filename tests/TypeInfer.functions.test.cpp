@@ -1547,7 +1547,6 @@ caused by:
   Argument count mismatch. Function expects 1 argument, but none are specified)",
             toString(result.errors[0]));
     }
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
