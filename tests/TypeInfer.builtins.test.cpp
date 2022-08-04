@@ -556,6 +556,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
     CHECK_EQ(tm->givenType, typeChecker.numberType);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier")
+{
+    CheckResult result = check(R"(
+        --!strict
+        string.format("%* %* %* %*", "string", 1, true, function() end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constraint")
+{
+    CheckResult result = check(R"(
+        local function f(x): string
+            local _ = string.format("%*", x)
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(string) -> string", toString(requireType("f")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall")
 {
     CheckResult result = check(R"(

@@ -1058,7 +1058,7 @@ ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {
-    const char* options = "cdiouxXeEfgGqs";
+    const char* options = "cdiouxXeEfgGqs*";
 
     std::vector<TypeId> result;
 
@@ -1072,7 +1072,7 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
                 continue;
 
             // we just ignore all characters (including flags/precision) up until first alphabetic character
-            while (i < size && !(data[i] > 0 && isalpha(data[i])))
+            while (i < size && !(data[i] > 0 && (isalpha(data[i]) || data[i] == '*')))
                 i++;
 
             if (i == size)
@@ -1080,6 +1080,8 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
 
             if (data[i] == 'q' || data[i] == 's')
                 result.push_back(typechecker.stringType);
+            else if (data[i] == '*')
+                result.push_back(typechecker.unknownType);
             else if (strchr(options, data[i]))
                 result.push_back(typechecker.numberType);
             else
