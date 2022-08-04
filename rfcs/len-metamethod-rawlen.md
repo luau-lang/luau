@@ -1,5 +1,7 @@
 # Support `__len` metamethod for tables and `rawlen` function
 
+**Status**: Implemented
+
 ## Summary
 
 `__len` metamethod will be called by `#` operator on tables, matching Lua 5.2

@@ -8,6 +8,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauTostringFormatSpecifier, false);
+
 /* macro to `unsign' a character */
 #define uchar(c) ((unsigned char)(c))
 
@@ -1031,6 +1033,26 @@ static int str_format(lua_State* L)
                     snprintf(buff, sizeof(buff), form, s);
                     break;
                 }
+            }
+            case '*':
+            {
+                if (!FFlag::LuauTostringFormatSpecifier)
+                {
+                    luaL_error(L, "invalid option '%%*' to 'format'");
+                    break;
+                }
+
+                if (formatItemSize != 1)
+                {
+                    luaL_error(L, "'%%*' does not take a form");
+                }
+
+                size_t length;
+                const char* string = luaL_tolstring(L, arg, &length);
+
+                luaL_addlstring(&b, string, length);
+
+                continue; /* skip the `addsize' at the end */
             }
             default:
             { /* also treat cases `pnLlh' */

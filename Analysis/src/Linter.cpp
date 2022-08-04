@@ -1433,7 +1433,7 @@ private:
     const char* checkStringFormat(const char* data, size_t size)
     {
         const char* flags = "-+ #0";
-        const char* options = "cdiouxXeEfgGqs";
+        const char* options = "cdiouxXeEfgGqs*";
 
         for (size_t i = 0; i < size; ++i)
         {

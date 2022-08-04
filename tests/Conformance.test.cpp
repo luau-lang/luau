@@ -291,6 +291,8 @@ TEST_CASE("Clear")
 
 TEST_CASE("Strings")
 {
+    ScopedFastFlag sff{"LuauTostringFormatSpecifier", true};
+
     runConformance("strings.lua");
 }
 

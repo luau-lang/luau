@@ -20,6 +20,9 @@
 #ifdef _WIN32
 #include <io.h>
 #include <fcntl.h>
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
 #endif
 
 #ifdef CALLGRIND
@@ -27,6 +30,7 @@
 #endif
 
 #include <locale.h>
+#include <signal.h>
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
 
@@ -46,6 +50,35 @@ enum class CompileFormat
 };
 
 constexpr int MaxTraversalLimit = 50;
+
+// Ctrl-C handling
+static void sigintCallback(lua_State* L, int gc)
+{
+    if (gc >= 0)
+        return;
+
+    lua_callbacks(L)->interrupt = NULL;
+
+    lua_rawcheckstack(L, 1); // reserve space for error string
+    luaL_error(L, "Execution interrupted");
+}
+
+static lua_State* replState = NULL;
+
+#ifdef _WIN32
+BOOL WINAPI sigintHandler(DWORD signal)
+{
+    if (signal == CTRL_C_EVENT && replState)
+        lua_callbacks(replState)->interrupt = &sigintCallback;
+    return TRUE;
+}
+#else
+static void sigintHandler(int signum)
+{
+    if (signum == SIGINT && replState)
+        lua_callbacks(replState)->interrupt = &sigintCallback;
+}
+#endif
 
 struct GlobalOptions
 {
@@ -535,6 +568,15 @@ static void runRepl()
     lua_State* L = globalState.get();
 
     setupState(L);
+
+    // setup Ctrl+C handling
+    replState = L;
+#ifdef _WIN32
+    SetConsoleCtrlHandler(sigintHandler, TRUE);
+#else
+    signal(SIGINT, sigintHandler);
+#endif
+
     luaL_sandboxthread(L);
     runReplImpl(L);
 }

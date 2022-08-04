@@ -1,5 +1,7 @@
 # never and unknown types
 
+**Status**: Implemented
+
 ## Summary
 
 Add `unknown` and `never` types that are inhabited by everything and nothing respectively.
