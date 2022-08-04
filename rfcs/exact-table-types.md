@@ -38,7 +38,7 @@ getx(t : {x: number}) return x end`, we treat is as _sealed_ and _inexact_ meani
 parameter will _not_ change, but call sites to the function will permit tables that have _more_
 properties than the ones listed. Within the body of the function however, the typechecker should
 only permit the use of properties explicitly listed in the type since it was annotated. If the type
-was instead inferred, a dual condition should be true true --- the properties explicitly listed in
+was instead inferred, a dual condition should be true --- the properties explicitly listed in
 the type are precisely the ones whose existence the function depends on. Meanwhile, when a table
 type is used for a local definition, it is given an _unsealed_ and _exact_ type meaning we always
 know _precisely_ the set of properties it has, but that the type itself is stateful and assignments
