@@ -1046,15 +1046,34 @@ static int str_format(lua_State* L)
                 const char* string = luaL_tolstring(L, arg, &length);
 
                 luaL_addlstring(&b, string, length);
-                continue; /* skip the `addsize' at the end */
+                continue; // skip the `addsize' at the end
             }
             default:
             { // also treat cases `pnLlh'
                 luaL_error(L, "invalid option '%%%c' to 'format'", *(strfrmt - 1));
             }
             }
+            luaL_addlstring(&b, buff, strlen(buff));
+        }
+    }
+    luaL_pushresult(&b);
+    return 1;
+}
+
+static int str_split(lua_State* L)
+{
+    size_t haystackLen;
+    const char* haystack = luaL_checklstring(L, 1, &haystackLen);
+    size_t needleLen;
+    const char* needle = luaL_optlstring(L, 2, ",", &needleLen);
+
+    const char* begin = haystack;
+    const char* end = haystack + haystackLen;
     const char* spanStart = begin;
     int numMatches = 0;
+
+    lua_createtable(L, 0, 0);
+
     if (needleLen == 0)
         begin++;
 
