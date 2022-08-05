@@ -15,7 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-LUAU_FASTFLAG(LuauNormalizeFlagIsConservative);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
 
@@ -100,29 +99,20 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     CloneState cloneState;
 
-    ScopePtr moduleScope = FFlag::DebugLuauDeferredConstraintResolution ? nullptr : getModuleScope();
-    Scope2* moduleScope2 = FFlag::DebugLuauDeferredConstraintResolution ? getModuleScope2() : nullptr;
+    ScopePtr moduleScope = getModuleScope();
 
-    TypePackId returnType = FFlag::DebugLuauDeferredConstraintResolution ? moduleScope2->returnType : moduleScope->returnType;
+    TypePackId returnType = moduleScope->returnType;
     std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
     std::unordered_map<Name, TypeFun>* exportedTypeBindings =
         FFlag::DebugLuauDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
 
     returnType = clone(returnType, interfaceTypes, cloneState);
 
-    if (moduleScope)
+    moduleScope->returnType = returnType;
+    if (varargPack)
     {
-        moduleScope->returnType = returnType;
-        if (varargPack)
-        {
-            varargPack = clone(*varargPack, interfaceTypes, cloneState);
-            moduleScope->varargPack = varargPack;
-        }
-    }
-    else
-    {
-        LUAU_ASSERT(moduleScope2);
-        moduleScope2->returnType = returnType; // TODO varargPack
+        varargPack = clone(*varargPack, interfaceTypes, cloneState);
+        moduleScope->varargPack = varargPack;
     }
 
     ForceNormal forceNormal{&interfaceTypes};
@@ -149,20 +139,17 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
             {
                 normalize(tf.type, interfaceTypes, ice);
 
-                if (FFlag::LuauNormalizeFlagIsConservative)
+                // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
+                // won't be marked normal.  If the types aren't normal by now, they never will be.
+                forceNormal.traverse(tf.type);
+                for (GenericTypeDefinition param : tf.typeParams)
                 {
-                    // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
-                    // won't be marked normal.  If the types aren't normal by now, they never will be.
-                    forceNormal.traverse(tf.type);
-                    for (GenericTypeDefinition param : tf.typeParams)
-                    {
-                        forceNormal.traverse(param.ty);
+                    forceNormal.traverse(param.ty);
 
-                        if (param.defaultValue)
-                        {
-                            normalize(*param.defaultValue, interfaceTypes, ice);
-                            forceNormal.traverse(*param.defaultValue);
-                        }
+                    if (param.defaultValue)
+                    {
+                        normalize(*param.defaultValue, interfaceTypes, ice);
+                        forceNormal.traverse(*param.defaultValue);
                     }
                 }
             }
@@ -199,12 +186,6 @@ ScopePtr Module::getModuleScope() const
 {
     LUAU_ASSERT(!scopes.empty());
     return scopes.front().second;
-}
-
-Scope2* Module::getModuleScope2() const
-{
-    LUAU_ASSERT(!scope2s.empty());
-    return scope2s.front().second.get();
 }
 
 } // namespace Luau

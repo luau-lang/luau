@@ -70,8 +70,8 @@ static int lua_loadstring(lua_State* L)
         return 1;
 
     lua_pushnil(L);
-    lua_insert(L, -2); /* put before error message */
-    return 2;          /* return nil plus error message */
+    lua_insert(L, -2); // put before error message
+    return 2;          // return nil plus error message
 }
 
 static int lua_vector(lua_State* L)
@@ -244,8 +244,6 @@ TEST_CASE("Assert")
 
 TEST_CASE("Basic")
 {
-    ScopedFastFlag sff("LuauLenTM", true);
-
     runConformance("basic.lua");
 }
 
@@ -321,12 +319,14 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
+    ScopedFastFlag sff("LuauNicerMethodErrors", true);
+
     runConformance("errors.lua");
 }
 
 TEST_CASE("Events")
 {
-    ScopedFastFlag sff("LuauLenTM", true);
+    ScopedFastFlag sff("LuauBetterNewindex", true);
 
     runConformance("events.lua");
 }
@@ -500,8 +500,6 @@ static void populateRTTI(lua_State* L, Luau::TypeId type)
 
 TEST_CASE("Types")
 {
-    ScopedFastFlag sff("LuauCheckLenMT", true);
-
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
@@ -872,8 +870,6 @@ TEST_CASE("ApiCalls")
 
 TEST_CASE("ApiAtoms")
 {
-    ScopedFastFlag sff("LuauLazyAtoms", true);
-
     StateRef globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 

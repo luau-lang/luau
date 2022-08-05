@@ -26,9 +26,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileNoIpairs, false)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileFoldBuiltins, false)
-LUAU_FASTFLAGVARIABLE(LuauCompileBetterMultret, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileFreeReassign, false)
+LUAU_FASTFLAGVARIABLE(LuauCompileXEQ, false)
 
 LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
 
@@ -279,9 +278,6 @@ struct Compiler
     // returns true if node can return multiple values; may conservatively return true even if expr is known to return just a single value
     bool isExprMultRet(AstExpr* node)
     {
-        if (!FFlag::LuauCompileBetterMultret)
-            return node->is<AstExprCall>() || node->is<AstExprVarargs>();
-
         AstExprCall* expr = node->as<AstExprCall>();
         if (!expr)
             return node->is<AstExprVarargs>();
@@ -313,27 +309,10 @@ struct Compiler
         if (AstExprCall* expr = node->as<AstExprCall>())
         {
             // Optimization: convert multret calls that always return one value to fixedret calls; this facilitates inlining/constant folding
-            if (options.optimizationLevel >= 2)
+            if (options.optimizationLevel >= 2 && !isExprMultRet(node))
             {
-                if (FFlag::LuauCompileBetterMultret)
-                {
-                    if (!isExprMultRet(node))
-                    {
-                        compileExprTemp(node, target);
-                        return false;
-                    }
-                }
-                else
-                {
-                    AstExprFunction* func = getFunctionExpr(expr->func);
-                    Function* fi = func ? functions.find(func) : nullptr;
-
-                    if (fi && fi->returnsOne)
-                    {
-                        compileExprTemp(node, target);
-                        return false;
-                    }
-                }
+                compileExprTemp(node, target);
+                return false;
             }
 
             // We temporarily swap out regTop to have targetTop work correctly...
@@ -1033,9 +1012,8 @@ struct Compiler
     size_t compileCompareJump(AstExprBinary* expr, bool not_ = false)
     {
         RegScope rs(this);
-        LuauOpcode opc = getJumpOpCompare(expr->op, not_);
 
-        bool isEq = (opc == LOP_JUMPIFEQ || opc == LOP_JUMPIFNOTEQ);
+        bool isEq = (expr->op == AstExprBinary::CompareEq || expr->op == AstExprBinary::CompareNe);
         AstExpr* left = expr->left;
         AstExpr* right = expr->right;
 
@@ -1047,36 +1025,112 @@ struct Compiler
                 std::swap(left, right);
         }
 
-        uint8_t rl = compileExprAuto(left, rs);
-        int32_t rr = -1;
-
-        if (isEq && operandIsConstant)
+        if (FFlag::LuauCompileXEQ)
         {
-            if (opc == LOP_JUMPIFEQ)
-                opc = LOP_JUMPIFEQK;
-            else if (opc == LOP_JUMPIFNOTEQ)
-                opc = LOP_JUMPIFNOTEQK;
+            uint8_t rl = compileExprAuto(left, rs);
 
-            rr = getConstantIndex(right);
-            LUAU_ASSERT(rr >= 0);
+            if (isEq && operandIsConstant)
+            {
+                const Constant* cv = constants.find(right);
+                LUAU_ASSERT(cv && cv->type != Constant::Type_Unknown);
+
+                LuauOpcode opc = LOP_NOP;
+                int32_t cid = -1;
+                uint32_t flip = (expr->op == AstExprBinary::CompareEq) == not_ ? 0x80000000 : 0;
+
+                switch (cv->type)
+                {
+                case Constant::Type_Nil:
+                    opc = LOP_JUMPXEQKNIL;
+                    cid = 0;
+                    break;
+
+                case Constant::Type_Boolean:
+                    opc = LOP_JUMPXEQKB;
+                    cid = cv->valueBoolean;
+                    break;
+
+                case Constant::Type_Number:
+                    opc = LOP_JUMPXEQKN;
+                    cid = getConstantIndex(right);
+                    break;
+
+                case Constant::Type_String:
+                    opc = LOP_JUMPXEQKS;
+                    cid = getConstantIndex(right);
+                    break;
+
+                default:
+                    LUAU_ASSERT(!"Unexpected constant type");
+                }
+
+                if (cid < 0)
+                    CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+                size_t jumpLabel = bytecode.emitLabel();
+
+                bytecode.emitAD(opc, rl, 0);
+                bytecode.emitAux(cid | flip);
+
+                return jumpLabel;
+            }
+            else
+            {
+                LuauOpcode opc = getJumpOpCompare(expr->op, not_);
+
+                uint8_t rr = compileExprAuto(right, rs);
+
+                size_t jumpLabel = bytecode.emitLabel();
+
+                if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
+                {
+                    bytecode.emitAD(opc, rr, 0);
+                    bytecode.emitAux(rl);
+                }
+                else
+                {
+                    bytecode.emitAD(opc, rl, 0);
+                    bytecode.emitAux(rr);
+                }
+
+                return jumpLabel;
+            }
         }
         else
-            rr = compileExprAuto(right, rs);
-
-        size_t jumpLabel = bytecode.emitLabel();
-
-        if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
         {
-            bytecode.emitAD(opc, uint8_t(rr), 0);
-            bytecode.emitAux(rl);
-        }
-        else
-        {
-            bytecode.emitAD(opc, rl, 0);
-            bytecode.emitAux(rr);
-        }
+            LuauOpcode opc = getJumpOpCompare(expr->op, not_);
 
-        return jumpLabel;
+            uint8_t rl = compileExprAuto(left, rs);
+            int32_t rr = -1;
+
+            if (isEq && operandIsConstant)
+            {
+                if (opc == LOP_JUMPIFEQ)
+                    opc = LOP_JUMPIFEQK;
+                else if (opc == LOP_JUMPIFNOTEQ)
+                    opc = LOP_JUMPIFNOTEQK;
+
+                rr = getConstantIndex(right);
+                LUAU_ASSERT(rr >= 0);
+            }
+            else
+                rr = compileExprAuto(right, rs);
+
+            size_t jumpLabel = bytecode.emitLabel();
+
+            if (expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::CompareGe)
+            {
+                bytecode.emitAD(opc, uint8_t(rr), 0);
+                bytecode.emitAux(rl);
+            }
+            else
+            {
+                bytecode.emitAD(opc, rl, 0);
+                bytecode.emitAux(rr);
+            }
+
+            return jumpLabel;
+        }
     }
 
     int32_t getConstantNumber(AstExpr* node)
@@ -3514,30 +3568,7 @@ struct Compiler
 
         bool visit(AstStatReturn* stat) override
         {
-            if (FFlag::LuauCompileBetterMultret)
-            {
-                returnsOne &= stat->list.size == 1 && !self->isExprMultRet(stat->list.data[0]);
-            }
-            else if (stat->list.size == 1)
-            {
-                AstExpr* value = stat->list.data[0];
-
-                if (AstExprCall* expr = value->as<AstExprCall>())
-                {
-                    AstExprFunction* func = self->getFunctionExpr(expr->func);
-                    Function* fi = func ? self->functions.find(func) : nullptr;
-
-                    returnsOne &= fi && fi->returnsOne;
-                }
-                else if (value->is<AstExprVarargs>())
-                {
-                    returnsOne = false;
-                }
-            }
-            else
-            {
-                returnsOne = false;
-            }
+            returnsOne &= stat->list.size == 1 && !self->isExprMultRet(stat->list.data[0]);
 
             return false;
         }
@@ -3679,7 +3710,7 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
     trackValues(compiler.globals, compiler.variables, root);
 
     // builtin folding is enabled on optimization level 2 since we can't deoptimize folding at runtime
-    if (options.optimizationLevel >= 2 && FFlag::LuauCompileFoldBuiltins)
+    if (options.optimizationLevel >= 2)
         compiler.builtinsFold = &compiler.builtins;
 
     if (options.optimizationLevel >= 1)

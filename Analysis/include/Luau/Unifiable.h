@@ -8,7 +8,7 @@
 namespace Luau
 {
 
-struct Scope2;
+struct Scope;
 
 /**
  * The 'level' of a TypeVar is an indirect way to talk about the scope that it 'belongs' too.
@@ -84,11 +84,11 @@ using Name = std::string;
 struct Free
 {
     explicit Free(TypeLevel level);
-    explicit Free(Scope2* scope);
+    explicit Free(Scope* scope);
 
     int index;
     TypeLevel level;
-    Scope2* scope = nullptr;
+    Scope* scope = nullptr;
     // True if this free type variable is part of a mutually
     // recursive type alias whose definitions haven't been
     // resolved yet.
@@ -115,13 +115,13 @@ struct Generic
     Generic();
     explicit Generic(TypeLevel level);
     explicit Generic(const Name& name);
-    explicit Generic(Scope2* scope);
+    explicit Generic(Scope* scope);
     Generic(TypeLevel level, const Name& name);
-    Generic(Scope2* scope, const Name& name);
+    Generic(Scope* scope, const Name& name);
 
     int index;
     TypeLevel level;
-    Scope2* scope = nullptr;
+    Scope* scope = nullptr;
     Name name;
     bool explicitName = false;
 

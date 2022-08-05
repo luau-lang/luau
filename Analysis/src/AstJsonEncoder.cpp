@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/JsonEncoder.h"
+#include "Luau/AstJsonEncoder.h"
 
 #include "Luau/Ast.h"
 #include "Luau/ParseResult.h"
@@ -103,8 +103,8 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(double d)
     {
-        char b[256];
-        sprintf(b, "%.17g", d);
+        char b[32];
+        snprintf(b, sizeof(b), "%.17g", d);
         writeRaw(b);
     }
 

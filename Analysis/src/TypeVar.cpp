@@ -445,6 +445,16 @@ BlockedTypeVar::BlockedTypeVar()
 
 int BlockedTypeVar::nextIndex = 0;
 
+PendingExpansionTypeVar::PendingExpansionTypeVar(TypeFun fn, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+    : fn(fn)
+    , typeArguments(typeArguments)
+    , packArguments(packArguments)
+    , index(++nextIndex)
+{
+}
+
+size_t PendingExpansionTypeVar::nextIndex = 0;
+
 FunctionTypeVar::FunctionTypeVar(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
     : argTypes(argTypes)
     , retTypes(retTypes)
@@ -1058,7 +1068,7 @@ ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {
-    const char* options = "cdiouxXeEfgGqs";
+    const char* options = "cdiouxXeEfgGqs*";
 
     std::vector<TypeId> result;
 
@@ -1072,7 +1082,7 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
                 continue;
 
             // we just ignore all characters (including flags/precision) up until first alphabetic character
-            while (i < size && !(data[i] > 0 && isalpha(data[i])))
+            while (i < size && !(data[i] > 0 && (isalpha(data[i]) || data[i] == '*')))
                 i++;
 
             if (i == size)
@@ -1080,6 +1090,8 @@ static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const cha
 
             if (data[i] == 'q' || data[i] == 's')
                 result.push_back(typechecker.stringType);
+            else if (data[i] == '*')
+                result.push_back(typechecker.unknownType);
             else if (strchr(options, data[i]))
                 result.push_back(typechecker.numberType);
             else
@@ -1408,6 +1420,21 @@ bool hasTag(TypeId ty, const std::string& tagName)
 bool hasTag(const Property& prop, const std::string& tagName)
 {
     return hasTag(prop.tags, tagName);
+}
+
+bool TypeFun::operator==(const TypeFun& rhs) const
+{
+    return type == rhs.type && typeParams == rhs.typeParams && typePackParams == rhs.typePackParams;
+}
+
+bool GenericTypeDefinition::operator==(const GenericTypeDefinition& rhs) const
+{
+    return ty == rhs.ty && defaultValue == rhs.defaultValue;
+}
+
+bool GenericTypePackDefinition::operator==(const GenericTypePackDefinition& rhs) const
+{
+    return tp == rhs.tp && defaultValue == rhs.defaultValue;
 }
 
 } // namespace Luau

@@ -31,7 +31,7 @@ struct lua_jmpbuf
     jmp_buf buf;
 };
 
-/* use POSIX versions of setjmp/longjmp if possible: they don't save/restore signal mask and are therefore faster */
+// use POSIX versions of setjmp/longjmp if possible: they don't save/restore signal mask and are therefore faster
 #if defined(__linux__) || defined(__APPLE__)
 #define LUAU_SETJMP(buf) _setjmp(buf)
 #define LUAU_LONGJMP(buf, code) _longjmp(buf, code)
@@ -153,7 +153,7 @@ l_noret luaD_throw(lua_State* L, int errcode)
 }
 #endif
 
-/* }====================================================== */
+// }======================================================
 
 static void correctstack(lua_State* L, TValue* oldstack)
 {
@@ -177,7 +177,7 @@ void luaD_reallocstack(lua_State* L, int newsize)
     luaM_reallocarray(L, L->stack, L->stacksize, realsize, TValue, L->memcat);
     TValue* newstack = L->stack;
     for (int i = L->stacksize; i < realsize; i++)
-        setnilvalue(newstack + i); /* erase new segment */
+        setnilvalue(newstack + i); // erase new segment
     L->stacksize = realsize;
     L->stack_last = newstack + newsize;
     correctstack(L, oldstack);
@@ -194,7 +194,7 @@ void luaD_reallocCI(lua_State* L, int newsize)
 
 void luaD_growstack(lua_State* L, int n)
 {
-    if (n <= L->stacksize) /* double size is enough? */
+    if (n <= L->stacksize) // double size is enough?
         luaD_reallocstack(L, 2 * L->stacksize);
     else
         luaD_reallocstack(L, L->stacksize + n);
@@ -202,11 +202,11 @@ void luaD_growstack(lua_State* L, int n)
 
 CallInfo* luaD_growCI(lua_State* L)
 {
-    /* allow extra stack space to handle stack overflow in xpcall */
+    // allow extra stack space to handle stack overflow in xpcall
     const int hardlimit = LUAI_MAXCALLS + (LUAI_MAXCALLS >> 3);
 
     if (L->size_ci >= hardlimit)
-        luaD_throw(L, LUA_ERRERR); /* error while handling stack error */
+        luaD_throw(L, LUA_ERRERR); // error while handling stack error
 
     int request = L->size_ci * 2;
     luaD_reallocCI(L, L->size_ci >= LUAI_MAXCALLS ? hardlimit : request < LUAI_MAXCALLS ? request : LUAI_MAXCALLS);
@@ -219,13 +219,13 @@ CallInfo* luaD_growCI(lua_State* L)
 
 void luaD_checkCstack(lua_State* L)
 {
-    /* allow extra stack space to handle stack overflow in xpcall */
+    // allow extra stack space to handle stack overflow in xpcall
     const int hardlimit = LUAI_MAXCCALLS + (LUAI_MAXCCALLS >> 3);
 
     if (L->nCcalls == LUAI_MAXCCALLS)
         luaG_runerror(L, "C stack overflow");
     else if (L->nCcalls >= hardlimit)
-        luaD_throw(L, LUA_ERRERR); /* error while handling stack error */
+        luaD_throw(L, LUA_ERRERR); // error while handling stack error
 }
 
 /*
@@ -240,14 +240,14 @@ void luaD_call(lua_State* L, StkId func, int nResults)
         luaD_checkCstack(L);
 
     if (luau_precall(L, func, nResults) == PCRLUA)
-    {                                        /* is a Lua function? */
-        L->ci->flags |= LUA_CALLINFO_RETURN; /* luau_execute will stop after returning from the stack frame */
+    {                                        // is a Lua function?
+        L->ci->flags |= LUA_CALLINFO_RETURN; // luau_execute will stop after returning from the stack frame
 
         int oldactive = luaC_threadactive(L);
         l_setbit(L->stackstate, THREAD_ACTIVEBIT);
         luaC_checkthreadsleep(L);
 
-        luau_execute(L); /* call it */
+        luau_execute(L); // call it
 
         if (!oldactive)
             resetbit(L->stackstate, THREAD_ACTIVEBIT);
@@ -263,18 +263,18 @@ static void seterrorobj(lua_State* L, int errcode, StkId oldtop)
     {
     case LUA_ERRMEM:
     {
-        setsvalue2s(L, oldtop, luaS_newliteral(L, LUA_MEMERRMSG)); /* can not fail because string is pinned in luaopen */
+        setsvalue2s(L, oldtop, luaS_newliteral(L, LUA_MEMERRMSG)); // can not fail because string is pinned in luaopen
         break;
     }
     case LUA_ERRERR:
     {
-        setsvalue2s(L, oldtop, luaS_newliteral(L, LUA_ERRERRMSG)); /* can not fail because string is pinned in luaopen */
+        setsvalue2s(L, oldtop, luaS_newliteral(L, LUA_ERRERRMSG)); // can not fail because string is pinned in luaopen
         break;
     }
     case LUA_ERRSYNTAX:
     case LUA_ERRRUN:
     {
-        setobjs2s(L, oldtop, L->top - 1); /* error message on current top */
+        setobjs2s(L, oldtop, L->top - 1); // error message on current top
         break;
     }
     }
@@ -430,8 +430,8 @@ static void resume_finish(lua_State* L, int status)
     resetbit(L->stackstate, THREAD_ACTIVEBIT);
 
     if (status != 0)
-    {                                  /* error? */
-        L->status = cast_byte(status); /* mark thread as `dead' */
+    {                                  // error?
+        L->status = cast_byte(status); // mark thread as `dead'
         seterrorobj(L, status, L->top);
         L->ci->top = L->top;
     }
@@ -503,7 +503,7 @@ int lua_yield(lua_State* L, int nresults)
 {
     if (L->nCcalls > L->baseCcalls)
         luaG_runerror(L, "attempt to yield across metamethod/C-call boundary");
-    L->base = L->top - nresults; /* protect stack slots below */
+    L->base = L->top - nresults; // protect stack slots below
     L->status = LUA_YIELD;
     return -1;
 }
@@ -535,9 +535,9 @@ static void restore_stack_limit(lua_State* L)
 {
     LUAU_ASSERT(L->stack_last - L->stack == L->stacksize - EXTRA_STACK);
     if (L->size_ci > LUAI_MAXCALLS)
-    { /* there was an overflow? */
+    { // there was an overflow?
         int inuse = cast_int(L->ci - L->base_ci);
-        if (inuse + 1 < LUAI_MAXCALLS) /* can `undo' overflow? */
+        if (inuse + 1 < LUAI_MAXCALLS) // can `undo' overflow?
             luaD_reallocCI(L, LUAI_MAXCALLS);
     }
 }
@@ -576,7 +576,7 @@ int luaD_pcall(lua_State* L, Pfunc func, void* u, ptrdiff_t old_top, ptrdiff_t e
         }
 
         StkId oldtop = restorestack(L, old_top);
-        luaF_close(L, oldtop); /* close eventual pending closures */
+        luaF_close(L, oldtop); // close eventual pending closures
         seterrorobj(L, status, oldtop);
         L->ci = restoreci(L, old_ci);
         L->base = L->ci->base;

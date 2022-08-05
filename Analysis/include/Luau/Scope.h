@@ -32,10 +32,16 @@ struct Scope
     explicit Scope(const ScopePtr& parent, int subLevel = 0); // child scope.  Parent must not be nullptr.
 
     const ScopePtr parent; // null for the root
+
+    // All the children of this scope.
+    std::vector<NotNull<Scope>> children;
     std::unordered_map<Symbol, Binding> bindings;
+    std::unordered_map<Name, TypeFun> typeBindings;
+    std::unordered_map<Name, TypePackId> typePackBindings;
     TypePackId returnType;
-    bool breakOk = false;
     std::optional<TypePackId> varargPack;
+    // All constraints belonging to this scope.
+    std::vector<ConstraintPtr> constraints;
 
     TypeLevel level;
 
@@ -45,7 +51,9 @@ struct Scope
 
     std::unordered_map<Name, std::unordered_map<Name, TypeFun>> importedTypeBindings;
 
-    std::optional<TypeId> lookup(const Symbol& name);
+    std::optional<TypeId> lookup(Symbol sym);
+    std::optional<TypeFun> lookupTypeBinding(const Name& name);
+    std::optional<TypePackId> lookupTypePackBinding(const Name& name);
 
     std::optional<TypeFun> lookupType(const Name& name);
     std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name);
@@ -64,26 +72,6 @@ struct Scope
     // we need that the generic type `T` in both cases is the same, so we use a cache.
     std::unordered_map<Name, TypeId> typeAliasTypeParameters;
     std::unordered_map<Name, TypePackId> typeAliasTypePackParameters;
-};
-
-struct Scope2
-{
-    // The parent scope of this scope. Null if there is no parent (i.e. this
-    // is the module-level scope).
-    Scope2* parent = nullptr;
-    // All the children of this scope.
-    std::vector<NotNull<Scope2>> children;
-    std::unordered_map<Symbol, TypeId> bindings; // TODO: I think this can be a DenseHashMap
-    std::unordered_map<Name, TypeId> typeBindings;
-    std::unordered_map<Name, TypePackId> typePackBindings;
-    TypePackId returnType;
-    std::optional<TypePackId> varargPack;
-    // All constraints belonging to this scope.
-    std::vector<ConstraintPtr> constraints;
-
-    std::optional<TypeId> lookup(Symbol sym);
-    std::optional<TypeId> lookupTypeBinding(const Name& name);
-    std::optional<TypePackId> lookupTypePackBinding(const Name& name);
 };
 
 } // namespace Luau

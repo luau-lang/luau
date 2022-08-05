@@ -2434,6 +2434,8 @@ end
 
 TEST_CASE("DebugLineInfoRepeatUntil")
 {
+    ScopedFastFlag sff("LuauCompileXEQ", true);
+
     CHECK_EQ("\n" + compileFunction0Coverage(R"(
 local f = 0
 repeat
@@ -2449,13 +2451,13 @@ until f == 0
         R"(
 2: LOADN R0 0
 4: L0: ADDK R0 R0 K0
-5: JUMPIFNOTEQK R0 K0 L1
+5: JUMPXEQKN R0 K0 L1 NOT
 6: GETIMPORT R1 2
 6: MOVE R2 R0
 6: CALL R1 1 0
 6: JUMP L2
 8: L1: LOADN R0 0
-10: L2: JUMPIFEQK R0 K3 L3
+10: L2: JUMPXEQKN R0 K3 L3
 10: JUMPBACK L0
 11: L3: RETURN R0 0
 )");
@@ -3561,13 +3563,15 @@ RETURN R0 1
 
 TEST_CASE("ConstantJumpCompare")
 {
+    ScopedFastFlag sff("LuauCompileXEQ", true);
+
     CHECK_EQ("\n" + compileFunction0(R"(
 local obj = ...
 local b = obj == 1
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKN R0 K0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3579,7 +3583,7 @@ local b = 1 == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKN R0 K0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3591,7 +3595,7 @@ local b = "Hello, Sailor!" == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKS R0 K0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3603,7 +3607,7 @@ local b = nil == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKNIL R0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3615,7 +3619,7 @@ local b = true == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKB R0 1 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3627,7 +3631,7 @@ local b = nil ~= obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFNOTEQK R0 K0 L0
+JUMPXEQKNIL R0 L0 NOT
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -4404,8 +4408,6 @@ TEST_CASE("LoopUnrollControlFlow")
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
     };
 
-    ScopedFastFlag sff("LuauCompileFoldBuiltins", true);
-
     // break jumps to the end
     CHECK_EQ("\n" + compileFunction(R"(
 for i=1,3 do
@@ -4720,8 +4722,6 @@ TEST_CASE("LoopUnrollCostBuiltins")
         {"LuauCompileLoopUnrollThreshold", 25},
         {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
     };
-
-    ScopedFastFlag sff("LuauCompileModelBuiltins", true);
 
     // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
     CHECK_EQ("\n" + compileFunction(R"(
@@ -5945,8 +5945,6 @@ RETURN R0 2
 
 TEST_CASE("OptimizationLevel")
 {
-    ScopedFastFlag sff("LuauAlwaysCaptureHotComments", true);
-
     // at optimization level 1, no inlining is performed
     CHECK_EQ("\n" + compileFunction(R"(
 local function foo(a)
@@ -6016,8 +6014,6 @@ RETURN R1 -1
 
 TEST_CASE("BuiltinFolding")
 {
-    ScopedFastFlag sff("LuauCompileFoldBuiltins", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 return
     math.abs(-42),
@@ -6125,8 +6121,6 @@ RETURN R0 48
 
 TEST_CASE("BuiltinFoldingProhibited")
 {
-    ScopedFastFlag sff("LuauCompileFoldBuiltins", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 return
     math.abs(),
@@ -6160,8 +6154,7 @@ L3: RETURN R0 -1
 
 TEST_CASE("BuiltinFoldingMultret")
 {
-    ScopedFastFlag sff1("LuauCompileFoldBuiltins", true);
-    ScopedFastFlag sff2("LuauCompileBetterMultret", true);
+    ScopedFastFlag sff("LuauCompileXEQ", true);
 
     CHECK_EQ("\n" + compileFunction(R"(
 local NoLanes: Lanes = --[[                             ]] 0b0000000000000000000000000000000
@@ -6185,14 +6178,14 @@ FASTCALL2K 29 R2 K1 L0
 LOADK R3 K1
 GETIMPORT R1 4
 CALL R1 2 1
-L0: JUMPIFEQK R1 K5 L1
+L0: JUMPXEQKN R1 K5 L1
 RETURN R1 1
 L1: FASTCALL2K 29 R1 K6 L2
 MOVE R3 R1
 LOADK R4 K6
 GETIMPORT R2 4
 CALL R2 2 1
-L2: JUMPIFEQK R2 K5 L3
+L2: JUMPXEQKN R2 K5 L3
 LOADK R2 K6
 RETURN R2 1
 L3: LOADN R2 0
@@ -6220,7 +6213,8 @@ local function test(a, b)
     local c = a
     return c + b
 end
-)"), R"(
+)"),
+        R"(
 ADD R2 R0 R1
 RETURN R2 1
 )");
@@ -6231,7 +6225,8 @@ local function test(a, b)
     local c = (a :: number)
     return c + b
 end
-)"), R"(
+)"),
+        R"(
 ADD R2 R0 R1
 RETURN R2 1
 )");
@@ -6245,7 +6240,8 @@ local function test(a, b)
     b += 0
     return c + d
 end
-)"), R"(
+)"),
+        R"(
 MOVE R2 R0
 ADDK R2 R2 K0
 MOVE R3 R1
@@ -6261,7 +6257,8 @@ local function test(a, b)
     local d = b
     return c + d
 end
-)"), R"(
+)"),
+        R"(
 ADD R2 R0 R1
 RETURN R2 1
 )");
@@ -6272,7 +6269,8 @@ local function test(a, b)
     local c, d = a, b
     return c + d
 end
-)"), R"(
+)"),
+        R"(
 MOVE R2 R0
 MOVE R3 R1
 ADD R4 R2 R3
@@ -6286,7 +6284,9 @@ local function test(a, b)
     local d = b
     return function() return c + d end
 end
-)", 1), R"(
+)",
+                        1),
+        R"(
 NEWCLOSURE R2 P0
 CAPTURE VAL R0
 CAPTURE VAL R1

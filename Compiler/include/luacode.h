@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-/* Can be used to reconfigure visibility/exports for public APIs */
+// Can be used to reconfigure visibility/exports for public APIs
 #ifndef LUACODE_API
 #define LUACODE_API extern
 #endif
@@ -35,5 +35,5 @@ struct lua_CompileOptions
     const char** mutableGlobals;
 };
 
-/* compile source to bytecode; when source compilation fails, the resulting bytecode contains the encoded error. use free() to destroy */
+// compile source to bytecode; when source compilation fails, the resulting bytecode contains the encoded error. use free() to destroy
 LUACODE_API char* luau_compile(const char* source, size_t size, lua_CompileOptions* options, size_t* outsize);

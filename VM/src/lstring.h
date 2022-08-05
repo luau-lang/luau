@@ -5,10 +5,10 @@
 #include "lobject.h"
 #include "lstate.h"
 
-/* string size limit */
+// string size limit
 #define MAXSSIZE (1 << 30)
 
-/* string atoms are not defined by default; the storage is 16-bit integer */
+// string atoms are not defined by default; the storage is 16-bit integer
 #define ATOM_UNDEF -32768
 
 #define sizestring(len) (offsetof(TString, data) + len + 1)

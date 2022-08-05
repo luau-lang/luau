@@ -9,7 +9,7 @@
 
 using namespace Luau;
 
-static TypeId requireBinding(NotNull<Scope2> scope, const char* name)
+static TypeId requireBinding(NotNull<Scope> scope, const char* name)
 {
     auto b = linearSearchForBinding(scope, name);
     LUAU_ASSERT(b.has_value());
@@ -26,7 +26,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
     )");
 
     cgb.visit(block);
-    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
 
     ConstraintSolver cs{&arena, rootScope};
 
@@ -46,7 +46,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     )");
 
     cgb.visit(block);
-    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
 
     ConstraintSolver cs{&arena, rootScope};
 
@@ -73,7 +73,7 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
     )");
 
     cgb.visit(block);
-    NotNull<Scope2> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
 
     ToStringOptions opts;
 

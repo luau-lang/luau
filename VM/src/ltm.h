@@ -20,7 +20,7 @@ typedef enum
     TM_ITER,
     TM_LEN,
 
-    TM_EQ, /* last tag method with `fast' access */
+    TM_EQ, // last tag method with `fast' access
 
     
     TM_ADD,
@@ -37,7 +37,7 @@ typedef enum
     TM_CONCAT,
     TM_TYPE,
 
-    TM_N /* number of elements in the enum */
+    TM_N // number of elements in the enum
 } TMS;
 // clang-format on
 

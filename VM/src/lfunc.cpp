@@ -73,20 +73,20 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     {
         LUAU_ASSERT(p->v != &p->u.value);
         if (p->v == level)
-        {                                /* found a corresponding upvalue? */
-            if (isdead(g, obj2gco(p)))   /* is it dead? */
-                changewhite(obj2gco(p)); /* resurrect it */
+        {                                // found a corresponding upvalue?
+            if (isdead(g, obj2gco(p)))   // is it dead?
+                changewhite(obj2gco(p)); // resurrect it
             return p;
         }
 
         pp = &p->u.l.threadnext;
     }
 
-    UpVal* uv = luaM_newgco(L, UpVal, sizeof(UpVal), L->activememcat); /* not found: create a new one */
+    UpVal* uv = luaM_newgco(L, UpVal, sizeof(UpVal), L->activememcat); // not found: create a new one
     uv->tt = LUA_TUPVAL;
     uv->marked = luaC_white(g);
     uv->memcat = L->activememcat;
-    uv->v = level; /* current value lives in the stack */
+    uv->v = level; // current value lives in the stack
 
     // chain the upvalue in the threads open upvalue list at the proper position
     UpVal* next = *pp;
@@ -121,9 +121,9 @@ void luaF_unlinkupval(UpVal* uv)
 
 void luaF_freeupval(lua_State* L, UpVal* uv, lua_Page* page)
 {
-    if (uv->v != &uv->u.value)                            /* is it open? */
-        luaF_unlinkupval(uv);                             /* remove from open list */
-    luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page); /* free upvalue */
+    if (uv->v != &uv->u.value)                            // is it open?
+        luaF_unlinkupval(uv);                             // remove from open list
+    luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page); // free upvalue
 }
 
 void luaF_close(lua_State* L, StkId level)
@@ -179,11 +179,11 @@ const LocVar* luaF_getlocal(const Proto* f, int local_number, int pc)
     for (i = 0; i < f->sizelocvars; i++)
     {
         if (pc >= f->locvars[i].startpc && pc < f->locvars[i].endpc)
-        { /* is variable active? */
+        { // is variable active?
             local_number--;
             if (local_number == 0)
                 return &f->locvars[i];
         }
     }
-    return NULL; /* not found */
+    return NULL; // not found
 }

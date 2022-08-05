@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Ast.h"
-#include "Luau/JsonEncoder.h"
+#include "Luau/AstJsonEncoder.h"
 #include "Luau/Parser.h"
 #include "ScopedFlags.h"
 
@@ -193,7 +193,8 @@ TEST_CASE("encode_AstExprLocal")
     AstLocal local{AstName{"foo"}, Location{}, nullptr, 0, 0, nullptr};
     AstExprLocal exprLocal{Location{}, &local, false};
 
-    CHECK(toJson(&exprLocal) == R"({"type":"AstExprLocal","location":"0,0 - 0,0","local":{"luauType":null,"name":"foo","type":"AstLocal","location":"0,0 - 0,0"}})");
+    CHECK(toJson(&exprLocal) ==
+          R"({"type":"AstExprLocal","location":"0,0 - 0,0","local":{"luauType":null,"name":"foo","type":"AstLocal","location":"0,0 - 0,0"}})");
 }
 
 TEST_CASE("encode_AstExprVarargs")

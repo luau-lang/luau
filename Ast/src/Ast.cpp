@@ -50,9 +50,10 @@ void AstExprConstantBool::visit(AstVisitor* visitor)
     visitor->visit(this);
 }
 
-AstExprConstantNumber::AstExprConstantNumber(const Location& location, double value)
+AstExprConstantNumber::AstExprConstantNumber(const Location& location, double value, ConstantNumberParseResult parseResult)
     : AstExpr(ClassIndex(), location)
     , value(value)
+    , parseResult(parseResult)
 {
 }
 

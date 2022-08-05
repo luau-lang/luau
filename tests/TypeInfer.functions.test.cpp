@@ -14,6 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -907,13 +908,19 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
     REQUIRE(tm1);
 
     CHECK_EQ("(string) -> number", toString(tm1->wantedType));
-    CHECK_EQ("(string, <error-type>) -> number", toString(tm1->givenType));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("(string, *error-type*) -> number", toString(tm1->givenType));
+    else
+        CHECK_EQ("(string, <error-type>) -> number", toString(tm1->givenType));
 
     auto tm2 = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm2);
 
     CHECK_EQ("(number, number) -> (number, number)", toString(tm2->wantedType));
-    CHECK_EQ("(string, <error-type>) -> number", toString(tm2->givenType));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("(string, *error-type*) -> number", toString(tm2->givenType));
+    else
+        CHECK_EQ("(string, <error-type>) -> number", toString(tm2->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
@@ -1526,10 +1533,20 @@ function t:b() return 2 end -- not OK
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type '(<error-type>) -> number' could not be converted into '() -> number'
+    if (FFlag::LuauSpecialTypesAsterisked)
+    {
+        CHECK_EQ(R"(Type '(*error-type*) -> number' could not be converted into '() -> number'
 caused by:
   Argument count mismatch. Function expects 1 argument, but none are specified)",
-        toString(result.errors[0]));
+            toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ(R"(Type '(<error-type>) -> number' could not be converted into '() -> number'
+caused by:
+  Argument count mismatch. Function expects 1 argument, but none are specified)",
+            toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")

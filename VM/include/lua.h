@@ -11,7 +11,7 @@
 
 
 
-/* option for multiple returns in `lua_pcall' and `lua_call' */
+// option for multiple returns in `lua_pcall' and `lua_call'
 #define LUA_MULTRET (-1)
 
 /*
@@ -23,7 +23,7 @@
 #define lua_upvalueindex(i) (LUA_GLOBALSINDEX - (i))
 #define lua_ispseudo(i) ((i) <= LUA_REGISTRYINDEX)
 
-/* thread status; 0 is OK */
+// thread status; 0 is OK
 enum lua_Status
 {
     LUA_OK = 0,
@@ -32,7 +32,7 @@ enum lua_Status
     LUA_ERRSYNTAX,
     LUA_ERRMEM,
     LUA_ERRERR,
-    LUA_BREAK, /* yielded for a debug breakpoint */
+    LUA_BREAK, // yielded for a debug breakpoint
 };
 
 typedef struct lua_State lua_State;
@@ -46,7 +46,7 @@ typedef int (*lua_Continuation)(lua_State* L, int status);
 
 typedef void* (*lua_Alloc)(void* ud, void* ptr, size_t osize, size_t nsize);
 
-/* non-return type */
+// non-return type
 #define l_noret void LUA_NORETURN
 
 /*
@@ -61,15 +61,15 @@ typedef void* (*lua_Alloc)(void* ud, void* ptr, size_t osize, size_t nsize);
 // clang-format off
 enum lua_Type
 {
-    LUA_TNIL = 0,     /* must be 0 due to lua_isnoneornil */
-    LUA_TBOOLEAN = 1, /* must be 1 due to l_isfalse */
+    LUA_TNIL = 0,     // must be 0 due to lua_isnoneornil
+    LUA_TBOOLEAN = 1, // must be 1 due to l_isfalse
 
 
     LUA_TLIGHTUSERDATA,
     LUA_TNUMBER,
     LUA_TVECTOR,
 
-    LUA_TSTRING, /* all types above this must be value types, all types below this must be GC types - see iscollectable */
+    LUA_TSTRING, // all types above this must be value types, all types below this must be GC types - see iscollectable
 
 
     LUA_TTABLE,
@@ -77,23 +77,23 @@ enum lua_Type
     LUA_TUSERDATA,
     LUA_TTHREAD,
 
-    /* values below this line are used in GCObject tags but may never show up in TValue type tags */
+    // values below this line are used in GCObject tags but may never show up in TValue type tags
     LUA_TPROTO,
     LUA_TUPVAL,
     LUA_TDEADKEY,
 
-    /* the count of TValue type tags */
+    // the count of TValue type tags
     LUA_T_COUNT = LUA_TPROTO
 };
 // clang-format on
 
-/* type of numbers in Luau */
+// type of numbers in Luau
 typedef double lua_Number;
 
-/* type for integer functions */
+// type for integer functions
 typedef int lua_Integer;
 
-/* unsigned integer type */
+// unsigned integer type
 typedef unsigned lua_Unsigned;
 
 /*
@@ -117,7 +117,7 @@ LUA_API void lua_remove(lua_State* L, int idx);
 LUA_API void lua_insert(lua_State* L, int idx);
 LUA_API void lua_replace(lua_State* L, int idx);
 LUA_API int lua_checkstack(lua_State* L, int sz);
-LUA_API void lua_rawcheckstack(lua_State* L, int sz); /* allows for unlimited stack frames */
+LUA_API void lua_rawcheckstack(lua_State* L, int sz); // allows for unlimited stack frames
 
 LUA_API void lua_xmove(lua_State* from, lua_State* to, int n);
 LUA_API void lua_xpush(lua_State* from, lua_State* to, int idx);
@@ -231,18 +231,18 @@ LUA_API void lua_setthreaddata(lua_State* L, void* data);
 
 enum lua_GCOp
 {
-    /* stop and resume incremental garbage collection */
+    // stop and resume incremental garbage collection
     LUA_GCSTOP,
     LUA_GCRESTART,
 
-    /* run a full GC cycle; not recommended for latency sensitive applications */
+    // run a full GC cycle; not recommended for latency sensitive applications
     LUA_GCCOLLECT,
 
-    /* return the heap size in KB and the remainder in bytes */
+    // return the heap size in KB and the remainder in bytes
     LUA_GCCOUNT,
     LUA_GCCOUNTB,
 
-    /* return 1 if GC is active (not stopped); note that GC may not be actively collecting even if it's running */
+    // return 1 if GC is active (not stopped); note that GC may not be actively collecting even if it's running
     LUA_GCISRUNNING,
 
     /*
@@ -359,9 +359,9 @@ LUA_API void lua_unref(lua_State* L, int ref);
 ** =======================================================================
 */
 
-typedef struct lua_Debug lua_Debug; /* activation record */
+typedef struct lua_Debug lua_Debug; // activation record
 
-/* Functions to be called by the debugger in specific events */
+// Functions to be called by the debugger in specific events
 typedef void (*lua_Hook)(lua_State* L, lua_Debug* ar);
 
 LUA_API int lua_stackdepth(lua_State* L);
@@ -379,24 +379,24 @@ typedef void (*lua_Coverage)(void* context, const char* function, int linedefine
 
 LUA_API void lua_getcoverage(lua_State* L, int funcindex, void* context, lua_Coverage callback);
 
-/* Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging. */
+// Warning: this function is not thread-safe since it stores the result in a shared global array! Only use for debugging.
 LUA_API const char* lua_debugtrace(lua_State* L);
 
 struct lua_Debug
 {
-    const char* name;           /* (n) */
-    const char* what;           /* (s) `Lua', `C', `main', `tail' */
-    const char* source;         /* (s) */
-    int linedefined;            /* (s) */
-    int currentline;            /* (l) */
-    unsigned char nupvals;      /* (u) number of upvalues */
-    unsigned char nparams;      /* (a) number of parameters */
-    char isvararg;              /* (a) */
-    char short_src[LUA_IDSIZE]; /* (s) */
-    void* userdata;             /* only valid in luau_callhook */
+    const char* name;           // (n)
+    const char* what;           // (s) `Lua', `C', `main', `tail'
+    const char* source;         // (s)
+    int linedefined;            // (s)
+    int currentline;            // (l)
+    unsigned char nupvals;      // (u) number of upvalues
+    unsigned char nparams;      // (a) number of parameters
+    char isvararg;              // (a)
+    char short_src[LUA_IDSIZE]; // (s)
+    void* userdata;             // only valid in luau_callhook
 };
 
-/* }====================================================================== */
+// }======================================================================
 
 /* Callbacks that can be used to reconfigure behavior of the VM dynamically.
  * These are shared between all coroutines.
@@ -405,18 +405,18 @@ struct lua_Debug
  * can only be changed when the VM is not running any code */
 struct lua_Callbacks
 {
-    void* userdata; /* arbitrary userdata pointer that is never overwritten by Luau */
+    void* userdata; // arbitrary userdata pointer that is never overwritten by Luau
 
-    void (*interrupt)(lua_State* L, int gc);  /* gets called at safepoints (loop back edges, call/ret, gc) if set */
-    void (*panic)(lua_State* L, int errcode); /* gets called when an unprotected error is raised (if longjmp is used) */
+    void (*interrupt)(lua_State* L, int gc);  // gets called at safepoints (loop back edges, call/ret, gc) if set
+    void (*panic)(lua_State* L, int errcode); // gets called when an unprotected error is raised (if longjmp is used)
 
-    void (*userthread)(lua_State* LP, lua_State* L); /* gets called when L is created (LP == parent) or destroyed (LP == NULL) */
-    int16_t (*useratom)(const char* s, size_t l);    /* gets called when a string is created; returned atom can be retrieved via tostringatom */
+    void (*userthread)(lua_State* LP, lua_State* L); // gets called when L is created (LP == parent) or destroyed (LP == NULL)
+    int16_t (*useratom)(const char* s, size_t l);    // gets called when a string is created; returned atom can be retrieved via tostringatom
 
-    void (*debugbreak)(lua_State* L, lua_Debug* ar);     /* gets called when BREAK instruction is encountered */
-    void (*debugstep)(lua_State* L, lua_Debug* ar);      /* gets called after each instruction in single step mode */
-    void (*debuginterrupt)(lua_State* L, lua_Debug* ar); /* gets called when thread execution is interrupted by break in another thread */
-    void (*debugprotectederror)(lua_State* L);           /* gets called when protected call results in an error */
+    void (*debugbreak)(lua_State* L, lua_Debug* ar);     // gets called when BREAK instruction is encountered
+    void (*debugstep)(lua_State* L, lua_Debug* ar);      // gets called after each instruction in single step mode
+    void (*debuginterrupt)(lua_State* L, lua_Debug* ar); // gets called when thread execution is interrupted by break in another thread
+    void (*debugprotectederror)(lua_State* L);           // gets called when protected call results in an error
 };
 typedef struct lua_Callbacks lua_Callbacks;
 

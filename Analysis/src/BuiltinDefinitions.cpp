@@ -10,6 +10,7 @@
 
 LUAU_FASTFLAGVARIABLE(LuauSetMetaTableArgsCheck, false)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAGVARIABLE(LuauBuiltInMetatableNoBadSynthetic, false)
 
 /** FIXME: Many of these type definitions are not quite completely accurate.
  *
@@ -349,7 +350,7 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionSetMetaTable(
 
                 if (tableName == metatableName)
                     mtv.syntheticName = tableName;
-                else
+                else if (!FFlag::LuauBuiltInMetatableNoBadSynthetic)
                     mtv.syntheticName = "{ @metatable: " + metatableName + ", " + tableName + " }";
             }
 
