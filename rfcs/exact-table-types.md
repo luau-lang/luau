@@ -104,6 +104,11 @@ inexact and therefore open to having additional properties, we would include an 
 type, e.g. `{ x: number, y: number, ...}`. This was originally proposed as an alternative design in
 the [width subtyping][width-subtyping] proposal.
 
+We propose these syntaxes (`{field: type}` and `{field: type, ...}`) for exact and inexact tables
+respectively because they are fairly lightweight, support anonymous usage, and represent a fairly
+mild change from the syntax that we already have. Alternative syntax options like `interface` in
+TypeScript would represent a bigger deviation from our current syntax of types.
+
 There are a few apparent benefits to this approach. First, it means that a programmer designing an
 API has to make a conscious decision that "yes, in fact, it is sensible to treat all of the unlisted
 properties of this parameter as being unrelated to the behavior of this function." The type checker
