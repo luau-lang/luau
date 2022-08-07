@@ -30,9 +30,11 @@ type Font = "Font1" | "Font2" | "Font3"
 type Object = {X: number, Y: number, text: string | <nil_status = nil>, font: Font | nil_status}
 ```
 
+Between the angle brackets, a name followed by an equals sign and then a type is expected. Alternatively, a name followed by nothing can be used to track something with a name already associated with a type.
+
 The scope of these types should be the function in which they are used in. If they aren't defined in a function, then it is the global scope.
 
-In this code, the type of `font` will never change the type of `text`, but the opposite is true. If `font` is guaranteed to be non-nil, text isn't. To make it replicate to text as well, `font` should have the type `<nil_status>` without initialization.
+The type of `font` will never change the type of `text`, but the opposite is true. If `font` is guaranteed to be non-nil, text isn't. To make it replicate to text as well, `font` should have the type `<nil_status>` without initialization.
 
 ```lua
 type Font = "Font1" | "Font2" | "Font3"
