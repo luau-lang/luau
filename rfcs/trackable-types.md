@@ -70,7 +70,7 @@ When it comes to syntax, it could make sense to allow defining these trackable t
 function f<type = nil>() --[[code]] end
 ```
 
-This doesn't work when writing code outside a function. Also, this forces everything to be tracked - if variable A and B have the types `number | type`, only one of them changing would be sufficient to change the type of the other variable. All of them are tracked; whereas with the suggested syntax, it is possible to track just one of them.
+This doesn't work when writing code outside a function. Also, this forces everything to be tracked - if two variables have types related to `type`, only one of them changing would be sufficient to change the type of the other variable. All of them are tracked; whereas with the suggested syntax, it is possible to track just one of them.
 
 Another syntax is to use `:` instead of `=`. Another one is to use intersection syntax to initialize, like this:
 
