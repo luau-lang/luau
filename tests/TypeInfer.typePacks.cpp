@@ -203,7 +203,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
         ),
         "@test"
     );
-    addGlobalBinding(typeChecker, "bar", 
+    addGlobalBinding(typeChecker, "bar",
         arena.addType(
             FunctionTypeVar{
                 arena.addTypePack({{typeChecker.numberType}, listOfStrings}),

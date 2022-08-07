@@ -9,7 +9,6 @@
 #include "Luau/TypeVar.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
-LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 LUAU_FASTFLAG(LuauCompleteVisitor);
 
 namespace Luau
@@ -150,6 +149,10 @@ struct GenericTypeVarVisitor
     {
         return visit(ty);
     }
+    virtual bool visit(TypeId ty, const PendingExpansionTypeVar& petv)
+    {
+        return visit(ty);
+    }
     virtual bool visit(TypeId ty, const SingletonTypeVar& stv)
     {
         return visit(ty);
@@ -285,8 +288,6 @@ struct GenericTypeVarVisitor
                     traverse(partTy);
             }
         }
-        else if (!FFlag::LuauCompleteVisitor)
-            return visit_detail::unsee(seen, ty);
         else if (get<LazyTypeVar>(ty))
         {
             // Visiting into LazyTypeVar may necessarily cause infinite expansion, so we don't do that on purpose.
@@ -301,6 +302,37 @@ struct GenericTypeVarVisitor
             visit(ty, *utv);
         else if (auto ntv = get<NeverTypeVar>(ty))
             visit(ty, *ntv);
+        else if (auto petv = get<PendingExpansionTypeVar>(ty))
+        {
+            if (visit(ty, *petv))
+            {
+                traverse(petv->fn.type);
+
+                for (const GenericTypeDefinition& p : petv->fn.typeParams)
+                {
+                    traverse(p.ty);
+
+                    if (p.defaultValue)
+                        traverse(*p.defaultValue);
+                }
+
+                for (const GenericTypePackDefinition& p : petv->fn.typePackParams)
+                {
+                    traverse(p.tp);
+
+                    if (p.defaultValue)
+                        traverse(*p.defaultValue);
+                }
+
+                for (TypeId a : petv->typeArguments)
+                    traverse(a);
+
+                for (TypePackId a : petv->packArguments)
+                    traverse(a);
+            }
+        }
+        else if (!FFlag::LuauCompleteVisitor)
+            return visit_detail::unsee(seen, ty);
         else
             LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypeId) is not exhaustive!");
 
@@ -333,7 +365,7 @@ struct GenericTypeVarVisitor
         else if (auto pack = get<TypePack>(tp))
         {
             bool res = visit(tp, *pack);
-            if (!FFlag::LuauNormalizeFlagIsConservative || res)
+            if (res)
             {
                 for (TypeId ty : pack->head)
                     traverse(ty);
@@ -345,7 +377,7 @@ struct GenericTypeVarVisitor
         else if (auto pack = get<VariadicTypePack>(tp))
         {
             bool res = visit(tp, *pack);
-            if (!FFlag::LuauNormalizeFlagIsConservative || res)
+            if (res)
                 traverse(pack->ty);
         }
         else

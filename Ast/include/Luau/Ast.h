@@ -474,16 +474,26 @@ public:
     bool value;
 };
 
+enum class ConstantNumberParseResult
+{
+    Ok,
+    Malformed,
+    BinOverflow,
+    HexOverflow,
+    DoublePrefix,
+};
+
 class AstExprConstantNumber : public AstExpr
 {
 public:
     LUAU_RTTI(AstExprConstantNumber)
 
-    AstExprConstantNumber(const Location& location, double value);
+    AstExprConstantNumber(const Location& location, double value, ConstantNumberParseResult parseResult = ConstantNumberParseResult::Ok);
 
     void visit(AstVisitor* visitor) override;
 
     double value;
+    ConstantNumberParseResult parseResult;
 };
 
 class AstExprConstantString : public AstExpr

@@ -82,7 +82,7 @@ private:
 capturedoutput = ""
 
 function arraytostring(arr)
-    local strings = {} 
+    local strings = {}
     table.foreachi(arr, function(k,v) table.insert(strings, pptostring(v)) end )
     return "{" .. table.concat(strings, ", ") .. "}"
 end

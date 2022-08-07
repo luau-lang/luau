@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeInfer.h"
 
+#include "Luau/ApplyTypeFunction.h"
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Instantiation.h"
@@ -35,17 +36,13 @@ LUAU_FASTFLAGVARIABLE(LuauExpectedTableUnionIndexerType, false)
 LUAU_FASTFLAGVARIABLE(LuauIndexSilenceErrors, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
-LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix2, false)
-LUAU_FASTFLAGVARIABLE(LuauReduceUnionRecursion, false)
+LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix3, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
-LUAU_FASTFLAG(LuauNormalizeFlagIsConservative)
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false);
-LUAU_FASTFLAGVARIABLE(LuauAlwaysQuantify, false);
 LUAU_FASTFLAGVARIABLE(LuauReportErrorsOnIndexerKeyMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
 LUAU_FASTFLAGVARIABLE(LuauFalsyPredicateReturnsNilInstead, false)
-LUAU_FASTFLAGVARIABLE(LuauCheckLenMT, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckGenericHOFTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
@@ -1667,7 +1664,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
 
-                if (FFlag::LuauSelfCallAutocompleteFix2)
+                if (FFlag::LuauSelfCallAutocompleteFix3)
                     ftv->hasSelf = true;
             }
         }
@@ -2109,35 +2106,16 @@ std::vector<TypeId> TypeChecker::reduceUnion(const std::vector<TypeId>& types)
 
         if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
         {
-            if (FFlag::LuauReduceUnionRecursion)
+            for (TypeId ty : utv)
             {
-                for (TypeId ty : utv)
-                {
-                    if (FFlag::LuauNormalizeFlagIsConservative)
-                        ty = follow(ty);
-                    if (get<NeverTypeVar>(ty))
-                        continue;
-                    if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
-                        return {ty};
+                ty = follow(ty);
+                if (get<NeverTypeVar>(ty))
+                    continue;
+                if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
+                    return {ty};
 
-                    if (result.end() == std::find(result.begin(), result.end(), ty))
-                        result.push_back(ty);
-                }
-            }
-            else
-            {
-                std::vector<TypeId> r = reduceUnion(utv->options);
-                for (TypeId ty : r)
-                {
-                    ty = follow(ty);
-                    if (get<NeverTypeVar>(ty))
-                        continue;
-                    if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
-                        return {ty};
-
-                    if (std::find(result.begin(), result.end(), ty) == result.end())
-                        result.push_back(ty);
-                }
+                if (result.end() == std::find(result.begin(), result.end(), ty))
+                    result.push_back(ty);
             }
         }
         else if (std::find(result.begin(), result.end(), t) == result.end())
@@ -2465,7 +2443,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
         DenseHashSet<TypeId> seen{nullptr};
 
-        if (FFlag::LuauCheckLenMT && typeCouldHaveMetatable(operandType))
+        if (typeCouldHaveMetatable(operandType))
         {
             if (auto fnt = findMetatableEntry(operandType, "__len", expr.location, /* addErrors= */ true))
             {
@@ -3640,6 +3618,9 @@ void TypeChecker::checkFunctionBody(const ScopePtr& scope, TypeId ty, const AstE
                 reportError(getEndLocation(function), FunctionExitsWithoutReturning{funTy->retTypes});
             }
         }
+
+        if (!currentModule->astTypes.find(&function))
+            currentModule->astTypes[&function] = ty;
     }
     else
         ice("Checking non functional type");
@@ -4768,16 +4749,8 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
     {
         const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty);
 
-        if (FFlag::LuauAlwaysQuantify)
-        {
-            if (ftv)
-                Luau::quantify(ty, scope->level);
-        }
-        else
-        {
-            if (ftv && ftv->generics.empty() && ftv->genericPacks.empty())
-                Luau::quantify(ty, scope->level);
-        }
+        if (ftv)
+            Luau::quantify(ty, scope->level);
 
         if (FFlag::LuauLowerBoundsCalculation && ftv)
         {
@@ -5251,7 +5224,7 @@ TypeId TypeChecker::resolveTypeWorker(const ScopePtr& scope, const AstType& anno
         if (notEnoughParameters && hasDefaultParameters)
         {
             // 'applyTypeFunction' is used to substitute default types that reference previous generic types
-            ApplyTypeFunction applyTypeFunction{&currentModule->internalTypes, scope->level};
+            ApplyTypeFunction applyTypeFunction{&currentModule->internalTypes};
 
             for (size_t i = 0; i < typesProvided; ++i)
                 applyTypeFunction.typeArguments[tf->typeParams[i].ty] = typeParams[i];
@@ -5492,65 +5465,13 @@ TypePackId TypeChecker::resolveTypePack(const ScopePtr& scope, const AstTypePack
     return result;
 }
 
-bool ApplyTypeFunction::isDirty(TypeId ty)
-{
-    if (typeArguments.count(ty))
-        return true;
-    else if (const FreeTypeVar* ftv = get<FreeTypeVar>(ty))
-    {
-        if (ftv->forwardedTypeAlias)
-            encounteredForwardedType = true;
-        return false;
-    }
-    else
-        return false;
-}
-
-bool ApplyTypeFunction::isDirty(TypePackId tp)
-{
-    if (typePackArguments.count(tp))
-        return true;
-    else
-        return false;
-}
-
-bool ApplyTypeFunction::ignoreChildren(TypeId ty)
-{
-    if (get<GenericTypeVar>(ty))
-        return true;
-    else
-        return false;
-}
-
-bool ApplyTypeFunction::ignoreChildren(TypePackId tp)
-{
-    if (get<GenericTypePack>(tp))
-        return true;
-    else
-        return false;
-}
-
-TypeId ApplyTypeFunction::clean(TypeId ty)
-{
-    TypeId& arg = typeArguments[ty];
-    LUAU_ASSERT(arg);
-    return arg;
-}
-
-TypePackId ApplyTypeFunction::clean(TypePackId tp)
-{
-    TypePackId& arg = typePackArguments[tp];
-    LUAU_ASSERT(arg);
-    return arg;
-}
-
 TypeId TypeChecker::instantiateTypeFun(const ScopePtr& scope, const TypeFun& tf, const std::vector<TypeId>& typeParams,
     const std::vector<TypePackId>& typePackParams, const Location& location)
 {
     if (tf.typeParams.empty() && tf.typePackParams.empty())
         return tf.type;
 
-    ApplyTypeFunction applyTypeFunction{&currentModule->internalTypes, scope->level};
+    ApplyTypeFunction applyTypeFunction{&currentModule->internalTypes};
 
     for (size_t i = 0; i < tf.typeParams.size(); ++i)
         applyTypeFunction.typeArguments[tf.typeParams[i].ty] = typeParams[i];

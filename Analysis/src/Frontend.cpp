@@ -77,6 +77,58 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
     }
 }
 
+LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, const std::string& packageName)
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return Luau::loadDefinitionFile(typeChecker, typeChecker.globalScope, source, packageName);
+
+    LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
+
+    Luau::Allocator allocator;
+    Luau::AstNameTable names(allocator);
+
+    ParseOptions options;
+    options.allowDeclarationSyntax = true;
+
+    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
+
+    if (parseResult.errors.size() > 0)
+        return LoadDefinitionFileResult{false, parseResult, nullptr};
+
+    Luau::SourceModule module;
+    module.root = parseResult.root;
+    module.mode = Mode::Definition;
+
+    ModulePtr checkedModule = check(module, Mode::Definition, globalScope);
+
+    if (checkedModule->errors.size() > 0)
+        return LoadDefinitionFileResult{false, parseResult, checkedModule};
+
+    CloneState cloneState;
+
+    for (const auto& [name, ty] : checkedModule->declaredGlobals)
+    {
+        TypeId globalTy = clone(ty, globalTypes, cloneState);
+        std::string documentationSymbol = packageName + "/global/" + name;
+        generateDocumentationSymbols(globalTy, documentationSymbol);
+        globalScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
+
+        persist(globalTy);
+    }
+
+    for (const auto& [name, ty] : checkedModule->getModuleScope()->exportedTypeBindings)
+    {
+        TypeFun globalTy = clone(ty, globalTypes, cloneState);
+        std::string documentationSymbol = packageName + "/globaltype/" + name;
+        generateDocumentationSymbols(globalTy.type, documentationSymbol);
+        globalScope->exportedTypeBindings[name] = globalTy;
+
+        persist(globalTy.type);
+    }
+
+    return LoadDefinitionFileResult{true, parseResult, checkedModule};
+}
+
 LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
 {
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
@@ -770,35 +822,28 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-NotNull<Scope2> Frontend::getGlobalScope2()
+NotNull<Scope> Frontend::getGlobalScope()
 {
-    if (!globalScope2)
+    if (!globalScope)
     {
-        const SingletonTypes& singletonTypes = getSingletonTypes();
-
-        globalScope2 = std::make_unique<Scope2>();
-        globalScope2->typeBindings["nil"] = singletonTypes.nilType;
-        globalScope2->typeBindings["number"] = singletonTypes.numberType;
-        globalScope2->typeBindings["string"] = singletonTypes.stringType;
-        globalScope2->typeBindings["boolean"] = singletonTypes.booleanType;
-        globalScope2->typeBindings["thread"] = singletonTypes.threadType;
+        globalScope = typeChecker.globalScope;
     }
 
-    return NotNull(globalScope2.get());
+    return NotNull(globalScope.get());
 }
 
 ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope)
 {
     ModulePtr result = std::make_shared<Module>();
 
-    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope2()};
+    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
     ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope)};
     cs.run();
 
-    result->scope2s = std::move(cgb.scopes);
+    result->scopes = std::move(cgb.scopes);
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);

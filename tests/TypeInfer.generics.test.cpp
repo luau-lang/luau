@@ -10,6 +10,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauCheckGenericHOFTypes)
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
 
@@ -1003,7 +1004,10 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("<error-type>", toString(t0->type));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(t0->type));
+    else
+        CHECK_EQ("<error-type>", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -1182,10 +1186,6 @@ end)
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
-    };
-
     CheckResult result = check(R"(
         function foo<X>(f, x: X)
             return f(x)

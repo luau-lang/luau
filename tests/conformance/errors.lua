@@ -295,8 +295,9 @@ end
 
 
 -- testing syntax limits
+local syntaxdepth = if limitedstack then 200 else 1000
 local function testrep (init, rep)
-  local s = "local a; "..init .. string.rep(rep, 300)
+  local s = "local a; "..init .. string.rep(rep, syntaxdepth)
   local a,b = loadstring(s)
   assert(not a) -- and string.find(b, "syntax levels"))
 end
@@ -380,11 +381,19 @@ assert(ecall(function() return "a" + "b" end) == "attempt to perform arithmetic 
 assert(ecall(function() return 1 > nil end) == "attempt to compare nil < number") -- note reversed order (by design)
 assert(ecall(function() return "a" <= 5 end) == "attempt to compare string <= number")
 
-assert(ecall(function() local t = {} setmetatable(t, { __newindex = function(t,i,v) end }) t[nil] = 2 end) == "table index is nil")
+assert(ecall(function() local t = {} t[nil] = 2 end) == "table index is nil")
+assert(ecall(function() local t = {} t[0/0] = 2 end) == "table index is NaN")
 
 -- for loop type errors
 assert(ecall(function() for i='a',2 do end end) == "invalid 'for' initial value (number expected, got string)")
 assert(ecall(function() for i=1,'a' do end end) == "invalid 'for' limit (number expected, got string)")
 assert(ecall(function() for i=1,2,'a' do end end) == "invalid 'for' step (number expected, got string)")
+
+-- method call errors
+assert(ecall(function() ({}):foo() end) == "attempt to call missing method 'foo' of table")
+assert(ecall(function() (""):foo() end) == "attempt to call missing method 'foo' of string")
+assert(ecall(function() (42):foo() end) == "attempt to index number with 'foo'")
+assert(ecall(function() ({foo=42}):foo() end) == "attempt to call a number value")
+assert(ecall(function() local ud = newproxy(true) getmetatable(ud).__index = {} ud:foo() end) == "attempt to call missing method 'foo' of userdata")
 
 return('OK')

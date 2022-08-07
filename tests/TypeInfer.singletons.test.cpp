@@ -262,7 +262,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
     CheckResult result = check(R"(
         --!strict
-        local x: { ["<>"] : number } 
+        local x: { ["<>"] : number }
         x = { ["\n"] = 5 }
     )");
 

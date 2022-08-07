@@ -13,7 +13,6 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
-LUAU_FASTFLAGVARIABLE(LuauNormalizeFlagIsConservative, false);
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizationOfCyclicUnions, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
@@ -89,13 +88,7 @@ static bool areNormal_(const T& t, const std::unordered_set<void*>& seen, Intern
         if (count >= FInt::LuauNormalizeIterationLimit)
             ice.ice("Luau::areNormal hit iteration limit");
 
-        if (FFlag::LuauNormalizeFlagIsConservative)
-            return ty->normal;
-        else
-        {
-            // The follow is here because a bound type may not be normal, but the bound type is normal.
-            return ty->normal || follow(ty)->normal || seen.find(asMutable(ty)) != seen.end();
-        }
+        return ty->normal;
     };
 
     return std::all_of(begin(t), end(t), isNormal);

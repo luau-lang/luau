@@ -8,3 +8,6 @@
 /default.prof*
 /fuzz-*
 /luau
+/luau-tests
+/luau-analyze
+__pycache__

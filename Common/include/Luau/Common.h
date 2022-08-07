@@ -20,12 +20,6 @@
 #define LUAU_DEBUGBREAK() __builtin_trap()
 #endif
 
-
-
-
-
-
-
 namespace Luau
 {
 
@@ -67,16 +61,13 @@ struct FValue
     const char* name;
     FValue* next;
 
-    FValue(const char* name, T def, bool dynamic, void (*reg)(const char*, T*, bool) = nullptr)
+    FValue(const char* name, T def, bool dynamic)
         : value(def)
         , dynamic(dynamic)
         , name(name)
         , next(list)
     {
         list = this;
-
-        if (reg)
-            reg(name, &value, dynamic);
     }
 
     operator T() const
@@ -98,7 +89,7 @@ FValue<T>* FValue<T>::list = nullptr;
 #define LUAU_FASTFLAGVARIABLE(flag, def) \
     namespace FFlag \
     { \
-    Luau::FValue<bool> flag(#flag, def, false, nullptr); \
+    Luau::FValue<bool> flag(#flag, def, false); \
     }
 #define LUAU_FASTINT(flag) \
     namespace FInt \
@@ -108,7 +99,7 @@ FValue<T>* FValue<T>::list = nullptr;
 #define LUAU_FASTINTVARIABLE(flag, def) \
     namespace FInt \
     { \
-    Luau::FValue<int> flag(#flag, def, false, nullptr); \
+    Luau::FValue<int> flag(#flag, def, false); \
     }
 
 #define LUAU_DYNAMIC_FASTFLAG(flag) \
@@ -119,7 +110,7 @@ FValue<T>* FValue<T>::list = nullptr;
 #define LUAU_DYNAMIC_FASTFLAGVARIABLE(flag, def) \
     namespace DFFlag \
     { \
-    Luau::FValue<bool> flag(#flag, def, true, nullptr); \
+    Luau::FValue<bool> flag(#flag, def, true); \
     }
 #define LUAU_DYNAMIC_FASTINT(flag) \
     namespace DFInt \
@@ -129,5 +120,5 @@ FValue<T>* FValue<T>::list = nullptr;
 #define LUAU_DYNAMIC_FASTINTVARIABLE(flag, def) \
     namespace DFInt \
     { \
-    Luau::FValue<int> flag(#flag, def, true, nullptr); \
+    Luau::FValue<int> flag(#flag, def, true); \
     }

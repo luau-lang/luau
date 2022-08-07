@@ -258,7 +258,7 @@ std::optional<TypeId> Fixture::getType(const std::string& name)
     REQUIRE(module);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-        return linearSearchForBinding(module->getModuleScope2(), name.c_str());
+        return linearSearchForBinding(module->getModuleScope().get(), name.c_str());
     else
         return lookupName(module->getModuleScope(), name);
 }
@@ -410,7 +410,7 @@ void Fixture::validateErrors(const std::vector<Luau::TypeError>& errors)
 LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
 {
     unfreeze(typeChecker.globalTypes);
-    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, source, "@test");
+    LoadDefinitionFileResult result = frontend.loadDefinitionFile(source, "@test");
     freeze(typeChecker.globalTypes);
 
     REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
@@ -434,7 +434,7 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
 
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
-    , cgb(mainModuleName, &arena, NotNull(&ice), frontend.getGlobalScope2())
+    , cgb(mainModuleName, &arena, NotNull(&ice), frontend.getGlobalScope())
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;
@@ -479,17 +479,17 @@ std::optional<TypeId> lookupName(ScopePtr scope, const std::string& name)
         return std::nullopt;
 }
 
-std::optional<TypeId> linearSearchForBinding(Scope2* scope, const char* name)
+std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name)
 {
     while (scope)
     {
         for (const auto& [n, ty] : scope->bindings)
         {
             if (n.astName() == name)
-                return ty;
+                return ty.typeId;
         }
 
-        scope = scope->parent;
+        scope = scope->parent.get();
     }
 
     return std::nullopt;

@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
 
@@ -526,7 +527,10 @@ TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("<error-type>", toString(requireTypeAtPosition({3, 28})));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
+    else
+        CHECK_EQ("<error-type>", toString(requireTypeAtPosition({3, 28})));
 }
 
 TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")

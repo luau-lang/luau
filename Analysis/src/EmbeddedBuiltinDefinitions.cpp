@@ -2,7 +2,6 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAG(LuauCheckLenMT)
 
 namespace Luau
 {
@@ -123,6 +122,7 @@ declare function tonumber<T>(value: T, radix: number?): number?
 declare function rawequal<T1, T2>(a: T1, b: T2): boolean
 declare function rawget<K, V>(tab: {[K]: V}, k: K): V
 declare function rawset<K, V>(tab: {[K]: V}, k: K, v: V): {[K]: V}
+declare function rawlen<K, V>(obj: {[K]: V} | string): number
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 
@@ -205,10 +205,6 @@ std::string getBuiltinDefinitionSource()
 {
 
     std::string result = kBuiltinDefinitionLuaSrc;
-
-    // TODO: move this into kBuiltinDefinitionLuaSrc
-    if (FFlag::LuauCheckLenMT)
-        result += "declare function rawlen<K, V>(obj: {[K]: V} | string): number\n";
 
     if (FFlag::LuauUnknownAndNeverType)
         result += "declare function error<T>(message: T, level: number?): never\n";

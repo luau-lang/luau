@@ -82,9 +82,9 @@ static int db_info(lua_State* L)
 
         case 'f':
             if (L1 == L)
-                lua_pushvalue(L, -1 - results); /* function is right before results */
+                lua_pushvalue(L, -1 - results); // function is right before results
             else
-                lua_xmove(L1, L, 1); /* function is at top of L1 */
+                lua_xmove(L1, L, 1); // function is at top of L1
             results++;
             break;
 
@@ -130,15 +130,14 @@ static int db_traceback(lua_State* L)
 
         if (ar.currentline > 0)
         {
-            char line[32];
-#ifdef _MSC_VER
-            _itoa(ar.currentline, line, 10); // 5x faster than sprintf
-#else
-            sprintf(line, "%d", ar.currentline);
-#endif
+            char line[32]; // manual conversion for performance
+            char* lineend = line + sizeof(line);
+            char* lineptr = lineend;
+            for (unsigned int r = ar.currentline; r > 0; r /= 10)
+                *--lineptr = '0' + (r % 10);
 
             luaL_addchar(&buf, ':');
-            luaL_addstring(&buf, line);
+            luaL_addlstring(&buf, lineptr, lineend - lineptr);
         }
 
         if (ar.name)
