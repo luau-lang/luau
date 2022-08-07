@@ -3,7 +3,7 @@
 
 #include "Luau/Common.h"
 #include "Luau/Ast.h"
-#include "Luau/JsonEncoder.h"
+#include "Luau/AstJsonEncoder.h"
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
 

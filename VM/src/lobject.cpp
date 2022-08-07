@@ -48,7 +48,7 @@ int luaO_rawequalObj(const TValue* t1, const TValue* t2)
         case LUA_TVECTOR:
             return luai_veceq(vvalue(t1), vvalue(t2));
         case LUA_TBOOLEAN:
-            return bvalue(t1) == bvalue(t2); /* boolean true must be 1 !! */
+            return bvalue(t1) == bvalue(t2); // boolean true must be 1 !!
         case LUA_TLIGHTUSERDATA:
             return pvalue(t1) == pvalue(t2);
         default:
@@ -71,7 +71,7 @@ int luaO_rawequalKey(const TKey* t1, const TValue* t2)
         case LUA_TVECTOR:
             return luai_veceq(vvalue(t1), vvalue(t2));
         case LUA_TBOOLEAN:
-            return bvalue(t1) == bvalue(t2); /* boolean true must be 1 !! */
+            return bvalue(t1) == bvalue(t2); // boolean true must be 1 !!
         case LUA_TLIGHTUSERDATA:
             return pvalue(t1) == pvalue(t2);
         default:
@@ -85,15 +85,15 @@ int luaO_str2d(const char* s, double* result)
     char* endptr;
     *result = luai_str2num(s, &endptr);
     if (endptr == s)
-        return 0;                         /* conversion failed */
-    if (*endptr == 'x' || *endptr == 'X') /* maybe an hexadecimal constant? */
+        return 0;                         // conversion failed
+    if (*endptr == 'x' || *endptr == 'X') // maybe an hexadecimal constant?
         *result = cast_num(strtoul(s, &endptr, 16));
     if (*endptr == '\0')
-        return 1; /* most common case */
+        return 1; // most common case
     while (isspace(cast_to(unsigned char, *endptr)))
         endptr++;
     if (*endptr != '\0')
-        return 0; /* invalid trailing characters? */
+        return 0; // invalid trailing characters?
     return 1;
 }
 
@@ -121,7 +121,7 @@ void luaO_chunkid(char* out, const char* source, size_t bufflen)
 {
     if (*source == '=')
     {
-        source++; /* skip the `=' */
+        source++; // skip the `='
         size_t srclen = strlen(source);
         size_t dstlen = srclen < bufflen ? srclen : bufflen - 1;
         memcpy(out, source, dstlen);
@@ -130,26 +130,26 @@ void luaO_chunkid(char* out, const char* source, size_t bufflen)
     else if (*source == '@')
     {
         size_t l;
-        source++; /* skip the `@' */
+        source++; // skip the `@'
         bufflen -= sizeof("...");
         l = strlen(source);
         strcpy(out, "");
         if (l > bufflen)
         {
-            source += (l - bufflen); /* get last part of file name */
+            source += (l - bufflen); // get last part of file name
             strcat(out, "...");
         }
         strcat(out, source);
     }
     else
-    {                                         /* out = [string "string"] */
-        size_t len = strcspn(source, "\n\r"); /* stop at first newline */
+    {                                         // out = [string "string"]
+        size_t len = strcspn(source, "\n\r"); // stop at first newline
         bufflen -= sizeof("[string \"...\"]");
         if (len > bufflen)
             len = bufflen;
         strcpy(out, "[string \"");
         if (source[len] != '\0')
-        { /* must truncate? */
+        { // must truncate?
             strncat(out, source, len);
             strcat(out, "...");
         }

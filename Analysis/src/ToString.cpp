@@ -232,6 +232,11 @@ struct StringifierState
         emit(std::to_string(i).c_str());
     }
 
+    void emit(size_t i)
+    {
+        emit(std::to_string(i).c_str());
+    }
+
     void indent()
     {
         indentation += 4;
@@ -407,6 +412,13 @@ struct TypeVarStringifier
     {
         state.emit("*blocked-");
         state.emit(btv.index);
+        state.emit("*");
+    }
+
+    void operator()(TypeId ty, const PendingExpansionTypeVar& petv)
+    {
+        state.emit("*pending-expansion-");
+        state.emit(petv.index);
         state.emit("*");
     }
 
@@ -1458,6 +1470,12 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
             ToStringResult namedStr = toStringDetailed(c.namedType, opts);
             opts.nameMap = std::move(namedStr.nameMap);
             return "@name(" + namedStr.name + ") = " + c.name;
+        }
+        else if constexpr (std::is_same_v<T, TypeAliasExpansionConstraint>)
+        {
+            ToStringResult targetStr = toStringDetailed(c.target, opts);
+            opts.nameMap = std::move(targetStr.nameMap);
+            return "expand " + targetStr.name;
         }
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");

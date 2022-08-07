@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/JsonEncoder.h"
+#include "Luau/AstJsonEncoder.h"
 
 #include "Luau/Ast.h"
 #include "Luau/ParseResult.h"
@@ -773,7 +773,7 @@ struct AstJsonEncoder : public AstVisitor
             PROP(indexer);
         });
     }
-    
+
     void write(struct AstTableIndexer* indexer)
     {
         if (indexer)
@@ -1178,7 +1178,6 @@ struct AstJsonEncoder : public AstVisitor
             write("location", comment.location);
             popComma(c);
             writeRaw("}");
-            
         }
     }
 };

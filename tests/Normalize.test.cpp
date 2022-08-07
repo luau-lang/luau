@@ -680,26 +680,12 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
     CHECK_EQ("<a, b>((a) -> b, a) -> b", toString(requireType("apply")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
-{
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", false}};
-
-    check(R"(
-        type Fiber = {
-            return_: Fiber?
-        }
-
-        local f: Fiber
-    )");
-
-    TypeId t = requireType("f");
-    CHECK(t->normal);
-}
-
 // Unfortunately, getting this right in the general case is difficult.
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", true}};
+    ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
 
     check(R"(
         type Fiber = {
@@ -1081,7 +1067,6 @@ TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their
 {
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true},
     };
 
     CheckResult result = check(R"(

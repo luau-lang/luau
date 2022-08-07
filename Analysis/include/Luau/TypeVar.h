@@ -223,12 +223,16 @@ struct GenericTypeDefinition
 {
     TypeId ty;
     std::optional<TypeId> defaultValue;
+
+    bool operator==(const GenericTypeDefinition& rhs) const;
 };
 
 struct GenericTypePackDefinition
 {
     TypePackId tp;
     std::optional<TypePackId> defaultValue;
+
+    bool operator==(const GenericTypePackDefinition& rhs) const;
 };
 
 struct FunctionArgument
@@ -426,6 +430,12 @@ struct TypeFun
     TypeId type;
 
     TypeFun() = default;
+
+    explicit TypeFun(TypeId ty)
+        : type(ty)
+    {
+    }
+
     TypeFun(std::vector<GenericTypeDefinition> typeParams, TypeId type)
         : typeParams(std::move(typeParams))
         , type(type)
@@ -438,6 +448,27 @@ struct TypeFun
         , type(type)
     {
     }
+
+    bool operator==(const TypeFun& rhs) const;
+};
+
+/** Represents a pending type alias instantiation.
+ *
+ * In order to afford (co)recursive type aliases, we need to reason about a
+ * partially-complete instantiation. This requires encoding more information in
+ * a type variable than a BlockedTypeVar affords, hence this. Each
+ * PendingExpansionTypeVar has a corresponding TypeAliasExpansionConstraint
+ * enqueued in the solver to convert it to an actual instantiated type
+ */
+struct PendingExpansionTypeVar
+{
+    PendingExpansionTypeVar(TypeFun fn, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments);
+    TypeFun fn;
+    std::vector<TypeId> typeArguments;
+    std::vector<TypePackId> packArguments;
+    size_t index;
+
+    static size_t nextIndex;
 };
 
 // Anything!  All static checking is off.
@@ -470,8 +501,10 @@ struct NeverTypeVar
 
 using ErrorTypeVar = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, ConstrainedTypeVar, BlockedTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
-    MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar>;
+using TypeVariant =
+    Unifiable::Variant<TypeId, PrimitiveTypeVar, ConstrainedTypeVar, BlockedTypeVar, PendingExpansionTypeVar, SingletonTypeVar, FunctionTypeVar,
+        TableTypeVar, MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar>;
+
 
 struct TypeVar final
 {

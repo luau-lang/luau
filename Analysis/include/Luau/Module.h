@@ -68,7 +68,7 @@ struct Module
     std::shared_ptr<Allocator> allocator;
     std::shared_ptr<AstNameTable> names;
 
-    std::vector<std::pair<Location, ScopePtr>> scopes;                 // never empty
+    std::vector<std::pair<Location, ScopePtr>> scopes; // never empty
 
     DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
     DenseHashMap<const AstExpr*, TypePackId> astTypePacks{nullptr};

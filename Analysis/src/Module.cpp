@@ -15,7 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-LUAU_FASTFLAG(LuauNormalizeFlagIsConservative);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
 
@@ -140,20 +139,17 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
             {
                 normalize(tf.type, interfaceTypes, ice);
 
-                if (FFlag::LuauNormalizeFlagIsConservative)
+                // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
+                // won't be marked normal.  If the types aren't normal by now, they never will be.
+                forceNormal.traverse(tf.type);
+                for (GenericTypeDefinition param : tf.typeParams)
                 {
-                    // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
-                    // won't be marked normal.  If the types aren't normal by now, they never will be.
-                    forceNormal.traverse(tf.type);
-                    for (GenericTypeDefinition param : tf.typeParams)
-                    {
-                        forceNormal.traverse(param.ty);
+                    forceNormal.traverse(param.ty);
 
-                        if (param.defaultValue)
-                        {
-                            normalize(*param.defaultValue, interfaceTypes, ice);
-                            forceNormal.traverse(*param.defaultValue);
-                        }
+                    if (param.defaultValue)
+                    {
+                        normalize(*param.defaultValue, interfaceTypes, ice);
+                        forceNormal.traverse(*param.defaultValue);
                     }
                 }
             }

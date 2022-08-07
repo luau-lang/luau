@@ -2,45 +2,39 @@
 
 #include "Luau/ConstraintSolverLogger.h"
 
+#include "Luau/JsonEmitter.h"
+
 namespace Luau
 {
 
-static std::string dumpScopeAndChildren(const Scope* scope, ToStringOptions& opts)
+static void dumpScopeAndChildren(const Scope* scope, Json::JsonEmitter& emitter, ToStringOptions& opts)
 {
-    std::string output = "{\"bindings\":{";
+    emitter.writeRaw("{");
+    Json::write(emitter, "bindings");
+    emitter.writeRaw(":");
 
-    bool comma = false;
+    Json::ObjectEmitter o = emitter.writeObject();
+
     for (const auto& [name, binding] : scope->bindings)
     {
-        if (comma)
-            output += ",";
-
-        output += "\"";
-        output += name.c_str();
-        output += "\": \"";
-
         ToStringResult result = toStringDetailed(binding.typeId, opts);
         opts.nameMap = std::move(result.nameMap);
-        output += result.name;
-        output += "\"";
-
-        comma = true;
+        o.writePair(name.c_str(), result.name);
     }
 
-    output += "},\"children\":[";
-    comma = false;
+    o.finish();
+    emitter.writeRaw(",");
+    Json::write(emitter, "children");
+    emitter.writeRaw(":");
 
+    Json::ArrayEmitter a = emitter.writeArray();
     for (const Scope* child : scope->children)
     {
-        if (comma)
-            output += ",";
-
-        output += dumpScopeAndChildren(child, opts);
-        comma = true;
+        dumpScopeAndChildren(child, emitter, opts);
     }
 
-    output += "]}";
-    return output;
+    a.finish();
+    emitter.writeRaw("}");
 }
 
 static std::string dumpConstraintsToDot(std::vector<NotNull<const Constraint>>& constraints, ToStringOptions& opts)
@@ -80,51 +74,49 @@ static std::string dumpConstraintsToDot(std::vector<NotNull<const Constraint>>& 
 
 std::string ConstraintSolverLogger::compileOutput()
 {
-    std::string output = "[";
-    bool comma = false;
-
+    Json::JsonEmitter emitter;
+    emitter.writeRaw("[");
     for (const std::string& snapshot : snapshots)
     {
-        if (comma)
-            output += ",";
-        output += snapshot;
-
-        comma = true;
+        emitter.writeComma();
+        emitter.writeRaw(snapshot);
     }
 
-    output += "]";
-    return output;
+    emitter.writeRaw("]");
+    return emitter.str();
 }
 
 void ConstraintSolverLogger::captureBoundarySnapshot(const Scope* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
-    std::string snapshot = "{\"type\":\"boundary\",\"rootScope\":";
+    Json::JsonEmitter emitter;
+    Json::ObjectEmitter o = emitter.writeObject();
+    o.writePair("type", "boundary");
+    o.writePair("constraintGraph", dumpConstraintsToDot(unsolvedConstraints, opts));
+    emitter.writeComma();
+    Json::write(emitter, "rootScope");
+    emitter.writeRaw(":");
+    dumpScopeAndChildren(rootScope, emitter, opts);
+    o.finish();
 
-    snapshot += dumpScopeAndChildren(rootScope, opts);
-    snapshot += ",\"constraintGraph\":\"";
-    snapshot += dumpConstraintsToDot(unsolvedConstraints, opts);
-    snapshot += "\"}";
-
-    snapshots.push_back(std::move(snapshot));
+    snapshots.push_back(emitter.str());
 }
 
 void ConstraintSolverLogger::prepareStepSnapshot(
     const Scope* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
-    // LUAU_ASSERT(!preparedSnapshot);
+    Json::JsonEmitter emitter;
+    Json::ObjectEmitter o = emitter.writeObject();
+    o.writePair("type", "step");
+    o.writePair("constraintGraph", dumpConstraintsToDot(unsolvedConstraints, opts));
+    o.writePair("currentId", std::to_string(reinterpret_cast<size_t>(current.get())));
+    o.writePair("current", toString(*current, opts));
+    emitter.writeComma();
+    Json::write(emitter, "rootScope");
+    emitter.writeRaw(":");
+    dumpScopeAndChildren(rootScope, emitter, opts);
+    o.finish();
 
-    std::string snapshot = "{\"type\":\"step\",\"rootScope\":";
-
-    snapshot += dumpScopeAndChildren(rootScope, opts);
-    snapshot += ",\"constraintGraph\":\"";
-    snapshot += dumpConstraintsToDot(unsolvedConstraints, opts);
-    snapshot += "\",\"currentId\":\"";
-    snapshot += std::to_string(reinterpret_cast<size_t>(current.get()));
-    snapshot += "\",\"current\":\"";
-    snapshot += toString(*current, opts);
-    snapshot += "\"}";
-
-    preparedSnapshot = std::move(snapshot);
+    preparedSnapshot = emitter.str();
 }
 
 void ConstraintSolverLogger::commitPreparedStepSnapshot()

@@ -48,6 +48,7 @@ static const char* kWarningNames[] = {
     "DuplicateCondition",
     "MisleadingAndOr",
     "CommentDirective",
+    "IntegerParsing",
 };
 // clang-format on
 
@@ -1433,7 +1434,7 @@ private:
     const char* checkStringFormat(const char* data, size_t size)
     {
         const char* flags = "-+ #0";
-        const char* options = "cdiouxXeEfgGqs";
+        const char* options = "cdiouxXeEfgGqs*";
 
         for (size_t i = 0; i < size; ++i)
         {
@@ -2589,6 +2590,45 @@ private:
     }
 };
 
+class LintIntegerParsing : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintIntegerParsing pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    bool visit(AstExprConstantNumber* node) override
+    {
+        switch (node->parseResult)
+        {
+        case ConstantNumberParseResult::Ok:
+        case ConstantNumberParseResult::Malformed:
+            break;
+        case ConstantNumberParseResult::BinOverflow:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
+                "Binary number literal exceeded available precision and has been truncated to 2^64");
+            break;
+        case ConstantNumberParseResult::HexOverflow:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
+                "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+            break;
+        case ConstantNumberParseResult::DoublePrefix:
+            emitWarning(*context, LintWarning::Code_IntegerParsing, node->location,
+                "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
+            break;
+        }
+
+        return true;
+    }
+};
+
 static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, const ScopePtr& env)
 {
     ScopePtr current = env;
@@ -2809,6 +2849,9 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
 
     if (context.warningEnabled(LintWarning::Code_CommentDirective))
         lintComments(context, hotcomments);
+
+    if (context.warningEnabled(LintWarning::Code_IntegerParsing))
+        LintIntegerParsing::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 

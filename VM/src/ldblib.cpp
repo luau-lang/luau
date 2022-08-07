@@ -82,9 +82,9 @@ static int db_info(lua_State* L)
 
         case 'f':
             if (L1 == L)
-                lua_pushvalue(L, -1 - results); /* function is right before results */
+                lua_pushvalue(L, -1 - results); // function is right before results
             else
-                lua_xmove(L1, L, 1); /* function is at top of L1 */
+                lua_xmove(L1, L, 1); // function is at top of L1
             results++;
             break;
 

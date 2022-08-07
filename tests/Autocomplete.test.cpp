@@ -2047,7 +2047,7 @@ TEST_CASE_FIXTURE(ACFixture, "function_result_passed_to_function_has_parentheses
     check(R"(
 local function foo() return 1 end
 local function bar(a: number) return -a end
-local abc = bar(@1) 
+local abc = bar(@1)
     )");
 
     auto ac = autocomplete('1');

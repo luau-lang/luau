@@ -48,17 +48,17 @@ void luaS_resize(lua_State* L, int newsize)
     stringtable* tb = &L->global->strt;
     for (int i = 0; i < newsize; i++)
         newhash[i] = NULL;
-    /* rehash */
+    // rehash
     for (int i = 0; i < tb->size; i++)
     {
         TString* p = tb->hash[i];
         while (p)
-        {                            /* for each node in the list */
-            TString* next = p->next; /* save next */
+        {                            // for each node in the list
+            TString* next = p->next; // save next
             unsigned int h = p->hash;
-            int h1 = lmod(h, newsize); /* new position */
+            int h1 = lmod(h, newsize); // new position
             LUAU_ASSERT(cast_int(h % newsize) == lmod(h, newsize));
-            p->next = newhash[h1]; /* chain it */
+            p->next = newhash[h1]; // chain it
             newhash[h1] = p;
             p = next;
         }
@@ -81,15 +81,15 @@ static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
     ts->tt = LUA_TSTRING;
     ts->memcat = L->activememcat;
     memcpy(ts->data, str, l);
-    ts->data[l] = '\0'; /* ending 0 */
+    ts->data[l] = '\0'; // ending 0
     ts->atom = ATOM_UNDEF;
     tb = &L->global->strt;
     h = lmod(h, tb->size);
-    ts->next = tb->hash[h]; /* chain new entry */
+    ts->next = tb->hash[h]; // chain new entry
     tb->hash[h] = ts;
     tb->nuse++;
     if (tb->nuse > cast_to(uint32_t, tb->size) && tb->size <= INT_MAX / 2)
-        luaS_resize(L, tb->size * 2); /* too crowded */
+        luaS_resize(L, tb->size * 2); // too crowded
     return ts;
 }
 
@@ -181,13 +181,13 @@ TString* luaS_newlstr(lua_State* L, const char* str, size_t l)
     {
         if (el->len == l && (memcmp(str, getstr(el), l) == 0))
         {
-            /* string may be dead */
+            // string may be dead
             if (isdead(L->global, obj2gco(el)))
                 changewhite(obj2gco(el));
             return el;
         }
     }
-    return newlstr(L, str, l, h); /* not found */
+    return newlstr(L, str, l, h); // not found
 }
 
 static bool unlinkstr(lua_State* L, TString* ts)

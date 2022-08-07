@@ -94,6 +94,65 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "mismatched_generic_type_param")
+{
+    CheckResult result = check(R"(
+        type T<A> = (A...) -> ()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) ==
+          "Generic type 'A' is used as a variadic type parameter; consider changing 'A' to 'A...' in the generic argument list");
+    CHECK(result.errors[0].location == Location{{1, 21}, {1, 25}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "mismatched_generic_pack_type_param")
+{
+    CheckResult result = check(R"(
+        type T<A...> = (A) -> ()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) ==
+          "Variadic type parameter 'A...' is used as a regular generic type; consider changing 'A...' to 'A' in the generic argument list");
+    CHECK(result.errors[0].location == Location{{1, 24}, {1, 25}});
+}
+
+TEST_CASE_FIXTURE(Fixture, "default_type_parameter")
+{
+    CheckResult result = check(R"(
+        type T<A = number, B = string> = { a: A, b: B }
+        local x: T<string> = { a = "foo", b = "bar" }
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("x")) == "T<string, string>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "default_pack_parameter")
+{
+    CheckResult result = check(R"(
+        type T<A... = (number, string)> = { fn: (A...) -> () }
+        local x: T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("x")) == "T<number, string>");
+}
+
+TEST_CASE_FIXTURE(Fixture, "saturate_to_first_type_pack")
+{
+    CheckResult result = check(R"(
+        type T<A, B, C...> = { fn: (A, B) -> C... }
+        local x: T<string, number, string, boolean>
+        local f = x.fn
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("x")) == "T<string, number, string, boolean>");
+    CHECK(toString(requireType("f")) == "(string, number) -> (string, boolean)");
+}
+
 TEST_CASE_FIXTURE(Fixture, "cyclic_types_of_named_table_fields_do_not_expand_when_stringified")
 {
     CheckResult result = check(R"(
@@ -124,6 +183,40 @@ TEST_CASE_FIXTURE(Fixture, "mutually_recursive_aliases")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "generic_aliases")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        type T<a> = { v: a }
+        local x: T<number> = { v = 123 }
+        local y: T<string> = { v = "foo" }
+        local bad: T<number> = { v = "foo" }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(result.errors[0].location == Location{{4, 31}, {4, 44}});
+    CHECK(toString(result.errors[0]) == "Type '{ v: string }' could not be converted into 'T<number>'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
+{
+    ScopedFastFlag sff_DebugLuauDeferredConstraintResolution{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        type T<a> = { v: a }
+        type U<a> = { t: T<a> }
+        local x: U<number> = { t = { v = 123 } }
+        local bad: U<number> = { t = { v = "foo" } }
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
+    CHECK(toString(result.errors[0]) == "Type '{ t: { v: string } }' could not be converted into 'U<number>'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "mutually_recursive_generic_aliases")
@@ -360,6 +453,7 @@ TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     auto e = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(e != nullptr);
     CHECK_EQ("Node<T>?", toString(e->givenType));
     CHECK_EQ("Node<T>", toString(e->wantedType));
 }

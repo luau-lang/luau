@@ -11,7 +11,7 @@
 
 typedef LUAI_USER_ALIGNMENT_T L_Umaxalign;
 
-/* internal assertions for in-house debugging */
+// internal assertions for in-house debugging
 #define check_exp(c, e) (LUAU_ASSERT(c), (e))
 #define api_check(l, e) LUAU_ASSERT(e)
 

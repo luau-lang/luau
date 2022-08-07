@@ -72,7 +72,7 @@ LUALIB_API const char* luaL_typename(lua_State* L, int idx);
 
 #define luaL_opt(L, f, n, d) (lua_isnoneornil(L, (n)) ? (d) : f(L, (n)))
 
-/* generic buffer manipulation */
+// generic buffer manipulation
 
 struct luaL_Buffer
 {
@@ -102,7 +102,7 @@ LUALIB_API void luaL_addvalue(luaL_Buffer* B);
 LUALIB_API void luaL_pushresult(luaL_Buffer* B);
 LUALIB_API void luaL_pushresultsize(luaL_Buffer* B, size_t size);
 
-/* builtin libraries */
+// builtin libraries
 LUALIB_API int luaopen_base(lua_State* L);
 
 #define LUA_COLIBNAME "coroutine"
@@ -129,9 +129,9 @@ LUALIB_API int luaopen_math(lua_State* L);
 #define LUA_DBLIBNAME "debug"
 LUALIB_API int luaopen_debug(lua_State* L);
 
-/* open all builtin libraries */
+// open all builtin libraries
 LUALIB_API void luaL_openlibs(lua_State* L);
 
-/* sandbox libraries and globals */
+// sandbox libraries and globals
 LUALIB_API void luaL_sandbox(lua_State* L);
 LUALIB_API void luaL_sandboxthread(lua_State* L);

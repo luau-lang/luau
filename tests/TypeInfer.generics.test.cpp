@@ -1186,10 +1186,6 @@ end)
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
-    };
-
     CheckResult result = check(R"(
         function foo<X>(f, x: X)
             return f(x)

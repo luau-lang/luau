@@ -55,6 +55,7 @@ ifneq ($(opt),)
 endif
 
 OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(CODEGEN_OBJECTS) $(VM_OBJECTS) $(ISOCLINE_OBJECTS) $(TESTS_OBJECTS) $(CLI_OBJECTS) $(FUZZ_OBJECTS)
+EXECUTABLE_ALIASES = luau luau-analyze luau-tests
 
 # common flags
 CXXFLAGS=-g -Wall
@@ -121,14 +122,14 @@ fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libp
 
 all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET) aliases
 
-aliases: luau luau-analyze
+aliases: $(EXECUTABLE_ALIASES)
 
 test: $(TESTS_TARGET)
 	$(TESTS_TARGET) $(TESTS_ARGS)
 
 clean:
 	rm -rf $(BUILD)
-	rm -rf luau luau-analyze
+	rm -rf $(EXECUTABLE_ALIASES)
 
 coverage: $(TESTS_TARGET)
 	$(TESTS_TARGET) --fflags=true
@@ -152,6 +153,9 @@ luau: $(REPL_CLI_TARGET)
 	ln -fs $^ $@
 
 luau-analyze: $(ANALYZE_CLI_TARGET)
+	ln -fs $^ $@
+
+luau-tests: $(TESTS_TARGET)
 	ln -fs $^ $@
 
 # executable targets
