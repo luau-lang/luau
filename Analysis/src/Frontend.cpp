@@ -134,6 +134,36 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
     return LoadDefinitionFileResult{true, parseResult, checkedModule};
 }
 
+LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
+{
+    LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
+
+    Luau::Allocator allocator;
+    Luau::AstNameTable names(allocator);
+
+    ParseOptions options;
+    options.allowDeclarationSyntax = true;
+
+    Luau::ParseResult parseResult = Luau::Parser::parse(source.data(), source.size(), names, allocator, options);
+
+    if (parseResult.errors.size() > 0)
+        return LoadDefinitionFileResult{false, parseResult, nullptr};
+
+    Luau::SourceModule module;
+    module.root = parseResult.root;
+    module.mode = Mode::Definition;
+
+    ModulePtr checkedModule = typeChecker.check(module, Mode::Definition);
+
+    if (checkedModule->errors.size() > 0)
+        return LoadDefinitionFileResult{false, parseResult, checkedModule};
+
+    loadModuleIntoScope(typeChecker, checkedModule, targetScope, packageName);
+
+    return LoadDefinitionFileResult{true, parseResult, checkedModule};
+}
+
+
 std::vector<std::string_view> parsePathExpr(const AstExpr& pathExpr)
 {
     const AstExprIndexName* indexName = pathExpr.as<AstExprIndexName>();
