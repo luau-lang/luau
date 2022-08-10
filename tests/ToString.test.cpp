@@ -10,6 +10,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -62,7 +63,6 @@ TEST_CASE_FIXTURE(Fixture, "named_table")
 
 TEST_CASE_FIXTURE(Fixture, "empty_table")
 {
-    ScopedFastFlag LuauToStringTableBracesNewlines("LuauToStringTableBracesNewlines", true);
     CheckResult result = check(R"(
         local a: {}
     )");
@@ -77,7 +77,6 @@ TEST_CASE_FIXTURE(Fixture, "empty_table")
 
 TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 {
-    ScopedFastFlag LuauToStringTableBracesNewlines("LuauToStringTableBracesNewlines", true);
     CheckResult result = check(R"(
         local a: { prop: string, anotherProp: number, thirdProp: boolean }
     )");
@@ -94,6 +93,37 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
              "|}",
         toString(requireType("a"), opts));
     //clang-format on
+}
+
+TEST_CASE_FIXTURE(Fixture, "metatable")
+{
+    TypeVar table{TypeVariant(TableTypeVar())};
+    TypeVar metatable{TypeVariant(TableTypeVar())};
+    TypeVar mtv{TypeVariant(MetatableTypeVar{&table, &metatable})};
+    CHECK_EQ("{ @metatable {  }, {  } }", toString(&mtv));
+}
+
+TEST_CASE_FIXTURE(Fixture, "named_metatable")
+{
+    TypeVar table{TypeVariant(TableTypeVar())};
+    TypeVar metatable{TypeVariant(TableTypeVar())};
+    TypeVar mtv{TypeVariant(MetatableTypeVar{&table, &metatable, "NamedMetatable"})};
+    CHECK_EQ("NamedMetatable", toString(&mtv));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "named_metatable_toStringNamedFunction")
+{
+    CheckResult result = check(R"(
+        local function createTbl(): NamedMetatable
+            return setmetatable({}, {})
+        end
+        type NamedMetatable = typeof(createTbl())
+    )");
+
+    TypeId ty = requireType("createTbl");
+    const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(ty));
+    REQUIRE(ftv);
+    CHECK_EQ("createTbl(): NamedMetatable", toStringNamedFunction("createTbl", *ftv));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "exhaustive_toString_of_cyclic_table")
@@ -238,8 +268,16 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
     o.maxTypeLength = 40;
     CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
     CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-    CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
+    if (FFlag::LuauSpecialTypesAsterisked)
+    {
+        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    }
+    else
+    {
+        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
+        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
@@ -257,8 +295,16 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
     o.maxTypeLength = 40;
     CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
     CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-    CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
+    if (FFlag::LuauSpecialTypesAsterisked)
+    {
+        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    }
+    else
+    {
+        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
+        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
@@ -468,7 +514,10 @@ local function target(callback: nil) return callback(4, "hello") end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("(nil) -> (*unknown*)", toString(requireType("target")));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("(nil) -> (*error-type*)", toString(requireType("target")));
+    else
+        CHECK_EQ("(nil) -> (<error-type>)", toString(requireType("target")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")
@@ -676,10 +725,6 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_overrides_param_names")
 
 TEST_CASE_FIXTURE(Fixture, "pick_distinct_names_for_mixed_explicit_and_implicit_generics")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
-    };
-
     CheckResult result = check(R"(
         function foo<a>(x: a, y) end
     )");

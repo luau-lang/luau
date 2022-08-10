@@ -1658,4 +1658,53 @@ end
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
 }
 
+TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")
+{
+    LintResult result = lint(R"(
+--!optimize
+--!optimize   
+--!optimize me
+--!optimize 100500
+--!optimize 2
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 4);
+    CHECK_EQ(result.warnings[0].text, "optimize directive requires an optimization level");
+    CHECK_EQ(result.warnings[1].text, "optimize directive requires an optimization level");
+    CHECK_EQ(result.warnings[2].text, "optimize directive uses unknown optimization level 'me', 0..2 expected");
+    CHECK_EQ(result.warnings[3].text, "optimize directive uses unknown optimization level '100500', 0..2 expected");
+}
+
+TEST_CASE_FIXTURE(Fixture, "LintIntegerParsing")
+{
+    ScopedFastFlag luauLintParseIntegerIssues{"LuauLintParseIntegerIssues", true};
+
+    LintResult result = lint(R"(
+local _ = 0b10000000000000000000000000000000000000000000000000000000000000000
+local _ = 0x10000000000000000
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 2);
+    CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and has been truncated to 2^64");
+    CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
+}
+
+// TODO: remove with FFlagLuauErrorDoubleHexPrefix
+TEST_CASE_FIXTURE(Fixture, "LintIntegerParsingDoublePrefix")
+{
+    ScopedFastFlag luauLintParseIntegerIssues{"LuauLintParseIntegerIssues", true};
+    ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", false}; // Lint will be available until we start rejecting code
+
+    LintResult result = lint(R"(
+local _ = 0x0x123
+local _ = 0x0xffffffffffffffffffffffffffffffffff
+)");
+
+    REQUIRE_EQ(result.warnings.size(), 2);
+    CHECK_EQ(result.warnings[0].text,
+        "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
+    CHECK_EQ(result.warnings[1].text,
+        "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
+}
+
 TEST_SUITE_END();

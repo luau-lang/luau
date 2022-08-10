@@ -51,10 +51,16 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
         L->top++; \
     }
 
+#define updateatom(L, ts) \
+    { \
+        if (ts->atom == ATOM_UNDEF) \
+            ts->atom = L->global->cb.useratom ? L->global->cb.useratom(ts->data, ts->len) : -1; \
+    }
+
 static Table* getcurrenv(lua_State* L)
 {
-    if (L->ci == L->base_ci) /* no enclosing function? */
-        return L->gt;        /* use global table as environment */
+    if (L->ci == L->base_ci) // no enclosing function?
+        return L->gt;        // use global table as environment
     else
         return curr_func(L)->env;
 }
@@ -63,7 +69,7 @@ static LUAU_NOINLINE TValue* pseudo2addr(lua_State* L, int idx)
 {
     api_check(L, lua_ispseudo(idx));
     switch (idx)
-    { /* pseudo-indices */
+    { // pseudo-indices
     case LUA_REGISTRYINDEX:
         return registry(L);
     case LUA_ENVIRONINDEX:
@@ -123,7 +129,7 @@ int lua_checkstack(lua_State* L, int size)
 {
     int res = 1;
     if (size > LUAI_MAXCSTACK || (L->top - L->base + size) > LUAI_MAXCSTACK)
-        res = 0; /* stack overflow */
+        res = 0; // stack overflow
     else if (size > 0)
     {
         luaD_checkstack(L, size);
@@ -213,7 +219,7 @@ void lua_settop(lua_State* L, int idx)
     else
     {
         api_check(L, -(idx + 1) <= (L->top - L->base));
-        L->top += idx + 1; /* `subtract' index (index is negative) */
+        L->top += idx + 1; // `subtract' index (index is negative)
     }
     return;
 }
@@ -261,7 +267,7 @@ void lua_replace(lua_State* L, int idx)
     else
     {
         setobj(L, o, L->top - 1);
-        if (idx < LUA_GLOBALSINDEX) /* function upvalue? */
+        if (idx < LUA_GLOBALSINDEX) // function upvalue?
             luaC_barrier(L, curr_func(L), L->top - 1);
     }
     L->top--;
@@ -423,13 +429,13 @@ const char* lua_tolstring(lua_State* L, int idx, size_t* len)
     {
         luaC_checkthreadsleep(L);
         if (!luaV_tostring(L, o))
-        { /* conversion failed? */
+        { // conversion failed?
             if (len != NULL)
                 *len = 0;
             return NULL;
         }
         luaC_checkGC(L);
-        o = index2addr(L, idx); /* previous call may reallocate the stack */
+        o = index2addr(L, idx); // previous call may reallocate the stack
     }
     if (len != NULL)
         *len = tsvalue(o)->len;
@@ -441,19 +447,25 @@ const char* lua_tostringatom(lua_State* L, int idx, int* atom)
     StkId o = index2addr(L, idx);
     if (!ttisstring(o))
         return NULL;
-    const TString* s = tsvalue(o);
+    TString* s = tsvalue(o);
     if (atom)
+    {
+        updateatom(L, s);
         *atom = s->atom;
+    }
     return getstr(s);
 }
 
 const char* lua_namecallatom(lua_State* L, int* atom)
 {
-    const TString* s = L->namecall;
+    TString* s = L->namecall;
     if (!s)
         return NULL;
     if (atom)
+    {
+        updateatom(L, s);
         *atom = s->atom;
+    }
     return getstr(s);
 }
 
@@ -648,7 +660,7 @@ void lua_pushcclosurek(lua_State* L, lua_CFunction fn, const char* debugname, in
 
 void lua_pushboolean(lua_State* L, int b)
 {
-    setbvalue(L->top, (b != 0)); /* ensure that true is 1 */
+    setbvalue(L->top, (b != 0)); // ensure that true is 1
     api_incr_top(L);
     return;
 }
@@ -817,7 +829,7 @@ void lua_settable(lua_State* L, int idx)
     StkId t = index2addr(L, idx);
     api_checkvalidindex(L, t);
     luaV_settable(L, t, L->top - 2, L->top - 1);
-    L->top -= 2; /* pop index and value */
+    L->top -= 2; // pop index and value
     return;
 }
 
@@ -839,7 +851,7 @@ void lua_rawset(lua_State* L, int idx)
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     if (hvalue(t)->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
     setobj2t(L, luaH_set(L, hvalue(t), L->top - 2), L->top - 1);
     luaC_barriert(L, hvalue(t), L->top - 1);
     L->top -= 2;
@@ -852,7 +864,7 @@ void lua_rawseti(lua_State* L, int idx, int n)
     StkId o = index2addr(L, idx);
     api_check(L, ttistable(o));
     if (hvalue(o)->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
     setobj2t(L, luaH_setnum(L, hvalue(o), n), L->top - 1);
     luaC_barriert(L, hvalue(o), L->top - 1);
     L->top--;
@@ -875,7 +887,7 @@ int lua_setmetatable(lua_State* L, int objindex)
     case LUA_TTABLE:
     {
         if (hvalue(obj)->readonly)
-            luaG_runerror(L, "Attempt to modify a readonly table");
+            luaG_readonlyerror(L);
         hvalue(obj)->metatable = mt;
         if (mt)
             luaC_objbarrier(L, hvalue(obj), mt);
@@ -955,7 +967,7 @@ void lua_call(lua_State* L, int nargs, int nresults)
 ** Execute a protected call.
 */
 struct CallS
-{ /* data to `f_call' */
+{ // data to `f_call'
     StkId func;
     int nresults;
 };
@@ -980,7 +992,7 @@ int lua_pcall(lua_State* L, int nargs, int nresults, int errfunc)
         func = savestack(L, o);
     }
     struct CallS c;
-    c.func = L->top - (nargs + 1); /* function to be called */
+    c.func = L->top - (nargs + 1); // function to be called
     c.nresults = nresults;
 
     int status = luaD_pcall(L, f_call, &c, savestack(L, c.func), func);
@@ -1032,7 +1044,7 @@ int lua_gc(lua_State* L, int what, int data)
     }
     case LUA_GCCOUNT:
     {
-        /* GC values are expressed in Kbytes: #bytes/2^10 */
+        // GC values are expressed in Kbytes: #bytes/2^10
         res = cast_int(g->totalbytes >> 10);
         break;
     }
@@ -1072,8 +1084,8 @@ int lua_gc(lua_State* L, int what, int data)
             actualwork += stepsize;
 
             if (g->gcstate == GCSpause)
-            {            /* end of cycle? */
-                res = 1; /* signal it */
+            {            // end of cycle?
+                res = 1; // signal it
                 break;
             }
         }
@@ -1125,13 +1137,13 @@ int lua_gc(lua_State* L, int what, int data)
     }
     case LUA_GCSETSTEPSIZE:
     {
-        /* GC values are expressed in Kbytes: #bytes/2^10 */
+        // GC values are expressed in Kbytes: #bytes/2^10
         res = g->gcstepsize >> 10;
         g->gcstepsize = data << 10;
         break;
     }
     default:
-        res = -1; /* invalid option */
+        res = -1; // invalid option
     }
     return res;
 }
@@ -1157,8 +1169,8 @@ int lua_next(lua_State* L, int idx)
     {
         api_incr_top(L);
     }
-    else             /* no more elements */
-        L->top -= 1; /* remove key */
+    else             // no more elements
+        L->top -= 1; // remove key
     return more;
 }
 
@@ -1173,12 +1185,12 @@ void lua_concat(lua_State* L, int n)
         L->top -= (n - 1);
     }
     else if (n == 0)
-    { /* push empty string */
+    { // push empty string
         luaC_checkthreadsleep(L);
         setsvalue2s(L, L->top, luaS_newlstr(L, "", 0));
         api_incr_top(L);
     }
-    /* else n == 1; nothing to do */
+    // else n == 1; nothing to do
     return;
 }
 
@@ -1265,7 +1277,7 @@ uintptr_t lua_encodepointer(lua_State* L, uintptr_t p)
 
 int lua_ref(lua_State* L, int idx)
 {
-    api_check(L, idx != LUA_REGISTRYINDEX); /* idx is a stack index for value */
+    api_check(L, idx != LUA_REGISTRYINDEX); // idx is a stack index for value
     int ref = LUA_REFNIL;
     global_State* g = L->global;
     StkId p = index2addr(L, idx);
@@ -1274,13 +1286,13 @@ int lua_ref(lua_State* L, int idx)
         Table* reg = hvalue(registry(L));
 
         if (g->registryfree != 0)
-        { /* reuse existing slot */
+        { // reuse existing slot
             ref = g->registryfree;
         }
         else
-        { /* no free elements */
+        { // no free elements
             ref = luaH_getn(reg);
-            ref++; /* create new reference */
+            ref++; // create new reference
         }
 
         TValue* slot = luaH_setnum(L, reg, ref);
@@ -1300,9 +1312,17 @@ void lua_unref(lua_State* L, int ref)
     global_State* g = L->global;
     Table* reg = hvalue(registry(L));
     TValue* slot = luaH_setnum(L, reg, ref);
-    setnvalue(slot, g->registryfree); /* NB: no barrier needed because value isn't collectable */
+    setnvalue(slot, g->registryfree); // NB: no barrier needed because value isn't collectable
     g->registryfree = ref;
     return;
+}
+
+void lua_setuserdatatag(lua_State* L, int idx, int tag)
+{
+    api_check(L, unsigned(tag) < LUA_UTAG_LIMIT);
+    StkId o = index2addr(L, idx);
+    api_check(L, ttisuserdata(o));
+    uvalue(o)->tag = uint8_t(tag);
 }
 
 void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*))

@@ -621,7 +621,6 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauReturnTypeInferenceInNonstrict", true},
     };
 
     check(R"(
@@ -642,7 +641,7 @@ TEST_CASE_FIXTURE(Fixture, "normalize_module_return_type")
         end
     )");
 
-    CHECK_EQ("(any, any) -> (any, any) -> any", toString(getMainModule()->getModuleScope()->returnType));
+    CHECK_EQ("(any, any) -> (...any)", toString(getMainModule()->getModuleScope()->returnType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "return_type_is_not_a_constrained_intersection")
@@ -681,26 +680,12 @@ TEST_CASE_FIXTURE(Fixture, "higher_order_function_with_annotation")
     CHECK_EQ("<a, b>((a) -> b, a) -> b", toString(requireType("apply")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_marked_normal")
-{
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", false}};
-
-    check(R"(
-        type Fiber = {
-            return_: Fiber?
-        }
-
-        local f: Fiber
-    )");
-
-    TypeId t = requireType("f");
-    CHECK(t->normal);
-}
-
 // Unfortunately, getting this right in the general case is difficult.
 TEST_CASE_FIXTURE(Fixture, "cyclic_table_is_not_marked_normal")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", true}, {"LuauNormalizeFlagIsConservative", true}};
+    ScopedFastFlag flags[] = {
+        {"LuauLowerBoundsCalculation", true},
+    };
 
     check(R"(
         type Fiber = {
@@ -754,6 +739,65 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_table_normalizes_sensibly")
 
     TypeId ty = requireType("Cyclic");
     CHECK_EQ("t1 where t1 = { get: () -> t1 }", toString(ty, {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cyclic_union")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauFixNormalizationOfCyclicUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {T?}?
+
+        local a: T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("t1? where t1 = {t1?}" == toString(requireType("a")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "cyclic_intersection")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauFixNormalizationOfCyclicUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        type T = {T & {}}
+
+        local a: T
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // FIXME: We are not properly normalizing this type, but we are at least not improperly discarding information
+    CHECK("t1 where t1 = {{t1 & {|  |}}}" == toString(requireType("a"), {true}));
+}
+
+TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_indexers")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauLowerBoundsCalculation", true},
+        {"LuauFixNormalizationOfCyclicUnions", true},
+    };
+
+    CheckResult result = check(R"(
+        type A = {number}
+        type B = {string}
+
+        type C = A & B
+
+        local a: C
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // FIXME: We are not properly normalizing this type, but we are at least not improperly discarding information
+    CHECK("{number & string}" == toString(requireType("a"), {true}));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_distinct_free_types")
@@ -1023,7 +1067,6 @@ TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their
 {
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
-        {"LuauNormalizeFlagIsConservative", true},
     };
 
     CheckResult result = check(R"(
@@ -1055,13 +1098,51 @@ export type t1 = { a: typeof(string.byte) }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_combine_on_bound_self")
 {
-    ScopedFastFlag luauNormalizeCombineEqFix{"LuauNormalizeCombineEqFix", true};
-
     CheckResult result = check(R"(
 export type t0 = (((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))&(((any)&({_:l0.t0,n0:t0,_G:any,}))&({_:any,}))
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "normalize_unions_containing_never")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type Foo = string | never
+        local foo: Foo
+    )");
+
+    CHECK_EQ("string", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "normalize_unions_containing_unknown")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type Foo = string | unknown
+        local foo: Foo
+    )");
+
+    CHECK_EQ("unknown", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "any_wins_the_battle_over_unknown_in_unions")
+{
+    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
+
+    CheckResult result = check(R"(
+        type Foo = unknown | any
+        local foo: Foo
+
+        type Bar = any | unknown
+        local bar: Bar
+    )");
+
+    CHECK_EQ("any", toString(requireType("foo")));
+    CHECK_EQ("any", toString(requireType("bar")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_does_not_convert_ever")

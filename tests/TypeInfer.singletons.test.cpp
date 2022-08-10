@@ -262,7 +262,7 @@ TEST_CASE_FIXTURE(Fixture, "table_properties_type_error_escapes")
 {
     CheckResult result = check(R"(
         --!strict
-        local x: { ["<>"] : number } 
+        local x: { ["<>"] : number }
         x = { ["\n"] = 5 }
     )");
 
@@ -474,6 +474,23 @@ TEST_CASE_FIXTURE(Fixture, "taking_the_length_of_union_of_string_singleton")
     LUAU_REQUIRE_NO_ERRORS(result);
 
     CHECK_EQ(R"("bye" | "hi")", toString(requireTypeAtPosition({3, 23})));
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_widening_from_callsites")
+{
+    ScopedFastFlag sff{"LuauReturnsFromCallsitesAreNotWidened", true};
+
+    CheckResult result = check(R"(
+        type Direction = "North" | "East" | "West" | "South"
+
+        local function direction(): Direction
+            return "North"
+        end
+
+        local d: Direction = direction()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

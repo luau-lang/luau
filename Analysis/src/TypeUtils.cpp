@@ -24,7 +24,7 @@ std::optional<TypeId> findMetatableEntry(ErrorVec& errors, TypeId type, std::str
     const TableTypeVar* mtt = getTableType(unwrapped);
     if (!mtt)
     {
-        errors.push_back(TypeError{location, GenericError{"Metatable was not a table."}});
+        errors.push_back(TypeError{location, GenericError{"Metatable was not a table"}});
         return std::nullopt;
     }
 

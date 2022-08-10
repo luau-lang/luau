@@ -15,14 +15,14 @@ LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
 LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
-LUAU_FASTFLAGVARIABLE(LuauReturnTypeTokenConfusion, false)
 
 LUAU_FASTFLAGVARIABLE(LuauFixNamedFunctionParse, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseWrongNamedType, false)
 
 bool lua_telemetry_parsed_named_non_function_type = false;
 
-LUAU_FASTFLAGVARIABLE(LuauErrorParseIntegerIssues, false)
+LUAU_FASTFLAGVARIABLE(LuauErrorDoubleHexPrefix, false)
+LUAU_FASTFLAGVARIABLE(LuauLintParseIntegerIssues, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
@@ -1134,10 +1134,9 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
 
 std::optional<AstTypeList> Parser::parseOptionalReturnTypeAnnotation()
 {
-    if (options.allowTypeAnnotations &&
-        (lexer.current().type == ':' || (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)))
+    if (options.allowTypeAnnotations && (lexer.current().type == ':' || lexer.current().type == Lexeme::SkinnyArrow))
     {
-        if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == Lexeme::SkinnyArrow)
+        if (lexer.current().type == Lexeme::SkinnyArrow)
             report(lexer.current().location, "Function return type annotations are written after ':' instead of '->'");
 
         nextLexeme();
@@ -1373,12 +1372,10 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
     if (FFlag::LuauFixNamedFunctionParse && !names.empty())
         forceFunctionType = true;
 
-    bool returnTypeIntroducer =
-        FFlag::LuauReturnTypeTokenConfusion ? lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':' : false;
+    bool returnTypeIntroducer = lexer.current().type == Lexeme::SkinnyArrow || lexer.current().type == ':';
 
     // Not a function at all. Just a parenthesized type. Or maybe a type pack with a single element
-    if (params.size() == 1 && !varargAnnotation && !forceFunctionType &&
-        (FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow))
+    if (params.size() == 1 && !varargAnnotation && !forceFunctionType && !returnTypeIntroducer)
     {
         if (DFFlag::LuaReportParseWrongNamedType && !names.empty())
             lua_telemetry_parsed_named_non_function_type = true;
@@ -1389,8 +1386,7 @@ AstTypeOrPack Parser::parseFunctionTypeAnnotation(bool allowPack)
             return {params[0], {}};
     }
 
-    if ((FFlag::LuauReturnTypeTokenConfusion ? !returnTypeIntroducer : lexer.current().type != Lexeme::SkinnyArrow) && !forceFunctionType &&
-        allowPack)
+    if (!forceFunctionType && !returnTypeIntroducer && allowPack)
     {
         if (DFFlag::LuaReportParseWrongNamedType && !names.empty())
             lua_telemetry_parsed_named_non_function_type = true;
@@ -1409,7 +1405,7 @@ AstType* Parser::parseFunctionTypeAnnotationTail(const Lexeme& begin, AstArray<A
 {
     incrementRecursionCounter("type annotation");
 
-    if (FFlag::LuauReturnTypeTokenConfusion && lexer.current().type == ':')
+    if (lexer.current().type == ':')
     {
         report(lexer.current().location, "Return types in function type annotations are written after '->' instead of ':'");
         lexer.next();
@@ -2037,8 +2033,10 @@ AstExpr* Parser::parseAssertionExpr()
         return expr;
 }
 
-static const char* parseInteger(double& result, const char* data, int base)
+static const char* parseInteger_DEPRECATED(double& result, const char* data, int base)
 {
+    LUAU_ASSERT(!FFlag::LuauLintParseIntegerIssues);
+
     char* end = nullptr;
     unsigned long long value = strtoull(data, &end, base);
 
@@ -2058,9 +2056,6 @@ static const char* parseInteger(double& result, const char* data, int base)
                 else
                     lua_telemetry_parsed_out_of_range_hex_integer = true;
             }
-
-            if (FFlag::LuauErrorParseIntegerIssues)
-                return "Integer number value is out of range";
         }
     }
 
@@ -2068,11 +2063,13 @@ static const char* parseInteger(double& result, const char* data, int base)
     return *end == 0 ? nullptr : "Malformed number";
 }
 
-static const char* parseNumber(double& result, const char* data)
+static const char* parseNumber_DEPRECATED2(double& result, const char* data)
 {
+    LUAU_ASSERT(!FFlag::LuauLintParseIntegerIssues);
+
     // binary literal
     if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
-        return parseInteger(result, data + 2, 2);
+        return parseInteger_DEPRECATED(result, data + 2, 2);
 
     // hexadecimal literal
     if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])
@@ -2080,10 +2077,7 @@ static const char* parseNumber(double& result, const char* data)
         if (DFFlag::LuaReportParseIntegerIssues && data[2] == '0' && (data[3] == 'x' || data[3] == 'X'))
             lua_telemetry_parsed_double_prefix_hex_integer = true;
 
-        if (FFlag::LuauErrorParseIntegerIssues)
-            return parseInteger(result, data, 16); // keep prefix, it's handled by 'strtoull'
-        else
-            return parseInteger(result, data + 2, 16);
+        return parseInteger_DEPRECATED(result, data + 2, 16);
     }
 
     char* end = nullptr;
@@ -2095,6 +2089,8 @@ static const char* parseNumber(double& result, const char* data)
 
 static bool parseNumber_DEPRECATED(double& result, const char* data)
 {
+    LUAU_ASSERT(!FFlag::LuauLintParseIntegerIssues);
+
     // binary literal
     if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
     {
@@ -2121,6 +2117,73 @@ static bool parseNumber_DEPRECATED(double& result, const char* data)
         result = value;
         return *end == 0;
     }
+}
+
+static ConstantNumberParseResult parseInteger(double& result, const char* data, int base)
+{
+    LUAU_ASSERT(FFlag::LuauLintParseIntegerIssues);
+    LUAU_ASSERT(base == 2 || base == 16);
+
+    char* end = nullptr;
+    unsigned long long value = strtoull(data, &end, base);
+
+    if (*end != 0)
+        return ConstantNumberParseResult::Malformed;
+
+    result = double(value);
+
+    if (value == ULLONG_MAX && errno == ERANGE)
+    {
+        // 'errno' might have been set before we called 'strtoull', but we don't want the overhead of resetting a TLS variable on each call
+        // so we only reset it when we get a result that might be an out-of-range error and parse again to make sure
+        errno = 0;
+        value = strtoull(data, &end, base);
+
+        if (errno == ERANGE)
+        {
+            if (DFFlag::LuaReportParseIntegerIssues)
+            {
+                if (base == 2)
+                    lua_telemetry_parsed_out_of_range_bin_integer = true;
+                else
+                    lua_telemetry_parsed_out_of_range_hex_integer = true;
+            }
+
+            return base == 2 ? ConstantNumberParseResult::BinOverflow : ConstantNumberParseResult::HexOverflow;
+        }
+    }
+
+    return ConstantNumberParseResult::Ok;
+}
+
+static ConstantNumberParseResult parseNumber(double& result, const char* data)
+{
+    LUAU_ASSERT(FFlag::LuauLintParseIntegerIssues);
+
+    // binary literal
+    if (data[0] == '0' && (data[1] == 'b' || data[1] == 'B') && data[2])
+        return parseInteger(result, data + 2, 2);
+
+    // hexadecimal literal
+    if (data[0] == '0' && (data[1] == 'x' || data[1] == 'X') && data[2])
+    {
+        if (!FFlag::LuauErrorDoubleHexPrefix && data[2] == '0' && (data[3] == 'x' || data[3] == 'X'))
+        {
+            if (DFFlag::LuaReportParseIntegerIssues)
+                lua_telemetry_parsed_double_prefix_hex_integer = true;
+
+            ConstantNumberParseResult parseResult = parseInteger(result, data + 2, 16);
+            return parseResult == ConstantNumberParseResult::Malformed ? parseResult : ConstantNumberParseResult::DoublePrefix;
+        }
+
+        return parseInteger(result, data, 16); // pass in '0x' prefix, it's handled by 'strtoull'
+    }
+
+    char* end = nullptr;
+    double value = strtod(data, &end);
+
+    result = value;
+    return *end == 0 ? ConstantNumberParseResult::Ok : ConstantNumberParseResult::Malformed;
 }
 
 // simpleexp -> NUMBER | STRING | NIL | true | false | ... | constructor | FUNCTION body | primaryexp
@@ -2163,10 +2226,21 @@ AstExpr* Parser::parseSimpleExpr()
             scratchData.erase(std::remove(scratchData.begin(), scratchData.end(), '_'), scratchData.end());
         }
 
-        if (DFFlag::LuaReportParseIntegerIssues || FFlag::LuauErrorParseIntegerIssues)
+        if (FFlag::LuauLintParseIntegerIssues)
         {
             double value = 0;
-            if (const char* error = parseNumber(value, scratchData.c_str()))
+            ConstantNumberParseResult result = parseNumber(value, scratchData.c_str());
+            nextLexeme();
+
+            if (result == ConstantNumberParseResult::Malformed)
+                return reportExprError(start, {}, "Malformed number");
+
+            return allocator.alloc<AstExprConstantNumber>(start, value, result);
+        }
+        else if (DFFlag::LuaReportParseIntegerIssues)
+        {
+            double value = 0;
+            if (const char* error = parseNumber_DEPRECATED2(value, scratchData.c_str()))
             {
                 nextLexeme();
 
@@ -2923,37 +2997,34 @@ AstTypeError* Parser::reportTypeAnnotationError(const Location& location, const 
 
 void Parser::nextLexeme()
 {
-    if (options.captureComments)
-    {
-        Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
+    Lexeme::Type type = lexer.next(/* skipComments= */ false, true).type;
 
-        while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
-        {
-            const Lexeme& lexeme = lexer.current();
+    while (type == Lexeme::BrokenComment || type == Lexeme::Comment || type == Lexeme::BlockComment)
+    {
+        const Lexeme& lexeme = lexer.current();
+
+        if (options.captureComments)
             commentLocations.push_back(Comment{lexeme.type, lexeme.location});
 
-            // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
-            // The parser will turn this into a proper syntax error.
-            if (lexeme.type == Lexeme::BrokenComment)
-                return;
+        // Subtlety: Broken comments are weird because we record them as comments AND pass them to the parser as a lexeme.
+        // The parser will turn this into a proper syntax error.
+        if (lexeme.type == Lexeme::BrokenComment)
+            return;
 
-            // Comments starting with ! are called "hot comments" and contain directives for type checking / linting
-            if (lexeme.type == Lexeme::Comment && lexeme.length && lexeme.data[0] == '!')
-            {
-                const char* text = lexeme.data;
+        // Comments starting with ! are called "hot comments" and contain directives for type checking / linting / compiling
+        if (lexeme.type == Lexeme::Comment && lexeme.length && lexeme.data[0] == '!')
+        {
+            const char* text = lexeme.data;
 
-                unsigned int end = lexeme.length;
-                while (end > 0 && isSpace(text[end - 1]))
-                    --end;
+            unsigned int end = lexeme.length;
+            while (end > 0 && isSpace(text[end - 1]))
+                --end;
 
-                hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
-            }
-
-            type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
+            hotcomments.push_back({hotcommentHeader, lexeme.location, std::string(text + 1, text + end)});
         }
+
+        type = lexer.next(/* skipComments= */ false, /* updatePrevLocation= */ false).type;
     }
-    else
-        lexer.next();
 }
 
 } // namespace Luau

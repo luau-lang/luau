@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauCompileBytecodeV3, false)
+
 namespace Luau
 {
 
@@ -77,6 +79,10 @@ static int getOpLength(LuauOpcode op)
     case LOP_JUMPIFNOTEQK:
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
         return 2;
 
     default:
@@ -108,6 +114,10 @@ inline bool isJumpD(LuauOpcode op)
     case LOP_JUMPBACK:
     case LOP_JUMPIFEQK:
     case LOP_JUMPIFNOTEQK:
+    case LOP_JUMPXEQKNIL:
+    case LOP_JUMPXEQKB:
+    case LOP_JUMPXEQKN:
+    case LOP_JUMPXEQKS:
         return true;
 
     default:
@@ -120,6 +130,17 @@ inline bool isSkipC(LuauOpcode op)
     switch (op)
     {
     case LOP_LOADB:
+        return true;
+
+    default:
+        return false;
+    }
+}
+
+inline bool isFastCall(LuauOpcode op)
+{
+    switch (op)
+    {
     case LOP_FASTCALL:
     case LOP_FASTCALL1:
     case LOP_FASTCALL2:
@@ -137,6 +158,8 @@ static int getJumpTarget(uint32_t insn, uint32_t pc)
 
     if (isJumpD(op))
         return int(pc + LUAU_INSN_D(insn) + 1);
+    else if (isFastCall(op))
+        return int(pc + LUAU_INSN_C(insn) + 2);
     else if (isSkipC(op) && LUAU_INSN_C(insn))
         return int(pc + LUAU_INSN_C(insn) + 1);
     else if (op == LOP_JUMPX)
@@ -479,7 +502,7 @@ bool BytecodeBuilder::patchSkipC(size_t jumpLabel, size_t targetLabel)
     unsigned int jumpInsn = insns[jumpLabel];
     (void)jumpInsn;
 
-    LUAU_ASSERT(isSkipC(LuauOpcode(LUAU_INSN_OP(jumpInsn))));
+    LUAU_ASSERT(isSkipC(LuauOpcode(LUAU_INSN_OP(jumpInsn))) || isFastCall(LuauOpcode(LUAU_INSN_OP(jumpInsn))));
     LUAU_ASSERT(LUAU_INSN_C(jumpInsn) == 0);
 
     int offset = int(targetLabel) - int(jumpLabel) - 1;
@@ -1056,6 +1079,9 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
+    if (FFlag::LuauCompileBytecodeV3)
+        return 3;
+
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
     return LBC_VERSION_TARGET;
 }
@@ -1230,6 +1256,24 @@ void BytecodeBuilder::validate() const
         case LOP_JUMPIFNOTEQK:
             VREG(LUAU_INSN_A(insn));
             VCONSTANY(insns[i + 1]);
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
+        case LOP_JUMPXEQKNIL:
+        case LOP_JUMPXEQKB:
+            VREG(LUAU_INSN_A(insn));
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
+        case LOP_JUMPXEQKN:
+            VREG(LUAU_INSN_A(insn));
+            VCONST(insns[i + 1] & 0xffffff, Number);
+            VJUMP(LUAU_INSN_D(insn));
+            break;
+
+        case LOP_JUMPXEQKS:
+            VREG(LUAU_INSN_A(insn));
+            VCONST(insns[i + 1] & 0xffffff, String);
             VJUMP(LUAU_INSN_D(insn));
             break;
 
@@ -1764,6 +1808,26 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_JUMPIFNOTEQK:
         formatAppend(result, "JUMPIFNOTEQK R%d K%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
+        break;
+
+    case LOP_JUMPXEQKNIL:
+        formatAppend(result, "JUMPXEQKNIL R%d L%d%s\n", LUAU_INSN_A(insn), targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
+        break;
+
+    case LOP_JUMPXEQKB:
+        formatAppend(result, "JUMPXEQKB R%d %d L%d%s\n", LUAU_INSN_A(insn), *code & 1, targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
+        break;
+
+    case LOP_JUMPXEQKN:
+        formatAppend(result, "JUMPXEQKN R%d K%d L%d%s\n", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
+        break;
+
+    case LOP_JUMPXEQKS:
+        formatAppend(result, "JUMPXEQKS R%d K%d L%d%s\n", LUAU_INSN_A(insn), *code & 0xffffff, targetLabel, *code >> 31 ? " NOT" : "");
+        code++;
         break;
 
     default:

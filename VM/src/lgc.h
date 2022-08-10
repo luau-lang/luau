@@ -9,9 +9,9 @@
 /*
 ** Default settings for GC tunables (settable via lua_gc)
 */
-#define LUAI_GCGOAL 200    /* 200% (allow heap to double compared to live heap size) */
-#define LUAI_GCSTEPMUL 200 /* GC runs 'twice the speed' of memory allocation */
-#define LUAI_GCSTEPSIZE 1  /* GC runs every KB of memory allocation */
+#define LUAI_GCGOAL 200    // 200% (allow heap to double compared to live heap size)
+#define LUAI_GCSTEPMUL 200 // GC runs 'twice the speed' of memory allocation
+#define LUAI_GCSTEPSIZE 1  // GC runs every KB of memory allocation
 
 /*
 ** Possible states of the Garbage Collector

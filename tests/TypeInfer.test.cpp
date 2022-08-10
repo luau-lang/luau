@@ -16,6 +16,7 @@
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 using namespace Luau;
 
@@ -85,20 +86,19 @@ TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
     ScopedFastFlag sff[]{
         {"DebugLuauDeferredConstraintResolution", false},
-        {"LuauReturnTypeInferenceInNonstrict", true},
         {"LuauLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
         --!nocheck
         function f(x)
-            return 5
+            return x
         end
          -- we get type information even if there's type errors
         f(1, 2)
     )");
 
-    CHECK_EQ("(any) -> number", toString(requireType("f")));
+    CHECK_EQ("(any) -> (...any)", toString(requireType("f")));
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -238,10 +238,20 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     // TODO: Should we assert anything about these tests when DCR is being used?
     if (!FFlag::DebugLuauDeferredConstraintResolution)
     {
-        CHECK_EQ("*unknown*", toString(requireType("c")));
-        CHECK_EQ("*unknown*", toString(requireType("d")));
-        CHECK_EQ("*unknown*", toString(requireType("e")));
-        CHECK_EQ("*unknown*", toString(requireType("f")));
+        if (FFlag::LuauSpecialTypesAsterisked)
+        {
+            CHECK_EQ("*error-type*", toString(requireType("c")));
+            CHECK_EQ("*error-type*", toString(requireType("d")));
+            CHECK_EQ("*error-type*", toString(requireType("e")));
+            CHECK_EQ("*error-type*", toString(requireType("f")));
+        }
+        else
+        {
+            CHECK_EQ("<error-type>", toString(requireType("c")));
+            CHECK_EQ("<error-type>", toString(requireType("d")));
+            CHECK_EQ("<error-type>", toString(requireType("e")));
+            CHECK_EQ("<error-type>", toString(requireType("f")));
+        }
     }
 }
 
@@ -353,6 +363,35 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = true
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("any", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "globals2")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        foo = function() return 1 end
+        foo = "now i'm a string!"
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ("() -> (...any)", toString(tm->wantedType));
+    CHECK_EQ("string", toString(tm->givenType));
+    CHECK_EQ("() -> (...any)", toString(requireType("foo")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "globals_are_banned_in_strict_mode")
@@ -622,7 +661,11 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("*unknown*", toString(t0->type));
+
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(t0->type));
+    else
+        CHECK_EQ("<error-type>", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -1001,6 +1044,29 @@ TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_
             return q or {}
         end
     )");
+}
+
+TEST_CASE_FIXTURE(Fixture, "types stored in astResolvedTypes")
+{
+    CheckResult result = check(R"(
+type alias = typeof("hello")
+local function foo(param: alias)
+end
+    )");
+
+    auto node = findNodeAtPosition(*getMainSourceModule(), {2, 16});
+    auto ty = lookupType("alias");
+    REQUIRE(node);
+    REQUIRE(node->is<AstExprFunction>());
+    REQUIRE(ty);
+
+    auto func = node->as<AstExprFunction>();
+    REQUIRE(func->args.size == 1);
+
+    auto arg = *func->args.begin();
+    auto annotation = arg->annotation;
+
+    CHECK_EQ(*getMainModule()->astResolvedTypes.find(annotation), *ty);
 }
 
 TEST_SUITE_END();

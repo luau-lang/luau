@@ -14,6 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -677,11 +678,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toposort_doesnt_break_mutual_recursion")
 
 TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
 {
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true},
-    };
-
     CheckResult result = check(R"(
         --!nonstrict
 
@@ -690,7 +686,7 @@ TEST_CASE_FIXTURE(Fixture, "check_function_before_lambda_that_uses_it")
         end
 
         return function()
-            return f()
+            return f():andThen()
         end
     )");
 
@@ -817,17 +813,13 @@ TEST_CASE_FIXTURE(Fixture, "calling_function_with_incorrect_argument_type_yields
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_leak_free_types")
 {
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true},
-    };
-
     CheckResult result = check(R"(
         --!nonstrict
 
-        function Test(a): ...any
+        function Test(a)
             return 1, ""
         end
+
 
         local tab = {}
         table.insert(tab, Test(1));
@@ -916,13 +908,19 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
     REQUIRE(tm1);
 
     CHECK_EQ("(string) -> number", toString(tm1->wantedType));
-    CHECK_EQ("(string, *unknown*) -> number", toString(tm1->givenType));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("(string, *error-type*) -> number", toString(tm1->givenType));
+    else
+        CHECK_EQ("(string, <error-type>) -> number", toString(tm1->givenType));
 
     auto tm2 = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm2);
 
     CHECK_EQ("(number, number) -> (number, number)", toString(tm2->wantedType));
-    CHECK_EQ("(string, *unknown*) -> number", toString(tm2->givenType));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("(string, *error-type*) -> number", toString(tm2->givenType));
+    else
+        CHECK_EQ("(string, <error-type>) -> number", toString(tm2->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
@@ -1535,10 +1533,20 @@ function t:b() return 2 end -- not OK
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(R"(Type '(*unknown*) -> number' could not be converted into '() -> number'
+    if (FFlag::LuauSpecialTypesAsterisked)
+    {
+        CHECK_EQ(R"(Type '(*error-type*) -> number' could not be converted into '() -> number'
 caused by:
   Argument count mismatch. Function expects 1 argument, but none are specified)",
-        toString(result.errors[0]));
+            toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ(R"(Type '(<error-type>) -> number' could not be converted into '() -> number'
+caused by:
+  Argument count mismatch. Function expects 1 argument, but none are specified)",
+            toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
@@ -1625,21 +1633,6 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
     CHECK(nullptr != get<OccursCheckFailed>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
-{
-    ScopedFastFlag sff[]{
-        {"LuauReturnTypeInferenceInNonstrict", true},
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        local function f() return end
-        local g = function() return f() end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
 TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
 {
     ScopedFastFlag sff[]{
@@ -1690,6 +1683,54 @@ TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantifie
 
     LUAU_REQUIRE_NO_ERRORS(result);
     // TODO: check the normalized type of f
+}
+
+TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_unknown")
+{
+    CheckResult result = check(R"(
+        local function foo(f: (unknown) -> (), x)
+            f(x)
+        end
+    )");
+
+    CHECK_EQ("<a>((unknown) -> (), a) -> ()", toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_infer_parameter_types_for_functions_from_their_call_site")
+{
+    CheckResult result = check(R"(
+        local t = {}
+
+        function t.f(x)
+            return x
+        end
+
+        t.__index = t
+
+        function g(s)
+            local q = s.p and s.p.q or nil
+            return q and t.f(q) or nil
+        end
+
+        local f = t.f
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("<a>(a) -> a", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "dont_mutate_the_underlying_head_of_typepack_when_calling_with_self")
+{
+    CheckResult result = check(R"(
+        local t = {}
+        function t:m(x) end
+        function f(): never return 5 :: never end
+        t:m(f())
+        t:m(f())
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -26,15 +26,3 @@ This document tracks unimplemented RFCs.
 [RFC: Lower bounds calculation](https://github.com/Roblox/luau/blob/master/rfcs/lower-bounds-calculation.md)
 
 **Status**: Implemented but not fully rolled out yet.
-
-## never and unknown types
-
-[RFC: never and unknown types](https://github.com/Roblox/luau/blob/master/rfcs/never-and-unknown-types.md)
-
-**Status**: Needs implementation
-
-## __len metamethod for tables and rawlen function
-
-[RFC: Support __len metamethod for tables and rawlen function](https://github.com/Roblox/luau/blob/master/rfcs/len-metamethod-rawlen.md)
-
-**Status**: Needs implementation

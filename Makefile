@@ -31,15 +31,15 @@ ISOCLINE_SOURCES=extern/isocline/src/isocline.c
 ISOCLINE_OBJECTS=$(ISOCLINE_SOURCES:%=$(BUILD)/%.o)
 ISOCLINE_TARGET=$(BUILD)/libisocline.a
 
-TESTS_SOURCES=$(wildcard tests/*.cpp) CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
+TESTS_SOURCES=$(wildcard tests/*.cpp) CLI/FileUtils.cpp CLI/Flags.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp
 TESTS_OBJECTS=$(TESTS_SOURCES:%=$(BUILD)/%.o)
 TESTS_TARGET=$(BUILD)/luau-tests
 
-REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp CLI/ReplEntry.cpp
+REPL_CLI_SOURCES=CLI/FileUtils.cpp CLI/Flags.cpp CLI/Profiler.cpp CLI/Coverage.cpp CLI/Repl.cpp CLI/ReplEntry.cpp
 REPL_CLI_OBJECTS=$(REPL_CLI_SOURCES:%=$(BUILD)/%.o)
 REPL_CLI_TARGET=$(BUILD)/luau
 
-ANALYZE_CLI_SOURCES=CLI/FileUtils.cpp CLI/Analyze.cpp
+ANALYZE_CLI_SOURCES=CLI/FileUtils.cpp CLI/Flags.cpp CLI/Analyze.cpp
 ANALYZE_CLI_OBJECTS=$(ANALYZE_CLI_SOURCES:%=$(BUILD)/%.o)
 ANALYZE_CLI_TARGET=$(BUILD)/luau-analyze
 
@@ -50,8 +50,12 @@ TESTS_ARGS=
 ifneq ($(flags),)
 	TESTS_ARGS+=--fflags=$(flags)
 endif
+ifneq ($(opt),)
+	TESTS_ARGS+=-O$(opt)
+endif
 
 OBJECTS=$(AST_OBJECTS) $(COMPILER_OBJECTS) $(ANALYSIS_OBJECTS) $(CODEGEN_OBJECTS) $(VM_OBJECTS) $(ISOCLINE_OBJECTS) $(TESTS_OBJECTS) $(CLI_OBJECTS) $(FUZZ_OBJECTS)
+EXECUTABLE_ALIASES = luau luau-analyze luau-tests
 
 # common flags
 CXXFLAGS=-g -Wall
@@ -104,7 +108,7 @@ $(ANALYSIS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IAnaly
 $(CODEGEN_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -ICodeGen/include
 $(VM_OBJECTS): CXXFLAGS+=-std=c++11 -ICommon/include -IVM/include
 $(ISOCLINE_OBJECTS): CXXFLAGS+=-Wno-unused-function -Iextern/isocline/include
-$(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/include -IAnalysis/include -ICodeGen/include -IVM/include -ICLI -Iextern
+$(TESTS_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/include -IAnalysis/include -ICodeGen/include -IVM/include -ICLI -Iextern -DDOCTEST_CONFIG_DOUBLE_STRINGIFY
 $(REPL_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/include -IVM/include -Iextern -Iextern/isocline/include
 $(ANALYZE_CLI_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -IAnalysis/include -Iextern
 $(FUZZ_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/include -IAnalysis/include -IVM/include
@@ -114,15 +118,18 @@ $(REPL_CLI_TARGET): LDFLAGS+=-lpthread
 fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a build/libprotobuf-mutator/external.protobuf/lib/libprotobuf.a
 
 # pseudo targets
-.PHONY: all test clean coverage format luau-size
+.PHONY: all test clean coverage format luau-size aliases
 
-all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET)
+all: $(REPL_CLI_TARGET) $(ANALYZE_CLI_TARGET) $(TESTS_TARGET) aliases
+
+aliases: $(EXECUTABLE_ALIASES)
 
 test: $(TESTS_TARGET)
 	$(TESTS_TARGET) $(TESTS_ARGS)
 
 clean:
 	rm -rf $(BUILD)
+	rm -rf $(EXECUTABLE_ALIASES)
 
 coverage: $(TESTS_TARGET)
 	$(TESTS_TARGET) --fflags=true
@@ -146,6 +153,9 @@ luau: $(REPL_CLI_TARGET)
 	ln -fs $^ $@
 
 luau-analyze: $(ANALYZE_CLI_TARGET)
+	ln -fs $^ $@
+
+luau-tests: $(TESTS_TARGET)
 	ln -fs $^ $@
 
 # executable targets

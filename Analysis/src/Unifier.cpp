@@ -19,7 +19,9 @@ LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(LuauQuantifyConstrained)
+LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 
 namespace Luau
 {
@@ -45,33 +47,6 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
         {
             log.changeLevel(ty, minLevel);
         }
-    }
-
-    // TODO cycle and operator() need to be clipped when FFlagLuauUseVisitRecursionLimit is clipped
-    template<typename TID>
-    void cycle(TID)
-    {
-    }
-    template<typename TID, typename T>
-    bool operator()(TID ty, const T&)
-    {
-        return visit(ty);
-    }
-    bool operator()(TypeId ty, const FreeTypeVar& ftv)
-    {
-        return visit(ty, ftv);
-    }
-    bool operator()(TypeId ty, const FunctionTypeVar& ftv)
-    {
-        return visit(ty, ftv);
-    }
-    bool operator()(TypeId ty, const TableTypeVar& ttv)
-    {
-        return visit(ty, ttv);
-    }
-    bool operator()(TypePackId tp, const FreeTypePack& ftp)
-    {
-        return visit(tp, ftp);
     }
 
     bool visit(TypeId ty) override
@@ -100,6 +75,15 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
             return true;
 
         promote(ty, log.getMutable<FreeTypeVar>(ty));
+        return true;
+    }
+
+    bool visit(TypeId ty, const ConstrainedTypeVar&) override
+    {
+        if (!FFlag::LuauUnknownAndNeverType)
+            return visit(ty);
+
+        promote(ty, log.getMutable<ConstrainedTypeVar>(ty));
         return true;
     }
 
@@ -445,6 +429,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     }
     else if (subFree)
     {
+        if (FFlag::LuauUnknownAndNeverType)
+        {
+            // Normally, if the subtype is free, it should not be bound to any, unknown, or error types.
+            // But for bug compatibility, we'll only apply this rule to unknown. Doing this will silence cascading type errors.
+            if (log.get<UnknownTypeVar>(superTy))
+                return;
+        }
+
         TypeLevel subLevel = subFree->level;
 
         occursCheck(subTy, superTy);
@@ -468,7 +460,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         return;
     }
 
-    if (get<ErrorTypeVar>(superTy) || get<AnyTypeVar>(superTy))
+    if (get<ErrorTypeVar>(superTy) || get<AnyTypeVar>(superTy) || get<UnknownTypeVar>(superTy))
         return tryUnifyWithAny(subTy, superTy);
 
     if (get<AnyTypeVar>(subTy))
@@ -482,7 +474,10 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             return tryUnifyWithAny(superTy, subTy);
     }
 
-    if (get<ErrorTypeVar>(subTy))
+    if (log.get<ErrorTypeVar>(subTy))
+        return tryUnifyWithAny(superTy, subTy);
+
+    if (log.get<NeverTypeVar>(subTy))
         return tryUnifyWithAny(superTy, subTy);
 
     auto& cache = sharedState.cachedUnify;
@@ -543,6 +538,16 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.getMutable<TableTypeVar>(superTy) && log.getMutable<TableTypeVar>(subTy))
     {
         tryUnifyTables(subTy, superTy, isIntersection);
+    }
+    else if (FFlag::LuauScalarShapeSubtyping && log.get<TableTypeVar>(superTy) &&
+             (log.get<PrimitiveTypeVar>(subTy) || log.get<SingletonTypeVar>(subTy)))
+    {
+        tryUnifyScalarShape(subTy, superTy, /*reversed*/ false);
+    }
+    else if (FFlag::LuauScalarShapeSubtyping && log.get<TableTypeVar>(subTy) &&
+             (log.get<PrimitiveTypeVar>(superTy) || log.get<SingletonTypeVar>(superTy)))
+    {
+        tryUnifyScalarShape(subTy, superTy, /*reversed*/ true);
     }
 
     // tryUnifyWithMetatable assumes its first argument is a MetatableTypeVar. The check is otherwise symmetrical.
@@ -1606,6 +1611,60 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
     }
 }
 
+void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
+{
+    LUAU_ASSERT(FFlag::LuauScalarShapeSubtyping);
+
+    TypeId osubTy = subTy;
+    TypeId osuperTy = superTy;
+
+    if (reversed)
+        std::swap(subTy, superTy);
+
+    if (auto ttv = log.get<TableTypeVar>(superTy); !ttv || ttv->state != TableState::Free)
+        return reportError(TypeError{location, TypeMismatch{osuperTy, osubTy}});
+
+    auto fail = [&](std::optional<TypeError> e) {
+        std::string reason = "The former's metatable does not satisfy the requirements.";
+        if (e)
+            reportError(TypeError{location, TypeMismatch{osuperTy, osubTy, reason, *e}});
+        else
+            reportError(TypeError{location, TypeMismatch{osuperTy, osubTy, reason}});
+    };
+
+    // Given t1 where t1 = { lower: (t1) -> (a, b...) }
+    // It should be the case that `string <: t1` iff `(subtype's metatable).__index <: t1`
+    if (auto metatable = getMetatable(subTy))
+    {
+        auto mttv = log.get<TableTypeVar>(*metatable);
+        if (!mttv)
+            fail(std::nullopt);
+
+        if (auto it = mttv->props.find("__index"); it != mttv->props.end())
+        {
+            TypeId ty = it->second.type;
+            Unifier child = makeChildUnifier();
+            child.tryUnify_(ty, superTy);
+
+            if (auto e = hasUnificationTooComplex(child.errors))
+                reportError(*e);
+            else if (!child.errors.empty())
+                fail(child.errors.front());
+
+            log.concat(std::move(child.log));
+
+            return;
+        }
+        else
+        {
+            return fail(std::nullopt);
+        }
+    }
+
+    reportError(TypeError{location, TypeMismatch{osuperTy, osubTy}});
+    return;
+}
+
 TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> seen)
 {
     ty = follow(ty);
@@ -1862,6 +1921,7 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
 
         if (state.log.getMutable<FreeTypeVar>(ty))
         {
+            // TODO: Only bind if the anyType isn't any, unknown, or error (?)
             state.log.replace(ty, BoundTypeVar{anyType});
         }
         else if (auto fun = state.log.getMutable<FunctionTypeVar>(ty))
@@ -1901,22 +1961,28 @@ static void tryUnifyWithAny(std::vector<TypeId>& queue, Unifier& state, DenseHas
 
 void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
 {
-    LUAU_ASSERT(get<AnyTypeVar>(anyTy) || get<ErrorTypeVar>(anyTy));
+    LUAU_ASSERT(get<AnyTypeVar>(anyTy) || get<ErrorTypeVar>(anyTy) || get<UnknownTypeVar>(anyTy) || get<NeverTypeVar>(anyTy));
 
     // These types are not visited in general loop below
     if (get<PrimitiveTypeVar>(subTy) || get<AnyTypeVar>(subTy) || get<ClassTypeVar>(subTy))
         return;
 
-    const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{getSingletonTypes().anyType}});
-
-    const TypePackId anyTP = get<AnyTypeVar>(anyTy) ? anyTypePack : types->addTypePack(TypePackVar{Unifiable::Error{}});
+    TypePackId anyTp;
+    if (FFlag::LuauUnknownAndNeverType)
+        anyTp = types->addTypePack(TypePackVar{VariadicTypePack{anyTy}});
+    else
+    {
+        const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{getSingletonTypes().anyType}});
+        anyTp = get<AnyTypeVar>(anyTy) ? anyTypePack : types->addTypePack(TypePackVar{Unifiable::Error{}});
+    }
 
     std::vector<TypeId> queue = {subTy};
 
     sharedState.tempSeenTy.clear();
     sharedState.tempSeenTp.clear();
 
-    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, getSingletonTypes().anyType, anyTP);
+    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types,
+        FFlag::LuauUnknownAndNeverType ? anyTy : getSingletonTypes().anyType, anyTp);
 }
 
 void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)

@@ -418,8 +418,6 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 
 TEST_CASE("content_reassignment")
 {
-    ScopedFastFlag luauNonCopyableTypeVarFields{"LuauNonCopyableTypeVarFields", true};
-
     TypeVar myAny{AnyTypeVar{}, /*presistent*/ true};
     myAny.normal = true;
     myAny.documentationSymbol = "@global/any";

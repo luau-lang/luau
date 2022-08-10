@@ -185,7 +185,7 @@ local function AESEncryptCtr(plaintext, password, nBits)
   -- for real-world applications, a higher security approach would be to hash the password e.g. with SHA-1
   local nBytes = nBits/8;  -- no bytes in key
   local pwBytes = {};
-  for i = 0,nBytes-1 do pwBytes[i + 1] = bit32.band(string.byte(password, i + 1), 0xff); end
+  for i = 0,nBytes-1 do pwBytes[i + 1] = string.byte(password, i + 1); end
   local key = Cipher(pwBytes, KeyExpansion(pwBytes));
 
   -- key is now 16/24/32 bytes long
@@ -197,11 +197,11 @@ local function AESEncryptCtr(plaintext, password, nBits)
   -- block counter in 2nd 8 bytes
   local blockSize = 16;  -- block size fixed at 16 bytes / 128 bits (Nb=4) for AES
   local counterBlock = {};  -- block size fixed at 16 bytes / 128 bits (Nb=4) for AES
-  local nonce = 12564231564 -- (new Date()).getTime();  -- milliseconds since 1-Jan-1970
+  local nonce = os.clock() * 1000 -- (new Date()).getTime();  -- milliseconds since 1-Jan-1970
 
   -- encode nonce in two stages to cater for JavaScript 32-bit limit on bitwise ops
-  for i = 0,3 do counterBlock[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff); end
-  for i = 0,3 do counterBlock[i + 4 + 1] = bit32.band(bit32.rshift(math.floor(nonce / 0x100000000), i*8), 0xff); end
+  for i = 0,3 do counterBlock[i + 1] = bit32.extract(nonce, i * 8, 8); end
+  for i = 0,3 do counterBlock[i + 4 + 1] = bit32.extract(math.floor(nonce / 0x100000000), i*8, 8); end
 
   -- generate key schedule - an expansion of the key into distinct Key Rounds for each round
   local keySchedule = KeyExpansion(key);
@@ -212,8 +212,8 @@ local function AESEncryptCtr(plaintext, password, nBits)
   for b = 0,blockCount-1 do
     -- set counter (block #) in last 8 bytes of counter block (leaving nonce in 1st 8 bytes)
     -- again done in two stages for 32-bit ops
-    for c = 0,3 do counterBlock[15-c + 1] = bit32.band(bit32.rshift(b, c*8), 0xff); end
-    for c = 0,3 do counterBlock[15-c-4 + 1] = bit32.rshift(math.floor(b/0x100000000), c*8) end
+    for c = 0,3 do counterBlock[15-c + 1] = bit32.extract(b, c*8, 8); end
+    for c = 0,3 do counterBlock[15-c-4 + 1] = bit32.extract(math.floor(b/0x100000000), c*8, 8); end
 
     local cipherCntr = Cipher(counterBlock, keySchedule);  -- -- encrypt counter block --
     
@@ -260,7 +260,7 @@ local function AESDecryptCtr(ciphertext, password, nBits)
 
   local nBytes = nBits/8;  -- no bytes in key
   local pwBytes = {};
-  for i = 0,nBytes-1 do pwBytes[i + 1] = bit32.band(string.byte(password, i + 1), 0xff); end
+  for i = 0,nBytes-1 do pwBytes[i + 1] = string.byte(password, i + 1); end
   local pwKeySchedule = KeyExpansion(pwBytes);
   local key = Cipher(pwBytes, pwKeySchedule);
 
@@ -290,8 +290,8 @@ local function AESDecryptCtr(ciphertext, password, nBits)
 
   for b = 1,#ciphertext-1 do
     -- set counter (block #) in last 8 bytes of counter block (leaving nonce in 1st 8 bytes)
-    for c = 0,3 do counterBlock[15-c + 1] = bit32.band(bit32.rshift((b-1), c*8), 0xff); end
-    for c = 0,3 do counterBlock[15-c-4 + 1] = bit32.band(bit32.rshift(math.floor((b-1)/0x100000000), c*8), 0xff); end
+    for c = 0,3 do counterBlock[15-c + 1] = bit32.extract(b-1, c*8, 8); end
+    for c = 0,3 do counterBlock[15-c-4 + 1] = bit32.extract(math.floor((b-1)/0x100000000), c*8, 8); end
 
     local cipherCntr = Cipher(counterBlock, keySchedule);  -- encrypt counter block
 

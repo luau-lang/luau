@@ -101,4 +101,20 @@ if vector_size == 4 then
 	assert(vector(1, 2, 3, 4).W == 4)
 end
 
+-- negative zero should hash the same as zero
+-- note: our earlier test only really checks the low hash bit, so in absence of perfect avalanche it's insufficient
+do
+	local larget = {}
+	for i = 1, 2^14 do
+	    larget[vector(0, 0, i)] = true
+	end
+
+	larget[vector(0, 0, 0)] = 42
+
+	assert(larget[vector(0, 0, 0)] == 42)
+	assert(larget[vector(0, 0, -0)] == 42)
+	assert(larget[vector(0, -0, 0)] == 42)
+	assert(larget[vector(-0, 0, 0)] == 42)
+end
+
 return 'OK'

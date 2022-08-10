@@ -173,5 +173,6 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp,
 bool isVariadic(TypePackId tp);
 bool isVariadic(TypePackId tp, const TxnLog& log);
 
+bool containsNever(TypePackId tp);
 
 } // namespace Luau

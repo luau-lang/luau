@@ -101,8 +101,10 @@ def getVmOutput(cmd):
     elif arguments.callgrind:
         try:
             subprocess.check_call("valgrind --tool=callgrind --callgrind-out-file=callgrind.out --combine-dumps=yes --dump-line=no " + cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=scriptdir)
-            file = open(os.path.join(scriptdir, "callgrind.out"), "r")
-            lines = file.readlines()
+            path = os.path.join(scriptdir, "callgrind.out")
+            with open(path, "r") as file:
+                lines = file.readlines()
+            os.unlink(path)
             return getCallgrindOutput(lines)
         except:
             return ""
@@ -402,12 +404,12 @@ def analyzeResult(subdir, main, comparisons):
 
             continue
 
-        pooledStdDev = math.sqrt((main.unbiasedEst + compare.unbiasedEst) / 2)
+        if main.count > 1 and stats:
+            pooledStdDev = math.sqrt((main.unbiasedEst + compare.unbiasedEst) / 2)
 
-        tStat = abs(main.avg - compare.avg) / (pooledStdDev * math.sqrt(2 / main.count))
-        degreesOfFreedom = 2 * main.count - 2
+            tStat = abs(main.avg - compare.avg) / (pooledStdDev * math.sqrt(2 / main.count))
+            degreesOfFreedom = 2 * main.count - 2
 
-        if stats:
             # Two-tailed distribution with 95% conf.
             tCritical = stats.t.ppf(1 - 0.05 / 2, degreesOfFreedom)
 

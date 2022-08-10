@@ -102,8 +102,11 @@ void loadModuleIntoScope(TypeChecker& typeChecker, ModulePtr module, ScopePtr sc
     }
 }
 
-LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
+LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, const std::string& packageName)
 {
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return Luau::loadDefinitionFile(typeChecker, typeChecker.globalScope, source, packageName);
+
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
 
     Luau::Allocator allocator;
@@ -121,12 +124,12 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
     module.root = parseResult.root;
     module.mode = Mode::Definition;
 
-    ModulePtr checkedModule = typeChecker.check(module, Mode::Definition);
+    ModulePtr checkedModule = check(module, Mode::Definition, globalScope);
 
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, checkedModule};
 
-    loadModuleIntoScope(typeChecker, checkedModule, targetScope, packageName);
+    loadModuleIntoScope(typeChecker, checkedModule, globalScope, packageName);
 
     return LoadDefinitionFileResult{true, parseResult, checkedModule};
 }
@@ -503,6 +506,8 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
             module->astTypes.clear();
             module->astExpectedTypes.clear();
             module->astOriginalCallTypes.clear();
+            module->astResolvedTypes.clear();
+            module->astResolvedTypePacks.clear();
             module->scopes.resize(1);
         }
 
@@ -692,29 +697,6 @@ LintResult Frontend::lint(const ModuleName& name, std::optional<Luau::LintOption
     return lint(*sourceModule, enabledLintWarnings);
 }
 
-std::pair<SourceModule, LintResult> Frontend::lintFragment(std::string_view source, std::optional<Luau::LintOptions> enabledLintWarnings)
-{
-    LUAU_TIMETRACE_SCOPE("Frontend::lintFragment", "Frontend");
-
-    const Config& config = configResolver->getConfig("");
-
-    SourceModule sourceModule = parse(ModuleName{}, source, config.parseOptions);
-
-    uint64_t ignoreLints = LintWarning::parseMask(sourceModule.hotcomments);
-
-    Luau::LintOptions lintOptions = enabledLintWarnings.value_or(config.enabledLint);
-    lintOptions.warningMask &= ~ignoreLints;
-
-    double timestamp = getTimestamp();
-
-    std::vector<LintWarning> warnings = Luau::lint(sourceModule.root, *sourceModule.names.get(), typeChecker.globalScope, nullptr,
-        sourceModule.hotcomments, enabledLintWarnings.value_or(config.enabledLint));
-
-    stats.timeLint += getTimestamp() - timestamp;
-
-    return {std::move(sourceModule), classifyLints(warnings, config)};
-}
-
 LintResult Frontend::lint(const SourceModule& module, std::optional<Luau::LintOptions> enabledLintWarnings)
 {
     LUAU_TIMETRACE_SCOPE("Frontend::lint", "Frontend");
@@ -819,35 +801,28 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-NotNull<Scope2> Frontend::getGlobalScope2()
+NotNull<Scope> Frontend::getGlobalScope()
 {
-    if (!globalScope2)
+    if (!globalScope)
     {
-        const SingletonTypes& singletonTypes = getSingletonTypes();
-
-        globalScope2 = std::make_unique<Scope2>();
-        globalScope2->typeBindings["nil"] = singletonTypes.nilType;
-        globalScope2->typeBindings["number"] = singletonTypes.numberType;
-        globalScope2->typeBindings["string"] = singletonTypes.stringType;
-        globalScope2->typeBindings["boolean"] = singletonTypes.booleanType;
-        globalScope2->typeBindings["thread"] = singletonTypes.threadType;
+        globalScope = typeChecker.globalScope;
     }
 
-    return NotNull(globalScope2.get());
+    return NotNull(globalScope.get());
 }
 
 ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope)
 {
     ModulePtr result = std::make_shared<Module>();
 
-    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope2()};
+    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
     ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope)};
     cs.run();
 
-    result->scope2s = std::move(cgb.scopes);
+    result->scopes = std::move(cgb.scopes);
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
@@ -988,7 +963,7 @@ std::optional<ModuleInfo> FrontendModuleResolver::resolveModuleInfo(const Module
     {
         // CLI-43699
         // If we can't find the current module name, that's because we bypassed the frontend's initializer
-        // and called typeChecker.check directly. (This is done by autocompleteSource, for example).
+        // and called typeChecker.check directly.
         // In that case, requires will always fail.
         return std::nullopt;
     }

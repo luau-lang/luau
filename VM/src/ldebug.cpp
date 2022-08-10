@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauDebuggerBreakpointHitOnNextBestLine, false);
+
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -84,7 +86,7 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     const LocVar* var = fp ? luaF_getlocal(fp, n, currentpc(L, ci)) : NULL;
     if (var)
         setobjs2s(L, ci->base + var->reg, L->top - 1);
-    L->top--; /* pop value */
+    L->top--; // pop value
     const char* name = var ? getstr(var->varname) : NULL;
     return name;
 }
@@ -267,12 +269,24 @@ l_noret luaG_indexerror(lua_State* L, const TValue* p1, const TValue* p2)
         luaG_runerror(L, "attempt to index %s with %s", t1, t2);
 }
 
+l_noret luaG_methoderror(lua_State* L, const TValue* p1, const TString* p2)
+{
+    const char* t1 = luaT_objtypename(L, p1);
+
+    luaG_runerror(L, "attempt to call missing method '%s' of %s", getstr(p2), t1);
+}
+
+l_noret luaG_readonlyerror(lua_State* L)
+{
+    luaG_runerror(L, "attempt to modify a readonly table");
+}
+
 static void pusherror(lua_State* L, const char* msg)
 {
     CallInfo* ci = L->ci;
     if (isLua(ci))
     {
-        char buff[LUA_IDSIZE]; /* add file:line information */
+        char buff[LUA_IDSIZE]; // add file:line information
         luaO_chunkid(buff, getstr(getluaproto(ci)->source), LUA_IDSIZE);
         int line = currentline(L, ci);
         luaO_pushfstring(L, "%s:%d: %s", buff, line, msg);
@@ -367,14 +381,6 @@ void lua_singlestep(lua_State* L, int enabled)
     L->singlestep = bool(enabled);
 }
 
-void lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
-{
-    const TValue* func = luaA_toobject(L, funcindex);
-    api_check(L, ttisfunction(func) && !clvalue(func)->isC);
-
-    luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
-}
-
 static int getmaxline(Proto* p)
 {
     int result = -1;
@@ -392,6 +398,71 @@ static int getmaxline(Proto* p)
     }
 
     return result;
+}
+
+// Find the line number with instructions. If the provided line doesn't have any instruction, it should return the next line number with
+// instructions.
+static int getnextline(Proto* p, int line)
+{
+    int closest = -1;
+    if (p->lineinfo)
+    {
+        for (int i = 0; i < p->sizecode; ++i)
+        {
+            // note: we keep prologue as is, instead opting to break at the first meaningful instruction
+            if (LUAU_INSN_OP(p->code[i]) == LOP_PREPVARARGS)
+                continue;
+
+            int current = luaG_getline(p, i);
+            if (current >= line)
+            {
+                closest = current;
+                break;
+            }
+        }
+    }
+
+    for (int i = 0; i < p->sizep; ++i)
+    {
+        // Find the closest line number to the intended one.
+        int candidate = getnextline(p->p[i], line);
+        if (closest == -1 || (candidate >= line && candidate < closest))
+        {
+            closest = candidate;
+        }
+    }
+
+    return closest;
+}
+
+int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
+{
+    int target = -1;
+
+    if (FFlag::LuauDebuggerBreakpointHitOnNextBestLine)
+    {
+        const TValue* func = luaA_toobject(L, funcindex);
+        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
+
+        Proto* p = clvalue(func)->l.p;
+        // Find line number to add the breakpoint to.
+        target = getnextline(p, line);
+
+        if (target != -1)
+        {
+            // Add breakpoint on the exact line
+            luaG_breakpoint(L, p, target, bool(enabled));
+        }
+    }
+    else
+    {
+        const TValue* func = luaA_toobject(L, funcindex);
+        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
+
+        luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
+    }
+
+    return target;
 }
 
 static void getcoverage(Proto* p, int depth, int* buffer, size_t size, void* context, lua_Coverage callback)
@@ -465,7 +536,7 @@ const char* lua_debugtrace(lua_State* L)
         if (ar.currentline > 0)
         {
             char line[32];
-            sprintf(line, ":%d", ar.currentline);
+            snprintf(line, sizeof(line), ":%d", ar.currentline);
 
             offset = append(buf, sizeof(buf), offset, line);
         }
@@ -481,7 +552,7 @@ const char* lua_debugtrace(lua_State* L)
         if (depth > limit1 + limit2 && level == limit1 - 1)
         {
             char skip[32];
-            sprintf(skip, "... (+%d frames)\n", int(depth - limit1 - limit2));
+            snprintf(skip, sizeof(skip), "... (+%d frames)\n", int(depth - limit1 - limit2));
 
             offset = append(buf, sizeof(buf), offset, skip);
 

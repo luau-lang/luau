@@ -37,8 +37,6 @@ enum class Condition
     Zero,
     NotZero,
 
-    // TODO: ordered and unordered floating-point conditions
-
     Count
 };
 

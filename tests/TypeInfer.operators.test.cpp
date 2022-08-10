@@ -490,8 +490,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
 {
-    ScopedFastFlag sff("LuauCheckLenMT", true);
-
     CheckResult result = check(R"(
         --!strict
         local foo = {
@@ -869,6 +867,28 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "equality_operations_succeed_if_any_union_bra
 
     LUAU_REQUIRE_ERROR_COUNT(1, result2);
     CHECK(toString(result2.errors[0]) == "Types Foo and Bar cannot be compared with == because they do not have the same metatable");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_and")
+{
+    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
+
+    CheckResult result = check(R"(
+        local x: "a" | "b" | boolean = math.random() > 0.5 and "a"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
+{
+    ScopedFastFlag sff{"LuauBinaryNeedsExpectedTypesToo", true};
+
+    CheckResult result = check(R"(
+        local x: "a" | "b" | boolean = math.random() > 0.5 or "b"
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

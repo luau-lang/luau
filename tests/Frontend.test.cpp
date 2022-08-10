@@ -756,26 +756,6 @@ TEST_CASE_FIXTURE(FrontendFixture, "test_lint_uses_correct_config")
     CHECK_EQ(0, result4.warnings.size());
 }
 
-TEST_CASE_FIXTURE(FrontendFixture, "lintFragment")
-{
-    LintOptions lintOptions;
-    lintOptions.enableWarning(LintWarning::Code_ForRange);
-
-    auto [_sourceModule, result] = frontend.lintFragment(R"(
-        local t = {}
-
-        for i=#t,1 do
-        end
-
-        for i=#t,1,-1 do
-        end
-    )",
-        lintOptions);
-
-    CHECK_EQ(1, result.warnings.size());
-    CHECK_EQ(0, result.errors.size());
-}
-
 TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
 {
     Frontend fe{&fileResolver, &configResolver, {false}};
@@ -791,6 +771,8 @@ TEST_CASE_FIXTURE(FrontendFixture, "discard_type_graphs")
     CHECK_EQ(0, module->internalTypes.typeVars.size());
     CHECK_EQ(0, module->internalTypes.typePacks.size());
     CHECK_EQ(0, module->astTypes.size());
+    CHECK_EQ(0, module->astResolvedTypes.size());
+    CHECK_EQ(0, module->astResolvedTypePacks.size());
 }
 
 TEST_CASE_FIXTURE(FrontendFixture, "it_should_be_safe_to_stringify_errors_when_full_type_graph_is_discarded")
@@ -1064,6 +1046,73 @@ TEST_CASE("check_without_builtin_next")
     // We don't care about the result. That we haven't crashed is enough.
     frontend.check("Module/A");
     frontend.check("Module/B");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauForceExportSurfacesToBeNormal", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    fileResolver.source["Module/A"] = R"(
+        type F<T> = (set: G<T>) -> ()
+
+        export type G<T> = {
+            forEach: (a: F<T>) -> (),
+        }
+
+        function X<T>(a: F<T>): ()
+        end
+
+        return X
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        --!strict
+        local A = require(script.Parent.A)
+
+        export type G<T> = A.G<T>
+
+        return {
+            A = A,
+        }
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauForceExportSurfacesToBeNormal", true},
+        {"LuauLowerBoundsCalculation", true},
+    };
+
+    fileResolver.source["Module/A"] = R"(
+        type KeyOfTestEvents = "test-file-start" | "test-file-success" | "test-file-failure" | "test-case-result"
+        type unknown = any
+
+        export type TestFileEvent<T = KeyOfTestEvents> = (
+            eventName: T,
+            args: any --[[ ROBLOX TODO: Unhandled node for type: TSIndexedAccessType ]] --[[ TestEvents[T] ]]
+        ) -> unknown
+
+        return {}
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+        --!strict
+        local A = require(script.Parent.A)
+
+        export type TestFileEvent = A.TestFileEvent
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

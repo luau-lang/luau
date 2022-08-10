@@ -9,6 +9,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -555,6 +556,29 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_correctly_ordered_types")
     CHECK_EQ(tm->givenType, typeChecker.numberType);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier")
+{
+    CheckResult result = check(R"(
+        --!strict
+        string.format("%* %* %* %*", "string", 1, true, function() end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_tostring_specifier_type_constraint")
+{
+    CheckResult result = check(R"(
+        local function f(x): string
+            local _ = string.format("%*", x)
+            return x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("(string) -> string", toString(requireType("f")));
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall")
 {
     CheckResult result = check(R"(
@@ -925,7 +949,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_returns_false_and_string_iff_it_knows
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("(nil) -> nil", toString(requireType("f")));
+    CHECK_EQ("(nil) -> (never, ...never)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
@@ -952,7 +976,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
-    CHECK_EQ("*unknown*", toString(requireType("d")));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(requireType("d")));
+    else
+        CHECK_EQ("<error-type>", toString(requireType("d")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
@@ -965,8 +992,8 @@ a:b()
 a:b({})
     )");
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{{2, 0}, {2, 5}}, CountMismatch{2, 0}}));
-    CHECK_EQ(result.errors[1], (TypeError{Location{{3, 0}, {3, 5}}, CountMismatch{2, 1}}));
+    CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function expects 2 arguments, but none are specified");
+    CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function expects 2 arguments, but only 1 is specified");
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")
@@ -1006,6 +1033,251 @@ end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types")
+{
+    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = string.gmatch("This is a string", "(.()(%a+))")()
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types2")
+{
+    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = ("This is a string"):gmatch("(.()(%a+))")()
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
+{
+    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c, d = string.gmatch("T(his)() is a string", ".")()
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 1);
+    CHECK_EQ(acm->actual, 4);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens")
+{
+    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c, d = string.gmatch("T(his) is a string", "((.)%b()())")()
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 3);
+    CHECK_EQ(acm->actual, 4);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "string");
+    CHECK_EQ(toString(requireType("c")), "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_ignored")
+{
+    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = string.gmatch("T(his)() is a string", "(T[()])()")()
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 2);
+    CHECK_EQ(acm->actual, 3);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_set_containing_lbracket")
+{
+    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b = string.gmatch("[[[", "()([[])")()
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "number");
+    CHECK_EQ(toString(requireType("b")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_leading_end_bracket_is_part_of_set")
+{
+    CheckResult result = check(R"END(
+        -- An immediate right-bracket following a left-bracket is included within the set;
+        -- thus, '[]]'' is the set containing ']', and '[]' is an invalid set missing an enclosing
+        -- right-bracket. We detect an invalid set in this case and fall back to to default gmatch
+        -- typing.
+        local foo = string.gmatch("T[hi%]s]]]() is a string", "([]s)")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_invalid_pattern_fallback_to_builtin")
+{
+    CheckResult result = check(R"END(
+        local foo = string.gmatch("T(his)() is a string", ")")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_invalid_pattern_fallback_to_builtin2")
+{
+    CheckResult result = check(R"END(
+        local foo = string.gmatch("T(his)() is a string", "[")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("foo")), "() -> (...string)");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = string.match("This is a string", "(.()(%a+))")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local a, b, c = string.match("This is a string", "(.()(%a+))", "this should be a number")
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "number?");
+    CHECK_EQ(toString(tm->givenType), "string");
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))")
+    )END");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types2")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", "this should be a number")
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "number?");
+    CHECK_EQ(toString(tm->givenType), "string");
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", 1, "this should be a bool")
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm);
+    CHECK_EQ(toString(tm->wantedType), "boolean?");
+    CHECK_EQ(toString(tm->givenType), "string");
+
+    CHECK_EQ(toString(requireType("a")), "string");
+    CHECK_EQ(toString(requireType("b")), "number");
+    CHECK_EQ(toString(requireType("c")), "string");
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
+{
+    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
+    CheckResult result = check(R"END(
+        local d, e, a, b = string.find("This is a string", "(.()(%a+))", 1, true)
+    )END");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->expected, 2);
+    CHECK_EQ(acm->actual, 4);
+
+    CHECK_EQ(toString(requireType("d")), "number?");
+    CHECK_EQ(toString(requireType("e")), "number?");
 }
 
 TEST_SUITE_END();

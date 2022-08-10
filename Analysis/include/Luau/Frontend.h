@@ -127,13 +127,6 @@ struct Frontend
     CheckResult check(const ModuleName& name, std::optional<FrontendOptions> optionOverride = {}); // new shininess
     LintResult lint(const ModuleName& name, std::optional<LintOptions> enabledLintWarnings = {});
 
-    /** Lint some code that has no associated DataModel object
-     *
-     * Since this source fragment has no name, we cannot cache its AST.  Instead,
-     * we return it to the caller to use as they wish.
-     */
-    std::pair<SourceModule, LintResult> lintFragment(std::string_view source, std::optional<LintOptions> enabledLintWarnings = {});
-
     LintResult lint(const SourceModule& module, std::optional<LintOptions> enabledLintWarnings = {});
 
     bool isDirty(const ModuleName& name, bool forAutocomplete = false) const;
@@ -159,7 +152,9 @@ struct Frontend
     void registerBuiltinDefinition(const std::string& name, std::function<void(TypeChecker&, ScopePtr)>);
     void applyBuiltinDefinitionToEnvironment(const std::string& environmentName, const std::string& definitionName);
 
-    NotNull<Scope2> getGlobalScope2();
+    LoadDefinitionFileResult loadDefinitionFile(std::string_view source, const std::string& packageName);
+
+    NotNull<Scope> getGlobalScope();
 
 private:
     ModulePtr check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope);
@@ -176,7 +171,7 @@ private:
     std::unordered_map<std::string, ScopePtr> environments;
     std::unordered_map<std::string, std::function<void(TypeChecker&, ScopePtr)>> builtinDefinitions;
 
-    std::unique_ptr<Scope2> globalScope2;
+    ScopePtr globalScope;
 
 public:
     FileResolver* fileResolver;
@@ -187,6 +182,7 @@ public:
     ConfigResolver* configResolver;
     FrontendOptions options;
     InternalErrorReporter iceHandler;
+    TypeArena globalTypes;
     TypeArena arenaForAutocomplete;
 
     std::unordered_map<ModuleName, SourceNode> sourceNodes;

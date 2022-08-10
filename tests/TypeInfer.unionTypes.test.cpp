@@ -7,6 +7,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
 
@@ -199,7 +200,10 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
     CHECK_EQ(mup->missing[0], *bTy);
     CHECK_EQ(mup->key, "x");
 
-    CHECK_EQ("*unknown*", toString(requireType("r")));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(requireType("r")));
+    else
+        CHECK_EQ("<error-type>", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any")

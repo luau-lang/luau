@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "ConstantFolding.h"
 
+#include "BuiltinFolding.h"
+
 #include <math.h>
 
 namespace Luau
@@ -193,13 +195,18 @@ struct ConstantVisitor : AstVisitor
     DenseHashMap<AstLocal*, Variable>& variables;
     DenseHashMap<AstLocal*, Constant>& locals;
 
+    const DenseHashMap<AstExprCall*, int>* builtins;
+
     bool wasEmpty = false;
 
-    ConstantVisitor(
-        DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables, DenseHashMap<AstLocal*, Constant>& locals)
+    std::vector<Constant> builtinArgs;
+
+    ConstantVisitor(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
+        DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins)
         : constants(constants)
         , variables(variables)
         , locals(locals)
+        , builtins(builtins)
     {
         // since we do a single pass over the tree, if the initial state was empty we don't need to clear out old entries
         wasEmpty = constants.empty() && locals.empty();
@@ -253,8 +260,37 @@ struct ConstantVisitor : AstVisitor
         {
             analyze(expr->func);
 
-            for (size_t i = 0; i < expr->args.size; ++i)
-                analyze(expr->args.data[i]);
+            if (const int* bfid = builtins ? builtins->find(expr) : nullptr)
+            {
+                // since recursive calls to analyze() may reuse the vector we need to be careful and preserve existing contents
+                size_t offset = builtinArgs.size();
+                bool canFold = true;
+
+                builtinArgs.reserve(offset + expr->args.size);
+
+                for (size_t i = 0; i < expr->args.size; ++i)
+                {
+                    Constant ac = analyze(expr->args.data[i]);
+
+                    if (ac.type == Constant::Type_Unknown)
+                        canFold = false;
+                    else
+                        builtinArgs.push_back(ac);
+                }
+
+                if (canFold)
+                {
+                    LUAU_ASSERT(builtinArgs.size() == offset + expr->args.size);
+                    result = foldBuiltin(*bfid, builtinArgs.data() + offset, expr->args.size);
+                }
+
+                builtinArgs.resize(offset);
+            }
+            else
+            {
+                for (size_t i = 0; i < expr->args.size; ++i)
+                    analyze(expr->args.data[i]);
+            }
         }
         else if (AstExprIndexName* expr = node->as<AstExprIndexName>())
         {
@@ -395,9 +431,9 @@ struct ConstantVisitor : AstVisitor
 };
 
 void foldConstants(DenseHashMap<AstExpr*, Constant>& constants, DenseHashMap<AstLocal*, Variable>& variables,
-    DenseHashMap<AstLocal*, Constant>& locals, AstNode* root)
+    DenseHashMap<AstLocal*, Constant>& locals, const DenseHashMap<AstExprCall*, int>* builtins, AstNode* root)
 {
-    ConstantVisitor visitor{constants, variables, locals};
+    ConstantVisitor visitor{constants, variables, locals, builtins};
     root->visit(&visitor);
 }
 

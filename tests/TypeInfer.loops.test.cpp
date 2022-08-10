@@ -13,6 +13,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+
 TEST_SUITE_BEGIN("TypeInferLoops");
 
 TEST_CASE_FIXTURE(Fixture, "for_loop")
@@ -142,7 +144,10 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
     CHECK_EQ(2, result.errors.size());
 
     TypeId p = requireType("p");
-    CHECK_EQ("*unknown*", toString(p));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(p));
+    else
+        CHECK_EQ("<error-type>", toString(p));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
@@ -516,7 +521,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_trailing_nil")
     CHECK_EQ(*typeChecker.nilType, *requireType("extra"));
 }
 
-TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
+TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_strict")
 {
     CheckResult result = check(R"(
         local t = {}
@@ -529,6 +534,17 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer")
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
     CHECK_EQ("Cannot iterate over a table without indexer", ge->message);
+}
+
+TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
+{
+    CheckResult result = check(Mode::Nonstrict, R"(
+        local t = {}
+        for k, v in t do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")

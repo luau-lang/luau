@@ -9,6 +9,9 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauCheckGenericHOFTypes)
+LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("GenericsTests");
@@ -1001,7 +1004,10 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_quantifying")
 
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
-    CHECK_EQ("*unknown*", toString(t0->type));
+    if (FFlag::LuauSpecialTypesAsterisked)
+        CHECK_EQ("*error-type*", toString(t0->type));
+    else
+        CHECK_EQ("<error-type>", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);
@@ -1095,10 +1101,18 @@ local b = sumrec(sum) -- ok
 local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ("Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
-             "parameters",
-        toString(result.errors[0]));
+    if (FFlag::LuauCheckGenericHOFTypes)
+    {
+        LUAU_REQUIRE_NO_ERRORS(result);
+    }
+    else
+    {
+        LUAU_REQUIRE_ERRORS(result);
+        CHECK_EQ(
+            "Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
+            "parameters",
+            toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
@@ -1172,10 +1186,6 @@ end)
 
 TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_generic")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauAlwaysQuantify", true},
-    };
-
     CheckResult result = check(R"(
         function foo<X>(f, x: X)
             return f(x)
@@ -1183,6 +1193,25 @@ TEST_CASE_FIXTURE(Fixture, "quantify_functions_even_if_they_have_an_explicit_gen
     )");
 
     CHECK("<X, a...>((X) -> (a...), X) -> (a...)" == toString(requireType("foo")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "do_not_always_instantiate_generic_intersection_types")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauMaybeGenericIntersectionTypes", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        type Array<T> = { [number]: T }
+
+        type Array_Statics = {
+            new: <T>() -> Array<T>,
+        }
+
+        local _Arr : Array<any> & Array_Statics = {} :: Array_Statics
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -165,8 +165,8 @@ LOADN R1 1
 FASTCALL2K 18 R1 K0 L0
 LOADK R2 K0
 GETIMPORT R0 3
-L0: CALL R0 2 -1
-RETURN R0 -1
+CALL R0 2 -1
+L0: RETURN R0 -1
 )");
 }
 
@@ -2100,12 +2100,12 @@ FASTCALL2 18 R0 R1 L0
 MOVE R5 R0
 MOVE R6 R1
 GETIMPORT R4 2
-L0: CALL R4 2 1
-FASTCALL2 19 R4 R2 L1
+CALL R4 2 1
+L0: FASTCALL2 19 R4 R2 L1
 MOVE R5 R2
 GETIMPORT R3 4
-L1: CALL R3 2 -1
-RETURN R3 -1
+CALL R3 2 -1
+L1: RETURN R3 -1
 )");
 }
 
@@ -2382,11 +2382,13 @@ end
 
 TEST_CASE("DebugLineInfoRepeatUntil")
 {
+    ScopedFastFlag sff("LuauCompileXEQ", true);
+
     CHECK_EQ("\n" + compileFunction0Coverage(R"(
 local f = 0
 repeat
     f += 1
-    if f == 1 then 
+    if f == 1 then
         print(f)
     else
         f = 0
@@ -2397,13 +2399,13 @@ until f == 0
         R"(
 2: LOADN R0 0
 4: L0: ADDK R0 R0 K0
-5: JUMPIFNOTEQK R0 K0 L1
+5: JUMPXEQKN R0 K0 L1 NOT
 6: GETIMPORT R1 2
 6: MOVE R2 R0
 6: CALL R1 1 0
 6: JUMP L2
 8: L1: LOADN R0 0
-10: L2: JUMPIFEQK R0 K3 L3
+10: L2: JUMPXEQKN R0 K3 L3
 10: JUMPBACK L0
 11: L3: RETURN R0 0
 )");
@@ -2511,8 +2513,8 @@ return
 5: MOVE R3 R0
 5: MOVE R4 R1
 5: GETIMPORT R2 2
-5: L0: CALL R2 2 -1
-5: RETURN R2 -1
+5: CALL R2 2 -1
+5: L0: RETURN R2 -1
 )");
 }
 
@@ -2828,8 +2830,8 @@ TEST_CASE("FastcallBytecode")
 LOADN R1 -5
 FASTCALL1 2 R1 L0
 GETIMPORT R0 2
-L0: CALL R0 1 -1
-RETURN R0 -1
+CALL R0 1 -1
+L0: RETURN R0 -1
 )");
 
     // call through a local variable
@@ -2838,8 +2840,8 @@ GETIMPORT R0 2
 LOADN R2 -5
 FASTCALL1 2 R2 L0
 MOVE R1 R0
-L0: CALL R1 1 -1
-RETURN R1 -1
+CALL R1 1 -1
+L0: RETURN R1 -1
 )");
 
     // call through an upvalue
@@ -2847,8 +2849,8 @@ RETURN R1 -1
 LOADN R1 -5
 FASTCALL1 2 R1 L0
 GETUPVAL R0 0
-L0: CALL R0 1 -1
-RETURN R0 -1
+CALL R0 1 -1
+L0: RETURN R0 -1
 )");
 
     // mutating the global in the script breaks the optimization
@@ -2893,8 +2895,8 @@ LOADK R1 K0
 FASTCALL1 57 R1 L0
 GETIMPORT R0 2
 GETVARARGS R2 -1
-L0: CALL R0 -1 1
-RETURN R0 1
+CALL R0 -1 1
+L0: RETURN R0 1
 )");
 
     // more complex example: select inside a for loop bound + select from a iterator
@@ -2912,16 +2914,16 @@ LOADK R5 K0
 FASTCALL1 57 R5 L0
 GETIMPORT R4 2
 GETVARARGS R6 -1
-L0: CALL R4 -1 1
-MOVE R1 R4
+CALL R4 -1 1
+L0: MOVE R1 R4
 LOADN R2 1
 FORNPREP R1 L3
 L1: FASTCALL1 57 R3 L2
 GETIMPORT R4 2
 MOVE R5 R3
 GETVARARGS R6 -1
-L2: CALL R4 -1 1
-ADD R0 R0 R4
+CALL R4 -1 1
+L2: ADD R0 R0 R4
 FORNLOOP R1 L1
 L3: RETURN R0 1
 )");
@@ -3242,7 +3244,7 @@ LOADN R2 -1
 FASTCALL1 2 R2 L0
 GETGLOBAL R3 K1024
 GETTABLEKS R1 R3 K1025
-L0: CALL R1 1 -1
+CALL R1 1 -1
 )");
 }
 
@@ -3509,13 +3511,15 @@ RETURN R0 1
 
 TEST_CASE("ConstantJumpCompare")
 {
+    ScopedFastFlag sff("LuauCompileXEQ", true);
+
     CHECK_EQ("\n" + compileFunction0(R"(
 local obj = ...
 local b = obj == 1
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKN R0 K0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3527,7 +3531,7 @@ local b = 1 == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKN R0 K0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3539,7 +3543,7 @@ local b = "Hello, Sailor!" == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKS R0 K0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3551,7 +3555,7 @@ local b = nil == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKNIL R0 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3563,7 +3567,7 @@ local b = true == obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFEQK R0 K0 L0
+JUMPXEQKB R0 1 L0
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3575,7 +3579,7 @@ local b = nil ~= obj
 )"),
         R"(
 GETVARARGS R0 1
-JUMPIFNOTEQK R0 K0 L0
+JUMPXEQKNIL R0 L0 NOT
 LOADB R1 0 +1
 L0: LOADB R1 1
 L1: RETURN R0 0
@@ -3793,6 +3797,8 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
+    ScopedFastFlag sff("LuauCompileFreeReassign", true);
+
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -3940,11 +3946,10 @@ LOADN R2 1
 LOADN R0 10
 LOADN R1 1
 FORNPREP R0 L5
-L4: MOVE R3 R2
-GETIMPORT R4 1
-NEWCLOSURE R5 P2
-CAPTURE VAL R3
-CALL R4 1 0
+L4: GETIMPORT R3 1
+NEWCLOSURE R4 P2
+CAPTURE VAL R2
+CALL R3 1 0
 FORNLOOP R0 L4
 L5: RETURN R0 0
 )");
@@ -4063,8 +4068,8 @@ LOADN R2 2
 LOADN R3 3
 FASTCALL 54 L0
 GETIMPORT R0 2
-L0: CALL R0 3 -1
-RETURN R0 -1
+CALL R0 3 -1
+L0: RETURN R0 -1
 )");
 }
 
@@ -4414,7 +4419,7 @@ L2: RETURN R0 0
     // continue needs to properly close upvalues
     CHECK_EQ("\n" + compileFunction(R"(
 for i=1,1 do
-    local j = math.abs(i)
+    local j = global(i)
     print(function() return j end)
     if math.random() < 0.5 then
         continue
@@ -4424,21 +4429,20 @@ end
 )",
                         1, 2),
         R"(
+GETIMPORT R0 1
 LOADN R1 1
-FASTCALL1 2 R1 L0
-GETIMPORT R0 2
-L0: CALL R0 1 1
-GETIMPORT R1 4
+CALL R0 1 1
+GETIMPORT R1 3
 NEWCLOSURE R2 P0
 CAPTURE REF R0
 CALL R1 1 0
 GETIMPORT R1 6
 CALL R1 0 1
 LOADK R2 K7
-JUMPIFNOTLT R1 R2 L1
+JUMPIFNOTLT R1 R2 L0
 CLOSEUPVALS R0
 RETURN R0 0
-L1: ADDK R0 R0 K8
+L0: ADDK R0 R0 K8
 CLOSEUPVALS R0
 RETURN R0 0
 )");
@@ -4625,11 +4629,11 @@ FORNPREP R1 L3
 L0: FASTCALL1 24 R3 L1
 MOVE R6 R3
 GETIMPORT R5 2
-L1: CALL R5 1 -1
-FASTCALL 2 L2
+CALL R5 1 -1
+L1: FASTCALL 2 L2
 GETIMPORT R4 4
-L2: CALL R4 -1 1
-SETTABLE R4 R0 R3
+CALL R4 -1 1
+L2: SETTABLE R4 R0 R3
 FORNLOOP R1 L0
 L3: RETURN R0 1
 )");
@@ -4657,6 +4661,131 @@ MOVE R5 R3
 CALL R4 1 0
 FORNLOOP R0 L0
 L1: RETURN R0 0
+)");
+}
+
+TEST_CASE("LoopUnrollCostBuiltins")
+{
+    ScopedFastInt sfis[] = {
+        {"LuauCompileLoopUnrollThreshold", 25},
+        {"LuauCompileLoopUnrollThresholdMaxBoost", 300},
+    };
+
+    // this loop uses builtins and is close to the cost budget so it's important that we model builtins as cheaper than regular calls
+    CHECK_EQ("\n" + compileFunction(R"(
+function cipher(block, nonce)
+    for i = 0,3 do
+        block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff)
+    end
+end
+)",
+                        0, 2),
+        R"(
+FASTCALL2K 39 R1 K0 L0
+MOVE R4 R1
+LOADK R5 K0
+GETIMPORT R3 3
+CALL R3 2 1
+L0: FASTCALL2K 29 R3 K4 L1
+LOADK R4 K4
+GETIMPORT R2 6
+CALL R2 2 1
+L1: SETTABLEN R2 R0 1
+FASTCALL2K 39 R1 K7 L2
+MOVE R4 R1
+LOADK R5 K7
+GETIMPORT R3 3
+CALL R3 2 1
+L2: FASTCALL2K 29 R3 K4 L3
+LOADK R4 K4
+GETIMPORT R2 6
+CALL R2 2 1
+L3: SETTABLEN R2 R0 2
+FASTCALL2K 39 R1 K8 L4
+MOVE R4 R1
+LOADK R5 K8
+GETIMPORT R3 3
+CALL R3 2 1
+L4: FASTCALL2K 29 R3 K4 L5
+LOADK R4 K4
+GETIMPORT R2 6
+CALL R2 2 1
+L5: SETTABLEN R2 R0 3
+FASTCALL2K 39 R1 K9 L6
+MOVE R4 R1
+LOADK R5 K9
+GETIMPORT R3 3
+CALL R3 2 1
+L6: FASTCALL2K 29 R3 K4 L7
+LOADK R4 K4
+GETIMPORT R2 6
+CALL R2 2 1
+L7: SETTABLEN R2 R0 4
+RETURN R0 0
+)");
+
+    // note that if we break compiler's ability to reason about bit32 builtin the loop is no longer unrolled as it's too expensive
+    CHECK_EQ("\n" + compileFunction(R"(
+bit32 = {}
+
+function cipher(block, nonce)
+    for i = 0,3 do
+        block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff)
+    end
+end
+)",
+                        0, 2),
+        R"(
+LOADN R4 0
+LOADN R2 3
+LOADN R3 1
+FORNPREP R2 L1
+L0: ADDK R5 R4 K0
+GETGLOBAL R7 K1
+GETTABLEKS R6 R7 K2
+GETGLOBAL R8 K1
+GETTABLEKS R7 R8 K3
+MOVE R8 R1
+MULK R9 R4 K4
+CALL R7 2 1
+LOADN R8 255
+CALL R6 2 1
+SETTABLE R6 R0 R5
+FORNLOOP R2 L0
+L1: RETURN R0 0
+)");
+
+    // additionally, if we pass too many constants the builtin stops being cheap because of argument setup
+    CHECK_EQ("\n" + compileFunction(R"(
+function cipher(block, nonce)
+    for i = 0,3 do
+        block[i + 1] = bit32.band(bit32.rshift(nonce, i * 8), 0xff, 0xff, 0xff, 0xff, 0xff)
+    end
+end
+)",
+                        0, 2),
+        R"(
+LOADN R4 0
+LOADN R2 3
+LOADN R3 1
+FORNPREP R2 L3
+L0: ADDK R5 R4 K0
+MULK R9 R4 K1
+FASTCALL2 39 R1 R9 L1
+MOVE R8 R1
+GETIMPORT R7 4
+CALL R7 2 1
+L1: LOADN R8 255
+LOADN R9 255
+LOADN R10 255
+LOADN R11 255
+LOADN R12 255
+FASTCALL 29 L2
+GETIMPORT R6 6
+CALL R6 6 1
+L2: SETTABLE R6 R0 R5
+FORNLOOP R2 L0
+L3: RETURN R0 0
 )");
 }
 
@@ -5216,8 +5345,8 @@ DUPCLOSURE R0 K0
 LOADK R3 K1
 FASTCALL1 20 R3 L0
 GETIMPORT R2 4
-L0: CALL R2 1 2
-ADD R1 R2 R3
+CALL R2 1 2
+L0: ADD R1 R2 R3
 RETURN R1 1
 )");
 
@@ -5483,14 +5612,14 @@ NEWTABLE R2 0 0
 FASTCALL2K 49 R2 K1 L0
 LOADK R3 K1
 GETIMPORT R1 3
-L0: CALL R1 2 0
-NEWTABLE R1 0 0
+CALL R1 2 0
+L0: NEWTABLE R1 0 0
 NEWTABLE R3 0 0
 FASTCALL2 49 R3 R1 L1
 MOVE R4 R1
 GETIMPORT R2 3
-L1: CALL R2 2 0
-RETURN R0 0
+CALL R2 2 0
+L1: RETURN R0 0
 )");
 }
 
@@ -5759,6 +5888,357 @@ return (x), y :: number
         R"(
 GETVARARGS R0 2
 RETURN R0 2
+)");
+}
+
+TEST_CASE("OptimizationLevel")
+{
+    // at optimization level 1, no inlining is performed
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+return foo(42)
+)",
+                        1, 1),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+LOADN R2 42
+CALL R1 1 -1
+RETURN R1 -1
+)");
+
+    // you can override the level from 1 to 2 to force it
+    CHECK_EQ("\n" + compileFunction(R"(
+--!optimize 2
+local function foo(a)
+    return a
+end
+
+return foo(42)
+)",
+                        1, 1),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R1 42
+RETURN R1 1
+)");
+
+    // you can also override it externally
+    CHECK_EQ("\n" + compileFunction(R"(
+local function foo(a)
+    return a
+end
+
+return foo(42)
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+LOADN R1 42
+RETURN R1 1
+)");
+
+    // ... after which you can downgrade it back via hot comment
+    CHECK_EQ("\n" + compileFunction(R"(
+--!optimize 1
+local function foo(a)
+    return a
+end
+
+return foo(42)
+)",
+                        1, 2),
+        R"(
+DUPCLOSURE R0 K0
+MOVE R1 R0
+LOADN R2 42
+CALL R1 1 -1
+RETURN R1 -1
+)");
+}
+
+TEST_CASE("BuiltinFolding")
+{
+    CHECK_EQ("\n" + compileFunction(R"(
+return
+    math.abs(-42),
+    math.acos(1),
+    math.asin(0),
+    math.atan2(0, 1),
+    math.atan(0),
+    math.ceil(1.5),
+    math.cosh(0),
+    math.cos(0),
+    math.deg(3.14159265358979323846),
+    math.exp(0),
+    math.floor(-1.5),
+    math.fmod(7, 3),
+    math.ldexp(0.5, 3),
+    math.log10(100),
+    math.log(1),
+    math.log(4, 2),
+    math.log(27, 3),
+    math.max(1, 2, 3),
+    math.min(1, 2, 3),
+    math.pow(3, 3),
+    math.floor(math.rad(180)),
+    math.sinh(0),
+    math.sin(0),
+    math.sqrt(9),
+    math.tanh(0),
+    math.tan(0),
+    bit32.arshift(-10, 1),
+    bit32.arshift(10, 1),
+    bit32.band(1, 3),
+    bit32.bnot(-2),
+    bit32.bor(1, 2),
+    bit32.bxor(3, 7),
+    bit32.btest(1, 3),
+    bit32.extract(100, 1, 3),
+    bit32.lrotate(100, -1),
+    bit32.lshift(100, 1),
+    bit32.replace(100, 5, 1, 3),
+    bit32.rrotate(100, -1),
+    bit32.rshift(100, 1),
+    type(100),
+    string.byte("a"),
+    string.byte("abc", 2),
+    string.len("abc"),
+    typeof(true),
+    math.clamp(-1, 0, 1),
+    math.sign(77),
+    math.round(7.6),
+    (type("fin"))
+)",
+                        0, 2),
+        R"(
+LOADN R0 42
+LOADN R1 0
+LOADN R2 0
+LOADN R3 0
+LOADN R4 0
+LOADN R5 2
+LOADN R6 1
+LOADN R7 1
+LOADN R8 180
+LOADN R9 1
+LOADN R10 -2
+LOADN R11 1
+LOADN R12 4
+LOADN R13 2
+LOADN R14 0
+LOADN R15 2
+LOADN R16 3
+LOADN R17 3
+LOADN R18 1
+LOADN R19 27
+LOADN R20 3
+LOADN R21 0
+LOADN R22 0
+LOADN R23 3
+LOADN R24 0
+LOADN R25 0
+LOADK R26 K0
+LOADN R27 5
+LOADN R28 1
+LOADN R29 1
+LOADN R30 3
+LOADN R31 4
+LOADB R32 1
+LOADN R33 2
+LOADN R34 50
+LOADN R35 200
+LOADN R36 106
+LOADN R37 200
+LOADN R38 50
+LOADK R39 K1
+LOADN R40 97
+LOADN R41 98
+LOADN R42 3
+LOADK R43 K2
+LOADN R44 0
+LOADN R45 1
+LOADN R46 8
+LOADK R47 K3
+RETURN R0 48
+)");
+}
+
+TEST_CASE("BuiltinFoldingProhibited")
+{
+    CHECK_EQ("\n" + compileFunction(R"(
+return
+    math.abs(),
+    math.max(1, true),
+    string.byte("abc", 42),
+    bit32.rshift(10, 42)
+)",
+                        0, 2),
+        R"(
+FASTCALL 2 L0
+GETIMPORT R0 2
+CALL R0 0 1
+L0: LOADN R2 1
+FASTCALL2K 18 R2 K3 L1
+LOADK R3 K3
+GETIMPORT R1 5
+CALL R1 2 1
+L1: LOADK R3 K6
+FASTCALL2K 41 R3 K7 L2
+LOADK R4 K7
+GETIMPORT R2 10
+CALL R2 2 1
+L2: LOADN R4 10
+FASTCALL2K 39 R4 K7 L3
+LOADK R5 K7
+GETIMPORT R3 13
+CALL R3 2 -1
+L3: RETURN R0 -1
+)");
+}
+
+TEST_CASE("BuiltinFoldingMultret")
+{
+    ScopedFastFlag sff("LuauCompileXEQ", true);
+
+    CHECK_EQ("\n" + compileFunction(R"(
+local NoLanes: Lanes = --[[                             ]] 0b0000000000000000000000000000000
+local OffscreenLane: Lane = --[[                        ]] 0b1000000000000000000000000000000
+
+local function getLanesToRetrySynchronouslyOnError(root: FiberRoot): Lanes
+    local everythingButOffscreen = bit32.band(root.pendingLanes, bit32.bnot(OffscreenLane))
+    if everythingButOffscreen ~= NoLanes then
+        return everythingButOffscreen
+    end
+    if bit32.band(everythingButOffscreen, OffscreenLane) ~= 0 then
+        return OffscreenLane
+    end
+    return NoLanes
+end
+)",
+                        0, 2),
+        R"(
+GETTABLEKS R2 R0 K0
+FASTCALL2K 29 R2 K1 L0
+LOADK R3 K1
+GETIMPORT R1 4
+CALL R1 2 1
+L0: JUMPXEQKN R1 K5 L1
+RETURN R1 1
+L1: FASTCALL2K 29 R1 K6 L2
+MOVE R3 R1
+LOADK R4 K6
+GETIMPORT R2 4
+CALL R2 2 1
+L2: JUMPXEQKN R2 K5 L3
+LOADK R2 K6
+RETURN R2 1
+L3: LOADN R2 0
+RETURN R2 1
+)");
+
+    // Note: similarly, here we should have folded the return value but haven't because it's the last call in the sequence
+    CHECK_EQ("\n" + compileFunction(R"(
+return math.abs(-42)
+)",
+                        0, 2),
+        R"(
+LOADN R0 42
+RETURN R0 1
+)");
+}
+
+TEST_CASE("LocalReassign")
+{
+    ScopedFastFlag sff("LuauCompileFreeReassign", true);
+
+    // locals can be re-assigned and the register gets reused
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = a
+    return c + b
+end
+)"),
+        R"(
+ADD R2 R0 R1
+RETURN R2 1
+)");
+
+    // this works if the expression is using type casts or grouping
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = (a :: number)
+    return c + b
+end
+)"),
+        R"(
+ADD R2 R0 R1
+RETURN R2 1
+)");
+
+    // the optimization requires that neither local is mutated
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = a
+    c += 0
+    local d = b
+    b += 0
+    return c + d
+end
+)"),
+        R"(
+MOVE R2 R0
+ADDK R2 R2 K0
+MOVE R3 R1
+ADDK R1 R1 K0
+ADD R4 R2 R3
+RETURN R4 1
+)");
+
+    // sanity check for two values
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c = a
+    local d = b
+    return c + d
+end
+)"),
+        R"(
+ADD R2 R0 R1
+RETURN R2 1
+)");
+
+    // note: we currently only support this for single assignments
+    CHECK_EQ("\n" + compileFunction0(R"(
+local function test(a, b)
+    local c, d = a, b
+    return c + d
+end
+)"),
+        R"(
+MOVE R2 R0
+MOVE R3 R1
+ADD R4 R2 R3
+RETURN R4 1
+)");
+
+    // of course, captures capture the original register as well (by value since it's immutable)
+    CHECK_EQ("\n" + compileFunction(R"(
+local function test(a, b)
+    local c = a
+    local d = b
+    return function() return c + d end
+end
+)",
+                        1),
+        R"(
+NEWCLOSURE R2 P0
+CAPTURE VAL R0
+CAPTURE VAL R1
+RETURN R2 1
 )");
 }
 

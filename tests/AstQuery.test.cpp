@@ -105,4 +105,37 @@ if true then
     REQUIRE(parentStat->is<AstStatIf>());
 }
 
+TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_at_number_const")
+{
+    check(R"(
+print(3.)
+    )");
+
+    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*getMainSourceModule(), Position(1, 8));
+    REQUIRE_GE(ancestry.size(), 2);
+    REQUIRE(ancestry.back()->is<AstExprConstantNumber>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_in_workspace_dot")
+{
+    check(R"(
+print(workspace.)
+    )");
+
+    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*getMainSourceModule(), Position(1, 16));
+    REQUIRE_GE(ancestry.size(), 2);
+    REQUIRE(ancestry.back()->is<AstExprIndexName>());
+}
+
+TEST_CASE_FIXTURE(Fixture, "ac_ast_ancestry_in_workspace_colon")
+{
+    check(R"(
+print(workspace:)
+    )");
+
+    std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(*getMainSourceModule(), Position(1, 16));
+    REQUIRE_GE(ancestry.size(), 2);
+    REQUIRE(ancestry.back()->is<AstExprIndexName>());
+}
+
 TEST_SUITE_END();
