@@ -77,6 +77,31 @@ static void generateDocumentationSymbols(TypeId ty, const std::string& rootName)
     }
 }
 
+void loadModuleIntoScope(TypeChecker& typeChecker, ModulePtr module, ScopePtr scope, const std::string& packageName)
+{
+    CloneState cloneState;
+
+    for (const auto& [name, ty] : module->declaredGlobals)
+    {
+        TypeId globalTy = clone(ty, typeChecker.globalTypes, cloneState);
+        std::string documentationSymbol = packageName + "/global/" + name;
+        generateDocumentationSymbols(globalTy, documentationSymbol);
+        scope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
+
+        persist(globalTy);
+    }
+
+    for (const auto& [name, ty] : module->getModuleScope()->exportedTypeBindings)
+    {
+        TypeFun globalTy = clone(ty, typeChecker.globalTypes, cloneState);
+        std::string documentationSymbol = packageName + "/globaltype/" + name;
+        generateDocumentationSymbols(globalTy.type, documentationSymbol);
+        scope->exportedTypeBindings[name] = globalTy;
+
+        persist(globalTy.type);
+    }
+}
+
 LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr targetScope, std::string_view source, const std::string& packageName)
 {
     LUAU_TIMETRACE_SCOPE("loadDefinitionFile", "Frontend");
@@ -101,27 +126,7 @@ LoadDefinitionFileResult loadDefinitionFile(TypeChecker& typeChecker, ScopePtr t
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, checkedModule};
 
-    CloneState cloneState;
-
-    for (const auto& [name, ty] : checkedModule->declaredGlobals)
-    {
-        TypeId globalTy = clone(ty, typeChecker.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/global/" + name;
-        generateDocumentationSymbols(globalTy, documentationSymbol);
-        targetScope->bindings[typeChecker.globalNames.names->getOrAdd(name.c_str())] = {globalTy, Location(), false, {}, documentationSymbol};
-
-        persist(globalTy);
-    }
-
-    for (const auto& [name, ty] : checkedModule->getModuleScope()->exportedTypeBindings)
-    {
-        TypeFun globalTy = clone(ty, typeChecker.globalTypes, cloneState);
-        std::string documentationSymbol = packageName + "/globaltype/" + name;
-        generateDocumentationSymbols(globalTy.type, documentationSymbol);
-        targetScope->exportedTypeBindings[name] = globalTy;
-
-        persist(globalTy.type);
-    }
+    loadModuleIntoScope(typeChecker, checkedModule, targetScope, packageName);
 
     return LoadDefinitionFileResult{true, parseResult, checkedModule};
 }
@@ -228,9 +233,11 @@ ErrorVec accumulateErrors(
 
         Module& module = *it2->second;
 
-        std::sort(module.errors.begin(), module.errors.end(), [](const TypeError& e1, const TypeError& e2) -> bool {
-            return e1.location.begin > e2.location.begin;
-        });
+        std::sort(module.errors.begin(), module.errors.end(),
+            [](const TypeError& e1, const TypeError& e2) -> bool
+            {
+                return e1.location.begin > e2.location.begin;
+            });
 
         result.insert(result.end(), module.errors.begin(), module.errors.end());
     }
@@ -642,7 +649,7 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
                 result->bindings[name].typeId = typeChecker.anyType;
         }
     }
-    
+
     if (!config.globalTypePaths.empty())
     {
         unfreeze(typeChecker.globalTypes);
@@ -650,11 +657,19 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
         result = std::make_shared<Scope>(result);
         for (const std::string& path : config.globalTypePaths)
         {
-            auto source = fileResolver->readSource(path);
-            if (!source)
-                continue;
+            ModulePtr module = moduleResolver.getModule(path);
+            if (!module)
+            {
+                auto sourceCode = fileResolver->readSource(path);
+                if (!sourceCode)
+                    continue;
+                SourceModule sourceModule = parse(path, sourceCode->source, {});
+                module = typeChecker.check(sourceModule, Mode::Strict);
+                if (!module)
+                    continue;
+            }
 
-            loadDefinitionFile(typeChecker, typeChecker.globalScope, source->source, path);
+            loadModuleIntoScope(typeChecker, module, result, path);
         }
 
         freeze(typeChecker.globalTypes);
