@@ -109,11 +109,11 @@ private:
 public:
     void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel);
 
-    // Report an "infinite type error" if the type "needle" already occurs within "haystack"
-    void occursCheck(TypeId needle, TypeId haystack);
-    void occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
-    void occursCheck(TypePackId needle, TypePackId haystack);
-    void occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
+    // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
+    bool occursCheck(TypeId needle, TypeId haystack);
+    bool occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
+    bool occursCheck(TypePackId needle, TypePackId haystack);
+    bool occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     Unifier makeChildUnifier();
 

@@ -16,6 +16,8 @@
 #include <unordered_map>
 #include <unordered_set>
 
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
+
 namespace Luau
 {
 
@@ -57,6 +59,9 @@ struct Anyification : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
+        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+            return true;
+
         return ty->persistent;
     }
     bool ignoreChildren(TypePackId ty) override

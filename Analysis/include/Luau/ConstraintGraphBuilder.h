@@ -28,6 +28,7 @@ struct ConstraintGraphBuilder
     std::vector<std::pair<Location, ScopePtr>> scopes;
 
     ModuleName moduleName;
+    ModulePtr module;
     SingletonTypes& singletonTypes;
     const NotNull<TypeArena> arena;
     // The root scope of the module we're generating constraints for.
@@ -53,9 +54,9 @@ struct ConstraintGraphBuilder
     // Occasionally constraint generation needs to produce an ICE.
     const NotNull<InternalErrorReporter> ice;
 
-    NotNull<Scope> globalScope;
+    ScopePtr globalScope;
 
-    ConstraintGraphBuilder(const ModuleName& moduleName, TypeArena* arena, NotNull<InternalErrorReporter> ice, NotNull<Scope> globalScope);
+    ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope);
 
     /**
      * Fabricates a new free type belonging to a given scope.
@@ -103,6 +104,7 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatBlock* block);
     void visit(const ScopePtr& scope, AstStatLocal* local);
     void visit(const ScopePtr& scope, AstStatFor* for_);
+    void visit(const ScopePtr& scope, AstStatWhile* while_);
     void visit(const ScopePtr& scope, AstStatLocalFunction* function);
     void visit(const ScopePtr& scope, AstStatFunction* function);
     void visit(const ScopePtr& scope, AstStatReturn* ret);
@@ -131,6 +133,7 @@ struct ConstraintGraphBuilder
     TypeId check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
     TypeId check(const ScopePtr& scope, AstExprUnary* unary);
     TypeId check(const ScopePtr& scope, AstExprBinary* binary);
+    TypeId check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
 
     struct FunctionSignature
     {

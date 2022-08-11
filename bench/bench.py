@@ -12,9 +12,6 @@ import json
 from color import colored, Color
 from tabulate import TablePrinter, Alignment
 
-# Based on rotest, specialized for benchmark results
-import influxbench
-
 try:
     import matplotlib
     import matplotlib.pyplot as plt
@@ -721,6 +718,7 @@ def run(args, argsubcb):
     argumentSubstituionCallback = argsubcb
 
     if arguments.report_metrics or arguments.print_influx_debugging:
+        import influxbench
         influxReporter = influxbench.InfluxReporter(arguments)
     else:
         influxReporter = None

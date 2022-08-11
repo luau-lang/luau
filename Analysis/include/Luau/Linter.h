@@ -53,6 +53,7 @@ struct LintWarning
         Code_MisleadingAndOr = 25,
         Code_CommentDirective = 26,
         Code_IntegerParsing = 27,
+        Code_ComparisonPrecedence = 28,
 
         Code__Count
     };

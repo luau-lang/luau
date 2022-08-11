@@ -182,6 +182,17 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_empty_union")
     CHECK(actual.empty());
 }
 
+TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_only_cyclic_union")
+{
+    TypeVar tv{UnionTypeVar{}};
+    auto utv = getMutable<UnionTypeVar>(&tv);
+    utv->options.push_back(&tv);
+    utv->options.push_back(&tv);
+
+    std::vector<TypeId> actual(begin(utv), end(utv));
+    CHECK(actual.empty());
+}
+
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
     TypeVar ftv11{FreeTypeVar{TypeLevel{}}};

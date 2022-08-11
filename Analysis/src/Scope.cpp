@@ -122,34 +122,4 @@ std::optional<TypeId> Scope::lookup(Symbol sym)
     }
 }
 
-std::optional<TypeFun> Scope::lookupTypeBinding(const Name& name)
-{
-    Scope* s = this;
-    while (s)
-    {
-        auto it = s->typeBindings.find(name);
-        if (it != s->typeBindings.end())
-            return it->second;
-
-        s = s->parent.get();
-    }
-
-    return std::nullopt;
-}
-
-std::optional<TypePackId> Scope::lookupTypePackBinding(const Name& name)
-{
-    Scope* s = this;
-    while (s)
-    {
-        auto it = s->typePackBindings.find(name);
-        if (it != s->typePackBindings.end())
-            return it->second;
-
-        s = s->parent.get();
-    }
-
-    return std::nullopt;
-}
-
 } // namespace Luau

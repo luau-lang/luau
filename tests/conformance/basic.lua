@@ -49,6 +49,12 @@ assert((function() _G.foo = 1 return _G['foo'] end)() == 1)
 assert((function() _G['bar'] = 1 return _G.bar end)() == 1)
 assert((function() local a = 1 (function () a = 2 end)() return a end)() == 2)
 
+-- assignments with local conflicts
+assert((function() local a, b = 1, {} a, b[a] = 43, -1 return a + b[1] end)() == 42)
+assert((function() local a = {} local b = a a[1], a = 43, -1 return a + b[1] end)() == 42)
+assert((function() local a, b = 1, {} a, b[a] = (function() return 43, -1 end)() return a + b[1] end)() == 42)
+assert((function() local a = {} local b = a a[1], a = (function() return 43, -1 end)() return a + b[1] end)() == 42)
+
 -- upvalues
 assert((function() local a = 1 function foo() return a end return foo() end)() == 1)
 

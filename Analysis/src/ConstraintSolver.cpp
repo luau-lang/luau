@@ -484,6 +484,10 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
         return block(c.namedType, constraint);
 
     TypeId target = follow(c.namedType);
+
+    if (target->persistent)
+        return true;
+
     if (TableTypeVar* ttv = getMutable<TableTypeVar>(target))
         ttv->name = c.name;
     else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(target))
@@ -637,6 +641,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     TypeId instantiated = *maybeInstantiated;
     TypeId target = follow(instantiated);
+
+    if (target->persistent)
+        return true;
+
     // Type function application will happily give us the exact same type if
     // there are e.g. generic saturatedTypeArguments that go unused.
     bool needsClone = follow(petv->fn.type) == target;

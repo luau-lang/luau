@@ -25,6 +25,6 @@ TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState);
 TypeId clone(TypeId tp, TypeArena& dest, CloneState& cloneState);
 TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState);
 
-TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log);
+TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone = false);
 
 } // namespace Luau
