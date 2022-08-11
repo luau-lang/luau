@@ -10,6 +10,7 @@
 #include "Luau/Normalize.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
 #include "Luau/ToString.h"
 
@@ -282,17 +283,13 @@ struct TypeChecker2 : public AstVisitor
 
         // leftType must have a property called indexName->index
 
-        std::optional<TypeId> t = findTablePropertyRespectingMeta(module->errors, leftType, indexName->index.value, indexName->location);
-        if (t)
+        std::optional<TypeId> ty = getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
+        if (ty)
         {
-            if (!isSubtype(resultType, *t, ice))
+            if (!isSubtype(resultType, *ty, ice))
             {
-                reportError(TypeMismatch{resultType, *t}, indexName->location);
+                reportError(TypeMismatch{resultType, *ty}, indexName->location);
             }
-        }
-        else
-        {
-            reportError(UnknownProperty{leftType, indexName->index.value}, indexName->location);
         }
 
         return true;
@@ -321,6 +318,22 @@ struct TypeChecker2 : public AstVisitor
             reportError(TypeMismatch{actualType, stringType}, string->location);
         }
 
+        return true;
+    }
+
+    bool visit(AstExprTypeAssertion* expr) override
+    {
+        TypeId annotationType = lookupAnnotation(expr->annotation);
+        TypeId computedType = lookupType(expr->expr);
+
+        // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
+        if (isSubtype(annotationType, computedType, ice))
+            return true;
+
+        if (isSubtype(computedType, annotationType, ice))
+            return true;
+
+        reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
         return true;
     }
 
@@ -374,7 +387,7 @@ struct TypeChecker2 : public AstVisitor
 
         // TODO: Imported types
 
-        std::optional<TypeFun> alias = scope->lookupTypeBinding(ty->name.value);
+        std::optional<TypeFun> alias = scope->lookupType(ty->name.value);
 
         if (alias.has_value())
         {
@@ -473,7 +486,7 @@ struct TypeChecker2 : public AstVisitor
         }
         else
         {
-            if (scope->lookupTypePackBinding(ty->name.value))
+            if (scope->lookupPack(ty->name.value))
             {
                 reportError(
                     SwappedGenericTypeParameter{
@@ -501,10 +514,10 @@ struct TypeChecker2 : public AstVisitor
         Scope* scope = findInnermostScope(tp->location);
         LUAU_ASSERT(scope);
 
-        std::optional<TypePackId> alias = scope->lookupTypePackBinding(tp->genericName.value);
+        std::optional<TypePackId> alias = scope->lookupPack(tp->genericName.value);
         if (!alias.has_value())
         {
-            if (scope->lookupTypeBinding(tp->genericName.value))
+            if (scope->lookupType(tp->genericName.value))
             {
                 reportError(
                     SwappedGenericTypeParameter{
@@ -530,6 +543,142 @@ struct TypeChecker2 : public AstVisitor
     void reportError(TypeError e)
     {
         module->errors.emplace_back(std::move(e));
+    }
+
+    std::optional<TypeId> getIndexTypeFromType(
+        const ScopePtr& scope, TypeId type, const Name& name, const Location& location, bool addErrors)
+    {
+        type = follow(type);
+
+        if (get<ErrorTypeVar>(type) || get<AnyTypeVar>(type) || get<NeverTypeVar>(type))
+            return type;
+
+        if (auto f = get<FreeTypeVar>(type))
+            *asMutable(type) = TableTypeVar{TableState::Free, f->level};
+
+        if (isString(type))
+        {
+            std::optional<TypeId> mtIndex = Luau::findMetatableEntry(module->errors, singletonTypes.stringType, "__index", location);
+            LUAU_ASSERT(mtIndex);
+            type = *mtIndex;
+        }
+
+        if (TableTypeVar* tableType = getMutableTableType(type))
+        {
+
+            return findTablePropertyRespectingMeta(module->errors, type, name, location);
+        }
+        else if (const ClassTypeVar* cls = get<ClassTypeVar>(type))
+        {
+            const Property* prop = lookupClassProp(cls, name);
+            if (prop)
+                return prop->type;
+        }
+        else if (const UnionTypeVar* utv = get<UnionTypeVar>(type))
+        {
+            std::vector<TypeId> goodOptions;
+            std::vector<TypeId> badOptions;
+
+            for (TypeId t : utv)
+            {
+                // TODO: we should probably limit recursion here?
+                // RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
+
+                // Not needed when we normalize types.
+                if (get<AnyTypeVar>(follow(t)))
+                    return t;
+
+                if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, /* addErrors= */ false))
+                    goodOptions.push_back(*ty);
+                else
+                    badOptions.push_back(t);
+            }
+
+            if (!badOptions.empty())
+            {
+                if (addErrors)
+                {
+                    if (goodOptions.empty())
+                        reportError(UnknownProperty{type, name}, location);
+                    else
+                        reportError(MissingUnionProperty{type, badOptions, name}, location);
+                }
+                return std::nullopt;
+            }
+
+            std::vector<TypeId> result = reduceUnion(goodOptions);
+            if (result.empty())
+                return singletonTypes.neverType;
+
+            if (result.size() == 1)
+                return result[0];
+
+            return module->internalTypes.addType(UnionTypeVar{std::move(result)});
+        }
+        else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(type))
+        {
+            std::vector<TypeId> parts;
+
+            for (TypeId t : itv->parts)
+            {
+                // TODO: we should probably limit recursion here?
+                // RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
+
+                if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, /* addErrors= */ false))
+                    parts.push_back(*ty);
+            }
+
+            // If no parts of the intersection had the property we looked up for, it never existed at all.
+            if (parts.empty())
+            {
+                if (addErrors)
+                    reportError(UnknownProperty{type, name}, location);
+                return std::nullopt;
+            }
+
+            if (parts.size() == 1)
+                return parts[0];
+
+            return module->internalTypes.addType(IntersectionTypeVar{std::move(parts)}); // Not at all correct.
+        }
+
+        if (addErrors)
+            reportError(UnknownProperty{type, name}, location);
+
+        return std::nullopt;
+    }
+
+    std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)
+    {
+        std::vector<TypeId> result;
+        for (TypeId t : types)
+        {
+            t = follow(t);
+            if (get<NeverTypeVar>(t))
+                continue;
+
+            if (get<ErrorTypeVar>(t) || get<AnyTypeVar>(t))
+                return {t};
+
+            if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
+            {
+                for (TypeId ty : utv)
+                {
+                    ty = follow(ty);
+                    if (get<NeverTypeVar>(ty))
+                        continue;
+                    if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
+                        return {ty};
+
+                    if (result.end() == std::find(result.begin(), result.end(), ty))
+                        result.push_back(ty);
+                }
+            }
+            else if (std::find(result.begin(), result.end(), t) == result.end())
+                result.push_back(t);
+        }
+
+        return result;
     }
 };
 

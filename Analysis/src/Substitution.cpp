@@ -8,9 +8,9 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauAnyificationMustClone, false)
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionFixMissingFields, false)
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauClonePublicInterfaceLess)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAGVARIABLE(LuauClassTypeVarsInSubstitution, false)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
@@ -472,7 +472,7 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
 
 TypeId Substitution::clone(TypeId ty)
 {
-    return shallowClone(ty, *arena, log);
+    return shallowClone(ty, *arena, log, /* alwaysClone */ FFlag::LuauClonePublicInterfaceLess);
 }
 
 TypePackId Substitution::clone(TypePackId tp)
@@ -496,6 +496,10 @@ TypePackId Substitution::clone(TypePackId tp)
         if (FFlag::LuauSubstitutionFixMissingFields)
             clone.hidden = vtp->hidden;
         return addTypePack(std::move(clone));
+    }
+    else if (FFlag::LuauClonePublicInterfaceLess)
+    {
+        return addTypePack(*tp);
     }
     else
         return tp;
@@ -557,7 +561,7 @@ void Substitution::replaceChildren(TypeId ty)
     if (ignoreChildren(ty))
         return;
 
-    if (FFlag::LuauAnyificationMustClone && ty->owningArena != arena)
+    if (ty->owningArena != arena)
         return;
 
     if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty))
@@ -638,7 +642,7 @@ void Substitution::replaceChildren(TypePackId tp)
     if (ignoreChildren(tp))
         return;
 
-    if (FFlag::LuauAnyificationMustClone && tp->owningArena != arena)
+    if (tp->owningArena != arena)
         return;
 
     if (TypePack* tpp = getMutable<TypePack>(tp))

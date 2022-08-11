@@ -46,6 +46,44 @@ const unsigned AVX_F2 = 0b11;
 
 const unsigned kMaxAlign = 16;
 
+// Utility functions to correctly write data on big endian machines
+#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#include <endian.h>
+
+static void writeu32(uint8_t* target, uint32_t value)
+{
+    value = htole32(value);
+    memcpy(target, &value, sizeof(value));
+}
+
+static void writeu64(uint8_t* target, uint64_t value)
+{
+    value = htole64(value);
+    memcpy(target, &value, sizeof(value));
+}
+
+static void writef32(uint8_t* target, float value)
+{
+    static_assert(sizeof(float) == sizeof(uint32_t), "type size must match to reinterpret data");
+    uint32_t data;
+    memcpy(&data, &value, sizeof(value));
+    writeu32(target, data);
+}
+
+static void writef64(uint8_t* target, double value)
+{
+    static_assert(sizeof(double) == sizeof(uint64_t), "type size must match to reinterpret data");
+    uint64_t data;
+    memcpy(&data, &value, sizeof(value));
+    writeu64(target, data);
+}
+#else
+#define writeu32(target, value) memcpy(target, &value, sizeof(value))
+#define writeu64(target, value) memcpy(target, &value, sizeof(value))
+#define writef32(target, value) memcpy(target, &value, sizeof(value))
+#define writef64(target, value) memcpy(target, &value, sizeof(value))
+#endif
+
 AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
     : logText(logText)
 {
@@ -195,6 +233,34 @@ void AssemblyBuilderX64::mov64(RegisterX64 lhs, int64_t imm)
     commit();
 }
 
+void AssemblyBuilderX64::movsx(RegisterX64 lhs, OperandX64 rhs)
+{
+    if (logText)
+        log("movsx", lhs, rhs);
+
+    LUAU_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
+
+    placeRex(lhs, rhs);
+    place(0x0f);
+    place(rhs.memSize == SizeX64::byte ? 0xbe : 0xbf);
+    placeRegAndModRegMem(lhs, rhs);
+    commit();
+}
+
+void AssemblyBuilderX64::movzx(RegisterX64 lhs, OperandX64 rhs)
+{
+    if (logText)
+        log("movzx", lhs, rhs);
+
+    LUAU_ASSERT(rhs.memSize == SizeX64::byte || rhs.memSize == SizeX64::word);
+
+    placeRex(lhs, rhs);
+    place(0x0f);
+    place(rhs.memSize == SizeX64::byte ? 0xb6 : 0xb7);
+    placeRegAndModRegMem(lhs, rhs);
+    commit();
+}
+
 void AssemblyBuilderX64::div(OperandX64 op)
 {
     placeUnaryModRegMem("div", op, 0xf6, 0xf7, 6);
@@ -210,6 +276,11 @@ void AssemblyBuilderX64::mul(OperandX64 op)
     placeUnaryModRegMem("mul", op, 0xf6, 0xf7, 4);
 }
 
+void AssemblyBuilderX64::imul(OperandX64 op)
+{
+    placeUnaryModRegMem("imul", op, 0xf6, 0xf7, 5);
+}
+
 void AssemblyBuilderX64::neg(OperandX64 op)
 {
     placeUnaryModRegMem("neg", op, 0xf6, 0xf7, 3);
@@ -218,6 +289,41 @@ void AssemblyBuilderX64::neg(OperandX64 op)
 void AssemblyBuilderX64::not_(OperandX64 op)
 {
     placeUnaryModRegMem("not", op, 0xf6, 0xf7, 2);
+}
+
+void AssemblyBuilderX64::imul(OperandX64 lhs, OperandX64 rhs)
+{
+    if (logText)
+        log("imul", lhs, rhs);
+
+    placeRex(lhs.base, rhs);
+    place(0x0f);
+    place(0xaf);
+    placeRegAndModRegMem(lhs, rhs);
+    commit();
+}
+
+void AssemblyBuilderX64::imul(OperandX64 dst, OperandX64 lhs, int32_t rhs)
+{
+    if (logText)
+        log("imul", dst, lhs, rhs);
+
+    placeRex(dst.base, lhs);
+
+    if (int8_t(rhs) == rhs)
+    {
+        place(0x6b);
+        placeRegAndModRegMem(dst, lhs);
+        placeImm8(rhs);
+    }
+    else
+    {
+        place(0x69);
+        placeRegAndModRegMem(dst, lhs);
+        placeImm32(rhs);
+    }
+
+    commit();
 }
 
 void AssemblyBuilderX64::test(OperandX64 lhs, OperandX64 rhs)
@@ -368,6 +474,26 @@ void AssemblyBuilderX64::vcomisd(OperandX64 src1, OperandX64 src2)
     placeAvx("vcomisd", src1, src2, 0x2f, false, AVX_0F, AVX_66);
 }
 
+void AssemblyBuilderX64::vucomisd(OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vucomisd", src1, src2, 0x2e, false, AVX_0F, AVX_66);
+}
+
+void AssemblyBuilderX64::vcvttsd2si(OperandX64 dst, OperandX64 src)
+{
+    placeAvx("vcvttsd2si", dst, src, 0x2c, dst.base.size == SizeX64::dword, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
+{
+    placeAvx("vcvtsi2sd", dst, src1, src2, 0x2a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::dword, AVX_0F, AVX_F2);
+}
+
+void AssemblyBuilderX64::vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mode)
+{
+    placeAvx("vroundsd", dst, src1, src2, mode, 0x0b, false, AVX_0F3A, AVX_66);
+}
+
 void AssemblyBuilderX64::vsqrtpd(OperandX64 dst, OperandX64 src)
 {
     placeAvx("vsqrtpd", dst, src, 0x51, false, AVX_0F, AVX_66);
@@ -436,7 +562,7 @@ void AssemblyBuilderX64::finalize()
     for (Label fixup : pendingLabels)
     {
         uint32_t value = labelLocations[fixup.id - 1] - (fixup.location + 4);
-        memcpy(&code[fixup.location], &value, sizeof(value));
+        writeu32(&code[fixup.location], value);
     }
 
     size_t dataSize = data.size() - dataPos;
@@ -479,32 +605,39 @@ void AssemblyBuilderX64::setLabel(Label& label)
 OperandX64 AssemblyBuilderX64::i64(int64_t value)
 {
     size_t pos = allocateData(8, 8);
-    memcpy(&data[pos], &value, sizeof(value));
+    writeu64(&data[pos], value);
     return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
 }
 
 OperandX64 AssemblyBuilderX64::f32(float value)
 {
     size_t pos = allocateData(4, 4);
-    memcpy(&data[pos], &value, sizeof(value));
+    writef32(&data[pos], value);
     return OperandX64(SizeX64::dword, noreg, 1, rip, int32_t(pos - data.size()));
 }
 
 OperandX64 AssemblyBuilderX64::f64(double value)
 {
     size_t pos = allocateData(8, 8);
-    memcpy(&data[pos], &value, sizeof(value));
+    writef64(&data[pos], value);
     return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
 }
 
 OperandX64 AssemblyBuilderX64::f32x4(float x, float y, float z, float w)
 {
     size_t pos = allocateData(16, 16);
-    memcpy(&data[pos], &x, sizeof(x));
-    memcpy(&data[pos + 4], &y, sizeof(y));
-    memcpy(&data[pos + 8], &z, sizeof(z));
-    memcpy(&data[pos + 12], &w, sizeof(w));
+    writef32(&data[pos], x);
+    writef32(&data[pos + 4], y);
+    writef32(&data[pos + 8], z);
+    writef32(&data[pos + 12], w);
     return OperandX64(SizeX64::xmmword, noreg, 1, rip, int32_t(pos - data.size()));
+}
+
+OperandX64 AssemblyBuilderX64::bytes(const void* ptr, size_t size, size_t align)
+{
+    size_t pos = allocateData(size, align);
+    memcpy(&data[pos], ptr, size);
+    return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
 }
 
 void AssemblyBuilderX64::placeBinary(const char* name, OperandX64 lhs, OperandX64 rhs, uint8_t codeimm8, uint8_t codeimm, uint8_t codeimmImm8,
@@ -700,6 +833,24 @@ void AssemblyBuilderX64::placeAvx(
     commit();
 }
 
+void AssemblyBuilderX64::placeAvx(
+    const char* name, OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t imm8, uint8_t code, bool setW, uint8_t mode, uint8_t prefix)
+{
+    LUAU_ASSERT(dst.cat == CategoryX64::reg);
+    LUAU_ASSERT(src1.cat == CategoryX64::reg);
+    LUAU_ASSERT(src2.cat == CategoryX64::reg || src2.cat == CategoryX64::mem);
+
+    if (logText)
+        log(name, dst, src1, src2, imm8);
+
+    placeVex(dst, src1, src2, setW, mode, prefix);
+    place(code);
+    placeRegAndModRegMem(dst, src2);
+    placeImm8(imm8);
+
+    commit();
+}
+
 void AssemblyBuilderX64::placeRex(RegisterX64 op)
 {
     uint8_t code = REX_W(op.size == SizeX64::qword) | REX_B(op);
@@ -861,16 +1012,18 @@ void AssemblyBuilderX64::placeImm8(int32_t imm)
 
 void AssemblyBuilderX64::placeImm32(int32_t imm)
 {
-    LUAU_ASSERT(codePos + sizeof(imm) < codeEnd);
-    memcpy(codePos, &imm, sizeof(imm));
-    codePos += sizeof(imm);
+    uint8_t* pos = codePos;
+    LUAU_ASSERT(pos + sizeof(imm) < codeEnd);
+    writeu32(pos, imm);
+    codePos = pos + sizeof(imm);
 }
 
 void AssemblyBuilderX64::placeImm64(int64_t imm)
 {
-    LUAU_ASSERT(codePos + sizeof(imm) < codeEnd);
-    memcpy(codePos, &imm, sizeof(imm));
-    codePos += sizeof(imm);
+    uint8_t* pos = codePos;
+    LUAU_ASSERT(pos + sizeof(imm) < codeEnd);
+    writeu64(pos, imm);
+    codePos = pos + sizeof(imm);
 }
 
 void AssemblyBuilderX64::placeLabel(Label& label)
@@ -967,6 +1120,19 @@ void AssemblyBuilderX64::log(const char* opcode, OperandX64 op1, OperandX64 op2,
     log(op2);
     text.append(",");
     log(op3);
+    text.append("\n");
+}
+
+void AssemblyBuilderX64::log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3, OperandX64 op4)
+{
+    logAppend(" %-12s", opcode);
+    log(op1);
+    text.append(",");
+    log(op2);
+    text.append(",");
+    log(op3);
+    text.append(",");
+    log(op4);
     text.append("\n");
 }
 

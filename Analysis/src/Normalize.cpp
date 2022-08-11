@@ -162,7 +162,8 @@ struct Normalize final : TypeVarVisitor
         // It should never be the case that this TypeVar is normal, but is bound to a non-normal type, except in nontrivial cases.
         LUAU_ASSERT(!ty->normal || ty->normal == btv.boundTo->normal);
 
-        asMutable(ty)->normal = btv.boundTo->normal;
+        if (!ty->normal)
+            asMutable(ty)->normal = btv.boundTo->normal;
         return !ty->normal;
     }
 

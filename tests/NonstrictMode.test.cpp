@@ -169,6 +169,7 @@ TEST_CASE_FIXTURE(Fixture, "table_props_are_any")
 
     REQUIRE(ttv != nullptr);
 
+    REQUIRE(ttv->props.count("foo"));
     TypeId fooProp = ttv->props["foo"].type;
     REQUIRE(fooProp != nullptr);
 

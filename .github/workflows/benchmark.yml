@@ -13,12 +13,11 @@ on:
 
 jobs:
   callgrind:
-    name: callgrind ${{ matrix.compiler }}
+    name: callgrind
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04]
-        compiler: [g++]
         benchResultsRepo:
           - { name: "luau-lang/benchmark-data", branch: "main" }
 
@@ -31,12 +30,23 @@ jobs:
         run: |
           sudo apt-get install valgrind
 
-      - name: Build Luau
-        run: CXX=${{ matrix.compiler }} make config=release CALLGRIND=1 luau luau-analyze
-
-      - name: Run benchmark (bench)
+      - name: Build Luau (gcc)
         run: |
-          python bench/bench.py --callgrind --vm "./luau -O2" | tee -a bench-output.txt
+          CXX=g++ make config=profile luau
+          cp luau luau-gcc
+
+      - name: Build Luau (clang)
+        run: |
+          make config=profile clean
+          CXX=clang++ make config=profile luau luau-analyze
+
+      - name: Run benchmark (bench-gcc)
+        run: |
+          python bench/bench.py --callgrind --vm "./luau-gcc -O2" | tee -a bench-gcc-output.txt
+
+      - name: Run benchmark (bench-clang)
+        run: |
+          python bench/bench.py --callgrind --vm "./luau -O2" | tee -a bench-clang-output.txt
 
       - name: Run benchmark (analyze)
         run: |
@@ -68,13 +78,21 @@ jobs:
           token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
 
-      - name: Store results (bench)
+      - name: Store results (bench-clang)
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
-          name: callgrind ${{ matrix.compiler }}
+          name: callgrind clang
           tool: "benchmarkluau"
-          output-file-path: ./bench-output.txt
-          external-data-json-path: ./gh-pages/bench.json
+          output-file-path: ./bench-clang-output.txt
+          external-data-json-path: ./gh-pages/bench-clang.json
+
+      - name: Store results (bench-gcc)
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: callgrind gcc
+          tool: "benchmarkluau"
+          output-file-path: ./bench-gcc-output.txt
+          external-data-json-path: ./gh-pages/bench-gcc.json
 
       - name: Store results (analyze)
         uses: Roblox/rhysd-github-action-benchmark@v-luau

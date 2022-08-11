@@ -36,8 +36,6 @@ struct Scope
     // All the children of this scope.
     std::vector<NotNull<Scope>> children;
     std::unordered_map<Symbol, Binding> bindings;
-    std::unordered_map<Name, TypeFun> typeBindings;
-    std::unordered_map<Name, TypePackId> typePackBindings;
     TypePackId returnType;
     std::optional<TypePackId> varargPack;
     // All constraints belonging to this scope.
@@ -52,8 +50,6 @@ struct Scope
     std::unordered_map<Name, std::unordered_map<Name, TypeFun>> importedTypeBindings;
 
     std::optional<TypeId> lookup(Symbol sym);
-    std::optional<TypeFun> lookupTypeBinding(const Name& name);
-    std::optional<TypePackId> lookupTypePackBinding(const Name& name);
 
     std::optional<TypeFun> lookupType(const Name& name);
     std::optional<TypeFun> lookupImportedType(const Name& moduleAlias, const Name& name);

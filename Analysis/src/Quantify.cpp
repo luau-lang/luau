@@ -5,11 +5,13 @@
 #include "Luau/Scope.h"
 #include "Luau/Substitution.h"
 #include "Luau/TxnLog.h"
+#include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
 
 LUAU_FASTFLAG(DebugLuauSharedSelf)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauQuantifyConstrained, false)
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 
 namespace Luau
 {
@@ -297,6 +299,9 @@ struct PureQuantifier : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
+        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+            return true;
+
         return ty->persistent;
     }
     bool ignoreChildren(TypePackId ty) override

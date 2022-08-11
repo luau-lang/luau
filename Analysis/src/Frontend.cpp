@@ -818,21 +818,21 @@ const SourceModule* Frontend::getSourceModule(const ModuleName& moduleName) cons
     return const_cast<Frontend*>(this)->getSourceModule(moduleName);
 }
 
-NotNull<Scope> Frontend::getGlobalScope()
+ScopePtr Frontend::getGlobalScope()
 {
     if (!globalScope)
     {
         globalScope = typeChecker.globalScope;
     }
 
-    return NotNull(globalScope.get());
+    return globalScope;
 }
 
 ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope)
 {
     ModulePtr result = std::make_shared<Module>();
 
-    ConstraintGraphBuilder cgb{sourceModule.name, &result->internalTypes, NotNull(&iceHandler), getGlobalScope()};
+    ConstraintGraphBuilder cgb{sourceModule.name, result, &result->internalTypes, NotNull(&iceHandler), getGlobalScope()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 

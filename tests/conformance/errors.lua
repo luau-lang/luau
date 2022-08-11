@@ -295,7 +295,7 @@ end
 
 
 -- testing syntax limits
-local syntaxdepth = if limitedstack then 200 else 1000
+local syntaxdepth = if limitedstack then 200 else 500
 local function testrep (init, rep)
   local s = "local a; "..init .. string.rep(rep, syntaxdepth)
   local a,b = loadstring(s)

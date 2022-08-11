@@ -398,8 +398,6 @@ caused by:
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "constrained_anyification_clone_immutable_types")
 {
-    ScopedFastFlag luauAnyificationMustClone{"LuauAnyificationMustClone", true};
-
     fileResolver.source["game/A"] = R"(
 return function(...) end
     )";

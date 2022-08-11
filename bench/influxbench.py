@@ -4,12 +4,7 @@ import platform
 import shlex
 import socket
 import sys
-
-try:
-    import requests
-except:
-    print("Please install 'requests' using using '{} -m pip install requests' command and try again".format(sys.executable))
-    exit(-1)
+import requests
 
 _hostname = socket.gethostname()
 

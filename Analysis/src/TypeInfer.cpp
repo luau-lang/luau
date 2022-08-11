@@ -33,7 +33,6 @@ LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTFLAGVARIABLE(LuauExpectedTableUnionIndexerType, false)
-LUAU_FASTFLAGVARIABLE(LuauIndexSilenceErrors, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix3, false)
@@ -828,6 +827,14 @@ struct Demoter : Substitution
     bool isDirty(TypePackId tp) override
     {
         return get<FreeTypePack>(tp);
+    }
+
+    bool ignoreChildren(TypeId ty) override
+    {
+        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+            return true;
+
+        return false;
     }
 
     TypeId clean(TypeId ty) override
@@ -1925,7 +1932,7 @@ std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsTyp
 {
     ErrorVec errors;
     auto result = Luau::findTablePropertyRespectingMeta(errors, lhsType, name, location);
-    if (!FFlag::LuauIndexSilenceErrors || addErrors)
+    if (addErrors)
         reportErrors(errors);
     return result;
 }
@@ -1934,7 +1941,7 @@ std::optional<TypeId> TypeChecker::findMetatableEntry(TypeId type, std::string e
 {
     ErrorVec errors;
     auto result = Luau::findMetatableEntry(errors, type, entry, location);
-    if (!FFlag::LuauIndexSilenceErrors || addErrors)
+    if (addErrors)
         reportErrors(errors);
     return result;
 }
@@ -1946,7 +1953,7 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromType(
 
     std::optional<TypeId> result = getIndexTypeFromTypeImpl(scope, type, name, location, addErrors);
 
-    if (FFlag::LuauIndexSilenceErrors && !addErrors)
+    if (!addErrors)
         LUAU_ASSERT(errorCount == currentModule->errors.size());
 
     return result;

@@ -2,6 +2,8 @@
 
 #include "Luau/ApplyTypeFunction.h"
 
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
+
 namespace Luau
 {
 
@@ -30,6 +32,8 @@ bool ApplyTypeFunction::isDirty(TypePackId tp)
 bool ApplyTypeFunction::ignoreChildren(TypeId ty)
 {
     if (get<GenericTypeVar>(ty))
+        return true;
+    else if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
         return true;
     else
         return false;
