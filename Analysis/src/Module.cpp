@@ -17,6 +17,10 @@
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
+LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess, false);
+LUAU_FASTFLAG(LuauSubstitutionReentrant);
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
+LUAU_FASTFLAG(LuauSubstitutionFixMissingFields);
 
 namespace Luau
 {
@@ -86,6 +90,118 @@ struct ForceNormal : TypeVarOnceVisitor
     }
 };
 
+struct ClonePublicInterface : Substitution
+{
+    NotNull<Module> module;
+
+    ClonePublicInterface(const TxnLog* log, Module* module)
+        : Substitution(log, &module->interfaceTypes)
+        , module(module)
+    {
+        LUAU_ASSERT(module);
+    }
+
+    bool isDirty(TypeId ty) override
+    {
+        if (ty->owningArena == &module->internalTypes)
+            return true;
+
+        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
+            return ftv->level.level != 0;
+        if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+            return ttv->level.level != 0;
+        return false;
+    }
+
+    bool isDirty(TypePackId tp) override
+    {
+        return tp->owningArena == &module->internalTypes;
+    }
+
+    TypeId clean(TypeId ty) override
+    {
+        TypeId result = clone(ty);
+
+        if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(result))
+            ftv->level = TypeLevel{0, 0};
+        else if (TableTypeVar* ttv = getMutable<TableTypeVar>(result))
+            ttv->level = TypeLevel{0, 0};
+
+        return result;
+    }
+
+    TypePackId clean(TypePackId tp) override
+    {
+        return clone(tp);
+    }
+
+    TypeId cloneType(TypeId ty)
+    {
+        LUAU_ASSERT(FFlag::LuauSubstitutionReentrant && FFlag::LuauSubstitutionFixMissingFields);
+
+        std::optional<TypeId> result = substitute(ty);
+        if (result)
+        {
+            return *result;
+        }
+        else
+        {
+            module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
+            return getSingletonTypes().errorRecoveryType();
+        }
+    }
+
+    TypePackId cloneTypePack(TypePackId tp)
+    {
+        LUAU_ASSERT(FFlag::LuauSubstitutionReentrant && FFlag::LuauSubstitutionFixMissingFields);
+
+        std::optional<TypePackId> result = substitute(tp);
+        if (result)
+        {
+            return *result;
+        }
+        else
+        {
+            module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
+            return getSingletonTypes().errorRecoveryTypePack();
+        }
+    }
+
+    TypeFun cloneTypeFun(const TypeFun& tf)
+    {
+        LUAU_ASSERT(FFlag::LuauSubstitutionReentrant && FFlag::LuauSubstitutionFixMissingFields);
+
+        std::vector<GenericTypeDefinition> typeParams;
+        std::vector<GenericTypePackDefinition> typePackParams;
+
+        for (GenericTypeDefinition typeParam : tf.typeParams)
+        {
+            TypeId ty = cloneType(typeParam.ty);
+            std::optional<TypeId> defaultValue;
+
+            if (typeParam.defaultValue)
+                defaultValue = cloneType(*typeParam.defaultValue);
+
+            typeParams.push_back(GenericTypeDefinition{ty, defaultValue});
+        }
+
+        for (GenericTypePackDefinition typePackParam : tf.typePackParams)
+        {
+            TypePackId tp = cloneTypePack(typePackParam.tp);
+            std::optional<TypePackId> defaultValue;
+
+            if (typePackParam.defaultValue)
+                defaultValue = cloneTypePack(*typePackParam.defaultValue);
+
+            typePackParams.push_back(GenericTypePackDefinition{tp, defaultValue});
+        }
+
+        TypeId type = cloneType(tf.type);
+
+        return TypeFun{typeParams, typePackParams, type};
+    }
+};
+
 Module::~Module()
 {
     unfreeze(interfaceTypes);
@@ -106,12 +222,21 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
     std::unordered_map<Name, TypeFun>* exportedTypeBindings =
         FFlag::DebugLuauDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
 
-    returnType = clone(returnType, interfaceTypes, cloneState);
+    TxnLog log;
+    ClonePublicInterface clonePublicInterface{&log, this};
+
+    if (FFlag::LuauClonePublicInterfaceLess)
+        returnType = clonePublicInterface.cloneTypePack(returnType);
+    else
+        returnType = clone(returnType, interfaceTypes, cloneState);
 
     moduleScope->returnType = returnType;
     if (varargPack)
     {
-        varargPack = clone(*varargPack, interfaceTypes, cloneState);
+        if (FFlag::LuauClonePublicInterfaceLess)
+            varargPack = clonePublicInterface.cloneTypePack(*varargPack);
+        else
+            varargPack = clone(*varargPack, interfaceTypes, cloneState);
         moduleScope->varargPack = varargPack;
     }
 
@@ -134,7 +259,10 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
     {
         for (auto& [name, tf] : *exportedTypeBindings)
         {
-            tf = clone(tf, interfaceTypes, cloneState);
+            if (FFlag::LuauClonePublicInterfaceLess)
+                tf = clonePublicInterface.cloneTypeFun(tf);
+            else
+                tf = clone(tf, interfaceTypes, cloneState);
             if (FFlag::LuauLowerBoundsCalculation)
             {
                 normalize(tf.type, interfaceTypes, ice);
@@ -168,7 +296,10 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     for (auto& [name, ty] : declaredGlobals)
     {
-        ty = clone(ty, interfaceTypes, cloneState);
+        if (FFlag::LuauClonePublicInterfaceLess)
+            ty = clonePublicInterface.cloneType(ty);
+        else
+            ty = clone(ty, interfaceTypes, cloneState);
         if (FFlag::LuauLowerBoundsCalculation)
         {
             normalize(ty, interfaceTypes, ice);

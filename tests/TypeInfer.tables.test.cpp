@@ -1847,6 +1847,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "quantifying_a_bound_var_works")
     TypeId ty = requireType("clazz");
     TableTypeVar* ttv = getMutable<TableTypeVar>(ty);
     REQUIRE(ttv);
+    REQUIRE(ttv->props.count("new"));
     Property& prop = ttv->props["new"];
     REQUIRE(prop.type);
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(prop.type));
@@ -2516,6 +2517,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_quantify_table_that_belongs_to_outer_sc
     TableTypeVar* counterType = getMutable<TableTypeVar>(requireType("Counter"));
     REQUIRE(counterType);
 
+    REQUIRE(counterType->props.count("new"));
     const FunctionTypeVar* newType = get<FunctionTypeVar>(follow(counterType->props["new"].type));
     REQUIRE(newType);
 
@@ -3081,8 +3083,6 @@ TEST_CASE_FIXTURE(Fixture, "quantify_even_that_table_was_never_exported_at_all")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "leaking_bad_metatable_errors")
 {
-    ScopedFastFlag luauIndexSilenceErrors{"LuauIndexSilenceErrors", true};
-
     CheckResult result = check(R"(
 local a = setmetatable({}, 1)
 local b = a.x

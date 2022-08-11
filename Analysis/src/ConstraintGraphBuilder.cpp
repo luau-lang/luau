@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/Ast.h"
+#include "Luau/Constraint.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/ToString.h"
 
@@ -14,8 +16,9 @@ namespace Luau
 const AstStat* getFallthrough(const AstStat* node); // TypeInfer.cpp
 
 ConstraintGraphBuilder::ConstraintGraphBuilder(
-    const ModuleName& moduleName, TypeArena* arena, NotNull<InternalErrorReporter> ice, NotNull<Scope> globalScope)
+    const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope)
     : moduleName(moduleName)
+    , module(module)
     , singletonTypes(getSingletonTypes())
     , arena(arena)
     , rootScope(nullptr)
@@ -61,7 +64,7 @@ void ConstraintGraphBuilder::visit(AstStatBlock* block)
 {
     LUAU_ASSERT(scopes.empty());
     LUAU_ASSERT(rootScope == nullptr);
-    ScopePtr scope = std::make_shared<Scope>(singletonTypes.anyTypePack);
+    ScopePtr scope = std::make_shared<Scope>(globalScope);
     rootScope = scope.get();
     scopes.emplace_back(block->location, scope);
 
@@ -70,11 +73,11 @@ void ConstraintGraphBuilder::visit(AstStatBlock* block)
     prepopulateGlobalScope(scope, block);
 
     // TODO: We should share the global scope.
-    rootScope->typeBindings["nil"] = TypeFun{singletonTypes.nilType};
-    rootScope->typeBindings["number"] = TypeFun{singletonTypes.numberType};
-    rootScope->typeBindings["string"] = TypeFun{singletonTypes.stringType};
-    rootScope->typeBindings["boolean"] = TypeFun{singletonTypes.booleanType};
-    rootScope->typeBindings["thread"] = TypeFun{singletonTypes.threadType};
+    rootScope->privateTypeBindings["nil"] = TypeFun{singletonTypes.nilType};
+    rootScope->privateTypeBindings["number"] = TypeFun{singletonTypes.numberType};
+    rootScope->privateTypeBindings["string"] = TypeFun{singletonTypes.stringType};
+    rootScope->privateTypeBindings["boolean"] = TypeFun{singletonTypes.booleanType};
+    rootScope->privateTypeBindings["thread"] = TypeFun{singletonTypes.threadType};
 
     visitBlockWithoutChildScope(scope, block);
 }
@@ -99,7 +102,7 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
     {
         if (auto alias = stat->as<AstStatTypeAlias>())
         {
-            if (scope->typeBindings.count(alias->name.value) != 0)
+            if (scope->privateTypeBindings.count(alias->name.value) != 0)
             {
                 auto it = aliasDefinitionLocations.find(alias->name.value);
                 LUAU_ASSERT(it != aliasDefinitionLocations.end());
@@ -121,16 +124,16 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
             for (const auto& [name, gen] : createGenerics(defnScope, alias->generics))
             {
                 initialFun.typeParams.push_back(gen);
-                defnScope->typeBindings[name] = TypeFun{gen.ty};
+                defnScope->privateTypeBindings[name] = TypeFun{gen.ty};
             }
 
             for (const auto& [name, genPack] : createGenericPacks(defnScope, alias->genericPacks))
             {
                 initialFun.typePackParams.push_back(genPack);
-                defnScope->typePackBindings[name] = genPack.tp;
+                defnScope->privateTypePackBindings[name] = genPack.tp;
             }
 
-            scope->typeBindings[alias->name.value] = std::move(initialFun);
+            scope->privateTypeBindings[alias->name.value] = std::move(initialFun);
             astTypeAliasDefiningScopes[alias] = defnScope;
             aliasDefinitionLocations[alias->name.value] = alias->location;
         }
@@ -149,6 +152,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
     else if (auto s = stat->as<AstStatLocal>())
         visit(scope, s);
     else if (auto s = stat->as<AstStatFor>())
+        visit(scope, s);
+    else if (auto s = stat->as<AstStatWhile>())
         visit(scope, s);
     else if (auto f = stat->as<AstStatFunction>())
         visit(scope, f);
@@ -240,6 +245,15 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
     forScope->bindings[for_->var] = Binding{singletonTypes.numberType, for_->var->location};
 
     visit(forScope, for_->body);
+}
+
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatWhile* while_)
+{
+    check(scope, while_->condition);
+
+    ScopePtr whileScope = childScope(while_->location, scope);
+
+    visit(whileScope, while_->body);
 }
 
 void addConstraints(Constraint* constraint, NotNull<Scope> scope)
@@ -388,11 +402,11 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatTypeAlias* alia
 {
     // TODO: Exported type aliases
 
-    auto bindingIt = scope->typeBindings.find(alias->name.value);
+    auto bindingIt = scope->privateTypeBindings.find(alias->name.value);
     ScopePtr* defnIt = astTypeAliasDefiningScopes.find(alias);
     // These will be undefined if the alias was a duplicate definition, in which
     // case we just skip over it.
-    if (bindingIt == scope->typeBindings.end() || defnIt == nullptr)
+    if (bindingIt == scope->privateTypeBindings.end() || defnIt == nullptr)
     {
         return;
     }
@@ -416,17 +430,152 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareGlobal* 
     LUAU_ASSERT(global->type);
 
     TypeId globalTy = resolveType(scope, global->type);
+    Name globalName(global->name.value);
+
+    module->declaredGlobals[globalName] = globalTy;
     scope->bindings[global->name] = Binding{globalTy, global->location};
 }
 
-void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* global)
+static bool isMetamethod(const Name& name)
 {
-    LUAU_ASSERT(false); // TODO: implement
+    return name == "__index" || name == "__newindex" || name == "__call" || name == "__concat" || name == "__unm" || name == "__add" ||
+           name == "__sub" || name == "__mul" || name == "__div" || name == "__mod" || name == "__pow" || name == "__tostring" ||
+           name == "__metatable" || name == "__eq" || name == "__lt" || name == "__le" || name == "__mode" || name == "__iter" || name == "__len";
+}
+
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* declaredClass)
+{
+    std::optional<TypeId> superTy = std::nullopt;
+    if (declaredClass->superName)
+    {
+        Name superName = Name(declaredClass->superName->value);
+        std::optional<TypeFun> lookupType = scope->lookupType(superName);
+
+        if (!lookupType)
+        {
+            reportError(declaredClass->location, UnknownSymbol{superName, UnknownSymbol::Type});
+            return;
+        }
+
+        // We don't have generic classes, so this assertion _should_ never be hit.
+        LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
+        superTy = lookupType->type;
+
+        if (!get<ClassTypeVar>(follow(*superTy)))
+        {
+            reportError(declaredClass->location,
+                GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredClass->name.value)});
+
+            return;
+        }
+    }
+
+    Name className(declaredClass->name.value);
+
+    TypeId classTy = arena->addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, moduleName));
+    ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+
+    TypeId metaTy = arena->addType(TableTypeVar{TableState::Sealed, scope->level});
+    TableTypeVar* metatable = getMutable<TableTypeVar>(metaTy);
+
+    ctv->metatable = metaTy;
+
+    scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+
+    for (const AstDeclaredClassProp& prop : declaredClass->props)
+    {
+        Name propName(prop.name.value);
+        TypeId propTy = resolveType(scope, prop.ty);
+
+        bool assignToMetatable = isMetamethod(propName);
+
+        // Function types always take 'self', but this isn't reflected in the
+        // parsed annotation. Add it here.
+        if (prop.isMethod)
+        {
+            if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+            {
+                ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
+                ftv->argTypes = arena->addTypePack(TypePack{{classTy}, ftv->argTypes});
+
+                ftv->hasSelf = true;
+            }
+        }
+
+        if (ctv->props.count(propName) == 0)
+        {
+            if (assignToMetatable)
+                metatable->props[propName] = {propTy};
+            else
+                ctv->props[propName] = {propTy};
+        }
+        else
+        {
+            TypeId currentTy = assignToMetatable ? metatable->props[propName].type : ctv->props[propName].type;
+
+            // We special-case this logic to keep the intersection flat; otherwise we
+            // would create a ton of nested intersection types.
+            if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+            {
+                std::vector<TypeId> options = itv->parts;
+                options.push_back(propTy);
+                TypeId newItv = arena->addType(IntersectionTypeVar{std::move(options)});
+
+                if (assignToMetatable)
+                    metatable->props[propName] = {newItv};
+                else
+                    ctv->props[propName] = {newItv};
+            }
+            else if (get<FunctionTypeVar>(currentTy))
+            {
+                TypeId intersection = arena->addType(IntersectionTypeVar{{currentTy, propTy}});
+
+                if (assignToMetatable)
+                    metatable->props[propName] = {intersection};
+                else
+                    ctv->props[propName] = {intersection};
+            }
+            else
+            {
+                reportError(declaredClass->location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+            }
+        }
+    }
 }
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction* global)
 {
-    LUAU_ASSERT(false); // TODO: implement
+
+    std::vector<std::pair<Name, GenericTypeDefinition>> generics = createGenerics(scope, global->generics);
+    std::vector<std::pair<Name, GenericTypePackDefinition>> genericPacks = createGenericPacks(scope, global->genericPacks);
+
+    std::vector<TypeId> genericTys;
+    genericTys.reserve(generics.size());
+    for (auto& [name, generic] : generics)
+        genericTys.push_back(generic.ty);
+
+    std::vector<TypePackId> genericTps;
+    genericTps.reserve(genericPacks.size());
+    for (auto& [name, generic] : genericPacks)
+        genericTps.push_back(generic.tp);
+
+    ScopePtr funScope = scope;
+    if (!generics.empty() || !genericPacks.empty())
+        funScope = childScope(global->location, scope);
+
+    TypePackId paramPack = resolveTypePack(funScope, global->params);
+    TypePackId retPack = resolveTypePack(funScope, global->retTypes);
+    TypeId fnType = arena->addType(FunctionTypeVar{funScope->level, std::move(genericTys), std::move(genericTps), paramPack, retPack});
+    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(fnType);
+
+    ftv->argNames.reserve(global->paramNames.size);
+    for (const auto& el : global->paramNames)
+        ftv->argNames.push_back(FunctionArgument{el.first.value, el.second});
+
+    Name fnName(global->name.value);
+
+    module->declaredGlobals[fnName] = fnType;
+    scope->bindings[global->name] = Binding{fnType, global->location};
 }
 
 TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs)
@@ -590,6 +739,8 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr)
         result = check(scope, unary);
     else if (auto binary = expr->as<AstExprBinary>())
         result = check(scope, binary);
+    else if (auto typeAssert = expr->as<AstExprTypeAssertion>())
+        result = check(scope, typeAssert);
     else if (auto err = expr->as<AstExprError>())
     {
         // Open question: Should we traverse into this?
@@ -682,6 +833,12 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binar
     return nullptr;
 }
 
+TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
+{
+    check(scope, typeAssert->expr);
+    return resolveType(scope, typeAssert->annotation);
+}
+
 TypeId ConstraintGraphBuilder::checkExprTable(const ScopePtr& scope, AstExprTable* expr)
 {
     TypeId ty = arena->addType(TableTypeVar{});
@@ -765,13 +922,13 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         for (const auto& [name, g] : genericDefinitions)
         {
             genericTypes.push_back(g.ty);
-            signatureScope->typeBindings[name] = TypeFun{g.ty};
+            signatureScope->privateTypeBindings[name] = TypeFun{g.ty};
         }
 
         for (const auto& [name, g] : genericPackDefinitions)
         {
             genericTypePacks.push_back(g.tp);
-            signatureScope->typePackBindings[name] = g.tp;
+            signatureScope->privateTypePackBindings[name] = g.tp;
         }
     }
     else
@@ -851,7 +1008,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         // TODO: Support imported types w/ require tracing.
         LUAU_ASSERT(!ref->prefix);
 
-        std::optional<TypeFun> alias = scope->lookupTypeBinding(ref->name.value);
+        std::optional<TypeFun> alias = scope->lookupType(ref->name.value);
 
         if (alias.has_value())
         {
@@ -949,13 +1106,13 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
             for (const auto& [name, g] : genericDefinitions)
             {
                 genericTypes.push_back(g.ty);
-                signatureScope->typeBindings[name] = TypeFun{g.ty};
+                signatureScope->privateTypeBindings[name] = TypeFun{g.ty};
             }
 
             for (const auto& [name, g] : genericPackDefinitions)
             {
                 genericTypePacks.push_back(g.tp);
-                signatureScope->typePackBindings[name] = g.tp;
+                signatureScope->privateTypePackBindings[name] = g.tp;
             }
         }
         else
@@ -1059,7 +1216,7 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTyp
     }
     else if (auto gen = tp->as<AstTypePackGeneric>())
     {
-        if (std::optional<TypePackId> lookup = scope->lookupTypePackBinding(gen->genericName.value))
+        if (std::optional<TypePackId> lookup = scope->lookupPack(gen->genericName.value))
         {
             result = *lookup;
         }

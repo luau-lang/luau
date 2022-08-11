@@ -845,6 +845,7 @@ TEST_CASE_FIXTURE(Fixture, "generic_table_method")
     TableTypeVar* tTable = getMutable<TableTypeVar>(tType);
     REQUIRE(tTable != nullptr);
 
+    REQUIRE(tTable->props.count("bar"));
     TypeId barType = tTable->props["bar"].type;
     REQUIRE(barType != nullptr);
 

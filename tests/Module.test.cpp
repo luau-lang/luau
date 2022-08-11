@@ -317,4 +317,78 @@ type B = A
     CHECK(toString(it->second.type) == "any");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_reexports")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauClonePublicInterfaceLess", true},
+        {"LuauSubstitutionReentrant", true},
+        {"LuauClassTypeVarsInSubstitution", true},
+        {"LuauSubstitutionFixMissingFields", true},
+    };
+
+    fileResolver.source["Module/A"] = R"(
+export type A = {p : number}
+return {}
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+local a = require(script.Parent.A)
+export type B = {q : a.A}
+return {}
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ModulePtr modA = frontend.moduleResolver.getModule("Module/A");
+    ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    auto modAiter = modA->getModuleScope()->exportedTypeBindings.find("A");
+    auto modBiter = modB->getModuleScope()->exportedTypeBindings.find("B");
+    REQUIRE(modAiter != modA->getModuleScope()->exportedTypeBindings.end());
+    REQUIRE(modBiter != modB->getModuleScope()->exportedTypeBindings.end());
+    TypeId typeA = modAiter->second.type;
+    TypeId typeB = modBiter->second.type;
+    TableTypeVar* tableB = getMutable<TableTypeVar>(typeB);
+    REQUIRE(tableB);
+    CHECK(typeA == tableB->props["q"].type);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_clone_types_of_reexported_values")
+{
+    ScopedFastFlag flags[] = {
+        {"LuauClonePublicInterfaceLess", true},
+        {"LuauSubstitutionReentrant", true},
+        {"LuauClassTypeVarsInSubstitution", true},
+        {"LuauSubstitutionFixMissingFields", true},
+    };
+
+    fileResolver.source["Module/A"] = R"(
+local exports = {a={p=5}}
+return exports
+    )";
+
+    fileResolver.source["Module/B"] = R"(
+local a = require(script.Parent.A)
+local exports = {b=a.a}
+return exports
+    )";
+
+    CheckResult result = frontend.check("Module/B");
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    ModulePtr modA = frontend.moduleResolver.getModule("Module/A");
+    ModulePtr modB = frontend.moduleResolver.getModule("Module/B");
+    REQUIRE(modA);
+    REQUIRE(modB);
+    std::optional<TypeId> typeA = first(modA->getModuleScope()->returnType);
+    std::optional<TypeId> typeB = first(modB->getModuleScope()->returnType);
+    REQUIRE(typeA);
+    REQUIRE(typeB);
+    TableTypeVar* tableA = getMutable<TableTypeVar>(*typeA);
+    TableTypeVar* tableB = getMutable<TableTypeVar>(*typeB);
+    CHECK(tableA->props["a"].type == tableB->props["b"].type);
+}
+
 TEST_SUITE_END();

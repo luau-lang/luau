@@ -38,13 +38,20 @@ public:
     // Two operand mov instruction has additional specialized encodings
     void mov(OperandX64 lhs, OperandX64 rhs);
     void mov64(RegisterX64 lhs, int64_t imm);
+    void movsx(RegisterX64 lhs, OperandX64 rhs);
+    void movzx(RegisterX64 lhs, OperandX64 rhs);
 
     // Base one operand instruction with 2 opcode selection
     void div(OperandX64 op);
     void idiv(OperandX64 op);
     void mul(OperandX64 op);
+    void imul(OperandX64 op);
     void neg(OperandX64 op);
     void not_(OperandX64 op);
+
+    // Additional forms of imul
+    void imul(OperandX64 lhs, OperandX64 rhs);
+    void imul(OperandX64 dst, OperandX64 lhs, int32_t rhs);
 
     void test(OperandX64 lhs, OperandX64 rhs);
     void lea(OperandX64 lhs, OperandX64 rhs);
@@ -76,6 +83,12 @@ public:
     void vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
     void vcomisd(OperandX64 src1, OperandX64 src2);
+    void vucomisd(OperandX64 src1, OperandX64 src2);
+
+    void vcvttsd2si(OperandX64 dst, OperandX64 src);
+    void vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
+
+    void vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mode);
 
     void vsqrtpd(OperandX64 dst, OperandX64 src);
     void vsqrtps(OperandX64 dst, OperandX64 src);
@@ -105,6 +118,7 @@ public:
     OperandX64 f32(float value);
     OperandX64 f64(double value);
     OperandX64 f32x4(float x, float y, float z, float w);
+    OperandX64 bytes(const void* ptr, size_t size, size_t align = 8);
 
     // Resulting data and code that need to be copied over one after the other
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
@@ -130,6 +144,8 @@ private:
     void placeAvx(const char* name, OperandX64 dst, OperandX64 src, uint8_t code, bool setW, uint8_t mode, uint8_t prefix);
     void placeAvx(const char* name, OperandX64 dst, OperandX64 src, uint8_t code, uint8_t coderev, bool setW, uint8_t mode, uint8_t prefix);
     void placeAvx(const char* name, OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t code, bool setW, uint8_t mode, uint8_t prefix);
+    void placeAvx(
+        const char* name, OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t imm8, uint8_t code, bool setW, uint8_t mode, uint8_t prefix);
 
     // Instruction components
     void placeRegAndModRegMem(OperandX64 lhs, OperandX64 rhs);
@@ -157,6 +173,7 @@ private:
     LUAU_NOINLINE void log(const char* opcode, OperandX64 op);
     LUAU_NOINLINE void log(const char* opcode, OperandX64 op1, OperandX64 op2);
     LUAU_NOINLINE void log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3);
+    LUAU_NOINLINE void log(const char* opcode, OperandX64 op1, OperandX64 op2, OperandX64 op3, OperandX64 op4);
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(const char* opcode, Label label);
     void log(OperandX64 op);

@@ -347,3 +347,11 @@ if(TARGET Luau.Web)
     target_sources(Luau.Web PRIVATE
         CLI/Web.cpp)
 endif()
+
+if(TARGET Luau.Reduce.CLI)
+    target_sources(Luau.Reduce.CLI PRIVATE
+        CLI/Reduce.cpp
+        CLI/FileUtils.cpp
+        CLI/FileUtils.h
+    )
+endif()

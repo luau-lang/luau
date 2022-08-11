@@ -97,8 +97,8 @@ ifeq ($(config),fuzz)
 	LDFLAGS+=-fsanitize=address,fuzzer
 endif
 
-ifneq ($(CALLGRIND),)
-	CXXFLAGS+=-DCALLGRIND=$(CALLGRIND)
+ifeq ($(config),profile)
+	CXXFLAGS+=-O2 -DNDEBUG -gdwarf-4 -DCALLGRIND=1
 endif
 
 # target-specific flags
