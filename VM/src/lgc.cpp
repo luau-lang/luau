@@ -15,6 +15,8 @@
 
 #define GC_SWEEPPAGESTEPCOST 16
 
+static constexpr int kLastElement = 0x100;
+
 #define GC_INTERRUPT(state) \
     { \
         void (*interrupt)(lua_State*, int) = g->cb.interrupt; \
@@ -31,17 +33,17 @@
 
 #define stringmark(s) reset2bits((s)->marked, WHITE0BIT, WHITE1BIT)
 
-#define markvalue(g, o) \
+#define markvalue(A, g, o) \
     { \
         checkconsistency(o); \
         if (iscollectable(o) && iswhite(gcvalue(o))) \
-            reallymarkobject(g, gcvalue(o)); \
+            reallymarkobject<A>(g, gcvalue(o)); \
     }
 
-#define markobject(g, t) \
+#define markobject(A, g, t) \
     { \
         if (iswhite(obj2gco(t))) \
-            reallymarkobject(g, obj2gco(t)); \
+            reallymarkobject<A>(g, obj2gco(t)); \
     }
 
 #ifdef LUAI_GCMETRICS
@@ -128,9 +130,14 @@ static void removeentry(LuaNode* n)
         setttype(gkey(n), LUA_TDEADKEY); // dead key; remove it
 }
 
-static void reallymarkobject(global_State* g, GCObject* o)
+template<bool A>
+static void reallymarkobject(global_State* g, GCObject* o);
+
+template<bool A>
+static void reallymarkobject0(global_State* g, GCObject* o)
 {
     LUAU_ASSERT(iswhite(o) && !isdead(g, o));
+    LUAU_ASSERT(!A || !isephemeronkey(o));
     white2gray(o);
     switch (o->gch.tt)
     {
@@ -143,13 +150,13 @@ static void reallymarkobject(global_State* g, GCObject* o)
         Table* mt = gco2u(o)->metatable;
         gray2black(o); // udata are never gray
         if (mt)
-            markobject(g, mt);
+            markobject(A, g, mt);
         return;
     }
     case LUA_TUPVAL:
     {
         UpVal* uv = gco2uv(o);
-        markvalue(g, uv->v);
+        markvalue(A, g, uv->v);
         if (uv->v == &uv->u.value) // closed?
             gray2black(o);         // open upvalues are never black
         return;
@@ -183,6 +190,170 @@ static void reallymarkobject(global_State* g, GCObject* o)
     }
 }
 
+
+static void** getephemeronlink(GCObject* o) {
+    // TODO: These casts are not nice and could be done better (with unions)
+    switch (o->gch.tt)
+    {
+    case LUA_TUSERDATA:
+    {
+        return reinterpret_cast<void**>(&gco2u(o)->metatable);
+    }
+    case LUA_TFUNCTION:
+    {
+        return reinterpret_cast<void**>(&gco2cl(o)->gclist);
+    }
+    case LUA_TTABLE:
+    {
+        return reinterpret_cast<void**>(&gco2h(o)->gclist);
+    }
+    case LUA_TTHREAD:
+    {
+        return reinterpret_cast<void**>(&gco2th(o)->gclist);
+    }
+    default:
+        LUAU_ASSERT(0);
+        return nullptr;
+    }
+}
+
+/**
+ * @brief Link a table node from the ephemeron list to the worklist.
+ * 
+ * @param o Object to restore the key.
+ * @param n Table node
+ * @param list Worklist
+ * @return LuaNode* Adapted worklist
+ */
+static LuaNode* relink(GCObject* o, LuaNode* n, LuaNode* list) {
+    uintptr_t intptr = reinterpret_cast<uintptr_t>(list);
+    ttype(gkey(n)) = gkey(n)->extra[0] & 0xF; // Restore value tt and save it in the key tt.
+    gkey(n)->value.gc = o; // Restore the key value, key tt needs to be restored later.
+    gkey(n)->extra[0] = static_cast<int>(static_cast<uint32_t>(intptr & 0xFFFFFFFF));
+    // Save the link to the next worklist entry in the key extra slot and value tt slot.
+    // Note: The value tt is saved in the key tt which can be restored from the key GCObject.
+    if (sizeof(uintptr_t) > 4) {
+        LUAU_ASSERT(sizeof(uintptr_t) <= 8);
+        gval(n)->tt = static_cast<int>(static_cast<uint32_t>(intptr >> 32));
+    }
+    return n;
+}
+
+/**
+ * @brief Relink the ephemeron list of a key to the worklist of the current
+ * ephemeron key marking to ensure that no recursion is occuring.
+ * 
+ * @param o Ephemeron key, used to restore the key.
+ * @param first Pointer to first element, will be restored to the original value.
+ * @param list Worklist
+ * @return LuaNode* Adapted worklist
+ */
+static LuaNode* preparelist(GCObject* o, void** first, LuaNode* list) {
+    void* c = *first;
+    LuaNode* n;
+    int last;
+    do {
+        n = reinterpret_cast<LuaNode*>(c); // c points to a LuaNode
+        last = gkey(n)->extra[0] & kLastElement; // Is last element?
+        c = gkey(n)->value.p; // Pointer to next ephemeron list element
+        list = relink(o, n, list);
+    } while(!last);
+    // Restore original value, since in userdata we use the metatable ptr for the list ptr.
+    *first = c == nullptr ? nullptr : reinterpret_cast<char*>(c) - 1;
+    return list;
+}
+
+/**
+ * @brief Restore the table node from the worklist.
+ * 
+ * @param n Node to restore to the original state
+ * @return LuaNode* Next node on the worklist
+ */
+static LuaNode* nextandrestore(LuaNode* n) {
+    uintptr_t intptr = static_cast<uint32_t>(gkey(n)->extra[0]);
+    // Rebuild ptr to next element in the worklist which is stored in the key extra value
+    // and the tt slot of the value.
+    if (sizeof(uintptr_t) > 4) {
+        intptr |= static_cast<uintptr_t>(static_cast<uint32_t>(gval(n)->tt)) << 32;
+    }
+    ttype(gval(n)) = ttype(gkey(n)); // Value tt is saved in the key tt.
+    ttype(gkey(n)) = gcvalue(gkey(n))->gch.tt; // Key tt can be restored from the key gc value.
+    return reinterpret_cast<LuaNode*>(intptr);
+}
+
+/**
+ * @brief Mark object o. Special case userdata, since the metatable can be an ephemeron key which would cause recursion.
+ * 
+ * @param g Global Lua state
+ * @param o Object to mark
+ * @param n Worklist
+ * @return LuaNode* Adapted worklist
+ */
+static LuaNode* reallymarkobjecthandleephemeron(global_State* g, GCObject* o, LuaNode* n) {
+    if (o->gch.tt == LUA_TUSERDATA) {
+        // Special case userdata to avoid recursion in case metatable is an ephemeron key.
+        Table* mt = gco2u(o)->metatable;
+        white2gray(o);
+        gray2black(o);
+        if (mt) {
+            o = obj2gco(mt);
+            if (isephemeronkey(o)) {
+                n = preparelist(o, getephemeronlink(o), n);
+                mt->marked &= ~bitmask(EPHEMERONKEYBIT);
+            }
+            reallymarkobject0<true>(g, o); // Note: o is a table which will be linked to gray list, so no recursion can occure.
+        }
+    } else {
+        // All other objects will be linked to the gray list.
+        reallymarkobject0<true>(g, o);
+    }
+    return n;
+}
+
+/**
+ * @brief Marks the ephemeron key o. This restores all the elements of the ephemeron link and marks all values.
+ * This is done with a working list as values might be itself ephemeron keys and recursion might result in stack overflows.
+ * 
+ * @param g Global Lua state
+ * @param o Ephemeron key to mark
+ */
+static void markephemeronkey(global_State* g, GCObject* o) {
+    // Move the ephemeron list to the worklist
+    LuaNode* list = preparelist(o, getephemeronlink(o), nullptr);
+    o->gch.marked &= ~bitmask(EPHEMERONKEYBIT);
+    list = reallymarkobjecthandleephemeron(g, o, list); // Mark the object.
+    while (list) {
+        // Iterate through the worklist
+        LuaNode* next = nextandrestore(list);
+        if (iscollectable(gval(list))) {
+            o = gcvalue(gval(list));
+            if (iswhite(o)) {
+                // Value is collectable and needs marking
+                if (isephemeronkey(o)) {
+                    // Special case ephemeron keys
+                    next = preparelist(o, getephemeronlink(o), next);
+                    o->gch.marked &= ~bitmask(EPHEMERONKEYBIT);
+                }
+                next = reallymarkobjecthandleephemeron(g, o, next); // Mark the object.
+            }
+        }
+        list = next;
+    }
+}
+
+template<bool A>
+static void reallymarkobject(global_State* g, GCObject* o)
+{
+    LUAU_ASSERT(iswhite(o) && !isdead(g, o));
+    if (A && isephemeronkey(o)) {
+        // Check if the object is an ephemeron key.
+        // This should only be done and the case in the atomic phase.
+        markephemeronkey(g, o);
+    } else {
+        reallymarkobject0<A>(g, o);
+    }
+}
+
 static const char* gettablemode(global_State* g, Table* h)
 {
     const TValue* mode = gfasttm(g, h->metatable, TM_MODE);
@@ -193,33 +364,125 @@ static const char* gettablemode(global_State* g, Table* h)
     return NULL;
 }
 
+/**
+ * @brief Make the key of table node n an ephemeron key if it is not already and link the table node n to the list.
+ * While the node is in the ephemeron list the node will look like a dead node.
+ * The key will be marked as LUA_TDEADKEY and the value as LUA_TNIL.
+ * This makes the case were the key is actually dead very cheap.
+ * 
+ * @param g Global Lua state
+ * @param n Table node to link to the nodes key ephemeron list.
+ */
+static void linkephemeronkey(global_State* g, LuaNode* n) {
+    GCObject* o = gcvalue(gkey(n));
+    void** link = getephemeronlink(o);
+    void* ptr;
+    int extra = ttype(gval(n));
+    if (isephemeronkey(o)) {
+        ptr = *link;
+    } else {
+        l_setbit(o->gch.marked, EPHEMERONKEYBIT);
+        if (o->gch.tt == LUA_TUSERDATA) {
+            // We need to increate the pointer since the metatable might be as key in this table and when it is marked
+            // as LUA_TDEADKEY has the same pointer as in this node. This might result in problems, so ensure the pointer
+            // is not a pointer to a valid Lua GCObject.
+            ptr = reinterpret_cast<char*>(gco2u(o)->metatable) + 1;
+        } else {
+            ptr = nullptr;
+        }
+        extra |= kLastElement;
+    }
+
+    gkey(n)->value.p = ptr;    // Pointer to next element in the ephemeron list.
+    gkey(n)->extra[0] = extra; // Save tt of the value.
+    ttype(gkey(n)) = LUA_TDEADKEY; // Make this node a dead node.
+    ttype(gval(n)) = LUA_TNIL;
+    *link = n;
+}
+
+template<bool A>
+static int traverseephemeron(global_State* g, Table* h, const char* modev) {
+    int i;
+    int hasweakkey = 0;
+    i = h->sizearray;
+    while (i--)
+        markvalue(A, g, &h->array[i]);
+    i = sizenode(h);
+    while (i--)
+    {
+        LuaNode* n = gnode(h, i);
+        LUAU_ASSERT(ttype(gkey(n)) != LUA_TDEADKEY || ttisnil(gval(n)));
+        if (ttisnil(gval(n)))
+            removeentry(n); // remove empty entries
+        else
+        {
+            LUAU_ASSERT(!ttisnil(gkey(n)));
+            if (iscollectable(gkey(n))) {
+                if (ttype(gkey(n)) == LUA_TSTRING) {
+                    markvalue(A, g, gkey(n));
+                    markvalue(A, g, gval(n));
+                } else if (!iswhite(gcvalue(gkey(n)))){
+                    markvalue(A, g, gval(n));
+                } else if /* constexpr */ (A) {
+                    linkephemeronkey(g, n);
+                } else {
+                    hasweakkey = 1;
+                }
+            } else {
+                markvalue(A, g, gval(n));
+            }
+        }
+    }
+    if (hasweakkey) {
+        // Non trivial case in the propagating/marking phase.
+        // So ensure this object is visited again in the atomic phase.
+        h->gclist = g->grayagain;
+        g->grayagain = obj2gco(h);
+    } else if (strchr(modev, 's') != NULL) {
+        // Shrinkable ephemeron table.
+        h->gclist = g->weak;  // link to weak list for shrinking.
+        g->weak = obj2gco(h);
+        return 1;
+    }
+    return hasweakkey;
+}
+
+template<bool A>
 static int traversetable(global_State* g, Table* h)
 {
     int i;
     int weakkey = 0;
     int weakvalue = 0;
     if (h->metatable)
-        markobject(g, cast_to(Table*, h->metatable));
+        markobject(A, g, cast_to(Table*, h->metatable));
 
     // is there a weak mode?
     if (const char* modev = gettablemode(g, h))
     {
         weakkey = (strchr(modev, 'k') != NULL);
         weakvalue = (strchr(modev, 'v') != NULL);
-        if (weakkey || weakvalue)
+        if (weakkey)
+        {
+            if (weakvalue)
+            {                         // is really weak?
+                h->gclist = g->weak;  // must be cleared after GC, ...
+                g->weak = obj2gco(h); // ... so put in the appropriate list
+                return 1;
+            }
+            return traverseephemeron<A>(g, h, modev);
+        }
+        if (weakvalue)
         {                         // is really weak?
             h->gclist = g->weak;  // must be cleared after GC, ...
             g->weak = obj2gco(h); // ... so put in the appropriate list
         }
     }
 
-    if (weakkey && weakvalue)
-        return 1;
     if (!weakvalue)
     {
         i = h->sizearray;
         while (i--)
-            markvalue(g, &h->array[i]);
+            markvalue(A, g, &h->array[i]);
     }
     i = sizenode(h);
     while (i--)
@@ -232,9 +495,9 @@ static int traversetable(global_State* g, Table* h)
         {
             LUAU_ASSERT(!ttisnil(gkey(n)));
             if (!weakkey)
-                markvalue(g, gkey(n));
+                markvalue(A, g, gkey(n));
             if (!weakvalue)
-                markvalue(g, gval(n));
+                markvalue(A, g, gval(n));
         }
     }
     return weakkey || weakvalue;
@@ -244,6 +507,7 @@ static int traversetable(global_State* g, Table* h)
 ** All marks are conditional because a GC may happen while the
 ** prototype is still being created
 */
+template<bool A>
 static void traverseproto(global_State* g, Proto* f)
 {
     int i;
@@ -252,7 +516,7 @@ static void traverseproto(global_State* g, Proto* f)
     if (f->debugname)
         stringmark(f->debugname);
     for (i = 0; i < f->sizek; i++) // mark literals
-        markvalue(g, &f->k[i]);
+        markvalue(A, g, &f->k[i]);
     for (i = 0; i < f->sizeupvalues; i++)
     { // mark upvalue names
         if (f->upvalues[i])
@@ -261,7 +525,7 @@ static void traverseproto(global_State* g, Proto* f)
     for (i = 0; i < f->sizep; i++)
     { // mark nested protos
         if (f->p[i])
-            markobject(g, f->p[i]);
+            markobject(A, g, f->p[i]);
     }
     for (i = 0; i < f->sizelocvars; i++)
     { // mark local-variable names
@@ -270,32 +534,34 @@ static void traverseproto(global_State* g, Proto* f)
     }
 }
 
+template<bool A>
 static void traverseclosure(global_State* g, Closure* cl)
 {
-    markobject(g, cl->env);
+    markobject(A, g, cl->env);
     if (cl->isC)
     {
         int i;
         for (i = 0; i < cl->nupvalues; i++) // mark its upvalues
-            markvalue(g, &cl->c.upvals[i]);
+            markvalue(A, g, &cl->c.upvals[i]);
     }
     else
     {
         int i;
         LUAU_ASSERT(cl->nupvalues == cl->l.p->nups);
-        markobject(g, cast_to(Proto*, cl->l.p));
+        markobject(A, g, cast_to(Proto*, cl->l.p));
         for (i = 0; i < cl->nupvalues; i++) // mark its upvalues
-            markvalue(g, &cl->l.uprefs[i]);
+            markvalue(A, g, &cl->l.uprefs[i]);
     }
 }
 
+template<bool A>
 static void traversestack(global_State* g, lua_State* l, bool clearstack)
 {
-    markobject(g, l->gt);
+    markobject(A, g, l->gt);
     if (l->namecall)
         stringmark(l->namecall);
     for (StkId o = l->stack; o < l->top; o++)
-        markvalue(g, o);
+        markvalue(A, g, o);
     // final traversal?
     if (g->gcstate == GCSatomic || clearstack)
     {
@@ -309,6 +575,7 @@ static void traversestack(global_State* g, lua_State* l, bool clearstack)
 ** traverse one gray object, turning it to black.
 ** Returns `quantity' traversed.
 */
+template<bool A>
 static size_t propagatemark(global_State* g)
 {
     GCObject* o = g->gray;
@@ -320,7 +587,7 @@ static size_t propagatemark(global_State* g)
     {
         Table* h = gco2h(o);
         g->gray = h->gclist;
-        if (traversetable(g, h)) // table is weak?
+        if (traversetable<A>(g, h)) // table is weak?
             black2gray(o);       // keep it gray
         return sizeof(Table) + sizeof(TValue) * h->sizearray + sizeof(LuaNode) * sizenode(h);
     }
@@ -328,7 +595,7 @@ static size_t propagatemark(global_State* g)
     {
         Closure* cl = gco2cl(o);
         g->gray = cl->gclist;
-        traverseclosure(g, cl);
+        traverseclosure<A>(g, cl);
         return cl->isC ? sizeCclosure(cl->nupvalues) : sizeLclosure(cl->nupvalues);
     }
     case LUA_TTHREAD:
@@ -343,7 +610,7 @@ static size_t propagatemark(global_State* g)
 
         if (!active && g->gcstate == GCSpropagate)
         {
-            traversestack(g, th, /* clearstack= */ true);
+            traversestack<A>(g, th, /* clearstack= */ true);
 
             l_setbit(th->stackstate, THREAD_SLEEPINGBIT);
         }
@@ -354,7 +621,7 @@ static size_t propagatemark(global_State* g)
 
             black2gray(o);
 
-            traversestack(g, th, /* clearstack= */ false);
+            traversestack<A>(g, th, /* clearstack= */ false);
         }
 
         return sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
@@ -363,7 +630,7 @@ static size_t propagatemark(global_State* g)
     {
         Proto* p = gco2p(o);
         g->gray = p->gclist;
-        traverseproto(g, p);
+        traverseproto<A>(g, p);
         return sizeof(Proto) + sizeof(Instruction) * p->sizecode + sizeof(Proto*) * p->sizep + sizeof(TValue) * p->sizek + p->sizelineinfo +
                sizeof(LocVar) * p->sizelocvars + sizeof(TString*) * p->sizeupvalues;
     }
@@ -373,12 +640,13 @@ static size_t propagatemark(global_State* g)
     }
 }
 
+template<bool A>
 static size_t propagateall(global_State* g)
 {
     size_t work = 0;
     while (g->gray)
     {
-        work += propagatemark(g);
+        work += propagatemark<A>(g);
     }
     return work;
 }
@@ -569,29 +837,32 @@ void luaC_freeall(lua_State* L)
     LUAU_ASSERT(g->strbufgc == NULL);
 }
 
+template<bool A>
 static void markmt(global_State* g)
 {
     int i;
     for (i = 0; i < LUA_T_COUNT; i++)
         if (g->mt[i])
-            markobject(g, g->mt[i]);
+            markobject(A, g, g->mt[i]);
 }
 
 // mark root set
+template<bool A>
 static void markroot(lua_State* L)
 {
     global_State* g = L->global;
     g->gray = NULL;
     g->grayagain = NULL;
     g->weak = NULL;
-    markobject(g, g->mainthread);
+    markobject(A, g, g->mainthread);
     // make global table be traversed before main stack
-    markobject(g, g->mainthread->gt);
-    markvalue(g, registry(L));
-    markmt(g);
+    markobject(A, g, g->mainthread->gt);
+    markvalue(A, g, registry(L));
+    markmt<A>(g);
     g->gcstate = GCSpropagate;
 }
 
+template<bool A>
 static size_t remarkupvals(global_State* g)
 {
     size_t work = 0;
@@ -600,7 +871,7 @@ static size_t remarkupvals(global_State* g)
         work += sizeof(UpVal);
         LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
         if (isgray(obj2gco(uv)))
-            markvalue(g, uv->v);
+            markvalue(A, g, uv->v);
     }
     return work;
 }
@@ -617,9 +888,9 @@ static size_t atomic(lua_State* L)
 #endif
 
     // remark occasional upvalues of (maybe) dead threads
-    work += remarkupvals(g);
+    work += remarkupvals<true>(g);
     // traverse objects caught by write barrier and by 'remarkupvals'
-    work += propagateall(g);
+    work += propagateall<true>(g);
 
 #ifdef LUAI_GCMETRICS
     g->gcmetrics.currcycle.atomictimeupval += recordGcDeltaTime(currts);
@@ -629,9 +900,9 @@ static size_t atomic(lua_State* L)
     g->gray = g->weak;
     g->weak = NULL;
     LUAU_ASSERT(!iswhite(obj2gco(g->mainthread)));
-    markobject(g, L); // mark running thread
-    markmt(g);        // mark basic metatables (again)
-    work += propagateall(g);
+    markobject(true, g, L); // mark running thread
+    markmt<true>(g);        // mark basic metatables (again)
+    work += propagateall<true>(g);
 
 #ifdef LUAI_GCMETRICS
     g->gcmetrics.currcycle.atomictimeweak += recordGcDeltaTime(currts);
@@ -640,7 +911,7 @@ static size_t atomic(lua_State* L)
     // remark gray again
     g->gray = g->grayagain;
     g->grayagain = NULL;
-    work += propagateall(g);
+    work += propagateall<true>(g);
 
 #ifdef LUAI_GCMETRICS
     g->gcmetrics.currcycle.atomictimegray += recordGcDeltaTime(currts);
@@ -733,7 +1004,7 @@ static size_t gcstep(lua_State* L, size_t limit)
     {
     case GCSpause:
     {
-        markroot(L); // start a new collection
+        markroot<false>(L); // start a new collection
         LUAU_ASSERT(g->gcstate == GCSpropagate);
         break;
     }
@@ -741,7 +1012,7 @@ static size_t gcstep(lua_State* L, size_t limit)
     {
         while (g->gray && cost < limit)
         {
-            cost += propagatemark(g);
+            cost += propagatemark<false>(g);
         }
 
         if (!g->gray)
@@ -762,7 +1033,7 @@ static size_t gcstep(lua_State* L, size_t limit)
     {
         while (g->gray && cost < limit)
         {
-            cost += propagatemark(g);
+            cost += propagatemark<false>(g);
         }
 
         if (!g->gray) // no more `gray' objects
@@ -969,7 +1240,7 @@ void luaC_fullgc(lua_State* L)
 #endif
 
     // run a full collection cycle
-    markroot(L);
+    markroot<false>(L);
     while (g->gcstate != GCSpause)
     {
         gcstep(L, SIZE_MAX);
@@ -1003,7 +1274,7 @@ void luaC_barrierupval(lua_State* L, GCObject* v)
     LUAU_ASSERT(iswhite(v) && !isdead(g, v));
 
     if (keepinvariant(g))
-        reallymarkobject(g, v);
+        reallymarkobject<false>(g, v);
 }
 
 void luaC_barrierf(lua_State* L, GCObject* o, GCObject* v)
@@ -1013,7 +1284,7 @@ void luaC_barrierf(lua_State* L, GCObject* o, GCObject* v)
     LUAU_ASSERT(g->gcstate != GCSpause);
     // must keep invariant?
     if (keepinvariant(g))
-        reallymarkobject(g, v); // restore invariant
+        reallymarkobject<false>(g, v); // restore invariant
     else                        // don't mind
         makewhite(g, o);        // mark as white just to avoid other barriers
 }
@@ -1027,7 +1298,7 @@ void luaC_barriertable(lua_State* L, Table* t, GCObject* v)
     if (g->gcstate == GCSpropagateagain)
     {
         LUAU_ASSERT(isblack(o) && iswhite(v) && !isdead(g, v) && !isdead(g, o));
-        reallymarkobject(g, v);
+        reallymarkobject<false>(g, v);
         return;
     }
 
