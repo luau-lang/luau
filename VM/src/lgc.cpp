@@ -232,9 +232,9 @@ static LuaNode* relink(GCObject* o, LuaNode* n, LuaNode* list) {
     gkey(n)->extra[0] = static_cast<int>(static_cast<uint32_t>(intptr & 0xFFFFFFFF));
     // Save the link to the next worklist entry in the key extra slot and value tt slot.
     // Note: The value tt is saved in the key tt which can be restored from the key GCObject.
-    if (sizeof(uintptr_t) > 4) {
+    if /* constexpr */ (sizeof(uintptr_t) > 4) {
         LUAU_ASSERT(sizeof(uintptr_t) <= 8);
-        gval(n)->tt = static_cast<int>(static_cast<uint32_t>(intptr >> 32));
+        gval(n)->tt = static_cast<int>(static_cast<uint32_t>(static_cast<uint64_t>(intptr) >> 32));
     }
     return n;
 }
@@ -273,8 +273,8 @@ static LuaNode* nextandrestore(LuaNode* n) {
     uintptr_t intptr = static_cast<uint32_t>(gkey(n)->extra[0]);
     // Rebuild ptr to next element in the worklist which is stored in the key extra value
     // and the tt slot of the value.
-    if (sizeof(uintptr_t) > 4) {
-        intptr |= static_cast<uintptr_t>(static_cast<uint32_t>(gval(n)->tt)) << 32;
+    if /* constexpr */ (sizeof(uintptr_t) > 4) {
+        intptr |= static_cast<uintptr_t>(static_cast<uint64_t>(static_cast<uint32_t>(gval(n)->tt)) << 32);
     }
     ttype(gval(n)) = ttype(gkey(n)); // Value tt is saved in the key tt.
     ttype(gkey(n)) = gcvalue(gkey(n))->gch.tt; // Key tt can be restored from the key gc value.

@@ -132,14 +132,14 @@ print('weak tables')
 a = {}; setmetatable(a, {__mode = 'k'});
 -- fill a with some `collectable' indices
 for i=1,lim do a[{}] = i end
--- and some non-collectable ones
 for i=1,lim do local t={}; a[t]=t end
+-- and some non-collectable ones
 for i=1,lim do a[i] = i end
 for i=1,lim do local s=string.rep('@', i); a[s] = s..'#' end
 collectgarbage()
 local i = 0
 for k,v in pairs(a) do assert(k==v or k..'#'==v); i=i+1 end
-assert(i == 3*lim)
+assert(i == 2*lim)
 
 a = {}; setmetatable(a, {__mode = 'v'});
 a[1] = string.rep('b', 21)
