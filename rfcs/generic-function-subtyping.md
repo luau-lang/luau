@@ -121,8 +121,8 @@ definition of `rank2`), but it's still just as problematic if we were to accept
 instantiated functions at polymorphic types. Thus, it's important that we
 actually ensure that we only instantiate in covariant contexts, but it's still
 just as problematic if we were to accept instantiated functions at polymorphic
-types. Thus, it's important that we actually ensure that subtyping only
-instantiates in covariant contexts.
+types. So, we must ensure that subtyping only instantiates in covariant
+contexts.
 
 It may also be helpful to consider an example of rank-1 polymorphism to
 understand the full scope of the behavior. So, we can look at what happens if we
