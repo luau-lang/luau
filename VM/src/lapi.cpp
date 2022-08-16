@@ -1209,7 +1209,10 @@ void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
 {
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
-    Udata* u = luaU_newudata(L, sz + sizeof(dtor), UTAG_IDTOR);
+    size_t as = sz + sizeof(dtor);
+    if (as < sizeof(dtor))
+        as = SIZE_MAX; // Will cause a memory error in luaU_newudata.
+    Udata* u = luaU_newudata(L, as, UTAG_IDTOR);
     memcpy(&u->data + sz, &dtor, sizeof(dtor));
     setuvalue(L, L->top, u);
     api_incr_top(L);
