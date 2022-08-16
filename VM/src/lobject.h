@@ -323,14 +323,10 @@ typedef struct UpVal
         TValue value; // the value (when closed)
         struct
         {
-            // global double linked list (when open)
-            struct UpVal* prev;
-            struct UpVal* next;
-
-            // thread double linked list (when open)
+            // State into which stack this upvalue points at
+            lua_State* thread;
+            // Link to next upvalue in sorted order
             struct UpVal* threadnext;
-            // note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State
-            struct UpVal** threadprev;
         } l;
     } u;
 } UpVal;

@@ -166,6 +166,7 @@ typedef struct global_State
     GCObject* gray;      // list of gray objects
     GCObject* grayagain; // list of objects to be traversed atomically
     GCObject* weak;     // list of weak tables (to be cleared)
+    GCObject* whitethreads; // list of white threads which might have a black upvalue which need closing
 
     TString* strbufgc; // list of all string buffer objects
 
@@ -185,7 +186,6 @@ typedef struct global_State
 
 
     struct lua_State* mainthread;
-    UpVal uvhead;                                    // head of double-linked list of all open upvalues
     struct Table* mt[LUA_T_COUNT];                   // metatables for basic types
     TString* ttname[LUA_T_COUNT];       // names for basic types
     TString* tmname[TM_N];             // array with tag-method names
@@ -252,6 +252,7 @@ struct lua_State
     Table* gt;           // table of globals
     UpVal* openupval;    // list of open upvalues in this stack
     GCObject* gclist;
+    GCObject** gclistprev; // Only used when on white list.
 
     TString* namecall; // when invoked from Luau using NAMECALL, what method do we need to invoke?
 

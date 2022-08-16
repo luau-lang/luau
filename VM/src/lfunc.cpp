@@ -69,13 +69,14 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     global_State* g = L->global;
     UpVal** pp = &L->openupval;
     UpVal* p;
+
+    LUAU_ASSERT(!isblack(obj2gco(L)) || !keepinvariant(L->global));
     while (*pp != NULL && (p = *pp)->v >= level)
     {
         LUAU_ASSERT(p->v != &p->u.value);
+        LUAU_ASSERT(!isdead(g, obj2gco(p)));
         if (p->v == level)
         {                                // found a corresponding upvalue?
-            if (isdead(g, obj2gco(p)))   // is it dead?
-                changewhite(obj2gco(p)); // resurrect it
             return p;
         }
 
@@ -89,40 +90,14 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     uv->v = level; // current value lives in the stack
 
     // chain the upvalue in the threads open upvalue list at the proper position
-    UpVal* next = *pp;
-    uv->u.l.threadnext = next;
-    uv->u.l.threadprev = pp;
-    if (next)
-        next->u.l.threadprev = &uv->u.l.threadnext;
-
+    uv->u.l.thread = L;
+    uv->u.l.threadnext = *pp;
     *pp = uv;
-
-    // double link the upvalue in the global open upvalue list
-    uv->u.l.prev = &g->uvhead;
-    uv->u.l.next = g->uvhead.u.l.next;
-    uv->u.l.next->u.l.prev = uv;
-    g->uvhead.u.l.next = uv;
-    LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
     return uv;
-}
-void luaF_unlinkupval(UpVal* uv)
-{
-    // unlink upvalue from the global open upvalue list
-    LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
-    uv->u.l.next->u.l.prev = uv->u.l.prev;
-    uv->u.l.prev->u.l.next = uv->u.l.next;
-
-    // unlink upvalue from the thread open upvalue list
-    *uv->u.l.threadprev = uv->u.l.threadnext;
-
-    if (UpVal* next = uv->u.l.threadnext)
-        next->u.l.threadprev = uv->u.l.threadprev;
 }
 
 void luaF_freeupval(lua_State* L, UpVal* uv, lua_Page* page)
 {
-    if (uv->v != &uv->u.value)                            // is it open?
-        luaF_unlinkupval(uv);                             // remove from open list
     luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page); // free upvalue
 }
 
@@ -130,26 +105,22 @@ void luaF_close(lua_State* L, StkId level)
 {
     global_State* g = L->global;
     UpVal* uv;
+
+    LUAU_ASSERT(!isblack(obj2gco(L)) || !keepinvariant(L->global));
     while (L->openupval != NULL && (uv = L->openupval)->v >= level)
     {
         GCObject* o = obj2gco(uv);
-        LUAU_ASSERT(!isblack(o) && uv->v != &uv->u.value);
+        LUAU_ASSERT(uv->v != &uv->u.value);
+        LUAU_ASSERT(L == uv->u.l.thread);
+        LUAU_ASSERT(!isdead(g, o));
 
-        // by removing the upvalue from global/thread open upvalue lists, L->openupval will be pointing to the next upvalue
-        luaF_unlinkupval(uv);
+        // by removing the upvalue from thread open upvalue lists, L->openupval will be pointing to the next upvalue
+        L->openupval = uv->u.l.threadnext;
 
-        if (isdead(g, o))
-        {
-            // close the upvalue without copying the dead data so that luaF_freeupval will not unlink again
-            uv->v = &uv->u.value;
-        }
-        else
-        {
-            setobj(L, &uv->u.value, uv->v);
-            uv->v = &uv->u.value;
-            // GC state of a new closed upvalue has to be initialized
-            luaC_initupval(L, uv);
-        }
+        setobj(L, &uv->u.value, uv->v);
+        uv->v = &uv->u.value;
+        // black upvalue might point to white object in white or gray thread
+        luaC_barrier(L, uv, uv->v);
     }
 }
 

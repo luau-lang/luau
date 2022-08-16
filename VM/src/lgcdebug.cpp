@@ -207,6 +207,17 @@ static void validategraylist(global_State* g, GCObject* o)
     }
 }
 
+static void validatewhitethreadlist(global_State* g, GCObject** p) {
+    GCObject* o;
+    while ((o = *p) != NULL)
+    {
+        LUAU_ASSERT(iswhite(o));
+        LUAU_ASSERT(o->gch.tt == LUA_TTHREAD);
+        LUAU_ASSERT(gco2th(o)->gclistprev == p);
+        o = gco2th(o)->gclist;
+    }
+}
+
 static bool validategco(void* context, lua_Page* page, GCObject* gco)
 {
     lua_State* L = (lua_State*)context;
@@ -230,17 +241,11 @@ void luaC_validate(lua_State* L)
     validategraylist(g, g->weak);
     validategraylist(g, g->gray);
     validategraylist(g, g->grayagain);
+    validatewhitethreadlist(g, &g->whitethreads);
 
     validategco(L, NULL, obj2gco(g->mainthread));
 
     luaM_visitgco(L, L, validategco);
-
-    for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
-    {
-        LUAU_ASSERT(uv->tt == LUA_TUPVAL);
-        LUAU_ASSERT(uv->v != &uv->u.value);
-        LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
-    }
 }
 
 inline bool safejson(char ch)

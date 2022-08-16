@@ -150,8 +150,18 @@ static void reallymarkobject(global_State* g, GCObject* o)
     {
         UpVal* uv = gco2uv(o);
         markvalue(g, uv->v);
-        if (uv->v == &uv->u.value) // closed?
-            gray2black(o);         // open upvalues are never black
+        if (uv->v != &uv->u.value) {
+            lua_State* t = uv->u.l.thread;
+            if (iswhite(obj2gco(t)) && !t->gclistprev) {
+                t->gclist = g->whitethreads;
+                if (g->whitethreads) {
+                    gco2th(g->whitethreads)->gclistprev = &t->gclist;
+                }
+                t->gclistprev = &g->whitethreads;
+                g->whitethreads = obj2gco(t);
+            }
+        }
+        gray2black(o);
         return;
     }
     case LUA_TFUNCTION:
@@ -168,6 +178,10 @@ static void reallymarkobject(global_State* g, GCObject* o)
     }
     case LUA_TTHREAD:
     {
+        if (gco2th(o)->gclistprev) {
+            *gco2th(o)->gclistprev = gco2th(o)->gclist;
+            gco2th(o)->gclistprev = NULL;
+        }
         gco2th(o)->gclist = g->gray;
         g->gray = o;
         break;
@@ -305,6 +319,19 @@ static void traversestack(global_State* g, lua_State* l, bool clearstack)
     }
 }
 
+static size_t markupvals(global_State* g, UpVal* uv) {
+    size_t work = 0;
+    while(uv) {
+        work += sizeof(UpVal);
+        if (iswhite(obj2gco(uv))) {
+            white2gray(obj2gco(uv));
+            gray2black(obj2gco(uv));
+        }
+        uv = uv->u.l.threadnext;
+    }
+    return work;
+}
+
 /*
 ** traverse one gray object, turning it to black.
 ** Returns `quantity' traversed.
@@ -334,6 +361,7 @@ static size_t propagatemark(global_State* g)
     case LUA_TTHREAD:
     {
         lua_State* th = gco2th(o);
+        size_t work = 0;
         g->gray = th->gclist;
 
         LUAU_ASSERT(!luaC_threadsleeping(th));
@@ -344,6 +372,7 @@ static size_t propagatemark(global_State* g)
         if (!active && g->gcstate == GCSpropagate)
         {
             traversestack(g, th, /* clearstack= */ true);
+            work += markupvals(g, th->openupval);
 
             l_setbit(th->stackstate, THREAD_SLEEPINGBIT);
         }
@@ -355,9 +384,13 @@ static size_t propagatemark(global_State* g)
             black2gray(o);
 
             traversestack(g, th, /* clearstack= */ false);
+
+            if (g->gcstate == GCSatomic) {
+                work += markupvals(g, th->openupval);
+            }
         }
 
-        return sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
+        return sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci + work;
     }
     case LUA_TPROTO:
     {
@@ -534,20 +567,6 @@ static void shrinkbuffersfull(lua_State* L)
 
 static bool deletegco(void* context, lua_Page* page, GCObject* gco)
 {
-    // we are in the process of deleting everything
-    // threads with open upvalues will attempt to close them all on removal
-    // but those upvalues might point to stack values that were already deleted
-    if (gco->gch.tt == LUA_TTHREAD)
-    {
-        lua_State* th = gco2th(gco);
-
-        while (UpVal* uv = th->openupval)
-        {
-            luaF_unlinkupval(uv);
-            // close the upvalue without copying the dead data so that luaF_freeupval will not unlink again
-            uv->v = &uv->u.value;
-        }
-    }
 
     lua_State* L = (lua_State*)context;
     freeobj(L, gco, page);
@@ -584,6 +603,7 @@ static void markroot(lua_State* L)
     g->gray = NULL;
     g->grayagain = NULL;
     g->weak = NULL;
+    g->whitethreads = NULL;
     markobject(g, g->mainthread);
     // make global table be traversed before main stack
     markobject(g, g->mainthread->gt);
@@ -592,15 +612,27 @@ static void markroot(lua_State* L)
     g->gcstate = GCSpropagate;
 }
 
-static size_t remarkupvals(global_State* g)
-{
+static size_t clearthreads(lua_State* L, GCObject* t) {
     size_t work = 0;
-    for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
-    {
-        work += sizeof(UpVal);
-        LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
-        if (isgray(obj2gco(uv)))
-            markvalue(g, uv->v);
+    lua_State* s;
+    UpVal* uv;
+    UpVal* n;
+
+    while(t) {
+        s = gco2th(t);
+        uv = s->openupval;
+        work += sizeof(UpVal*);
+        while (uv) {
+            LUAU_ASSERT(uv->u.l.thread == s);
+            work += sizeof(UpVal);
+            n = uv->u.l.threadnext;
+            if (isblack(obj2gco(uv))) {
+                setobj(L, &uv->u.value, uv->v);
+                uv->v = &uv->u.value;
+            }
+            uv = n;
+        }
+        t = s->gclist;
     }
     return work;
 }
@@ -616,8 +648,6 @@ static size_t atomic(lua_State* L)
     double currts = lua_clock();
 #endif
 
-    // remark occasional upvalues of (maybe) dead threads
-    work += remarkupvals(g);
     // traverse objects caught by write barrier and by 'remarkupvals'
     work += propagateall(g);
 
@@ -649,6 +679,9 @@ static size_t atomic(lua_State* L)
     // remove collected objects from weak tables
     work += cleartable(L, g->weak);
     g->weak = NULL;
+
+    work += clearthreads(L, g->whitethreads);
+    g->whitethreads = NULL;
 
 #ifdef LUAI_GCMETRICS
     g->gcmetrics.currcycle.atomictimeclear += recordGcDeltaTime(currts);
@@ -953,6 +986,10 @@ void luaC_fullgc(lua_State* L)
         g->gray = NULL;
         g->grayagain = NULL;
         g->weak = NULL;
+        while (g->whitethreads) {
+            gco2th(g->whitethreads)->gclistprev = NULL;
+            g->whitethreads = gco2th(g->whitethreads)->gclist;
+        }
         g->gcstate = GCSsweep;
     }
     LUAU_ASSERT(g->gcstate == GCSsweep);
@@ -1055,26 +1092,6 @@ void luaC_initobj(lua_State* L, GCObject* o, uint8_t tt)
     o->gch.marked = luaC_white(g);
     o->gch.tt = tt;
     o->gch.memcat = L->activememcat;
-}
-
-void luaC_initupval(lua_State* L, UpVal* uv)
-{
-    global_State* g = L->global;
-    GCObject* o = obj2gco(uv);
-
-    if (isgray(o))
-    {
-        if (keepinvariant(g))
-        {
-            gray2black(o); // closed upvalues need barrier
-            luaC_barrier(L, uv, uv->v);
-        }
-        else
-        { // sweep phase: sweep it (turning it into white)
-            makewhite(g, o);
-            LUAU_ASSERT(g->gcstate != GCSpause);
-        }
-    }
 }
 
 // measure the allocation rate in bytes/sec
