@@ -61,47 +61,18 @@ jobs:
         run: |
           python bench/bench.py | tee ${{ matrix.bench.script }}-output.txt
 
-      - name: Checkout Benchmark Results repository
-        uses: actions/checkout@v3
-        with:
-          repository: ${{ matrix.benchResultsRepo.name }}
-          ref: ${{ matrix.benchResultsRepo.branch }}
-          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
-          path: "./gh-pages"
-
-      - name: Store ${{ matrix.bench.title }} result
-        uses: Roblox/rhysd-github-action-benchmark@v-luau
-        with:
-          name: ${{ matrix.bench.title }} (Windows ${{matrix.arch}})
-          tool: "benchmarkluau"
-          output-file-path: ./${{ matrix.bench.script }}-output.txt
-          external-data-json-path: ./gh-pages/dev/bench/data-${{ matrix.os }}.json
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push benchmark results
-        if: github.event_name == 'push'
-        run: |
-          echo "Pushing benchmark results..."
-          cd gh-pages
-          git config user.name github-actions
-          git config user.email github@users.noreply.github.com
-          git add ./dev/bench/data-${{ matrix.os }}.json
-          git commit -m "Add benchmarks results for ${{ github.sha }}"
-          git push
-          cd ..
-
       - name: Push benchmark results
         if: github.event_name == 'push'
         uses: ./.github/workflows/push-results
-          with:
-            repository: ${{ matrix.benchResultsRepo.name }}
-            branch: ${{ matrix.benchResultsRepo.branch }}
-            token: ${{ secrets.GITHUB_TOKEN }}
-            path: "./gh-pages"
-            bench_name:  "${{ matrix.bench.title }} (Windows ${{matrix.arch}})"
-            bench_tool:  "benchmarkluau"
-            bench_output_file_path: "./${{ matrix.bench.script }}-output.txt"
-            bench_external_data_json_path: "./gh-pages/dev/bench/data-${{ matrix.os }}.json"
+        with:
+          repository: ${{ matrix.benchResultsRepo.name }}
+          branch: ${{ matrix.benchResultsRepo.branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: "./gh-pages"
+          bench_name: "${{ matrix.bench.title }} (Windows ${{matrix.arch}})"
+          bench_tool: "benchmarkluau"
+          bench_output_file_path: "./${{ matrix.bench.script }}-output.txt"
+          bench_external_data_json_path: "./gh-pages/dev/bench/data-${{ matrix.os }}.json"
 
   # unix:
   #   name: ${{matrix.os}}
