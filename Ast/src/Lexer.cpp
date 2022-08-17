@@ -97,6 +97,7 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
         || type == InterpStringBegin
         || type == InterpStringMid
         || type == InterpStringEnd
+        || type == InterpStringSimple
         || type == Number
         || type == Comment
         || type == BlockComment
@@ -170,6 +171,18 @@ std::string Lexeme::toString() const
     case RawString:
     case QuotedString:
         return data ? format("\"%.*s\"", length, data) : "string";
+
+    case InterpStringBegin:
+        return data ? format("the beginning of an interpolated string (`%.*s`)", length, data) : "the beginning of an interpolated string";
+
+    case InterpStringMid:
+        return data ? format("the middle of an interpolated string (`%.*s`)", length, data) : "the middle of an interpolated string";
+
+    case InterpStringEnd:
+        return data ? format("the end of an interpolated string (`%.*s`)", length, data) : "the end of an interpolated string";
+
+    case InterpStringSimple:
+        return data ? format("`%.*s`", length, data) : "interpolated string";
 
     case Number:
         return data ? format("'%.*s'", length, data) : "number";
@@ -587,14 +600,6 @@ Lexeme Lexer::readQuotedString()
     return Lexeme(Location(start, position()), Lexeme::QuotedString, &buffer[startOffset], offset - startOffset - 1);
 }
 
-const Lexeme& Lexer::nextInterpolatedString()
-{
-    Position start = position();
-
-    lexeme = readInterpolatedStringSection(start, Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
-    return lexeme;
-}
-
 Lexeme Lexer::readInterpolatedStringBegin()
 {
     LUAU_ASSERT(peekch() == '`');
@@ -602,7 +607,7 @@ Lexeme Lexer::readInterpolatedStringBegin()
     Position start = position();
     consume();
 
-    return readInterpolatedStringSection(start, Lexeme::InterpStringBegin, Lexeme::InterpStringEnd);
+    return readInterpolatedStringSection(start, Lexeme::InterpStringBegin, Lexeme::InterpStringSimple);
 }
 
 Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatType, Lexeme::Type endType)
@@ -616,6 +621,7 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
         case 0:
         case '\r':
         case '\n':
+            // INTERP TODO: Clear anything we've added to the brace stack, and write a test to see what happens if we don't
             return Lexeme(Location(start, position()), Lexeme::BrokenString);
 
         case '\\':
@@ -629,6 +635,7 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
                 return Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace);
             }
 
+            braceStack.push_back(BraceType::InterpolatedString);
             Lexeme lexemeOutput(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
             consume();
             return lexemeOutput;
@@ -733,6 +740,34 @@ Lexeme Lexer::readNext()
         {
             return Lexeme(Location(start, position()), Lexeme::BrokenString);
         }
+    }
+
+    case '{':
+    {
+        consume();
+
+        braceStack.push_back(BraceType::Normal);
+        return Lexeme(Location(start, 1), '{');
+    }
+
+    case '}':
+    {
+        consume();
+
+        if (braceStack.empty())
+        {
+            return Lexeme(Location(start, 1), '}');
+        }
+
+        const BraceType braceStackTop = braceStack.back();
+        braceStack.pop_back();
+
+        if (braceStackTop != BraceType::InterpolatedString)
+        {
+            return Lexeme(Location(start, 1), '}');
+        }
+
+        return readInterpolatedStringSection(position(), Lexeme::InterpStringMid, Lexeme::InterpStringEnd);
     }
 
     case '=':
@@ -901,8 +936,6 @@ Lexeme Lexer::readNext()
 
     case '(':
     case ')':
-    case '{':
-    case '}':
     case ']':
     case ';':
     case ',':

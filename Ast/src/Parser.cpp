@@ -1573,7 +1573,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
         else
             return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
     }
-    else if (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringEnd)
+    else if (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple)
     {
         parseInterpString();
 
@@ -2014,7 +2014,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
             || lexer.current().type == Lexeme::RawString
             || lexer.current().type == Lexeme::QuotedString
             || lexer.current().type == Lexeme::InterpStringBegin
-            || lexer.current().type == Lexeme::InterpStringEnd
+            || lexer.current().type == Lexeme::InterpStringSimple
         )
         {
             expr = parseFunctionArgs(expr, false, Location());
@@ -2286,7 +2286,7 @@ AstExpr* Parser::parseSimpleExpr()
             }
         }
     }
-    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringEnd))
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringSimple))
     {
         return parseString();
     }
@@ -2375,7 +2375,7 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, const Location& sel
 
         return allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, argLocation);
     }
-    else if (FFlag::LuauInterpolatedStringBaseSupport && (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringEnd))
+    else if (FFlag::LuauInterpolatedStringBaseSupport && (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple))
     {
         Position argStart = lexer.current().location.end;
         AstExpr* expr = parseInterpString();
@@ -2694,11 +2694,11 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
 std::optional<AstArray<char>> Parser::parseCharArray()
 {
-    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::InterpStringEnd);
+    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::InterpStringSimple);
 
     scratchData.assign(lexer.current().data, lexer.current().length);
 
-    if (lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::InterpStringEnd)
+    if (lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::InterpStringSimple)
     {
         if (!Lexer::fixupQuotedString(scratchData))
         {
@@ -2734,7 +2734,12 @@ AstExpr* Parser::parseInterpString()
 
     do {
         Lexeme currentLexeme = lexer.current();
-        LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid || currentLexeme.type == Lexeme::InterpStringEnd);
+        LUAU_ASSERT(
+            currentLexeme.type == Lexeme::InterpStringBegin
+            || currentLexeme.type == Lexeme::InterpStringMid
+            || currentLexeme.type == Lexeme::InterpStringEnd
+            || currentLexeme.type == Lexeme::InterpStringSimple
+        );
 
         Location location = currentLexeme.location;
 
@@ -2754,7 +2759,7 @@ AstExpr* Parser::parseInterpString()
 
         strings.push_back(chars);
 
-        if (currentLexeme.type == Lexeme::InterpStringEnd)
+        if (currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple)
         {
             AstArray<AstArray<char>> stringsArray = copy(strings);
             AstArray<AstExpr*> expressionsArray = copy(expressions);
@@ -2764,24 +2769,20 @@ AstExpr* Parser::parseInterpString()
 
         AstExpr* expression = parseExpr();
 
-        // INTERP CODE REVIEW: I want to use expectMatchAndConsume, but using that
-        // consumes the rest of the string, not the `}`
-        if (lexer.current().type != static_cast<Lexeme::Type>(static_cast<unsigned char>('}'))) {
-            return reportExprError(startOfBrace, {}, "Expected '}' after interpolated string expression");
-        }
-
         expressions.push_back(expression);
 
-        Lexeme next = lexer.nextInterpolatedString();
-
-        switch (next.type)
+        switch (lexer.current().type)
         {
-        case Lexeme::BrokenString:
-            return reportExprError(location, {}, "Malformed interpolated string");
+        case Lexeme::InterpStringBegin:
+        case Lexeme::InterpStringMid:
+        case Lexeme::InterpStringEnd:
+            break;
         case Lexeme::BrokenInterpDoubleBrace:
             return reportExprError(location, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
+        case Lexeme::BrokenString:
+            return reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '}'?");
         default:
-            break;
+            return reportExprError(location, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
         }
     } while (true);
 }

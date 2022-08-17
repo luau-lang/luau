@@ -64,6 +64,8 @@ struct Lexeme
         InterpStringBegin,
         InterpStringMid,
         InterpStringEnd,
+        // An interpolated string with no expressions (like `x`)
+        InterpStringSimple,
 
         AddAssign,
         SubAssign,
@@ -173,8 +175,6 @@ public:
     void setSkipComments(bool skip);
     void setReadNames(bool read);
 
-    const Lexeme& nextInterpolatedString();
-
     const Location& previousLocation() const
     {
         return prevLocation;
@@ -244,6 +244,14 @@ private:
 
     bool skipComments;
     bool readNames;
+
+    enum BraceType
+    {
+        InterpolatedString,
+        Normal
+    };
+
+    std::vector<BraceType> braceStack;
 };
 
 inline bool isSpace(char ch)

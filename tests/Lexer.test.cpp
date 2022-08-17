@@ -138,4 +138,23 @@ TEST_CASE("lookahead")
     CHECK_EQ(lexer.lookahead().type, Lexeme::Eof);
 }
 
+TEST_CASE("stringInterpolation")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`foo {"bar"}`)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme interpBegin = lexer.next();
+    CHECK_EQ(interpBegin.type, Lexeme::InterpStringBegin);
+
+    Lexeme quote = lexer.next();
+    CHECK_EQ(quote.type, Lexeme::QuotedString);
+
+    Lexeme interpEnd = lexer.next();
+    CHECK_EQ(interpEnd.type, Lexeme::InterpStringEnd);
+}
+
 TEST_SUITE_END();
