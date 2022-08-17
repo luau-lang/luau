@@ -245,7 +245,7 @@ private:
     bool skipComments;
     bool readNames;
 
-    enum BraceType
+    enum class BraceType
     {
         InterpolatedString,
         Normal
