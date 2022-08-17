@@ -181,7 +181,7 @@ read-only, we'd be able to do both of the assignments in the above example.
 
 ## Alternatives
 
-The main alternatives would be likely be keeping the existing solution (and
+The main alternatives would likely be keeping the existing solution (and
 likely having to tactically fix future bugs where instantiation either happens
 too much or not enough), or removing automatic instantiation altogether in favor
 of manual instantiation syntax. The former solution (changing nothing) is cheap
