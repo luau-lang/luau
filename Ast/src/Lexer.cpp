@@ -173,13 +173,13 @@ std::string Lexeme::toString() const
         return data ? format("\"%.*s\"", length, data) : "string";
 
     case InterpStringBegin:
-        return data ? format("the beginning of an interpolated string (`%.*s`)", length, data) : "the beginning of an interpolated string";
+        return data ? format("`%.*s{", length, data) : "the beginning of an interpolated string";
 
     case InterpStringMid:
-        return data ? format("the middle of an interpolated string (`%.*s`)", length, data) : "the middle of an interpolated string";
+        return data ? format("}%.*s{", length, data) : "the middle of an interpolated string";
 
     case InterpStringEnd:
-        return data ? format("the end of an interpolated string (`%.*s`)", length, data) : "the end of an interpolated string";
+        return data ? format("}%.*s`", length, data) : "the end of an interpolated string";
 
     case InterpStringSimple:
         return data ? format("`%.*s`", length, data) : "interpolated string";
