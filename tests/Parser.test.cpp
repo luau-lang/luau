@@ -953,6 +953,8 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
         }
         catch (const ParseErrors& e)
         {
+            CHECK_EQ(e.getErrors().size(), 1);
+
             auto error = e.getErrors().front();
             CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", error.getMessage());
             return error.getLocation().begin.column;

@@ -2778,8 +2778,10 @@ AstExpr* Parser::parseInterpString()
         case Lexeme::InterpStringEnd:
             break;
         case Lexeme::BrokenInterpDoubleBrace:
+            nextLexeme();
             return reportExprError(location, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
         case Lexeme::BrokenString:
+            nextLexeme();
             return reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '}'?");
         default:
             return reportExprError(location, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
