@@ -261,8 +261,6 @@ L1: RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
-
     // basic for loop: variable directly refers to internal iteration index (R2)
     CHECK_EQ("\n" + compileFunction0("for i=1,5 do print(i) end"), R"(
 LOADN R2 1
@@ -349,8 +347,6 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
-
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
 GETIMPORT R0 1
@@ -2065,6 +2061,69 @@ TEST_CASE("RecursionParse")
     {
         CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
     }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("a(", 1500) + "42" + rep(")", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "return " + rep("{", 1500) + "42" + rep("}", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("while true do ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("for i=1,1 do ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+#if 0
+    // This currently requires too much stack space on MSVC/x64 and crashes with stack overflow at recursion depth 935
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("function a() ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "return " + rep("function() return ", 1500) + "42" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
+    }
+#endif
 }
 
 TEST_CASE("ArrayIndexLiteral")
@@ -2111,8 +2170,6 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
     for i=1,10 do
@@ -3790,8 +3847,6 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
-    ScopedFastFlag sff("LuauCompileFreeReassign", true);
-
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -6004,6 +6059,8 @@ return
     math.clamp(-1, 0, 1),
     math.sign(77),
     math.round(7.6),
+    bit32.extract(-1, 31),
+    bit32.replace(100, 1, 0),
     (type("fin"))
 )",
                         0, 2),
@@ -6055,8 +6112,10 @@ LOADK R43 K2
 LOADN R44 0
 LOADN R45 1
 LOADN R46 8
-LOADK R47 K3
-RETURN R0 48
+LOADN R47 1
+LOADN R48 101
+LOADK R49 K3
+RETURN R0 50
 )");
 }
 
@@ -6067,7 +6126,8 @@ return
     math.abs(),
     math.max(1, true),
     string.byte("abc", 42),
-    bit32.rshift(10, 42)
+    bit32.rshift(10, 42),
+    bit32.extract(1, 2, "3")
 )",
                         0, 2),
         R"(
@@ -6088,8 +6148,14 @@ L2: LOADN R4 10
 FASTCALL2K 39 R4 K7 L3
 LOADK R5 K7
 GETIMPORT R3 13
-CALL R3 2 -1
-L3: RETURN R0 -1
+CALL R3 2 1
+L3: LOADN R5 1
+LOADN R6 2
+LOADK R7 K14
+FASTCALL 34 L4
+GETIMPORT R4 16
+CALL R4 3 -1
+L4: RETURN R0 -1
 )");
 }
 
@@ -6146,8 +6212,6 @@ RETURN R0 1
 
 TEST_CASE("LocalReassign")
 {
-    ScopedFastFlag sff("LuauCompileFreeReassign", true);
-
     // locals can be re-assigned and the register gets reused
     CHECK_EQ("\n" + compileFunction0(R"(
 local function test(a, b)
@@ -6456,6 +6520,28 @@ ADD R4 R0 R1
 MOVE R0 R2
 MOVE R1 R3
 RETURN R0 0
+)");
+}
+
+TEST_CASE("BuiltinExtractK")
+{
+    ScopedFastFlag sff("LuauCompileExtractK", true);
+
+    // below, K0 refers to a packed f+w constant for bit32.extractk builtin
+    // K1 and K2 refer to 1 and 3 and are only used during fallback path
+    CHECK_EQ("\n" + compileFunction0(R"(
+local v = ...
+
+return bit32.extract(v, 1, 3)
+)"), R"(
+GETVARARGS R0 1
+FASTCALL2K 59 R0 K0 L0
+MOVE R2 R0
+LOADK R3 K1
+LOADK R4 K2
+GETIMPORT R1 5
+CALL R1 3 -1
+L0: RETURN R1 -1
 )");
 }
 

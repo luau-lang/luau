@@ -138,7 +138,7 @@ private:
     // funcbody ::= `(' [parlist] `)' block end
     // parlist ::= namelist [`,' `...'] | `...'
     std::pair<AstExprFunction*, AstLocal*> parseFunctionBody(
-        bool hasself, const Lexeme& matchFunction, const AstName& debugname, std::optional<Name> localName);
+        bool hasself, const Lexeme& matchFunction, const AstName& debugname, const Name* localName);
 
     // explist ::= {exp `,'} exp
     void parseExprList(TempVector<AstExpr*>& result);
@@ -217,7 +217,7 @@ private:
     AstExpr* parseSimpleExpr();
 
     // args ::=  `(' [explist] `)' | tableconstructor | String
-    AstExpr* parseFunctionArgs(AstExpr* func, bool self, const Location& selfLocation);
+    AstExpr* parseFunctionArgs(AstExpr* func, bool self);
 
     // tableconstructor ::= `{' [fieldlist] `}'
     // fieldlist ::= field {fieldsep field} [fieldsep]
@@ -241,6 +241,7 @@ private:
 
     std::optional<AstArray<char>> parseCharArray();
     AstExpr* parseString();
+    AstExpr* parseNumber();
 
     AstLocal* pushLocal(const Binding& binding);
 
@@ -253,11 +254,24 @@ private:
     bool expectAndConsume(Lexeme::Type type, const char* context = nullptr);
     void expectAndConsumeFail(Lexeme::Type type, const char* context);
 
-    bool expectMatchAndConsume(char value, const Lexeme& begin, bool searchForMissing = false);
-    void expectMatchAndConsumeFail(Lexeme::Type type, const Lexeme& begin, const char* extra = nullptr);
+    struct MatchLexeme
+    {
+        MatchLexeme(const Lexeme& l)
+            : type(l.type)
+            , position(l.location.begin)
+        {
+        }
 
-    bool expectMatchEndAndConsume(Lexeme::Type type, const Lexeme& begin);
-    void expectMatchEndAndConsumeFail(Lexeme::Type type, const Lexeme& begin);
+        Lexeme::Type type;
+        Position position;
+    };
+
+    bool expectMatchAndConsume(char value, const MatchLexeme& begin, bool searchForMissing = false);
+    void expectMatchAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin, const char* extra = nullptr);
+    bool expectMatchAndConsumeRecover(char value, const MatchLexeme& begin, bool searchForMissing);
+
+    bool expectMatchEndAndConsume(Lexeme::Type type, const MatchLexeme& begin);
+    void expectMatchEndAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin);
 
     template<typename T>
     AstArray<T> copy(const T* data, std::size_t size);
@@ -282,6 +296,9 @@ private:
     AstExprError* reportExprError(const Location& location, const AstArray<AstExpr*>& expressions, const char* format, ...) LUAU_PRINTF_ATTR(4, 5);
     AstTypeError* reportTypeAnnotationError(const Location& location, const AstArray<AstType*>& types, bool isMissing, const char* format, ...)
         LUAU_PRINTF_ATTR(5, 6);
+
+    AstExpr* reportFunctionArgsError(AstExpr* func, bool self);
+    void reportAmbiguousCallError();
 
     void nextLexeme();
 
@@ -350,7 +367,7 @@ private:
     AstName nameError;
     AstName nameNil;
 
-    Lexeme endMismatchSuspect;
+    MatchLexeme endMismatchSuspect;
 
     std::vector<Function> functionStack;
 

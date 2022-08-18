@@ -14,6 +14,8 @@
 
 LUAU_FASTFLAG(LuauSelfCallAutocompleteFix3)
 
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteFixGlobalOrder, false)
+
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
@@ -135,11 +137,11 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
     return *it;
 }
 
-static bool checkTypeMatch(TypeArena* typeArena, TypeId subTy, TypeId superTy)
+static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, TypeArena* typeArena)
 {
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
-    Unifier unifier(typeArena, Mode::Strict, Location(), Variance::Covariant, unifierState);
+    Unifier unifier(typeArena, Mode::Strict, scope, Location(), Variance::Covariant, unifierState);
 
     return unifier.canUnify(subTy, superTy).empty();
 }
@@ -148,12 +150,14 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 {
     ty = follow(ty);
 
-    auto canUnify = [&typeArena](TypeId subTy, TypeId superTy) {
+    NotNull<Scope> moduleScope{module.getModuleScope().get()};
+
+    auto canUnify = [&typeArena, moduleScope](TypeId subTy, TypeId superTy) {
         LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix3);
 
         InternalErrorReporter iceReporter;
         UnifierSharedState unifierState(&iceReporter);
-        Unifier unifier(typeArena, Mode::Strict, Location(), Variance::Covariant, unifierState);
+        Unifier unifier(typeArena, Mode::Strict, moduleScope, Location(), Variance::Covariant, unifierState);
 
         unifier.tryUnify(subTy, superTy);
         bool ok = unifier.errors.empty();
@@ -167,11 +171,11 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 
     TypeId expectedType = follow(*typeAtPosition);
 
-    auto checkFunctionType = [typeArena, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
+    auto checkFunctionType = [typeArena, moduleScope, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
         if (FFlag::LuauSelfCallAutocompleteFix3)
         {
             if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
-                return checkTypeMatch(typeArena, *firstRetTy, expectedType);
+                return checkTypeMatch(*firstRetTy, expectedType, moduleScope, typeArena);
 
             return false;
         }
@@ -210,7 +214,7 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
     }
 
     if (FFlag::LuauSelfCallAutocompleteFix3)
-        return checkTypeMatch(typeArena, ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+        return checkTypeMatch(ty, expectedType, NotNull{module.getModuleScope().get()}, typeArena) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
     else
         return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
@@ -268,7 +272,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             return colonIndex;
         }
     };
-    auto isWrongIndexer = [typeArena, rootTy, indexType](Luau::TypeId type) {
+    auto isWrongIndexer = [typeArena, &module, rootTy, indexType](Luau::TypeId type) {
         LUAU_ASSERT(FFlag::LuauSelfCallAutocompleteFix3);
 
         if (indexType == PropIndexType::Key)
@@ -276,7 +280,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
 
         bool calledWithSelf = indexType == PropIndexType::Colon;
 
-        auto isCompatibleCall = [typeArena, rootTy, calledWithSelf](const FunctionTypeVar* ftv) {
+        auto isCompatibleCall = [typeArena, &module, rootTy, calledWithSelf](const FunctionTypeVar* ftv) {
             // Strong match with definition is a success
             if (calledWithSelf == ftv->hasSelf)
                 return true;
@@ -289,7 +293,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
             if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
             {
-                if (checkTypeMatch(typeArena, rootTy, *firstArgTy))
+                if (checkTypeMatch(rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena))
                     return calledWithSelf;
             }
 
@@ -1073,10 +1077,21 @@ T* extractStat(const std::vector<AstNode*>& ancestry)
     return nullptr;
 }
 
-static bool isBindingLegalAtCurrentPosition(const Binding& binding, Position pos)
+static bool isBindingLegalAtCurrentPosition(const Symbol& symbol, const Binding& binding, Position pos)
 {
-    // Default Location used for global bindings, which are always legal.
-    return binding.location == Location() || binding.location.end < pos;
+    if (FFlag::LuauAutocompleteFixGlobalOrder)
+    {
+        if (symbol.local)
+            return binding.location.end < pos;
+
+        // Builtin globals have an empty location; for defined globals, we want pos to be outside of the definition range to suggest it
+        return binding.location == Location() || !binding.location.containsClosed(pos);
+    }
+    else
+    {
+        // Default Location used for global bindings, which are always legal.
+        return binding.location == Location() || binding.location.end < pos;
+    }
 }
 
 static AutocompleteEntryMap autocompleteStatement(
@@ -1097,7 +1112,7 @@ static AutocompleteEntryMap autocompleteStatement(
     {
         for (const auto& [name, binding] : scope->bindings)
         {
-            if (!isBindingLegalAtCurrentPosition(binding, position))
+            if (!isBindingLegalAtCurrentPosition(name, binding, position))
                 continue;
 
             std::string n = toString(name);
@@ -1225,7 +1240,7 @@ static AutocompleteContext autocompleteExpression(const SourceModule& sourceModu
         {
             for (const auto& [name, binding] : scope->bindings)
             {
-                if (!isBindingLegalAtCurrentPosition(binding, position))
+                if (!isBindingLegalAtCurrentPosition(name, binding, position))
                     continue;
 
                 if (isBeingDefined(ancestry, name))

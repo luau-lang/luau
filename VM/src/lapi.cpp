@@ -1209,7 +1209,9 @@ void* lua_newuserdatadtor(lua_State* L, size_t sz, void (*dtor)(void*))
 {
     luaC_checkGC(L);
     luaC_checkthreadsleep(L);
-    Udata* u = luaU_newudata(L, sz + sizeof(dtor), UTAG_IDTOR);
+    // make sure sz + sizeof(dtor) doesn't overflow; luaU_newdata will reject SIZE_MAX correctly
+    size_t as = sz < SIZE_MAX - sizeof(dtor) ? sz + sizeof(dtor) : SIZE_MAX;
+    Udata* u = luaU_newudata(L, as, UTAG_IDTOR);
     memcpy(&u->data + sz, &dtor, sizeof(dtor));
     setuvalue(L, L->top, u);
     api_incr_top(L);

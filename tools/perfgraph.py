@@ -56,18 +56,28 @@ def nodeFromCallstackListFile(source_file):
 
     return root
 
+def getDuration(obj):
+    total = obj['TotalDuration']
 
-def nodeFromJSONbject(node, key, obj):
+    if 'Children' in obj:
+        for key, obj in obj['Children'].items():
+            total -= obj['TotalDuration']
+
+    return total
+
+
+def nodeFromJSONObject(node, key, obj):
     source, function, line = key.split(",")
 
     node.function = function
     node.source = source
     node.line = int(line) if len(line) > 0 else 0
 
-    node.ticks = obj['Duration']
+    node.ticks = getDuration(obj)
 
-    for key, obj in obj['Children'].items():
-        nodeFromJSONbject(node.child(key), key, obj)
+    if 'Children' in obj:
+        for key, obj in obj['Children'].items():
+            nodeFromJSONObject(node.child(key), key, obj)
 
     return node
 
@@ -77,8 +87,9 @@ def nodeFromJSONFile(source_file):
 
     root = Node()
 
-    for key, obj in dump['Children'].items():
-        nodeFromJSONbject(root.child(key), key, obj)
+    if 'Children' in dump:
+        for key, obj in dump['Children'].items():
+            nodeFromJSONObject(root.child(key), key, obj)
 
     return root
 

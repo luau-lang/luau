@@ -319,11 +319,12 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
         break;
 
     case LBF_BIT32_EXTRACT:
-        if (count == 3 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number && args[2].type == Constant::Type_Number)
+        if (count >= 2 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number &&
+            (count == 2 || args[2].type == Constant::Type_Number))
         {
             uint32_t u = bit32(args[0].valueNumber);
             int f = int(args[1].valueNumber);
-            int w = int(args[2].valueNumber);
+            int w = count == 2 ? 1 : int(args[2].valueNumber);
 
             if (f >= 0 && w > 0 && f + w <= 32)
             {
@@ -356,13 +357,13 @@ Constant foldBuiltin(int bfid, const Constant* args, size_t count)
         break;
 
     case LBF_BIT32_REPLACE:
-        if (count == 4 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number && args[2].type == Constant::Type_Number &&
-            args[3].type == Constant::Type_Number)
+        if (count >= 3 && args[0].type == Constant::Type_Number && args[1].type == Constant::Type_Number && args[2].type == Constant::Type_Number &&
+            (count == 3 || args[3].type == Constant::Type_Number))
         {
             uint32_t n = bit32(args[0].valueNumber);
             uint32_t v = bit32(args[1].valueNumber);
             int f = int(args[2].valueNumber);
-            int w = int(args[3].valueNumber);
+            int w = count == 3 ? 1 : int(args[3].valueNumber);
 
             if (f >= 0 && w > 0 && f + w <= 32)
             {

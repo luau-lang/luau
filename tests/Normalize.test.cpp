@@ -12,6 +12,11 @@ using namespace Luau;
 struct NormalizeFixture : Fixture
 {
     ScopedFastFlag sff1{"LuauLowerBoundsCalculation", true};
+
+    bool isSubtype(TypeId a, TypeId b)
+    {
+        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, ice);
+    }
 };
 
 void createSomeClasses(TypeChecker& typeChecker)
@@ -47,12 +52,6 @@ void createSomeClasses(TypeChecker& typeChecker)
         persist(ty.type);
 
     freeze(arena);
-}
-
-static bool isSubtype(TypeId a, TypeId b)
-{
-    InternalErrorReporter ice;
-    return isSubtype(a, b, ice);
 }
 
 TEST_SUITE_BEGIN("isSubtype");
@@ -511,6 +510,8 @@ TEST_CASE_FIXTURE(NormalizeFixture, "classes")
 {
     createSomeClasses(typeChecker);
 
+    check(""); // Ensure that we have a main Module.
+
     TypeId p = typeChecker.globalScope->lookupType("Parent")->type;
     TypeId c = typeChecker.globalScope->lookupType("Child")->type;
     TypeId u = typeChecker.globalScope->lookupType("Unrelated")->type;
@@ -595,6 +596,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_with_overlapping_field_that_has_a_sub
     )");
 
     ModulePtr tempModule{new Module};
+    tempModule->scopes.emplace_back(Location(), std::make_shared<Scope>(getSingletonTypes().anyTypePack));
 
     // HACK: Normalization is an in-place operation.  We need to cheat a little here and unfreeze
     // the arena that the type lives in.
@@ -880,7 +882,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -921,7 +922,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -961,7 +961,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_inside_a_table_inside_another_intersect
 {
     ScopedFastFlag flags[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     // We use a function and inferred parameter types to prevent intermediate normalizations from being performed.
@@ -1149,7 +1148,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "normalization_does_not_convert_ever")
 {
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(

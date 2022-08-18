@@ -193,6 +193,11 @@ TEST_CASE_FIXTURE(Fixture, "UnionTypeVarIterator_with_only_cyclic_union")
     CHECK(actual.empty());
 }
 
+
+/* FIXME: This test is pretty weird.  It would be much nicer if we could
+ * perform this operation without a TypeChecker so that we don't have to jam
+ * all this state into it to make stuff work.
+ */
 TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
 {
     TypeVar ftv11{FreeTypeVar{TypeLevel{}}};
@@ -268,6 +273,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     TypeId root = &ttvTweenResult;
 
     typeChecker.currentModule = std::make_shared<Module>();
+    typeChecker.currentModule->scopes.emplace_back(Location{}, std::make_shared<Scope>(getSingletonTypes().anyTypePack));
 
     TypeId result = typeChecker.anyify(typeChecker.globalScope, root, Location{});
 

@@ -839,6 +839,9 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
     ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope)};
     cs.run();
 
+    for (TypeError& e : cs.errors)
+        result->errors.emplace_back(std::move(e));
+
     result->scopes = std::move(cgb.scopes);
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);

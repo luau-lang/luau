@@ -515,6 +515,9 @@ enum LuauBuiltinFunction
 
     // rawlen
     LBF_RAWLEN,
+
+    // bit32.extract(_, k, k)
+    LBF_BIT32_EXTRACTK,
 };
 
 // Capture type, used in LOP_CAPTURE
