@@ -59,5 +59,6 @@ if len(size_category) != 0:
 
     print("objects by category:")
     for type, (count, size) in sortedsize(size_category.items()):
-        name = dump["stats"]["categories"][type]["name"]
+        cat = dump["stats"]["categories"][type]
+        name = cat["name"] if "name" in cat else str(type)
         print(name.ljust(30), str(size).rjust(8), "bytes", str(count).rjust(5), "objects")

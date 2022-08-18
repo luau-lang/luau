@@ -72,10 +72,10 @@ struct ConstraintGraphBuilder
 
     /**
      * Fabricates a scope that is a child of another scope.
-     * @param location the lexical extent of the scope in the source code.
+     * @param node the lexical node that the scope belongs to.
      * @param parent the parent scope of the new scope. Must not be null.
      */
-    ScopePtr childScope(Location location, const ScopePtr& parent);
+    ScopePtr childScope(AstNode* node, const ScopePtr& parent);
 
     /**
      * Adds a new constraint with no dependencies to a given scope.
@@ -105,10 +105,12 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatLocal* local);
     void visit(const ScopePtr& scope, AstStatFor* for_);
     void visit(const ScopePtr& scope, AstStatWhile* while_);
+    void visit(const ScopePtr& scope, AstStatRepeat* repeat);
     void visit(const ScopePtr& scope, AstStatLocalFunction* function);
     void visit(const ScopePtr& scope, AstStatFunction* function);
     void visit(const ScopePtr& scope, AstStatReturn* ret);
     void visit(const ScopePtr& scope, AstStatAssign* assign);
+    void visit(const ScopePtr& scope, AstStatCompoundAssign* assign);
     void visit(const ScopePtr& scope, AstStatIf* ifStatement);
     void visit(const ScopePtr& scope, AstStatTypeAlias* alias);
     void visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
@@ -133,6 +135,7 @@ struct ConstraintGraphBuilder
     TypeId check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
     TypeId check(const ScopePtr& scope, AstExprUnary* unary);
     TypeId check(const ScopePtr& scope, AstExprBinary* binary);
+    TypeId check(const ScopePtr& scope, AstExprIfElse* ifElse);
     TypeId check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
 
     struct FunctionSignature

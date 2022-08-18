@@ -3003,8 +3003,6 @@ TEST_CASE_FIXTURE(Fixture, "expected_indexer_from_table_union")
 
 TEST_CASE_FIXTURE(Fixture, "prop_access_on_key_whose_types_mismatches")
 {
-    ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};
-
     CheckResult result = check(R"(
         local t: {number} = {}
         local x = t.x
@@ -3016,8 +3014,6 @@ TEST_CASE_FIXTURE(Fixture, "prop_access_on_key_whose_types_mismatches")
 
 TEST_CASE_FIXTURE(Fixture, "prop_access_on_unions_of_indexers_where_key_whose_types_mismatches")
 {
-    ScopedFastFlag sff{"LuauReportErrorsOnIndexerKeyMismatch", true};
-
     CheckResult result = check(R"(
         local t: { [number]: number } | { [boolean]: number } = {}
         local u = t.x

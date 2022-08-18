@@ -23,12 +23,11 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThreshold, 25)
 LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
-LUAU_FASTFLAGVARIABLE(LuauCompileNoIpairs, false)
-
-LUAU_FASTFLAGVARIABLE(LuauCompileFreeReassign, false)
 LUAU_FASTFLAGVARIABLE(LuauCompileXEQ, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileOptimalAssignment, false)
+
+LUAU_FASTFLAGVARIABLE(LuauCompileExtractK, false)
 
 namespace Luau
 {
@@ -403,18 +402,37 @@ struct Compiler
         }
     }
 
-    void compileExprFastcallN(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop, bool multRet, uint8_t regs, int bfid)
+    void compileExprFastcallN(AstExprCall* expr, uint8_t target, uint8_t targetCount, bool targetTop, bool multRet, uint8_t regs, int bfid, int bfK = -1)
     {
         LUAU_ASSERT(!expr->self);
-        LUAU_ASSERT(expr->args.size <= 2);
+        LUAU_ASSERT(expr->args.size >= 1);
+        LUAU_ASSERT(expr->args.size <= 2 || (bfid == LBF_BIT32_EXTRACTK && expr->args.size == 3));
+        LUAU_ASSERT(bfid == LBF_BIT32_EXTRACTK ? bfK >= 0 : bfK < 0);
 
         LuauOpcode opc = expr->args.size == 1 ? LOP_FASTCALL1 : LOP_FASTCALL2;
 
-        uint32_t args[2] = {};
+        if (FFlag::LuauCompileExtractK)
+        {
+            opc = expr->args.size == 1 ? LOP_FASTCALL1 : (bfK >= 0 || isConstant(expr->args.data[1])) ? LOP_FASTCALL2K : LOP_FASTCALL2;
+        }
+
+        uint32_t args[3] = {};
 
         for (size_t i = 0; i < expr->args.size; ++i)
         {
-            if (i > 0)
+            if (FFlag::LuauCompileExtractK)
+            {
+                if (i > 0 && opc == LOP_FASTCALL2K)
+                {
+                    int32_t cid = getConstantIndex(expr->args.data[i]);
+                    if (cid < 0)
+                        CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+                    args[i] = cid;
+                    continue; // TODO: remove this and change if below to else if
+                }
+            }
+            else if (i > 0)
             {
                 if (int32_t cid = getConstantIndex(expr->args.data[i]); cid >= 0)
                 {
@@ -425,7 +443,9 @@ struct Compiler
             }
 
             if (int reg = getExprLocalReg(expr->args.data[i]); reg >= 0)
+            {
                 args[i] = uint8_t(reg);
+            }
             else
             {
                 args[i] = uint8_t(regs + 1 + i);
@@ -437,21 +457,31 @@ struct Compiler
 
         bytecode.emitABC(opc, uint8_t(bfid), uint8_t(args[0]), 0);
         if (opc != LOP_FASTCALL1)
-            bytecode.emitAux(args[1]);
+            bytecode.emitAux(bfK >= 0 ? bfK : args[1]);
 
         // Set up a traditional Lua stack for the subsequent LOP_CALL.
         // Note, as with other instructions that immediately follow FASTCALL, these are normally not executed and are used as a fallback for
         // these FASTCALL variants.
         for (size_t i = 0; i < expr->args.size; ++i)
         {
-            if (i > 0 && opc == LOP_FASTCALL2K)
+            if (FFlag::LuauCompileExtractK)
             {
-                emitLoadK(uint8_t(regs + 1 + i), args[i]);
-                break;
+                if (i > 0 && opc == LOP_FASTCALL2K)
+                    emitLoadK(uint8_t(regs + 1 + i), args[i]);
+                else if (args[i] != regs + 1 + i)
+                    bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
             }
+            else
+            {
+                if (i > 0 && opc == LOP_FASTCALL2K)
+                {
+                    emitLoadK(uint8_t(regs + 1 + i), args[i]);
+                    break;
+                }
 
-            if (args[i] != regs + 1 + i)
-                bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
+                if (args[i] != regs + 1 + i)
+                    bytecode.emitABC(LOP_MOVE, uint8_t(regs + 1 + i), uint8_t(args[i]), 0);
+            }
         }
 
         // note, these instructions are normally not executed and are used as a fallback for FASTCALL
@@ -600,7 +630,7 @@ struct Compiler
             }
             else
             {
-                AstExprLocal* le = FFlag::LuauCompileFreeReassign ? getExprLocal(arg) : arg->as<AstExprLocal>();
+                AstExprLocal* le = getExprLocal(arg);
                 Variable* lv = le ? variables.find(le->local) : nullptr;
 
                 // if the argument is a local that isn't mutated, we will simply reuse the existing register
@@ -721,6 +751,26 @@ struct Compiler
                 return compileExprSelectVararg(expr, target, targetCount, targetTop, multRet, regs);
             else
                 bfid = -1;
+        }
+
+        // Optimization: for bit32.extract with constant in-range f/w we compile using FASTCALL2K and a special builtin
+        if (FFlag::LuauCompileExtractK && bfid == LBF_BIT32_EXTRACT && expr->args.size == 3 && isConstant(expr->args.data[1]) && isConstant(expr->args.data[2]))
+        {
+            Constant fc = getConstant(expr->args.data[1]);
+            Constant wc = getConstant(expr->args.data[2]);
+
+            int fi = fc.type == Constant::Type_Number ? int(fc.valueNumber) : -1;
+            int wi = wc.type == Constant::Type_Number ? int(wc.valueNumber) : -1;
+
+            if (fi >= 0 && wi > 0 && fi + wi <= 32)
+            {
+                int fwp = fi | ((wi - 1) << 5);
+                int32_t cid = bytecode.addConstantNumber(fwp);
+                if (cid < 0)
+                    CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+                return compileExprFastcallN(expr, target, targetCount, targetTop, multRet, regs, LBF_BIT32_EXTRACTK, cid);
+            }
         }
 
         // Optimization: for 1/2 argument fast calls use specialized opcodes
@@ -1218,7 +1268,7 @@ struct Compiler
             {
                 // disambiguation: there's 4 cases (we only need truthy or falsy results based on onlyTruth)
                 // onlyTruth = 1: a and b transforms to a ? b : dontcare
-                // onlyTruth = 1: a or b transforms to a ? a : a
+                // onlyTruth = 1: a or b transforms to a ? a : b
                 // onlyTruth = 0: a and b transforms to !a ? a : b
                 // onlyTruth = 0: a or b transforms to !a ? b : dontcare
                 if (onlyTruth == (expr->op == AstExprBinary::And))
@@ -2576,7 +2626,7 @@ struct Compiler
             return;
 
         // Optimization: for 1-1 local assignments, we can reuse the register *if* neither local is mutated
-        if (FFlag::LuauCompileFreeReassign && options.optimizationLevel >= 1 && stat->vars.size == 1 && stat->values.size == 1)
+        if (options.optimizationLevel >= 1 && stat->vars.size == 1 && stat->values.size == 1)
         {
             if (AstExprLocal* re = getExprLocal(stat->values.data[0]))
             {
@@ -2790,7 +2840,6 @@ struct Compiler
         LUAU_ASSERT(vars == regs + 3);
 
         LuauOpcode skipOp = LOP_FORGPREP;
-        LuauOpcode loopOp = LOP_FORGLOOP;
 
         // Optimization: when we iterate via pairs/ipairs, we generate special bytecode that optimizes the traversal using internal iteration index
         // These instructions dynamically check if generator is equal to next/inext and bail out
@@ -2802,25 +2851,16 @@ struct Compiler
                 Builtin builtin = getBuiltin(stat->values.data[0]->as<AstExprCall>()->func, globals, variables);
 
                 if (builtin.isGlobal("ipairs")) // for .. in ipairs(t)
-                {
                     skipOp = LOP_FORGPREP_INEXT;
-                    loopOp = FFlag::LuauCompileNoIpairs ? LOP_FORGLOOP : LOP_FORGLOOP_INEXT;
-                }
                 else if (builtin.isGlobal("pairs")) // for .. in pairs(t)
-                {
                     skipOp = LOP_FORGPREP_NEXT;
-                    loopOp = LOP_FORGLOOP;
-                }
             }
             else if (stat->values.size == 2)
             {
                 Builtin builtin = getBuiltin(stat->values.data[0], globals, variables);
 
                 if (builtin.isGlobal("next")) // for .. in next,t
-                {
                     skipOp = LOP_FORGPREP_NEXT;
-                    loopOp = LOP_FORGLOOP;
-                }
             }
         }
 
@@ -2846,19 +2886,9 @@ struct Compiler
 
         size_t backLabel = bytecode.emitLabel();
 
-        bytecode.emitAD(loopOp, regs, 0);
-
-        if (FFlag::LuauCompileNoIpairs)
-        {
-            // TODO: remove loopOp as it's a constant now
-            LUAU_ASSERT(loopOp == LOP_FORGLOOP);
-
-            // FORGLOOP uses aux to encode variable count and fast path flag for ipairs traversal in the high bit
-            bytecode.emitAux((skipOp == LOP_FORGPREP_INEXT ? 0x80000000 : 0) | uint32_t(stat->vars.size));
-        }
-        // note: FORGLOOP needs variable count encoded in AUX field, other loop instructions assume a fixed variable count
-        else if (loopOp == LOP_FORGLOOP)
-            bytecode.emitAux(uint32_t(stat->vars.size));
+        // FORGLOOP uses aux to encode variable count and fast path flag for ipairs traversal in the high bit
+        bytecode.emitAD(LOP_FORGLOOP, regs, 0);
+        bytecode.emitAux((skipOp == LOP_FORGPREP_INEXT ? 0x80000000 : 0) | uint32_t(stat->vars.size));
 
         size_t endLabel = bytecode.emitLabel();
 

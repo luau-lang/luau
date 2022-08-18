@@ -66,6 +66,7 @@ target_sources(Luau.CodeGen PRIVATE
 
 # Luau.Analysis Sources
 target_sources(Luau.Analysis PRIVATE
+    Analysis/include/Luau/Anyification.h
     Analysis/include/Luau/ApplyTypeFunction.h
     Analysis/include/Luau/AstJsonEncoder.h
     Analysis/include/Luau/AstQuery.h
@@ -115,6 +116,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Variant.h
     Analysis/include/Luau/VisitTypeVar.h
 
+    Analysis/src/Anyification.cpp
     Analysis/src/ApplyTypeFunction.cpp
     Analysis/src/AstJsonEncoder.cpp
     Analysis/src/AstQuery.cpp
@@ -126,6 +128,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp
     Analysis/src/ConstraintSolverLogger.cpp
+    Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
     Analysis/src/Instantiation.cpp
@@ -155,7 +158,6 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/TypeVar.cpp
     Analysis/src/Unifiable.cpp
     Analysis/src/Unifier.cpp
-    Analysis/src/EmbeddedBuiltinDefinitions.cpp
 )
 
 # Luau.VM Sources

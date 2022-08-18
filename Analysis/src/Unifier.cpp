@@ -20,7 +20,6 @@ LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAG(LuauQuantifyConstrained)
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 
@@ -318,9 +317,10 @@ static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMat
     return std::nullopt;
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
+Unifier::Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
     : types(types)
     , mode(mode)
+    , scope(scope)
     , log(parentLog)
     , location(location)
     , variance(variance)
@@ -2091,13 +2091,11 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel de
             if (!freeTailPack)
                 return;
 
-            TypeLevel level = FFlag::LuauQuantifyConstrained ? demotedLevel : freeTailPack->level;
-
             TypePack* tp = getMutable<TypePack>(log.replace(tailPack, TypePack{}));
 
             for (; subIter != subEndIter; ++subIter)
             {
-                tp->head.push_back(types->addType(ConstrainedTypeVar{level, {follow(*subIter)}}));
+                tp->head.push_back(types->addType(ConstrainedTypeVar{demotedLevel, {follow(*subIter)}}));
             }
 
             tp->tail = subIter.tail();
@@ -2270,7 +2268,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 
 Unifier Unifier::makeChildUnifier()
 {
-    Unifier u = Unifier{types, mode, location, variance, sharedState, &log};
+    Unifier u = Unifier{types, mode, scope, location, variance, sharedState, &log};
     u.anyIsTop = anyIsTop;
     return u;
 }

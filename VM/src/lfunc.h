@@ -17,3 +17,4 @@ LUAI_FUNC void luaF_freeclosure(lua_State* L, Closure* c, struct lua_Page* page)
 LUAI_FUNC void luaF_unlinkupval(UpVal* uv);
 LUAI_FUNC void luaF_freeupval(lua_State* L, UpVal* uv, struct lua_Page* page);
 LUAI_FUNC const LocVar* luaF_getlocal(const Proto* func, int local_number, int pc);
+LUAI_FUNC const LocVar* luaF_findlocal(const Proto* func, int local_reg, int pc);
