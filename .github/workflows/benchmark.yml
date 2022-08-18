@@ -13,9 +13,7 @@ on:
 
 jobs:
   callgrind:
-    name: callgrind
     strategy:
-      fail-fast: false
       matrix:
         os: [ubuntu-22.04]
         benchResultsRepo:
@@ -44,9 +42,9 @@ jobs:
         run: |
           python bench/bench.py --callgrind --vm "./luau-gcc -O2" | tee -a bench-gcc-output.txt
 
-      - name: Run benchmark (bench-clang)
+      - name: Run benchmark (bench)
         run: |
-          python bench/bench.py --callgrind --vm "./luau -O2" | tee -a bench-clang-output.txt
+          python bench/bench.py --callgrind --vm "./luau -O2" | tee -a bench-output.txt
 
       - name: Run benchmark (analyze)
         run: |
@@ -78,13 +76,13 @@ jobs:
           token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
 
-      - name: Store results (bench-clang)
+      - name: Store results (bench)
         uses: Roblox/rhysd-github-action-benchmark@v-luau
         with:
           name: callgrind clang
           tool: "benchmarkluau"
-          output-file-path: ./bench-clang-output.txt
-          external-data-json-path: ./gh-pages/bench-clang.json
+          output-file-path: ./bench-output.txt
+          external-data-json-path: ./gh-pages/bench.json
 
       - name: Store results (bench-gcc)
         uses: Roblox/rhysd-github-action-benchmark@v-luau

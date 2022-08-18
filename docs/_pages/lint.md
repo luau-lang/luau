@@ -326,7 +326,6 @@ Luau uses comments that start from `!` to control certain aspects of analysis, f
 --!nostrict
 -- Unknown comment directive 'nostrict'; did you mean 'nonstrict'?"
 ```
-```
 
 ## IntegerParsing (27)
 

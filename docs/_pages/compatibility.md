@@ -70,6 +70,7 @@ Sandboxing challenges are [covered in the dedicated section](sandbox).
 | `bit32` library | ✔️ | |
 | `string.gsub` is stricter about using `%` on special characters only | ✔️ | |
 | light C functions | 😞 | this changes semantics of fenv on C functions and has complex implications wrt runtime performance |
+| NaN keys are supported for tables with `__newindex` | ✔️ | |
 
 Two things that are important to call out here are various new metamethods for tables and yielding in metamethods. In both cases, there are performance implications to supporting this - our implementation is *very* highly tuned for performance, so any changes that affect the core fundamentals of how Lua works have a price. To support yielding in metamethods we'd need to make the core of the VM more involved, since almost every single "interesting" opcode would need to learn how to be resumable - which also complicates future JIT/AOT story. Metamethods in general are important for extensibility, but very challenging to deal with in implementation, so we err on the side of not supporting any new metamethods unless a strong need arises.
 
