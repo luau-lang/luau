@@ -244,12 +244,12 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     if (FFlag::LuauLowerBoundsCalculation)
     {
-        normalize(returnType, interfaceTypes, ice);
+        normalize(returnType, NotNull{this}, ice);
         if (FFlag::LuauForceExportSurfacesToBeNormal)
             forceNormal.traverse(returnType);
         if (varargPack)
         {
-            normalize(*varargPack, interfaceTypes, ice);
+            normalize(*varargPack, NotNull{this}, ice);
             if (FFlag::LuauForceExportSurfacesToBeNormal)
                 forceNormal.traverse(*varargPack);
         }
@@ -265,7 +265,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
                 tf = clone(tf, interfaceTypes, cloneState);
             if (FFlag::LuauLowerBoundsCalculation)
             {
-                normalize(tf.type, interfaceTypes, ice);
+                normalize(tf.type, NotNull{this}, ice);
 
                 // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
                 // won't be marked normal.  If the types aren't normal by now, they never will be.
@@ -276,7 +276,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
                     if (param.defaultValue)
                     {
-                        normalize(*param.defaultValue, interfaceTypes, ice);
+                        normalize(*param.defaultValue, NotNull{this}, ice);
                         forceNormal.traverse(*param.defaultValue);
                     }
                 }
@@ -302,7 +302,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
             ty = clone(ty, interfaceTypes, cloneState);
         if (FFlag::LuauLowerBoundsCalculation)
         {
-            normalize(ty, interfaceTypes, ice);
+            normalize(ty, NotNull{this}, ice);
 
             if (FFlag::LuauForceExportSurfacesToBeNormal)
                 forceNormal.traverse(ty);

@@ -2,6 +2,7 @@
 
 #include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/Constraint.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/ToString.h"
@@ -26,6 +27,7 @@ ConstraintGraphBuilder::ConstraintGraphBuilder(
     , globalScope(globalScope)
 {
     LUAU_ASSERT(arena);
+    LUAU_ASSERT(module);
 }
 
 TypeId ConstraintGraphBuilder::freshType(const ScopePtr& scope)
@@ -39,20 +41,22 @@ TypePackId ConstraintGraphBuilder::freshTypePack(const ScopePtr& scope)
     return arena->addTypePack(TypePackVar{std::move(f)});
 }
 
-ScopePtr ConstraintGraphBuilder::childScope(Location location, const ScopePtr& parent)
+ScopePtr ConstraintGraphBuilder::childScope(AstNode* node, const ScopePtr& parent)
 {
     auto scope = std::make_shared<Scope>(parent);
-    scopes.emplace_back(location, scope);
+    scopes.emplace_back(node->location, scope);
 
     scope->returnType = parent->returnType;
-    parent->children.push_back(NotNull(scope.get()));
+
+    parent->children.push_back(NotNull{scope.get()});
+    module->astScopes[node] = scope.get();
 
     return scope;
 }
 
 void ConstraintGraphBuilder::addConstraint(const ScopePtr& scope, ConstraintV cv)
 {
-    scope->constraints.emplace_back(new Constraint{std::move(cv)});
+    scope->constraints.emplace_back(new Constraint{std::move(cv), NotNull{scope.get()}});
 }
 
 void ConstraintGraphBuilder::addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c)
@@ -67,6 +71,7 @@ void ConstraintGraphBuilder::visit(AstStatBlock* block)
     ScopePtr scope = std::make_shared<Scope>(globalScope);
     rootScope = scope.get();
     scopes.emplace_back(block->location, scope);
+    module->astScopes[block] = NotNull{scope.get()};
 
     rootScope->returnType = freshTypePack(scope);
 
@@ -115,7 +120,7 @@ void ConstraintGraphBuilder::visitBlockWithoutChildScope(const ScopePtr& scope, 
             ScopePtr defnScope = scope;
             if (hasGenerics)
             {
-                defnScope = childScope(alias->location, scope);
+                defnScope = childScope(alias, scope);
             }
 
             TypeId initialType = freshType(scope);
@@ -155,6 +160,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
         visit(scope, s);
     else if (auto s = stat->as<AstStatWhile>())
         visit(scope, s);
+    else if (auto s = stat->as<AstStatRepeat>())
+        visit(scope, s);
     else if (auto f = stat->as<AstStatFunction>())
         visit(scope, f);
     else if (auto f = stat->as<AstStatLocalFunction>())
@@ -162,6 +169,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStat* stat)
     else if (auto r = stat->as<AstStatReturn>())
         visit(scope, r);
     else if (auto a = stat->as<AstStatAssign>())
+        visit(scope, a);
+    else if (auto a = stat->as<AstStatCompoundAssign>())
         visit(scope, a);
     else if (auto e = stat->as<AstStatExpr>())
         checkPack(scope, e->expr);
@@ -241,7 +250,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
     checkNumber(for_->to);
     checkNumber(for_->step);
 
-    ScopePtr forScope = childScope(for_->location, scope);
+    ScopePtr forScope = childScope(for_, scope);
     forScope->bindings[for_->var] = Binding{singletonTypes.numberType, for_->var->location};
 
     visit(forScope, for_->body);
@@ -251,9 +260,20 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatWhile* while_)
 {
     check(scope, while_->condition);
 
-    ScopePtr whileScope = childScope(while_->location, scope);
+    ScopePtr whileScope = childScope(while_, scope);
 
     visit(whileScope, while_->body);
+}
+
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatRepeat* repeat)
+{
+    ScopePtr repeatScope = childScope(repeat, scope);
+
+    visit(repeatScope, repeat->body);
+
+    // The condition does indeed have access to bindings from within the body of
+    // the loop.
+    check(repeatScope, repeat->condition);
 }
 
 void addConstraints(Constraint* constraint, NotNull<Scope> scope)
@@ -286,8 +306,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFunction* 
 
     checkFunctionBody(sig.bodyScope, function->func);
 
-    std::unique_ptr<Constraint> c{
-        new Constraint{GeneralizationConstraint{functionType, sig.signature, sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()}}};
+    NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
+    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(GeneralizationConstraint{functionType, sig.signature}, constraintScope);
     addConstraints(c.get(), NotNull(sig.bodyScope.get()));
 
     addConstraint(scope, std::move(c));
@@ -356,8 +376,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
 
     checkFunctionBody(sig.bodyScope, function->func);
 
-    std::unique_ptr<Constraint> c{
-        new Constraint{GeneralizationConstraint{functionType, sig.signature, sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()}}};
+    NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
+    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(GeneralizationConstraint{functionType, sig.signature}, constraintScope);
     addConstraints(c.get(), NotNull(sig.bodyScope.get()));
 
     addConstraint(scope, std::move(c));
@@ -371,7 +391,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* ret)
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatBlock* block)
 {
-    ScopePtr innerScope = childScope(block->location, scope);
+    ScopePtr innerScope = childScope(block, scope);
 
     visitBlockWithoutChildScope(innerScope, block);
 }
@@ -384,16 +404,30 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
     addConstraint(scope, PackSubtypeConstraint{valuePack, varPackId});
 }
 
+void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatCompoundAssign* assign)
+{
+    // Synthesize A = A op B from A op= B and then build constraints for that instead.
+
+    AstExprBinary exprBinary{assign->location, assign->op, assign->var, assign->value};
+    AstExpr* exprBinaryPtr = &exprBinary;
+
+    AstArray<AstExpr*> vars{&assign->var, 1};
+    AstArray<AstExpr*> values{&exprBinaryPtr, 1};
+    AstStatAssign syntheticAssign{assign->location, vars, values};
+
+    visit(scope, &syntheticAssign);
+}
+
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatIf* ifStatement)
 {
     check(scope, ifStatement->condition);
 
-    ScopePtr thenScope = childScope(ifStatement->thenbody->location, scope);
+    ScopePtr thenScope = childScope(ifStatement->thenbody, scope);
     visit(thenScope, ifStatement->thenbody);
 
     if (ifStatement->elsebody)
     {
-        ScopePtr elseScope = childScope(ifStatement->elsebody->location, scope);
+        ScopePtr elseScope = childScope(ifStatement->elsebody, scope);
         visit(elseScope, ifStatement->elsebody);
     }
 }
@@ -561,7 +595,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction
 
     ScopePtr funScope = scope;
     if (!generics.empty() || !genericPacks.empty())
-        funScope = childScope(global->location, scope);
+        funScope = childScope(global, scope);
 
     TypePackId paramPack = resolveTypePack(funScope, global->params);
     TypePackId retPack = resolveTypePack(funScope, global->retTypes);
@@ -739,6 +773,8 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr)
         result = check(scope, unary);
     else if (auto binary = expr->as<AstExprBinary>())
         result = check(scope, binary);
+    else if (auto ifElse = expr->as<AstExprIfElse>())
+        result = check(scope, ifElse);
     else if (auto typeAssert = expr->as<AstExprTypeAssertion>())
         result = check(scope, typeAssert);
     else if (auto err = expr->as<AstExprError>())
@@ -819,6 +855,12 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binar
         addConstraint(scope, SubtypeConstraint{leftType, rightType});
         return leftType;
     }
+    case AstExprBinary::Add:
+    {
+        TypeId resultType = arena->addType(BlockedTypeVar{});
+        addConstraint(scope, BinaryConstraint{AstExprBinary::Add, leftType, rightType, resultType});
+        return resultType;
+    }
     case AstExprBinary::Sub:
     {
         TypeId resultType = arena->addType(BlockedTypeVar{});
@@ -831,6 +873,24 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binar
 
     LUAU_ASSERT(0);
     return nullptr;
+}
+
+TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* ifElse)
+{
+    check(scope, ifElse->condition);
+
+    TypeId thenType = check(scope, ifElse->trueExpr);
+    TypeId elseType = check(scope, ifElse->falseExpr);
+
+    if (ifElse->hasElse)
+    {
+        TypeId resultType = arena->addType(BlockedTypeVar{});
+        addConstraint(scope, SubtypeConstraint{thenType, resultType});
+        addConstraint(scope, SubtypeConstraint{elseType, resultType});
+        return resultType;
+    }
+
+    return thenType;
 }
 
 TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
@@ -905,14 +965,14 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     // generics properly.
     if (hasGenerics)
     {
-        signatureScope = childScope(fn->location, parent);
+        signatureScope = childScope(fn, parent);
 
         // We need to assign returnType before creating bodyScope so that the
         // return type gets propogated to bodyScope.
         returnType = freshTypePack(signatureScope);
         signatureScope->returnType = returnType;
 
-        bodyScope = childScope(fn->body->location, signatureScope);
+        bodyScope = childScope(fn->body, signatureScope);
 
         std::vector<std::pair<Name, GenericTypeDefinition>> genericDefinitions = createGenerics(signatureScope, fn->generics);
         std::vector<std::pair<Name, GenericTypePackDefinition>> genericPackDefinitions = createGenericPacks(signatureScope, fn->genericPacks);
@@ -933,7 +993,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     }
     else
     {
-        bodyScope = childScope(fn->body->location, parent);
+        bodyScope = childScope(fn->body, parent);
 
         returnType = freshTypePack(bodyScope);
         bodyScope->returnType = returnType;
@@ -1098,7 +1158,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         // for the generic bindings to live on.
         if (hasGenerics)
         {
-            signatureScope = childScope(fn->location, scope);
+            signatureScope = childScope(fn, scope);
 
             std::vector<std::pair<Name, GenericTypeDefinition>> genericDefinitions = createGenerics(signatureScope, fn->generics);
             std::vector<std::pair<Name, GenericTypePackDefinition>> genericPackDefinitions = createGenericPacks(signatureScope, fn->genericPacks);

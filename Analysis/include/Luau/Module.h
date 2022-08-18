@@ -77,6 +77,8 @@ struct Module
     DenseHashMap<const AstExpr*, TypeId> astOverloadResolvedTypes{nullptr};
     DenseHashMap<const AstType*, TypeId> astResolvedTypes{nullptr};
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
+    // Map AST nodes to the scope they create.  Cannot be NotNull<Scope> because we need a sentinel value for the map.
+    DenseHashMap<const AstNode*, Scope*> astScopes{nullptr};
 
     std::unordered_map<Name, TypeId> declaredGlobals;
     ErrorVec errors;

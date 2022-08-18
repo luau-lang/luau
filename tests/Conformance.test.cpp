@@ -727,7 +727,7 @@ TEST_CASE("NewUserdataOverflow")
         // The overflow might segfault in the following call.
         lua_getmetatable(L1, -1);
         return 0;
-    }, "PCall");
+    }, nullptr);
 
     CHECK(lua_pcall(L, 0, 0, 0) == LUA_ERRRUN);
     CHECK(strcmp(lua_tostring(L, -1), "memory allocation error: block too big") == 0);

@@ -132,8 +132,16 @@ while offset < len(queue):
             queue.append((obj["metatable"], node.child("__meta")))
     elif obj["type"] == "thread":
         queue.append((obj["env"], node.child("__env")))
-        for a in obj.get("stack", []):
-            queue.append((a, node.child("__stack")))
+        stack = obj.get("stack")
+        stacknames = obj.get("stacknames", [])
+        stacknode = node.child("__stack")
+        framenode = None
+        for i in range(len(stack)):
+            name = stacknames[i] if stacknames else None
+            if name and name.startswith("frame:"):
+                framenode = stacknode.child(name[6:])
+                name = None
+            queue.append((stack[i], framenode.child(name) if framenode and name else framenode or stacknode))
     elif obj["type"] == "proto":
         for a in obj.get("constants", []):
             queue.append((a, node))

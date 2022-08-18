@@ -8,21 +8,58 @@
 #include "Luau/Clone.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Normalize.h"
+#include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
-#include "Luau/ToString.h"
 
 namespace Luau
 {
 
-struct TypeChecker2 : public AstVisitor
+/* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
+ * TypeChecker2 uses this to maintain knowledge about which scope encloses every
+ * given AstNode.
+ */
+struct StackPusher
+{
+    std::vector<NotNull<Scope>>* stack;
+    NotNull<Scope> scope;
+
+    explicit StackPusher(std::vector<NotNull<Scope>>& stack, Scope* scope)
+        : stack(&stack)
+        , scope(scope)
+    {
+        stack.push_back(NotNull{scope});
+    }
+
+    ~StackPusher()
+    {
+        if (stack)
+        {
+            LUAU_ASSERT(stack->back() == scope);
+            stack->pop_back();
+        }
+    }
+
+    StackPusher(const StackPusher&) = delete;
+    StackPusher&& operator=(const StackPusher&) = delete;
+
+    StackPusher(StackPusher&& other)
+        : stack(std::exchange(other.stack, nullptr))
+        , scope(other.scope)
+    {
+    }
+};
+
+struct TypeChecker2
 {
     const SourceModule* sourceModule;
     Module* module;
     InternalErrorReporter ice; // FIXME accept a pointer from Frontend
     SingletonTypes& singletonTypes;
+
+    std::vector<NotNull<Scope>> stack;
 
     TypeChecker2(const SourceModule* sourceModule, Module* module)
         : sourceModule(sourceModule)
@@ -31,7 +68,13 @@ struct TypeChecker2 : public AstVisitor
     {
     }
 
-    using AstVisitor::visit;
+    std::optional<StackPusher> pushStack(AstNode* node)
+    {
+        if (Scope** scope = module->astScopes.find(node))
+            return StackPusher{stack, *scope};
+        else
+            return std::nullopt;
+    }
 
     TypePackId lookupPack(AstExpr* expr)
     {
@@ -118,11 +161,128 @@ struct TypeChecker2 : public AstVisitor
         return bestScope;
     }
 
-    bool visit(AstStatLocal* local) override
+    void visit(AstStat* stat)
+    {
+        auto pusher = pushStack(stat);
+
+        if (0)
+        {}
+        else if (auto s = stat->as<AstStatBlock>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatIf>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatWhile>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatRepeat>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatBreak>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatContinue>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatReturn>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatExpr>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatLocal>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatFor>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatForIn>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatAssign>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatCompoundAssign>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatFunction>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatLocalFunction>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatTypeAlias>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatDeclareFunction>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatDeclareGlobal>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatDeclareClass>())
+            return visit(s);
+        else if (auto s = stat->as<AstStatError>())
+            return visit(s);
+        else
+            LUAU_ASSERT(!"TypeChecker2 encountered an unknown node type");
+    }
+
+    void visit(AstStatBlock* block)
+    {
+        auto StackPusher = pushStack(block);
+
+        for (AstStat* statement : block->body)
+            visit(statement);
+    }
+
+    void visit(AstStatIf* ifStatement)
+    {
+        visit(ifStatement->condition);
+        visit(ifStatement->thenbody);
+        if (ifStatement->elsebody)
+            visit(ifStatement->elsebody);
+    }
+
+    void visit(AstStatWhile* whileStatement)
+    {
+        visit(whileStatement->condition);
+        visit(whileStatement->body);
+    }
+
+    void visit(AstStatRepeat* repeatStatement)
+    {
+        visit(repeatStatement->body);
+        visit(repeatStatement->condition);
+    }
+
+    void visit(AstStatBreak*)
+    {}
+
+    void visit(AstStatContinue*)
+    {}
+
+    void visit(AstStatReturn* ret)
+    {
+        Scope* scope = findInnermostScope(ret->location);
+        TypePackId expectedRetType = scope->returnType;
+
+        TypeArena arena;
+        TypePackId actualRetType = reconstructPack(ret->list, arena);
+
+        UnifierSharedState sharedState{&ice};
+        Unifier u{&arena, Mode::Strict, stack.back(), ret->location, Covariant, sharedState};
+        u.anyIsTop = true;
+
+        u.tryUnify(actualRetType, expectedRetType);
+        const bool ok = u.errors.empty() && u.log.empty();
+
+        if (!ok)
+        {
+            for (const TypeError& e : u.errors)
+                reportError(e);
+        }
+
+        for (AstExpr* expr : ret->list)
+            visit(expr);
+    }
+
+    void visit(AstStatExpr* expr)
+    {
+        visit(expr->expr);
+    }
+
+    void visit(AstStatLocal* local)
     {
         for (size_t i = 0; i < local->values.size; ++i)
         {
             AstExpr* value = local->values.data[i];
+
+            visit(value);
+
             if (i == local->values.size - 1)
             {
                 if (i < local->values.size)
@@ -140,7 +300,7 @@ struct TypeChecker2 : public AstVisitor
                         if (var->annotation)
                         {
                             TypeId varType = lookupAnnotation(var->annotation);
-                            if (!isSubtype(*it, varType, ice))
+                            if (!isSubtype(*it, varType, stack.back(), ice))
                             {
                                 reportError(TypeMismatch{varType, *it}, value->location);
                             }
@@ -158,64 +318,244 @@ struct TypeChecker2 : public AstVisitor
                 if (var->annotation)
                 {
                     TypeId varType = lookupAnnotation(var->annotation);
-                    if (!isSubtype(varType, valueType, ice))
+                    if (!isSubtype(varType, valueType, stack.back(), ice))
                     {
                         reportError(TypeMismatch{varType, valueType}, value->location);
                     }
                 }
             }
         }
-
-        return true;
     }
 
-    bool visit(AstStatAssign* assign) override
+    void visit(AstStatFor* forStatement)
+    {
+        if (forStatement->var->annotation)
+            visit(forStatement->var->annotation);
+
+        visit(forStatement->from);
+        visit(forStatement->to);
+        if (forStatement->step)
+            visit(forStatement->step);
+        visit(forStatement->body);
+    }
+
+    void visit(AstStatForIn* forInStatement)
+    {
+        for (AstLocal* local : forInStatement->vars)
+        {
+            if (local->annotation)
+                visit(local->annotation);
+        }
+
+        for (AstExpr* expr : forInStatement->values)
+            visit(expr);
+
+        visit(forInStatement->body);
+    }
+
+    void visit(AstStatAssign* assign)
     {
         size_t count = std::min(assign->vars.size, assign->values.size);
 
         for (size_t i = 0; i < count; ++i)
         {
             AstExpr* lhs = assign->vars.data[i];
+            visit(lhs);
             TypeId lhsType = lookupType(lhs);
 
             AstExpr* rhs = assign->values.data[i];
+            visit(rhs);
             TypeId rhsType = lookupType(rhs);
 
-            if (!isSubtype(rhsType, lhsType, ice))
+            if (!isSubtype(rhsType, lhsType, stack.back(), ice))
             {
                 reportError(TypeMismatch{lhsType, rhsType}, rhs->location);
             }
         }
-
-        return true;
     }
 
-    bool visit(AstStatReturn* ret) override
+    void visit(AstStatCompoundAssign* stat)
     {
-        Scope* scope = findInnermostScope(ret->location);
-        TypePackId expectedRetType = scope->returnType;
+        visit(stat->var);
+        visit(stat->value);
+    }
 
-        TypeArena arena;
-        TypePackId actualRetType = reconstructPack(ret->list, arena);
+    void visit(AstStatFunction* stat)
+    {
+        visit(stat->name);
+        visit(stat->func);
+    }
 
-        UnifierSharedState sharedState{&ice};
-        Unifier u{&arena, Mode::Strict, ret->location, Covariant, sharedState};
-        u.anyIsTop = true;
+    void visit(AstStatLocalFunction* stat)
+    {
+        visit(stat->func);
+    }
 
-        u.tryUnify(actualRetType, expectedRetType);
-        const bool ok = u.errors.empty() && u.log.empty();
+    void visit(const AstTypeList* typeList)
+    {
+        for (AstType* ty : typeList->types)
+            visit(ty);
 
-        if (!ok)
+        if (typeList->tailType)
+            visit(typeList->tailType);
+    }
+
+    void visit(AstStatTypeAlias* stat)
+    {
+        for (const AstGenericType& el : stat->generics)
         {
-            for (const TypeError& e : u.errors)
-                reportError(e);
+            if (el.defaultValue)
+                visit(el.defaultValue);
         }
 
-        return true;
+        for (const AstGenericTypePack& el : stat->genericPacks)
+        {
+            if (el.defaultValue)
+                visit(el.defaultValue);
+        }
+
+        visit(stat->type);
     }
 
-    bool visit(AstExprCall* call) override
+    void visit(AstTypeList types)
     {
+        for (AstType* type : types.types)
+            visit(type);
+        if (types.tailType)
+            visit(types.tailType);
+    }
+
+    void visit(AstStatDeclareFunction* stat)
+    {
+        visit(stat->params);
+        visit(stat->retTypes);
+    }
+
+    void visit(AstStatDeclareGlobal* stat)
+    {
+        visit(stat->type);
+    }
+
+    void visit(AstStatDeclareClass* stat)
+    {
+        for (const AstDeclaredClassProp& prop : stat->props)
+            visit(prop.ty);
+    }
+
+    void visit(AstStatError* stat)
+    {
+        for (AstExpr* expr : stat->expressions)
+            visit(expr);
+
+        for (AstStat* s : stat->statements)
+            visit(s);
+    }
+
+    void visit(AstExpr* expr)
+    {
+        auto StackPusher = pushStack(expr);
+
+        if (0)
+        {}
+        else if (auto e = expr->as<AstExprGroup>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprConstantNil>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprConstantBool>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprConstantNumber>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprConstantString>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprLocal>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprGlobal>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprVarargs>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprCall>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprIndexName>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprIndexExpr>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprFunction>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprTable>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprUnary>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprBinary>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprTypeAssertion>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprIfElse>())
+            return visit(e);
+        else if (auto e = expr->as<AstExprError>())
+            return visit(e);
+        else
+            LUAU_ASSERT(!"TypeChecker2 encountered an unknown expression type");
+    }
+
+    void visit(AstExprGroup* expr)
+    {
+        visit(expr->expr);
+    }
+
+    void visit(AstExprConstantNil* expr)
+    {
+        // TODO!
+    }
+
+    void visit(AstExprConstantBool* expr)
+    {
+        // TODO!
+    }
+
+    void visit(AstExprConstantNumber* number)
+    {
+        TypeId actualType = lookupType(number);
+        TypeId numberType = getSingletonTypes().numberType;
+
+        if (!isSubtype(numberType, actualType, stack.back(), ice))
+        {
+            reportError(TypeMismatch{actualType, numberType}, number->location);
+        }
+    }
+
+    void visit(AstExprConstantString* string)
+    {
+        TypeId actualType = lookupType(string);
+        TypeId stringType = getSingletonTypes().stringType;
+
+        if (!isSubtype(stringType, actualType, stack.back(), ice))
+        {
+            reportError(TypeMismatch{actualType, stringType}, string->location);
+        }
+    }
+
+    void visit(AstExprLocal* expr)
+    {
+        // TODO!
+    }
+
+    void visit(AstExprGlobal* expr)
+    {
+        // TODO!
+    }
+
+    void visit(AstExprVarargs* expr)
+    {
+        // TODO!
+    }
+
+    void visit(AstExprCall* call)
+    {
+        visit(call->func);
+
+        for (AstExpr* arg : call->args)
+            visit(arg);
+
         TypeArena arena;
         Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}};
 
@@ -225,7 +565,7 @@ struct TypeChecker2 : public AstVisitor
         LUAU_ASSERT(functionType);
 
         TypePack args;
-        for (const auto& arg : call->args)
+        for (AstExpr* arg : call->args)
         {
             TypeId argTy = module->astTypes[arg];
             LUAU_ASSERT(argTy);
@@ -235,7 +575,7 @@ struct TypeChecker2 : public AstVisitor
         TypePackId argsTp = arena.addTypePack(args);
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);
-        if (!isSubtype(expectedType, instantiatedFunctionType, ice))
+        if (!isSubtype(expectedType, instantiatedFunctionType, stack.back(), ice))
         {
             unfreeze(module->interfaceTypes);
             CloneState cloneState;
@@ -243,12 +583,36 @@ struct TypeChecker2 : public AstVisitor
             freeze(module->interfaceTypes);
             reportError(TypeMismatch{expectedType, functionType}, call->location);
         }
-
-        return true;
     }
 
-    bool visit(AstExprFunction* fn) override
+    void visit(AstExprIndexName* indexName)
     {
+        TypeId leftType = lookupType(indexName->expr);
+        TypeId resultType = lookupType(indexName);
+
+        // leftType must have a property called indexName->index
+
+        std::optional<TypeId> ty = getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
+        if (ty)
+        {
+            if (!isSubtype(resultType, *ty, stack.back(), ice))
+            {
+                reportError(TypeMismatch{resultType, *ty}, indexName->location);
+            }
+        }
+    }
+
+    void visit(AstExprIndexExpr* indexExpr)
+    {
+        // TODO!
+        visit(indexExpr->expr);
+        visit(indexExpr->index);
+    }
+
+    void visit(AstExprFunction* fn)
+    {
+        auto StackPusher = pushStack(fn);
+
         TypeId inferredFnTy = lookupType(fn);
         const FunctionTypeVar* inferredFtv = get<FunctionTypeVar>(inferredFnTy);
         LUAU_ASSERT(inferredFtv);
@@ -264,7 +628,7 @@ struct TypeChecker2 : public AstVisitor
                 TypeId inferredArgTy = *argIt;
                 TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
-                if (!isSubtype(annotatedArgTy, inferredArgTy, ice))
+                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), ice))
                 {
                     reportError(TypeMismatch{annotatedArgTy, inferredArgTy}, arg->location);
                 }
@@ -273,68 +637,64 @@ struct TypeChecker2 : public AstVisitor
             ++argIt;
         }
 
-        return true;
+        visit(fn->body);
     }
 
-    bool visit(AstExprIndexName* indexName) override
+    void visit(AstExprTable* expr)
     {
-        TypeId leftType = lookupType(indexName->expr);
-        TypeId resultType = lookupType(indexName);
-
-        // leftType must have a property called indexName->index
-
-        std::optional<TypeId> ty = getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
-        if (ty)
+        // TODO!
+        for (const AstExprTable::Item& item : expr->items)
         {
-            if (!isSubtype(resultType, *ty, ice))
-            {
-                reportError(TypeMismatch{resultType, *ty}, indexName->location);
-            }
+            if (item.key)
+                visit(item.key);
+            visit(item.value);
         }
-
-        return true;
     }
 
-    bool visit(AstExprConstantNumber* number) override
+    void visit(AstExprUnary* expr)
     {
-        TypeId actualType = lookupType(number);
-        TypeId numberType = getSingletonTypes().numberType;
-
-        if (!isSubtype(numberType, actualType, ice))
-        {
-            reportError(TypeMismatch{actualType, numberType}, number->location);
-        }
-
-        return true;
+        // TODO!
+        visit(expr->expr);
     }
 
-    bool visit(AstExprConstantString* string) override
+    void visit(AstExprBinary* expr)
     {
-        TypeId actualType = lookupType(string);
-        TypeId stringType = getSingletonTypes().stringType;
-
-        if (!isSubtype(stringType, actualType, ice))
-        {
-            reportError(TypeMismatch{actualType, stringType}, string->location);
-        }
-
-        return true;
+        // TODO!
+        visit(expr->left);
+        visit(expr->right);
     }
 
-    bool visit(AstExprTypeAssertion* expr) override
+    void visit(AstExprTypeAssertion* expr)
     {
+        visit(expr->expr);
+        visit(expr->annotation);
+
         TypeId annotationType = lookupAnnotation(expr->annotation);
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (isSubtype(annotationType, computedType, ice))
-            return true;
+        if (isSubtype(annotationType, computedType, stack.back(), ice))
+            return;
 
-        if (isSubtype(computedType, annotationType, ice))
-            return true;
+        if (isSubtype(computedType, annotationType, stack.back(), ice))
+            return;
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
-        return true;
+    }
+
+    void visit(AstExprIfElse* expr)
+    {
+        // TODO!
+        visit(expr->condition);
+        visit(expr->trueExpr);
+        visit(expr->falseExpr);
+    }
+
+    void visit(AstExprError* expr)
+    {
+        // TODO!
+        for (AstExpr* e : expr->expressions)
+            visit(e);
     }
 
     /** Extract a TypeId for the first type of the provided pack.
@@ -375,13 +735,32 @@ struct TypeChecker2 : public AstVisitor
             ice.ice("flattenPack got a weird pack!");
     }
 
-    bool visit(AstType* ty) override
+    void visit(AstType* ty)
     {
-        return true;
+        if (auto t = ty->as<AstTypeReference>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeTable>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeFunction>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeTypeof>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeUnion>())
+            return visit(t);
+        else if (auto t = ty->as<AstTypeIntersection>())
+            return visit(t);
     }
 
-    bool visit(AstTypeReference* ty) override
+    void visit(AstTypeReference* ty)
     {
+        for (const AstTypeOrPack& param : ty->parameters)
+        {
+            if (param.type)
+                visit(param.type);
+            else
+                visit(param.typePack);
+        }
+
         Scope* scope = findInnermostScope(ty->location);
         LUAU_ASSERT(scope);
 
@@ -500,16 +879,76 @@ struct TypeChecker2 : public AstVisitor
                 reportError(UnknownSymbol{ty->name.value, UnknownSymbol::Context::Type}, ty->location);
             }
         }
-
-        return true;
     }
 
-    bool visit(AstTypePack*) override
+    void visit(AstTypeTable* table)
     {
-        return true;
+        // TODO!
+
+        for (const AstTableProp& prop : table->props)
+            visit(prop.type);
+
+        if (table->indexer)
+        {
+            visit(table->indexer->indexType);
+            visit(table->indexer->resultType);
+        }
     }
 
-    bool visit(AstTypePackGeneric* tp) override
+    void visit(AstTypeFunction* ty)
+    {
+        // TODO!
+
+        visit(ty->argTypes);
+        visit(ty->returnTypes);
+    }
+
+    void visit(AstTypeTypeof* ty)
+    {
+        visit(ty->expr);
+    }
+
+    void visit(AstTypeUnion* ty)
+    {
+        // TODO!
+        for (AstType* type : ty->types)
+            visit(type);
+    }
+
+    void visit(AstTypeIntersection* ty)
+    {
+        // TODO!
+        for (AstType* type : ty->types)
+            visit(type);
+    }
+
+    void visit(AstTypePack* pack)
+    {
+        if (auto p = pack->as<AstTypePackExplicit>())
+            return visit(p);
+        else if (auto p = pack->as<AstTypePackVariadic>())
+            return visit(p);
+        else if (auto p = pack->as<AstTypePackGeneric>())
+            return visit(p);
+    }
+
+    void visit(AstTypePackExplicit* tp)
+    {
+        // TODO!
+        for (AstType* type : tp->typeList.types)
+            visit(type);
+
+        if (tp->typeList.tailType)
+            visit(tp->typeList.tailType);
+    }
+
+    void visit(AstTypePackVariadic* tp)
+    {
+        // TODO!
+        visit(tp->variadicType);
+    }
+
+    void visit(AstTypePackGeneric* tp)
     {
         Scope* scope = findInnermostScope(tp->location);
         LUAU_ASSERT(scope);
@@ -531,8 +970,6 @@ struct TypeChecker2 : public AstVisitor
                 reportError(UnknownSymbol{tp->genericName.value, UnknownSymbol::Context::Type}, tp->location);
             }
         }
-
-        return true;
     }
 
     void reportError(TypeErrorData&& data, const Location& location)
@@ -546,139 +983,9 @@ struct TypeChecker2 : public AstVisitor
     }
 
     std::optional<TypeId> getIndexTypeFromType(
-        const ScopePtr& scope, TypeId type, const Name& name, const Location& location, bool addErrors)
+        const ScopePtr& scope, TypeId type, const std::string& prop, const Location& location, bool addErrors)
     {
-        type = follow(type);
-
-        if (get<ErrorTypeVar>(type) || get<AnyTypeVar>(type) || get<NeverTypeVar>(type))
-            return type;
-
-        if (auto f = get<FreeTypeVar>(type))
-            *asMutable(type) = TableTypeVar{TableState::Free, f->level};
-
-        if (isString(type))
-        {
-            std::optional<TypeId> mtIndex = Luau::findMetatableEntry(module->errors, singletonTypes.stringType, "__index", location);
-            LUAU_ASSERT(mtIndex);
-            type = *mtIndex;
-        }
-
-        if (TableTypeVar* tableType = getMutableTableType(type))
-        {
-
-            return findTablePropertyRespectingMeta(module->errors, type, name, location);
-        }
-        else if (const ClassTypeVar* cls = get<ClassTypeVar>(type))
-        {
-            const Property* prop = lookupClassProp(cls, name);
-            if (prop)
-                return prop->type;
-        }
-        else if (const UnionTypeVar* utv = get<UnionTypeVar>(type))
-        {
-            std::vector<TypeId> goodOptions;
-            std::vector<TypeId> badOptions;
-
-            for (TypeId t : utv)
-            {
-                // TODO: we should probably limit recursion here?
-                // RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
-
-                // Not needed when we normalize types.
-                if (get<AnyTypeVar>(follow(t)))
-                    return t;
-
-                if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, /* addErrors= */ false))
-                    goodOptions.push_back(*ty);
-                else
-                    badOptions.push_back(t);
-            }
-
-            if (!badOptions.empty())
-            {
-                if (addErrors)
-                {
-                    if (goodOptions.empty())
-                        reportError(UnknownProperty{type, name}, location);
-                    else
-                        reportError(MissingUnionProperty{type, badOptions, name}, location);
-                }
-                return std::nullopt;
-            }
-
-            std::vector<TypeId> result = reduceUnion(goodOptions);
-            if (result.empty())
-                return singletonTypes.neverType;
-
-            if (result.size() == 1)
-                return result[0];
-
-            return module->internalTypes.addType(UnionTypeVar{std::move(result)});
-        }
-        else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(type))
-        {
-            std::vector<TypeId> parts;
-
-            for (TypeId t : itv->parts)
-            {
-                // TODO: we should probably limit recursion here?
-                // RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
-
-                if (std::optional<TypeId> ty = getIndexTypeFromType(scope, t, name, location, /* addErrors= */ false))
-                    parts.push_back(*ty);
-            }
-
-            // If no parts of the intersection had the property we looked up for, it never existed at all.
-            if (parts.empty())
-            {
-                if (addErrors)
-                    reportError(UnknownProperty{type, name}, location);
-                return std::nullopt;
-            }
-
-            if (parts.size() == 1)
-                return parts[0];
-
-            return module->internalTypes.addType(IntersectionTypeVar{std::move(parts)}); // Not at all correct.
-        }
-
-        if (addErrors)
-            reportError(UnknownProperty{type, name}, location);
-
-        return std::nullopt;
-    }
-
-    std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)
-    {
-        std::vector<TypeId> result;
-        for (TypeId t : types)
-        {
-            t = follow(t);
-            if (get<NeverTypeVar>(t))
-                continue;
-
-            if (get<ErrorTypeVar>(t) || get<AnyTypeVar>(t))
-                return {t};
-
-            if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
-            {
-                for (TypeId ty : utv)
-                {
-                    ty = follow(ty);
-                    if (get<NeverTypeVar>(ty))
-                        continue;
-                    if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
-                        return {ty};
-
-                    if (result.end() == std::find(result.begin(), result.end(), ty))
-                        result.push_back(ty);
-                }
-            }
-            else if (std::find(result.begin(), result.end(), t) == result.end())
-                result.push_back(t);
-        }
-
-        return result;
+        return Luau::getIndexTypeFromType(scope, module->errors, &module->internalTypes, type, prop, location, addErrors, ice);
     }
 };
 
@@ -686,7 +993,7 @@ void check(const SourceModule& sourceModule, Module* module)
 {
     TypeChecker2 typeChecker{&sourceModule, module};
 
-    sourceModule.root->visit(&typeChecker);
+    typeChecker.visit(sourceModule.root);
 }
 
 } // namespace Luau

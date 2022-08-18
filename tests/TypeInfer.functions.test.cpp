@@ -1637,7 +1637,6 @@ TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
 {
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(
@@ -1662,7 +1661,6 @@ TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantifie
 {
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(

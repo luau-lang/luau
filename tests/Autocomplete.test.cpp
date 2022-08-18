@@ -3189,4 +3189,27 @@ a.@1
     CHECK(ac.entryMap.count("y"));
 }
 
+TEST_CASE_FIXTURE(ACFixture, "globals_are_order_independent")
+{
+    ScopedFastFlag sff("LuauAutocompleteFixGlobalOrder", true);
+
+    check(R"(
+        local myLocal = 4
+        function abc0()
+            local myInnerLocal = 1
+@1
+        end
+
+        function abc1()
+            local myInnerLocal = 1
+        end
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("myLocal"));
+    CHECK(ac.entryMap.count("myInnerLocal"));
+    CHECK(ac.entryMap.count("abc0"));
+    CHECK(ac.entryMap.count("abc1"));
+}
+
 TEST_SUITE_END();

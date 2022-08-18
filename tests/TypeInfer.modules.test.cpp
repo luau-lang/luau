@@ -329,6 +329,35 @@ function tbl:foo(b: number, c: number)
     -- introduce BoundTypeVar to imported type
     arrayops.foo(self._regions)
 end
+-- this alias decreases function type level and causes a demotion of its type
+type Table = typeof(tbl)
+)");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types_5")
+{
+    ScopedFastFlag luauInplaceDemoteSkipAllBound{"LuauInplaceDemoteSkipAllBound", true};
+
+    fileResolver.source["game/A"] = R"(
+export type Type = {x: number, y: number}
+local arrayops = {}
+function arrayops.foo(x: Type) end
+return arrayops
+    )";
+
+    CheckResult result = check(R"(
+local arrayops = require(game.A)
+
+local tbl = {}
+tbl.a = 2
+function tbl:foo(b: number, c: number)
+    -- introduce boundTo TableTypeVar to imported type
+    self.x.a = 2
+    arrayops.foo(self.x)
+end
+-- this alias decreases function type level and causes a demotion of its type
 type Table = typeof(tbl)
 )");
 

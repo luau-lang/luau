@@ -443,7 +443,8 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
 
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
-    , cgb(mainModuleName, getMainModule(), &arena, NotNull(&ice), frontend.getGlobalScope())
+    , mainModule(new Module)
+    , cgb(mainModuleName, mainModule, &arena, NotNull(&ice), frontend.getGlobalScope())
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;
