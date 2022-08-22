@@ -746,7 +746,9 @@ Lexeme Lexer::readNext()
     {
         consume();
 
-        braceStack.push_back(BraceType::Normal);
+        if (!braceStack.empty())
+            braceStack.push_back(BraceType::Normal);
+
         return Lexeme(Location(start, 1), '{');
     }
 
