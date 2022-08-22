@@ -5,9 +5,7 @@ inputs:
     required: true
     type: string
     description: The benchmark results repository to check out
-  shell:
-    type: string
-    default: "bash"
+
   branch:
     required: true
     type: string
@@ -38,7 +36,7 @@ runs:
   steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-      shell: ${{ inputs.shell }}
+      shell: bash
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.branch }}
@@ -47,7 +45,7 @@ runs:
 
     - name: Store results
       uses: Roblox/rhysd-github-action-benchmark@v-luau
-      shell: ${{ inputs.shell }}
+      shell: bash
       with:
         name: ${{ inputs.bench_name }}
         tool: ${{ inputs.bench_tool }}
@@ -55,7 +53,7 @@ runs:
         external-data-json-path: ${{ inputs.bench_external_data_json_path }}
 
     - name: Push benchmark results
-      shell: ${{ inputs.shell }}
+      shell: bash
       run: |
         echo "Pushing benchmark results..."
         cd gh-pages
