@@ -943,7 +943,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
 
-    auto columnOfEndBraceError = [=](const char* code)
+    auto columnOfEndBraceError = [this](const char* code)
     {
         try
         {
