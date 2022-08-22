@@ -7,6 +7,7 @@
 #include "Luau/Unifiable.h"
 
 LUAU_FASTFLAG(DebugLuauCopyBeforeNormalizing)
+LUAU_FASTFLAG(LuauClonePublicInterfaceLess)
 
 LUAU_FASTINTVARIABLE(LuauTypeCloneRecursionLimit, 300)
 
@@ -445,7 +446,7 @@ TypeFun clone(const TypeFun& typeFun, TypeArena& dest, CloneState& cloneState)
     return result;
 }
 
-TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
+TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysClone)
 {
     ty = log->follow(ty);
 
@@ -503,6 +504,15 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
     {
         PendingExpansionTypeVar clone{petv->fn, petv->typeArguments, petv->packArguments};
         result = dest.addType(std::move(clone));
+    }
+    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(ty); FFlag::LuauClonePublicInterfaceLess && ctv && alwaysClone)
+    {
+        ClassTypeVar clone{ctv->name, ctv->props, ctv->parent, ctv->metatable, ctv->tags, ctv->userData, ctv->definitionModuleName};
+        result = dest.addType(std::move(clone));
+    }
+    else if (FFlag::LuauClonePublicInterfaceLess && alwaysClone)
+    {
+        result = dest.addType(*ty);
     }
     else
         return result;

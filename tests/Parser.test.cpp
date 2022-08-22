@@ -2658,7 +2658,6 @@ end
 
 TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation")
 {
-    ScopedFastFlag sff{"LuauParserFunctionKeywordAsTypeHelp", true};
     ParseResult result = tryParse(R"(
         type Foo = function
     )");

@@ -154,7 +154,7 @@ struct Frontend
 
     LoadDefinitionFileResult loadDefinitionFile(std::string_view source, const std::string& packageName);
 
-    NotNull<Scope> getGlobalScope();
+    ScopePtr getGlobalScope();
 
 private:
     ModulePtr check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope);

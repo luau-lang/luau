@@ -14,6 +14,7 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
+LUAU_FASTFLAGVARIABLE(LuauLintComparisonPrecedence, false)
 
 namespace Luau
 {
@@ -49,6 +50,7 @@ static const char* kWarningNames[] = {
     "MisleadingAndOr",
     "CommentDirective",
     "IntegerParsing",
+    "ComparisonPrecedence",
 };
 // clang-format on
 
@@ -2647,6 +2649,65 @@ private:
     }
 };
 
+class LintComparisonPrecedence : AstVisitor
+{
+public:
+    LUAU_NOINLINE static void process(LintContext& context)
+    {
+        LintComparisonPrecedence pass;
+        pass.context = &context;
+
+        context.root->visit(&pass);
+    }
+
+private:
+    LintContext* context;
+
+    bool isComparison(AstExprBinary::Op op)
+    {
+        return op == AstExprBinary::CompareNe || op == AstExprBinary::CompareEq || op == AstExprBinary::CompareLt || op == AstExprBinary::CompareLe ||
+               op == AstExprBinary::CompareGt || op == AstExprBinary::CompareGe;
+    }
+
+    bool isNot(AstExpr* node)
+    {
+        AstExprUnary* expr = node->as<AstExprUnary>();
+
+        return expr && expr->op == AstExprUnary::Not;
+    }
+
+    bool visit(AstExprBinary* node) override
+    {
+        if (!isComparison(node->op))
+            return true;
+
+        // not X == Y; we silence this for not X == not Y as it's likely an intentional boolean comparison
+        if (isNot(node->left) && !isNot(node->right))
+        {
+            std::string op = toString(node->op);
+
+            if (node->op == AstExprBinary::CompareEq || node->op == AstExprBinary::CompareNe)
+                emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
+                    "not X %s Y is equivalent to (not X) %s Y; consider using X %s Y, or wrap one of the expressions in parentheses to silence",
+                    op.c_str(), op.c_str(), node->op == AstExprBinary::CompareEq ? "~=" : "==");
+            else
+                emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
+                    "not X %s Y is equivalent to (not X) %s Y; wrap one of the expressions in parentheses to silence", op.c_str(), op.c_str());
+        }
+        else if (AstExprBinary* left = node->left->as<AstExprBinary>(); left && isComparison(left->op))
+        {
+            std::string lop = toString(left->op);
+            std::string rop = toString(node->op);
+
+            emitWarning(*context, LintWarning::Code_ComparisonPrecedence, node->location,
+                "X %s Y %s Z is equivalent to (X %s Y) %s Z; wrap one of the expressions in parentheses to silence", lop.c_str(), rop.c_str(),
+                lop.c_str(), rop.c_str());
+        }
+
+        return true;
+    }
+};
+
 static void fillBuiltinGlobals(LintContext& context, const AstNameTable& names, const ScopePtr& env)
 {
     ScopePtr current = env;
@@ -2870,6 +2931,9 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
 
     if (context.warningEnabled(LintWarning::Code_IntegerParsing))
         LintIntegerParsing::process(context);
+
+    if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence) && FFlag::LuauLintComparisonPrecedence)
+        LintComparisonPrecedence::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());
 

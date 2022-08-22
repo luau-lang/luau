@@ -60,6 +60,9 @@ struct ConstraintSolver
     // Memoized instantiations of type aliases.
     DenseHashMap<InstantiationSignature, TypeId, HashInstantiationSignature> instantiatedAliases{{}};
 
+    // Recorded errors that take place within the solver.
+    ErrorVec errors;
+
     ConstraintSolverLogger logger;
 
     explicit ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope);
@@ -115,7 +118,7 @@ struct ConstraintSolver
      * @param subType the sub-type to unify.
      * @param superType the super-type to unify.
      */
-    void unify(TypeId subType, TypeId superType);
+    void unify(TypeId subType, TypeId superType, NotNull<Scope> scope);
 
     /**
      * Creates a new Unifier and performs a single unification operation. Commits
@@ -123,13 +126,15 @@ struct ConstraintSolver
      * @param subPack the sub-type pack to unify.
      * @param superPack the super-type pack to unify.
      */
-    void unify(TypePackId subPack, TypePackId superPack);
+    void unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope);
 
     /** Pushes a new solver constraint to the solver.
      * @param cv the body of the constraint.
      **/
-    void pushConstraint(ConstraintV cv);
+    void pushConstraint(ConstraintV cv, NotNull<Scope> scope);
 
+    void reportError(TypeErrorData&& data, const Location& location);
+    void reportError(TypeError e);
 private:
     /**
      * Marks a constraint as being blocked on a type or type pack. The constraint

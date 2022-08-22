@@ -51,8 +51,10 @@ end
 To support self-iterating objects, we modify the iteration protocol as follows: instead of simply expanding the result of expression `iter` into three variables (`gen`, `state` and `index`), we check if the first result has an `__iter` metamethod (which can be the case if it's a table, userdata or another composite object (e.g. a record in the future). If it does, the metamethod is called with `gen` as the first argument, and the returned three values replace `gen`/`state`/`index`. This happens *before* the loop:
 
 ```lua
-if getmetatable(gen) and getmetatable(gen).__iter then
-   gen, state, index = getmetatable(gen).__iter(gen)
+local genmt = rawgetmetatable(gen) -- pseudo code for getmetatable that bypasses __metatable
+local iterf = genmt and rawget(genmt, "__iter")
+if iterf then
+   gen, state, index = iterf(gen)
 end
 ```
 

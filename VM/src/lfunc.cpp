@@ -175,8 +175,7 @@ void luaF_freeclosure(lua_State* L, Closure* c, lua_Page* page)
 
 const LocVar* luaF_getlocal(const Proto* f, int local_number, int pc)
 {
-    int i;
-    for (i = 0; i < f->sizelocvars; i++)
+    for (int i = 0; i < f->sizelocvars; i++)
     {
         if (pc >= f->locvars[i].startpc && pc < f->locvars[i].endpc)
         { // is variable active?
@@ -185,5 +184,15 @@ const LocVar* luaF_getlocal(const Proto* f, int local_number, int pc)
                 return &f->locvars[i];
         }
     }
+
+    return NULL; // not found
+}
+
+const LocVar* luaF_findlocal(const Proto* f, int local_reg, int pc)
+{
+    for (int i = 0; i < f->sizelocvars; i++)
+        if (local_reg == f->locvars[i].reg && pc >= f->locvars[i].startpc && pc < f->locvars[i].endpc)
+            return &f->locvars[i];
+
     return NULL; // not found
 }

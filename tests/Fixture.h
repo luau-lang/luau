@@ -162,6 +162,7 @@ struct BuiltinsFixture : Fixture
 struct ConstraintGraphBuilderFixture : Fixture
 {
     TypeArena arena;
+    ModulePtr mainModule;
     ConstraintGraphBuilder cgb;
 
     ScopedFastFlag forceTheFlag;

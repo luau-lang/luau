@@ -373,7 +373,7 @@ bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Con
     else if (isBlocked(c.superType))
         return block(c.superType, constraint);
 
-    unify(c.subType, c.superType);
+    unify(c.subType, c.superType, constraint->scope);
 
     unblock(c.subType);
     unblock(c.superType);
@@ -383,7 +383,7 @@ bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Con
 
 bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
-    unify(c.subPack, c.superPack);
+    unify(c.subPack, c.superPack, constraint->scope);
     unblock(c.subPack);
     unblock(c.superPack);
 
@@ -398,9 +398,9 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     if (isBlocked(c.generalizedType))
         asMutable(c.generalizedType)->ty.emplace<BoundTypeVar>(c.sourceType);
     else
-        unify(c.generalizedType, c.sourceType);
+        unify(c.generalizedType, c.sourceType, constraint->scope);
 
-    TypeId generalized = quantify(arena, c.sourceType, c.scope);
+    TypeId generalized = quantify(arena, c.sourceType, constraint->scope);
     *asMutable(c.sourceType) = *generalized;
 
     unblock(c.generalizedType);
@@ -422,7 +422,7 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     if (isBlocked(c.subType))
         asMutable(c.subType)->ty.emplace<BoundTypeVar>(*instantiated);
     else
-        unify(c.subType, *instantiated);
+        unify(c.subType, *instantiated, constraint->scope);
 
     unblock(c.subType);
 
@@ -465,7 +465,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
 
     if (isNumber(leftType))
     {
-        unify(leftType, rightType);
+        unify(leftType, rightType, constraint->scope);
         asMutable(c.resultType)->ty.emplace<BoundTypeVar>(leftType);
         return true;
     }
@@ -484,6 +484,10 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
         return block(c.namedType, constraint);
 
     TypeId target = follow(c.namedType);
+
+    if (target->persistent)
+        return true;
+
     if (TableTypeVar* ttv = getMutable<TableTypeVar>(target))
         ttv->name = c.name;
     else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(target))
@@ -524,16 +528,18 @@ struct InstantiationQueuer : TypeVarOnceVisitor
 {
     ConstraintSolver* solver;
     const InstantiationSignature& signature;
+    NotNull<Scope> scope;
 
-    explicit InstantiationQueuer(ConstraintSolver* solver, const InstantiationSignature& signature)
+    explicit InstantiationQueuer(ConstraintSolver* solver, const InstantiationSignature& signature, NotNull<Scope> scope)
         : solver(solver)
         , signature(signature)
+        , scope(scope)
     {
     }
 
     bool visit(TypeId ty, const PendingExpansionTypeVar& petv) override
     {
-        solver->pushConstraint(TypeAliasExpansionConstraint{ty});
+        solver->pushConstraint(TypeAliasExpansionConstraint{ty}, scope);
         return false;
     }
 };
@@ -637,6 +643,10 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
 
     TypeId instantiated = *maybeInstantiated;
     TypeId target = follow(instantiated);
+
+    if (target->persistent)
+        return true;
+
     // Type function application will happily give us the exact same type if
     // there are e.g. generic saturatedTypeArguments that go unused.
     bool needsClone = follow(petv->fn.type) == target;
@@ -678,7 +688,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // The application is not recursive, so we need to queue up application of
     // any child type function instantiations within the result in order for it
     // to be complete.
-    InstantiationQueuer queuer{this, signature};
+    InstantiationQueuer queuer{this, signature, constraint->scope};
     queuer.traverse(target);
 
     instantiatedAliases[signature] = target;
@@ -758,30 +768,40 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
     return blockedIt != blockedConstraints.end() && blockedIt->second > 0;
 }
 
-void ConstraintSolver::unify(TypeId subType, TypeId superType)
+void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> scope)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, Location{}, Covariant, sharedState};
+    Unifier u{arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
 
     u.tryUnify(subType, superType);
     u.log.commit();
 }
 
-void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack)
+void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, Location{}, Covariant, sharedState};
+    Unifier u{arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
 
     u.tryUnify(subPack, superPack);
     u.log.commit();
 }
 
-void ConstraintSolver::pushConstraint(ConstraintV cv)
+void ConstraintSolver::pushConstraint(ConstraintV cv, NotNull<Scope> scope)
 {
-    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(std::move(cv));
+    std::unique_ptr<Constraint> c = std::make_unique<Constraint>(std::move(cv), scope);
     NotNull<Constraint> borrow = NotNull(c.get());
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.push_back(borrow);
+}
+
+void ConstraintSolver::reportError(TypeErrorData&& data, const Location& location)
+{
+    errors.emplace_back(location, std::move(data));
+}
+
+void ConstraintSolver::reportError(TypeError e)
+{
+    errors.emplace_back(std::move(e));
 }
 
 } // namespace Luau

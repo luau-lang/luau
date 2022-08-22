@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Anyification.h"
 #include "Luau/Predicate.h"
 #include "Luau/Error.h"
 #include "Luau/Module.h"
@@ -15,6 +16,8 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 
 namespace Luau
 {
@@ -33,37 +36,6 @@ const AstStat* getFallthrough(const AstStat* node);
 
 struct UnifierOptions;
 struct Unifier;
-
-// A substitution which replaces free types by any
-struct Anyification : Substitution
-{
-    Anyification(TypeArena* arena, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
-        : Substitution(TxnLog::empty(), arena)
-        , iceHandler(iceHandler)
-        , anyType(anyType)
-        , anyTypePack(anyTypePack)
-    {
-    }
-
-    InternalErrorReporter* iceHandler;
-
-    TypeId anyType;
-    TypePackId anyTypePack;
-    bool normalizationTooComplex = false;
-    bool isDirty(TypeId ty) override;
-    bool isDirty(TypePackId tp) override;
-    TypeId clean(TypeId ty) override;
-    TypePackId clean(TypePackId tp) override;
-
-    bool ignoreChildren(TypeId ty) override
-    {
-        return ty->persistent;
-    }
-    bool ignoreChildren(TypePackId ty) override
-    {
-        return ty->persistent;
-    }
-};
 
 struct GenericTypeDefinitions
 {
@@ -192,32 +164,32 @@ struct TypeChecker
     /** Attempt to unify the types.
      * Treat any failures as type errors in the final typecheck report.
      */
-    bool unify(TypeId subTy, TypeId superTy, const Location& location);
-    bool unify(TypeId subTy, TypeId superTy, const Location& location, const UnifierOptions& options);
-    bool unify(TypePackId subTy, TypePackId superTy, const Location& location, CountMismatch::Context ctx = CountMismatch::Context::Arg);
+    bool unify(TypeId subTy, TypeId superTy, const ScopePtr& scope, const Location& location);
+    bool unify(TypeId subTy, TypeId superTy, const ScopePtr& scope, const Location& location, const UnifierOptions& options);
+    bool unify(TypePackId subTy, TypePackId superTy, const ScopePtr& scope, const Location& location, CountMismatch::Context ctx = CountMismatch::Context::Arg);
 
     /** Attempt to unify the types.
      * If this fails, and the subTy type can be instantiated, do so and try unification again.
      */
-    bool unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId subTy, TypeId superTy, const Location& location);
-    void unifyWithInstantiationIfNeeded(const ScopePtr& scope, TypeId subTy, TypeId superTy, Unifier& state);
+    bool unifyWithInstantiationIfNeeded(TypeId subTy, TypeId superTy, const ScopePtr& scope, const Location& location);
+    void unifyWithInstantiationIfNeeded(TypeId subTy, TypeId superTy, const ScopePtr& scope, Unifier& state);
 
     /** Attempt to unify.
      * If there are errors, undo everything and return the errors.
      * If there are no errors, commit and return an empty error vector.
      */
     template<typename Id>
-    ErrorVec tryUnify_(Id subTy, Id superTy, const Location& location);
-    ErrorVec tryUnify(TypeId subTy, TypeId superTy, const Location& location);
-    ErrorVec tryUnify(TypePackId subTy, TypePackId superTy, const Location& location);
+    ErrorVec tryUnify_(Id subTy, Id superTy, const ScopePtr& scope, const Location& location);
+    ErrorVec tryUnify(TypeId subTy, TypeId superTy, const ScopePtr& scope, const Location& location);
+    ErrorVec tryUnify(TypePackId subTy, TypePackId superTy, const ScopePtr& scope, const Location& location);
 
     // Test whether the two type vars unify.  Never commits the result.
     template<typename Id>
-    ErrorVec canUnify_(Id subTy, Id superTy, const Location& location);
-    ErrorVec canUnify(TypeId subTy, TypeId superTy, const Location& location);
-    ErrorVec canUnify(TypePackId subTy, TypePackId superTy, const Location& location);
+    ErrorVec canUnify_(Id subTy, Id superTy, const ScopePtr& scope, const Location& location);
+    ErrorVec canUnify(TypeId subTy, TypeId superTy, const ScopePtr& scope, const Location& location);
+    ErrorVec canUnify(TypePackId subTy, TypePackId superTy, const ScopePtr& scope, const Location& location);
 
-    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const Location& location);
+    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const ScopePtr& scope, const Location& location);
 
     std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location, bool addErrors);
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors);
@@ -286,7 +258,7 @@ private:
     void reportErrorCodeTooComplex(const Location& location);
 
 private:
-    Unifier mkUnifier(const Location& location);
+    Unifier mkUnifier(const ScopePtr& scope, const Location& location);
 
     // These functions are only safe to call when we are in the process of typechecking a module.
 
@@ -308,7 +280,7 @@ public:
     std::pair<std::optional<TypeId>, bool> pickTypesFromSense(TypeId type, bool sense);
 
 private:
-    TypeId unionOfTypes(TypeId a, TypeId b, const Location& location, bool unifyFreeTypes = true);
+    TypeId unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, const Location& location, bool unifyFreeTypes = true);
 
     // ex
     //      TypeId id = addType(FreeTypeVar());

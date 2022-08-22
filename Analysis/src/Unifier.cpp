@@ -20,8 +20,8 @@ LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAG(LuauQuantifyConstrained)
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 
 namespace Luau
 {
@@ -273,6 +273,9 @@ TypePackId Widen::clean(TypePackId)
 
 bool Widen::ignoreChildren(TypeId ty)
 {
+    if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+        return true;
+
     return !log->is<UnionTypeVar>(ty);
 }
 
@@ -314,9 +317,10 @@ static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMat
     return std::nullopt;
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
+Unifier::Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
     : types(types)
     , mode(mode)
+    , scope(scope)
     , log(parentLog)
     , location(location)
     , variance(variance)
@@ -370,25 +374,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     if (superFree && subFree && superFree->level.subsumes(subFree->level))
     {
-        occursCheck(subTy, superTy);
-
-        // The occurrence check might have caused superTy no longer to be a free type
-        bool occursFailed = bool(log.getMutable<ErrorTypeVar>(subTy));
-
-        if (!occursFailed)
-        {
+        if (!occursCheck(subTy, superTy))
             log.replace(subTy, BoundTypeVar(superTy));
-        }
 
         return;
     }
     else if (superFree && subFree)
     {
-        occursCheck(superTy, subTy);
-
-        bool occursFailed = bool(log.getMutable<ErrorTypeVar>(superTy));
-
-        if (!occursFailed)
+        if (!occursCheck(superTy, subTy))
         {
             if (superFree->level.subsumes(subFree->level))
             {
@@ -402,24 +395,18 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     }
     else if (superFree)
     {
-        TypeLevel superLevel = superFree->level;
-
-        occursCheck(superTy, subTy);
-        bool occursFailed = bool(log.getMutable<ErrorTypeVar>(superTy));
-
         // Unification can't change the level of a generic.
         auto subGeneric = log.getMutable<GenericTypeVar>(subTy);
-        if (subGeneric && !subGeneric->level.subsumes(superLevel))
+        if (subGeneric && !subGeneric->level.subsumes(superFree->level))
         {
             // TODO: a more informative error message? CLI-39912
             reportError(TypeError{location, GenericError{"Generic subtype escaping scope"}});
             return;
         }
 
-        // The occurrence check might have caused superTy no longer to be a free type
-        if (!occursFailed)
+        if (!occursCheck(superTy, subTy))
         {
-            promoteTypeLevels(log, types, superLevel, subTy);
+            promoteTypeLevels(log, types, superFree->level, subTy);
 
             Widen widen{types};
             log.replace(superTy, BoundTypeVar(widen(subTy)));
@@ -437,11 +424,6 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
                 return;
         }
 
-        TypeLevel subLevel = subFree->level;
-
-        occursCheck(subTy, superTy);
-        bool occursFailed = bool(log.getMutable<ErrorTypeVar>(subTy));
-
         // Unification can't change the level of a generic.
         auto superGeneric = log.getMutable<GenericTypeVar>(superTy);
         if (superGeneric && !superGeneric->level.subsumes(subFree->level))
@@ -451,9 +433,9 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
             return;
         }
 
-        if (!occursFailed)
+        if (!occursCheck(subTy, superTy))
         {
-            promoteTypeLevels(log, types, subLevel, superTy);
+            promoteTypeLevels(log, types, subFree->level, superTy);
             log.replace(subTy, BoundTypeVar(superTy));
         }
 
@@ -1033,9 +1015,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
     if (log.getMutable<Unifiable::Free>(superTp))
     {
-        occursCheck(superTp, subTp);
-
-        if (!log.getMutable<ErrorTypeVar>(superTp))
+        if (!occursCheck(superTp, subTp))
         {
             Widen widen{types};
             log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
@@ -1043,9 +1023,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     }
     else if (log.getMutable<Unifiable::Free>(subTp))
     {
-        occursCheck(subTp, superTp);
-
-        if (!log.getMutable<ErrorTypeVar>(subTp))
+        if (!occursCheck(subTp, superTp))
         {
             log.replace(subTp, Unifiable::Bound<TypePackId>(superTp));
         }
@@ -2106,20 +2084,18 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel de
         {
             TypePackId tailPack = follow(*t);
 
-            if (log.get<FreeTypePack>(tailPack))
-                occursCheck(tailPack, subTy);
+            if (log.get<FreeTypePack>(tailPack) && occursCheck(tailPack, subTy))
+                return;
 
             FreeTypePack* freeTailPack = log.getMutable<FreeTypePack>(tailPack);
             if (!freeTailPack)
                 return;
 
-            TypeLevel level = FFlag::LuauQuantifyConstrained ? demotedLevel : freeTailPack->level;
-
             TypePack* tp = getMutable<TypePack>(log.replace(tailPack, TypePack{}));
 
             for (; subIter != subEndIter; ++subIter)
             {
-                tp->head.push_back(types->addType(ConstrainedTypeVar{level, {follow(*subIter)}}));
+                tp->head.push_back(types->addType(ConstrainedTypeVar{demotedLevel, {follow(*subIter)}}));
             }
 
             tp->tail = subIter.tail();
@@ -2180,32 +2156,35 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel de
     }
 }
 
-void Unifier::occursCheck(TypeId needle, TypeId haystack)
+bool Unifier::occursCheck(TypeId needle, TypeId haystack)
 {
     sharedState.tempSeenTy.clear();
 
     return occursCheck(sharedState.tempSeenTy, needle, haystack);
 }
 
-void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
+bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
     RecursionLimiter _ra(&sharedState.counters.recursionCount,
         FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
 
+    bool occurrence = false;
+
     auto check = [&](TypeId tv) {
-        occursCheck(seen, needle, tv);
+        if (occursCheck(seen, needle, tv))
+            occurrence = true;
     };
 
     needle = log.follow(needle);
     haystack = log.follow(haystack);
 
     if (seen.find(haystack))
-        return;
+        return false;
 
     seen.insert(haystack);
 
     if (log.getMutable<Unifiable::Error>(needle))
-        return;
+        return false;
 
     if (!log.getMutable<Unifiable::Free>(needle))
         ice("Expected needle to be free");
@@ -2215,11 +2194,11 @@ void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
         reportError(TypeError{location, OccursCheckFailed{}});
         log.replace(needle, *getSingletonTypes().errorRecoveryType());
 
-        return;
+        return true;
     }
 
     if (log.getMutable<FreeTypeVar>(haystack))
-        return;
+        return false;
     else if (auto a = log.getMutable<UnionTypeVar>(haystack))
     {
         for (TypeId ty : a->options)
@@ -2235,27 +2214,29 @@ void Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
         for (TypeId ty : a->parts)
             check(ty);
     }
+
+    return occurrence;
 }
 
-void Unifier::occursCheck(TypePackId needle, TypePackId haystack)
+bool Unifier::occursCheck(TypePackId needle, TypePackId haystack)
 {
     sharedState.tempSeenTp.clear();
 
     return occursCheck(sharedState.tempSeenTp, needle, haystack);
 }
 
-void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
+bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack)
 {
     needle = log.follow(needle);
     haystack = log.follow(haystack);
 
     if (seen.find(haystack))
-        return;
+        return false;
 
     seen.insert(haystack);
 
     if (log.getMutable<Unifiable::Error>(needle))
-        return;
+        return false;
 
     if (!log.getMutable<Unifiable::Free>(needle))
         ice("Expected needle pack to be free");
@@ -2270,7 +2251,7 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
             reportError(TypeError{location, OccursCheckFailed{}});
             log.replace(needle, *getSingletonTypes().errorRecoveryTypePack());
 
-            return;
+            return true;
         }
 
         if (auto a = get<TypePack>(haystack); a && a->tail)
@@ -2281,11 +2262,13 @@ void Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 
         break;
     }
+
+    return false;
 }
 
 Unifier Unifier::makeChildUnifier()
 {
-    Unifier u = Unifier{types, mode, location, variance, sharedState, &log};
+    Unifier u = Unifier{types, mode, scope, location, variance, sharedState, &log};
     u.anyIsTop = anyIsTop;
     return u;
 }

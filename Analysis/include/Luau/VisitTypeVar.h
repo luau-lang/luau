@@ -69,12 +69,14 @@ struct GenericTypeVarVisitor
     using Set = S;
 
     Set seen;
+    bool skipBoundTypes = false;
     int recursionCounter = 0;
 
     GenericTypeVarVisitor() = default;
 
-    explicit GenericTypeVarVisitor(Set seen)
+    explicit GenericTypeVarVisitor(Set seen, bool skipBoundTypes = false)
         : seen(std::move(seen))
+        , skipBoundTypes(skipBoundTypes)
     {
     }
 
@@ -199,7 +201,9 @@ struct GenericTypeVarVisitor
 
         if (auto btv = get<BoundTypeVar>(ty))
         {
-            if (visit(ty, *btv))
+            if (skipBoundTypes)
+                traverse(btv->boundTo);
+            else if (visit(ty, *btv))
                 traverse(btv->boundTo);
         }
         else if (auto ftv = get<FreeTypeVar>(ty))
@@ -229,7 +233,11 @@ struct GenericTypeVarVisitor
         else if (auto ttv = get<TableTypeVar>(ty))
         {
             // Some visitors want to see bound tables, that's why we traverse the original type
-            if (visit(ty, *ttv))
+            if (skipBoundTypes && ttv->boundTo)
+            {
+                traverse(*ttv->boundTo);
+            }
+            else if (visit(ty, *ttv))
             {
                 if (ttv->boundTo)
                 {
@@ -394,13 +402,17 @@ struct GenericTypeVarVisitor
  */
 struct TypeVarVisitor : GenericTypeVarVisitor<std::unordered_set<void*>>
 {
+    explicit TypeVarVisitor(bool skipBoundTypes = false)
+        : GenericTypeVarVisitor{{}, skipBoundTypes}
+    {
+    }
 };
 
 /// Visit each type under a given type.  Each type will only be checked once even if there are multiple paths to it.
 struct TypeVarOnceVisitor : GenericTypeVarVisitor<DenseHashSet<void*>>
 {
-    TypeVarOnceVisitor()
-        : GenericTypeVarVisitor{DenseHashSet<void*>{nullptr}}
+    explicit TypeVarOnceVisitor(bool skipBoundTypes = false)
+        : GenericTypeVarVisitor{DenseHashSet<void*>{nullptr}, skipBoundTypes}
     {
     }
 };

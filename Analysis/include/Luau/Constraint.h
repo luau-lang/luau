@@ -40,7 +40,6 @@ struct GeneralizationConstraint
 {
     TypeId generalizedType;
     TypeId sourceType;
-    Scope* scope;
 };
 
 // subType ~ inst superType
@@ -85,13 +84,14 @@ using ConstraintPtr = std::unique_ptr<struct Constraint>;
 
 struct Constraint
 {
-    explicit Constraint(ConstraintV&& c);
+    Constraint(ConstraintV&& c, NotNull<Scope> scope);
 
     Constraint(const Constraint&) = delete;
     Constraint& operator=(const Constraint&) = delete;
 
     ConstraintV c;
     std::vector<NotNull<Constraint>> dependencies;
+    NotNull<Scope> scope;
 };
 
 inline Constraint& asMutable(const Constraint& c)

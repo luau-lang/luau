@@ -39,6 +39,16 @@ class Node(svg.Node):
     def details(self, root):
         return "{} ({:,} bytes, {:.1%}); self: {:,} bytes in {:,} objects".format(self.name, self.width, self.width / root.width, self.size, self.count)
 
+def getkey(heap, obj, key):
+    pairs = obj.get("pairs", [])
+    for i in range(0, len(pairs), 2):
+        if pairs[i] and heap[pairs[i]]["type"] == "string" and heap[pairs[i]]["data"] == key:
+            if pairs[i + 1] and heap[pairs[i + 1]]["type"] == "string":
+                return heap[pairs[i + 1]]["data"]
+            else:
+                return None
+    return None
+
 # load files
 if arguments.snapshotnew == None:
     dumpold = None
@@ -49,6 +59,8 @@ else:
         dumpold = json.load(f)
     with open(arguments.snapshotnew) as f:
         dump = json.load(f)
+
+heap = dump["objects"]
 
 # reachability analysis: how much of the heap is reachable from roots?
 visited = set()
@@ -66,7 +78,7 @@ while offset < len(queue):
         continue
 
     visited.add(addr)
-    obj = dump["objects"][addr]
+    obj = heap[addr]
 
     if not dumpold or not addr in dumpold["objects"]:
         node.count += 1
@@ -75,17 +87,27 @@ while offset < len(queue):
 
     if obj["type"] == "table":
         pairs = obj.get("pairs", [])
+        weakkey = False
+        weakval = False
+
+        if "metatable" in obj:
+            modemt = getkey(heap, heap[obj["metatable"]], "__mode")
+            if modemt:
+                weakkey = "k" in modemt
+                weakval = "v" in modemt
 
         for i in range(0, len(pairs), 2):
             key = pairs[i+0]
             val = pairs[i+1]
-            if key and val and dump["objects"][key]["type"] == "string":
+            if key and heap[key]["type"] == "string":
+                # string keys are always strong
                 queue.append((key, node))
-                queue.append((val, node.child(dump["objects"][key]["data"])))
+                if val and not weakval:
+                    queue.append((val, node.child(heap[key]["data"])))
             else:
-                if key:
+                if key and not weakkey:
                     queue.append((key, node))
-                if val:
+                if val and not weakval:
                     queue.append((val, node))
 
         for a in obj.get("array", []):
@@ -97,7 +119,7 @@ while offset < len(queue):
 
         source = ""
         if "proto" in obj:
-            proto = dump["objects"][obj["proto"]]
+            proto = heap[obj["proto"]]
             if "source" in proto:
                 source = proto["source"]
 
@@ -110,8 +132,16 @@ while offset < len(queue):
             queue.append((obj["metatable"], node.child("__meta")))
     elif obj["type"] == "thread":
         queue.append((obj["env"], node.child("__env")))
-        for a in obj.get("stack", []):
-            queue.append((a, node.child("__stack")))
+        stack = obj.get("stack")
+        stacknames = obj.get("stacknames", [])
+        stacknode = node.child("__stack")
+        framenode = None
+        for i in range(len(stack)):
+            name = stacknames[i] if stacknames else None
+            if name and name.startswith("frame:"):
+                framenode = stacknode.child(name[6:])
+                name = None
+            queue.append((stack[i], framenode.child(name) if framenode and name else framenode or stacknode))
     elif obj["type"] == "proto":
         for a in obj.get("constants", []):
             queue.append((a, node))

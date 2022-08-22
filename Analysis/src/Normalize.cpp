@@ -15,7 +15,6 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauFixNormalizationOfCyclicUnions, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAG(LuauQuantifyConstrained)
 
 namespace Luau
 {
@@ -55,11 +54,11 @@ struct Replacer
 
 } // anonymous namespace
 
-bool isSubtype(TypeId subTy, TypeId superTy, InternalErrorReporter& ice)
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Unifier u{&arena, Mode::Strict, Location{}, Covariant, sharedState};
+    Unifier u{&arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
     u.anyIsTop = true;
 
     u.tryUnify(subTy, superTy);
@@ -67,11 +66,11 @@ bool isSubtype(TypeId subTy, TypeId superTy, InternalErrorReporter& ice)
     return ok;
 }
 
-bool isSubtype(TypePackId subPack, TypePackId superPack, InternalErrorReporter& ice)
+bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Unifier u{&arena, Mode::Strict, Location{}, Covariant, sharedState};
+    Unifier u{&arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
     u.anyIsTop = true;
 
     u.tryUnify(subPack, superPack);
@@ -134,13 +133,15 @@ struct Normalize final : TypeVarVisitor
 {
     using TypeVarVisitor::Set;
 
-    Normalize(TypeArena& arena, InternalErrorReporter& ice)
+    Normalize(TypeArena& arena, NotNull<Scope> scope, InternalErrorReporter& ice)
         : arena(arena)
+        , scope(scope)
         , ice(ice)
     {
     }
 
     TypeArena& arena;
+    NotNull<Scope> scope;
     InternalErrorReporter& ice;
 
     int iterationLimit = 0;
@@ -162,7 +163,8 @@ struct Normalize final : TypeVarVisitor
         // It should never be the case that this TypeVar is normal, but is bound to a non-normal type, except in nontrivial cases.
         LUAU_ASSERT(!ty->normal || ty->normal == btv.boundTo->normal);
 
-        asMutable(ty)->normal = btv.boundTo->normal;
+        if (!ty->normal)
+            asMutable(ty)->normal = btv.boundTo->normal;
         return !ty->normal;
     }
 
@@ -214,22 +216,7 @@ struct Normalize final : TypeVarVisitor
             traverse(part);
 
         std::vector<TypeId> newParts = normalizeUnion(parts);
-
-        if (FFlag::LuauQuantifyConstrained)
-        {
-            ctv->parts = std::move(newParts);
-        }
-        else
-        {
-            const bool normal = areNormal(newParts, seen, ice);
-
-            if (newParts.size() == 1)
-                *asMutable(ty) = BoundTypeVar{newParts[0]};
-            else
-                *asMutable(ty) = UnionTypeVar{std::move(newParts)};
-
-            asMutable(ty)->normal = normal;
-        }
+        ctv->parts = std::move(newParts);
 
         return false;
     }
@@ -287,12 +274,7 @@ struct Normalize final : TypeVarVisitor
         }
 
         // An unsealed table can never be normal, ditto for free tables iff the type it is bound to is also not normal.
-        if (FFlag::LuauQuantifyConstrained)
-        {
-            if (ttv.state == TableState::Generic || ttv.state == TableState::Sealed || (ttv.state == TableState::Free && follow(ty)->normal))
-                asMutable(ty)->normal = normal;
-        }
-        else
+        if (ttv.state == TableState::Generic || ttv.state == TableState::Sealed || (ttv.state == TableState::Free && follow(ty)->normal))
             asMutable(ty)->normal = normal;
 
         return false;
@@ -517,9 +499,9 @@ struct Normalize final : TypeVarVisitor
 
         for (TypeId& part : result)
         {
-            if (isSubtype(ty, part, ice))
+            if (isSubtype(ty, part, scope, ice))
                 return; // no need to do anything
-            else if (isSubtype(part, ty, ice))
+            else if (isSubtype(part, ty, scope, ice))
             {
                 part = ty; // replace the less general type by the more general one
                 return;
@@ -571,12 +553,12 @@ struct Normalize final : TypeVarVisitor
             bool merged = false;
             for (TypeId& part : result->parts)
             {
-                if (isSubtype(part, ty, ice))
+                if (isSubtype(part, ty, scope, ice))
                 {
                     merged = true;
                     break; // no need to do anything
                 }
-                else if (isSubtype(ty, part, ice))
+                else if (isSubtype(ty, part, scope, ice))
                 {
                     merged = true;
                     part = ty; // replace the less general type by the more general one
@@ -709,13 +691,13 @@ struct Normalize final : TypeVarVisitor
 /**
  * @returns A tuple of TypeId and a success indicator. (true indicates that the normalization completed successfully)
  */
-std::pair<TypeId, bool> normalize(TypeId ty, TypeArena& arena, InternalErrorReporter& ice)
+std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Scope> scope, TypeArena& arena, InternalErrorReporter& ice)
 {
     CloneState state;
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(ty, arena, state);
 
-    Normalize n{arena, ice};
+    Normalize n{arena, scope, ice};
     n.traverse(ty);
 
     return {ty, !n.limitExceeded};
@@ -725,29 +707,39 @@ std::pair<TypeId, bool> normalize(TypeId ty, TypeArena& arena, InternalErrorRepo
 // reclaim memory used by wantonly allocated intermediate types here.
 // The main wrinkle here is that we don't want clone() to copy a type if the source and dest
 // arena are the same.
+std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Module> module, InternalErrorReporter& ice)
+{
+    return normalize(ty, NotNull{module->getModuleScope().get()}, module->internalTypes, ice);
+}
+
 std::pair<TypeId, bool> normalize(TypeId ty, const ModulePtr& module, InternalErrorReporter& ice)
 {
-    return normalize(ty, module->internalTypes, ice);
+    return normalize(ty, NotNull{module.get()}, ice);
 }
 
 /**
  * @returns A tuple of TypeId and a success indicator. (true indicates that the normalization completed successfully)
  */
-std::pair<TypePackId, bool> normalize(TypePackId tp, TypeArena& arena, InternalErrorReporter& ice)
+std::pair<TypePackId, bool> normalize(TypePackId tp, NotNull<Scope> scope, TypeArena& arena, InternalErrorReporter& ice)
 {
     CloneState state;
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(tp, arena, state);
 
-    Normalize n{arena, ice};
+    Normalize n{arena, scope, ice};
     n.traverse(tp);
 
     return {tp, !n.limitExceeded};
 }
 
+std::pair<TypePackId, bool> normalize(TypePackId tp, NotNull<Module> module, InternalErrorReporter& ice)
+{
+    return normalize(tp, NotNull{module->getModuleScope().get()}, module->internalTypes, ice);
+}
+
 std::pair<TypePackId, bool> normalize(TypePackId tp, const ModulePtr& module, InternalErrorReporter& ice)
 {
-    return normalize(tp, module->internalTypes, ice);
+    return normalize(tp, NotNull{module.get()}, ice);
 }
 
 } // namespace Luau

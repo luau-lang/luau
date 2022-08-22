@@ -261,8 +261,6 @@ L1: RETURN R0 0
 
 TEST_CASE("ForBytecode")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
-
     // basic for loop: variable directly refers to internal iteration index (R2)
     CHECK_EQ("\n" + compileFunction0("for i=1,5 do print(i) end"), R"(
 LOADN R2 1
@@ -349,8 +347,6 @@ RETURN R0 0
 
 TEST_CASE("ForBytecodeBuiltin")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
-
     // we generally recognize builtins like pairs/ipairs and emit special opcodes
     CHECK_EQ("\n" + compileFunction0("for k,v in ipairs({}) do end"), R"(
 GETIMPORT R0 1
@@ -2117,6 +2113,69 @@ TEST_CASE("RecursionParse")
     {
         CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
     }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("a(", 1500) + "42" + rep(")", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "return " + rep("{", 1500) + "42" + rep("}", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("while true do ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("for i=1,1 do ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
+    }
+
+#if 0
+    // This currently requires too much stack space on MSVC/x64 and crashes with stack overflow at recursion depth 935
+    try
+    {
+        Luau::compileOrThrow(bcb, rep("function a() ", 1500) + "print()" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
+    }
+
+    try
+    {
+        Luau::compileOrThrow(bcb, "return " + rep("function() return ", 1500) + "42" + rep(" end", 1500));
+        CHECK(!"Expected exception");
+    }
+    catch (std::exception& e)
+    {
+        CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
+    }
+#endif
 }
 
 TEST_CASE("ArrayIndexLiteral")
@@ -2163,8 +2222,6 @@ L1: RETURN R3 -1
 
 TEST_CASE("UpvaluesLoopsBytecode")
 {
-    ScopedFastFlag sff("LuauCompileNoIpairs", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 function test()
     for i=1,10 do
@@ -2780,46 +2837,44 @@ RETURN R0 0
 
 TEST_CASE("AssignmentConflict")
 {
+    ScopedFastFlag sff("LuauCompileOptimalAssignment", true);
+
     // assignments are left to right
     CHECK_EQ("\n" + compileFunction0("local a, b a, b = 1, 2"), R"(
 LOADNIL R0
 LOADNIL R1
-LOADN R2 1
-LOADN R3 2
-MOVE R0 R2
-MOVE R1 R3
+LOADN R0 1
+LOADN R1 2
 RETURN R0 0
 )");
 
-    // if assignment of a local invalidates a direct register reference in later assignments, the value is evacuated to a temp register
+    // if assignment of a local invalidates a direct register reference in later assignments, the value is assigned to a temp register first
     CHECK_EQ("\n" + compileFunction0("local a a, a[1] = 1, 2"), R"(
 LOADNIL R0
-MOVE R1 R0
-LOADN R2 1
-LOADN R3 2
-MOVE R0 R2
-SETTABLEN R3 R1 1
+LOADN R1 1
+LOADN R2 2
+SETTABLEN R2 R0 1
+MOVE R0 R1
 RETURN R0 0
 )");
 
     // note that this doesn't happen if the local assignment happens last naturally
     CHECK_EQ("\n" + compileFunction0("local a a[1], a = 1, 2"), R"(
 LOADNIL R0
-LOADN R1 1
-LOADN R2 2
-SETTABLEN R1 R0 1
-MOVE R0 R2
+LOADN R2 1
+LOADN R1 2
+SETTABLEN R2 R0 1
+MOVE R0 R1
 RETURN R0 0
 )");
 
     // this will happen if assigned register is used in any table expression, including as an object...
     CHECK_EQ("\n" + compileFunction0("local a a, a.foo = 1, 2"), R"(
 LOADNIL R0
-MOVE R1 R0
-LOADN R2 1
-LOADN R3 2
-MOVE R0 R2
-SETTABLEKS R3 R1 K0
+LOADN R1 1
+LOADN R2 2
+SETTABLEKS R2 R0 K0
+MOVE R0 R1
 RETURN R0 0
 )");
 
@@ -2827,22 +2882,20 @@ RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local a a, foo[a] = 1, 2"), R"(
 LOADNIL R0
 GETIMPORT R1 1
-MOVE R2 R0
-LOADN R3 1
-LOADN R4 2
-MOVE R0 R3
-SETTABLE R4 R1 R2
+LOADN R2 1
+LOADN R3 2
+SETTABLE R3 R1 R0
+MOVE R0 R2
 RETURN R0 0
 )");
 
     // ... or both ...
     CHECK_EQ("\n" + compileFunction0("local a a, a[a] = 1, 2"), R"(
 LOADNIL R0
-MOVE R1 R0
-LOADN R2 1
-LOADN R3 2
-MOVE R0 R2
-SETTABLE R3 R1 R1
+LOADN R1 1
+LOADN R2 2
+SETTABLE R2 R0 R0
+MOVE R0 R1
 RETURN R0 0
 )");
 
@@ -2850,14 +2903,12 @@ RETURN R0 0
     CHECK_EQ("\n" + compileFunction0("local a, b a, b, a[b] = 1, 2, 3"), R"(
 LOADNIL R0
 LOADNIL R1
-MOVE R2 R0
-MOVE R3 R1
-LOADN R4 1
-LOADN R5 2
-LOADN R6 3
-MOVE R0 R4
-MOVE R1 R5
-SETTABLE R6 R2 R3
+LOADN R2 1
+LOADN R3 2
+LOADN R4 3
+SETTABLE R4 R0 R1
+MOVE R0 R2
+MOVE R1 R3
 RETURN R0 0
 )");
 
@@ -2867,10 +2918,9 @@ RETURN R0 0
 LOADNIL R0
 GETIMPORT R1 1
 ADDK R2 R0 K2
-LOADN R3 1
-LOADN R4 2
-MOVE R0 R3
-SETTABLE R4 R1 R2
+LOADN R0 1
+LOADN R3 2
+SETTABLE R3 R1 R2
 RETURN R0 0
 )");
 }
@@ -3849,8 +3899,6 @@ RETURN R0 1
 
 TEST_CASE("SharedClosure")
 {
-    ScopedFastFlag sff("LuauCompileFreeReassign", true);
-
     // closures can be shared even if functions refer to upvalues, as long as upvalues are top-level
     CHECK_EQ("\n" + compileFunction(R"(
 local val = ...
@@ -6063,6 +6111,8 @@ return
     math.clamp(-1, 0, 1),
     math.sign(77),
     math.round(7.6),
+    bit32.extract(-1, 31),
+    bit32.replace(100, 1, 0),
     (type("fin"))
 )",
                         0, 2),
@@ -6114,8 +6164,10 @@ LOADK R43 K2
 LOADN R44 0
 LOADN R45 1
 LOADN R46 8
-LOADK R47 K3
-RETURN R0 48
+LOADN R47 1
+LOADN R48 101
+LOADK R49 K3
+RETURN R0 50
 )");
 }
 
@@ -6126,7 +6178,8 @@ return
     math.abs(),
     math.max(1, true),
     string.byte("abc", 42),
-    bit32.rshift(10, 42)
+    bit32.rshift(10, 42),
+    bit32.extract(1, 2, "3")
 )",
                         0, 2),
         R"(
@@ -6147,8 +6200,14 @@ L2: LOADN R4 10
 FASTCALL2K 39 R4 K7 L3
 LOADK R5 K7
 GETIMPORT R3 13
-CALL R3 2 -1
-L3: RETURN R0 -1
+CALL R3 2 1
+L3: LOADN R5 1
+LOADN R6 2
+LOADK R7 K14
+FASTCALL 34 L4
+GETIMPORT R4 16
+CALL R4 3 -1
+L4: RETURN R0 -1
 )");
 }
 
@@ -6205,8 +6264,6 @@ RETURN R0 1
 
 TEST_CASE("LocalReassign")
 {
-    ScopedFastFlag sff("LuauCompileFreeReassign", true);
-
     // locals can be re-assigned and the register gets reused
     CHECK_EQ("\n" + compileFunction0(R"(
 local function test(a, b)
@@ -6291,6 +6348,252 @@ NEWCLOSURE R2 P0
 CAPTURE VAL R0
 CAPTURE VAL R1
 RETURN R2 1
+)");
+}
+
+TEST_CASE("MultipleAssignments")
+{
+    ScopedFastFlag sff("LuauCompileOptimalAssignment", true);
+
+    // order of assignments is left to right
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b
+        a, b = f(1), f(2)
+    )"),
+        R"(
+LOADNIL R0
+LOADNIL R1
+GETIMPORT R2 1
+LOADN R3 1
+CALL R2 1 1
+MOVE R0 R2
+GETIMPORT R2 1
+LOADN R3 2
+CALL R2 1 1
+MOVE R1 R2
+RETURN R0 0
+)");
+
+    // this includes table assignments
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local t
+        t[1], t[2] = 3, 4
+    )"),
+        R"(
+LOADNIL R0
+LOADNIL R1
+LOADN R2 3
+LOADN R3 4
+SETTABLEN R2 R0 1
+SETTABLEN R3 R1 2
+RETURN R0 0
+)");
+
+    // semantically, we evaluate the right hand side first; this allows us to e.g swap elements in a table easily
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local t = ...
+        t[1], t[2] = t[2], t[1]
+    )"),
+        R"(
+GETVARARGS R0 1
+GETTABLEN R1 R0 2
+GETTABLEN R2 R0 1
+SETTABLEN R1 R0 1
+SETTABLEN R2 R0 2
+RETURN R0 0
+)");
+
+    // however, we need to optimize local assignments; to do this well, we need to handle assignment conflicts
+    // let's first go through a few cases where there are no conflicts:
+
+    // when multiple assignments have no conflicts (all local vars are read after being assigned), codegen is the same as a series of single
+    // assignments
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local xm1, x, xp1, xi = ...
+
+        xm1,x,xp1,xi = x,xp1,xp1+1,xi-1
+    )"),
+        R"(
+GETVARARGS R0 4
+MOVE R0 R1
+MOVE R1 R2
+ADDK R2 R2 K0
+SUBK R3 R3 K0
+RETURN R0 0
+)");
+
+    // similar example to above from a more complex case
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b, c, d, e, f, g, h, t1, t2 = ...
+
+        h, g, f, e, d, c, b, a = g, f, e, d + t1, c, b, a, t1 + t2
+    )"),
+        R"(
+GETVARARGS R0 10
+MOVE R7 R6
+MOVE R6 R5
+MOVE R5 R4
+ADD R4 R3 R8
+MOVE R3 R2
+MOVE R2 R1
+MOVE R1 R0
+ADD R0 R8 R9
+RETURN R0 0
+)");
+
+    // when locals have a conflict, we assign temporaries instead of locals, and at the end copy the values back
+    // the basic example of this is a swap/rotate
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = ...
+        a, b = b, a
+    )"),
+        R"(
+GETVARARGS R0 2
+MOVE R2 R1
+MOVE R1 R0
+MOVE R0 R2
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b, c = ...
+        a, b, c = c, a, b
+    )"),
+        R"(
+GETVARARGS R0 3
+MOVE R3 R2
+MOVE R4 R0
+MOVE R2 R1
+MOVE R0 R3
+MOVE R1 R4
+RETURN R0 0
+)");
+
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b, c = ...
+        a, b, c = b, c, a
+    )"),
+        R"(
+GETVARARGS R0 3
+MOVE R3 R1
+MOVE R1 R2
+MOVE R2 R0
+MOVE R0 R3
+RETURN R0 0
+)");
+
+    // multiple assignments with multcall handling - foo() evalutes to temporary registers and they are copied out to target
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b, c, d = ...
+        a, b, c, d = 1, foo()
+    )"),
+        R"(
+GETVARARGS R0 4
+LOADN R0 1
+GETIMPORT R4 1
+CALL R4 0 3
+MOVE R1 R4
+MOVE R2 R5
+MOVE R3 R6
+RETURN R0 0
+)");
+
+    // note that during this we still need to handle local reassignment, eg when table assignments are performed
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b, c, d = ...
+        a, b[a], c[d], d = 1, foo()
+    )"),
+        R"(
+GETVARARGS R0 4
+LOADN R4 1
+GETIMPORT R6 1
+CALL R6 0 3
+SETTABLE R6 R1 R0
+SETTABLE R7 R2 R3
+MOVE R0 R4
+MOVE R3 R8
+RETURN R0 0
+)");
+
+    // multiple assignments with multcall handling - foo evaluates to a single argument so all remaining locals are assigned to nil
+    // note that here we don't assign the locals directly, as this case is very rare so we use the similar code path as above
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b, c, d = ...
+        a, b, c, d = 1, foo
+    )"),
+        R"(
+GETVARARGS R0 4
+LOADN R0 1
+GETIMPORT R4 1
+LOADNIL R5
+LOADNIL R6
+MOVE R1 R4
+MOVE R2 R5
+MOVE R3 R6
+RETURN R0 0
+)");
+
+    // note that we also try to use locals as a source of assignment directly when assigning fields; this works using old local value when possible
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = ...
+        a[1], a[2] = b, b + 1
+    )"),
+        R"(
+GETVARARGS R0 2
+ADDK R2 R1 K0
+SETTABLEN R1 R0 1
+SETTABLEN R2 R0 2
+RETURN R0 0
+)");
+
+    // ... of course if the local is reassigned, we defer the assignment until later
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = ...
+        b, a[1] = 42, b
+    )"),
+        R"(
+GETVARARGS R0 2
+LOADN R2 42
+SETTABLEN R1 R0 1
+MOVE R1 R2
+RETURN R0 0
+)");
+
+    // when there are more expressions when values, we evalute them for side effects, but they also participate in conflict handling
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = ...
+        a, b = 1, 2, a + b
+    )"),
+        R"(
+GETVARARGS R0 2
+LOADN R2 1
+LOADN R3 2
+ADD R4 R0 R1
+MOVE R0 R2
+MOVE R1 R3
+RETURN R0 0
+)");
+}
+
+TEST_CASE("BuiltinExtractK")
+{
+    ScopedFastFlag sff("LuauCompileExtractK", true);
+
+    // below, K0 refers to a packed f+w constant for bit32.extractk builtin
+    // K1 and K2 refer to 1 and 3 and are only used during fallback path
+    CHECK_EQ("\n" + compileFunction0(R"(
+local v = ...
+
+return bit32.extract(v, 1, 3)
+)"), R"(
+GETVARARGS R0 1
+FASTCALL2K 59 R0 K0 L0
+MOVE R2 R0
+LOADK R3 K1
+LOADK R4 K2
+GETIMPORT R1 5
+CALL R1 3 -1
+L0: RETURN R1 -1
 )");
 }
 

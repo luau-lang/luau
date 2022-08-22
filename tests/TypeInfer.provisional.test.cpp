@@ -485,7 +485,6 @@ TEST_CASE_FIXTURE(Fixture, "constrained_is_level_dependent")
 {
     ScopedFastFlag sff[]{
         {"LuauLowerBoundsCalculation", true},
-        {"LuauQuantifyConstrained", true},
     };
 
     CheckResult result = check(R"(

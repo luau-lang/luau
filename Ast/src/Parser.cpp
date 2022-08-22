@@ -14,8 +14,6 @@
 LUAU_FASTINTVARIABLE(LuauRecursionLimit, 1000)
 LUAU_FASTINTVARIABLE(LuauParseErrorLimit, 100)
 
-LUAU_FASTFLAGVARIABLE(LuauParserFunctionKeywordAsTypeHelp, false)
-
 LUAU_FASTFLAGVARIABLE(LuauFixNamedFunctionParse, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseWrongNamedType, false)
 
@@ -181,7 +179,7 @@ Parser::Parser(const char* buffer, size_t bufferSize, AstNameTable& names, Alloc
     , lexer(buffer, bufferSize, names)
     , allocator(allocator)
     , recursionCounter(0)
-    , endMismatchSuspect(Location(), Lexeme::Eof)
+    , endMismatchSuspect(Lexeme(Location(), Lexeme::Eof))
     , localMap(AstName())
 {
     Function top;
@@ -661,7 +659,7 @@ AstStat* Parser::parseFunctionStat()
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
 
-    AstExprFunction* body = parseFunctionBody(hasself, matchFunction, debugname, {}).first;
+    AstExprFunction* body = parseFunctionBody(hasself, matchFunction, debugname, nullptr).first;
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 
@@ -690,7 +688,7 @@ AstStat* Parser::parseLocal()
 
         matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
 
-        auto [body, var] = parseFunctionBody(false, matchFunction, name.name, name);
+        auto [body, var] = parseFunctionBody(false, matchFunction, name.name, &name);
 
         matchRecoveryStopOnToken[Lexeme::ReservedEnd]--;
 
@@ -782,7 +780,7 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
     genericPacks.size = 0;
     genericPacks.data = nullptr;
 
-    Lexeme matchParen = lexer.current();
+    MatchLexeme matchParen = lexer.current();
     expectAndConsume('(', "function parameter list start");
 
     TempVector<Binding> args(scratchBinding);
@@ -838,7 +836,7 @@ AstStat* Parser::parseDeclaration(const Location& start)
 
         auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
 
-        Lexeme matchParen = lexer.current();
+        MatchLexeme matchParen = lexer.current();
 
         expectAndConsume('(', "global function declaration");
 
@@ -974,13 +972,13 @@ AstStat* Parser::parseCompoundAssignment(AstExpr* initial, AstExprBinary::Op op)
 // funcbody ::= `(' [parlist] `)' [`:' ReturnType] block end
 // parlist ::= bindinglist [`,' `...'] | `...'
 std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
-    bool hasself, const Lexeme& matchFunction, const AstName& debugname, std::optional<Name> localName)
+    bool hasself, const Lexeme& matchFunction, const AstName& debugname, const Name* localName)
 {
     Location start = matchFunction.location;
 
     auto [generics, genericPacks] = parseGenericTypeList(/* withDefaultValues= */ false);
 
-    Lexeme matchParen = lexer.current();
+    MatchLexeme matchParen = lexer.current();
     expectAndConsume('(', "function");
 
     TempVector<Binding> args(scratchBinding);
@@ -992,7 +990,7 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
         std::tie(vararg, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
 
     std::optional<Location> argLocation = matchParen.type == Lexeme::Type('(') && lexer.current().type == Lexeme::Type(')')
-                                              ? std::make_optional(Location(matchParen.location.begin, lexer.current().location.end))
+                                              ? std::make_optional(Location(matchParen.position, lexer.current().location.end))
                                               : std::nullopt;
     expectMatchAndConsume(')', matchParen, true);
 
@@ -1259,7 +1257,7 @@ AstType* Parser::parseTableTypeAnnotation()
 
     Location start = lexer.current().location;
 
-    Lexeme matchBrace = lexer.current();
+    MatchLexeme matchBrace = lexer.current();
     expectAndConsume('{', "table type");
 
     while (lexer.current().type != '}')
@@ -1638,7 +1636,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     {
         return parseFunctionTypeAnnotation(allowPack);
     }
-    else if (FFlag::LuauParserFunctionKeywordAsTypeHelp && lexer.current().type == Lexeme::ReservedFunction)
+    else if (lexer.current().type == Lexeme::ReservedFunction)
     {
         Location location = lexer.current().location;
 
@@ -1922,14 +1920,14 @@ AstExpr* Parser::parsePrefixExpr()
 {
     if (lexer.current().type == '(')
     {
-        Location start = lexer.current().location;
+        Position start = lexer.current().location.begin;
 
-        Lexeme matchParen = lexer.current();
+        MatchLexeme matchParen = lexer.current();
         nextLexeme();
 
         AstExpr* expr = parseExpr();
 
-        Location end = lexer.current().location;
+        Position end = lexer.current().location.end;
 
         if (lexer.current().type != ')')
         {
@@ -1937,7 +1935,7 @@ AstExpr* Parser::parsePrefixExpr()
 
             expectMatchAndConsumeFail(static_cast<Lexeme::Type>(')'), matchParen, suggestion);
 
-            end = lexer.previousLocation();
+            end = lexer.previousLocation().end;
         }
         else
         {
@@ -1955,7 +1953,7 @@ AstExpr* Parser::parsePrefixExpr()
 // primaryexp -> prefixexp { `.' NAME | `[' exp `]' | `:' NAME funcargs | funcargs }
 AstExpr* Parser::parsePrimaryExpr(bool asStatement)
 {
-    Location start = lexer.current().location;
+    Position start = lexer.current().location.begin;
 
     AstExpr* expr = parsePrefixExpr();
 
@@ -1970,16 +1968,16 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
 
             Name index = parseIndexName(nullptr, opPosition);
 
-            expr = allocator.alloc<AstExprIndexName>(Location(start, index.location), expr, index.name, index.location, opPosition, '.');
+            expr = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, '.');
         }
         else if (lexer.current().type == '[')
         {
-            Lexeme matchBracket = lexer.current();
+            MatchLexeme matchBracket = lexer.current();
             nextLexeme();
 
             AstExpr* index = parseExpr();
 
-            Location end = lexer.current().location;
+            Position end = lexer.current().location.end;
 
             expectMatchAndConsume(']', matchBracket);
 
@@ -1991,23 +1989,20 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
             nextLexeme();
 
             Name index = parseIndexName("method name", opPosition);
-            AstExpr* func = allocator.alloc<AstExprIndexName>(Location(start, index.location), expr, index.name, index.location, opPosition, ':');
+            AstExpr* func = allocator.alloc<AstExprIndexName>(Location(start, index.location.end), expr, index.name, index.location, opPosition, ':');
 
-            expr = parseFunctionArgs(func, true, index.location);
+            expr = parseFunctionArgs(func, true);
         }
         else if (lexer.current().type == '(')
         {
             // This error is handled inside 'parseFunctionArgs' as well, but for better error recovery we need to break out the current loop here
             if (!asStatement && expr->location.end.line != lexer.current().location.begin.line)
             {
-                report(lexer.current().location,
-                    "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of "
-                    "new statement; use ';' to separate statements");
-
+                reportAmbiguousCallError();
                 break;
             }
 
-            expr = parseFunctionArgs(expr, false, Location());
+            expr = parseFunctionArgs(expr, false);
         }
         else if (
             lexer.current().type == '{'
@@ -2017,7 +2012,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
             || lexer.current().type == Lexeme::InterpStringSimple
         )
         {
-            expr = parseFunctionArgs(expr, false, Location());
+            expr = parseFunctionArgs(expr, false);
         }
         else
         {
@@ -2172,7 +2167,7 @@ static ConstantNumberParseResult parseInteger(double& result, const char* data, 
     return ConstantNumberParseResult::Ok;
 }
 
-static ConstantNumberParseResult parseNumber(double& result, const char* data)
+static ConstantNumberParseResult parseDouble(double& result, const char* data)
 {
     LUAU_ASSERT(FFlag::LuauLintParseIntegerIssues);
 
@@ -2230,61 +2225,11 @@ AstExpr* Parser::parseSimpleExpr()
         Lexeme matchFunction = lexer.current();
         nextLexeme();
 
-        return parseFunctionBody(false, matchFunction, AstName(), {}).first;
+        return parseFunctionBody(false, matchFunction, AstName(), nullptr).first;
     }
     else if (lexer.current().type == Lexeme::Number)
     {
-        scratchData.assign(lexer.current().data, lexer.current().length);
-
-        // Remove all internal _ - they don't hold any meaning and this allows parsing code to just pass the string pointer to strtod et al
-        if (scratchData.find('_') != std::string::npos)
-        {
-            scratchData.erase(std::remove(scratchData.begin(), scratchData.end(), '_'), scratchData.end());
-        }
-
-        if (FFlag::LuauLintParseIntegerIssues)
-        {
-            double value = 0;
-            ConstantNumberParseResult result = parseNumber(value, scratchData.c_str());
-            nextLexeme();
-
-            if (result == ConstantNumberParseResult::Malformed)
-                return reportExprError(start, {}, "Malformed number");
-
-            return allocator.alloc<AstExprConstantNumber>(start, value, result);
-        }
-        else if (DFFlag::LuaReportParseIntegerIssues)
-        {
-            double value = 0;
-            if (const char* error = parseNumber_DEPRECATED2(value, scratchData.c_str()))
-            {
-                nextLexeme();
-
-                return reportExprError(start, {}, "%s", error);
-            }
-            else
-            {
-                nextLexeme();
-
-                return allocator.alloc<AstExprConstantNumber>(start, value);
-            }
-        }
-        else
-        {
-            double value = 0;
-            if (parseNumber_DEPRECATED(value, scratchData.c_str()))
-            {
-                nextLexeme();
-
-                return allocator.alloc<AstExprConstantNumber>(start, value);
-            }
-            else
-            {
-                nextLexeme();
-
-                return reportExprError(start, {}, "Malformed number");
-            }
-        }
+        return parseNumber();
     }
     else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringSimple))
     {
@@ -2334,18 +2279,15 @@ AstExpr* Parser::parseSimpleExpr()
 }
 
 // args ::=  `(' [explist] `)' | tableconstructor | String | InterpString
-AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, const Location& selfLocation)
+AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
 {
     if (lexer.current().type == '(')
     {
         Position argStart = lexer.current().location.end;
         if (func->location.end.line != lexer.current().location.begin.line)
-        {
-            report(lexer.current().location, "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of "
-                                             "new statement; use ';' to separate statements");
-        }
+            reportAmbiguousCallError();
 
-        Lexeme matchParen = lexer.current();
+        MatchLexeme matchParen = lexer.current();
         nextLexeme();
 
         TempVector<AstExpr*> args(scratchExpr);
@@ -2385,16 +2327,27 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self, const Location& sel
     }
     else
     {
-        if (self && lexer.current().location.begin.line != func->location.end.line)
-        {
-            return reportExprError(func->location, copy({func}), "Expected function call arguments after '('");
-        }
-        else
-        {
-            return reportExprError(Location(func->location.begin, lexer.current().location.begin), copy({func}),
-                "Expected '(', '{' or <string> when parsing function call, got %s", lexer.current().toString().c_str());
-        }
+        return reportFunctionArgsError(func, self);
     }
+}
+
+LUAU_NOINLINE AstExpr* Parser::reportFunctionArgsError(AstExpr* func, bool self)
+{
+    if (self && lexer.current().location.begin.line != func->location.end.line)
+    {
+        return reportExprError(func->location, copy({func}), "Expected function call arguments after '('");
+    }
+    else
+    {
+        return reportExprError(Location(func->location.begin, lexer.current().location.begin), copy({func}),
+            "Expected '(', '{' or <string> when parsing function call, got %s", lexer.current().toString().c_str());
+    }
+}
+
+LUAU_NOINLINE void Parser::reportAmbiguousCallError()
+{
+    report(lexer.current().location, "Ambiguous syntax: this looks like an argument list for a function call, but could also be a start of "
+                                     "new statement; use ';' to separate statements");
 }
 
 // tableconstructor ::= `{' [fieldlist] `}'
@@ -2407,14 +2360,14 @@ AstExpr* Parser::parseTableConstructor()
 
     Location start = lexer.current().location;
 
-    Lexeme matchBrace = lexer.current();
+    MatchLexeme matchBrace = lexer.current();
     expectAndConsume('{', "table literal");
 
     while (lexer.current().type != '}')
     {
         if (lexer.current().type == '[')
         {
-            Lexeme matchLocationBracket = lexer.current();
+            MatchLexeme matchLocationBracket = lexer.current();
             nextLexeme();
 
             AstExpr* key = parseExpr();
@@ -2789,6 +2742,63 @@ AstExpr* Parser::parseInterpString()
     } while (true);
 }
 
+AstExpr* Parser::parseNumber()
+{
+    Location start = lexer.current().location;
+
+    scratchData.assign(lexer.current().data, lexer.current().length);
+
+    // Remove all internal _ - they don't hold any meaning and this allows parsing code to just pass the string pointer to strtod et al
+    if (scratchData.find('_') != std::string::npos)
+    {
+        scratchData.erase(std::remove(scratchData.begin(), scratchData.end(), '_'), scratchData.end());
+    }
+
+    if (FFlag::LuauLintParseIntegerIssues)
+    {
+        double value = 0;
+        ConstantNumberParseResult result = parseDouble(value, scratchData.c_str());
+        nextLexeme();
+
+        if (result == ConstantNumberParseResult::Malformed)
+            return reportExprError(start, {}, "Malformed number");
+
+        return allocator.alloc<AstExprConstantNumber>(start, value, result);
+    }
+    else if (DFFlag::LuaReportParseIntegerIssues)
+    {
+        double value = 0;
+        if (const char* error = parseNumber_DEPRECATED2(value, scratchData.c_str()))
+        {
+            nextLexeme();
+
+            return reportExprError(start, {}, "%s", error);
+        }
+        else
+        {
+            nextLexeme();
+
+            return allocator.alloc<AstExprConstantNumber>(start, value);
+        }
+    }
+    else
+    {
+        double value = 0;
+        if (parseNumber_DEPRECATED(value, scratchData.c_str()))
+        {
+            nextLexeme();
+
+            return allocator.alloc<AstExprConstantNumber>(start, value);
+        }
+        else
+        {
+            nextLexeme();
+
+            return reportExprError(start, {}, "Malformed number");
+        }
+    }
+}
+
 AstLocal* Parser::pushLocal(const Binding& binding)
 {
     const Name& name = binding.name;
@@ -2860,7 +2870,7 @@ LUAU_NOINLINE void Parser::expectAndConsumeFail(Lexeme::Type type, const char* c
         report(lexer.current().location, "Expected %s, got %s", typeString.c_str(), currLexemeString.c_str());
 }
 
-bool Parser::expectMatchAndConsume(char value, const Lexeme& begin, bool searchForMissing)
+bool Parser::expectMatchAndConsume(char value, const MatchLexeme& begin, bool searchForMissing)
 {
     Lexeme::Type type = static_cast<Lexeme::Type>(static_cast<unsigned char>(value));
 
@@ -2868,42 +2878,7 @@ bool Parser::expectMatchAndConsume(char value, const Lexeme& begin, bool searchF
     {
         expectMatchAndConsumeFail(type, begin);
 
-        if (searchForMissing)
-        {
-            // previous location is taken because 'current' lexeme is already the next token
-            unsigned currentLine = lexer.previousLocation().end.line;
-
-            // search to the end of the line for expected token
-            // we will also stop if we hit a token that can be handled by parsing function above the current one
-            Lexeme::Type lexemeType = lexer.current().type;
-
-            while (currentLine == lexer.current().location.begin.line && lexemeType != type && matchRecoveryStopOnToken[lexemeType] == 0)
-            {
-                nextLexeme();
-                lexemeType = lexer.current().type;
-            }
-
-            if (lexemeType == type)
-            {
-                nextLexeme();
-
-                return true;
-            }
-        }
-        else
-        {
-            // check if this is an extra token and the expected token is next
-            if (lexer.lookahead().type == type)
-            {
-                // skip invalid and consume expected
-                nextLexeme();
-                nextLexeme();
-
-                return true;
-            }
-        }
-
-        return false;
+        return expectMatchAndConsumeRecover(value, begin, searchForMissing);
     }
     else
     {
@@ -2913,21 +2888,64 @@ bool Parser::expectMatchAndConsume(char value, const Lexeme& begin, bool searchF
     }
 }
 
-// LUAU_NOINLINE is used to limit the stack cost of this function due to std::string objects, and to increase caller performance since this code is
-// cold
-LUAU_NOINLINE void Parser::expectMatchAndConsumeFail(Lexeme::Type type, const Lexeme& begin, const char* extra)
+LUAU_NOINLINE bool Parser::expectMatchAndConsumeRecover(char value, const MatchLexeme& begin, bool searchForMissing)
 {
-    std::string typeString = Lexeme(Location(Position(0, 0), 0), type).toString();
+    Lexeme::Type type = static_cast<Lexeme::Type>(static_cast<unsigned char>(value));
 
-    if (lexer.current().location.begin.line == begin.location.begin.line)
-        report(lexer.current().location, "Expected %s (to close %s at column %d), got %s%s", typeString.c_str(), begin.toString().c_str(),
-            begin.location.begin.column + 1, lexer.current().toString().c_str(), extra ? extra : "");
+    if (searchForMissing)
+    {
+        // previous location is taken because 'current' lexeme is already the next token
+        unsigned currentLine = lexer.previousLocation().end.line;
+
+        // search to the end of the line for expected token
+        // we will also stop if we hit a token that can be handled by parsing function above the current one
+        Lexeme::Type lexemeType = lexer.current().type;
+
+        while (currentLine == lexer.current().location.begin.line && lexemeType != type && matchRecoveryStopOnToken[lexemeType] == 0)
+        {
+            nextLexeme();
+            lexemeType = lexer.current().type;
+        }
+
+        if (lexemeType == type)
+        {
+            nextLexeme();
+
+            return true;
+        }
+    }
     else
-        report(lexer.current().location, "Expected %s (to close %s at line %d), got %s%s", typeString.c_str(), begin.toString().c_str(),
-            begin.location.begin.line + 1, lexer.current().toString().c_str(), extra ? extra : "");
+    {
+        // check if this is an extra token and the expected token is next
+        if (lexer.lookahead().type == type)
+        {
+            // skip invalid and consume expected
+            nextLexeme();
+            nextLexeme();
+
+            return true;
+        }
+    }
+
+    return false;
 }
 
-bool Parser::expectMatchEndAndConsume(Lexeme::Type type, const Lexeme& begin)
+// LUAU_NOINLINE is used to limit the stack cost of this function due to std::string objects, and to increase caller performance since this code is
+// cold
+LUAU_NOINLINE void Parser::expectMatchAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin, const char* extra)
+{
+    std::string typeString = Lexeme(Location(Position(0, 0), 0), type).toString();
+    std::string matchString = Lexeme(Location(Position(0, 0), 0), begin.type).toString();
+
+    if (lexer.current().location.begin.line == begin.position.line)
+        report(lexer.current().location, "Expected %s (to close %s at column %d), got %s%s", typeString.c_str(), matchString.c_str(),
+            begin.position.column + 1, lexer.current().toString().c_str(), extra ? extra : "");
+    else
+        report(lexer.current().location, "Expected %s (to close %s at line %d), got %s%s", typeString.c_str(), matchString.c_str(),
+            begin.position.line + 1, lexer.current().toString().c_str(), extra ? extra : "");
+}
+
+bool Parser::expectMatchEndAndConsume(Lexeme::Type type, const MatchLexeme& begin)
 {
     if (lexer.current().type != type)
     {
@@ -2949,9 +2967,9 @@ bool Parser::expectMatchEndAndConsume(Lexeme::Type type, const Lexeme& begin)
     {
         // If the token matches on a different line and a different column, it suggests misleading indentation
         // This can be used to pinpoint the problem location for a possible future *actual* mismatch
-        if (lexer.current().location.begin.line != begin.location.begin.line &&
-            lexer.current().location.begin.column != begin.location.begin.column &&
-            endMismatchSuspect.location.begin.line < begin.location.begin.line) // Only replace the previous suspect with more recent suspects
+        if (lexer.current().location.begin.line != begin.position.line &&
+            lexer.current().location.begin.column != begin.position.column &&
+            endMismatchSuspect.position.line < begin.position.line) // Only replace the previous suspect with more recent suspects
         {
             endMismatchSuspect = begin;
         }
@@ -2964,12 +2982,12 @@ bool Parser::expectMatchEndAndConsume(Lexeme::Type type, const Lexeme& begin)
 
 // LUAU_NOINLINE is used to limit the stack cost of this function due to std::string objects, and to increase caller performance since this code is
 // cold
-LUAU_NOINLINE void Parser::expectMatchEndAndConsumeFail(Lexeme::Type type, const Lexeme& begin)
+LUAU_NOINLINE void Parser::expectMatchEndAndConsumeFail(Lexeme::Type type, const MatchLexeme& begin)
 {
-    if (endMismatchSuspect.type != Lexeme::Eof && endMismatchSuspect.location.begin.line > begin.location.begin.line)
+    if (endMismatchSuspect.type != Lexeme::Eof && endMismatchSuspect.position.line > begin.position.line)
     {
-        std::string suggestion =
-            format("; did you forget to close %s at line %d?", endMismatchSuspect.toString().c_str(), endMismatchSuspect.location.begin.line + 1);
+        std::string matchString = Lexeme(Location(Position(0, 0), 0), endMismatchSuspect.type).toString();
+        std::string suggestion = format("; did you forget to close %s at line %d?", matchString.c_str(), endMismatchSuspect.position.line + 1);
 
         expectMatchAndConsumeFail(type, begin, suggestion.c_str());
     }

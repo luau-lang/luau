@@ -717,6 +717,7 @@ struct TypeIterator
             stack.push_front({t, 0});
 
         seen.insert(t);
+        descend();
     }
 
     TypeIterator<T>& operator++()
@@ -748,17 +749,19 @@ struct TypeIterator
 
     const TypeId& operator*()
     {
-        LUAU_ASSERT(!stack.empty());
-
         descend();
+
+        LUAU_ASSERT(!stack.empty());
 
         auto [t, currentIndex] = stack.front();
         LUAU_ASSERT(t);
+
         const std::vector<TypeId>& types = getTypes(t);
         LUAU_ASSERT(currentIndex < types.size());
 
         const TypeId& ty = types[currentIndex];
         LUAU_ASSERT(!get<T>(follow(ty)));
+
         return ty;
     }
 

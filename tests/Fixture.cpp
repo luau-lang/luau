@@ -372,17 +372,25 @@ void Fixture::registerTestTypes()
 
 void Fixture::dumpErrors(const CheckResult& cr)
 {
-    dumpErrors(std::cout, cr.errors);
+    std::string error = getErrors(cr);
+    if (!error.empty())
+        MESSAGE(error);
 }
 
 void Fixture::dumpErrors(const ModulePtr& module)
 {
-    dumpErrors(std::cout, module->errors);
+    std::stringstream ss;
+    dumpErrors(ss, module->errors);
+    if (!ss.str().empty())
+        MESSAGE(ss.str());
 }
 
 void Fixture::dumpErrors(const Module& module)
 {
-    dumpErrors(std::cout, module.errors);
+    std::stringstream ss;
+    dumpErrors(ss, module.errors);
+    if (!ss.str().empty())
+        MESSAGE(ss.str());
 }
 
 std::string Fixture::getErrors(const CheckResult& cr)
@@ -413,6 +421,7 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
     LoadDefinitionFileResult result = frontend.loadDefinitionFile(source, "@test");
     freeze(typeChecker.globalTypes);
 
+    dumpErrors(result.module);
     REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
     return result;
 }
@@ -434,7 +443,8 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
 
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
-    , cgb(mainModuleName, &arena, NotNull(&ice), frontend.getGlobalScope())
+    , mainModule(new Module)
+    , cgb(mainModuleName, mainModule, &arena, NotNull(&ice), frontend.getGlobalScope())
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;

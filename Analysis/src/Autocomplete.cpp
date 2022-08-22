@@ -14,6 +14,8 @@
 
 LUAU_FASTFLAG(LuauSelfCallAutocompleteFix3)
 
+LUAU_FASTFLAGVARIABLE(LuauAutocompleteFixGlobalOrder, false)
+
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
@@ -135,11 +137,11 @@ static std::optional<TypeId> findExpectedTypeAt(const Module& module, AstNode* n
     return *it;
 }
 
-static bool checkTypeMatch(TypeArena* typeArena, TypeId subTy, TypeId superTy)
+static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, TypeArena* typeArena)
 {
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
-    Unifier unifier(typeArena, Mode::Strict, Location(), Variance::Covariant, unifierState);
+    Unifier unifier(typeArena, Mode::Strict, scope, Location(), Variance::Covariant, unifierState);
 
     return unifier.canUnify(subTy, superTy).empty();
 }
@@ -148,12 +150,14 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 {
     ty = follow(ty);
 
-    auto canUnify = [&typeArena](TypeId subTy, TypeId superTy) {
+    NotNull<Scope> moduleScope{module.getModuleScope().get()};
+
+    auto canUnify = [&typeArena, moduleScope](TypeId subTy, TypeId superTy) {
         LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix3);
 
         InternalErrorReporter iceReporter;
         UnifierSharedState unifierState(&iceReporter);
-        Unifier unifier(typeArena, Mode::Strict, Location(), Variance::Covariant, unifierState);
+        Unifier unifier(typeArena, Mode::Strict, moduleScope, Location(), Variance::Covariant, unifierState);
 
         unifier.tryUnify(subTy, superTy);
         bool ok = unifier.errors.empty();
@@ -167,11 +171,11 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
 
     TypeId expectedType = follow(*typeAtPosition);
 
-    auto checkFunctionType = [typeArena, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
+    auto checkFunctionType = [typeArena, moduleScope, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
         if (FFlag::LuauSelfCallAutocompleteFix3)
         {
             if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
-                return checkTypeMatch(typeArena, *firstRetTy, expectedType);
+                return checkTypeMatch(*firstRetTy, expectedType, moduleScope, typeArena);
 
             return false;
         }
@@ -210,7 +214,7 @@ static TypeCorrectKind checkTypeCorrectKind(const Module& module, TypeArena* typ
     }
 
     if (FFlag::LuauSelfCallAutocompleteFix3)
-        return checkTypeMatch(typeArena, ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+        return checkTypeMatch(ty, expectedType, NotNull{module.getModuleScope().get()}, typeArena) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
     else
         return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 }
@@ -268,7 +272,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             return colonIndex;
         }
     };
-    auto isWrongIndexer = [typeArena, rootTy, indexType](Luau::TypeId type) {
+    auto isWrongIndexer = [typeArena, &module, rootTy, indexType](Luau::TypeId type) {
         LUAU_ASSERT(FFlag::LuauSelfCallAutocompleteFix3);
 
         if (indexType == PropIndexType::Key)
@@ -276,7 +280,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
 
         bool calledWithSelf = indexType == PropIndexType::Colon;
 
-        auto isCompatibleCall = [typeArena, rootTy, calledWithSelf](const FunctionTypeVar* ftv) {
+        auto isCompatibleCall = [typeArena, &module, rootTy, calledWithSelf](const FunctionTypeVar* ftv) {
             // Strong match with definition is a success
             if (calledWithSelf == ftv->hasSelf)
                 return true;
@@ -289,7 +293,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, TypeId
             // When called with '.', but declared with 'self', it is considered invalid if first argument is compatible
             if (std::optional<TypeId> firstArgTy = first(ftv->argTypes))
             {
-                if (checkTypeMatch(typeArena, rootTy, *firstArgTy))
+                if (checkTypeMatch(rootTy, *firstArgTy, NotNull{module.getModuleScope().get()}, typeArena))
                     return calledWithSelf;
             }
 
@@ -1073,10 +1077,21 @@ T* extractStat(const std::vector<AstNode*>& ancestry)
     return nullptr;
 }
 
-static bool isBindingLegalAtCurrentPosition(const Binding& binding, Position pos)
+static bool isBindingLegalAtCurrentPosition(const Symbol& symbol, const Binding& binding, Position pos)
 {
-    // Default Location used for global bindings, which are always legal.
-    return binding.location == Location() || binding.location.end < pos;
+    if (FFlag::LuauAutocompleteFixGlobalOrder)
+    {
+        if (symbol.local)
+            return binding.location.end < pos;
+
+        // Builtin globals have an empty location; for defined globals, we want pos to be outside of the definition range to suggest it
+        return binding.location == Location() || !binding.location.containsClosed(pos);
+    }
+    else
+    {
+        // Default Location used for global bindings, which are always legal.
+        return binding.location == Location() || binding.location.end < pos;
+    }
 }
 
 static AutocompleteEntryMap autocompleteStatement(
@@ -1097,7 +1112,7 @@ static AutocompleteEntryMap autocompleteStatement(
     {
         for (const auto& [name, binding] : scope->bindings)
         {
-            if (!isBindingLegalAtCurrentPosition(binding, position))
+            if (!isBindingLegalAtCurrentPosition(name, binding, position))
                 continue;
 
             std::string n = toString(name);
@@ -1200,7 +1215,7 @@ static bool autocompleteIfElseExpression(
     }
 }
 
-static void autocompleteExpression(const SourceModule& sourceModule, const Module& module, const TypeChecker& typeChecker, TypeArena* typeArena,
+static AutocompleteContext autocompleteExpression(const SourceModule& sourceModule, const Module& module, const TypeChecker& typeChecker, TypeArena* typeArena,
     const std::vector<AstNode*>& ancestry, Position position, AutocompleteEntryMap& result)
 {
     LUAU_ASSERT(!ancestry.empty());
@@ -1213,9 +1228,9 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
             autocompleteProps(module, typeArena, *it, PropIndexType::Point, ancestry, result);
     }
     else if (autocompleteIfElseExpression(node, ancestry, position, result))
-        return;
+        return AutocompleteContext::Keyword;
     else if (node->is<AstExprFunction>())
-        return;
+        return AutocompleteContext::Unknown;
     else
     {
         // This is inefficient. :(
@@ -1225,7 +1240,7 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
         {
             for (const auto& [name, binding] : scope->bindings)
             {
-                if (!isBindingLegalAtCurrentPosition(binding, position))
+                if (!isBindingLegalAtCurrentPosition(name, binding, position))
                     continue;
 
                 if (isBeingDefined(ancestry, name))
@@ -1260,14 +1275,16 @@ static void autocompleteExpression(const SourceModule& sourceModule, const Modul
         if (auto ty = findExpectedTypeAt(module, node, position))
             autocompleteStringSingleton(*ty, true, result);
     }
+
+    return AutocompleteContext::Expression;
 }
 
-static AutocompleteEntryMap autocompleteExpression(const SourceModule& sourceModule, const Module& module, const TypeChecker& typeChecker,
+static AutocompleteResult autocompleteExpression(const SourceModule& sourceModule, const Module& module, const TypeChecker& typeChecker,
     TypeArena* typeArena, const std::vector<AstNode*>& ancestry, Position position)
 {
     AutocompleteEntryMap result;
-    autocompleteExpression(sourceModule, module, typeChecker, typeArena, ancestry, position, result);
-    return result;
+    AutocompleteContext context = autocompleteExpression(sourceModule, module, typeChecker, typeArena, ancestry, position, result);
+    return {result, ancestry, context};
 }
 
 static std::optional<const ClassTypeVar*> getMethodContainingClass(const ModulePtr& module, AstExpr* funcExpr)
@@ -1406,27 +1423,27 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
         if (!FFlag::LuauSelfCallAutocompleteFix3 && isString(ty))
             return {
-                autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry), ancestry};
+                autocompleteProps(*module, typeArena, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry), ancestry, AutocompleteContext::Property};
         else
-            return {autocompleteProps(*module, typeArena, ty, indexType, ancestry), ancestry};
+            return {autocompleteProps(*module, typeArena, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {
         if (typeReference->prefix)
-            return {autocompleteModuleTypes(*module, position, typeReference->prefix->value), ancestry};
+            return {autocompleteModuleTypes(*module, position, typeReference->prefix->value), ancestry, AutocompleteContext::Type};
         else
-            return {autocompleteTypeNames(*module, position, ancestry), ancestry};
+            return {autocompleteTypeNames(*module, position, ancestry), ancestry, AutocompleteContext::Type};
     }
     else if (node->is<AstTypeError>())
     {
-        return {autocompleteTypeNames(*module, position, ancestry), ancestry};
+        return {autocompleteTypeNames(*module, position, ancestry), ancestry, AutocompleteContext::Type};
     }
     else if (AstStatLocal* statLocal = node->as<AstStatLocal>())
     {
         if (statLocal->vars.size == 1 && (!statLocal->equalsSignLocation || position < statLocal->equalsSignLocation->begin))
-            return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Unknown};
         else if (statLocal->equalsSignLocation && position >= statLocal->equalsSignLocation->end)
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+            return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
         else
             return {};
     }
@@ -1436,16 +1453,16 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         if (!statFor->hasDo || position < statFor->doLocation.begin)
         {
             if (!statFor->from->is<AstExprError>() && !statFor->to->is<AstExprError>() && (!statFor->step || !statFor->step->is<AstExprError>()))
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
             if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
                 (statFor->step && statFor->step->location.containsClosed(position)))
-                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+                return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
 
             return {};
         }
 
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
     else if (AstStatForIn* statForIn = parent->as<AstStatForIn>(); statForIn && (node->is<AstStatBlock>() || isIdentifier(node)))
@@ -1461,7 +1478,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 return {};
             }
 
-            return {{{"in", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"in", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
         }
 
         if (!statForIn->hasDo || position <= statForIn->doLocation.begin)
@@ -1470,10 +1487,10 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             AstExpr* lastExpr = statForIn->values.data[statForIn->values.size - 1];
 
             if (lastExpr->location.containsClosed(position))
-                return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+                return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
 
             if (position > lastExpr->location.end)
-                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+                return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
             return {}; // Not sure what this means
         }
@@ -1483,45 +1500,45 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         // The AST looks a bit differently if the cursor is at a position where only the "do" keyword is allowed.
         // ex "for f in f do"
         if (!statForIn->hasDo)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
     else if (AstStatWhile* statWhile = parent->as<AstStatWhile>(); node->is<AstStatBlock>() && statWhile)
     {
         if (!statWhile->hasDo && !statWhile->condition->is<AstStatError>() && position > statWhile->condition->location.end)
-            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
         if (!statWhile->hasDo || position < statWhile->doLocation.begin)
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+            return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
 
         if (statWhile->hasDo && position > statWhile->doLocation.end)
-            return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+            return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     }
 
     else if (AstStatWhile* statWhile = extractStat<AstStatWhile>(ancestry); statWhile && !statWhile->hasDo)
-        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+        return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
     else if (AstStatIf* statIf = node->as<AstStatIf>(); statIf && !statIf->elseLocation.has_value())
     {
         return {
-            {{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            {{"else", AutocompleteEntry{AutocompleteEntryKind::Keyword}}, {"elseif", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {
         if (statIf->condition->is<AstExprError>())
-            return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+            return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
-            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+            return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
     else if (AstStatIf* statIf = extractStat<AstStatIf>(ancestry);
              statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)))
-        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry};
+        return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
-        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+        return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>()))
     {
         for (const auto& [kind, key, value] : exprTable->items)
@@ -1547,7 +1564,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                     if (!key)
                         autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position, result);
 
-                    return {result, ancestry};
+                    return {result, ancestry, AutocompleteContext::Property};
                 }
 
                 break;
@@ -1555,11 +1572,11 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         }
     }
     else if (isIdentifier(node) && (parent->is<AstStatExpr>() || parent->is<AstStatError>()))
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
     if (std::optional<AutocompleteEntryMap> ret = autocompleteStringParams(sourceModule, module, ancestry, position, callback))
     {
-        return {*ret, ancestry};
+        return {*ret, ancestry, AutocompleteContext::String};
     }
     else if (node->is<AstExprConstantString>())
     {
@@ -1585,7 +1602,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             }
         }
 
-        return {result, ancestry};
+        return {result, ancestry, AutocompleteContext::String};
     }
 
     if (node->is<AstExprConstantNumber>())
@@ -1594,9 +1611,9 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     }
 
     if (node->asExpr())
-        return {autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position), ancestry};
+        return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
     else if (node->asStat())
-        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry};
+        return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
     return {};
 }

@@ -3,9 +3,10 @@
 
 #include "Luau/Error.h"
 #include "Luau/Location.h"
+#include "Luau/Scope.h"
 #include "Luau/TxnLog.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/TypeArena.h"
+#include "Luau/TypeInfer.h"
 #include "Luau/UnifierSharedState.h"
 
 #include <unordered_set>
@@ -48,6 +49,7 @@ struct Unifier
     TypeArena* const types;
     Mode mode;
 
+    NotNull<Scope> scope; // const Scope maybe
     TxnLog log;
     ErrorVec errors;
     Location location;
@@ -57,7 +59,7 @@ struct Unifier
 
     UnifierSharedState& sharedState;
 
-    Unifier(TypeArena* types, Mode mode, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
+    Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
@@ -109,11 +111,11 @@ private:
 public:
     void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel);
 
-    // Report an "infinite type error" if the type "needle" already occurs within "haystack"
-    void occursCheck(TypeId needle, TypeId haystack);
-    void occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
-    void occursCheck(TypePackId needle, TypePackId haystack);
-    void occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
+    // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
+    bool occursCheck(TypeId needle, TypeId haystack);
+    bool occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
+    bool occursCheck(TypePackId needle, TypePackId haystack);
+    bool occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, TypePackId haystack);
 
     Unifier makeChildUnifier();
 

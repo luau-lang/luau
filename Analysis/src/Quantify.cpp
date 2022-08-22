@@ -5,11 +5,12 @@
 #include "Luau/Scope.h"
 #include "Luau/Substitution.h"
 #include "Luau/TxnLog.h"
+#include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
 
 LUAU_FASTFLAG(DebugLuauSharedSelf)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauQuantifyConstrained, false)
+LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 
 namespace Luau
 {
@@ -80,30 +81,25 @@ struct Quantifier final : TypeVarOnceVisitor
 
     bool visit(TypeId ty, const ConstrainedTypeVar&) override
     {
-        if (FFlag::LuauQuantifyConstrained)
-        {
-            ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(ty);
+        ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(ty);
 
-            seenMutableType = true;
+        seenMutableType = true;
 
-            if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ctv->scope) : !level.subsumes(ctv->level))
-                return false;
-
-            std::vector<TypeId> opts = std::move(ctv->parts);
-
-            // We might transmute, so it's not safe to rely on the builtin traversal logic
-            for (TypeId opt : opts)
-                traverse(opt);
-
-            if (opts.size() == 1)
-                *asMutable(ty) = BoundTypeVar{opts[0]};
-            else
-                *asMutable(ty) = UnionTypeVar{std::move(opts)};
-
+        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ctv->scope) : !level.subsumes(ctv->level))
             return false;
-        }
+
+        std::vector<TypeId> opts = std::move(ctv->parts);
+
+        // We might transmute, so it's not safe to rely on the builtin traversal logic
+        for (TypeId opt : opts)
+            traverse(opt);
+
+        if (opts.size() == 1)
+            *asMutable(ty) = BoundTypeVar{opts[0]};
         else
-            return true;
+            *asMutable(ty) = UnionTypeVar{std::move(opts)};
+
+        return false;
     }
 
     bool visit(TypeId ty, const TableTypeVar&) override
@@ -116,12 +112,6 @@ struct Quantifier final : TypeVarOnceVisitor
 
         if (ttv.state == TableState::Free)
             seenMutableType = true;
-
-        if (!FFlag::LuauQuantifyConstrained)
-        {
-            if (ttv.state == TableState::Sealed || ttv.state == TableState::Generic)
-                return false;
-        }
 
         if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ttv.scope) : !level.subsumes(ttv.level))
         {
@@ -297,6 +287,9 @@ struct PureQuantifier : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
+        if (FFlag::LuauClassTypeVarsInSubstitution && get<ClassTypeVar>(ty))
+            return true;
+
         return ty->persistent;
     }
     bool ignoreChildren(TypePackId ty) override

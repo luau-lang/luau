@@ -41,6 +41,7 @@ struct RefinementClassFixture : Fixture
     RefinementClassFixture()
     {
         TypeArena& arena = typeChecker.globalTypes;
+        NotNull<Scope> scope{typeChecker.globalScope.get()};
 
         unfreeze(arena);
         TypeId vec3 = arena.addType(ClassTypeVar{"Vector3", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
@@ -49,7 +50,7 @@ struct RefinementClassFixture : Fixture
             {"Y", Property{typeChecker.numberType}},
             {"Z", Property{typeChecker.numberType}},
         };
-        normalize(vec3, arena, *typeChecker.iceHandler);
+        normalize(vec3, scope, arena, *typeChecker.iceHandler);
 
         TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
@@ -57,21 +58,21 @@ struct RefinementClassFixture : Fixture
         TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
         TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
         getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
-        normalize(isA, arena, *typeChecker.iceHandler);
+        normalize(isA, scope, arena, *typeChecker.iceHandler);
 
         getMutable<ClassTypeVar>(inst)->props = {
             {"Name", Property{typeChecker.stringType}},
             {"IsA", Property{isA}},
         };
-        normalize(inst, arena, *typeChecker.iceHandler);
+        normalize(inst, scope, arena, *typeChecker.iceHandler);
 
         TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        normalize(folder, arena, *typeChecker.iceHandler);
+        normalize(folder, scope, arena, *typeChecker.iceHandler);
         TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassTypeVar>(part)->props = {
             {"Position", Property{vec3}},
         };
-        normalize(part, arena, *typeChecker.iceHandler);
+        normalize(part, scope, arena, *typeChecker.iceHandler);
 
         typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
         typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
@@ -934,8 +935,6 @@ TEST_CASE_FIXTURE(Fixture, "apply_refinements_on_astexprindexexpr_whose_subscrip
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_from_truthiness_of_x")
 {
-    ScopedFastFlag sff{"LuauFalsyPredicateReturnsNilInstead", true};
-
     CheckResult result = check(R"(
         type T = {tag: "missing", x: nil} | {tag: "exists", x: string}
 
@@ -1230,8 +1229,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknowns")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_nil")
 {
-    ScopedFastFlag sff{"LuauFalsyPredicateReturnsNilInstead", true};
-
     CheckResult result = check(R"(
         local function f(t: {number})
             local x = t[1]

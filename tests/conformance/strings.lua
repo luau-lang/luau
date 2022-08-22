@@ -145,6 +145,14 @@ end) == false)
 
 assert(string.format("%*", "a\0b\0c") == "a\0b\0c")
 assert(string.format("%*", string.rep("doge", 3000)) == string.rep("doge", 3000))
+assert(string.format("%*", 42) == "42")
+assert(string.format("%*", true) == "true")
+
+assert(string.format("%*", setmetatable({}, { __tostring = function() return "ok" end })) == "ok")
+
+local ud = newproxy(true)
+getmetatable(ud).__tostring = function() return "good" end
+assert(string.format("%*", ud) == "good")
 
 assert(pcall(function()
 	string.format("%#*", "bad form")
