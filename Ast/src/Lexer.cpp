@@ -621,7 +621,6 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
         case 0:
         case '\r':
         case '\n':
-            // INTERP TODO: Clear anything we've added to the brace stack, and write a test to see what happens if we don't
             return Lexeme(Location(start, position()), Lexeme::BrokenString);
 
         case '\\':
@@ -647,6 +646,7 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
     }
 
     consume();
+
     return Lexeme(Location(start, position()), endType, &buffer[startOffset], offset - startOffset - 1);
 }
 

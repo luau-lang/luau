@@ -966,6 +966,46 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
     CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = { `{a` }
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ(e.getErrors().size(), 2);
+
+        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_mid_without_end_brace_in_table")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = { `x {"y"} {z` }
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ(e.getErrors().size(), 2);
+
+        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
