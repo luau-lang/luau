@@ -98,6 +98,7 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
         || type == InterpStringMid
         || type == InterpStringEnd
         || type == InterpStringSimple
+        || type == BrokenInterpDoubleBrace
         || type == Number
         || type == Comment
         || type == BlockComment
@@ -638,12 +639,16 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
 
         case '{':
         {
+            braceStack.push_back(BraceType::InterpolatedString);
+
             if (peekch(1) == '{')
             {
-                return Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace);
+                Lexeme brokenDoubleBrace = Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace, &buffer[startOffset], offset - startOffset);
+                consume();
+                consume();
+                return brokenDoubleBrace;
             }
 
-            braceStack.push_back(BraceType::InterpolatedString);
             Lexeme lexemeOutput(Location(start, position()), Lexeme::InterpStringBegin, &buffer[startOffset], offset - startOffset);
             consume();
             return lexemeOutput;
