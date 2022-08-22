@@ -69,7 +69,7 @@ jobs:
         with:
           repository: ${{ matrix.benchResultsRepo.name }}
           branch: ${{ matrix.benchResultsRepo.branch }}
-          # token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
           path: "./gh-pages"
           bench_name: "${{ matrix.bench.title }} (Windows ${{matrix.arch}})"
           bench_tool: "benchmarkluau"
