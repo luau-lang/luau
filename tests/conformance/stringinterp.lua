@@ -59,6 +59,6 @@ local function identity(x)
 end
 
 assertEq(identity`text`, "text")
--- assertEq(identity`foo{"bar"}`, "foobar")
+assertEq(identity`foo{"bar"}`, "foobar")
 
 return "OK"
