@@ -33,10 +33,10 @@ inputs:
 
 runs:
   using: "composite"
+  shell: bash
   steps:
     - name: Checkout repository
       uses: actions/checkout@v3
-      shell: bash
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.branch }}
@@ -45,7 +45,6 @@ runs:
 
     - name: Store results
       uses: Roblox/rhysd-github-action-benchmark@v-luau
-      shell: bash
       with:
         name: ${{ inputs.bench_name }}
         tool: ${{ inputs.bench_tool }}
@@ -53,7 +52,6 @@ runs:
         external-data-json-path: ${{ inputs.bench_external_data_json_path }}
 
     - name: Push benchmark results
-      shell: bash
       run: |
         echo "Pushing benchmark results..."
         cd gh-pages
