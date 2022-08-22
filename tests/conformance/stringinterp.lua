@@ -61,4 +61,6 @@ end
 assertEq(identity`text`, "text")
 assertEq(identity`foo{"bar"}`, "foobar")
 
+assertEq(`\u{0041}\t`, "A\t")
+
 return "OK"

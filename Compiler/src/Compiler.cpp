@@ -1639,7 +1639,7 @@ struct Compiler
 
         RegScope rs(this);
 
-        uint8_t baseReg = allocReg(expr, 2 + expr->expressions.size);
+        uint8_t baseReg = allocReg(expr, uint8_t(2 + expr->expressions.size));
 
         emitLoadK(baseReg, formatStringIndex);
 

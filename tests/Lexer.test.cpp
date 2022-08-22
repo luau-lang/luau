@@ -175,4 +175,17 @@ TEST_CASE("string_interpolation_unmatched_brace")
     CHECK_EQ(lexer.next().type, '}');
 }
 
+TEST_CASE("string_interpolation_with_unicode_escape")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`\u{1F41B}`)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, Lexeme::InterpStringSimple);
+    CHECK_EQ(lexer.next().type, Lexeme::Eof);
+}
+
 TEST_SUITE_END();

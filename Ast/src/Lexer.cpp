@@ -624,6 +624,15 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
             return Lexeme(Location(start, position()), Lexeme::BrokenString);
 
         case '\\':
+            // Allow for \u{}, which would otherwise be consumed by looking for {
+            if (peekch(1) == 'u' && peekch(2) == '{')
+            {
+                consume(); // backslash
+                consume(); // u
+                consume(); // {
+                break;
+            }
+
             readBackslashInString();
             break;
 
