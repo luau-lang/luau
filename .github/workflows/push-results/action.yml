@@ -40,7 +40,7 @@ runs:
       with:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.branch }}
-        token: ${{ inputs.token }}
+        # token: ${{ inputs.token }}
         path: "./gh-pages"
 
     - name: Store results
