@@ -2272,7 +2272,7 @@ AstExpr* Parser::parseSimpleExpr()
     }
 }
 
-// args ::=  `(' [explist] `)' | tableconstructor | String | InterpString
+// args ::=  `(' [explist] `)' | tableconstructor | String
 AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
 {
     if (lexer.current().type == '(')
