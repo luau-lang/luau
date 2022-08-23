@@ -65,16 +65,23 @@ jobs:
 
       - name: Push benchmark results
         if: github.event_name == 'push'
-        uses: ./.github/workflows/push-results
+        uses: nick-fields/retry@v2.7.0
         with:
-          repository: ${{ matrix.benchResultsRepo.name }}
-          branch: ${{ matrix.benchResultsRepo.branch }}
-          token: ${{ secrets.BENCH_GITHUB_TOKEN }}
-          path: "./gh-pages"
-          bench_name: "${{ matrix.bench.title }} (Windows ${{matrix.arch}})"
-          bench_tool: "benchmarkluau"
-          bench_output_file_path: "./${{ matrix.bench.script }}-output.txt"
-          bench_external_data_json_path: "./gh-pages/dev/bench/data-${{ matrix.os }}.json"
+          max_attempts: 5
+          retry_on: error
+          retry_wait_seconds: 60
+          timeout_minutes: 5
+          command:
+            uses: ./.github/workflows/push-results
+            with:
+              repository: ${{ matrix.benchResultsRepo.name }}
+              branch: ${{ matrix.benchResultsRepo.branch }}
+              token: ${{ secrets.BENCH_GITHUB_TOKEN }}
+              path: "./gh-pages"
+              bench_name: "${{ matrix.bench.title }} (Windows ${{matrix.arch}})"
+              bench_tool: "benchmarkluau"
+              bench_output_file_path: "./${{ matrix.bench.script }}-output.txt"
+              bench_external_data_json_path: "./gh-pages/dev/bench/data-${{ matrix.os }}.json"
 
   # unix:
   #   name: ${{matrix.os}}
