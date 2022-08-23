@@ -2004,13 +2004,7 @@ AstExpr* Parser::parsePrimaryExpr(bool asStatement)
 
             expr = parseFunctionArgs(expr, false);
         }
-        else if (
-            lexer.current().type == '{'
-            || lexer.current().type == Lexeme::RawString
-            || lexer.current().type == Lexeme::QuotedString
-            || lexer.current().type == Lexeme::InterpStringBegin
-            || lexer.current().type == Lexeme::InterpStringSimple
-        )
+        else if (lexer.current().type == '{' || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
         {
             expr = parseFunctionArgs(expr, false);
         }
@@ -2316,14 +2310,6 @@ AstExpr* Parser::parseFunctionArgs(AstExpr* func, bool self)
         AstExpr* expr = parseString();
 
         return allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, argLocation);
-    }
-    else if (FFlag::LuauInterpolatedStringBaseSupport && (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple))
-    {
-        Position argStart = lexer.current().location.end;
-        AstExpr* expr = parseInterpString();
-        Position argEnd = lexer.previousLocation().end;
-
-        return allocator.alloc<AstExprCall>(Location(func->location, expr->location), func, copy(&expr, 1), self, Location(argStart, argEnd));
     }
     else
     {

@@ -1028,6 +1028,23 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_call_without_parens")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = print `{42}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Expected identifier when parsing expression, got `{", e.getErrors().front().getMessage());
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
 {
     try
