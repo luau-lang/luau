@@ -545,6 +545,7 @@ Lexeme Lexer::readLongString(const Position& start, int sep, Lexeme::Type ok, Le
 
 void Lexer::readBackslashInString()
 {
+    LUAU_ASSERT(peekch() == '\\');
     consume();
     switch (peekch())
     {
