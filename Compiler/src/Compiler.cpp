@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <bitset>
 #include <memory>
+
 #include <math.h>
 
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
@@ -1627,11 +1628,11 @@ struct Compiler
 
         // We can't use formatStringRef.data() directly, because short strings don't have their data
         // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
-        std::shared_ptr<char[]> formatStringPtr(new char[formatStringSize]);
+        std::unique_ptr<char[]> formatStringPtr(new char[formatStringSize]);
         memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
 
-        interpFormatStrings.emplace_back(formatStringPtr);
         AstArray<char> formatStringArray{formatStringPtr.get(), formatStringSize};
+        interpStrings.emplace_back(std::move(formatStringPtr)); // invalidates formatStringPtr, but keeps formatStringArray intact
 
         int32_t formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
         if (formatStringIndex < 0)
@@ -3885,7 +3886,7 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
-    std::vector<std::shared_ptr<char[]>> interpFormatStrings;
+    std::vector<std::unique_ptr<char[]>> interpStrings;
 };
 
 void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, const AstNameTable& names, const CompileOptions& inputOptions)
