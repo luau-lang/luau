@@ -177,6 +177,22 @@ TEST_CASE("string_interpolation_double_brace")
     CHECK_EQ(std::string(interpEnd.data, interpEnd.length), std::string("}bar"));
 }
 
+TEST_CASE("string_interpolation_double_but_unmatched_brace")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`{{oops}`, 1)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, Lexeme::BrokenInterpDoubleBrace);
+    CHECK_EQ(lexer.next().type, Lexeme::Name);
+    CHECK_EQ(lexer.next().type, Lexeme::InterpStringEnd);
+    CHECK_EQ(lexer.next().type, ',');
+    CHECK_EQ(lexer.next().type, Lexeme::Number);
+}
+
 TEST_CASE("string_interpolation_unmatched_brace")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
