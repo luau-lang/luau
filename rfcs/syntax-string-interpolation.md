@@ -139,6 +139,13 @@ local foo: `foo`
 local bar: `bar{baz}`
 ```
 
+String interpolation syntax will also support escape sequences. Except `\u{...}`, there is no ambiguity with other escape sequences. If `\u{...}` occurs within a string interpolation literal, it takes priority.
+
+```lua
+local foo = `foo\tbar` -- "foo	bar"
+local bar = `\u{0041} \u{42}` -- "A B"
+```
+
 ## Drawbacks
 
 If we want to use backticks for other purposes, it may introduce some potential ambiguity. One option to solve that is to only ever produce string interpolation tokens from the context of an expression. This is messy but doable because the parser and the lexer are already implemented to work in tandem. The other option is to pick a different delimiter syntax to keep backticks available for use in the future.
