@@ -519,7 +519,7 @@ struct Printer
 
             for (const auto& string : a->strings)
             {
-                writer.write(escape(std::string_view(string.data, string.size)));
+                writer.write(escape(std::string_view(string.data, string.size), /* escapeForInterpString = */ true));
 
                 if (index < a->expressions.size)
                 {

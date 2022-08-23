@@ -230,7 +230,7 @@ bool isIdentifier(std::string_view s)
     return (s.find_first_not_of("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890_") == std::string::npos);
 }
 
-std::string escape(std::string_view s)
+std::string escape(std::string_view s, bool escapeForInterpString)
 {
     std::string r;
     r.reserve(s.size() + 50); // arbitrary number to guess how many characters we'll be inserting
@@ -242,6 +242,12 @@ std::string escape(std::string_view s)
         else
         {
             r += '\\';
+
+            if (escapeForInterpString && (c == '`' || c == '{'))
+            {
+                r += c;
+                continue;
+            }
 
             switch (c)
             {
@@ -271,14 +277,6 @@ std::string escape(std::string_view s)
                 break;
             case '\"':
                 r += '\"';
-                break;
-            // INTERP CODE REVIEW: This is going to apply it to all escaped strings, not just
-            // interpolated ones. Is that acceptable, or should this be split into two functions/a toggle?
-            case '`':
-                r += '`';
-                break;
-            case '{':
-                r += '{';
                 break;
             case '\\':
                 r += '\\';
