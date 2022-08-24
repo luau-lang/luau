@@ -2708,6 +2708,15 @@ a = if temp then even else abc@3
     CHECK(ac.entryMap.count("abcdef"));
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string")
+{
+    check(R"(f(`expression = {@1}`))");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("table"));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_explicit_type_pack")
 {
     check(R"(

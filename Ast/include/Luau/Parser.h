@@ -228,6 +228,9 @@ private:
     // TODO: Add grammar rules here?
     AstExpr* parseIfElseExpr();
 
+    // stringinterp ::= <INTERP_BEGIN> exp {<INTERP_MID> exp} <INTERP_END>
+    AstExpr* parseInterpString();
+
     // Name
     std::optional<Name> parseNameOpt(const char* context = nullptr);
     Name parseName(const char* context = nullptr);
@@ -379,6 +382,7 @@ private:
     std::vector<unsigned int> matchRecoveryStopOnToken;
 
     std::vector<AstStat*> scratchStat;
+    std::vector<AstArray<char>> scratchString;
     std::vector<AstExpr*> scratchExpr;
     std::vector<AstExpr*> scratchExprAux;
     std::vector<AstName> scratchName;

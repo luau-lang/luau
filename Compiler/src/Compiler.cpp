@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <bitset>
+#include <memory>
+
 #include <math.h>
 
 LUAU_FASTINTVARIABLE(LuauCompileLoopUnrollThreshold, 25)
@@ -24,6 +26,8 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileXEQ, false)
+
+LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
 
 LUAU_FASTFLAGVARIABLE(LuauCompileOptimalAssignment, false)
 
@@ -1585,6 +1589,76 @@ struct Compiler
         }
     }
 
+    void compileExprInterpString(AstExprInterpString* expr, uint8_t target, bool targetTemp)
+    {
+        size_t formatCapacity = 0;
+        for (AstArray<char> string : expr->strings)
+        {
+            formatCapacity += string.size + std::count(string.data, string.data + string.size, '%');
+        }
+
+        std::string formatString;
+        formatString.reserve(formatCapacity);
+
+        size_t stringsLeft = expr->strings.size;
+
+        for (AstArray<char> string : expr->strings)
+        {
+            if (memchr(string.data, '%', string.size))
+            {
+                for (size_t characterIndex = 0; characterIndex < string.size; ++characterIndex)
+                {
+                    char character = string.data[characterIndex];
+                    formatString.push_back(character);
+
+                    if (character == '%')
+                        formatString.push_back('%');
+                }
+            }
+            else
+                formatString.append(string.data, string.size);
+
+            stringsLeft--;
+
+            if (stringsLeft > 0)
+                formatString += "%*";
+        }
+
+        size_t formatStringSize = formatString.size();
+
+        // We can't use formatStringRef.data() directly, because short strings don't have their data
+        // pinned in memory, so when interpFormatStrings grows, these pointers will move and become invalid.
+        std::unique_ptr<char[]> formatStringPtr(new char[formatStringSize]);
+        memcpy(formatStringPtr.get(), formatString.data(), formatStringSize);
+
+        AstArray<char> formatStringArray{formatStringPtr.get(), formatStringSize};
+        interpStrings.emplace_back(std::move(formatStringPtr)); // invalidates formatStringPtr, but keeps formatStringArray intact
+
+        int32_t formatStringIndex = bytecode.addConstantString(sref(formatStringArray));
+        if (formatStringIndex < 0)
+            CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+        RegScope rs(this);
+
+        uint8_t baseReg = allocReg(expr, uint8_t(2 + expr->expressions.size));
+
+        emitLoadK(baseReg, formatStringIndex);
+
+        for (size_t index = 0; index < expr->expressions.size; ++index)
+            compileExprTempTop(expr->expressions.data[index], uint8_t(baseReg + 2 + index));
+
+        BytecodeBuilder::StringRef formatMethod = sref(AstName("format"));
+
+        int32_t formatMethodIndex = bytecode.addConstantString(formatMethod);
+        if (formatMethodIndex < 0)
+            CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
+
+        bytecode.emitABC(LOP_NAMECALL, baseReg, baseReg, uint8_t(BytecodeBuilder::getStringHash(formatMethod)));
+        bytecode.emitAux(formatMethodIndex);
+        bytecode.emitABC(LOP_CALL, baseReg, uint8_t(expr->expressions.size + 2), 2);
+        bytecode.emitABC(LOP_MOVE, target, baseReg, 0);
+    }
+
     static uint8_t encodeHashSize(unsigned int hashSize)
     {
         size_t hashSizeLog2 = 0;
@@ -2058,6 +2132,10 @@ struct Compiler
         else if (AstExprIfElse* expr = node->as<AstExprIfElse>())
         {
             compileExprIfElse(expr, target, targetTemp);
+        }
+        else if (AstExprInterpString* interpString = node->as<AstExprInterpString>(); FFlag::LuauInterpolatedStringBaseSupport && interpString)
+        {
+            compileExprInterpString(interpString, target, targetTemp);
         }
         else
         {
@@ -3808,6 +3886,7 @@ struct Compiler
     std::vector<Loop> loops;
     std::vector<InlineFrame> inlineFrames;
     std::vector<Capture> captures;
+    std::vector<std::unique_ptr<char[]>> interpStrings;
 };
 
 void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, const AstNameTable& names, const CompileOptions& inputOptions)

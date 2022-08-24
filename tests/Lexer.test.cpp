@@ -138,4 +138,90 @@ TEST_CASE("lookahead")
     CHECK_EQ(lexer.lookahead().type, Lexeme::Eof);
 }
 
+TEST_CASE("string_interpolation_basic")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`foo {"bar"}`)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    Lexeme interpBegin = lexer.next();
+    CHECK_EQ(interpBegin.type, Lexeme::InterpStringBegin);
+
+    Lexeme quote = lexer.next();
+    CHECK_EQ(quote.type, Lexeme::QuotedString);
+
+    Lexeme interpEnd = lexer.next();
+    CHECK_EQ(interpEnd.type, Lexeme::InterpStringEnd);
+}
+
+TEST_CASE("string_interpolation_double_brace")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`foo{{bad}}bar`)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    auto brokenInterpBegin = lexer.next();
+    CHECK_EQ(brokenInterpBegin.type, Lexeme::BrokenInterpDoubleBrace);
+    CHECK_EQ(std::string(brokenInterpBegin.data, brokenInterpBegin.length), std::string("foo"));
+
+    CHECK_EQ(lexer.next().type, Lexeme::Name);
+
+    auto interpEnd = lexer.next();
+    CHECK_EQ(interpEnd.type, Lexeme::InterpStringEnd);
+    CHECK_EQ(std::string(interpEnd.data, interpEnd.length), std::string("}bar"));
+}
+
+TEST_CASE("string_interpolation_double_but_unmatched_brace")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`{{oops}`, 1)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, Lexeme::BrokenInterpDoubleBrace);
+    CHECK_EQ(lexer.next().type, Lexeme::Name);
+    CHECK_EQ(lexer.next().type, Lexeme::InterpStringEnd);
+    CHECK_EQ(lexer.next().type, ',');
+    CHECK_EQ(lexer.next().type, Lexeme::Number);
+}
+
+TEST_CASE("string_interpolation_unmatched_brace")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"({
+        `hello {"world"}
+    } -- this might be incorrectly parsed as a string)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, '{');
+    CHECK_EQ(lexer.next().type, Lexeme::InterpStringBegin);
+    CHECK_EQ(lexer.next().type, Lexeme::QuotedString);
+    CHECK_EQ(lexer.next().type, Lexeme::BrokenString);
+    CHECK_EQ(lexer.next().type, '}');
+}
+
+TEST_CASE("string_interpolation_with_unicode_escape")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    const std::string testInput = R"(`\u{1F41B}`)";
+    Luau::Allocator alloc;
+    AstNameTable table(alloc);
+    Lexer lexer(testInput.c_str(), testInput.size(), table);
+
+    CHECK_EQ(lexer.next().type, Lexeme::InterpStringSimple);
+    CHECK_EQ(lexer.next().type, Lexeme::Eof);
+}
+
 TEST_SUITE_END();

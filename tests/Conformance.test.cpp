@@ -294,6 +294,14 @@ TEST_CASE("Strings")
     runConformance("strings.lua");
 }
 
+TEST_CASE("StringInterp")
+{
+    ScopedFastFlag sffInterpStrings{"LuauInterpolatedStringBaseSupport", true};
+    ScopedFastFlag sffTostringFormat{"LuauTostringFormatSpecifier", true};
+
+    runConformance("stringinterp.lua");
+}
+
 TEST_CASE("VarArg")
 {
     runConformance("vararg.lua");

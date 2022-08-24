@@ -23,9 +23,13 @@ LUAU_FASTFLAGVARIABLE(LuauErrorDoubleHexPrefix, false)
 LUAU_FASTFLAGVARIABLE(LuauLintParseIntegerIssues, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
+LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
+
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
 bool lua_telemetry_parsed_double_prefix_hex_integer = false;
+
+#define ERROR_INVALID_INTERP_DOUBLE_BRACE "Double braces are not permitted within interpolated strings. Did you mean '\\{'?"
 
 namespace Luau
 {
@@ -1567,6 +1571,12 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
         else
             return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
     }
+    else if (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple)
+    {
+        parseInterpString();
+
+        return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "Interpolated string literals cannot be used as types")};
+    }
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         Location location = lexer.current().location;
@@ -2215,14 +2225,23 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseNumber();
     }
-    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringSimple))
     {
         return parseString();
+    }
+    else if (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringBegin)
+    {
+        return parseInterpString();
     }
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         nextLexeme();
         return reportExprError(start, {}, "Malformed string");
+    }
+    else if (lexer.current().type == Lexeme::BrokenInterpDoubleBrace)
+    {
+        nextLexeme();
+        return reportExprError(start, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
     }
     else if (lexer.current().type == Lexeme::Dot3)
     {
@@ -2614,11 +2633,11 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
 std::optional<AstArray<char>> Parser::parseCharArray()
 {
-    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString);
+    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::InterpStringSimple);
 
     scratchData.assign(lexer.current().data, lexer.current().length);
 
-    if (lexer.current().type == Lexeme::QuotedString)
+    if (lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::InterpStringSimple)
     {
         if (!Lexer::fixupQuotedString(scratchData))
         {
@@ -2643,6 +2662,70 @@ AstExpr* Parser::parseString()
         return allocator.alloc<AstExprConstantString>(location, *value);
     else
         return reportExprError(location, {}, "String literal contains malformed escape sequence");
+}
+
+AstExpr* Parser::parseInterpString()
+{
+    TempVector<AstArray<char>> strings(scratchString);
+    TempVector<AstExpr*> expressions(scratchExpr);
+
+    Location startLocation = lexer.current().location;
+
+    do {
+        Lexeme currentLexeme = lexer.current();
+        LUAU_ASSERT(
+            currentLexeme.type == Lexeme::InterpStringBegin
+            || currentLexeme.type == Lexeme::InterpStringMid
+            || currentLexeme.type == Lexeme::InterpStringEnd
+            || currentLexeme.type == Lexeme::InterpStringSimple
+        );
+
+        Location location = currentLexeme.location;
+
+        Location startOfBrace = Location(location.end, 1);
+
+        scratchData.assign(currentLexeme.data, currentLexeme.length);
+
+        if (!Lexer::fixupQuotedString(scratchData))
+        {
+            nextLexeme();
+            return reportExprError(startLocation, {}, "Interpolated string literal contains malformed escape sequence");
+        }
+
+        AstArray<char> chars = copy(scratchData);
+
+        nextLexeme();
+
+        strings.push_back(chars);
+
+        if (currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple)
+        {
+            AstArray<AstArray<char>> stringsArray = copy(strings);
+            AstArray<AstExpr*> expressionsArray = copy(expressions);
+
+            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
+        }
+
+        AstExpr* expression = parseExpr();
+
+        expressions.push_back(expression);
+
+        switch (lexer.current().type)
+        {
+        case Lexeme::InterpStringBegin:
+        case Lexeme::InterpStringMid:
+        case Lexeme::InterpStringEnd:
+            break;
+        case Lexeme::BrokenInterpDoubleBrace:
+            nextLexeme();
+            return reportExprError(location, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
+        case Lexeme::BrokenString:
+            nextLexeme();
+            return reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '}'?");
+        default:
+            return reportExprError(location, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
+        }
+    } while (true);
 }
 
 AstExpr* Parser::parseNumber()
