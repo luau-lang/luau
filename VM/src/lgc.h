@@ -52,18 +52,21 @@
 ** bit 1 - object is white (type 1)
 ** bit 2 - object is black
 ** bit 3 - object is fixed (should not be collected)
+** bit 4 - object is an ephemeron key and needs special handling when marked from white to grey or black (only used in the atomic gc phase)
 */
 
 #define WHITE0BIT 0
 #define WHITE1BIT 1
 #define BLACKBIT 2
 #define FIXEDBIT 3
+#define EPHEMERONKEYBIT 4
 #define WHITEBITS bit2mask(WHITE0BIT, WHITE1BIT)
 
 #define iswhite(x) test2bits((x)->gch.marked, WHITE0BIT, WHITE1BIT)
 #define isblack(x) testbit((x)->gch.marked, BLACKBIT)
 #define isgray(x) (!testbits((x)->gch.marked, WHITEBITS | bitmask(BLACKBIT)))
 #define isfixed(x) testbit((x)->gch.marked, FIXEDBIT)
+#define isephemeronkey(x) testbit((x)->gch.marked, EPHEMERONKEYBIT)
 
 #define otherwhite(g) (g->currentwhite ^ WHITEBITS)
 #define isdead(g, v) (((v)->gch.marked & (WHITEBITS | bitmask(FIXEDBIT))) == (otherwhite(g) & WHITEBITS))
