@@ -695,7 +695,7 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
         {
             ModulePtr module = moduleResolver.getModule(path);
             if (!module)
-                return;
+                continue;
 
             for (const auto& [name, ty] : module->getModuleScope()->exportedTypeBindings)
             {
