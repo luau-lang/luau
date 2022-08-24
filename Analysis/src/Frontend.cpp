@@ -685,29 +685,23 @@ ScopePtr Frontend::getModuleEnvironment(const SourceModule& module, const Config
         }
     }
 
-    if (!config.globalTypePaths.empty())
-    {
-        unfreeze(typeChecker.globalTypes);
+    auto& types = config.globalTypePaths;
+    bool isGlobalTypePath = std::find(types.begin(), types.end(), module.name) != types.end();
 
+    if (!isGlobalTypePath && !types.empty())
+    {
         result = std::make_shared<Scope>(result);
         for (const std::string& path : config.globalTypePaths)
         {
             ModulePtr module = moduleResolver.getModule(path);
             if (!module)
+                return;
+
+            for (const auto& [name, ty] : module->getModuleScope()->exportedTypeBindings)
             {
-                auto sourceCode = fileResolver->readSource(path);
-                if (!sourceCode)
-                    continue;
-                SourceModule sourceModule = parse(path, sourceCode->source, {});
-                module = typeChecker.check(sourceModule, Mode::Strict);
-                if (!module)
-                    continue;
+                result->exportedTypeBindings[name] = ty;
             }
-
-            loadModuleIntoScope(typeChecker, module, result, path);
         }
-
-        freeze(typeChecker.globalTypes);
     }
 
     return result;
@@ -928,6 +922,9 @@ std::pair<SourceNode*, SourceModule*> Frontend::getSourceNode(CheckResult& check
         sourceNode.requireSet.insert(moduleName);
 
     sourceNode.requireLocations = require.requireList;
+
+    if (!config.globalTypePaths.empty())
+        sourceNode.requireSet.insert(config.globalTypePaths.begin(), config.globalTypePaths.end());
 
     return {&sourceNode, &sourceModule};
 }
