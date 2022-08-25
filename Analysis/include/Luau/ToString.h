@@ -33,7 +33,8 @@ struct ToStringOptions
     bool indent = false;
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
-    std::optional<ToStringNameMap> nameMap;
+    ToStringNameMap nameMap;
+    std::optional<ToStringNameMap> DEPRECATED_nameMap;
     std::shared_ptr<Scope> scope; // If present, module names will be added and types that are not available in scope will be marked as 'invalid'
     std::vector<std::string> namedFunctionOverrideArgNames; // If present, named function argument names will be overridden
 };
@@ -41,7 +42,7 @@ struct ToStringOptions
 struct ToStringResult
 {
     std::string name;
-    ToStringNameMap nameMap;
+    ToStringNameMap DEPRECATED_nameMap;
 
     bool invalid = false;
     bool error = false;
@@ -49,12 +50,24 @@ struct ToStringResult
     bool truncated = false;
 };
 
-ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts = {});
-ToStringResult toStringDetailed(TypePackId ty, const ToStringOptions& opts = {});
+ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts);
+ToStringResult toStringDetailed(TypePackId ty, ToStringOptions& opts);
 
-std::string toString(TypeId ty, const ToStringOptions& opts);
-std::string toString(TypePackId ty, const ToStringOptions& opts);
-std::string toString(const Constraint& c, ToStringOptions& opts);
+std::string toString(TypeId ty, ToStringOptions& opts);
+std::string toString(TypePackId ty, ToStringOptions& opts);
+
+// These overloads are selected when a temporary ToStringOptions is passed. (eg
+// via an initializer list)
+inline std::string toString(TypePackId ty, ToStringOptions&& opts)
+{
+    // Delegate to the overload (TypePackId, ToStringOptions&)
+    return toString(ty, opts);
+}
+inline std::string toString(TypeId ty, ToStringOptions&& opts)
+{
+    // Delegate to the overload (TypeId, ToStringOptions&)
+    return toString(ty, opts);
+}
 
 // These are offered as overloads rather than a default parameter so that they can be easily invoked from within the MSVC debugger.
 // You can use them in watch expressions!
@@ -66,16 +79,42 @@ inline std::string toString(TypePackId ty)
 {
     return toString(ty, ToStringOptions{});
 }
-inline std::string toString(const Constraint& c)
+
+std::string toString(const Constraint& c, ToStringOptions& opts);
+
+inline std::string toString(const Constraint& c, ToStringOptions&& opts)
 {
-    ToStringOptions opts;
     return toString(c, opts);
 }
 
-std::string toString(const TypeVar& tv, const ToStringOptions& opts = {});
-std::string toString(const TypePackVar& tp, const ToStringOptions& opts = {});
+inline std::string toString(const Constraint& c)
+{
+    return toString(c, ToStringOptions{});
+}
 
-std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, const ToStringOptions& opts = {});
+
+std::string toString(const TypeVar& tv, ToStringOptions& opts);
+std::string toString(const TypePackVar& tp, ToStringOptions& opts);
+
+inline std::string toString(const TypeVar& tv)
+{
+    ToStringOptions opts;
+    return toString(tv, opts);
+}
+
+inline std::string toString(const TypePackVar& tp)
+{
+    ToStringOptions opts;
+    return toString(tp, opts);
+}
+
+std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, ToStringOptions& opts);
+
+inline std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv)
+{
+    ToStringOptions opts;
+    return toStringNamedFunction(funcName, ftv, opts);
+}
 
 // It could be useful to see the text representation of a type during a debugging session instead of exploring the content of the class
 // These functions will dump the type to stdout and can be evaluated in Watch/Immediate windows or as gdb/lldb expression

@@ -158,7 +158,7 @@ l_noret luaD_throw(lua_State* L, int errcode)
 static void correctstack(lua_State* L, TValue* oldstack)
 {
     L->top = (L->top - oldstack) + L->stack;
-    for (UpVal* up = L->openupval; up != NULL; up = up->u.l.threadnext)
+    for (UpVal* up = L->openupval; up != NULL; up = up->u.open.threadnext)
         up->v = (up->v - oldstack) + L->stack;
     for (CallInfo* ci = L->base_ci; ci <= L->ci; ci++)
     {
@@ -245,7 +245,7 @@ void luaD_call(lua_State* L, StkId func, int nResults)
 
         int oldactive = luaC_threadactive(L);
         l_setbit(L->stackstate, THREAD_ACTIVEBIT);
-        luaC_checkthreadsleep(L);
+        luaC_threadbarrier(L);
 
         luau_execute(L); // call it
 
@@ -454,7 +454,7 @@ int lua_resume(lua_State* L, lua_State* from, int nargs)
     L->baseCcalls = ++L->nCcalls;
     l_setbit(L->stackstate, THREAD_ACTIVEBIT);
 
-    luaC_checkthreadsleep(L);
+    luaC_threadbarrier(L);
 
     status = luaD_rawrunprotected(L, resume, L->top - nargs);
 
@@ -483,7 +483,7 @@ int lua_resumeerror(lua_State* L, lua_State* from)
     L->baseCcalls = ++L->nCcalls;
     l_setbit(L->stackstate, THREAD_ACTIVEBIT);
 
-    luaC_checkthreadsleep(L);
+    luaC_threadbarrier(L);
 
     status = LUA_ERRRUN;
 

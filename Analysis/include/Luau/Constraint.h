@@ -35,7 +35,7 @@ struct PackSubtypeConstraint
     TypePackId superPack;
 };
 
-// subType ~ gen superType
+// generalizedType ~ gen sourceType
 struct GeneralizationConstraint
 {
     TypeId generalizedType;

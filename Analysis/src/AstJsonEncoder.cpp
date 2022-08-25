@@ -445,6 +445,14 @@ struct AstJsonEncoder : public AstVisitor
         });
     }
 
+    void write(class AstExprInterpString* node)
+    {
+        writeNode(node, "AstExprInterpString", [&]() {
+            PROP(strings);
+            PROP(expressions);
+        });
+    }
+
     void write(class AstExprTable* node)
     {
         writeNode(node, "AstExprTable", [&]() {
@@ -883,6 +891,12 @@ struct AstJsonEncoder : public AstVisitor
     }
 
     bool visit(class AstExprIfElse* node) override
+    {
+        write(node);
+        return false;
+    }
+
+    bool visit(class AstExprInterpString* node) override
     {
         write(node);
         return false;

@@ -73,7 +73,7 @@ void StateDot::visitChild(TypeId ty, int parentIndex, const char* linkName)
     if (opts.duplicatePrimitives && canDuplicatePrimitive(ty))
     {
         if (get<PrimitiveTypeVar>(ty))
-            formatAppend(result, "n%d [label=\"%s\"];\n", index, toStringDetailed(ty, {}).name.c_str());
+            formatAppend(result, "n%d [label=\"%s\"];\n", index, toString(ty).c_str());
         else if (get<AnyTypeVar>(ty))
             formatAppend(result, "n%d [label=\"any\"];\n", index);
     }
@@ -233,7 +233,7 @@ void StateDot::visitChildren(TypeId ty, int index)
     }
     else if (get<PrimitiveTypeVar>(ty))
     {
-        formatAppend(result, "PrimitiveTypeVar %s", toStringDetailed(ty, {}).name.c_str());
+        formatAppend(result, "PrimitiveTypeVar %s", toString(ty).c_str());
         finishNodeLabel(ty);
         finishNode();
     }

@@ -100,6 +100,8 @@ struct ConstraintSolver
     void unblock(NotNull<const Constraint> progressed);
     void unblock(TypeId progressed);
     void unblock(TypePackId progressed);
+    void unblock(const std::vector<TypeId>& types);
+    void unblock(const std::vector<TypePackId>& packs);
 
     /**
      * @returns true if the TypeId is in a blocked state.

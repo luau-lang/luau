@@ -13,6 +13,7 @@
 LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauSpecialTypesAsterisked, false)
+LUAU_FASTFLAGVARIABLE(LuauFixNameMaps, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -116,7 +117,7 @@ static std::pair<bool, std::optional<Luau::Name>> canUseTypeNameInScope(ScopePtr
 
 struct StringifierState
 {
-    const ToStringOptions& opts;
+    ToStringOptions& opts;
     ToStringResult& result;
 
     std::unordered_map<TypeId, std::string> cycleNames;
@@ -127,18 +128,28 @@ struct StringifierState
 
     bool exhaustive;
 
-    StringifierState(const ToStringOptions& opts, ToStringResult& result, const std::optional<ToStringNameMap>& nameMap)
+    StringifierState(ToStringOptions& opts, ToStringResult& result, const std::optional<ToStringNameMap>& DEPRECATED_nameMap)
         : opts(opts)
         , result(result)
         , exhaustive(opts.exhaustive)
     {
-        if (nameMap)
-            result.nameMap = *nameMap;
+        if (!FFlag::LuauFixNameMaps && DEPRECATED_nameMap)
+            result.DEPRECATED_nameMap = *DEPRECATED_nameMap;
 
-        for (const auto& [_, v] : result.nameMap.typeVars)
-            usedNames.insert(v);
-        for (const auto& [_, v] : result.nameMap.typePacks)
-            usedNames.insert(v);
+        if (!FFlag::LuauFixNameMaps)
+        {
+            for (const auto& [_, v] : result.DEPRECATED_nameMap.typeVars)
+                usedNames.insert(v);
+            for (const auto& [_, v] : result.DEPRECATED_nameMap.typePacks)
+                usedNames.insert(v);
+        }
+        else
+        {
+            for (const auto& [_, v] : opts.nameMap.typeVars)
+                usedNames.insert(v);
+            for (const auto& [_, v] : opts.nameMap.typePacks)
+                usedNames.insert(v);
+        }
     }
 
     bool hasSeen(const void* tv)
@@ -161,8 +172,8 @@ struct StringifierState
 
     std::string getName(TypeId ty)
     {
-        const size_t s = result.nameMap.typeVars.size();
-        std::string& n = result.nameMap.typeVars[ty];
+        const size_t s = FFlag::LuauFixNameMaps ? opts.nameMap.typeVars.size() : result.DEPRECATED_nameMap.typeVars.size();
+        std::string& n = FFlag::LuauFixNameMaps ? opts.nameMap.typeVars[ty] : result.DEPRECATED_nameMap.typeVars[ty];
         if (!n.empty())
             return n;
 
@@ -184,8 +195,8 @@ struct StringifierState
 
     std::string getName(TypePackId ty)
     {
-        const size_t s = result.nameMap.typePacks.size();
-        std::string& n = result.nameMap.typePacks[ty];
+        const size_t s = FFlag::LuauFixNameMaps ? opts.nameMap.typePacks.size() : result.DEPRECATED_nameMap.typePacks.size();
+        std::string& n = FFlag::LuauFixNameMaps ? opts.nameMap.typePacks[ty] : result.DEPRECATED_nameMap.typePacks[ty];
         if (!n.empty())
             return n;
 
@@ -377,7 +388,10 @@ struct TypeVarStringifier
         if (gtv.explicitName)
         {
             state.usedNames.insert(gtv.name);
-            state.result.nameMap.typeVars[ty] = gtv.name;
+            if (FFlag::LuauFixNameMaps)
+                state.opts.nameMap.typeVars[ty] = gtv.name;
+            else
+                state.result.DEPRECATED_nameMap.typeVars[ty] = gtv.name;
             state.emit(gtv.name);
         }
         else
@@ -987,7 +1001,10 @@ struct TypePackStringifier
         if (pack.explicitName)
         {
             state.usedNames.insert(pack.name);
-            state.result.nameMap.typePacks[tp] = pack.name;
+            if (FFlag::LuauFixNameMaps)
+                state.opts.nameMap.typePacks[tp] = pack.name;
+            else
+                state.result.DEPRECATED_nameMap.typePacks[tp] = pack.name;
             state.emit(pack.name);
         }
         else
@@ -1066,7 +1083,7 @@ static void assignCycleNames(const std::set<TypeId>& cycles, const std::set<Type
     }
 }
 
-ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
+ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 {
     /*
      * 1. Walk the TypeVar and track seen TypeIds.  When you reencounter a TypeId, add it to a set of seen cycles.
@@ -1078,7 +1095,9 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
 
     ToStringResult result;
 
-    StringifierState state{opts, result, opts.nameMap};
+    StringifierState state = FFlag::LuauFixNameMaps
+        ? StringifierState{opts, result, opts.nameMap}
+        : StringifierState{opts, result, opts.DEPRECATED_nameMap};
 
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
@@ -1176,7 +1195,7 @@ ToStringResult toStringDetailed(TypeId ty, const ToStringOptions& opts)
     return result;
 }
 
-ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
+ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
 {
     /*
      * 1. Walk the TypeVar and track seen TypeIds.  When you reencounter a TypeId, add it to a set of seen cycles.
@@ -1185,7 +1204,9 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
      * 4. Print out the root of the type using the same algorithm as step 3.
      */
     ToStringResult result;
-    StringifierState state{opts, result, opts.nameMap};
+    StringifierState state = FFlag::LuauFixNameMaps
+        ? StringifierState{opts, result, opts.nameMap}
+        : StringifierState{opts, result, opts.DEPRECATED_nameMap};
 
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
@@ -1248,30 +1269,32 @@ ToStringResult toStringDetailed(TypePackId tp, const ToStringOptions& opts)
     return result;
 }
 
-std::string toString(TypeId ty, const ToStringOptions& opts)
+std::string toString(TypeId ty, ToStringOptions& opts)
 {
     return toStringDetailed(ty, opts).name;
 }
 
-std::string toString(TypePackId tp, const ToStringOptions& opts)
+std::string toString(TypePackId tp, ToStringOptions& opts)
 {
     return toStringDetailed(tp, opts).name;
 }
 
-std::string toString(const TypeVar& tv, const ToStringOptions& opts)
+std::string toString(const TypeVar& tv, ToStringOptions& opts)
 {
-    return toString(const_cast<TypeId>(&tv), std::move(opts));
+    return toString(const_cast<TypeId>(&tv), opts);
 }
 
-std::string toString(const TypePackVar& tp, const ToStringOptions& opts)
+std::string toString(const TypePackVar& tp, ToStringOptions& opts)
 {
-    return toString(const_cast<TypePackId>(&tp), std::move(opts));
+    return toString(const_cast<TypePackId>(&tp), opts);
 }
 
-std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, const ToStringOptions& opts)
+std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, ToStringOptions& opts)
 {
     ToStringResult result;
-    StringifierState state(opts, result, opts.nameMap);
+    StringifierState state = FFlag::LuauFixNameMaps
+        ? StringifierState{opts, result, opts.nameMap}
+        : StringifierState{opts, result, opts.DEPRECATED_nameMap};
     TypeVarStringifier tvs{state};
 
     state.emit(funcName);
@@ -1403,69 +1426,67 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
     auto go = [&opts](auto&& c) {
         using T = std::decay_t<decltype(c)>;
 
+        // TODO: Inline and delete this function when clipping FFlag::LuauFixNameMaps
+        auto tos = [](auto&& a, ToStringOptions& opts)
+        {
+            if (FFlag::LuauFixNameMaps)
+                return toString(a, opts);
+            else
+            {
+                ToStringResult tsr = toStringDetailed(a, opts);
+                opts.DEPRECATED_nameMap = std::move(tsr.DEPRECATED_nameMap);
+                return tsr.name;
+            }
+        };
+
         if constexpr (std::is_same_v<T, SubtypeConstraint>)
         {
-            ToStringResult subStr = toStringDetailed(c.subType, opts);
-            opts.nameMap = std::move(subStr.nameMap);
-            ToStringResult superStr = toStringDetailed(c.superType, opts);
-            opts.nameMap = std::move(superStr.nameMap);
-            return subStr.name + " <: " + superStr.name;
+            std::string subStr = tos(c.subType, opts);
+            std::string superStr = tos(c.superType, opts);
+            return subStr + " <: " + superStr;
         }
         else if constexpr (std::is_same_v<T, PackSubtypeConstraint>)
         {
-            ToStringResult subStr = toStringDetailed(c.subPack, opts);
-            opts.nameMap = std::move(subStr.nameMap);
-            ToStringResult superStr = toStringDetailed(c.superPack, opts);
-            opts.nameMap = std::move(superStr.nameMap);
-            return subStr.name + " <: " + superStr.name;
+            std::string subStr = tos(c.subPack, opts);
+            std::string superStr = tos(c.superPack, opts);
+            return subStr + " <: " + superStr;
         }
         else if constexpr (std::is_same_v<T, GeneralizationConstraint>)
         {
-            ToStringResult subStr = toStringDetailed(c.generalizedType, opts);
-            opts.nameMap = std::move(subStr.nameMap);
-            ToStringResult superStr = toStringDetailed(c.sourceType, opts);
-            opts.nameMap = std::move(superStr.nameMap);
-            return subStr.name + " ~ gen " + superStr.name;
+            std::string subStr = tos(c.generalizedType, opts);
+            std::string superStr = tos(c.sourceType, opts);
+            return subStr + " ~ gen " + superStr;
         }
         else if constexpr (std::is_same_v<T, InstantiationConstraint>)
         {
-            ToStringResult subStr = toStringDetailed(c.subType, opts);
-            opts.nameMap = std::move(subStr.nameMap);
-            ToStringResult superStr = toStringDetailed(c.superType, opts);
-            opts.nameMap = std::move(superStr.nameMap);
-            return subStr.name + " ~ inst " + superStr.name;
+            std::string subStr = tos(c.subType, opts);
+            std::string superStr = tos(c.superType, opts);
+            return subStr + " ~ inst " + superStr;
         }
         else if constexpr (std::is_same_v<T, UnaryConstraint>)
         {
-            ToStringResult resultStr = toStringDetailed(c.resultType, opts);
-            opts.nameMap = std::move(resultStr.nameMap);
-            ToStringResult operandStr = toStringDetailed(c.operandType, opts);
-            opts.nameMap = std::move(operandStr.nameMap);
+            std::string resultStr = tos(c.resultType, opts);
+            std::string operandStr = tos(c.operandType, opts);
 
-            return resultStr.name + " ~ Unary<" + toString(c.op) + ", " + operandStr.name + ">";
+            return resultStr + " ~ Unary<" + toString(c.op) + ", " + operandStr + ">";
         }
         else if constexpr (std::is_same_v<T, BinaryConstraint>)
         {
-            ToStringResult resultStr = toStringDetailed(c.resultType);
-            opts.nameMap = std::move(resultStr.nameMap);
-            ToStringResult leftStr = toStringDetailed(c.leftType);
-            opts.nameMap = std::move(leftStr.nameMap);
-            ToStringResult rightStr = toStringDetailed(c.rightType);
-            opts.nameMap = std::move(rightStr.nameMap);
+            std::string resultStr = tos(c.resultType, opts);
+            std::string leftStr = tos(c.leftType, opts);
+            std::string rightStr = tos(c.rightType, opts);
 
-            return resultStr.name + " ~ Binary<" + toString(c.op) + ", " + leftStr.name + ", " + rightStr.name + ">";
+            return resultStr + " ~ Binary<" + toString(c.op) + ", " + leftStr + ", " + rightStr + ">";
         }
         else if constexpr (std::is_same_v<T, NameConstraint>)
         {
-            ToStringResult namedStr = toStringDetailed(c.namedType, opts);
-            opts.nameMap = std::move(namedStr.nameMap);
-            return "@name(" + namedStr.name + ") = " + c.name;
+            std::string namedStr = tos(c.namedType, opts);
+            return "@name(" + namedStr + ") = " + c.name;
         }
         else if constexpr (std::is_same_v<T, TypeAliasExpansionConstraint>)
         {
-            ToStringResult targetStr = toStringDetailed(c.target, opts);
-            opts.nameMap = std::move(targetStr.nameMap);
-            return "expand " + targetStr.name;
+            std::string targetStr = tos(c.target, opts);
+            return "expand " + targetStr;
         }
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");

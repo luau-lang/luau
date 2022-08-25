@@ -167,7 +167,7 @@ typedef struct global_State
     GCObject* grayagain; // list of objects to be traversed atomically
     GCObject* weak;     // list of weak tables (to be cleared)
 
-    TString* strbufgc; // list of all string buffer objects
+    TString* strbufgc; // list of all string buffer objects; TODO: remove with LuauNoStrbufLink
 
 
     size_t GCthreshold;                       // when totalbytes > GCthreshold, run GC step

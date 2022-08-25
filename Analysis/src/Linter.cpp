@@ -15,6 +15,7 @@
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
 LUAU_FASTFLAGVARIABLE(LuauLintComparisonPrecedence, false)
+LUAU_FASTFLAGVARIABLE(LuauLintFixDeprecationMessage, false)
 
 namespace Luau
 {
@@ -206,6 +207,24 @@ static bool similar(AstExpr* lhs, AstExpr* rhs)
         return true;
     }
     CASE(AstExprIfElse) return similar(le->condition, re->condition) && similar(le->trueExpr, re->trueExpr) && similar(le->falseExpr, re->falseExpr);
+    CASE(AstExprInterpString)
+    {
+        if (le->strings.size != re->strings.size)
+            return false;
+
+        if (le->expressions.size != re->expressions.size)
+            return false;
+
+        for (size_t i = 0; i < le->strings.size; ++i)
+            if (le->strings.data[i].size != re->strings.data[i].size || memcmp(le->strings.data[i].data, re->strings.data[i].data, le->strings.data[i].size) != 0)
+                return false;
+
+        for (size_t i = 0; i < le->expressions.size; ++i)
+            if (!similar(le->expressions.data[i], re->expressions.data[i]))
+                return false;
+
+        return true;
+    }
     else
     {
         LUAU_ASSERT(!"Unknown expression type");
@@ -288,11 +307,22 @@ private:
                 emitWarning(*context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'", gv->name.value);
             else if (g->deprecated)
             {
-                if (*g->deprecated)
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
-                        gv->name.value, *g->deprecated);
+                if (FFlag::LuauLintFixDeprecationMessage)
+                {
+                    if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
+                            gv->name.value, replacement);
+                    else
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                }
                 else
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                {
+                    if (*g->deprecated)
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
+                            gv->name.value, *g->deprecated);
+                    else
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                }
             }
         }
 

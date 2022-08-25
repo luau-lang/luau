@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauDeduceGmatchReturnTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauDeduceFindMatchReturnTypes, false)
+LUAU_FASTFLAGVARIABLE(LuauStringFormatArgumentErrorFix, false)
 
 namespace Luau
 {
@@ -1139,11 +1140,21 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error
-    size_t actualParamSize = params.size() - paramOffset;
+    if (FFlag::LuauStringFormatArgumentErrorFix)
+    {
+        size_t numActualParams = params.size();
+        size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
 
-    if (expected.size() != actualParamSize && (!tail || expected.size() < actualParamSize))
-        typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), actualParamSize}});
+        if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
+            typechecker.reportError(TypeError{expr.location, CountMismatch{numExpectedParams, numActualParams}});
+    }
+    else
+    {
+        size_t actualParamSize = params.size() - paramOffset;
 
+        if (expected.size() != actualParamSize && (!tail || expected.size() < actualParamSize))
+            typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), actualParamSize}});
+    }
     return WithPredicate<TypePackId>{arena.addTypePack({typechecker.stringType})};
 }
 

@@ -12,8 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauDebuggerBreakpointHitOnNextBestLine, false);
-
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -44,13 +42,13 @@ int lua_getargument(lua_State* L, int level, int n)
     {
         if (n <= fp->numparams)
         {
-            luaC_checkthreadsleep(L);
+            luaC_threadbarrier(L);
             luaA_pushobject(L, ci->base + (n - 1));
             res = 1;
         }
         else if (fp->is_vararg && n < ci->base - ci->func)
         {
-            luaC_checkthreadsleep(L);
+            luaC_threadbarrier(L);
             luaA_pushobject(L, ci->func + n);
             res = 1;
         }
@@ -69,7 +67,7 @@ const char* lua_getlocal(lua_State* L, int level, int n)
     const LocVar* var = fp ? luaF_getlocal(fp, n, currentpc(L, ci)) : NULL;
     if (var)
     {
-        luaC_checkthreadsleep(L);
+        luaC_threadbarrier(L);
         luaA_pushobject(L, ci->base + var->reg);
     }
     const char* name = var ? getstr(var->varname) : NULL;
@@ -185,7 +183,7 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
         status = auxgetinfo(L, what, ar, f, ci);
         if (strchr(what, 'f'))
         {
-            luaC_checkthreadsleep(L);
+            luaC_threadbarrier(L);
             setclvalue(L, L->top, f);
             incr_top(L);
         }
@@ -437,29 +435,17 @@ static int getnextline(Proto* p, int line)
 
 int lua_breakpoint(lua_State* L, int funcindex, int line, int enabled)
 {
-    int target = -1;
+    const TValue* func = luaA_toobject(L, funcindex);
+    api_check(L, ttisfunction(func) && !clvalue(func)->isC);
 
-    if (FFlag::LuauDebuggerBreakpointHitOnNextBestLine)
+    Proto* p = clvalue(func)->l.p;
+    // Find line number to add the breakpoint to.
+    int target = getnextline(p, line);
+
+    if (target != -1)
     {
-        const TValue* func = luaA_toobject(L, funcindex);
-        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
-
-        Proto* p = clvalue(func)->l.p;
-        // Find line number to add the breakpoint to.
-        target = getnextline(p, line);
-
-        if (target != -1)
-        {
-            // Add breakpoint on the exact line
-            luaG_breakpoint(L, p, target, bool(enabled));
-        }
-    }
-    else
-    {
-        const TValue* func = luaA_toobject(L, funcindex);
-        api_check(L, ttisfunction(func) && !clvalue(func)->isC);
-
-        luaG_breakpoint(L, clvalue(func)->l.p, line, bool(enabled));
+        // Add breakpoint on the exact line
+        luaG_breakpoint(L, p, target, bool(enabled));
     }
 
     return target;

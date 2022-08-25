@@ -12,6 +12,7 @@ LUAI_FUNC Closure* luaF_newLclosure(lua_State* L, int nelems, Table* e, Proto* p
 LUAI_FUNC Closure* luaF_newCclosure(lua_State* L, int nelems, Table* e);
 LUAI_FUNC UpVal* luaF_findupval(lua_State* L, StkId level);
 LUAI_FUNC void luaF_close(lua_State* L, StkId level);
+LUAI_FUNC void luaF_closeupval(lua_State* L, UpVal* uv, bool dead);
 LUAI_FUNC void luaF_freeproto(lua_State* L, Proto* f, struct lua_Page* page);
 LUAI_FUNC void luaF_freeclosure(lua_State* L, Closure* c, struct lua_Page* page);
 LUAI_FUNC void luaF_unlinkupval(UpVal* uv);

@@ -61,6 +61,12 @@ struct Lexeme
         SkinnyArrow,
         DoubleColon,
 
+        InterpStringBegin,
+        InterpStringMid,
+        InterpStringEnd,
+        // An interpolated string with no expressions (like `x`)
+        InterpStringSimple,
+
         AddAssign,
         SubAssign,
         MulAssign,
@@ -80,6 +86,8 @@ struct Lexeme
         BrokenString,
         BrokenComment,
         BrokenUnicode,
+        BrokenInterpDoubleBrace,
+
         Error,
 
         Reserved_BEGIN,
@@ -208,6 +216,11 @@ private:
     Lexeme readLongString(const Position& start, int sep, Lexeme::Type ok, Lexeme::Type broken);
     Lexeme readQuotedString();
 
+    Lexeme readInterpolatedStringBegin();
+    Lexeme readInterpolatedStringSection(Position start, Lexeme::Type formatType, Lexeme::Type endType);
+
+    void readBackslashInString();
+
     std::pair<AstName, Lexeme::Type> readName();
 
     Lexeme readNumber(const Position& start, unsigned int startOffset);
@@ -231,6 +244,14 @@ private:
 
     bool skipComments;
     bool readNames;
+
+    enum class BraceType
+    {
+        InterpolatedString,
+        Normal
+    };
+
+    std::vector<BraceType> braceStack;
 };
 
 inline bool isSpace(char ch)

@@ -10,6 +10,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
+LUAU_FASTFLAG(LuauStringFormatArgumentErrorFix)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -721,7 +722,14 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
+    if (FFlag::LuauStringFormatArgumentErrorFix)
+    {
+        CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but 3 are specified", toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
@@ -734,6 +742,22 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
 
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
     CHECK_EQ("Type 'number' could not be converted into 'string'", toString(result.errors[1]));
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_use_correct_argument3")
+{
+    ScopedFastFlag LuauStringFormatArgumentErrorFix{"LuauStringFormatArgumentErrorFix", true};
+
+    CheckResult result = check(R"(
+        local s1 = string.format("%d")
+        local s2 = string.format("%d", 1)
+        local s3 = string.format("%d", 1, 2)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but only 1 is specified", toString(result.errors[0]));
+    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but 3 are specified", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "debug_traceback_is_crazy")

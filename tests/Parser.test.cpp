@@ -905,6 +905,146 @@ TEST_CASE_FIXTURE(Fixture, "parse_compound_assignment_error_multiple")
     }
 }
 
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_begin")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = `{{oops}}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_double_brace_mid")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = `{nice} {{oops}}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Double braces are not permitted within interpolated strings. Did you mean '\\{'?", e.getErrors().front().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    auto columnOfEndBraceError = [this](const char* code)
+    {
+        try
+        {
+            parse(code);
+            FAIL("Expected ParseErrors to be thrown");
+            return UINT_MAX;
+        }
+        catch (const ParseErrors& e)
+        {
+            CHECK_EQ(e.getErrors().size(), 1);
+
+            auto error = e.getErrors().front();
+            CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", error.getMessage());
+            return error.getLocation().begin.column;
+        }
+    };
+
+    // This makes sure that the error is coming from the brace itself
+    CHECK_EQ(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ = `{abcdefg`"));
+    CHECK_NE(columnOfEndBraceError("_ = `{a`"), columnOfEndBraceError("_ =       `{a`"));
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace_in_table")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = { `{a` }
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ(e.getErrors().size(), 2);
+
+        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_mid_without_end_brace_in_table")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = { `x {"y"} {z` }
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ(e.getErrors().size(), 2);
+
+        CHECK_EQ("Malformed interpolated string, did you forget to add a '}'?", e.getErrors().front().getMessage());
+        CHECK_EQ("Expected '}' (to close '{' at line 2), got <eof>", e.getErrors().back().getMessage());
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_as_type_fail")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            local a: `what` = `???`
+            local b: `what {"the"}` = `???`
+            local c: `what {"the"} heck` = `???`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& parseErrors)
+    {
+        CHECK_EQ(parseErrors.getErrors().size(), 3);
+
+        for (ParseError error : parseErrors.getErrors())
+            CHECK_EQ(error.getMessage(), "Interpolated string literals cannot be used as types");
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_call_without_parens")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    try
+    {
+        parse(R"(
+            _ = print `{42}`
+        )");
+        FAIL("Expected ParseErrors to be thrown");
+    }
+    catch (const ParseErrors& e)
+    {
+        CHECK_EQ("Expected identifier when parsing expression, got `{", e.getErrors().front().getMessage());
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "parse_nesting_based_end_detection")
 {
     try

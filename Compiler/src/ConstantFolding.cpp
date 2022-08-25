@@ -349,6 +349,11 @@ struct ConstantVisitor : AstVisitor
             if (cond.type != Constant::Type_Unknown)
                 result = cond.isTruthful() ? trueExpr : falseExpr;
         }
+        else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
+        {
+            for (AstExpr* expression : expr->expressions)
+                analyze(expression);
+        }
         else
         {
             LUAU_ASSERT(!"Unknown expression type");

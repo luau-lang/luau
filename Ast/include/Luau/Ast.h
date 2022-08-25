@@ -134,6 +134,10 @@ public:
     {
         return visit((class AstExpr*)node);
     }
+    virtual bool visit(class AstExprInterpString* node)
+    {
+        return visit((class AstExpr*)node);
+    }
     virtual bool visit(class AstExprError* node)
     {
         return visit((class AstExpr*)node);
@@ -594,9 +598,9 @@ public:
     LUAU_RTTI(AstExprFunction)
 
     AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
-        AstLocal* self, const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth,
-        const AstName& debugname, std::optional<AstTypeList> returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr, bool hasEnd = false,
-        std::optional<Location> argLocation = std::nullopt);
+        AstLocal* self, const AstArray<AstLocal*>& args, bool vararg, const Location& varargLocation, AstStatBlock* body, size_t functionDepth,
+        const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr,
+        bool hasEnd = false, const std::optional<Location>& argLocation = std::nullopt);
 
     void visit(AstVisitor* visitor) override;
 
@@ -730,6 +734,22 @@ public:
     AstExpr* trueExpr;
     bool hasElse;
     AstExpr* falseExpr;
+};
+
+class AstExprInterpString : public AstExpr
+{
+public:
+    LUAU_RTTI(AstExprInterpString)
+
+    AstExprInterpString(const Location& location, const AstArray<AstArray<char>>& strings, const AstArray<AstExpr*>& expressions);
+
+    void visit(AstVisitor* visitor) override;
+
+    /// An interpolated string such as `foo{bar}baz` is represented as
+    /// an array of strings for "foo" and "bar", and an array of expressions for "baz".
+    /// `strings` will always have one more element than `expressions`.
+    AstArray<AstArray<char>> strings;
+    AstArray<AstExpr*> expressions;
 };
 
 class AstStatBlock : public AstStat

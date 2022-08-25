@@ -252,24 +252,29 @@ if not rawget(_G, "_soft") then
 end
 
 -- create many threads with self-references and open upvalues
-local thread_id = 0
-local threads = {}
+do
+  local thread_id = 0
+  local threads = {}
 
-function fn(thread)
-    local x = {}
-    threads[thread_id] = function()
-                             thread = x
-                         end
-    coroutine.yield()
+  function fn(thread)
+      local x = {}
+      threads[thread_id] = function()
+                               thread = x
+                           end
+      coroutine.yield()
+  end
+
+  while thread_id < 1000 do
+      local thread = coroutine.create(fn)
+      coroutine.resume(thread, thread)
+      thread_id = thread_id + 1
+  end
+
+  collectgarbage()
+
+  -- ensure that we no longer have a lot of reachable threads for subsequent tests
+  threads = {}
 end
-
-while thread_id < 1000 do
-    local thread = coroutine.create(fn)
-    coroutine.resume(thread, thread)
-    thread_id = thread_id + 1
-end
-
-
 
 -- create a userdata to be collected when state is closed
 do
@@ -318,6 +323,29 @@ do
   for i = 1,100 do
     t[i] = nil
   end
+
+  collectgarbage()
+end
+
+-- create a lot of threads with upvalues to force a case where full gc happens after we've marked some upvalues
+do
+  local t = {}
+  for i = 1,100 do
+    local c = coroutine.wrap(function()
+      local uv = {i + 1}
+      local function f()
+        return uv[1] * 10
+      end
+      coroutine.yield(uv[1])
+      uv = {i + 2}
+      coroutine.yield(f())
+    end)
+
+    assert(c() == i + 1)
+    table.insert(t, c)
+  end
+
+  t = {}
 
   collectgarbage()
 end
