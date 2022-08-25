@@ -213,7 +213,7 @@ Nth nth(int nth = 1)
 struct FindNthOccurenceOf : public AstVisitor
 {
     Nth requestedNth;
-    size_t currentOccurrence = 0;
+    int currentOccurrence = 0;
     AstNode* theNode = nullptr;
 
     FindNthOccurenceOf(Nth nth);
