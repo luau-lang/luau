@@ -166,7 +166,7 @@ private:
 
     static LintResult classifyLints(const std::vector<LintWarning>& warnings, const Config& config);
 
-    ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config);
+    ScopePtr getModuleEnvironment(const SourceModule& module, const Config& config, bool forAutocomplete = false);
 
     std::unordered_map<std::string, ScopePtr> environments;
     std::unordered_map<std::string, std::function<void(TypeChecker&, ScopePtr)>> builtinDefinitions;

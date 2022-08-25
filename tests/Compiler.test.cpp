@@ -1230,6 +1230,58 @@ RETURN R0 0
 )");
 }
 
+TEST_CASE("InterpStringWithNoExpressions")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CHECK_EQ(compileFunction0(R"(return "hello")"), compileFunction0("return `hello`"));
+}
+
+TEST_CASE("InterpStringZeroCost")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
+        R"(
+LOADK R1 K0
+LOADK R3 K1
+NAMECALL R1 R1 K2
+CALL R1 2 1
+MOVE R0 R1
+RETURN R0 0
+)"
+    );
+}
+
+TEST_CASE("InterpStringRegisterCleanup")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CHECK_EQ(
+        "\n" + compileFunction0(R"(
+            local a, b, c = nil, "um", "uh oh"
+            a = `foo{"bar"}`
+            print(a)
+        )"),
+
+        R"(
+LOADNIL R0
+LOADK R1 K0
+LOADK R2 K1
+LOADK R3 K2
+LOADK R5 K3
+NAMECALL R3 R3 K4
+CALL R3 2 1
+MOVE R0 R3
+GETIMPORT R3 6
+MOVE R4 R0
+CALL R3 1 0
+RETURN R0 0
+)"
+    );
+}
+
 TEST_CASE("ConstantFoldArith")
 {
     CHECK_EQ("\n" + compileFunction0("return 10 + 2"), R"(

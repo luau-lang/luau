@@ -215,6 +215,16 @@ struct CostVisitor : AstVisitor
         {
             return model(expr->condition) + model(expr->trueExpr) + model(expr->falseExpr) + 2;
         }
+        else if (AstExprInterpString* expr = node->as<AstExprInterpString>())
+        {
+            // Baseline cost of string.format
+            Cost cost = 3;
+
+            for (AstExpr* innerExpression : expr->expressions)
+                cost += model(innerExpression);
+
+            return cost;
+        }
         else
         {
             LUAU_ASSERT(!"Unknown expression type");

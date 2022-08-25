@@ -349,6 +349,22 @@ AstExprError::AstExprError(const Location& location, const AstArray<AstExpr*>& e
 {
 }
 
+AstExprInterpString::AstExprInterpString(const Location& location, const AstArray<AstArray<char>>& strings, const AstArray<AstExpr*>& expressions)
+    : AstExpr(ClassIndex(), location)
+    , strings(strings)
+    , expressions(expressions)
+{
+}
+
+void AstExprInterpString::visit(AstVisitor* visitor)
+{
+    if (visitor->visit(this))
+    {
+        for (AstExpr* expr : expressions)
+            expr->visit(visitor);
+    }
+}
+
 void AstExprError::visit(AstVisitor* visitor)
 {
     if (visitor->visit(this))

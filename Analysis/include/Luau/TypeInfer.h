@@ -107,6 +107,7 @@ struct TypeChecker
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprTypeAssertion& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprError& expr);
     WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprIfElse& expr, std::optional<TypeId> expectedType = std::nullopt);
+    WithPredicate<TypeId> checkExpr(const ScopePtr& scope, const AstExprInterpString& expr);
 
     TypeId checkExprTable(const ScopePtr& scope, const AstExprTable& expr, const std::vector<std::pair<TypeId, TypeId>>& fieldTypes,
         std::optional<TypeId> expectedType);

@@ -8,6 +8,7 @@
 #include "Luau/VisitTypeVar.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -823,6 +824,41 @@ local function times<T>(n: any, f: () -> T)
     table.insert(result, if true then res else n)
     return result
 end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_basic")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CheckResult result = check(R"(
+        local foo: string = `hello {"world"}`
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_with_invalid_expression")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CheckResult result = check(R"(
+        local function f(x: number) end
+
+        local foo: string = `hello {f("uh oh")}`
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "tc_interpolated_string_constant_type")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    CheckResult result = check(R"(
+        local foo: "hello" = `hello`
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
