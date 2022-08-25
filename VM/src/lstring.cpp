@@ -7,6 +7,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauNoStrbufLink, false)
+
 unsigned int luaS_hash(const char* str, size_t len)
 {
     // Note that this hashing algorithm is replicated in BytecodeBuilder.cpp, BytecodeBuilder::getStringHash
@@ -70,40 +72,33 @@ void luaS_resize(lua_State* L, int newsize)
 
 static TString* newlstr(lua_State* L, const char* str, size_t l, unsigned int h)
 {
-    TString* ts;
-    stringtable* tb;
     if (l > MAXSSIZE)
         luaM_toobig(L);
-    ts = luaM_newgco(L, TString, sizestring(l), L->activememcat);
-    ts->len = unsigned(l);
+
+    TString* ts = luaM_newgco(L, TString, sizestring(l), L->activememcat);
+    luaC_init(L, ts, LUA_TSTRING);
+    ts->atom = ATOM_UNDEF;
     ts->hash = h;
-    ts->marked = luaC_white(L->global);
-    ts->tt = LUA_TSTRING;
-    ts->memcat = L->activememcat;
+    ts->len = unsigned(l);
+
     memcpy(ts->data, str, l);
     ts->data[l] = '\0'; // ending 0
-    ts->atom = ATOM_UNDEF;
-    tb = &L->global->strt;
+
+    stringtable* tb = &L->global->strt;
     h = lmod(h, tb->size);
     ts->next = tb->hash[h]; // chain new entry
     tb->hash[h] = ts;
+
     tb->nuse++;
     if (tb->nuse > cast_to(uint32_t, tb->size) && tb->size <= INT_MAX / 2)
         luaS_resize(L, tb->size * 2); // too crowded
+
     return ts;
-}
-
-static void linkstrbuf(lua_State* L, TString* ts)
-{
-    global_State* g = L->global;
-
-    ts->next = g->strbufgc;
-    g->strbufgc = ts;
-    ts->marked = luaC_white(g);
 }
 
 static void unlinkstrbuf(lua_State* L, TString* ts)
 {
+    LUAU_ASSERT(!FFlag::LuauNoStrbufLink);
     global_State* g = L->global;
 
     TString** p = &g->strbufgc;
@@ -129,13 +124,23 @@ TString* luaS_bufstart(lua_State* L, size_t size)
     if (size > MAXSSIZE)
         luaM_toobig(L);
 
+    global_State* g = L->global;
+
     TString* ts = luaM_newgco(L, TString, sizestring(size), L->activememcat);
-
-    ts->tt = LUA_TSTRING;
-    ts->memcat = L->activememcat;
-    linkstrbuf(L, ts);
-
+    luaC_init(L, ts, LUA_TSTRING);
+    ts->atom = ATOM_UNDEF;
+    ts->hash = 0; // computed in luaS_buffinish
     ts->len = unsigned(size);
+
+    if (FFlag::LuauNoStrbufLink)
+    {
+        ts->next = NULL;
+    }
+    else
+    {
+        ts->next = g->strbufgc;
+        g->strbufgc = ts;
+    }
 
     return ts;
 }
@@ -159,7 +164,10 @@ TString* luaS_buffinish(lua_State* L, TString* ts)
         }
     }
 
-    unlinkstrbuf(L, ts);
+    if (FFlag::LuauNoStrbufLink)
+        LUAU_ASSERT(ts->next == NULL);
+    else
+        unlinkstrbuf(L, ts);
 
     ts->hash = h;
     ts->data[ts->len] = '\0'; // ending 0
@@ -214,11 +222,21 @@ static bool unlinkstr(lua_State* L, TString* ts)
 
 void luaS_free(lua_State* L, TString* ts, lua_Page* page)
 {
-    // Unchain from the string table
-    if (!unlinkstr(L, ts))
-        unlinkstrbuf(L, ts); // An unlikely scenario when we have a string buffer on our hands
+    if (FFlag::LuauNoStrbufLink)
+    {
+        if (unlinkstr(L, ts))
+            L->global->strt.nuse--;
+        else
+            LUAU_ASSERT(ts->next == NULL); // orphaned string buffer
+    }
     else
-        L->global->strt.nuse--;
+    {
+        // Unchain from the string table
+        if (!unlinkstr(L, ts))
+            unlinkstrbuf(L, ts); // An unlikely scenario when we have a string buffer on our hands
+        else
+            L->global->strt.nuse--;
+    }
 
     luaM_freegco(L, ts, sizestring(ts->len), ts->memcat, page);
 }

@@ -56,7 +56,63 @@ def nodeFromCallstackListFile(source_file):
 
     return root
 
-def getDuration(obj):
+
+def getDuration(nodes, nid):
+    node = nodes[nid - 1]
+    total = node['TotalDuration']
+
+    for cid in node['NodeIds']:
+        total -= nodes[cid - 1]['TotalDuration']
+
+    return total
+
+def getFunctionKey(fn):
+    return fn['Source'] + "," + fn['Name'] + "," + str(fn['Line'])
+
+def recursivelyBuildNodeTree(nodes, functions, parent, fid, nid):
+    ninfo = nodes[nid - 1]
+    finfo = functions[fid - 1]
+
+    child = parent.child(getFunctionKey(finfo))
+    child.source = finfo['Source']
+    child.function = finfo['Name']
+    child.line = int(finfo['Line']) if finfo['Line'] > 0 else 0
+
+    child.ticks = getDuration(nodes, nid)
+
+    assert(len(ninfo['FunctionIds']) == len(ninfo['NodeIds']))
+
+    for i in range(0, len(ninfo['FunctionIds'])):
+        recursivelyBuildNodeTree(nodes, functions, child, ninfo['FunctionIds'][i], ninfo['NodeIds'][i])
+
+    return
+
+def nodeFromJSONV2(dump):
+    assert(dump['Version'] == 2)
+
+    nodes = dump['Nodes']
+    functions = dump['Functions']
+    categories = dump['Categories']
+
+    root = Node()
+
+    for category in categories:
+        nid = category['NodeId']
+        node = nodes[nid - 1]
+        name = category['Name']
+
+        child = root.child(name)
+        child.function = name
+        child.ticks = getDuration(nodes, nid)
+
+        assert(len(node['FunctionIds']) == len(node['NodeIds']))
+
+        for i in range(0, len(node['FunctionIds'])):
+            recursivelyBuildNodeTree(nodes, functions, child, node['FunctionIds'][i], node['NodeIds'][i])
+
+    return root
+
+def getDurationV1(obj):
     total = obj['TotalDuration']
 
     if 'Children' in obj:
@@ -73,7 +129,7 @@ def nodeFromJSONObject(node, key, obj):
     node.source = source
     node.line = int(line) if len(line) > 0 else 0
 
-    node.ticks = getDuration(obj)
+    node.ticks = getDurationV1(obj)
 
     if 'Children' in obj:
         for key, obj in obj['Children'].items():
@@ -81,10 +137,8 @@ def nodeFromJSONObject(node, key, obj):
 
     return node
 
-
-def nodeFromJSONFile(source_file):
-    dump = json.load(source_file)
-
+def nodeFromJSONV1(dump):
+    assert(dump['Version'] == 1)
     root = Node()
 
     if 'Children' in dump:
@@ -92,6 +146,16 @@ def nodeFromJSONFile(source_file):
             nodeFromJSONObject(root.child(key), key, obj)
 
     return root
+
+def nodeFromJSONFile(source_file):
+    dump = json.load(source_file)
+
+    if dump['Version'] == 2:
+        return nodeFromJSONV2(dump)
+    elif dump['Version'] == 1:
+        return nodeFromJSONV1(dump)
+
+    return Node()
 
 
 arguments = argumentParser.parse_args()

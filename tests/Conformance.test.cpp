@@ -319,15 +319,11 @@ TEST_CASE("Literals")
 
 TEST_CASE("Errors")
 {
-    ScopedFastFlag sff("LuauNicerMethodErrors", true);
-
     runConformance("errors.lua");
 }
 
 TEST_CASE("Events")
 {
-    ScopedFastFlag sff("LuauBetterNewindex", true);
-
     runConformance("events.lua");
 }
 

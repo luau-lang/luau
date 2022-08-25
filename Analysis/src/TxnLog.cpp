@@ -344,4 +344,16 @@ TypePackId TxnLog::follow(TypePackId tp) const
     });
 }
 
+std::pair<std::vector<TypeId>, std::vector<TypePackId>> TxnLog::getChanges() const
+{
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> result;
+
+    for (const auto& [typeId, _newState] : typeVarChanges)
+        result.first.push_back(typeId);
+    for (const auto& [typePackId, _newState] : typePackChanges)
+        result.second.push_back(typePackId);
+
+    return result;
+}
+
 } // namespace Luau

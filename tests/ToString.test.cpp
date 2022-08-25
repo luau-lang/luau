@@ -11,6 +11,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
+LUAU_FASTFLAG(LuauFixNameMaps);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -433,29 +434,40 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId id3Type = requireType("id3");
-    ToStringResult nameData = toStringDetailed(id3Type);
+    ToStringOptions opts;
 
-    REQUIRE_EQ(3, nameData.nameMap.typeVars.size());
+    TypeId id3Type = requireType("id3");
+    ToStringResult nameData = toStringDetailed(id3Type, opts);
+
+    if (FFlag::LuauFixNameMaps)
+        REQUIRE(3 == opts.nameMap.typeVars.size());
+    else
+        REQUIRE_EQ(3, nameData.DEPRECATED_nameMap.typeVars.size());
+
     REQUIRE_EQ("<a, b, c>(a, b, c) -> (a, b, c)", nameData.name);
 
-    ToStringOptions opts;
-    opts.nameMap = std::move(nameData.nameMap);
+    ToStringOptions opts2; // TODO: delete opts2 when clipping FFlag::LuauFixNameMaps
+    if (FFlag::LuauFixNameMaps)
+        opts2.nameMap = std::move(opts.nameMap);
+    else
+        opts2.DEPRECATED_nameMap = std::move(nameData.DEPRECATED_nameMap);
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(id3Type));
     REQUIRE(ftv != nullptr);
 
     auto params = flatten(ftv->argTypes).first;
-    REQUIRE_EQ(3, params.size());
+    REQUIRE(3 == params.size());
 
-    REQUIRE_EQ("a", toString(params[0], opts));
-    REQUIRE_EQ("b", toString(params[1], opts));
-    REQUIRE_EQ("c", toString(params[2], opts));
+    CHECK("a" == toString(params[0], opts2));
+    CHECK("b" == toString(params[1], opts2));
+    CHECK("c" == toString(params[2], opts2));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 {
-    ScopedFastFlag sff2{"DebugLuauSharedSelf", true};
+    ScopedFastFlag sff[] = {
+        {"DebugLuauSharedSelf", true},
+    };
 
     CheckResult result = check(R"(
         local base = {}
@@ -470,13 +482,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId tType = requireType("inst");
-    ToStringResult r = toStringDetailed(tType);
-    CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
-    CHECK_EQ(0, r.nameMap.typeVars.size());
-
     ToStringOptions opts;
-    opts.nameMap = r.nameMap;
+
+    TypeId tType = requireType("inst");
+    ToStringResult r = toStringDetailed(tType, opts);
+    CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
+    if (FFlag::LuauFixNameMaps)
+        CHECK(0 == opts.nameMap.typeVars.size());
+    else
+        CHECK_EQ(0, r.DEPRECATED_nameMap.typeVars.size());
+
+    if (!FFlag::LuauFixNameMaps)
+        opts.DEPRECATED_nameMap = r.DEPRECATED_nameMap;
 
     const MetatableTypeVar* tMeta = get<MetatableTypeVar>(tType);
     REQUIRE(tMeta);
@@ -499,7 +516,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     REQUIRE(tMeta6);
 
     ToStringResult oneResult = toStringDetailed(tMeta5->props["one"].type, opts);
-    opts.nameMap = oneResult.nameMap;
+    if (!FFlag::LuauFixNameMaps)
+        opts.DEPRECATED_nameMap = oneResult.DEPRECATED_nameMap;
 
     std::string twoResult = toString(tMeta6->props["two"].type, opts);
 

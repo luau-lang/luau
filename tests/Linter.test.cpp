@@ -43,6 +43,20 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
     CHECK_EQ(result.warnings[0].text, "Global 'Wait' is deprecated, use 'wait' instead");
 }
 
+TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobalNoReplacement")
+{
+    ScopedFastFlag sff{"LuauLintFixDeprecationMessage", true};
+
+    // Normally this would be defined externally, so hack it in for testing
+    const char* deprecationReplacementString = "";
+    addGlobalBinding(typeChecker, "Version", Binding{typeChecker.anyType, {}, true, deprecationReplacementString});
+
+    LintResult result = lintTyped("Version()");
+
+    REQUIRE_EQ(result.warnings.size(), 1);
+    CHECK_EQ(result.warnings[0].text, "Global 'Version' is deprecated");
+}
+
 TEST_CASE_FIXTURE(Fixture, "PlaceholderRead")
 {
     LintResult result = lint(R"(

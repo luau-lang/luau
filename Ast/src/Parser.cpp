@@ -605,16 +605,11 @@ AstStat* Parser::parseFor()
     }
 }
 
-// function funcname funcbody |
 // funcname ::= Name {`.' Name} [`:' Name]
-AstStat* Parser::parseFunctionStat()
+AstExpr* Parser::parseFunctionName(Location start, bool& hasself, AstName& debugname)
 {
-    Location start = lexer.current().location;
-
-    Lexeme matchFunction = lexer.current();
-    nextLexeme();
-
-    AstName debugname = (lexer.current().type == Lexeme::Name) ? AstName(lexer.current().name) : AstName();
+    if (lexer.current().type == Lexeme::Name)
+        debugname = AstName(lexer.current().name);
 
     // parse funcname into a chain of indexing operators
     AstExpr* expr = parseNameExpr("function name");
@@ -640,8 +635,6 @@ AstStat* Parser::parseFunctionStat()
     recursionCounter = recursionCounterOld;
 
     // finish with :
-    bool hasself = false;
-
     if (lexer.current().type == ':')
     {
         Position opPosition = lexer.current().location.begin;
@@ -656,6 +649,21 @@ AstStat* Parser::parseFunctionStat()
 
         hasself = true;
     }
+
+    return expr;
+}
+
+// function funcname funcbody
+AstStat* Parser::parseFunctionStat()
+{
+    Location start = lexer.current().location;
+
+    Lexeme matchFunction = lexer.current();
+    nextLexeme();
+
+    bool hasself = false;
+    AstName debugname;
+    AstExpr* expr = parseFunctionName(start, hasself, debugname);
 
     matchRecoveryStopOnToken[Lexeme::ReservedEnd]++;
 
@@ -785,10 +793,11 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
 
     TempVector<Binding> args(scratchBinding);
 
-    std::optional<Location> vararg = std::nullopt;
+    bool vararg = false;
+    Location varargLocation;
     AstTypePack* varargAnnotation = nullptr;
     if (lexer.current().type != ')')
-        std::tie(vararg, varargAnnotation) = parseBindingList(args, /* allowDot3 */ true);
+        std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3 */ true);
 
     expectMatchAndConsume(')', matchParen);
 
@@ -842,11 +851,12 @@ AstStat* Parser::parseDeclaration(const Location& start)
 
         TempVector<Binding> args(scratchBinding);
 
-        std::optional<Location> vararg;
+        bool vararg = false;
+        Location varargLocation;
         AstTypePack* varargAnnotation = nullptr;
 
         if (lexer.current().type != ')')
-            std::tie(vararg, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
+            std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
 
         expectMatchAndConsume(')', matchParen);
 
@@ -969,6 +979,21 @@ AstStat* Parser::parseCompoundAssignment(AstExpr* initial, AstExprBinary::Op op)
     return allocator.alloc<AstStatCompoundAssign>(Location(initial->location, value->location), op, initial, value);
 }
 
+std::pair<AstLocal*, AstArray<AstLocal*>> Parser::prepareFunctionArguments(const Location& start, bool hasself, const TempVector<Binding>& args)
+{
+    AstLocal* self = nullptr;
+
+    if (hasself)
+        self = pushLocal(Binding(Name(nameSelf, start), nullptr));
+
+    TempVector<AstLocal*> vars(scratchLocal);
+
+    for (size_t i = 0; i < args.size(); ++i)
+        vars.push_back(pushLocal(args[i]));
+
+    return {self, copy(vars)};
+}
+
 // funcbody ::= `(' [parlist] `)' [`:' ReturnType] block end
 // parlist ::= bindinglist [`,' `...'] | `...'
 std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
@@ -983,15 +1008,18 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 
     TempVector<Binding> args(scratchBinding);
 
-    std::optional<Location> vararg;
+    bool vararg = false;
+    Location varargLocation;
     AstTypePack* varargAnnotation = nullptr;
 
     if (lexer.current().type != ')')
-        std::tie(vararg, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
+        std::tie(vararg, varargLocation, varargAnnotation) = parseBindingList(args, /* allowDot3= */ true);
 
-    std::optional<Location> argLocation = matchParen.type == Lexeme::Type('(') && lexer.current().type == Lexeme::Type(')')
-                                              ? std::make_optional(Location(matchParen.position, lexer.current().location.end))
-                                              : std::nullopt;
+    std::optional<Location> argLocation;
+
+    if (matchParen.type == Lexeme::Type('(') && lexer.current().type == Lexeme::Type(')'))
+        argLocation = Location(matchParen.position, lexer.current().location.end);
+
     expectMatchAndConsume(')', matchParen, true);
 
     std::optional<AstTypeList> typelist = parseOptionalReturnTypeAnnotation();
@@ -1004,19 +1032,11 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
     unsigned int localsBegin = saveLocals();
 
     Function fun;
-    fun.vararg = vararg.has_value();
+    fun.vararg = vararg;
 
-    functionStack.push_back(fun);
+    functionStack.emplace_back(fun);
 
-    AstLocal* self = nullptr;
-
-    if (hasself)
-        self = pushLocal(Binding(Name(nameSelf, start), nullptr));
-
-    TempVector<AstLocal*> vars(scratchLocal);
-
-    for (size_t i = 0; i < args.size(); ++i)
-        vars.push_back(pushLocal(args[i]));
+    auto [self, vars] = prepareFunctionArguments(start, hasself, args);
 
     AstStatBlock* body = parseBlock();
 
@@ -1028,8 +1048,8 @@ std::pair<AstExprFunction*, AstLocal*> Parser::parseFunctionBody(
 
     bool hasEnd = expectMatchEndAndConsume(Lexeme::ReservedEnd, matchFunction);
 
-    return {allocator.alloc<AstExprFunction>(Location(start, end), generics, genericPacks, self, copy(vars), vararg, body, functionStack.size(),
-                debugname, typelist, varargAnnotation, hasEnd, argLocation),
+    return {allocator.alloc<AstExprFunction>(Location(start, end), generics, genericPacks, self, vars, vararg, varargLocation, body,
+                functionStack.size(), debugname, typelist, varargAnnotation, hasEnd, argLocation),
         funLocal};
 }
 
@@ -1060,7 +1080,7 @@ Parser::Binding Parser::parseBinding()
 }
 
 // bindinglist ::= (binding | `...') [`,' bindinglist]
-std::pair<std::optional<Location>, AstTypePack*> Parser::parseBindingList(TempVector<Binding>& result, bool allowDot3)
+std::tuple<bool, Location, AstTypePack*> Parser::parseBindingList(TempVector<Binding>& result, bool allowDot3)
 {
     while (true)
     {
@@ -1076,7 +1096,7 @@ std::pair<std::optional<Location>, AstTypePack*> Parser::parseBindingList(TempVe
                 tailAnnotation = parseVariadicArgumentAnnotation();
             }
 
-            return {varargLocation, tailAnnotation};
+            return {true, varargLocation, tailAnnotation};
         }
 
         result.push_back(parseBinding());
@@ -1086,7 +1106,7 @@ std::pair<std::optional<Location>, AstTypePack*> Parser::parseBindingList(TempVe
         nextLexeme();
     }
 
-    return {std::nullopt, nullptr};
+    return {false, Location(), nullptr};
 }
 
 AstType* Parser::parseOptionalTypeAnnotation()

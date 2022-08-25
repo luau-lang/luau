@@ -351,7 +351,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     uint32_t mainid = readVarInt(data, size, offset);
     Proto* main = protos[mainid];
 
-    luaC_checkthreadsleep(L);
+    luaC_threadbarrier(L);
 
     Closure* cl = luaF_newLclosure(L, 0, envt, main);
     setclvalue(L, L->top, cl);

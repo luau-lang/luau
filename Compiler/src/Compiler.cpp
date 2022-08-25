@@ -3043,6 +3043,18 @@ struct Compiler
         uint8_t valueReg = kInvalidReg;
     };
 
+    // This function analyzes assignments and marks assignment conflicts: cases when a variable is assigned on lhs
+    // but subsequently used on the rhs, assuming assignments are performed in order. Note that it's also possible
+    // for a variable to conflict on the lhs, if it's used in an lvalue expression after it's assigned.
+    // When conflicts are found, Assignment::conflictReg is allocated and that's where assignment is performed instead,
+    // until the final fixup in compileStatAssign. Assignment::valueReg is allocated by compileStatAssign as well.
+    //
+    // Per Lua manual, section 3.3.3 (Assignments), the proper assignment order is only guaranteed to hold for syntactic access:
+    //
+    //     Note that this guarantee covers only accesses syntactically inside the assignment statement. If a function or a metamethod called
+    //     during the assignment changes the value of a variable, Lua gives no guarantees about the order of that access.
+    //
+    // As such, we currently don't check if an assigned local is captured, which may mean it gets reassigned during a function call.
     void resolveAssignConflicts(AstStat* stat, std::vector<Assignment>& vars, const AstArray<AstExpr*>& values)
     {
         struct Visitor : AstVisitor
@@ -3945,7 +3957,8 @@ void compileOrThrow(BytecodeBuilder& bytecode, const ParseResult& parseResult, c
         compiler.compileFunction(expr);
 
     AstExprFunction main(root->location, /*generics= */ AstArray<AstGenericType>(), /*genericPacks= */ AstArray<AstGenericTypePack>(),
-        /* self= */ nullptr, AstArray<AstLocal*>(), /* vararg= */ Luau::Location(), root, /* functionDepth= */ 0, /* debugname= */ AstName());
+        /* self= */ nullptr, AstArray<AstLocal*>(), /* vararg= */ true, /* varargLocation= */ Luau::Location(), root, /* functionDepth= */ 0,
+        /* debugname= */ AstName());
     uint32_t mainid = compiler.compileFunction(&main);
 
     const Compiler::Function* mainf = compiler.functions.find(&main);

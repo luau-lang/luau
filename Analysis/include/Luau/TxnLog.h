@@ -263,6 +263,8 @@ struct TxnLog
         return Luau::get_if<T>(&ty->ty) != nullptr;
     }
 
+    std::pair<std::vector<TypeId>, std::vector<TypePackId>> getChanges() const;
+
 private:
     // unique_ptr is used to give us stable pointers across insertions into the
     // map. Otherwise, it would be really easy to accidentally invalidate the

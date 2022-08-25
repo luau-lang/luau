@@ -16,7 +16,8 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauNicerMethodErrors, false)
+LUAU_FASTFLAG(LuauSimplerUpval)
+LUAU_FASTFLAG(LuauNoSleepBit)
 
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
@@ -111,7 +112,7 @@ LUAU_FASTFLAGVARIABLE(LuauNicerMethodErrors, false)
         VM_DISPATCH_OP(LOP_LOADKX), VM_DISPATCH_OP(LOP_JUMPX), VM_DISPATCH_OP(LOP_FASTCALL), VM_DISPATCH_OP(LOP_COVERAGE), \
         VM_DISPATCH_OP(LOP_CAPTURE), VM_DISPATCH_OP(LOP_JUMPIFEQK), VM_DISPATCH_OP(LOP_JUMPIFNOTEQK), VM_DISPATCH_OP(LOP_FASTCALL1), \
         VM_DISPATCH_OP(LOP_FASTCALL2), VM_DISPATCH_OP(LOP_FASTCALL2K), VM_DISPATCH_OP(LOP_FORGPREP), VM_DISPATCH_OP(LOP_JUMPXEQKNIL), \
-        VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS), \
+        VM_DISPATCH_OP(LOP_JUMPXEQKB), VM_DISPATCH_OP(LOP_JUMPXEQKN), VM_DISPATCH_OP(LOP_JUMPXEQKS),
 
 #if defined(__GNUC__) || defined(__clang__)
 #define VM_USE_CGOTO 1
@@ -317,6 +318,7 @@ static void luau_execute(lua_State* L)
     LUAU_ASSERT(isLua(L->ci));
     LUAU_ASSERT(luaC_threadactive(L));
     LUAU_ASSERT(!luaC_threadsleeping(L));
+    LUAU_ASSERT(!FFlag::LuauNoSleepBit || !isblack(obj2gco(L))); // we don't use luaC_threadbarrier because active threads never turn black
 
     pc = L->ci->savedpc;
     cl = clvalue(L->ci->func);
@@ -496,7 +498,8 @@ static void luau_execute(lua_State* L)
 
                 setobj(L, uv->v, ra);
                 luaC_barrier(L, uv, ra);
-                luaC_upvalbarrier(L, uv, uv->v);
+                if (!FFlag::LuauSimplerUpval)
+                    luaC_upvalbarrier(L, uv, uv->v);
                 VM_NEXT();
             }
 
@@ -932,7 +935,7 @@ static void luau_execute(lua_State* L)
                         VM_PATCH_C(pc - 2, L->cachedslot);
                         // recompute ra since stack might have been reallocated
                         ra = VM_REG(LUAU_INSN_A(insn));
-                        if (FFlag::LuauNicerMethodErrors && ttisnil(ra))
+                        if (ttisnil(ra))
                             luaG_methoderror(L, ra + 1, tsvalue(kv));
                     }
                 }
@@ -973,7 +976,7 @@ static void luau_execute(lua_State* L)
                             VM_PATCH_C(pc - 2, L->cachedslot);
                             // recompute ra since stack might have been reallocated
                             ra = VM_REG(LUAU_INSN_A(insn));
-                            if (FFlag::LuauNicerMethodErrors && ttisnil(ra))
+                            if (ttisnil(ra))
                                 luaG_methoderror(L, ra + 1, tsvalue(kv));
                         }
                     }
@@ -984,7 +987,7 @@ static void luau_execute(lua_State* L)
                         VM_PROTECT(luaV_gettable(L, rb, kv, ra));
                         // recompute ra since stack might have been reallocated
                         ra = VM_REG(LUAU_INSN_A(insn));
-                        if (FFlag::LuauNicerMethodErrors && ttisnil(ra))
+                        if (ttisnil(ra))
                             luaG_methoderror(L, ra + 1, tsvalue(kv));
                     }
                 }
