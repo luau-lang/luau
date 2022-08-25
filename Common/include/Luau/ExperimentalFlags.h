@@ -12,6 +12,7 @@ inline bool isFlagExperimental(const char* flag)
     // or critical bugs that are found after the code has been submitted.
     static const char* kList[] = {
         "LuauLowerBoundsCalculation",
+        "LuauInterpolatedStringBaseSupport",
         nullptr, // makes sure we always have at least one entry
     };
 

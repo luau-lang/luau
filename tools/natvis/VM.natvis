@@ -195,7 +195,7 @@
         <Expand>
           <LinkedListItems>
             <HeadPointer>openupval</HeadPointer>
-            <NextPointer>u.l.threadnext</NextPointer>
+            <NextPointer>u.open.threadnext</NextPointer>
             <ValueNode>this</ValueNode>
           </LinkedListItems>
         </Expand>

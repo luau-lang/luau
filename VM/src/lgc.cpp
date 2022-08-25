@@ -13,6 +13,117 @@
 
 #include <string.h>
 
+/*
+ * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
+ *
+ * The collector runs in three stages: mark, atomic and sweep. Mark and sweep are incremental and try to do a limited amount
+ * of work every GC step; atomic is ran once per the GC cycle and is indivisible. In either case, the work happens during GC
+ * steps that are "scheduled" by the GC pacing algorithm - the steps happen either from explicit calls to lua_gc, or after
+ * the mutator (aka application) allocates some amount of memory, which is known as "GC assist". In either case, GC steps
+ * can't happen concurrently with other access to VM state.
+ *
+ * Current GC stage is stored in global_State::gcstate, and has two additional stages for pause and second-phase mark, explained below.
+ *
+ * GC pacer is an algorithm that tries to ensure that GC can always catch up to the application allocating garbage, but do this
+ * with minimal amount of effort. To configure the pacer Luau provides control over three variables: GC goal, defined as the
+ * target heap size during atomic phase in relation to live heap size (e.g. 200% goal means the heap's worst case size is double
+ * the total size of alive objects), step size (how many kilobytes should the application allocate for GC step to trigger), and
+ * GC multiplier (how much should the GC try to mark relative to how much the application allocated). It's critical that step
+ * multiplier is significantly above 1, as this is what allows the GC to catch up to the application's allocation rate, and
+ * GC goal and GC multiplier are linked in subtle ways, described in lua.h comments for LUA_GCSETGOAL.
+ *
+ * During mark, GC tries to identify all reachable objects and mark them as reachable, while keeping unreachable objects unmarked.
+ * During sweep, GC tries to sweep all objects that were not reachable at the end of mark. The atomic phase is needed to ensure
+ * that all pending marking has completed and all objects that are still marked as unreachable are, in fact, unreachable.
+ *
+ * Notably, during mark GC doesn't free any objects, and so the heap size constantly grows; during sweep, GC doesn't do any marking
+ * work, so it can't immediately free objects that became unreachable after sweeping started.
+ *
+ * Every collectable object has one of three colors at any given point in time: white, gray or black. This coloring scheme
+ * is necessary to implement incremental marking: white objects have not been marked and may be unreachable, black objects
+ * have been marked and will not be marked again if they stay black, and gray objects have been marked but may contain unmarked
+ * references.
+ *
+ * Objects are allocated as white; however, during sweep, we need to differentiate between objects that remained white in the mark
+ * phase (these are not reachable and can be freed) and objects that were allocated after the mark phase ended. Because of this, the
+ * colors are encoded using three bits inside GCheader::marked: white0, white1 and black (so technically we use a four-color scheme:
+ * any object can be white0, white1, gray or black). All bits are exclusive, and gray objects have all three bits unset. This allows
+ * us to have the "current" white bit, which is flipped during atomic stage - during sweeping, objects that have the white color from
+ * the previous mark may be deleted, and all other objects may or may not be reachable, and will be changed to the current white color,
+ * so that the next mark can start coloring objects from scratch again.
+ *
+ * Crucially, the coloring scheme comes with what's known as a tri-color invariant: a black object may never point to a white object.
+ *
+ * At the end of atomic stage, the expectation is that there are no gray objects anymore, which means all objects are either black
+ * (reachable) or white (unreachable = dead). Tri-color invariant is maintained throughout mark and atomic phase. To uphold this
+ * invariant, every modification of an object needs to check if the object is black and the new referent is white; if so, we
+ * need to either mark the referent, making it non-white (known as a forward barrier), or mark the object as gray and queue it
+ * for additional marking (known as a backward barrier).
+ *
+ * Luau uses both types of barriers. Forward barriers advance GC progress, since they don't create new outstanding work for GC,
+ * but they may be expensive when an object is modified many times in succession. Backward barriers are cheaper, as they defer
+ * most of the work until "later", but they require queueing the object for a rescan which isn't always possible. Table writes usually
+ * use backward barriers (but switch to forward barriers during second-phase mark), whereas upvalue writes and setmetatable use forward
+ * barriers.
+ *
+ * Since marking is incremental, it needs a way to track progress, which is implemented as a gray set: at any point, objects that
+ * are gray need to mark their white references, objects that are black have no pending work, and objects that are white have not yet
+ * been reached. Once the gray set is empty, the work completes; as such, incremental marking is as simple as removing an object from
+ * the gray set, and turning it to black (which requires turning all its white references to gray). The gray set is implemented as
+ * an intrusive singly linked list, using `gclist` field in multiple objects (functions, tables, threads and protos). When an object
+ * doesn't have gclist field, the marking of that object needs to be "immediate", changing the colors of all references in one go.
+ *
+ * When a black object is modified, it needs to become gray again. Objects like this are placed on a separate `grayagain` list by a
+ * barrier - this is important because it allows us to have a mark stage that terminates when the gray set is empty even if the mutator
+ * is constantly changing existing objects to gray. After mark stage finishes traversing `gray` list, we copy `grayagain` list to `gray`
+ * once and incrementally mark it again. During this phase of marking, we may get more objects marked as `grayagain`, so after we finish
+ * emptying out the `gray` list the second time, we finish the mark stage and do final marking of `grayagain` during atomic phase.
+ * GC works correctly without this second-phase mark (called GCSpropagateagain), but it reduces the time spent during atomic phase.
+ *
+ * Sweeping is also incremental, but instead of working at a granularity of an object, it works at a granularity of a page: all GC
+ * objects are allocated in special pages (see lmem.cpp for details), and sweeper traverses all objects in one page in one incremental
+ * step, freeing objects that aren't reachable (old white), and recoloring all other objects with the new white to prepare them for next
+ * mark. During sweeping we don't need to maintain the GC invariant, because our goal is to paint all objects with current white -
+ * however, some barriers will still trigger (because some reachable objects are still black as sweeping didn't get to them yet), and
+ * some barriers will proactively mark black objects as white to avoid extra barriers from triggering excessively.
+ *
+ * Most references that GC deals with are strong, and as such they fit neatly into the incremental marking scheme. Some, however, are
+ * weak - notably, tables can be marked as having weak keys/values (using __mode metafield). During incremental marking, we don't know
+ * for certain if a given object is alive - if it's marked as black, it definitely was reachable during marking, but if it's marked as
+ * white, we don't know if it's actually unreachable. Because of this, we need to defer weak table handling to the atomic phase; after
+ * all objects are marked, we traverse all weak tables (that are linked into special weak table lists using `gclist` during marking),
+ * and remove all entries that have white keys or values. If keys or values are strong, they are marked normally.
+ *
+ * The simplified scheme described above isn't fully accurate because of threads, upvalues and strings.
+ *
+ * Strings are semantically black (they are initially white, and when the mark stage reaches a string, it changes its color and never
+ * touches the object again), but they are technically marked as gray - the black bit is never set on a string object. This behavior
+ * is inherited from Lua 5.1 GC, but doesn't have a clear rationale - effectively, strings are marked as gray but are never part of
+ * a gray list.
+ *
+ * Threads are hard to deal with because for them to fit into the white-gray-black scheme, writes to thread stacks need to have barriers
+ * that turn the thread from black (already scanned) to gray - but this is very expensive because stack writes are very common. To
+ * get around this problem, threads have an "active" state which means that a thread is actively executing code. When GC reaches an active
+ * thread, it keeps it as gray, and rescans it during atomic phase. When a thread is inactive, GC instead paints the thread black. All
+ * API calls that can write to thread stacks outside of execution (which implies active) uses a thread barrier that checks if the thread is
+ * black, and if it is it marks it as gray and puts it on a gray list to be rescanned during atomic phase.
+ *
+ * NOTE: The above is only true when LuauNoSleepBit is enabled.
+ *
+ * Upvalues are special objects that can be closed, in which case they contain the value (acting as a reference cell) and can be dealt
+ * with using the regular algorithm, or open, in which case they refer to a stack slot in some other thread. These are difficult to deal
+ * with because the stack writes are not monitored. Because of this open upvalues are treated in a somewhat special way: they are never marked
+ * as black (doing so would violate the GC invariant), and they are kept in a special global list (global_State::uvhead) which is traversed
+ * during atomic phase. This is needed because an open upvalue might point to a stack location in a dead thread that never marked the stack
+ * slot - upvalues like this are identified since they don't have `markedopen` bit set during thread traversal and closed in `clearupvals`.
+ *
+ * NOTE: The above is only true when LuauSimplerUpval is enabled.
+ */
+
+LUAU_FASTFLAGVARIABLE(LuauSimplerUpval, false)
+LUAU_FASTFLAGVARIABLE(LuauNoSleepBit, false)
+LUAU_FASTFLAGVARIABLE(LuauEagerShrink, false)
+
 #define GC_SWEEPPAGESTEPCOST 16
 
 #define GC_INTERRUPT(state) \
@@ -150,8 +261,8 @@ static void reallymarkobject(global_State* g, GCObject* o)
     {
         UpVal* uv = gco2uv(o);
         markvalue(g, uv->v);
-        if (uv->v == &uv->u.value) // closed?
-            gray2black(o);         // open upvalues are never black
+        if (!upisopen(uv)) // closed?
+            gray2black(o); // open upvalues are never black
         return;
     }
     case LUA_TFUNCTION:
@@ -289,21 +400,33 @@ static void traverseclosure(global_State* g, Closure* cl)
     }
 }
 
-static void traversestack(global_State* g, lua_State* l, bool clearstack)
+static void traversestack(global_State* g, lua_State* l)
 {
     markobject(g, l->gt);
     if (l->namecall)
         stringmark(l->namecall);
     for (StkId o = l->stack; o < l->top; o++)
         markvalue(g, o);
-    // final traversal?
-    if (g->gcstate == GCSatomic || clearstack)
+    if (FFlag::LuauSimplerUpval)
     {
-        StkId stack_end = l->stack + l->stacksize;
-        for (StkId o = l->top; o < stack_end; o++) // clear not-marked stack slice
-            setnilvalue(o);
+        for (UpVal* uv = l->openupval; uv; uv = uv->u.open.threadnext)
+        {
+            LUAU_ASSERT(upisopen(uv));
+            uv->markedopen = 1;
+            markobject(g, uv);
+        }
     }
 }
+
+static void clearstack(lua_State* l)
+{
+    StkId stack_end = l->stack + l->stacksize;
+    for (StkId o = l->top; o < stack_end; o++) // clear not-marked stack slice
+        setnilvalue(o);
+}
+
+// TODO: pull function definition here when FFlag::LuauEagerShrink is removed
+static void shrinkstack(lua_State* L);
 
 /*
 ** traverse one gray object, turning it to black.
@@ -338,14 +461,17 @@ static size_t propagatemark(global_State* g)
 
         LUAU_ASSERT(!luaC_threadsleeping(th));
 
-        // threads that are executing and the main thread are not deactivated
+        // threads that are executing and the main thread remain gray
         bool active = luaC_threadactive(th) || th == th->global->mainthread;
 
+        // TODO: Refactor this logic after LuauNoSleepBit is removed
         if (!active && g->gcstate == GCSpropagate)
         {
-            traversestack(g, th, /* clearstack= */ true);
+            traversestack(g, th);
+            clearstack(th);
 
-            l_setbit(th->stackstate, THREAD_SLEEPINGBIT);
+            if (!FFlag::LuauNoSleepBit)
+                l_setbit(th->stackstate, THREAD_SLEEPINGBIT);
         }
         else
         {
@@ -354,8 +480,16 @@ static size_t propagatemark(global_State* g)
 
             black2gray(o);
 
-            traversestack(g, th, /* clearstack= */ false);
+            traversestack(g, th);
+
+            // final traversal?
+            if (g->gcstate == GCSatomic)
+                clearstack(th);
         }
+
+        // we could shrink stack at any time but we opt to skip it during atomic since it's redundant to do that more than once per cycle
+        if (FFlag::LuauEagerShrink && g->gcstate != GCSatomic)
+            shrinkstack(th);
 
         return sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
     }
@@ -537,7 +671,7 @@ static bool deletegco(void* context, lua_Page* page, GCObject* gco)
     // we are in the process of deleting everything
     // threads with open upvalues will attempt to close them all on removal
     // but those upvalues might point to stack values that were already deleted
-    if (gco->gch.tt == LUA_TTHREAD)
+    if (!FFlag::LuauSimplerUpval && gco->gch.tt == LUA_TTHREAD)
     {
         lua_State* th = gco2th(gco);
 
@@ -595,13 +729,53 @@ static void markroot(lua_State* L)
 static size_t remarkupvals(global_State* g)
 {
     size_t work = 0;
-    for (UpVal* uv = g->uvhead.u.l.next; uv != &g->uvhead; uv = uv->u.l.next)
+
+    for (UpVal* uv = g->uvhead.u.open.next; uv != &g->uvhead; uv = uv->u.open.next)
     {
         work += sizeof(UpVal);
-        LUAU_ASSERT(uv->u.l.next->u.l.prev == uv && uv->u.l.prev->u.l.next == uv);
+
+        LUAU_ASSERT(upisopen(uv));
+        LUAU_ASSERT(uv->u.open.next->u.open.prev == uv && uv->u.open.prev->u.open.next == uv);
+        LUAU_ASSERT(!isblack(obj2gco(uv))); // open upvalues are never black
+
         if (isgray(obj2gco(uv)))
             markvalue(g, uv->v);
     }
+
+    return work;
+}
+
+static size_t clearupvals(lua_State* L)
+{
+    global_State* g = L->global;
+
+    size_t work = 0;
+
+    for (UpVal* uv = g->uvhead.u.open.next; uv != &g->uvhead;)
+    {
+        work += sizeof(UpVal);
+
+        LUAU_ASSERT(upisopen(uv));
+        LUAU_ASSERT(uv->u.open.next->u.open.prev == uv && uv->u.open.prev->u.open.next == uv);
+        LUAU_ASSERT(!isblack(obj2gco(uv))); // open upvalues are never black
+        LUAU_ASSERT(iswhite(obj2gco(uv)) || !iscollectable(uv->v) || !iswhite(gcvalue(uv->v)));
+
+        if (uv->markedopen)
+        {
+            // upvalue is still open (belongs to alive thread)
+            LUAU_ASSERT(isgray(obj2gco(uv)));
+            uv->markedopen = 0; // for next cycle
+            uv = uv->u.open.next;
+        }
+        else
+        {
+            // upvalue is either dead, or alive but the thread is dead; unlink and close
+            UpVal* next = uv->u.open.next;
+            luaF_closeupval(L, uv, /* dead= */ iswhite(obj2gco(uv)));
+            uv = next;
+        }
+    }
+
     return work;
 }
 
@@ -654,6 +828,16 @@ static size_t atomic(lua_State* L)
     g->gcmetrics.currcycle.atomictimeclear += recordGcDeltaTime(currts);
 #endif
 
+    if (FFlag::LuauSimplerUpval)
+    {
+        // close orphaned live upvalues of dead threads and clear dead upvalues
+        work += clearupvals(L);
+
+#ifdef LUAI_GCMETRICS
+        g->gcmetrics.currcycle.atomictimeupval += recordGcDeltaTime(currts);
+#endif
+    }
+
     // flip current white
     g->currentwhite = cast_byte(otherwhite(g));
     g->sweepgcopage = g->allgcopages;
@@ -677,8 +861,11 @@ static bool sweepgco(lua_State* L, lua_Page* page, GCObject* gco)
 
         if (alive)
         {
-            resetbit(th->stackstate, THREAD_SLEEPINGBIT);
-            shrinkstack(th);
+            if (!FFlag::LuauNoSleepBit)
+                resetbit(th->stackstate, THREAD_SLEEPINGBIT);
+
+            if (!FFlag::LuauEagerShrink)
+                shrinkstack(th);
         }
     }
 
@@ -945,7 +1132,7 @@ void luaC_fullgc(lua_State* L)
         startGcCycleMetrics(g);
 #endif
 
-    if (g->gcstate <= GCSatomic)
+    if (FFlag::LuauSimplerUpval ? keepinvariant(g) : g->gcstate <= GCSatomic)
     {
         // reset sweep marks to sweep all elements (returning them to white)
         g->sweepgcopage = g->allgcopages;
@@ -955,12 +1142,22 @@ void luaC_fullgc(lua_State* L)
         g->weak = NULL;
         g->gcstate = GCSsweep;
     }
-    LUAU_ASSERT(g->gcstate == GCSsweep);
+    LUAU_ASSERT(g->gcstate == GCSpause || g->gcstate == GCSsweep);
     // finish any pending sweep phase
     while (g->gcstate != GCSpause)
     {
         LUAU_ASSERT(g->gcstate == GCSsweep);
         gcstep(L, SIZE_MAX);
+    }
+
+    if (FFlag::LuauSimplerUpval)
+    {
+        // clear markedopen bits for all open upvalues; these might be stuck from half-finished mark prior to full gc
+        for (UpVal* uv = g->uvhead.u.open.next; uv != &g->uvhead; uv = uv->u.open.next)
+        {
+            LUAU_ASSERT(upisopen(uv));
+            uv->markedopen = 0;
+        }
     }
 
 #ifdef LUAI_GCMETRICS
@@ -999,6 +1196,7 @@ void luaC_fullgc(lua_State* L)
 
 void luaC_barrierupval(lua_State* L, GCObject* v)
 {
+    LUAU_ASSERT(!FFlag::LuauSimplerUpval);
     global_State* g = L->global;
     LUAU_ASSERT(iswhite(v) && !isdead(g, v));
 
@@ -1038,29 +1236,23 @@ void luaC_barriertable(lua_State* L, Table* t, GCObject* v)
     g->grayagain = o;
 }
 
-void luaC_barrierback(lua_State* L, Table* t)
+void luaC_barrierback(lua_State* L, GCObject* o, GCObject** gclist)
 {
     global_State* g = L->global;
-    GCObject* o = obj2gco(t);
     LUAU_ASSERT(isblack(o) && !isdead(g, o));
     LUAU_ASSERT(g->gcstate != GCSpause);
-    black2gray(o); // make table gray (again)
-    t->gclist = g->grayagain;
+
+    black2gray(o); // make object gray (again)
+    *gclist = g->grayagain;
     g->grayagain = o;
 }
 
-void luaC_initobj(lua_State* L, GCObject* o, uint8_t tt)
-{
-    global_State* g = L->global;
-    o->gch.marked = luaC_white(g);
-    o->gch.tt = tt;
-    o->gch.memcat = L->activememcat;
-}
-
-void luaC_initupval(lua_State* L, UpVal* uv)
+void luaC_upvalclosed(lua_State* L, UpVal* uv)
 {
     global_State* g = L->global;
     GCObject* o = obj2gco(uv);
+
+    LUAU_ASSERT(!upisopen(uv)); // upvalue was closed but needs GC state fixup
 
     if (isgray(o))
     {
@@ -1105,6 +1297,7 @@ int64_t luaC_allocationrate(lua_State* L)
 
 void luaC_wakethread(lua_State* L)
 {
+    LUAU_ASSERT(!FFlag::LuauNoSleepBit);
     if (!luaC_threadsleeping(L))
         return;
 
@@ -1115,6 +1308,8 @@ void luaC_wakethread(lua_State* L)
     if (keepinvariant(g))
     {
         GCObject* o = obj2gco(L);
+
+        LUAU_ASSERT(isblack(o));
 
         L->gclist = g->grayagain;
         g->grayagain = o;

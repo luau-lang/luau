@@ -598,9 +598,9 @@ public:
     LUAU_RTTI(AstExprFunction)
 
     AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
-        AstLocal* self, const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth,
-        const AstName& debugname, std::optional<AstTypeList> returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr, bool hasEnd = false,
-        std::optional<Location> argLocation = std::nullopt);
+        AstLocal* self, const AstArray<AstLocal*>& args, bool vararg, const Location& varargLocation, AstStatBlock* body, size_t functionDepth,
+        const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation = {}, AstTypePack* varargAnnotation = nullptr,
+        bool hasEnd = false, const std::optional<Location>& argLocation = std::nullopt);
 
     void visit(AstVisitor* visitor) override;
 

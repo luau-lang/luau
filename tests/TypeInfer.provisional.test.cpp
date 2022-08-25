@@ -544,4 +544,69 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_f
     CHECK_EQ("Not all codepaths in this function return 'self, a...'.", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "dcr_cant_partially_dispatch_a_constraint")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+        {"LuauSpecialTypesAsterisked", true},
+    };
+
+    CheckResult result = check(R"(
+        local function hasDivisors(value: number)
+        end
+
+        function prime_iter(state, index)
+            hasDivisors(index)
+            index += 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // We should be able to resolve this to number, but we're not there yet.
+    // Solving this requires recognizing that we can partially solve the
+    // following constraint:
+    //
+    //     (*blocked*) -> () <: (number) -> (b...)
+    //
+    // The correct thing for us to do is to consider the constraint dispatched,
+    // but we need to also record a new constraint number <: *blocked* to finish
+    // the job later.
+    CHECK("<a>(a, *error-type*) -> ()" == toString(requireType("prime_iter")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauFixNameMaps", true},
+    };
+
+    TypeArena arena;
+    TypeId nilType = getSingletonTypes().nilType;
+
+    std::unique_ptr scope = std::make_unique<Scope>(getSingletonTypes().anyTypePack);
+
+    TypeId free1 = arena.addType(FreeTypePack{scope.get()});
+    TypeId option1 = arena.addType(UnionTypeVar{{nilType, free1}});
+
+    TypeId free2 = arena.addType(FreeTypePack{scope.get()});
+    TypeId option2 = arena.addType(UnionTypeVar{{nilType, free2}});
+
+    InternalErrorReporter iceHandler;
+    UnifierSharedState sharedState{&iceHandler};
+    Unifier u{&arena, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant, sharedState};
+
+    u.tryUnify(option1, option2);
+
+    CHECK(u.errors.empty());
+
+    u.log.commit();
+
+    ToStringOptions opts;
+    CHECK("a?" == toString(option1, opts));
+
+    // CHECK("a?" == toString(option2, opts)); // This should hold, but does not.
+    CHECK("b?" == toString(option2, opts)); // This should not hold.
+}
+
 TEST_SUITE_END();

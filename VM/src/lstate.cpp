@@ -10,6 +10,8 @@
 #include "ldo.h"
 #include "ldebug.h"
 
+LUAU_FASTFLAG(LuauSimplerUpval)
+
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -119,8 +121,11 @@ lua_State* luaE_newthread(lua_State* L)
 
 void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
 {
-    luaF_close(L1, L1->stack); // close all upvalues for this thread
-    LUAU_ASSERT(L1->openupval == NULL);
+    if (!FFlag::LuauSimplerUpval)
+    {
+        luaF_close(L1, L1->stack); // close all upvalues for this thread
+        LUAU_ASSERT(L1->openupval == NULL);
+    }
     global_State* g = L->global;
     if (g->cb.userthread)
         g->cb.userthread(NULL, L1);
@@ -175,8 +180,8 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->frealloc = f;
     g->ud = ud;
     g->mainthread = L;
-    g->uvhead.u.l.prev = &g->uvhead;
-    g->uvhead.u.l.next = &g->uvhead;
+    g->uvhead.u.open.prev = &g->uvhead;
+    g->uvhead.u.open.next = &g->uvhead;
     g->GCthreshold = 0; // mark it as unfinished state
     g->registryfree = 0;
     g->errorjmp = NULL;

@@ -160,17 +160,17 @@ void AstExprIndexExpr::visit(AstVisitor* visitor)
 }
 
 AstExprFunction::AstExprFunction(const Location& location, const AstArray<AstGenericType>& generics, const AstArray<AstGenericTypePack>& genericPacks,
-    AstLocal* self, const AstArray<AstLocal*>& args, std::optional<Location> vararg, AstStatBlock* body, size_t functionDepth,
-    const AstName& debugname, std::optional<AstTypeList> returnAnnotation, AstTypePack* varargAnnotation, bool hasEnd,
-    std::optional<Location> argLocation)
+    AstLocal* self, const AstArray<AstLocal*>& args, bool vararg, const Location& varargLocation, AstStatBlock* body, size_t functionDepth,
+    const AstName& debugname, const std::optional<AstTypeList>& returnAnnotation, AstTypePack* varargAnnotation, bool hasEnd,
+    const std::optional<Location>& argLocation)
     : AstExpr(ClassIndex(), location)
     , generics(generics)
     , genericPacks(genericPacks)
     , self(self)
     , args(args)
     , returnAnnotation(returnAnnotation)
-    , vararg(vararg.has_value())
-    , varargLocation(vararg.value_or(Location()))
+    , vararg(vararg)
+    , varargLocation(varargLocation)
     , varargAnnotation(varargAnnotation)
     , body(body)
     , functionDepth(functionDepth)

@@ -15,6 +15,7 @@
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
 LUAU_FASTFLAGVARIABLE(LuauLintComparisonPrecedence, false)
+LUAU_FASTFLAGVARIABLE(LuauLintFixDeprecationMessage, false)
 
 namespace Luau
 {
@@ -306,11 +307,22 @@ private:
                 emitWarning(*context, LintWarning::Code_UnknownGlobal, gv->location, "Unknown global '%s'", gv->name.value);
             else if (g->deprecated)
             {
-                if (*g->deprecated)
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
-                        gv->name.value, *g->deprecated);
+                if (FFlag::LuauLintFixDeprecationMessage)
+                {
+                    if (const char* replacement = *g->deprecated; replacement && strlen(replacement))
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
+                            gv->name.value, replacement);
+                    else
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                }
                 else
-                    emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                {
+                    if (*g->deprecated)
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated, use '%s' instead",
+                            gv->name.value, *g->deprecated);
+                    else
+                        emitWarning(*context, LintWarning::Code_DeprecatedGlobal, gv->location, "Global '%s' is deprecated", gv->name.value);
+                }
             }
         }
 

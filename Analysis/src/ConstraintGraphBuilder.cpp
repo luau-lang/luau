@@ -210,7 +210,8 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
 
     for (size_t i = 0; i < local->values.size; ++i)
     {
-        if (local->values.data[i]->is<AstExprConstantNil>())
+        AstExpr* value = local->values.data[i];
+        if (value->is<AstExprConstantNil>())
         {
             // HACK: we leave nil-initialized things floating under the assumption that they will later be populated.
             // See the test TypeInfer/infer_locals_with_nil_value.
@@ -218,7 +219,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
         }
         else if (i == local->values.size - 1)
         {
-            TypePackId exprPack = checkPack(scope, local->values.data[i]);
+            TypePackId exprPack = checkPack(scope, value);
 
             if (i < local->vars.size)
             {
@@ -229,7 +230,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
         }
         else
         {
-            TypeId exprType = check(scope, local->values.data[i]);
+            TypeId exprType = check(scope, value);
             if (i < varTypes.size())
                 addConstraint(scope, SubtypeConstraint{varTypes[i], exprType});
         }
@@ -1107,9 +1108,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
 
                 if (topLevel)
                 {
-                    addConstraint(scope, TypeAliasExpansionConstraint{
-                                             /* target */ result,
-                                         });
+                    addConstraint(scope, TypeAliasExpansionConstraint{ /* target */ result });
                 }
             }
         }

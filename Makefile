@@ -93,7 +93,7 @@ endif
 
 ifeq ($(config),fuzz)
 	CXX=clang++ # our fuzzing infra relies on llvm fuzzer
-	CXXFLAGS+=-fsanitize=address,fuzzer -Ibuild/libprotobuf-mutator -Ibuild/libprotobuf-mutator/external.protobuf/include -O2
+	CXXFLAGS+=-fsanitize=address,fuzzer -Ibuild/libprotobuf-mutator -O2
 	LDFLAGS+=-fsanitize=address,fuzzer
 endif
 
@@ -115,7 +115,7 @@ $(FUZZ_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/
 
 $(TESTS_TARGET): LDFLAGS+=-lpthread
 $(REPL_CLI_TARGET): LDFLAGS+=-lpthread
-fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a build/libprotobuf-mutator/external.protobuf/lib/libprotobuf.a
+fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a -lprotobuf
 
 # pseudo targets
 .PHONY: all test clean coverage format luau-size aliases
@@ -195,7 +195,7 @@ $(BUILD)/%.c.o: %.c
 
 # protobuf fuzzer setup
 fuzz/luau.pb.cpp: fuzz/luau.proto build/libprotobuf-mutator
-	cd fuzz && ../build/libprotobuf-mutator/external.protobuf/bin/protoc luau.proto --cpp_out=.
+	cd fuzz && protoc luau.proto --cpp_out=.
 	mv fuzz/luau.pb.cc fuzz/luau.pb.cpp
 
 $(BUILD)/fuzz/proto.cpp.o: fuzz/luau.pb.cpp
@@ -203,7 +203,7 @@ $(BUILD)/fuzz/protoprint.cpp.o: fuzz/luau.pb.cpp
 
 build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator
-	CXX= cmake -S build/libprotobuf-mutator -B build/libprotobuf-mutator -D CMAKE_BUILD_TYPE=Release -D LIB_PROTO_MUTATOR_DOWNLOAD_PROTOBUF=ON -D LIB_PROTO_MUTATOR_TESTING=OFF
+	CXX= cmake -S build/libprotobuf-mutator -B build/libprotobuf-mutator -D CMAKE_BUILD_TYPE=Release -D LIB_PROTO_MUTATOR_TESTING=OFF
 	make -C build/libprotobuf-mutator -j8
 
 # picks up include dependencies for all object files

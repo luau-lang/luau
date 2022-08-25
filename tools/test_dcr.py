@@ -14,11 +14,13 @@ def loadFailList():
     with open(FAIL_LIST_PATH) as f:
         return set(map(str.strip, f.readlines()))
 
+
 def safeParseInt(i, default=0):
     try:
         return int(i)
     except ValueError:
         return default
+
 
 class Handler(x.ContentHandler):
     def __init__(self, failList):
@@ -47,7 +49,7 @@ class Handler(x.ContentHandler):
                 r = self.results.get(dottedName, True)
                 self.results[dottedName] = r and passed
 
-        elif name == 'OverallResultsTestCases':
+        elif name == "OverallResultsTestCases":
             self.numSkippedTests = safeParseInt(attrs.get("skipped", 0))
 
     def endElement(self, name):
@@ -104,9 +106,9 @@ def main():
 
     for testName, passed in handler.results.items():
         if passed and testName in failList:
-            print('UNEXPECTED: {} should have failed'.format(testName))
+            print("UNEXPECTED: {} should have failed".format(testName))
         elif not passed and testName not in failList:
-            print('UNEXPECTED: {} should have passed'.format(testName))
+            print("UNEXPECTED: {} should have passed".format(testName))
 
     if args.write:
         newFailList = sorted(
@@ -123,17 +125,24 @@ def main():
         print("Updated faillist.txt")
 
     if handler.numSkippedTests > 0:
-        print('{} test(s) were skipped!  That probably means that a test segfaulted!'.format(handler.numSkippedTests), file=sys.stderr)
+        print(
+            "{} test(s) were skipped!  That probably means that a test segfaulted!".format(
+                handler.numSkippedTests
+            ),
+            file=sys.stderr,
+        )
         sys.exit(1)
 
-    sys.exit(
-        0
-        if all(
-            not passed == (dottedName in failList)
-            for dottedName, passed in handler.results.items()
-        )
-        else 1
+    ok = all(
+        not passed == (dottedName in failList)
+        for dottedName, passed in handler.results.items()
     )
+
+    if ok:
+        print("Everything in order!", file=sys.stderr)
+
+    sys.exit(0 if ok else 1)
+
 
 if __name__ == "__main__":
     main()

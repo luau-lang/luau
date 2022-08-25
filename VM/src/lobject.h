@@ -232,7 +232,7 @@ typedef struct TString
     int16_t atom;
     // 2 byte padding
 
-    TString* next; // next string in the hash table bucket or the string buffer linked list
+    TString* next; // next string in the hash table bucket
 
     unsigned int hash;
     unsigned int len;
@@ -316,7 +316,10 @@ typedef struct LocVar
 typedef struct UpVal
 {
     CommonHeader;
-    // 1 (x86) or 5 (x64) byte padding
+    uint8_t markedopen; // set if reachable from an alive thread (only valid during atomic)
+
+    // 4 byte padding (x64)
+
     TValue* v; // points to stack or to its own value
     union
     {
@@ -327,13 +330,15 @@ typedef struct UpVal
             struct UpVal* prev;
             struct UpVal* next;
 
-            // thread double linked list (when open)
+            // thread linked list (when open)
             struct UpVal* threadnext;
             // note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State
-            struct UpVal** threadprev;
-        } l;
+            struct UpVal** threadprev; // TODO: remove with FFlag::LuauSimplerUpval
+        } open;
     } u;
 } UpVal;
+
+#define upisopen(up) ((up)->v != &(up)->u.value)
 
 /*
 ** Closures

@@ -10,9 +10,6 @@
 #include "lnumutils.h"
 
 #include <string.h>
-#include <stdio.h>
-
-LUAU_FASTFLAGVARIABLE(LuauBetterNewindex, false)
 
 // limit for table tag-method chains (to avoid loops)
 #define MAXTAGLOOP 100
@@ -142,46 +139,25 @@ void luaV_settable(lua_State* L, const TValue* t, TValue* key, StkId val)
         { // `t' is a table?
             Table* h = hvalue(t);
 
-            if (FFlag::LuauBetterNewindex)
-            {
-                const TValue* oldval = luaH_get(h, key);
+            const TValue* oldval = luaH_get(h, key);
 
-                // should we assign the key? (if key is valid or __newindex is not set)
-                if (!ttisnil(oldval) || (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
-                {
-                    if (h->readonly)
-                        luaG_readonlyerror(L);
-
-                    // luaH_set would work but would repeat the lookup so we use luaH_setslot that can reuse oldval if it's safe
-                    TValue* newval = luaH_setslot(L, h, oldval, key);
-
-                    L->cachedslot = gval2slot(h, newval); // remember slot to accelerate future lookups
-
-                    setobj2t(L, newval, val);
-                    luaC_barriert(L, h, val);
-                    return;
-                }
-
-                // fallthrough to metamethod
-            }
-            else
+            // should we assign the key? (if key is valid or __newindex is not set)
+            if (!ttisnil(oldval) || (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
             {
                 if (h->readonly)
                     luaG_readonlyerror(L);
 
-                TValue* oldval = luaH_set(L, h, key); // do a primitive set
+                // luaH_set would work but would repeat the lookup so we use luaH_setslot that can reuse oldval if it's safe
+                TValue* newval = luaH_setslot(L, h, oldval, key);
 
-                L->cachedslot = gval2slot(h, oldval); // remember slot to accelerate future lookups
+                L->cachedslot = gval2slot(h, newval); // remember slot to accelerate future lookups
 
-                if (!ttisnil(oldval) || // result is no nil?
-                    (tm = fasttm(L, h->metatable, TM_NEWINDEX)) == NULL)
-                { // or no TM?
-                    setobj2t(L, oldval, val);
-                    luaC_barriert(L, h, val);
-                    return;
-                }
-                // else will try the tag method
+                setobj2t(L, newval, val);
+                luaC_barriert(L, h, val);
+                return;
             }
+
+            // fallthrough to metamethod
         }
         else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_NEWINDEX)))
             luaG_indexerror(L, t, key);

@@ -2154,8 +2154,6 @@ TEST_CASE("RecursionParse")
         CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your expression to make the code compile");
     }
 
-#if 0
-    // This currently requires too much stack space on MSVC/x64 and crashes with stack overflow at recursion depth 935
     try
     {
         Luau::compileOrThrow(bcb, rep("function a() ", 1500) + "print()" + rep(" end", 1500));
@@ -2175,7 +2173,6 @@ TEST_CASE("RecursionParse")
     {
         CHECK_EQ(std::string(e.what()), "Exceeded allowed recursion depth; simplify your block to make the code compile");
     }
-#endif
 }
 
 TEST_CASE("ArrayIndexLiteral")

@@ -38,6 +38,7 @@ argumentParser.add_argument('--run-test', action='store', default=None, help='Re
 argumentParser.add_argument('--extra-loops', action='store',type=int,default=0, help='Amount of times to loop over one test (one test already performs multiple runs)')
 argumentParser.add_argument('--filename', action='store',type=str,default='bench', help='File name for graph and results file')
 argumentParser.add_argument('--callgrind', dest='callgrind',action='store_const',const=1,default=0,help='Use callgrind to run benchmarks')
+argumentParser.add_argument('--show-commands', dest='show_commands',action='store_const',const=1,default=0,help='Show the command line used to launch the VM and tests')
 
 if matplotlib != None:
     argumentParser.add_argument('--absolute', dest='absolute',action='store_const',const=1,default=0,help='Display absolute values instead of relative (enabled by default when benchmarking a single VM)')
@@ -87,17 +88,25 @@ def getCallgrindOutput(lines):
 
     return "".join(result)
 
+def conditionallyShowCommand(cmd):
+    if arguments.show_commands:
+        print(f'{colored(Color.BLUE, "EXECUTING")}: {cmd}')
+
 def getVmOutput(cmd):
     if os.name == "nt":
         try:
-            return subprocess.check_output("start /realtime /affinity 1 /b /wait cmd /C \"" + cmd + "\"", shell=True, cwd=scriptdir).decode()
+            fullCmd = "start /realtime /affinity 1 /b /wait cmd /C \"" + cmd + "\""
+            conditionallyShowCommand(fullCmd)
+            return subprocess.check_output(fullCmd, shell=True, cwd=scriptdir).decode()
         except KeyboardInterrupt:
             exit(1)
         except:
             return ""
     elif arguments.callgrind:
         try:
-            subprocess.check_call("valgrind --tool=callgrind --callgrind-out-file=callgrind.out --combine-dumps=yes --dump-line=no " + cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=scriptdir)
+            fullCmd = "valgrind --tool=callgrind --callgrind-out-file=callgrind.out --combine-dumps=yes --dump-line=no " + cmd
+            conditionallyShowCommand(fullCmd)
+            subprocess.check_call(fullCmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, cwd=scriptdir)
             path = os.path.join(scriptdir, "callgrind.out")
             with open(path, "r") as file:
                 lines = file.readlines()
@@ -106,6 +115,7 @@ def getVmOutput(cmd):
         except:
             return ""
     else:
+        conditionallyShowCommand(cmd)
         with subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=scriptdir) as p:
             # Try to lock to a single processor
             if sys.platform != "darwin":

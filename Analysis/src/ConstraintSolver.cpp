@@ -11,6 +11,7 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
+LUAU_FASTFLAG(LuauFixNameMaps)
 
 namespace Luau
 {
@@ -19,9 +20,17 @@ namespace Luau
 {
     for (const auto& [k, v] : scope->bindings)
     {
-        auto d = toStringDetailed(v.typeId, opts);
-        opts.nameMap = d.nameMap;
-        printf("\t%s : %s\n", k.c_str(), d.name.c_str());
+        if (FFlag::LuauFixNameMaps)
+        {
+            auto d = toString(v.typeId, opts);
+            printf("\t%s : %s\n", k.c_str(), d.c_str());
+        }
+        else
+        {
+            auto d = toStringDetailed(v.typeId, opts);
+            opts.DEPRECATED_nameMap = d.DEPRECATED_nameMap;
+            printf("\t%s : %s\n", k.c_str(), d.name.c_str());
+        }
     }
 
     for (NotNull<Scope> child : scope->children)
@@ -212,12 +221,22 @@ void dump(NotNull<Scope> rootScope, ToStringOptions& opts)
 void dump(ConstraintSolver* cs, ToStringOptions& opts)
 {
     printf("constraints:\n");
-    for (const Constraint* c : cs->unsolvedConstraints)
+    for (NotNull<const Constraint> c : cs->unsolvedConstraints)
     {
-        printf("\t%s\n", toString(*c, opts).c_str());
+        auto it = cs->blockedConstraints.find(c);
+        int blockCount = it == cs->blockedConstraints.end() ? 0 : int(it->second);
+        printf("\t%d\t%s\n", blockCount, toString(*c, opts).c_str());
 
-        for (const Constraint* dep : c->dependencies)
-            printf("\t\t%s\n", toString(*dep, opts).c_str());
+        for (NotNull<Constraint> dep : c->dependencies)
+        {
+            auto unsolvedIter = std::find(begin(cs->unsolvedConstraints), end(cs->unsolvedConstraints), dep);
+            if (unsolvedIter == cs->unsolvedConstraints.end())
+                continue;
+
+            auto it = cs->blockedConstraints.find(dep);
+            int blockCount = it == cs->blockedConstraints.end() ? 0 : int(it->second);
+            printf("\t%d\t\t%s\n", blockCount, toString(*dep, opts).c_str());
+        }
     }
 }
 
@@ -273,7 +292,7 @@ void ConstraintSolver::run()
 
             if (FFlag::DebugLuauLogSolverToJson)
             {
-                logger.prepareStepSnapshot(rootScope, c, unsolvedConstraints);
+                logger.prepareStepSnapshot(rootScope, c, unsolvedConstraints, force);
             }
 
             bool success = tryDispatch(c, force);
@@ -282,6 +301,7 @@ void ConstraintSolver::run()
 
             if (success)
             {
+                unblock(c);
                 unsolvedConstraints.erase(unsolvedConstraints.begin() + i);
 
                 if (FFlag::DebugLuauLogSolverToJson)
@@ -375,18 +395,12 @@ bool ConstraintSolver::tryDispatch(const SubtypeConstraint& c, NotNull<const Con
 
     unify(c.subType, c.superType, constraint->scope);
 
-    unblock(c.subType);
-    unblock(c.superType);
-
     return true;
 }
 
 bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const Constraint> constraint, bool force)
 {
     unify(c.subPack, c.superPack, constraint->scope);
-    unblock(c.subPack);
-    unblock(c.superPack);
-
     return true;
 }
 
@@ -395,13 +409,12 @@ bool ConstraintSolver::tryDispatch(const GeneralizationConstraint& c, NotNull<co
     if (isBlocked(c.sourceType))
         return block(c.sourceType, constraint);
 
-    if (isBlocked(c.generalizedType))
-        asMutable(c.generalizedType)->ty.emplace<BoundTypeVar>(c.sourceType);
-    else
-        unify(c.generalizedType, c.sourceType, constraint->scope);
-
     TypeId generalized = quantify(arena, c.sourceType, constraint->scope);
-    *asMutable(c.sourceType) = *generalized;
+
+    if (isBlocked(c.generalizedType))
+        asMutable(c.generalizedType)->ty.emplace<BoundTypeVar>(generalized);
+    else
+        unify(c.generalizedType, generalized, constraint->scope);
 
     unblock(c.generalizedType);
     unblock(c.sourceType);
@@ -455,23 +468,44 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
 {
     TypeId leftType = follow(c.leftType);
     TypeId rightType = follow(c.rightType);
+    TypeId resultType = follow(c.resultType);
 
     if (isBlocked(leftType) || isBlocked(rightType))
     {
-        block(leftType, constraint);
-        block(rightType, constraint);
-        return false;
+        /* Compound assignments create constraints of the form
+         *
+         *     A <: Binary<op, A, B>
+         *
+         * This constraint is the one that is meant to unblock A, so it doesn't
+         * make any sense to stop and wait for someone else to do it.
+         */
+        if (leftType != resultType && rightType != resultType)
+        {
+            block(c.leftType, constraint);
+            block(c.rightType, constraint);
+            return false;
+        }
     }
 
     if (isNumber(leftType))
     {
         unify(leftType, rightType, constraint->scope);
-        asMutable(c.resultType)->ty.emplace<BoundTypeVar>(leftType);
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(leftType);
         return true;
     }
 
-    if (get<FreeTypeVar>(leftType) && !force)
-        return block(leftType, constraint);
+    if (!force)
+    {
+        if (get<FreeTypeVar>(leftType))
+            return block(leftType, constraint);
+    }
+
+    if (isBlocked(leftType))
+    {
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(getSingletonTypes().errorRecoveryType());
+        // reportError(constraint->location, CannotInferBinaryOperation{c.op, std::nullopt, CannotInferBinaryOperation::Operation});
+        return true;
+    }
 
     // TODO metatables, classes
 
@@ -706,17 +740,23 @@ void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constrai
 
 void ConstraintSolver::block(NotNull<const Constraint> target, NotNull<const Constraint> constraint)
 {
+    if (FFlag::DebugLuauLogSolver)
+        printf("block Constraint %s on\t%s\n", toString(*target).c_str(), toString(*constraint).c_str());
     block_(target, constraint);
 }
 
 bool ConstraintSolver::block(TypeId target, NotNull<const Constraint> constraint)
 {
+    if (FFlag::DebugLuauLogSolver)
+        printf("block TypeId %s on\t%s\n", toString(target).c_str(), toString(*constraint).c_str());
     block_(target, constraint);
     return false;
 }
 
 bool ConstraintSolver::block(TypePackId target, NotNull<const Constraint> constraint)
 {
+    if (FFlag::DebugLuauLogSolver)
+        printf("block TypeId %s on\t%s\n", toString(target).c_str(), toString(*constraint).c_str());
     block_(target, constraint);
     return false;
 }
@@ -731,6 +771,9 @@ void ConstraintSolver::unblock_(BlockedConstraintId progressed)
     for (NotNull<const Constraint> unblockedConstraint : it->second)
     {
         auto& count = blockedConstraints[unblockedConstraint];
+        if (FFlag::DebugLuauLogSolver)
+            printf("Unblocking count=%d\t%s\n", int(count), toString(*unblockedConstraint).c_str());
+
         // This assertion being hit indicates that `blocked` and
         // `blockedConstraints` desynchronized at some point. This is problematic
         // because we rely on this count being correct to skip over blocked
@@ -757,6 +800,18 @@ void ConstraintSolver::unblock(TypePackId progressed)
     return unblock_(progressed);
 }
 
+void ConstraintSolver::unblock(const std::vector<TypeId>& types)
+{
+    for (TypeId t : types)
+        unblock(t);
+}
+
+void ConstraintSolver::unblock(const std::vector<TypePackId>& packs)
+{
+    for (TypePackId t : packs)
+        unblock(t);
+}
+
 bool ConstraintSolver::isBlocked(TypeId ty)
 {
     return nullptr != get<BlockedTypeVar>(follow(ty)) || nullptr != get<PendingExpansionTypeVar>(follow(ty));
@@ -774,7 +829,13 @@ void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> sc
     Unifier u{arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
 
     u.tryUnify(subType, superType);
+
+    const auto [changedTypes, changedPacks] = u.log.getChanges();
+
     u.log.commit();
+
+    unblock(changedTypes);
+    unblock(changedPacks);
 }
 
 void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope)
@@ -783,7 +844,13 @@ void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<S
     Unifier u{arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
 
     u.tryUnify(subPack, superPack);
+
+    const auto [changedTypes, changedPacks] = u.log.getChanges();
+
     u.log.commit();
+
+    unblock(changedTypes);
+    unblock(changedPacks);
 }
 
 void ConstraintSolver::pushConstraint(ConstraintV cv, NotNull<Scope> scope)
