@@ -154,7 +154,7 @@ local s: string = my_cool_lower("HI")
 * Fix minor inconsistencies in synthesized names for types with metatables
 * Fix autocomplete not suggesting globals defined after the cursor
 * Fix DeprecatedGlobal warning text in cases when the global is deprecated without a suggested alternative
-* Fix an off-by-one error in type error text for incorrect use of string.format
+* Fix an off-by-one error in type error text for incorrect use of `string.format`
 
 ## Other runtime improvements
 
