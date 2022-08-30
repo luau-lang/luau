@@ -61,7 +61,7 @@ To be able to do this soundly, you must apply type refinements on a variable of 
 local u = unknown()
 
 if typeof(u) == "string" then
-  local y: string = u -- no type error
+    local y: string = u -- no type error
 end
 ```
 
