@@ -161,7 +161,6 @@ local s: string = my_cool_lower("HI")
 * Comparisons with constants are now significantly faster when using clang as a compiler (10-50% gains on internal benchmarks)
 * When calling non-existent methods on tables or strings, `foo:bar` now produces a more precise error message
 * Improve performance for iteration of tables
-* Slightly reduce interpreter I$ footprint
 * Fix a bug with negative zero in vector components when using vectors as table keys
 * Compiler can now constant fold builtins under -O2
 * Compiler can model the cost of builtins for the purpose of inlining/unrolling
