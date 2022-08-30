@@ -162,7 +162,7 @@ local s: string = my_cool_lower("HI")
 * When calling non-existent methods on tables or strings, `foo:bar` now produces a more precise error message
 * Improve performance for iteration of tables
 * Fix a bug with negative zero in vector components when using vectors as table keys
-* Compiler can now constant fold builtins under -O2
+* Compiler can now constant fold builtins under -O2, for example `string.byte("A")` is compiled to a constant
 * Compiler can model the cost of builtins for the purpose of inlining/unrolling
 * Local reassignment i.e. `local x = y :: T` is free iff neither `x` nor `y` is mutated/captured
 * Improve debug.traceback performance by 1.15-1.75x depending on the platform
