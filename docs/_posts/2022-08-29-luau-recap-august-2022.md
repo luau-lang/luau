@@ -168,7 +168,7 @@ local s: string = my_cool_lower("HI")
 * Improve `debug.traceback` performance by 1.15-1.75x depending on the platform
 * Fix a corner case with table assignment semantics when key didn't exist in the table and `__newindex` was defined: we now use Lua 5.2 semantics and call `__newindex`, which results in less wasted space, support for NaN keys in `__newindex` path and correct support for frozen tables
 * Reduce parser C stack consumption which fixes some stack overflow crashes on deeply nested sources
-* Improve performance of bit32.extract/replace when width is implied (~3% faster chess)
+* Improve performance of `bit32.extract`/`replace` when width is implied (~3% faster chess)
 * Improve performance of bit32.extract when field/width are constants (~10% faster base64)
 
 ## Thanks
