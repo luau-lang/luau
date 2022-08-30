@@ -170,6 +170,7 @@ local s: string = my_cool_lower("HI")
 * Reduce parser C stack consumption which fixes some stack overflow crashes on deeply nested sources
 * Improve performance of `bit32.extract`/`replace` when width is implied (~3% faster chess)
 * Improve performance of `bit32.extract` when field/width are constants (~10% faster base64)
+* `string.format` now supports a new format specifier, `%*`, that accepts any value type and formats it using `tostring` rules
 
 ## Thanks
 
