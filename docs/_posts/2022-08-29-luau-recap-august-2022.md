@@ -11,7 +11,7 @@ Luau is our new language that you can read more about at [https://luau-lang.org]
 
 See the RFC [Support `__len` metamethod for tables and `rawlen` function](https://github.com/Roblox/luau/blob/master/rfcs/len-metamethod-rawlen.md) for more details.
 
-With generalized iteration released in May, custom containers are easier than ever to use. The only thing missing were the fact tables didn't respect `__len`.
+With generalized iteration released in May, custom containers are easier than ever to use. The only thing missing was the fact that tables didn't respect `__len`.
 
 Simply, tables now honor the `__len` metamethod, and `rawlen` is also added with similar semantics as `rawget` and `rawset`:
 
