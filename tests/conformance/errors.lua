@@ -369,20 +369,30 @@ assert(not a and b:match('[^ ]+') == "short:1:")
 local a,b = loadstring("nope", "=" .. string.rep("thisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilities", 10))
 assert(not a and b:match('[^ ]+') == "thisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilitiesthisisaverylongstringitssolongthatitwontfitintotheinternalbufferprovidedtovariousdebugfacilitiesthisisaverylongstringitssolongthatitwontfitintotheinternalbuffe:1:")
 
--- arith errors
 function ecall(fn, ...)
   local ok, err = pcall(fn, ...)
   assert(not ok)
-  return err:sub(err:find(": ") + 2, #err)
+  return err:sub((err:find(": ") or -1) + 2, #err)
 end
 
+-- arith errors
 assert(ecall(function() return nil + 5 end) == "attempt to perform arithmetic (add) on nil and number")
 assert(ecall(function() return "a" + "b" end) == "attempt to perform arithmetic (add) on string")
 assert(ecall(function() return 1 > nil end) == "attempt to compare nil < number") -- note reversed order (by design)
 assert(ecall(function() return "a" <= 5 end) == "attempt to compare string <= number")
 
+-- table errors
 assert(ecall(function() local t = {} t[nil] = 2 end) == "table index is nil")
 assert(ecall(function() local t = {} t[0/0] = 2 end) == "table index is NaN")
+
+assert(ecall(function() local t = {} rawset(t, nil, 2) end) == "table index is nil")
+assert(ecall(function() local t = {} rawset(t, 0/0, 2) end) == "table index is NaN")
+
+assert(ecall(function() local t = {} t[nil] = nil end) == "table index is nil")
+assert(ecall(function() local t = {} t[0/0] = nil end) == "table index is NaN")
+
+assert(ecall(function() local t = {} rawset(t, nil, nil) end) == "table index is nil")
+assert(ecall(function() local t = {} rawset(t, 0/0, nil) end) == "table index is NaN")
 
 -- for loop type errors
 assert(ecall(function() for i='a',2 do end end) == "invalid 'for' initial value (number expected, got string)")

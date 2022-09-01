@@ -31,6 +31,15 @@ TypeId TypeArena::freshType(TypeLevel level)
     return allocated;
 }
 
+TypeId TypeArena::freshType(Scope* scope)
+{
+    TypeId allocated = typeVars.allocate(FreeTypeVar{scope});
+
+    asMutable(allocated)->owningArena = this;
+
+    return allocated;
+}
+
 TypePackId TypeArena::addTypePack(std::initializer_list<TypeId> types)
 {
     TypePackId allocated = typePacks.allocate(TypePack{std::move(types)});
@@ -40,9 +49,9 @@ TypePackId TypeArena::addTypePack(std::initializer_list<TypeId> types)
     return allocated;
 }
 
-TypePackId TypeArena::addTypePack(std::vector<TypeId> types)
+TypePackId TypeArena::addTypePack(std::vector<TypeId> types, std::optional<TypePackId> tail)
 {
-    TypePackId allocated = typePacks.allocate(TypePack{std::move(types)});
+    TypePackId allocated = typePacks.allocate(TypePack{std::move(types), tail});
 
     asMutable(allocated)->owningArena = this;
 

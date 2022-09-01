@@ -943,8 +943,7 @@ TEST_CASE_FIXTURE(Fixture, "parse_interpolated_string_without_end_brace")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
 
-    auto columnOfEndBraceError = [this](const char* code)
-    {
+    auto columnOfEndBraceError = [this](const char* code) {
         try
         {
             parse(code);
@@ -1735,6 +1734,48 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_assignment_lvalue")
 TEST_CASE_FIXTURE(Fixture, "parse_error_type_annotation")
 {
     matchParseError("local a : 2 = 2", "Expected type, got '2'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "parse_error_missing_type_annotation")
+{
+    ScopedFastFlag LuauTypeAnnotationLocationChange{"LuauTypeAnnotationLocationChange", true};
+
+    {
+        ParseResult result = tryParse("local x:");
+        CHECK(result.errors.size() == 1);
+        Position begin = result.errors[0].getLocation().begin;
+        Position end = result.errors[0].getLocation().end;
+        CHECK(begin.line == end.line);
+        int width = end.column - begin.column;
+        CHECK(width == 0);
+        CHECK(result.errors[0].getMessage() == "Expected type, got <eof>");
+    }
+
+    {
+        ParseResult result = tryParse(R"(
+local x:=42
+    )");
+        CHECK(result.errors.size() == 1);
+        Position begin = result.errors[0].getLocation().begin;
+        Position end = result.errors[0].getLocation().end;
+        CHECK(begin.line == end.line);
+        int width = end.column - begin.column;
+        CHECK(width == 1); // Length of `=`
+        CHECK(result.errors[0].getMessage() == "Expected type, got '='");
+    }
+
+    {
+        ParseResult result = tryParse(R"(
+function func():end
+    )");
+        CHECK(result.errors.size() == 1);
+        Position begin = result.errors[0].getLocation().begin;
+        Position end = result.errors[0].getLocation().end;
+        CHECK(begin.line == end.line);
+        int width = end.column - begin.column;
+        CHECK(width == 3); // Length of `end`
+        CHECK(result.errors[0].getMessage() == "Expected type, got 'end'");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parse_declarations")

@@ -373,6 +373,11 @@ public:
         return Luau::visit(*this, btp.boundTo->ty);
     }
 
+    AstTypePack* operator()(const BlockedTypePack& btp) const
+    {
+        return allocator->alloc<AstTypePackGeneric>(Location(), AstName("*blocked*"));
+    }
+
     AstTypePack* operator()(const TypePack& tp) const
     {
         AstArray<AstType*> head;

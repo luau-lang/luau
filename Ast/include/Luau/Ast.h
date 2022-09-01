@@ -1276,6 +1276,16 @@ public:
 };
 
 AstName getIdentifier(AstExpr*);
+Location getLocation(const AstTypeList& typeList);
+
+template<typename T> // AstNode, AstExpr, AstLocal, etc
+Location getLocation(AstArray<T*> array)
+{
+    if (0 == array.size)
+        return {};
+
+    return Location{array.data[0]->location.begin, array.data[array.size - 1]->location.end};
+}
 
 #undef LUAU_RTTI
 

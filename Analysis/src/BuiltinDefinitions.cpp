@@ -5,6 +5,7 @@
 #include "Luau/Symbol.h"
 #include "Luau/Common.h"
 #include "Luau/ToString.h"
+#include "Luau/ConstraintSolver.h"
 
 #include <algorithm>
 
@@ -31,6 +32,8 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionPack(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
 static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate);
+
+static bool dcrMagicFunctionRequire(NotNull<ConstraintSolver> solver, TypePackId result, const AstExprCall* expr);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
 {
@@ -101,6 +104,14 @@ void attachMagicFunction(TypeId ty, MagicFunction fn)
 {
     if (auto ftv = getMutable<FunctionTypeVar>(ty))
         ftv->magicFunction = fn;
+    else
+        LUAU_ASSERT(!"Got a non functional type");
+}
+
+void attachDcrMagicFunction(TypeId ty, DcrMagicFunction fn)
+{
+    if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        ftv->dcrMagicFunction = fn;
     else
         LUAU_ASSERT(!"Got a non functional type");
 }
@@ -263,6 +274,7 @@ void registerBuiltinTypes(TypeChecker& typeChecker)
     }
 
     attachMagicFunction(getGlobalBinding(typeChecker, "require"), magicFunctionRequire);
+    attachDcrMagicFunction(getGlobalBinding(typeChecker, "require"), dcrMagicFunctionRequire);
 }
 
 static std::optional<WithPredicate<TypePackId>> magicFunctionSelect(
@@ -507,6 +519,51 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
         return WithPredicate<TypePackId>{arena.addTypePack({typechecker.checkRequire(scope, *moduleInfo, expr.location)})};
 
     return std::nullopt;
+}
+
+static bool checkRequirePathDcr(NotNull<ConstraintSolver> solver, AstExpr* expr)
+{
+    // require(foo.parent.bar) will technically work, but it depends on legacy goop that
+    // Luau does not and could not support without a bunch of work.  It's deprecated anyway, so
+    // we'll warn here if we see it.
+    bool good = true;
+    AstExprIndexName* indexExpr = expr->as<AstExprIndexName>();
+
+    while (indexExpr)
+    {
+        if (indexExpr->index == "parent")
+        {
+            solver->reportError(DeprecatedApiUsed{"parent", "Parent"}, indexExpr->indexLocation);
+            good = false;
+        }
+
+        indexExpr = indexExpr->expr->as<AstExprIndexName>();
+    }
+
+    return good;
+}
+
+static bool dcrMagicFunctionRequire(NotNull<ConstraintSolver> solver, TypePackId result, const AstExprCall* expr)
+{
+    if (expr->args.size != 1)
+    {
+        solver->reportError(GenericError{"require takes 1 argument"}, expr->location);
+        return false;
+    }
+
+    if (!checkRequirePathDcr(solver, expr->args.data[0]))
+        return false;
+
+    if (auto moduleInfo = solver->moduleResolver->resolveModuleInfo(solver->currentModuleName, *expr))
+    {
+        TypeId moduleType = solver->resolveModule(*moduleInfo, expr->location);
+        TypePackId moduleResult = solver->arena->addTypePack({moduleType});
+        asMutable(result)->ty.emplace<BoundTypePack>(moduleResult);
+
+        return true;
+    }
+
+    return false;
 }
 
 } // namespace Luau

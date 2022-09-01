@@ -11,7 +11,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauDeduceFindMatchReturnTypes)
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
@@ -61,8 +60,8 @@ TEST_CASE_FIXTURE(Fixture, "string_method")
     CheckResult result = check(R"(
         local p = ("tacos"):len()
     )");
-    CHECK_EQ(0, result.errors.size());
 
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*requireType("p"), *typeChecker.numberType);
 }
 
@@ -73,8 +72,8 @@ TEST_CASE_FIXTURE(Fixture, "string_function_indirect")
         local l = s.lower
         local p = l(s)
     )");
-    CHECK_EQ(0, result.errors.size());
 
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*requireType("p"), *typeChecker.stringType);
 }
 
@@ -84,12 +83,9 @@ TEST_CASE_FIXTURE(Fixture, "string_function_other")
         local s:string
         local p = s:match("foo")
     )");
-    CHECK_EQ(0, result.errors.size());
 
-    if (FFlag::LuauDeduceFindMatchReturnTypes)
-        CHECK_EQ(toString(requireType("p")), "string");
-    else
-        CHECK_EQ(toString(requireType("p")), "string?");
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("p")), "string");
 }
 
 TEST_CASE_FIXTURE(Fixture, "CheckMethodsOfNumber")

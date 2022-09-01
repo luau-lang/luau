@@ -3,6 +3,7 @@
 #include "Luau/ConstraintSolverLogger.h"
 
 #include "Luau/JsonEmitter.h"
+#include "Luau/ToString.h"
 
 LUAU_FASTFLAG(LuauFixNameMaps);
 

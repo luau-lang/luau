@@ -1181,7 +1181,7 @@ s:match("[]")
 nons:match("[]")
 )~");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE_EQ(result.warnings.size(), 2);
     CHECK_EQ(result.warnings[0].text, "Invalid match pattern: expected ] at the end of the string to close a set");
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
     CHECK_EQ(result.warnings[1].text, "Invalid match pattern: expected ] at the end of the string to close a set");
@@ -1746,6 +1746,7 @@ local _ = not a == b
 local _ = not a ~= b
 local _ = not a <= b
 local _ = a <= b == 0
+local _ = a <= b <= 0
 
 local _ = not a == not b -- weird but ok
 
@@ -1760,11 +1761,12 @@ local _ = (a <= b) == 0
 local _ = a <= (b == 0)
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 4);
-    CHECK_EQ(result.warnings[0].text, "not X == Y is equivalent to (not X) == Y; consider using X ~= Y, or wrap one of the expressions in parentheses to silence");
-    CHECK_EQ(result.warnings[1].text, "not X ~= Y is equivalent to (not X) ~= Y; consider using X == Y, or wrap one of the expressions in parentheses to silence");
-    CHECK_EQ(result.warnings[2].text, "not X <= Y is equivalent to (not X) <= Y; wrap one of the expressions in parentheses to silence");
-    CHECK_EQ(result.warnings[3].text, "X <= Y == Z is equivalent to (X <= Y) == Z; wrap one of the expressions in parentheses to silence");
+    REQUIRE_EQ(result.warnings.size(), 5);
+    CHECK_EQ(result.warnings[0].text, "not X == Y is equivalent to (not X) == Y; consider using X ~= Y, or add parentheses to silence");
+    CHECK_EQ(result.warnings[1].text, "not X ~= Y is equivalent to (not X) ~= Y; consider using X == Y, or add parentheses to silence");
+    CHECK_EQ(result.warnings[2].text, "not X <= Y is equivalent to (not X) <= Y; add parentheses to silence");
+    CHECK_EQ(result.warnings[3].text, "X <= Y == Z is equivalent to (X <= Y) == Z; add parentheses to silence");
+    CHECK_EQ(result.warnings[4].text, "X <= Y <= Z is equivalent to (X <= Y) <= Z; did you mean X <= Y and Y <= Z?");
 }
 
 TEST_SUITE_END();

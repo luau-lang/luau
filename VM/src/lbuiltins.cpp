@@ -15,8 +15,6 @@
 #include <intrin.h>
 #endif
 
-LUAU_FASTFLAGVARIABLE(LuauFasterBit32NoWidth, false)
-
 // luauF functions implement FASTCALL instruction that performs a direct execution of some builtin functions from the VM
 // The rule of thumb is that FASTCALL functions can not call user code, yield, fail, or reallocate stack.
 // If types of the arguments mismatch, luauF_* needs to return -1 and the execution will fall back to the usual call path
@@ -602,7 +600,7 @@ static int luauF_btest(lua_State* L, StkId res, TValue* arg0, int nresults, StkI
 
 static int luauF_extract(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= (3 - FFlag::LuauFasterBit32NoWidth) && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
         double a1 = nvalue(arg0);
         double a2 = nvalue(args);
@@ -693,7 +691,7 @@ static int luauF_lshift(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
 
 static int luauF_replace(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= (4 - FFlag::LuauFasterBit32NoWidth) && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
+    if (nparams >= 3 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args) && ttisnumber(args + 1))
     {
         double a1 = nvalue(arg0);
         double a2 = nvalue(args);

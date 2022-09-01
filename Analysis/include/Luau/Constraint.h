@@ -56,12 +56,24 @@ struct UnaryConstraint
     TypeId resultType;
 };
 
+// let L : leftType
+// let R : rightType
+// in
+//     L op R : resultType
 struct BinaryConstraint
 {
     AstExprBinary::Op op;
     TypeId leftType;
     TypeId rightType;
     TypeId resultType;
+};
+
+// iteratee is iterable
+// iterators is the iteration types.
+struct IterableConstraint
+{
+    TypePackId iterator;
+    TypePackId variables;
 };
 
 // name(namedType) = name
@@ -78,20 +90,31 @@ struct TypeAliasExpansionConstraint
     TypeId target;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
-    BinaryConstraint, NameConstraint, TypeAliasExpansionConstraint>;
 using ConstraintPtr = std::unique_ptr<struct Constraint>;
+
+struct FunctionCallConstraint
+{
+    std::vector<NotNull<const Constraint>> innerConstraints;
+    TypeId fn;
+    TypePackId result;
+    class AstExprCall* astFragment;
+};
+
+using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
+    BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint>;
 
 struct Constraint
 {
-    Constraint(ConstraintV&& c, NotNull<Scope> scope);
+    Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c);
 
     Constraint(const Constraint&) = delete;
     Constraint& operator=(const Constraint&) = delete;
 
-    ConstraintV c;
-    std::vector<NotNull<Constraint>> dependencies;
     NotNull<Scope> scope;
+    Location location;
+    ConstraintV c;
+
+    std::vector<NotNull<Constraint>> dependencies;
 };
 
 inline Constraint& asMutable(const Constraint& c)

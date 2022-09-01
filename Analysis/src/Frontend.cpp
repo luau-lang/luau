@@ -14,6 +14,7 @@
 #include "Luau/TypeChecker2.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/Variant.h"
+#include "Luau/BuiltinDefinitions.h"
 
 #include <algorithm>
 #include <chrono>
@@ -99,7 +100,7 @@ LoadDefinitionFileResult Frontend::loadDefinitionFile(std::string_view source, c
     module.root = parseResult.root;
     module.mode = Mode::Definition;
 
-    ModulePtr checkedModule = check(module, Mode::Definition, globalScope);
+    ModulePtr checkedModule = check(module, Mode::Definition, globalScope, {});
 
     if (checkedModule->errors.size() > 0)
         return LoadDefinitionFileResult{false, parseResult, checkedModule};
@@ -526,7 +527,7 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
 
         typeChecker.requireCycles = requireCycles;
 
-        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, environmentScope)
+        ModulePtr module = FFlag::DebugLuauDeferredConstraintResolution ? check(sourceModule, mode, environmentScope, requireCycles)
                                                                         : typeChecker.check(sourceModule, mode, environmentScope);
 
         stats.timeCheck += getTimestamp() - timestamp;
@@ -832,15 +833,15 @@ ScopePtr Frontend::getGlobalScope()
     return globalScope;
 }
 
-ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope)
+ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope, std::vector<RequireCycle> requireCycles)
 {
     ModulePtr result = std::make_shared<Module>();
 
-    ConstraintGraphBuilder cgb{sourceModule.name, result, &result->internalTypes, NotNull(&iceHandler), getGlobalScope()};
+    ConstraintGraphBuilder cgb{sourceModule.name, result, &result->internalTypes, NotNull(&moduleResolver), NotNull(&iceHandler), getGlobalScope()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
-    ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope)};
+    ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope), sourceModule.name, NotNull(&moduleResolver), requireCycles};
     cs.run();
 
     for (TypeError& e : cs.errors)
@@ -852,10 +853,11 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
     result->astResolvedTypes = std::move(cgb.astResolvedTypes);
     result->astResolvedTypePacks = std::move(cgb.astResolvedTypePacks);
-
-    result->clonePublicInterface(iceHandler);
+    result->type = sourceModule.type;
 
     Luau::check(sourceModule, result.get());
+
+    result->clonePublicInterface(iceHandler);
 
     return result;
 }

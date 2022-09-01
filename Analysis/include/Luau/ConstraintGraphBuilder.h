@@ -9,6 +9,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Constraint.h"
 #include "Luau/Module.h"
+#include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeVar.h"
@@ -51,12 +52,15 @@ struct ConstraintGraphBuilder
     // It is pretty uncommon for constraint generation to itself produce errors, but it can happen.
     std::vector<TypeError> errors;
 
+    // Needed to resolve modules to make 'require' import types properly.
+    NotNull<ModuleResolver> moduleResolver;
     // Occasionally constraint generation needs to produce an ICE.
     const NotNull<InternalErrorReporter> ice;
 
     ScopePtr globalScope;
 
-    ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope);
+    ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
+        NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope);
 
     /**
      * Fabricates a new free type belonging to a given scope.
@@ -82,7 +86,7 @@ struct ConstraintGraphBuilder
      * @param scope the scope to add the constraint to.
      * @param cv the constraint variant to add.
      */
-    void addConstraint(const ScopePtr& scope, ConstraintV cv);
+    void addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv);
 
     /**
      * Adds a constraint to a given scope.
@@ -104,6 +108,7 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatBlock* block);
     void visit(const ScopePtr& scope, AstStatLocal* local);
     void visit(const ScopePtr& scope, AstStatFor* for_);
+    void visit(const ScopePtr& scope, AstStatForIn* forIn);
     void visit(const ScopePtr& scope, AstStatWhile* while_);
     void visit(const ScopePtr& scope, AstStatRepeat* repeat);
     void visit(const ScopePtr& scope, AstStatLocalFunction* function);
@@ -116,8 +121,6 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
     void visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
     void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
-
-    TypePackId checkExprList(const ScopePtr& scope, const AstArray<AstExpr*>& exprs);
 
     TypePackId checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs);
     TypePackId checkPack(const ScopePtr& scope, AstExpr* expr);

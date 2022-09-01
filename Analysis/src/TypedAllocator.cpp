@@ -36,7 +36,9 @@ void* pagedAllocate(size_t size)
 {
     // By default we use operator new/delete instead of malloc/free so that they can be overridden externally
     if (!FFlag::DebugLuauFreezeArena)
+    {
         return ::operator new(size, std::nothrow);
+    }
 
     // On Windows, VirtualAlloc results in 64K granularity allocations; we allocate in chunks of ~32K so aligned_malloc is a little more efficient
     // On Linux, we must use mmap because using regular heap results in mprotect() fragmenting the page table and us bumping into 64K mmap limit.
