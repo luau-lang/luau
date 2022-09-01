@@ -24,9 +24,7 @@ LUAU_FASTINTVARIABLE(LuauTypeMaximumStringifierLength, 500)
 LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
-LUAU_FASTFLAGVARIABLE(LuauDeduceGmatchReturnTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauDeduceFindMatchReturnTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArgumentErrorFix, false)
 
 namespace Luau
@@ -446,8 +444,10 @@ BlockedTypeVar::BlockedTypeVar()
 
 int BlockedTypeVar::nextIndex = 0;
 
-PendingExpansionTypeVar::PendingExpansionTypeVar(TypeFun fn, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
-    : fn(fn)
+PendingExpansionTypeVar::PendingExpansionTypeVar(
+    std::optional<AstName> prefix, AstName name, std::vector<TypeId> typeArguments, std::vector<TypePackId> packArguments)
+    : prefix(prefix)
+    , name(name)
     , typeArguments(typeArguments)
     , packArguments(packArguments)
     , index(++nextIndex)
@@ -787,8 +787,8 @@ TypeId SingletonTypes::makeStringMetatable()
         makeFunction(*arena, stringType, {}, {}, {stringType}, {}, {arena->addType(FunctionTypeVar{emptyPack, stringVariadicList})});
     attachMagicFunction(gmatchFunc, magicFunctionGmatch);
 
-    const TypeId matchFunc = arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}),
-        arena->addTypePack(TypePackVar{VariadicTypePack{FFlag::LuauDeduceFindMatchReturnTypes ? stringType : optionalString}})});
+    const TypeId matchFunc = arena->addType(
+        FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber}), arena->addTypePack(TypePackVar{VariadicTypePack{stringType}})});
     attachMagicFunction(matchFunc, magicFunctionMatch);
 
     const TypeId findFunc = arena->addType(FunctionTypeVar{arena->addTypePack({stringType, stringType, optionalNumber, optionalBoolean}),
@@ -1221,9 +1221,6 @@ static std::vector<TypeId> parsePatternString(TypeChecker& typechecker, const ch
 static std::optional<WithPredicate<TypePackId>> magicFunctionGmatch(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    if (!FFlag::LuauDeduceGmatchReturnTypes)
-        return std::nullopt;
-
     auto [paramPack, _predicates] = withPredicate;
     const auto& [params, tail] = flatten(paramPack);
 
@@ -1256,9 +1253,6 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionGmatch(
 static std::optional<WithPredicate<TypePackId>> magicFunctionMatch(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    if (!FFlag::LuauDeduceFindMatchReturnTypes)
-        return std::nullopt;
-
     auto [paramPack, _predicates] = withPredicate;
     const auto& [params, tail] = flatten(paramPack);
 
@@ -1295,9 +1289,6 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionMatch(
 static std::optional<WithPredicate<TypePackId>> magicFunctionFind(
     TypeChecker& typechecker, const ScopePtr& scope, const AstExprCall& expr, WithPredicate<TypePackId> withPredicate)
 {
-    if (!FFlag::LuauDeduceFindMatchReturnTypes)
-        return std::nullopt;
-
     auto [paramPack, _predicates] = withPredicate;
     const auto& [params, tail] = flatten(paramPack);
 

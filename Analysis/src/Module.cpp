@@ -219,8 +219,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     TypePackId returnType = moduleScope->returnType;
     std::optional<TypePackId> varargPack = FFlag::DebugLuauDeferredConstraintResolution ? std::nullopt : moduleScope->varargPack;
-    std::unordered_map<Name, TypeFun>* exportedTypeBindings =
-        FFlag::DebugLuauDeferredConstraintResolution ? nullptr : &moduleScope->exportedTypeBindings;
+    std::unordered_map<Name, TypeFun>* exportedTypeBindings = &moduleScope->exportedTypeBindings;
 
     TxnLog log;
     ClonePublicInterface clonePublicInterface{&log, this};

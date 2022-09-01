@@ -336,4 +336,30 @@ local s : Cls = GetCls()
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_definition_overload_metamethods")
+{
+    loadDefinition(R"(
+        declare class Vector3
+        end
+
+        declare class CFrame
+            function __mul(self, other: CFrame): CFrame
+            function __mul(self, other: Vector3): Vector3
+        end
+
+        declare function newVector3(): Vector3
+        declare function newCFrame(): CFrame
+    )");
+
+    CheckResult result = check(R"(
+        local base = newCFrame()
+        local shouldBeCFrame = base * newCFrame()
+        local shouldBeVector = base * newVector3()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("shouldBeCFrame")), "CFrame");
+    CHECK_EQ(toString(requireType("shouldBeVector")), "Vector3");
+}
+
 TEST_SUITE_END();

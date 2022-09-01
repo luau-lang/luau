@@ -32,7 +32,6 @@ LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
-LUAU_FASTFLAGVARIABLE(LuauExpectedTableUnionIndexerType, false)
 LUAU_FASTFLAGVARIABLE(LuauInplaceDemoteSkipAllBound, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
@@ -45,6 +44,7 @@ LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
 LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
+LUAU_FASTFLAGVARIABLE(LuauUnionOfTypesFollow, false)
 
 namespace Luau
 {
@@ -1659,6 +1659,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
         TypeId propTy = resolveType(scope, *prop.ty);
 
         bool assignToMetatable = isMetamethod(propName);
+        Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
 
         // Function types always take 'self', but this isn't reflected in the
         // parsed annotation. Add it here.
@@ -1674,16 +1675,13 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             }
         }
 
-        if (ctv->props.count(propName) == 0)
+        if (assignTo.count(propName) == 0)
         {
-            if (assignToMetatable)
-                metatable->props[propName] = {propTy};
-            else
-                ctv->props[propName] = {propTy};
+            assignTo[propName] = {propTy};
         }
         else
         {
-            TypeId currentTy = assignToMetatable ? metatable->props[propName].type : ctv->props[propName].type;
+            TypeId currentTy = assignTo[propName].type;
 
             // We special-case this logic to keep the intersection flat; otherwise we
             // would create a ton of nested intersection types.
@@ -1693,19 +1691,13 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
                 options.push_back(propTy);
                 TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
 
-                if (assignToMetatable)
-                    metatable->props[propName] = {newItv};
-                else
-                    ctv->props[propName] = {newItv};
+                assignTo[propName] = {newItv};
             }
             else if (get<FunctionTypeVar>(currentTy))
             {
                 TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
 
-                if (assignToMetatable)
-                    metatable->props[propName] = {intersection};
-                else
-                    ctv->props[propName] = {intersection};
+                assignTo[propName] = {intersection};
             }
             else
             {
@@ -2351,7 +2343,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
                         {
                             if (auto prop = ttv->props.find(key->value.data); prop != ttv->props.end())
                                 expectedResultTypes.push_back(prop->second.type);
-                            else if (FFlag::LuauExpectedTableUnionIndexerType && ttv->indexer && maybeString(ttv->indexer->indexType))
+                            else if (ttv->indexer && maybeString(ttv->indexer->indexType))
                                 expectedResultTypes.push_back(ttv->indexer->indexResultType);
                         }
                     }
@@ -2506,6 +2498,12 @@ std::string opToMetaTableEntry(const AstExprBinary::Op& op)
 
 TypeId TypeChecker::unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, const Location& location, bool unifyFreeTypes)
 {
+    if (FFlag::LuauUnionOfTypesFollow)
+    {
+        a = follow(a);
+        b = follow(b);
+    }
+
     if (unifyFreeTypes && (get<FreeTypeVar>(a) || get<FreeTypeVar>(b)))
     {
         if (unify(b, a, scope, location))
@@ -3667,33 +3665,6 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
     }
 }
 
-// Returns the minimum number of arguments the argument list can accept.
-static size_t getMinParameterCount(TxnLog* log, TypePackId tp)
-{
-    size_t minCount = 0;
-    size_t optionalCount = 0;
-
-    auto it = begin(tp, log);
-    auto endIter = end(tp);
-
-    while (it != endIter)
-    {
-        TypeId ty = *it;
-        if (isOptional(ty))
-            ++optionalCount;
-        else
-        {
-            minCount += optionalCount;
-            optionalCount = 0;
-            minCount++;
-        }
-
-        ++it;
-    }
-
-    return minCount;
-}
-
 void TypeChecker::checkArgumentList(
     const ScopePtr& scope, Unifier& state, TypePackId argPack, TypePackId paramPack, const std::vector<Location>& argLocations)
 {
@@ -3713,7 +3684,7 @@ void TypeChecker::checkArgumentList(
         if (!argLocations.empty())
             location = {state.location.begin, argLocations.back().end};
 
-        size_t minParams = getMinParameterCount(&state.log, paramPack);
+        size_t minParams = getParameterExtents(&state.log, paramPack).first;
         state.reportError(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
     };
 
@@ -3812,7 +3783,7 @@ void TypeChecker::checkArgumentList(
                 } // ok
                 else
                 {
-                    size_t minParams = getMinParameterCount(&state.log, paramPack);
+                    size_t minParams = getParameterExtents(&state.log, paramPack).first;
 
                     std::optional<TypePackId> tail = flatten(paramPack, state.log).second;
                     bool isVariadic = tail && Luau::isVariadic(*tail);

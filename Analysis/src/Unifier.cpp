@@ -317,7 +317,8 @@ static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMat
     return std::nullopt;
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
+Unifier::Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState,
+    TxnLog* parentLog)
     : types(types)
     , mode(mode)
     , scope(scope)
@@ -492,9 +493,9 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     if (log.get<ConstrainedTypeVar>(subTy))
         tryUnifyWithConstrainedSubTypeVar(subTy, superTy);
-    else if (const UnionTypeVar* uv = log.getMutable<UnionTypeVar>(subTy))
+    else if (const UnionTypeVar* subUnion = log.getMutable<UnionTypeVar>(subTy))
     {
-        tryUnifyUnionWithType(subTy, uv, superTy);
+        tryUnifyUnionWithType(subTy, subUnion, superTy);
     }
     else if (const UnionTypeVar* uv = log.getMutable<UnionTypeVar>(superTy))
     {
@@ -555,14 +556,14 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     log.popSeen(superTy, subTy);
 }
 
-void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId superTy)
+void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* subUnion, TypeId superTy)
 {
     // A | B <: T if A <: T and B <: T
     bool failed = false;
     std::optional<TypeError> unificationTooComplex;
     std::optional<TypeError> firstFailedOption;
 
-    for (TypeId type : uv->options)
+    for (TypeId type : subUnion->options)
     {
         Unifier innerState = makeChildUnifier();
         innerState.tryUnify_(type, superTy);
@@ -608,9 +609,9 @@ void Unifier::tryUnifyUnionWithType(TypeId subTy, const UnionTypeVar* uv, TypeId
         }
     };
 
-    if (auto utv = log.getMutable<UnionTypeVar>(superTy))
+    if (auto superUnion = log.getMutable<UnionTypeVar>(superTy))
     {
-        for (TypeId ty : utv)
+        for (TypeId ty : superUnion)
             tryBind(ty);
     }
     else

@@ -40,6 +40,9 @@ struct Scope
     std::optional<TypePackId> varargPack;
     // All constraints belonging to this scope.
     std::vector<ConstraintPtr> constraints;
+    // Constraints belonging to this scope that are queued manually by other
+    // constraints.
+    std::vector<ConstraintPtr> unqueuedConstraints;
 
     TypeLevel level;
 

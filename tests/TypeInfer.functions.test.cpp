@@ -133,6 +133,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "vararg_function_is_quantified")
     TableTypeVar* ttv = getMutable<TableTypeVar>(*r);
     REQUIRE(ttv);
 
+    REQUIRE(ttv->props.count("f"));
     TypeId k = ttv->props["f"].type;
     REQUIRE(k);
 

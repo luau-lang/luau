@@ -11,12 +11,17 @@ LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 namespace Luau
 {
 
-Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
+Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
     : Substitution(TxnLog::empty(), arena)
-    , scope(NotNull{scope.get()})
+    , scope(scope)
     , iceHandler(iceHandler)
     , anyType(anyType)
     , anyTypePack(anyTypePack)
+{
+}
+
+Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
+    : Anyification(arena, NotNull{scope.get()}, iceHandler, anyType, anyTypePack)
 {
 }
 
@@ -93,4 +98,4 @@ bool Anyification::ignoreChildren(TypePackId ty)
     return ty->persistent;
 }
 
-}
+} // namespace Luau

@@ -1241,8 +1241,7 @@ TEST_CASE("InterpStringZeroCost")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
 
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
+    CHECK_EQ("\n" + compileFunction0(R"(local _ = `hello, {"world"}!`)"),
         R"(
 LOADK R1 K0
 LOADK R3 K1
@@ -1250,16 +1249,14 @@ NAMECALL R1 R1 K2
 CALL R1 2 1
 MOVE R0 R1
 RETURN R0 0
-)"
-    );
+)");
 }
 
 TEST_CASE("InterpStringRegisterCleanup")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
 
-    CHECK_EQ(
-        "\n" + compileFunction0(R"(
+    CHECK_EQ("\n" + compileFunction0(R"(
             local a, b, c = nil, "um", "uh oh"
             a = `foo{"bar"}`
             print(a)
@@ -1278,8 +1275,7 @@ GETIMPORT R3 6
 MOVE R4 R0
 CALL R3 1 0
 RETURN R0 0
-)"
-    );
+)");
 }
 
 TEST_CASE("ConstantFoldArith")
@@ -2488,8 +2484,6 @@ end
 
 TEST_CASE("DebugLineInfoRepeatUntil")
 {
-    ScopedFastFlag sff("LuauCompileXEQ", true);
-
     CHECK_EQ("\n" + compileFunction0Coverage(R"(
 local f = 0
 repeat
@@ -2834,8 +2828,6 @@ RETURN R0 0
 
 TEST_CASE("AssignmentConflict")
 {
-    ScopedFastFlag sff("LuauCompileOptimalAssignment", true);
-
     // assignments are left to right
     CHECK_EQ("\n" + compileFunction0("local a, b a, b = 1, 2"), R"(
 LOADNIL R0
@@ -3610,8 +3602,6 @@ RETURN R0 1
 
 TEST_CASE("ConstantJumpCompare")
 {
-    ScopedFastFlag sff("LuauCompileXEQ", true);
-
     CHECK_EQ("\n" + compileFunction0(R"(
 local obj = ...
 local b = obj == 1
@@ -6210,8 +6200,6 @@ L4: RETURN R0 -1
 
 TEST_CASE("BuiltinFoldingMultret")
 {
-    ScopedFastFlag sff("LuauCompileXEQ", true);
-
     CHECK_EQ("\n" + compileFunction(R"(
 local NoLanes: Lanes = --[[                             ]] 0b0000000000000000000000000000000
 local OffscreenLane: Lane = --[[                        ]] 0b1000000000000000000000000000000
@@ -6350,8 +6338,6 @@ RETURN R2 1
 
 TEST_CASE("MultipleAssignments")
 {
-    ScopedFastFlag sff("LuauCompileOptimalAssignment", true);
-
     // order of assignments is left to right
     CHECK_EQ("\n" + compileFunction0(R"(
         local a, b
@@ -6574,15 +6560,14 @@ RETURN R0 0
 
 TEST_CASE("BuiltinExtractK")
 {
-    ScopedFastFlag sff("LuauCompileExtractK", true);
-
     // below, K0 refers to a packed f+w constant for bit32.extractk builtin
     // K1 and K2 refer to 1 and 3 and are only used during fallback path
     CHECK_EQ("\n" + compileFunction0(R"(
 local v = ...
 
 return bit32.extract(v, 1, 3)
-)"), R"(
+)"),
+        R"(
 GETVARARGS R0 1
 FASTCALL2K 59 R0 K0 L0
 MOVE R2 R0

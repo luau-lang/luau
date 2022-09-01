@@ -28,7 +28,8 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
     cgb.visit(block);
     NotNull<Scope> rootScope = NotNull(cgb.rootScope);
 
-    ConstraintSolver cs{&arena, rootScope};
+    NullModuleResolver resolver;
+    ConstraintSolver cs{&arena, rootScope, "MainModule", NotNull(&resolver), {}};
 
     cs.run();
 
@@ -48,7 +49,8 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     cgb.visit(block);
     NotNull<Scope> rootScope = NotNull(cgb.rootScope);
 
-    ConstraintSolver cs{&arena, rootScope};
+    NullModuleResolver resolver;
+    ConstraintSolver cs{&arena, rootScope, "MainModule", NotNull(&resolver), {}};
 
     cs.run();
 
@@ -57,7 +59,6 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     CHECK("<a>(a) -> a" == toString(idType));
 }
 
-#if 1
 TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
 {
     AstStatBlock* block = parse(R"(
@@ -77,7 +78,8 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
 
     ToStringOptions opts;
 
-    ConstraintSolver cs{&arena, rootScope};
+    NullModuleResolver resolver;
+    ConstraintSolver cs{&arena, rootScope, "MainModule", NotNull(&resolver), {}};
 
     cs.run();
 
@@ -85,6 +87,5 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
 
     CHECK("<a>(a) -> number" == toString(idType, opts));
 }
-#endif
 
 TEST_SUITE_END();

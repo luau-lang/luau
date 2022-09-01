@@ -29,9 +29,10 @@ struct TypeArena
     TypeId addTV(TypeVar&& tv);
 
     TypeId freshType(TypeLevel level);
+    TypeId freshType(Scope* scope);
 
     TypePackId addTypePack(std::initializer_list<TypeId> types);
-    TypePackId addTypePack(std::vector<TypeId> types);
+    TypePackId addTypePack(std::vector<TypeId> types, std::optional<TypePackId> tail = {});
     TypePackId addTypePack(TypePack pack);
     TypePackId addTypePack(TypePackVar pack);
 

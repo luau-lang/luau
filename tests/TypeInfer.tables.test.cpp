@@ -2994,8 +2994,6 @@ TEST_CASE_FIXTURE(Fixture, "expected_indexer_value_type_extra_2")
 
 TEST_CASE_FIXTURE(Fixture, "expected_indexer_from_table_union")
 {
-    ScopedFastFlag luauExpectedTableUnionIndexerType{"LuauExpectedTableUnionIndexerType", true};
-
     LUAU_REQUIRE_NO_ERRORS(check(R"(local a: {[string]: {number | string}} = {a = {2, 's'}})"));
     LUAU_REQUIRE_NO_ERRORS(check(R"(local a: {[string]: {number | string}}? = {a = {2, 's'}})"));
     LUAU_REQUIRE_NO_ERRORS(check(R"(local a: {[string]: {[string]: {string?}}?} = {["a"] = {["b"] = {"a", "b"}}})"));

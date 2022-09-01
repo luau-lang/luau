@@ -4,7 +4,6 @@
 
 #include "doctest.h"
 
-#include <functional>
 #include <string.h>
 
 using namespace Luau::CodeGen;
@@ -22,7 +21,7 @@ std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
 class AssemblyBuilderX64Fixture
 {
 public:
-    void check(std::function<void(AssemblyBuilderX64& build)> f, std::vector<uint8_t> code, std::vector<uint8_t> data = {})
+    void check(void (*f)(AssemblyBuilderX64& build), std::vector<uint8_t> code, std::vector<uint8_t> data = {})
     {
         AssemblyBuilderX64 build(/* logText= */ false);
 

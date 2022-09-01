@@ -84,9 +84,8 @@ std::optional<TypeId> findTablePropertyRespectingMeta(ErrorVec& errors, TypeId t
     return std::nullopt;
 }
 
-std::optional<TypeId> getIndexTypeFromType(
-    const ScopePtr& scope, ErrorVec& errors, TypeArena* arena, TypeId type, const std::string& prop, const Location& location, bool addErrors,
-    InternalErrorReporter& handle)
+std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& errors, TypeArena* arena, TypeId type, const std::string& prop,
+    const Location& location, bool addErrors, InternalErrorReporter& handle)
 {
     type = follow(type);
 
@@ -188,6 +187,35 @@ std::optional<TypeId> getIndexTypeFromType(
         errors.push_back(TypeError{location, UnknownProperty{type, prop}});
 
     return std::nullopt;
+}
+
+std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp)
+{
+    size_t minCount = 0;
+    size_t optionalCount = 0;
+
+    auto it = begin(tp, log);
+    auto endIter = end(tp);
+
+    while (it != endIter)
+    {
+        TypeId ty = *it;
+        if (isOptional(ty))
+            ++optionalCount;
+        else
+        {
+            minCount += optionalCount;
+            optionalCount = 0;
+            minCount++;
+        }
+
+        ++it;
+    }
+
+    if (it.tail())
+        return {minCount, std::nullopt};
+    else
+        return {minCount, minCount + optionalCount};
 }
 
 } // namespace Luau

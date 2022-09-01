@@ -13,7 +13,8 @@ inline bool isFlagExperimental(const char* flag)
     static const char* kList[] = {
         "LuauLowerBoundsCalculation",
         "LuauInterpolatedStringBaseSupport",
-        nullptr, // makes sure we always have at least one entry
+        // makes sure we always have at least one entry
+        nullptr,
     };
 
     for (const char* item : kList)

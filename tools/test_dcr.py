@@ -84,12 +84,16 @@ def main():
 
     failList = loadFailList()
 
+    commandLine = [
+        args.path,
+        "--reporters=xml",
+        "--fflags=true,DebugLuauDeferredConstraintResolution=true",
+    ]
+
+    print('>', ' '.join(commandLine), file=sys.stderr)
+
     p = sp.Popen(
-        [
-            args.path,
-            "--reporters=xml",
-            "--fflags=true,DebugLuauDeferredConstraintResolution=true",
-        ],
+        commandLine,
         stdout=sp.PIPE,
     )
 
@@ -122,7 +126,7 @@ def main():
         with open(FAIL_LIST_PATH, "w", newline="\n") as f:
             for name in newFailList:
                 print(name, file=f)
-        print("Updated faillist.txt")
+        print("Updated faillist.txt", file=sys.stderr)
 
     if handler.numSkippedTests > 0:
         print(

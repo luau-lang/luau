@@ -8,6 +8,13 @@
 namespace Luau
 {
 
+BlockedTypePack::BlockedTypePack()
+    : index(++nextIndex)
+{
+}
+
+size_t BlockedTypePack::nextIndex = 0;
+
 TypePackVar::TypePackVar(const TypePackVariant& tp)
     : ty(tp)
 {

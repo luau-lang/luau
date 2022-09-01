@@ -94,7 +94,7 @@ TEST_CASE("write_optional")
     write(emitter, std::optional<bool>{true});
     emitter.writeComma();
     write(emitter, std::nullopt);
-    
+
     CHECK(emitter.str() == "true,null");
 }
 

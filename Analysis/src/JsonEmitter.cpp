@@ -11,7 +11,8 @@ namespace Luau::Json
 static constexpr int CHUNK_SIZE = 1024;
 
 ObjectEmitter::ObjectEmitter(NotNull<JsonEmitter> emitter)
-    : emitter(emitter), finished(false)
+    : emitter(emitter)
+    , finished(false)
 {
     comma = emitter->pushComma();
     emitter->writeRaw('{');
@@ -33,7 +34,8 @@ void ObjectEmitter::finish()
 }
 
 ArrayEmitter::ArrayEmitter(NotNull<JsonEmitter> emitter)
-    : emitter(emitter), finished(false)
+    : emitter(emitter)
+    , finished(false)
 {
     comma = emitter->pushComma();
     emitter->writeRaw('[');

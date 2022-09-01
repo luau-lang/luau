@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauLintParseIntegerIssues, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
 LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
+LUAU_FASTFLAGVARIABLE(LuauTypeAnnotationLocationChange, false)
 
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
@@ -1564,44 +1565,43 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
 {
     incrementRecursionCounter("type annotation");
 
-    Location begin = lexer.current().location;
+    Location start = lexer.current().location;
 
     if (lexer.current().type == Lexeme::ReservedNil)
     {
         nextLexeme();
-        return {allocator.alloc<AstTypeReference>(begin, std::nullopt, nameNil), {}};
+        return {allocator.alloc<AstTypeReference>(start, std::nullopt, nameNil), {}};
     }
     else if (lexer.current().type == Lexeme::ReservedTrue)
     {
         nextLexeme();
-        return {allocator.alloc<AstTypeSingletonBool>(begin, true)};
+        return {allocator.alloc<AstTypeSingletonBool>(start, true)};
     }
     else if (lexer.current().type == Lexeme::ReservedFalse)
     {
         nextLexeme();
-        return {allocator.alloc<AstTypeSingletonBool>(begin, false)};
+        return {allocator.alloc<AstTypeSingletonBool>(start, false)};
     }
     else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString)
     {
         if (std::optional<AstArray<char>> value = parseCharArray())
         {
             AstArray<char> svalue = *value;
-            return {allocator.alloc<AstTypeSingletonString>(begin, svalue)};
+            return {allocator.alloc<AstTypeSingletonString>(start, svalue)};
         }
         else
-            return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
+            return {reportTypeAnnotationError(start, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
     }
     else if (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple)
     {
         parseInterpString();
 
-        return {reportTypeAnnotationError(begin, {}, /*isMissing*/ false, "Interpolated string literals cannot be used as types")};
+        return {reportTypeAnnotationError(start, {}, /*isMissing*/ false, "Interpolated string literals cannot be used as types")};
     }
     else if (lexer.current().type == Lexeme::BrokenString)
     {
-        Location location = lexer.current().location;
         nextLexeme();
-        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false, "Malformed string")};
+        return {reportTypeAnnotationError(start, {}, /*isMissing*/ false, "Malformed string")};
     }
     else if (lexer.current().type == Lexeme::Name)
     {
@@ -1632,7 +1632,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
 
             expectMatchAndConsume(')', typeofBegin);
 
-            return {allocator.alloc<AstTypeTypeof>(Location(begin, end), expr), {}};
+            return {allocator.alloc<AstTypeTypeof>(Location(start, end), expr), {}};
         }
 
         bool hasParameters = false;
@@ -1646,7 +1646,7 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
 
         Location end = lexer.previousLocation();
 
-        return {allocator.alloc<AstTypeReference>(Location(begin, end), prefix, name.name, hasParameters, parameters), {}};
+        return {allocator.alloc<AstTypeReference>(Location(start, end), prefix, name.name, hasParameters, parameters), {}};
     }
     else if (lexer.current().type == '{')
     {
@@ -1658,23 +1658,35 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     }
     else if (lexer.current().type == Lexeme::ReservedFunction)
     {
-        Location location = lexer.current().location;
-
         nextLexeme();
 
-        return {reportTypeAnnotationError(location, {}, /*isMissing*/ false,
+        return {reportTypeAnnotationError(start, {}, /*isMissing*/ false,
                     "Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> "
                     "...any'"),
             {}};
     }
     else
     {
-        Location location = lexer.current().location;
+        if (FFlag::LuauTypeAnnotationLocationChange)
+        {
+            // For a missing type annotation, capture 'space' between last token and the next one
+            Location astErrorlocation(lexer.previousLocation().end, start.begin);
+            // The parse error includes the next lexeme to make it easier to display where the error is (e.g. in an IDE or a CLI error message).
+            // Including the current lexeme also makes the parse error consistent with other parse errors returned by Luau.
+            Location parseErrorLocation(lexer.previousLocation().end, start.end);
+            return {
+                reportMissingTypeAnnotationError(parseErrorLocation, astErrorlocation, "Expected type, got %s", lexer.current().toString().c_str()),
+                {}};
+        }
+        else
+        {
+            Location location = lexer.current().location;
 
-        // For a missing type annotation, capture 'space' between last token and the next one
-        location = Location(lexer.previousLocation().end, lexer.current().location.begin);
+            // For a missing type annotation, capture 'space' between last token and the next one
+            location = Location(lexer.previousLocation().end, lexer.current().location.begin);
 
-        return {reportTypeAnnotationError(location, {}, /*isMissing*/ true, "Expected type, got %s", lexer.current().toString().c_str()), {}};
+            return {reportTypeAnnotationError(location, {}, /*isMissing*/ true, "Expected type, got %s", lexer.current().toString().c_str()), {}};
+        }
     }
 }
 
@@ -2245,7 +2257,8 @@ AstExpr* Parser::parseSimpleExpr()
     {
         return parseNumber();
     }
-    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString || (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringSimple))
+    else if (lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::QuotedString ||
+             (FFlag::LuauInterpolatedStringBaseSupport && lexer.current().type == Lexeme::InterpStringSimple))
     {
         return parseString();
     }
@@ -2653,7 +2666,8 @@ AstArray<AstTypeOrPack> Parser::parseTypeParams()
 
 std::optional<AstArray<char>> Parser::parseCharArray()
 {
-    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString || lexer.current().type == Lexeme::InterpStringSimple);
+    LUAU_ASSERT(lexer.current().type == Lexeme::QuotedString || lexer.current().type == Lexeme::RawString ||
+                lexer.current().type == Lexeme::InterpStringSimple);
 
     scratchData.assign(lexer.current().data, lexer.current().length);
 
@@ -2691,14 +2705,11 @@ AstExpr* Parser::parseInterpString()
 
     Location startLocation = lexer.current().location;
 
-    do {
+    do
+    {
         Lexeme currentLexeme = lexer.current();
-        LUAU_ASSERT(
-            currentLexeme.type == Lexeme::InterpStringBegin
-            || currentLexeme.type == Lexeme::InterpStringMid
-            || currentLexeme.type == Lexeme::InterpStringEnd
-            || currentLexeme.type == Lexeme::InterpStringSimple
-        );
+        LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid ||
+                    currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple);
 
         Location location = currentLexeme.location;
 
@@ -2973,8 +2984,7 @@ bool Parser::expectMatchEndAndConsume(Lexeme::Type type, const MatchLexeme& begi
     {
         // If the token matches on a different line and a different column, it suggests misleading indentation
         // This can be used to pinpoint the problem location for a possible future *actual* mismatch
-        if (lexer.current().location.begin.line != begin.position.line &&
-            lexer.current().location.begin.column != begin.position.column &&
+        if (lexer.current().location.begin.line != begin.position.line && lexer.current().location.begin.column != begin.position.column &&
             endMismatchSuspect.position.line < begin.position.line) // Only replace the previous suspect with more recent suspects
         {
             endMismatchSuspect = begin;
@@ -3108,12 +3118,31 @@ AstExprError* Parser::reportExprError(const Location& location, const AstArray<A
 
 AstTypeError* Parser::reportTypeAnnotationError(const Location& location, const AstArray<AstType*>& types, bool isMissing, const char* format, ...)
 {
+    if (FFlag::LuauTypeAnnotationLocationChange)
+    {
+        // Missing type annotations should be using `reportMissingTypeAnnotationError` when LuauTypeAnnotationLocationChange is enabled
+        // Note: `isMissing` can be removed once FFlag::LuauTypeAnnotationLocationChange is removed since it will always be true.
+        LUAU_ASSERT(!isMissing);
+    }
+
     va_list args;
     va_start(args, format);
     report(location, format, args);
     va_end(args);
 
     return allocator.alloc<AstTypeError>(location, types, isMissing, unsigned(parseErrors.size() - 1));
+}
+
+AstTypeError* Parser::reportMissingTypeAnnotationError(const Location& parseErrorLocation, const Location& astErrorLocation, const char* format, ...)
+{
+    LUAU_ASSERT(FFlag::LuauTypeAnnotationLocationChange);
+
+    va_list args;
+    va_start(args, format);
+    report(parseErrorLocation, format, args);
+    va_end(args);
+
+    return allocator.alloc<AstTypeError>(astErrorLocation, AstArray<AstType*>{}, true, unsigned(parseErrors.size() - 1));
 }
 
 void Parser::nextLexeme()

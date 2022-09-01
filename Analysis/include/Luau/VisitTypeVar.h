@@ -188,6 +188,10 @@ struct GenericTypeVarVisitor
     {
         return visit(tp);
     }
+    virtual bool visit(TypePackId tp, const BlockedTypePack& btp)
+    {
+        return visit(tp);
+    }
 
     void traverse(TypeId ty)
     {
@@ -314,24 +318,6 @@ struct GenericTypeVarVisitor
         {
             if (visit(ty, *petv))
             {
-                traverse(petv->fn.type);
-
-                for (const GenericTypeDefinition& p : petv->fn.typeParams)
-                {
-                    traverse(p.ty);
-
-                    if (p.defaultValue)
-                        traverse(*p.defaultValue);
-                }
-
-                for (const GenericTypePackDefinition& p : petv->fn.typePackParams)
-                {
-                    traverse(p.tp);
-
-                    if (p.defaultValue)
-                        traverse(*p.defaultValue);
-                }
-
                 for (TypeId a : petv->typeArguments)
                     traverse(a);
 
@@ -388,6 +374,9 @@ struct GenericTypeVarVisitor
             if (res)
                 traverse(pack->ty);
         }
+        else if (auto btp = get<BlockedTypePack>(tp))
+            visit(tp, *btp);
+
         else
             LUAU_ASSERT(!"GenericTypeVarVisitor::traverse(TypePackId) is not exhaustive!");
 

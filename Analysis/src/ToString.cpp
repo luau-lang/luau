@@ -1034,6 +1034,13 @@ struct TypePackStringifier
     {
         stringify(btv.boundTo);
     }
+
+    void operator()(TypePackId, const BlockedTypePack& btp)
+    {
+        state.emit("*blocked-tp-");
+        state.emit(btp.index);
+        state.emit("*");
+    }
 };
 
 void TypeVarStringifier::stringify(TypePackId tp)
@@ -1095,9 +1102,8 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     ToStringResult result;
 
-    StringifierState state = FFlag::LuauFixNameMaps
-        ? StringifierState{opts, result, opts.nameMap}
-        : StringifierState{opts, result, opts.DEPRECATED_nameMap};
+    StringifierState state =
+        FFlag::LuauFixNameMaps ? StringifierState{opts, result, opts.nameMap} : StringifierState{opts, result, opts.DEPRECATED_nameMap};
 
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
@@ -1204,9 +1210,8 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
      * 4. Print out the root of the type using the same algorithm as step 3.
      */
     ToStringResult result;
-    StringifierState state = FFlag::LuauFixNameMaps
-        ? StringifierState{opts, result, opts.nameMap}
-        : StringifierState{opts, result, opts.DEPRECATED_nameMap};
+    StringifierState state =
+        FFlag::LuauFixNameMaps ? StringifierState{opts, result, opts.nameMap} : StringifierState{opts, result, opts.DEPRECATED_nameMap};
 
     std::set<TypeId> cycles;
     std::set<TypePackId> cycleTPs;
@@ -1292,9 +1297,8 @@ std::string toString(const TypePackVar& tp, ToStringOptions& opts)
 std::string toStringNamedFunction(const std::string& funcName, const FunctionTypeVar& ftv, ToStringOptions& opts)
 {
     ToStringResult result;
-    StringifierState state = FFlag::LuauFixNameMaps
-        ? StringifierState{opts, result, opts.nameMap}
-        : StringifierState{opts, result, opts.DEPRECATED_nameMap};
+    StringifierState state =
+        FFlag::LuauFixNameMaps ? StringifierState{opts, result, opts.nameMap} : StringifierState{opts, result, opts.DEPRECATED_nameMap};
     TypeVarStringifier tvs{state};
 
     state.emit(funcName);
@@ -1427,8 +1431,7 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         using T = std::decay_t<decltype(c)>;
 
         // TODO: Inline and delete this function when clipping FFlag::LuauFixNameMaps
-        auto tos = [](auto&& a, ToStringOptions& opts)
-        {
+        auto tos = [](auto&& a, ToStringOptions& opts) {
             if (FFlag::LuauFixNameMaps)
                 return toString(a, opts);
             else
@@ -1478,6 +1481,13 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
 
             return resultStr + " ~ Binary<" + toString(c.op) + ", " + leftStr + ", " + rightStr + ">";
         }
+        else if constexpr (std::is_same_v<T, IterableConstraint>)
+        {
+            std::string iteratorStr = tos(c.iterator, opts);
+            std::string variableStr = tos(c.variables, opts);
+
+            return variableStr + " ~ Iterate<" + iteratorStr + ">";
+        }
         else if constexpr (std::is_same_v<T, NameConstraint>)
         {
             std::string namedStr = tos(c.namedType, opts);
@@ -1487,6 +1497,10 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             std::string targetStr = tos(c.target, opts);
             return "expand " + targetStr;
+        }
+        else if constexpr (std::is_same_v<T, FunctionCallConstraint>)
+        {
+            return "call " + tos(c.fn, opts) + " with { result = " + tos(c.result, opts) + " }";
         }
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");
