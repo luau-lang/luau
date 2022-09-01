@@ -1061,7 +1061,6 @@ end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types")
 {
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c = string.gmatch("This is a string", "(.()(%a+))")()
     )END");
@@ -1075,7 +1074,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types2")
 {
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c = ("This is a string"):gmatch("(.()(%a+))")()
     )END");
@@ -1089,7 +1087,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
 {
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c, d = string.gmatch("T(his)() is a string", ".")()
     )END");
@@ -1107,7 +1104,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens")
 {
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c, d = string.gmatch("T(his) is a string", "((.)%b()())")()
     )END");
@@ -1127,7 +1123,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_ignored")
 {
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c = string.gmatch("T(his)() is a string", "(T[()])()")()
     )END");
@@ -1146,7 +1141,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_igno
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_set_containing_lbracket")
 {
-    ScopedFastFlag sffs{"LuauDeduceGmatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b = string.gmatch("[[[", "()([[])")()
     )END");
@@ -1196,7 +1190,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_invalid_pattern_fallbac
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types")
 {
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c = string.match("This is a string", "(.()(%a+))")
     )END");
@@ -1210,7 +1203,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
 {
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
     CheckResult result = check(R"END(
         local a, b, c = string.match("This is a string", "(.()(%a+))", "this should be a number")
     )END");
@@ -1229,7 +1221,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "match_capture_types2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
 {
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
     CheckResult result = check(R"END(
         local d, e, a, b, c = string.find("This is a string", "(.()(%a+))")
     )END");
@@ -1245,7 +1236,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types2")
 {
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
     CheckResult result = check(R"END(
         local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", "this should be a number")
     )END");
@@ -1266,7 +1256,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
 {
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
     CheckResult result = check(R"END(
         local d, e, a, b, c = string.find("This is a string", "(.()(%a+))", 1, "this should be a bool")
     )END");
@@ -1287,7 +1276,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
 {
-    ScopedFastFlag sffs{"LuauDeduceFindMatchReturnTypes", true};
     CheckResult result = check(R"END(
         local d, e, a, b = string.find("This is a string", "(.()(%a+))", 1, true)
     )END");

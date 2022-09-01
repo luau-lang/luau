@@ -16,6 +16,35 @@ LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 TEST_SUITE_BEGIN("TypeInferModules");
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_require_basic")
+{
+    fileResolver.source["game/A"] = R"(
+        --!strict
+        return {
+            a = 1,
+        }
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+
+        local b = A.a
+    )";
+
+    CheckResult aResult = frontend.check("game/A");
+    LUAU_REQUIRE_NO_ERRORS(aResult);
+
+    CheckResult bResult = frontend.check("game/B");
+    LUAU_REQUIRE_NO_ERRORS(bResult);
+
+    ModulePtr b = frontend.moduleResolver.modules["game/B"];
+    REQUIRE(b != nullptr);
+    std::optional<TypeId> bType = requireType(b, "b");
+    REQUIRE(bType);
+    CHECK(toString(*bType) == "number");
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "require")
 {
     fileResolver.source["game/A"] = R"(

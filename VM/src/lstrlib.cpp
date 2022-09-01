@@ -8,8 +8,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauTostringFormatSpecifier, false);
-
 // macro to `unsign' a character
 #define uchar(c) ((unsigned char)(c))
 
@@ -1036,9 +1034,6 @@ static int str_format(lua_State* L)
             }
             case '*':
             {
-                if (!FFlag::LuauTostringFormatSpecifier)
-                    luaL_error(L, "invalid option '%%*' to 'format'");
-
                 if (formatItemSize != 1)
                     luaL_error(L, "'%%*' does not take a form");
 

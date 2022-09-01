@@ -414,7 +414,7 @@ enum LuauBytecodeTag
     // Bytecode version; runtime supports [MIN, MAX], compiler emits TARGET by default but may emit a higher version when flags are enabled
     LBC_VERSION_MIN = 2,
     LBC_VERSION_MAX = 3,
-    LBC_VERSION_TARGET = 2,
+    LBC_VERSION_TARGET = 3,
     // Types of constant table entries
     LBC_CONSTANT_NIL = 0,
     LBC_CONSTANT_BOOLEAN,

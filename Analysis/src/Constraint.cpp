@@ -5,9 +5,10 @@
 namespace Luau
 {
 
-Constraint::Constraint(ConstraintV&& c, NotNull<Scope> scope)
-    : c(std::move(c))
-    , scope(scope)
+Constraint::Constraint(NotNull<Scope> scope, const Location& location, ConstraintV&& c)
+    : scope(scope)
+    , location(location)
+    , c(std::move(c))
 {
 }
 

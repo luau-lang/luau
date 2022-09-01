@@ -16,7 +16,8 @@ struct ConstraintSolverLogger
 {
     std::string compileOutput();
     void captureBoundarySnapshot(const Scope* rootScope, std::vector<NotNull<const Constraint>>& unsolvedConstraints);
-    void prepareStepSnapshot(const Scope* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints, bool force);
+    void prepareStepSnapshot(
+        const Scope* rootScope, NotNull<const Constraint> current, std::vector<NotNull<const Constraint>>& unsolvedConstraints, bool force);
     void commitPreparedStepSnapshot();
 
 private:

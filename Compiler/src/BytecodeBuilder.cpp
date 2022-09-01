@@ -6,8 +6,6 @@
 #include <algorithm>
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauCompileBytecodeV3, false)
-
 namespace Luau
 {
 
@@ -1079,9 +1077,6 @@ std::string BytecodeBuilder::getError(const std::string& message)
 
 uint8_t BytecodeBuilder::getVersion()
 {
-    if (FFlag::LuauCompileBytecodeV3)
-        return 3;
-
     // This function usually returns LBC_VERSION_TARGET but may sometimes return a higher number (within LBC_VERSION_MIN/MAX) under fast flags
     return LBC_VERSION_TARGET;
 }

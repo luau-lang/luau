@@ -102,6 +102,11 @@ struct TypePackCloner
         defaultClone(t);
     }
 
+    void operator()(const BlockedTypePack& t)
+    {
+        defaultClone(t);
+    }
+
     // While we are a-cloning, we can flatten out bound TypeVars and make things a bit tighter.
     // We just need to be sure that we rewrite pointers both to the binder and the bindee to the same pointer.
     void operator()(const Unifiable::Bound<TypePackId>& t)
@@ -170,7 +175,7 @@ void TypeCloner::operator()(const BlockedTypeVar& t)
 
 void TypeCloner::operator()(const PendingExpansionTypeVar& t)
 {
-    TypeId res = dest.addType(PendingExpansionTypeVar{t.fn, t.typeArguments, t.packArguments});
+    TypeId res = dest.addType(PendingExpansionTypeVar{t.prefix, t.name, t.typeArguments, t.packArguments});
     PendingExpansionTypeVar* petv = getMutable<PendingExpansionTypeVar>(res);
     LUAU_ASSERT(petv);
 
@@ -184,32 +189,6 @@ void TypeCloner::operator()(const PendingExpansionTypeVar& t)
     for (TypePackId arg : t.packArguments)
         packArguments.push_back(clone(arg, dest, cloneState));
 
-    TypeFun fn;
-    fn.type = clone(t.fn.type, dest, cloneState);
-
-    for (const GenericTypeDefinition& param : t.fn.typeParams)
-    {
-        TypeId ty = clone(param.ty, dest, cloneState);
-        std::optional<TypeId> defaultValue = param.defaultValue;
-
-        if (defaultValue)
-            defaultValue = clone(*defaultValue, dest, cloneState);
-
-        fn.typeParams.push_back(GenericTypeDefinition{ty, defaultValue});
-    }
-
-    for (const GenericTypePackDefinition& param : t.fn.typePackParams)
-    {
-        TypePackId tp = clone(param.tp, dest, cloneState);
-        std::optional<TypePackId> defaultValue = param.defaultValue;
-
-        if (defaultValue)
-            defaultValue = clone(*defaultValue, dest, cloneState);
-
-        fn.typePackParams.push_back(GenericTypePackDefinition{tp, defaultValue});
-    }
-
-    petv->fn = std::move(fn);
     petv->typeArguments = std::move(typeArguments);
     petv->packArguments = std::move(packArguments);
 }
@@ -461,6 +440,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
         clone.generics = ftv->generics;
         clone.genericPacks = ftv->genericPacks;
         clone.magicFunction = ftv->magicFunction;
+        clone.dcrMagicFunction = ftv->dcrMagicFunction;
         clone.tags = ftv->tags;
         clone.argNames = ftv->argNames;
         result = dest.addType(std::move(clone));
@@ -502,7 +482,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
     }
     else if (const PendingExpansionTypeVar* petv = get<PendingExpansionTypeVar>(ty))
     {
-        PendingExpansionTypeVar clone{petv->fn, petv->typeArguments, petv->packArguments};
+        PendingExpansionTypeVar clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
         result = dest.addType(std::move(clone));
     }
     else if (const ClassTypeVar* ctv = get<ClassTypeVar>(ty); FFlag::LuauClonePublicInterfaceLess && ctv && alwaysClone)

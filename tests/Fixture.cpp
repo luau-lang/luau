@@ -2,6 +2,8 @@
 #include "Fixture.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/ModuleResolver.h"
+#include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/TypeVar.h"
 #include "Luau/TypeAttach.h"
@@ -444,10 +446,11 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
     , mainModule(new Module)
-    , cgb(mainModuleName, mainModule, &arena, NotNull(&ice), frontend.getGlobalScope())
+    , cgb(mainModuleName, mainModule, &arena, NotNull(&moduleResolver), NotNull(&ice), frontend.getGlobalScope())
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;
+    BlockedTypePack::nextIndex = 0;
 }
 
 ModuleName fromString(std::string_view name)

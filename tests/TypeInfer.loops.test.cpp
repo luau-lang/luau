@@ -14,6 +14,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
 
@@ -109,6 +110,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_just_one_iterator_is_ok")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_with_zero_iterators_dcr")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    CheckResult result = check(R"(
+        function no_iter() end
+        for key in no_iter() do end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_a_custom_iterator_should_type_check")
 {
     CheckResult result = check(R"(
@@ -141,7 +154,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
         end
     )");
 
-    CHECK_EQ(2, result.errors.size());
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     TypeId p = requireType("p");
     if (FFlag::LuauSpecialTypesAsterisked)
@@ -230,6 +243,30 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_error_on_iterator_requiring_args
     CHECK_EQ(acm->context, CountMismatch::Arg);
     CHECK_EQ(2, acm->expected);
     CHECK_EQ(0, acm->actual);
+}
+
+TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_incompatible_args_to_iterator")
+{
+    CheckResult result = check(R"(
+        function my_iter(state: string, index: number)
+            return state, index
+        end
+
+        local my_state = {}
+        local first_index = "first"
+
+        -- Type errors here.  my_state and first_index cannot be passed to my_iter
+        for a, b in my_iter, my_state, first_index do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK(get<TypeMismatch>(result.errors[1]));
+    CHECK(Location{{9, 29}, {9, 37}} == result.errors[0].location);
+
+    CHECK(get<TypeMismatch>(result.errors[1]));
+    CHECK(Location{{9, 39}, {9, 50}} == result.errors[1].location);
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_with_custom_iterator")
@@ -503,7 +540,7 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
         end
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(0, result);
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*typeChecker.numberType, *requireType("key"));
 }
 

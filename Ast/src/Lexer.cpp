@@ -91,18 +91,8 @@ Lexeme::Lexeme(const Location& location, Type type, const char* data, size_t siz
     , length(unsigned(size))
     , data(data)
 {
-    LUAU_ASSERT(
-        type == RawString
-        || type == QuotedString
-        || type == InterpStringBegin
-        || type == InterpStringMid
-        || type == InterpStringEnd
-        || type == InterpStringSimple
-        || type == BrokenInterpDoubleBrace
-        || type == Number
-        || type == Comment
-        || type == BlockComment
-    );
+    LUAU_ASSERT(type == RawString || type == QuotedString || type == InterpStringBegin || type == InterpStringMid || type == InterpStringEnd ||
+                type == InterpStringSimple || type == BrokenInterpDoubleBrace || type == Number || type == Comment || type == BlockComment);
 }
 
 Lexeme::Lexeme(const Location& location, Type type, const char* name)
@@ -644,7 +634,8 @@ Lexeme Lexer::readInterpolatedStringSection(Position start, Lexeme::Type formatT
 
             if (peekch(1) == '{')
             {
-                Lexeme brokenDoubleBrace = Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace, &buffer[startOffset], offset - startOffset);
+                Lexeme brokenDoubleBrace =
+                    Lexeme(Location(start, position()), Lexeme::BrokenInterpDoubleBrace, &buffer[startOffset], offset - startOffset);
                 consume();
                 consume();
                 return brokenDoubleBrace;

@@ -15,6 +15,7 @@ struct TypeArena;
 
 struct TypePack;
 struct VariadicTypePack;
+struct BlockedTypePack;
 
 struct TypePackVar;
 
@@ -24,7 +25,7 @@ using TypePackId = const TypePackVar*;
 using FreeTypePack = Unifiable::Free;
 using BoundTypePack = Unifiable::Bound<TypePackId>;
 using GenericTypePack = Unifiable::Generic;
-using TypePackVariant = Unifiable::Variant<TypePackId, TypePack, VariadicTypePack>;
+using TypePackVariant = Unifiable::Variant<TypePackId, TypePack, VariadicTypePack, BlockedTypePack>;
 
 /* A TypePack is a rope-like string of TypeIds.  We use this structure to encode
  * notions like packs of unknown length and packs of any length, as well as more
@@ -41,6 +42,17 @@ struct VariadicTypePack
 {
     TypeId ty;
     bool hidden = false; // if true, we don't display this when toString()ing a pack with this variadic as its tail.
+};
+
+/**
+ * Analogous to a BlockedTypeVar.
+ */
+struct BlockedTypePack
+{
+    BlockedTypePack();
+    size_t index;
+
+    static size_t nextIndex;
 };
 
 struct TypePackVar

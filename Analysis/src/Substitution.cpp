@@ -510,7 +510,7 @@ void Substitution::foundDirty(TypeId ty)
     ty = log->follow(ty);
 
     if (FFlag::LuauSubstitutionReentrant && newTypes.contains(ty))
-            return;
+        return;
 
     if (isDirty(ty))
         newTypes[ty] = follow(clean(ty));
@@ -523,7 +523,7 @@ void Substitution::foundDirty(TypePackId tp)
     tp = log->follow(tp);
 
     if (FFlag::LuauSubstitutionReentrant && newPacks.contains(tp))
-            return;
+        return;
 
     if (isDirty(tp))
         newPacks[tp] = follow(clean(tp));

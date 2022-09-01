@@ -13,7 +13,8 @@ Free::Free(TypeLevel level)
 }
 
 Free::Free(Scope* scope)
-    : scope(scope)
+    : index(++nextIndex)
+    , scope(scope)
 {
 }
 

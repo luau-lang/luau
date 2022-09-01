@@ -132,6 +132,7 @@ struct Fixture
 
     TestFileResolver fileResolver;
     TestConfigResolver configResolver;
+    NullModuleResolver moduleResolver;
     std::unique_ptr<SourceModule> sourceModule;
     Frontend frontend;
     InternalErrorReporter ice;
@@ -244,7 +245,7 @@ struct FindNthOccurenceOf : public AstVisitor
  * 2. Luau::query<AstExprBinary>(Luau::query<AstStatFunction>(block))
  * 3. Luau::query<AstExprBinary>(block, {nth<AstExprBinary>(2)})
  */
-template<typename T, size_t N = 1>
+template<typename T, int N = 1>
 T* query(AstNode* node, const std::vector<Nth>& nths = {nth<T>(N)})
 {
     static_assert(std::is_base_of_v<AstNode, T>, "T must be a derived class of AstNode");

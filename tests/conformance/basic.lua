@@ -111,6 +111,11 @@ assert((function() local a = nil a = a and 2 return a end)() == nil)
 assert((function() local a = 1 a = a or 2 return a end)() == 1)
 assert((function() local a = nil a = a or 2 return a end)() == 2)
 
+assert((function() local a a = 1 local b = 2 b = a and b return b end)() == 2)
+assert((function() local a a = nil local b = 2 b = a and b return b end)() == nil)
+assert((function() local a a = 1 local b = 2 b = a or b return b end)() == 1)
+assert((function() local a a = nil local b = 2 b = a or b return b end)() == 2)
+
 -- binary arithmetics coerces strings to numbers (sadly)
 assert(1 + "2" == 3)
 assert(2 * "0xa" == 20)
