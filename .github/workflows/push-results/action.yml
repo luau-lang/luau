@@ -17,6 +17,9 @@ inputs:
     required: true
     type: string
     description: The path to check out the results repository to
+  bench_gh_pages_branch:
+    type: string,
+    default: "main"
   bench_name:
     required: true
     type: string
@@ -46,6 +49,7 @@ runs:
       with:
         name: ${{ inputs.bench_name }}
         tool: ${{ inputs.bench_tool }}
+        gh-pages-branch: ${{ inputs.bench_gh_pages_branch }}
         output-file-path: ${{ inputs.bench_output_file_path }}
         external-data-json-path: ${{ inputs.bench_external_data_json_path }}
 
