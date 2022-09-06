@@ -81,7 +81,7 @@ jobs:
         run: echo "steps - ${{ steps.pushBenchmarkAttempt1.outcome  }}"
 
       - name: Did attempt 1 fail?
-        run: echo ${{ steps.pushBenchmarkAttempt1.outcome }}
+        run: echo ${{ steps.pushBenchmarkAttempt1.outcome == 'failure'}}
 
       - name: Push benchmark results (Attempt 2)
         id: pushBenchmarkAttempt2
