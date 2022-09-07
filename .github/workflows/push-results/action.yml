@@ -44,23 +44,23 @@ runs:
         token: ${{ inputs.token }}
         path: "./gh-pages"
 
-    - name: Store results
-      uses: Roblox/rhysd-github-action-benchmark@v-luau
-      with:
-        name: ${{ inputs.bench_name }}
-        tool: ${{ inputs.bench_tool }}
-        gh-pages-branch: ${{ inputs.bench_gh_pages_branch }}
-        output-file-path: ${{ inputs.bench_output_file_path }}
-        external-data-json-path: ${{ inputs.bench_external_data_json_path }}
+    # - name: Store results
+    #   uses: Roblox/rhysd-github-action-benchmark@v-luau
+    #   with:
+    #     name: ${{ inputs.bench_name }}
+    #     tool: ${{ inputs.bench_tool }}
+    #     gh-pages-branch: ${{ inputs.bench_gh_pages_branch }}
+    #     output-file-path: ${{ inputs.bench_output_file_path }}
+    #     external-data-json-path: ${{ inputs.bench_external_data_json_path }}
 
-    - name: Push benchmark results
-      shell: bash
-      run: |
-        echo "Pushing benchmark results..."
-        cd gh-pages
-        git config user.name github-actions
-        git config user.email github@users.noreply.github.com
-        git add *.json
-        git commit -m "Add benchmarks results for ${{ github.sha }}"
-        git push
-        cd ..
+    # - name: Push benchmark results
+    #   shell: bash
+    #   run: |
+    #     echo "Pushing benchmark results..."
+    #     cd gh-pages
+    #     git config user.name github-actions
+    #     git config user.email github@users.noreply.github.com
+    #     git add *.json
+    #     git commit -m "Add benchmarks results for ${{ github.sha }}"
+    #     git push
+    #     cd ..
