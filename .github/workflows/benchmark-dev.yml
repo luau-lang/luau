@@ -65,7 +65,7 @@ jobs:
 
       - name: Push benchmark results
         id: pushBenchmarkAttempt1
-        # continue-on-error: true
+        continue-on-error: true
         uses: ./.github/workflows/push-results
         with:
           repository: ${{ matrix.benchResultsRepo.name }}
