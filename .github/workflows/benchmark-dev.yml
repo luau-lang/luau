@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - master
-      - feat/retry-benchmarks
+
     paths-ignore:
       - "docs/**"
       - "papers/**"
@@ -29,8 +29,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          # - { name: "luau-lang/benchmark-data", branch: "main" }
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -122,8 +121,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          # - { name: "luau-lang/benchmark-data", branch: "main" }
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -264,8 +262,7 @@ jobs:
               cachegrindIterCount: 20,
             }
         benchResultsRepo:
-          # - { name: "luau-lang/benchmark-data", branch: "main" }
-          - { name: "AllanJeremy/luau-benchmark-results", branch: "main" }
+          - { name: "luau-lang/benchmark-data", branch: "main" }
 
     runs-on: ${{ matrix.os }}
     steps:
