@@ -77,12 +77,6 @@ jobs:
           bench_output_file_path: "./${{ matrix.bench.script }}-output.txt"
           bench_external_data_json_path: "./gh-pages/dev/bench/data-${{ matrix.os }}.json"
 
-      - name: Print steps.pushBenchmarkAttempt1.outcome
-        run: echo "steps - ${{ steps.pushBenchmarkAttempt1.outcome  }}"
-
-      - name: Did attempt 1 fail?
-        run: echo ${{ steps.pushBenchmarkAttempt1.outcome == 'failure'}}
-
       - name: Push benchmark results (Attempt 2)
         id: pushBenchmarkAttempt2
         continue-on-error: true
