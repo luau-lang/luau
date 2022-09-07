@@ -39,7 +39,7 @@ runs:
         repository: ${{ inputs.repository }}
         ref: ${{ inputs.branch }}
         token: ${{ inputs.token }}
-        path: "./gh-pages"
+        path: ${{ inputs.path }}
 
     # - name: Store results
     #   uses: Roblox/rhysd-github-action-benchmark@v-luau
