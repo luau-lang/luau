@@ -123,6 +123,7 @@
 LUAU_FASTFLAGVARIABLE(LuauSimplerUpval, false)
 LUAU_FASTFLAGVARIABLE(LuauNoSleepBit, false)
 LUAU_FASTFLAGVARIABLE(LuauEagerShrink, false)
+LUAU_FASTFLAGVARIABLE(LuauFasterSweep, false)
 
 #define GC_SWEEPPAGESTEPCOST 16
 
@@ -848,6 +849,7 @@ static size_t atomic(lua_State* L)
 
 static bool sweepgco(lua_State* L, lua_Page* page, GCObject* gco)
 {
+    LUAU_ASSERT(!FFlag::LuauFasterSweep);
     global_State* g = L->global;
 
     int deadmask = otherwhite(g);
@@ -890,22 +892,62 @@ static int sweepgcopage(lua_State* L, lua_Page* page)
     int blockSize;
     luaM_getpagewalkinfo(page, &start, &end, &busyBlocks, &blockSize);
 
-    for (char* pos = start; pos != end; pos += blockSize)
+    LUAU_ASSERT(busyBlocks > 0);
+
+    if (FFlag::LuauFasterSweep)
     {
-        GCObject* gco = (GCObject*)pos;
+        LUAU_ASSERT(FFlag::LuauNoSleepBit && FFlag::LuauEagerShrink);
 
-        // skip memory blocks that are already freed
-        if (gco->gch.tt == LUA_TNIL)
-            continue;
+        global_State* g = L->global;
 
-        // when true is returned it means that the element was deleted
-        if (sweepgco(L, page, gco))
+        int deadmask = otherwhite(g);
+        LUAU_ASSERT(testbit(deadmask, FIXEDBIT)); // make sure we never sweep fixed objects
+
+        int newwhite = luaC_white(g);
+
+        for (char* pos = start; pos != end; pos += blockSize)
         {
-            LUAU_ASSERT(busyBlocks > 0);
+            GCObject* gco = (GCObject*)pos;
 
-            // if the last block was removed, page would be removed as well
-            if (--busyBlocks == 0)
-                return int(pos - start) / blockSize + 1;
+            // skip memory blocks that are already freed
+            if (gco->gch.tt == LUA_TNIL)
+                continue;
+
+            // is the object alive?
+            if ((gco->gch.marked ^ WHITEBITS) & deadmask)
+            {
+                LUAU_ASSERT(!isdead(g, gco));
+                // make it white (for next cycle)
+                gco->gch.marked = cast_byte((gco->gch.marked & maskmarks) | newwhite);
+            }
+            else
+            {
+                LUAU_ASSERT(isdead(g, gco));
+                freeobj(L, gco, page);
+
+                // if the last block was removed, page would be removed as well
+                if (--busyBlocks == 0)
+                    return int(pos - start) / blockSize + 1;
+            }
+        }
+    }
+    else
+    {
+        for (char* pos = start; pos != end; pos += blockSize)
+        {
+            GCObject* gco = (GCObject*)pos;
+
+            // skip memory blocks that are already freed
+            if (gco->gch.tt == LUA_TNIL)
+                continue;
+
+            // when true is returned it means that the element was deleted
+            if (sweepgco(L, page, gco))
+            {
+                // if the last block was removed, page would be removed as well
+                if (--busyBlocks == 0)
+                    return int(pos - start) / blockSize + 1;
+            }
         }
     }
 
@@ -993,10 +1035,19 @@ static size_t gcstep(lua_State* L, size_t limit)
         // nothing more to sweep?
         if (g->sweepgcopage == NULL)
         {
-            // don't forget to visit main thread
-            sweepgco(L, NULL, obj2gco(g->mainthread));
+            // don't forget to visit main thread, it's the only object not allocated in GCO pages
+            if (FFlag::LuauFasterSweep)
+            {
+                LUAU_ASSERT(!isdead(g, obj2gco(g->mainthread)));
+                makewhite(g, obj2gco(g->mainthread)); // make it white (for next cycle)
+            }
+            else
+            {
+                sweepgco(L, NULL, obj2gco(g->mainthread));
+            }
 
             shrinkbuffers(L);
+
             g->gcstate = GCSpause; // end collection
         }
         break;

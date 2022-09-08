@@ -273,7 +273,7 @@ TEST_CASE_FIXTURE(Fixture, "substitution_skip_failure")
     TypeId root = &ttvTweenResult;
 
     typeChecker.currentModule = std::make_shared<Module>();
-    typeChecker.currentModule->scopes.emplace_back(Location{}, std::make_shared<Scope>(getSingletonTypes().anyTypePack));
+    typeChecker.currentModule->scopes.emplace_back(Location{}, std::make_shared<Scope>(singletonTypes->anyTypePack));
 
     TypeId result = typeChecker.anyify(typeChecker.globalScope, root, Location{});
 

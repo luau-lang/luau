@@ -10,9 +10,6 @@ local ignore =
 
 	-- what follows is a set of mismatches that hopefully eventually will go down to 0
 	"_G.require", -- need to move to Roblox type defs
-	"_G.utf8.nfcnormalize", -- need to move to Roblox type defs
-	"_G.utf8.nfdnormalize", -- need to move to Roblox type defs
-	"_G.utf8.graphemes", -- need to move to Roblox type defs
 }
 
 function verify(real, rtti, path)

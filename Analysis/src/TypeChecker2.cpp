@@ -1,7 +1,5 @@
-
+// This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypeChecker2.h"
-
-#include <algorithm>
 
 #include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
@@ -13,6 +11,12 @@
 #include "Luau/TypeUtils.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
+#include "Luau/ToString.h"
+#include "Luau/DcrLogger.h"
+
+#include <algorithm>
+
+LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 
 namespace Luau
 {
@@ -54,18 +58,22 @@ struct StackPusher
 
 struct TypeChecker2
 {
+    NotNull<SingletonTypes> singletonTypes;
+    DcrLogger* logger;
+    InternalErrorReporter ice; // FIXME accept a pointer from Frontend
     const SourceModule* sourceModule;
     Module* module;
-    InternalErrorReporter ice; // FIXME accept a pointer from Frontend
-    SingletonTypes& singletonTypes;
 
     std::vector<NotNull<Scope>> stack;
 
-    TypeChecker2(const SourceModule* sourceModule, Module* module)
-        : sourceModule(sourceModule)
+    TypeChecker2(NotNull<SingletonTypes> singletonTypes, DcrLogger* logger, const SourceModule* sourceModule, Module* module)
+        : singletonTypes(singletonTypes)
+        , logger(logger)
+        , sourceModule(sourceModule)
         , module(module)
-        , singletonTypes(getSingletonTypes())
     {
+        if (FFlag::DebugLuauLogSolverToJson)
+            LUAU_ASSERT(logger);
     }
 
     std::optional<StackPusher> pushStack(AstNode* node)
@@ -85,7 +93,7 @@ struct TypeChecker2
         if (tp)
             return follow(*tp);
         else
-            return singletonTypes.anyTypePack;
+            return singletonTypes->anyTypePack;
     }
 
     TypeId lookupType(AstExpr* expr)
@@ -101,7 +109,7 @@ struct TypeChecker2
         if (tp)
             return flattenPack(*tp);
 
-        return singletonTypes.anyType;
+        return singletonTypes->anyType;
     }
 
     TypeId lookupAnnotation(AstType* annotation)
@@ -253,7 +261,7 @@ struct TypeChecker2
         TypePackId actualRetType = reconstructPack(ret->list, arena);
 
         UnifierSharedState sharedState{&ice};
-        Unifier u{&arena, Mode::Strict, stack.back(), ret->location, Covariant, sharedState};
+        Unifier u{&arena, singletonTypes, Mode::Strict, stack.back(), ret->location, Covariant, sharedState};
         u.anyIsTop = true;
 
         u.tryUnify(actualRetType, expectedRetType);
@@ -299,7 +307,7 @@ struct TypeChecker2
                         if (var->annotation)
                         {
                             TypeId varType = lookupAnnotation(var->annotation);
-                            if (!isSubtype(*it, varType, stack.back(), ice))
+                            if (!isSubtype(*it, varType, stack.back(), singletonTypes, ice))
                             {
                                 reportError(TypeMismatch{varType, *it}, value->location);
                             }
@@ -317,7 +325,7 @@ struct TypeChecker2
                 if (var->annotation)
                 {
                     TypeId varType = lookupAnnotation(var->annotation);
-                    if (!isSubtype(varType, valueType, stack.back(), ice))
+                    if (!isSubtype(varType, valueType, stack.back(), singletonTypes, ice))
                     {
                         reportError(TypeMismatch{varType, valueType}, value->location);
                     }
@@ -340,7 +348,7 @@ struct TypeChecker2
 
     // "Render" a type pack out to an array of a given length.  Expands
     // variadics and various other things to get there.
-    static std::vector<TypeId> flatten(TypeArena& arena, TypePackId pack, size_t length)
+    std::vector<TypeId> flatten(TypeArena& arena, TypePackId pack, size_t length)
     {
         std::vector<TypeId> result;
 
@@ -376,7 +384,7 @@ struct TypeChecker2
         else if (auto etp = get<Unifiable::Error>(tail))
         {
             while (result.size() < length)
-                result.push_back(getSingletonTypes().errorRecoveryType());
+                result.push_back(singletonTypes->errorRecoveryType());
         }
 
         return result;
@@ -532,7 +540,7 @@ struct TypeChecker2
             visit(rhs);
             TypeId rhsType = lookupType(rhs);
 
-            if (!isSubtype(rhsType, lhsType, stack.back(), ice))
+            if (!isSubtype(rhsType, lhsType, stack.back(), singletonTypes, ice))
             {
                 reportError(TypeMismatch{lhsType, rhsType}, rhs->location);
             }
@@ -681,9 +689,9 @@ struct TypeChecker2
     void visit(AstExprConstantNumber* number)
     {
         TypeId actualType = lookupType(number);
-        TypeId numberType = getSingletonTypes().numberType;
+        TypeId numberType = singletonTypes->numberType;
 
-        if (!isSubtype(numberType, actualType, stack.back(), ice))
+        if (!isSubtype(numberType, actualType, stack.back(), singletonTypes, ice))
         {
             reportError(TypeMismatch{actualType, numberType}, number->location);
         }
@@ -692,9 +700,9 @@ struct TypeChecker2
     void visit(AstExprConstantString* string)
     {
         TypeId actualType = lookupType(string);
-        TypeId stringType = getSingletonTypes().stringType;
+        TypeId stringType = singletonTypes->stringType;
 
-        if (!isSubtype(stringType, actualType, stack.back(), ice))
+        if (!isSubtype(stringType, actualType, stack.back(), singletonTypes, ice))
         {
             reportError(TypeMismatch{actualType, stringType}, string->location);
         }
@@ -754,7 +762,7 @@ struct TypeChecker2
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);
 
-        if (!isSubtype(expectedType, instantiatedFunctionType, stack.back(), ice))
+        if (!isSubtype(expectedType, instantiatedFunctionType, stack.back(), singletonTypes, ice))
         {
             CloneState cloneState;
             expectedType = clone(expectedType, module->internalTypes, cloneState);
@@ -773,7 +781,7 @@ struct TypeChecker2
             getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
         if (ty)
         {
-            if (!isSubtype(resultType, *ty, stack.back(), ice))
+            if (!isSubtype(resultType, *ty, stack.back(), singletonTypes, ice))
             {
                 reportError(TypeMismatch{resultType, *ty}, indexName->location);
             }
@@ -806,7 +814,7 @@ struct TypeChecker2
                 TypeId inferredArgTy = *argIt;
                 TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
-                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), ice))
+                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), singletonTypes, ice))
                 {
                     reportError(TypeMismatch{annotatedArgTy, inferredArgTy}, arg->location);
                 }
@@ -851,10 +859,10 @@ struct TypeChecker2
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (isSubtype(annotationType, computedType, stack.back(), ice))
+        if (isSubtype(annotationType, computedType, stack.back(), singletonTypes, ice))
             return;
 
-        if (isSubtype(computedType, annotationType, stack.back(), ice))
+        if (isSubtype(computedType, annotationType, stack.back(), singletonTypes, ice))
             return;
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
@@ -908,7 +916,7 @@ struct TypeChecker2
             return result;
         }
         else if (get<Unifiable::Error>(pack))
-            return singletonTypes.errorRecoveryType();
+            return singletonTypes->errorRecoveryType();
         else
             ice.ice("flattenPack got a weird pack!");
     }
@@ -1154,7 +1162,7 @@ struct TypeChecker2
     ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy)
     {
         UnifierSharedState sharedState{&ice};
-        Unifier u{&module->internalTypes, Mode::Strict, scope, location, Covariant, sharedState};
+        Unifier u{&module->internalTypes, singletonTypes, Mode::Strict, scope, location, Covariant, sharedState};
         u.anyIsTop = true;
         u.tryUnify(subTy, superTy);
 
@@ -1164,6 +1172,9 @@ struct TypeChecker2
     void reportError(TypeErrorData data, const Location& location)
     {
         module->errors.emplace_back(location, sourceModule->name, std::move(data));
+
+        if (FFlag::DebugLuauLogSolverToJson)
+            logger->captureTypeCheckError(module->errors.back());
     }
 
     void reportError(TypeError e)
@@ -1179,13 +1190,13 @@ struct TypeChecker2
 
     std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, TypeId type, const std::string& prop, const Location& location, bool addErrors)
     {
-        return Luau::getIndexTypeFromType(scope, module->errors, &module->internalTypes, type, prop, location, addErrors, ice);
+        return Luau::getIndexTypeFromType(scope, module->errors, &module->internalTypes, singletonTypes, type, prop, location, addErrors, ice);
     }
 };
 
-void check(const SourceModule& sourceModule, Module* module)
+void check(NotNull<SingletonTypes> singletonTypes, DcrLogger* logger, const SourceModule& sourceModule, Module* module)
 {
-    TypeChecker2 typeChecker{&sourceModule, module};
+    TypeChecker2 typeChecker{singletonTypes, logger, &sourceModule, module};
 
     typeChecker.visit(sourceModule.root);
 }

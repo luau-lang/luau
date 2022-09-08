@@ -1008,6 +1008,23 @@ int lua_status(lua_State* L)
     return L->status;
 }
 
+int lua_costatus(lua_State* L, lua_State* co)
+{
+    if (co == L)
+        return LUA_CORUN;
+    if (co->status == LUA_YIELD)
+        return LUA_COSUS;
+    if (co->status == LUA_BREAK)
+        return LUA_CONOR;
+    if (co->status != 0) // some error occurred
+        return LUA_COERR;
+    if (co->ci != co->base_ci) // does it have frames?
+        return LUA_CONOR;
+    if (co->top == co->base)
+        return LUA_COFIN;
+    return LUA_COSUS; // initial state
+}
+
 void* lua_getthreaddata(lua_State* L)
 {
     return L->userdata;

@@ -32,7 +32,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {baseClassInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["BaseClass"] = TypeFun{{}, baseClassInstanceType};
-        addGlobalBinding(typeChecker, "BaseClass", baseClassType, "@test");
+        addGlobalBinding(frontend, "BaseClass", baseClassType, "@test");
 
         TypeId childClassInstanceType = arena.addType(ClassTypeVar{"ChildClass", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
@@ -45,7 +45,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {childClassInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["ChildClass"] = TypeFun{{}, childClassInstanceType};
-        addGlobalBinding(typeChecker, "ChildClass", childClassType, "@test");
+        addGlobalBinding(frontend, "ChildClass", childClassType, "@test");
 
         TypeId grandChildInstanceType = arena.addType(ClassTypeVar{"GrandChild", {}, childClassInstanceType, nullopt, {}, {}, "Test"});
 
@@ -58,7 +58,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {grandChildInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["GrandChild"] = TypeFun{{}, grandChildInstanceType};
-        addGlobalBinding(typeChecker, "GrandChild", childClassType, "@test");
+        addGlobalBinding(frontend, "GrandChild", childClassType, "@test");
 
         TypeId anotherChildInstanceType = arena.addType(ClassTypeVar{"AnotherChild", {}, baseClassInstanceType, nullopt, {}, {}, "Test"});
 
@@ -71,7 +71,7 @@ struct ClassFixture : BuiltinsFixture
             {"New", {makeFunction(arena, nullopt, {}, {anotherChildInstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["AnotherChild"] = TypeFun{{}, anotherChildInstanceType};
-        addGlobalBinding(typeChecker, "AnotherChild", childClassType, "@test");
+        addGlobalBinding(frontend, "AnotherChild", childClassType, "@test");
 
         TypeId vector2MetaType = arena.addType(TableTypeVar{});
 
@@ -89,7 +89,7 @@ struct ClassFixture : BuiltinsFixture
             {"__add", {makeFunction(arena, nullopt, {vector2InstanceType, vector2InstanceType}, {vector2InstanceType})}},
         };
         typeChecker.globalScope->exportedTypeBindings["Vector2"] = TypeFun{{}, vector2InstanceType};
-        addGlobalBinding(typeChecker, "Vector2", vector2Type, "@test");
+        addGlobalBinding(frontend, "Vector2", vector2Type, "@test");
 
         for (const auto& [name, tf] : typeChecker.globalScope->exportedTypeBindings)
             persist(tf.type);

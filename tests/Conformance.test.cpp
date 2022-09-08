@@ -496,7 +496,8 @@ TEST_CASE("Types")
     runConformance("types.lua", [](lua_State* L) {
         Luau::NullModuleResolver moduleResolver;
         Luau::InternalErrorReporter iceHandler;
-        Luau::TypeChecker env(&moduleResolver, &iceHandler);
+        Luau::SingletonTypes singletonTypes;
+        Luau::TypeChecker env(&moduleResolver, Luau::NotNull{&singletonTypes}, &iceHandler);
 
         Luau::registerBuiltinTypes(env);
         Luau::freeze(env.globalTypes);

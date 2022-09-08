@@ -56,12 +56,14 @@ target_sources(Luau.Compiler PRIVATE
 # Luau.CodeGen Sources
 target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/AssemblyBuilderX64.h
+    CodeGen/include/Luau/CodeAllocator.h
     CodeGen/include/Luau/Condition.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/RegisterX64.h
 
     CodeGen/src/AssemblyBuilderX64.cpp
+    CodeGen/src/CodeAllocator.cpp
 )
 
 # Luau.Analysis Sources
@@ -77,7 +79,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
-    Analysis/include/Luau/ConstraintSolverLogger.h
+    Analysis/include/Luau/DcrLogger.h
     Analysis/include/Luau/Documentation.h
     Analysis/include/Luau/Error.h
     Analysis/include/Luau/FileResolver.h
@@ -127,7 +129,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp
-    Analysis/src/ConstraintSolverLogger.cpp
+    Analysis/src/DcrLogger.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
     Analysis/src/Error.cpp
     Analysis/src/Frontend.cpp
@@ -266,6 +268,7 @@ if(TARGET Luau.UnitTest)
         tests/AstVisitor.test.cpp
         tests/Autocomplete.test.cpp
         tests/BuiltinDefinitions.test.cpp
+        tests/CodeAllocator.test.cpp
         tests/Compiler.test.cpp
         tests/Config.test.cpp
         tests/ConstraintGraphBuilder.test.cpp

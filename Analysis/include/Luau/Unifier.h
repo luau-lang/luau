@@ -3,10 +3,11 @@
 
 #include "Luau/Error.h"
 #include "Luau/Location.h"
+#include "Luau/ParseOptions.h"
 #include "Luau/Scope.h"
+#include "Luau/Substitution.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/UnifierSharedState.h"
 
 #include <unordered_set>
@@ -23,10 +24,13 @@ enum Variance
 // A substitution which replaces singleton types by their wider types
 struct Widen : Substitution
 {
-    Widen(TypeArena* arena)
+    Widen(TypeArena* arena, NotNull<SingletonTypes> singletonTypes)
         : Substitution(TxnLog::empty(), arena)
+        , singletonTypes(singletonTypes)
     {
     }
+
+    NotNull<SingletonTypes> singletonTypes;
 
     bool isDirty(TypeId ty) override;
     bool isDirty(TypePackId ty) override;
@@ -47,6 +51,7 @@ struct UnifierOptions
 struct Unifier
 {
     TypeArena* const types;
+    NotNull<SingletonTypes> singletonTypes;
     Mode mode;
 
     NotNull<Scope> scope; // const Scope maybe
@@ -59,8 +64,8 @@ struct Unifier
 
     UnifierSharedState& sharedState;
 
-    Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState,
-        TxnLog* parentLog = nullptr);
+    Unifier(TypeArena* types, NotNull<SingletonTypes> singletonTypes, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance,
+        UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);

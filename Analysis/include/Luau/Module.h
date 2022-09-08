@@ -90,7 +90,7 @@ struct Module
 
     // Once a module has been typechecked, we clone its public interface into a separate arena.
     // This helps us to force TypeVar ownership into a DAG rather than a DCG.
-    void clonePublicInterface(InternalErrorReporter& ice);
+    void clonePublicInterface(NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
 };
 
 } // namespace Luau

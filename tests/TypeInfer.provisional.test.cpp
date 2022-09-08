@@ -353,6 +353,9 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_type_pack")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", false},
+        // I'm not sure why this is broken without DCR, but it seems to be fixed
+        // when DCR is enabled.
+        {"DebugLuauDeferredConstraintResolution", false},
     };
 
     CheckResult result = check(R"(
@@ -367,6 +370,9 @@ TEST_CASE_FIXTURE(Fixture, "weird_fail_to_unify_variadic_pack")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", false},
+        // I'm not sure why this is broken without DCR, but it seems to be fixed
+        // when DCR is enabled.
+        {"DebugLuauDeferredConstraintResolution", false},
     };
 
     CheckResult result = check(R"(
@@ -588,9 +594,9 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
     };
 
     TypeArena arena;
-    TypeId nilType = getSingletonTypes().nilType;
+    TypeId nilType = singletonTypes->nilType;
 
-    std::unique_ptr scope = std::make_unique<Scope>(getSingletonTypes().anyTypePack);
+    std::unique_ptr scope = std::make_unique<Scope>(singletonTypes->anyTypePack);
 
     TypeId free1 = arena.addType(FreeTypePack{scope.get()});
     TypeId option1 = arena.addType(UnionTypeVar{{nilType, free1}});
@@ -600,7 +606,7 @@ TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")
 
     InternalErrorReporter iceHandler;
     UnifierSharedState sharedState{&iceHandler};
-    Unifier u{&arena, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant, sharedState};
+    Unifier u{&arena, singletonTypes, Mode::Strict, NotNull{scope.get()}, Location{}, Variance::Covariant, sharedState};
 
     u.tryUnify(option1, option2);
 

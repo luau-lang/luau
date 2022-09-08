@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
 
+#include "ScopedFlags.h"
+
 #include "doctest.h"
 
 using namespace Luau;
@@ -221,6 +223,23 @@ end
 
     CHECK_EQ(7, Luau::Compile::computeCost(model, args1, 1));
     CHECK_EQ(6, Luau::Compile::computeCost(model, args2, 1));
+}
+
+TEST_CASE("InterpString")
+{
+    ScopedFastFlag sff("LuauInterpolatedStringBaseSupport", true);
+
+    uint64_t model = modelFunction(R"(
+function test(a)
+    return `hello, {a}!`
+end
+)");
+
+    const bool args1[] = {false};
+    const bool args2[] = {true};
+
+    CHECK_EQ(3, Luau::Compile::computeCost(model, args1, 1));
+    CHECK_EQ(3, Luau::Compile::computeCost(model, args2, 1));
 }
 
 TEST_SUITE_END();

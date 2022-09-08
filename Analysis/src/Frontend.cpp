@@ -6,6 +6,7 @@
 #include "Luau/Config.h"
 #include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/DcrLogger.h"
 #include "Luau/FileResolver.h"
 #include "Luau/Parser.h"
 #include "Luau/Scope.h"
@@ -23,10 +24,12 @@
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
+LUAU_FASTFLAG(LuauNoMoreGlobalSingletonTypes)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
+LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 
 namespace Luau
 {
@@ -389,11 +392,12 @@ double getTimestamp()
 } // namespace
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
-    : fileResolver(fileResolver)
+    : singletonTypes(NotNull{FFlag::LuauNoMoreGlobalSingletonTypes ? &singletonTypes_ : &DEPRECATED_getSingletonTypes()})
+    , fileResolver(fileResolver)
     , moduleResolver(this)
     , moduleResolverForAutocomplete(this)
-    , typeChecker(&moduleResolver, &iceHandler)
-    , typeCheckerForAutocomplete(&moduleResolverForAutocomplete, &iceHandler)
+    , typeChecker(&moduleResolver, singletonTypes, &iceHandler)
+    , typeCheckerForAutocomplete(&moduleResolverForAutocomplete, singletonTypes, &iceHandler)
     , configResolver(configResolver)
     , options(options)
 {
@@ -837,11 +841,22 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
 {
     ModulePtr result = std::make_shared<Module>();
 
-    ConstraintGraphBuilder cgb{sourceModule.name, result, &result->internalTypes, NotNull(&moduleResolver), NotNull(&iceHandler), getGlobalScope()};
+    std::unique_ptr<DcrLogger> logger;
+    if (FFlag::DebugLuauLogSolverToJson)
+    {
+        logger = std::make_unique<DcrLogger>();
+        std::optional<SourceCode> source = fileResolver->readSource(sourceModule.name);
+        if (source)
+        {
+            logger->captureSource(source->source);
+        }
+    }
+
+    ConstraintGraphBuilder cgb{sourceModule.name, result, &result->internalTypes, NotNull(&moduleResolver), singletonTypes, NotNull(&iceHandler), getGlobalScope(), logger.get()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
-    ConstraintSolver cs{&result->internalTypes, NotNull(cgb.rootScope), sourceModule.name, NotNull(&moduleResolver), requireCycles};
+    ConstraintSolver cs{&result->internalTypes, singletonTypes, NotNull(cgb.rootScope), sourceModule.name, NotNull(&moduleResolver), requireCycles, logger.get()};
     cs.run();
 
     for (TypeError& e : cs.errors)
@@ -855,9 +870,15 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
     result->astResolvedTypePacks = std::move(cgb.astResolvedTypePacks);
     result->type = sourceModule.type;
 
-    Luau::check(sourceModule, result.get());
+    Luau::check(singletonTypes, logger.get(), sourceModule, result.get());
 
-    result->clonePublicInterface(iceHandler);
+    if (FFlag::DebugLuauLogSolverToJson)
+    {
+        std::string output = logger->compileOutput();
+        printf("%s\n", output.c_str());
+    }
+
+    result->clonePublicInterface(singletonTypes, iceHandler);
 
     return result;
 }

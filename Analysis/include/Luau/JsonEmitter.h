@@ -4,6 +4,7 @@
 #include <type_traits>
 #include <string>
 #include <optional>
+#include <unordered_map>
 #include <vector>
 
 #include "Luau/NotNull.h"
@@ -230,6 +231,17 @@ void write(JsonEmitter& emitter, const std::optional<T>& v)
         write(emitter, *v);
     else
         emitter.writeRaw("null");
+}
+
+template<typename T>
+void write(JsonEmitter& emitter, const std::unordered_map<std::string, T>& map)
+{
+    ObjectEmitter o = emitter.writeObject();
+
+    for (const auto& [k, v] : map)
+        o.writePair(k, v);
+    
+    o.finish();
 }
 
 } // namespace Luau::Json

@@ -26,10 +26,10 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "hello")
     )");
 
     cgb.visit(block);
-    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope> rootScope{cgb.rootScope};
 
     NullModuleResolver resolver;
-    ConstraintSolver cs{&arena, rootScope, "MainModule", NotNull(&resolver), {}};
+    ConstraintSolver cs{&arena, singletonTypes, rootScope, "MainModule", NotNull(&resolver), {}, &logger};
 
     cs.run();
 
@@ -47,10 +47,10 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "generic_function")
     )");
 
     cgb.visit(block);
-    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope> rootScope{cgb.rootScope};
 
     NullModuleResolver resolver;
-    ConstraintSolver cs{&arena, rootScope, "MainModule", NotNull(&resolver), {}};
+    ConstraintSolver cs{&arena, singletonTypes, rootScope, "MainModule", NotNull(&resolver), {}, &logger};
 
     cs.run();
 
@@ -74,12 +74,12 @@ TEST_CASE_FIXTURE(ConstraintGraphBuilderFixture, "proper_let_generalization")
     )");
 
     cgb.visit(block);
-    NotNull<Scope> rootScope = NotNull(cgb.rootScope);
+    NotNull<Scope> rootScope{cgb.rootScope};
 
     ToStringOptions opts;
 
     NullModuleResolver resolver;
-    ConstraintSolver cs{&arena, rootScope, "MainModule", NotNull(&resolver), {}};
+    ConstraintSolver cs{&arena, singletonTypes, rootScope, "MainModule", NotNull(&resolver), {}, &logger};
 
     cs.run();
 
