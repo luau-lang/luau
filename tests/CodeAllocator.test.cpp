@@ -41,8 +41,8 @@ TEST_CASE("CodeAllocation")
 
 TEST_CASE("CodeAllocationFailure")
 {
-    size_t blockSize = 4096;
-    size_t maxTotalSize = 8192;
+    size_t blockSize = 16384;
+    size_t maxTotalSize = 32768;
     CodeAllocator allocator(blockSize, maxTotalSize);
 
     uint8_t* nativeData;
@@ -50,11 +50,13 @@ TEST_CASE("CodeAllocationFailure")
     uint8_t* nativeEntry;
 
     std::vector<uint8_t> code;
-    code.resize(6000);
+    code.resize(18000);
 
+    // allocation has to fit in a block
     REQUIRE(!allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
 
-    code.resize(3000);
+    // each allocation exhausts a block, so third allocation fails
+    code.resize(10000);
     REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
     REQUIRE(allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
     REQUIRE(!allocator.allocate(nullptr, 0, code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
