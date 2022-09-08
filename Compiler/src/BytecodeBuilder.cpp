@@ -73,8 +73,6 @@ static int getOpLength(LuauOpcode op)
     case LOP_SETLIST:
     case LOP_FORGLOOP:
     case LOP_LOADKX:
-    case LOP_JUMPIFEQK:
-    case LOP_JUMPIFNOTEQK:
     case LOP_FASTCALL2:
     case LOP_FASTCALL2K:
     case LOP_JUMPXEQKNIL:
@@ -106,12 +104,8 @@ inline bool isJumpD(LuauOpcode op)
     case LOP_FORGPREP:
     case LOP_FORGLOOP:
     case LOP_FORGPREP_INEXT:
-    case LOP_FORGLOOP_INEXT:
     case LOP_FORGPREP_NEXT:
-    case LOP_FORGLOOP_NEXT:
     case LOP_JUMPBACK:
-    case LOP_JUMPIFEQK:
-    case LOP_JUMPIFNOTEQK:
     case LOP_JUMPXEQKNIL:
     case LOP_JUMPXEQKB:
     case LOP_JUMPXEQKN:
@@ -1247,13 +1241,6 @@ void BytecodeBuilder::validate() const
             VJUMP(LUAU_INSN_D(insn));
             break;
 
-        case LOP_JUMPIFEQK:
-        case LOP_JUMPIFNOTEQK:
-            VREG(LUAU_INSN_A(insn));
-            VCONSTANY(insns[i + 1]);
-            VJUMP(LUAU_INSN_D(insn));
-            break;
-
         case LOP_JUMPXEQKNIL:
         case LOP_JUMPXEQKB:
             VREG(LUAU_INSN_A(insn));
@@ -1360,9 +1347,7 @@ void BytecodeBuilder::validate() const
             break;
 
         case LOP_FORGPREP_INEXT:
-        case LOP_FORGLOOP_INEXT:
         case LOP_FORGPREP_NEXT:
-        case LOP_FORGLOOP_NEXT:
             VREG(LUAU_INSN_A(insn) + 4); // forg loop protocol: A, A+1, A+2 are used for iteration protocol; A+3, A+4 are loop variables
             VJUMP(LUAU_INSN_D(insn));
             break;
@@ -1728,16 +1713,8 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
         formatAppend(result, "FORGPREP_INEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
         break;
 
-    case LOP_FORGLOOP_INEXT:
-        formatAppend(result, "FORGLOOP_INEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
-        break;
-
     case LOP_FORGPREP_NEXT:
         formatAppend(result, "FORGPREP_NEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
-        break;
-
-    case LOP_FORGLOOP_NEXT:
-        formatAppend(result, "FORGLOOP_NEXT R%d L%d\n", LUAU_INSN_A(insn), targetLabel);
         break;
 
     case LOP_GETVARARGS:
@@ -1795,14 +1772,6 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
             : LUAU_INSN_A(insn) == LCT_VAL ? "VAL"
                                            : "",
             LUAU_INSN_A(insn) == LCT_UPVAL ? 'U' : 'R', LUAU_INSN_B(insn));
-        break;
-
-    case LOP_JUMPIFEQK:
-        formatAppend(result, "JUMPIFEQK R%d K%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
-        break;
-
-    case LOP_JUMPIFNOTEQK:
-        formatAppend(result, "JUMPIFNOTEQK R%d K%d L%d\n", LUAU_INSN_A(insn), *code++, targetLabel);
         break;
 
     case LOP_JUMPXEQKNIL:

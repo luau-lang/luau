@@ -21,6 +21,8 @@ namespace Luau
 struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
 
+struct DcrLogger;
+
 struct ConstraintGraphBuilder
 {
     // A list of all the scopes in the module. This vector holds ownership of the
@@ -30,7 +32,7 @@ struct ConstraintGraphBuilder
 
     ModuleName moduleName;
     ModulePtr module;
-    SingletonTypes& singletonTypes;
+    NotNull<SingletonTypes> singletonTypes;
     const NotNull<TypeArena> arena;
     // The root scope of the module we're generating constraints for.
     // This is null when the CGB is initially constructed.
@@ -58,9 +60,10 @@ struct ConstraintGraphBuilder
     const NotNull<InternalErrorReporter> ice;
 
     ScopePtr globalScope;
+    DcrLogger* logger;
 
     ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
-        NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope);
+        NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger);
 
     /**
      * Fabricates a new free type belonging to a given scope.

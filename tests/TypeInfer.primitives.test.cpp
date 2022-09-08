@@ -102,4 +102,18 @@ end
     CHECK_EQ(toString(result.errors[1]), "Type 'number' could not be converted into 'string'");
 }
 
+TEST_CASE("singleton_types")
+{
+    BuiltinsFixture a;
+
+    {
+        BuiltinsFixture b;
+    }
+
+    // Check that Frontend 'a' environment wasn't modified by 'b'
+    CheckResult result = a.check("local s: string = 'hello' local t = s:lower()");
+
+    CHECK(result.errors.empty());
+}
+
 TEST_SUITE_END();

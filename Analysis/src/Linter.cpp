@@ -14,7 +14,6 @@
 
 LUAU_FASTINTVARIABLE(LuauSuggestionDistance, 4)
 LUAU_FASTFLAGVARIABLE(LuauLintGlobalNeverReadBeforeWritten, false)
-LUAU_FASTFLAGVARIABLE(LuauLintComparisonPrecedence, false)
 LUAU_FASTFLAGVARIABLE(LuauLintFixDeprecationMessage, false)
 
 namespace Luau
@@ -2954,7 +2953,7 @@ std::vector<LintWarning> lint(AstStat* root, const AstNameTable& names, const Sc
     if (context.warningEnabled(LintWarning::Code_IntegerParsing))
         LintIntegerParsing::process(context);
 
-    if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence) && FFlag::LuauLintComparisonPrecedence)
+    if (context.warningEnabled(LintWarning::Code_ComparisonPrecedence))
         LintComparisonPrecedence::process(context);
 
     std::sort(context.result.begin(), context.result.end(), WarningComparator());

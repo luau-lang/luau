@@ -557,7 +557,7 @@ TEST_CASE_FIXTURE(Fixture, "cloned_interface_maintains_pointers_between_definiti
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
 {
-    addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
+    addGlobalBinding(frontend, "script", frontend.typeChecker.anyType, "@test");
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -583,7 +583,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "use_type_required_from_another_file")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
 {
-    addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
+    addGlobalBinding(frontend, "script", frontend.typeChecker.anyType, "@test");
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict
@@ -609,7 +609,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "cannot_use_nonexported_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_are_not_exported")
 {
-    addGlobalBinding(frontend.typeChecker, "script", frontend.typeChecker.anyType, "@test");
+    addGlobalBinding(frontend, "script", frontend.typeChecker.anyType, "@test");
 
     fileResolver.source["Modules/Main"] = R"(
         --!strict

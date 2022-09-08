@@ -3457,14 +3457,6 @@ struct Compiler
         return uint8_t(top);
     }
 
-    void reserveReg(AstNode* node, unsigned int count)
-    {
-        if (regTop + count > kMaxRegisterCount)
-            CompileError::raise(node->location, "Out of registers when trying to allocate %d registers: exceeded limit %d", count, kMaxRegisterCount);
-
-        stackSize = std::max(stackSize, regTop + count);
-    }
-
     void setDebugLine(AstNode* node)
     {
         if (options.debugLevel >= 1)

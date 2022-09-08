@@ -142,11 +142,15 @@ coverage: $(TESTS_TARGET)
 	llvm-cov export -ignore-filename-regex=\(tests\|extern\|CLI\)/.* -format lcov --instr-profile default.profdata build/coverage/luau-tests >coverage.info
 
 format:
-	find . -name '*.h' -or -name '*.cpp' | xargs clang-format-11 -i
+	git ls-files '*.h' '*.cpp' | xargs clang-format-11 -i
 
 luau-size: luau
 	nm --print-size --demangle luau | grep ' t void luau_execute<false>' | awk -F ' ' '{sum += strtonum("0x" $$2)} END {print sum " interpreter" }'
 	nm --print-size --demangle luau | grep ' t luauF_' | awk -F ' ' '{sum += strtonum("0x" $$2)} END {print sum " builtins" }'
+
+check-source:
+	git ls-files '*.h' '*.cpp' | xargs -I+ sh -c 'grep -L LICENSE +'
+	git ls-files '*.h' ':!:extern' | xargs -I+ sh -c 'grep -L "#pragma once" +'
 
 # executable target aliases
 luau: $(REPL_CLI_TARGET)

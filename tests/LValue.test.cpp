@@ -34,23 +34,28 @@ static LValue mkSymbol(const std::string& s)
     return Symbol{AstName{s.data()}};
 }
 
+struct LValueFixture
+{
+    SingletonTypes singletonTypes;
+};
+
 TEST_SUITE_BEGIN("LValue");
 
-TEST_CASE("Luau_merge_hashmap_order")
+TEST_CASE_FIXTURE(LValueFixture, "Luau_merge_hashmap_order")
 {
     std::string a = "a";
     std::string b = "b";
     std::string c = "c";
 
     RefinementMap m{{
-        {mkSymbol(b), getSingletonTypes().stringType},
-        {mkSymbol(c), getSingletonTypes().numberType},
+        {mkSymbol(b), singletonTypes.stringType},
+        {mkSymbol(c), singletonTypes.numberType},
     }};
 
     RefinementMap other{{
-        {mkSymbol(a), getSingletonTypes().stringType},
-        {mkSymbol(b), getSingletonTypes().stringType},
-        {mkSymbol(c), getSingletonTypes().booleanType},
+        {mkSymbol(a), singletonTypes.stringType},
+        {mkSymbol(b), singletonTypes.stringType},
+        {mkSymbol(c), singletonTypes.booleanType},
     }};
 
     TypeArena arena;
@@ -66,21 +71,21 @@ TEST_CASE("Luau_merge_hashmap_order")
     CHECK_EQ("boolean | number", toString(m[mkSymbol(c)]));
 }
 
-TEST_CASE("Luau_merge_hashmap_order2")
+TEST_CASE_FIXTURE(LValueFixture, "Luau_merge_hashmap_order2")
 {
     std::string a = "a";
     std::string b = "b";
     std::string c = "c";
 
     RefinementMap m{{
-        {mkSymbol(a), getSingletonTypes().stringType},
-        {mkSymbol(b), getSingletonTypes().stringType},
-        {mkSymbol(c), getSingletonTypes().numberType},
+        {mkSymbol(a), singletonTypes.stringType},
+        {mkSymbol(b), singletonTypes.stringType},
+        {mkSymbol(c), singletonTypes.numberType},
     }};
 
     RefinementMap other{{
-        {mkSymbol(b), getSingletonTypes().stringType},
-        {mkSymbol(c), getSingletonTypes().booleanType},
+        {mkSymbol(b), singletonTypes.stringType},
+        {mkSymbol(c), singletonTypes.booleanType},
     }};
 
     TypeArena arena;
@@ -96,7 +101,7 @@ TEST_CASE("Luau_merge_hashmap_order2")
     CHECK_EQ("boolean | number", toString(m[mkSymbol(c)]));
 }
 
-TEST_CASE("one_map_has_overlap_at_end_whereas_other_has_it_in_start")
+TEST_CASE_FIXTURE(LValueFixture, "one_map_has_overlap_at_end_whereas_other_has_it_in_start")
 {
     std::string a = "a";
     std::string b = "b";
@@ -105,15 +110,15 @@ TEST_CASE("one_map_has_overlap_at_end_whereas_other_has_it_in_start")
     std::string e = "e";
 
     RefinementMap m{{
-        {mkSymbol(a), getSingletonTypes().stringType},
-        {mkSymbol(b), getSingletonTypes().numberType},
-        {mkSymbol(c), getSingletonTypes().booleanType},
+        {mkSymbol(a), singletonTypes.stringType},
+        {mkSymbol(b), singletonTypes.numberType},
+        {mkSymbol(c), singletonTypes.booleanType},
     }};
 
     RefinementMap other{{
-        {mkSymbol(c), getSingletonTypes().stringType},
-        {mkSymbol(d), getSingletonTypes().numberType},
-        {mkSymbol(e), getSingletonTypes().booleanType},
+        {mkSymbol(c), singletonTypes.stringType},
+        {mkSymbol(d), singletonTypes.numberType},
+        {mkSymbol(e), singletonTypes.booleanType},
     }};
 
     TypeArena arena;
@@ -133,7 +138,7 @@ TEST_CASE("one_map_has_overlap_at_end_whereas_other_has_it_in_start")
     CHECK_EQ("boolean", toString(m[mkSymbol(e)]));
 }
 
-TEST_CASE("hashing_lvalue_global_prop_access")
+TEST_CASE_FIXTURE(LValueFixture, "hashing_lvalue_global_prop_access")
 {
     std::string t1 = "t";
     std::string x1 = "x";
@@ -154,13 +159,13 @@ TEST_CASE("hashing_lvalue_global_prop_access")
     CHECK_EQ(LValueHasher{}(t_x2), LValueHasher{}(t_x2));
 
     RefinementMap m;
-    m[t_x1] = getSingletonTypes().stringType;
-    m[t_x2] = getSingletonTypes().numberType;
+    m[t_x1] = singletonTypes.stringType;
+    m[t_x2] = singletonTypes.numberType;
 
     CHECK_EQ(1, m.size());
 }
 
-TEST_CASE("hashing_lvalue_local_prop_access")
+TEST_CASE_FIXTURE(LValueFixture, "hashing_lvalue_local_prop_access")
 {
     std::string t1 = "t";
     std::string x1 = "x";
@@ -183,8 +188,8 @@ TEST_CASE("hashing_lvalue_local_prop_access")
     CHECK_EQ(LValueHasher{}(t_x2), LValueHasher{}(t_x2));
 
     RefinementMap m;
-    m[t_x1] = getSingletonTypes().stringType;
-    m[t_x2] = getSingletonTypes().numberType;
+    m[t_x1] = singletonTypes.stringType;
+    m[t_x2] = singletonTypes.numberType;
 
     CHECK_EQ(2, m.size());
 }

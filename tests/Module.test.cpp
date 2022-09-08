@@ -10,6 +10,7 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 
 TEST_SUITE_BEGIN("ModuleTests");
@@ -134,7 +135,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")
     REQUIRE(signType != nullptr);
 
     CHECK(!isInArena(signType, module->interfaceTypes));
-    CHECK(isInArena(signType, typeChecker.globalTypes));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK(isInArena(signType, frontend.globalTypes));
+    else
+        CHECK(isInArena(signType, typeChecker.globalTypes));
 }
 
 TEST_CASE_FIXTURE(Fixture, "deepClone_union")
@@ -230,7 +234,7 @@ TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")
 {
     TypeArena src;
 
-    TypeId constrained = src.addType(ConstrainedTypeVar{TypeLevel{}, {getSingletonTypes().numberType, getSingletonTypes().stringType}});
+    TypeId constrained = src.addType(ConstrainedTypeVar{TypeLevel{}, {singletonTypes->numberType, singletonTypes->stringType}});
 
     TypeArena dest;
     CloneState cloneState;
@@ -240,8 +244,8 @@ TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")
 
     const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(cloned);
     REQUIRE_EQ(2, ctv->parts.size());
-    CHECK_EQ(getSingletonTypes().numberType, ctv->parts[0]);
-    CHECK_EQ(getSingletonTypes().stringType, ctv->parts[1]);
+    CHECK_EQ(singletonTypes->numberType, ctv->parts[0]);
+    CHECK_EQ(singletonTypes->stringType, ctv->parts[1]);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")

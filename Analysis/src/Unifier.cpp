@@ -257,12 +257,12 @@ TypeId Widen::clean(TypeId ty)
     LUAU_ASSERT(stv);
 
     if (get<StringSingleton>(stv))
-        return getSingletonTypes().stringType;
+        return singletonTypes->stringType;
     else
     {
         // If this assert trips, it's likely we now have number singletons.
         LUAU_ASSERT(get<BooleanSingleton>(stv));
-        return getSingletonTypes().booleanType;
+        return singletonTypes->booleanType;
     }
 }
 
@@ -317,9 +317,10 @@ static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMat
     return std::nullopt;
 }
 
-Unifier::Unifier(TypeArena* types, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, UnifierSharedState& sharedState,
-    TxnLog* parentLog)
+Unifier::Unifier(TypeArena* types, NotNull<SingletonTypes> singletonTypes, Mode mode, NotNull<Scope> scope, const Location& location,
+    Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
     : types(types)
+    , singletonTypes(singletonTypes)
     , mode(mode)
     , scope(scope)
     , log(parentLog)
@@ -409,7 +410,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
         {
             promoteTypeLevels(log, types, superFree->level, subTy);
 
-            Widen widen{types};
+            Widen widen{types, singletonTypes};
             log.replace(superTy, BoundTypeVar(widen(subTy)));
         }
 
@@ -1018,7 +1019,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     {
         if (!occursCheck(superTp, subTp))
         {
-            Widen widen{types};
+            Widen widen{types, singletonTypes};
             log.replace(superTp, Unifiable::Bound<TypePackId>(widen(subTp)));
         }
     }
@@ -1162,13 +1163,13 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
                 while (superIter.good())
                 {
-                    tryUnify_(*superIter, getSingletonTypes().errorRecoveryType());
+                    tryUnify_(*superIter, singletonTypes->errorRecoveryType());
                     superIter.advance();
                 }
 
                 while (subIter.good())
                 {
-                    tryUnify_(*subIter, getSingletonTypes().errorRecoveryType());
+                    tryUnify_(*subIter, singletonTypes->errorRecoveryType());
                     subIter.advance();
                 }
 
@@ -1613,7 +1614,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
 
     // Given t1 where t1 = { lower: (t1) -> (a, b...) }
     // It should be the case that `string <: t1` iff `(subtype's metatable).__index <: t1`
-    if (auto metatable = getMetatable(subTy))
+    if (auto metatable = getMetatable(subTy, singletonTypes))
     {
         auto mttv = log.get<TableTypeVar>(*metatable);
         if (!mttv)
@@ -1658,10 +1659,10 @@ TypeId Unifier::deeplyOptional(TypeId ty, std::unordered_map<TypeId, TypeId> see
         TableTypeVar* resultTtv = getMutable<TableTypeVar>(result);
         for (auto& [name, prop] : resultTtv->props)
             prop.type = deeplyOptional(prop.type, seen);
-        return types->addType(UnionTypeVar{{getSingletonTypes().nilType, result}});
+        return types->addType(UnionTypeVar{{singletonTypes->nilType, result}});
     }
     else
-        return types->addType(UnionTypeVar{{getSingletonTypes().nilType, ty}});
+        return types->addType(UnionTypeVar{{singletonTypes->nilType, ty}});
 }
 
 void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
@@ -1951,7 +1952,7 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
         anyTp = types->addTypePack(TypePackVar{VariadicTypePack{anyTy}});
     else
     {
-        const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{getSingletonTypes().anyType}});
+        const TypePackId anyTypePack = types->addTypePack(TypePackVar{VariadicTypePack{singletonTypes->anyType}});
         anyTp = get<AnyTypeVar>(anyTy) ? anyTypePack : types->addTypePack(TypePackVar{Unifiable::Error{}});
     }
 
@@ -1960,15 +1961,15 @@ void Unifier::tryUnifyWithAny(TypeId subTy, TypeId anyTy)
     sharedState.tempSeenTy.clear();
     sharedState.tempSeenTp.clear();
 
-    Luau::tryUnifyWithAny(queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types,
-        FFlag::LuauUnknownAndNeverType ? anyTy : getSingletonTypes().anyType, anyTp);
+    Luau::tryUnifyWithAny(
+        queue, *this, sharedState.tempSeenTy, sharedState.tempSeenTp, types, FFlag::LuauUnknownAndNeverType ? anyTy : singletonTypes->anyType, anyTp);
 }
 
 void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 {
     LUAU_ASSERT(get<Unifiable::Error>(anyTp));
 
-    const TypeId anyTy = getSingletonTypes().errorRecoveryType();
+    const TypeId anyTy = singletonTypes->errorRecoveryType();
 
     std::vector<TypeId> queue;
 
@@ -1982,7 +1983,7 @@ void Unifier::tryUnifyWithAny(TypePackId subTy, TypePackId anyTp)
 
 std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, Name name)
 {
-    return Luau::findTablePropertyRespectingMeta(errors, lhsType, name, location);
+    return Luau::findTablePropertyRespectingMeta(singletonTypes, errors, lhsType, name, location);
 }
 
 void Unifier::tryUnifyWithConstrainedSubTypeVar(TypeId subTy, TypeId superTy)
@@ -2193,7 +2194,7 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
     if (needle == haystack)
     {
         reportError(TypeError{location, OccursCheckFailed{}});
-        log.replace(needle, *getSingletonTypes().errorRecoveryType());
+        log.replace(needle, *singletonTypes->errorRecoveryType());
 
         return true;
     }
@@ -2250,7 +2251,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
         if (needle == haystack)
         {
             reportError(TypeError{location, OccursCheckFailed{}});
-            log.replace(needle, *getSingletonTypes().errorRecoveryTypePack());
+            log.replace(needle, *singletonTypes->errorRecoveryTypePack());
 
             return true;
         }
@@ -2269,7 +2270,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
 
 Unifier Unifier::makeChildUnifier()
 {
-    Unifier u = Unifier{types, mode, scope, location, variance, sharedState, &log};
+    Unifier u = Unifier{types, singletonTypes, mode, scope, location, variance, sharedState, &log};
     u.anyIsTop = anyIsTop;
     return u;
 }

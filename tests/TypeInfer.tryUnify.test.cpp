@@ -18,7 +18,7 @@ struct TryUnifyFixture : Fixture
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
 
-    Unifier state{&arena, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant, unifierState};
+    Unifier state{&arena, singletonTypes, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant, unifierState};
 };
 
 TEST_SUITE_BEGIN("TryUnifyTests");

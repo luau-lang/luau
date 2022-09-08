@@ -107,8 +107,8 @@ struct ACFixture : ACFixtureImpl<Fixture>
     ACFixture()
         : ACFixtureImpl<Fixture>()
     {
-        addGlobalBinding(frontend.typeChecker, "table", Binding{typeChecker.anyType});
-        addGlobalBinding(frontend.typeChecker, "math", Binding{typeChecker.anyType});
+        addGlobalBinding(frontend, "table", Binding{typeChecker.anyType});
+        addGlobalBinding(frontend, "math", Binding{typeChecker.anyType});
         addGlobalBinding(frontend.typeCheckerForAutocomplete, "table", Binding{typeChecker.anyType});
         addGlobalBinding(frontend.typeCheckerForAutocomplete, "math", Binding{typeChecker.anyType});
     }
@@ -3200,8 +3200,6 @@ a.@1
 
 TEST_CASE_FIXTURE(ACFixture, "globals_are_order_independent")
 {
-    ScopedFastFlag sff("LuauAutocompleteFixGlobalOrder", true);
-
     check(R"(
         local myLocal = 4
         function abc0()

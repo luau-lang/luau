@@ -26,6 +26,7 @@ LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArgumentErrorFix, false)
+LUAU_FASTFLAGVARIABLE(LuauNoMoreGlobalSingletonTypes, false)
 
 namespace Luau
 {
@@ -239,7 +240,7 @@ bool isOverloadedFunction(TypeId ty)
     return std::all_of(parts.begin(), parts.end(), isFunction);
 }
 
-std::optional<TypeId> getMetatable(TypeId type)
+std::optional<TypeId> getMetatable(TypeId type, NotNull<SingletonTypes> singletonTypes)
 {
     type = follow(type);
 
@@ -249,7 +250,7 @@ std::optional<TypeId> getMetatable(TypeId type)
         return classType->metatable;
     else if (isString(type))
     {
-        auto ptv = get<PrimitiveTypeVar>(getSingletonTypes().stringType);
+        auto ptv = get<PrimitiveTypeVar>(singletonTypes->stringType);
         LUAU_ASSERT(ptv && ptv->metatable);
         return ptv->metatable;
     }
@@ -707,44 +708,30 @@ TypeId makeFunction(TypeArena& arena, std::optional<TypeId> selfType, std::initi
     std::initializer_list<TypePackId> genericPacks, std::initializer_list<TypeId> paramTypes, std::initializer_list<std::string> paramNames,
     std::initializer_list<TypeId> retTypes);
 
-static TypeVar nilType_{PrimitiveTypeVar{PrimitiveTypeVar::NilType}, /*persistent*/ true};
-static TypeVar numberType_{PrimitiveTypeVar{PrimitiveTypeVar::Number}, /*persistent*/ true};
-static TypeVar stringType_{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true};
-static TypeVar booleanType_{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true};
-static TypeVar threadType_{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true};
-static TypeVar trueType_{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true};
-static TypeVar falseType_{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true};
-static TypeVar anyType_{AnyTypeVar{}, /*persistent*/ true};
-static TypeVar unknownType_{UnknownTypeVar{}, /*persistent*/ true};
-static TypeVar neverType_{NeverTypeVar{}, /*persistent*/ true};
-static TypeVar errorType_{ErrorTypeVar{}, /*persistent*/ true};
-
-static TypePackVar anyTypePack_{VariadicTypePack{&anyType_}, /*persistent*/ true};
-static TypePackVar errorTypePack_{Unifiable::Error{}, /*persistent*/ true};
-static TypePackVar neverTypePack_{VariadicTypePack{&neverType_}, /*persistent*/ true};
-static TypePackVar uninhabitableTypePack_{TypePack{{&neverType_}, &neverTypePack_}, /*persistent*/ true};
-
 SingletonTypes::SingletonTypes()
-    : nilType(&nilType_)
-    , numberType(&numberType_)
-    , stringType(&stringType_)
-    , booleanType(&booleanType_)
-    , threadType(&threadType_)
-    , trueType(&trueType_)
-    , falseType(&falseType_)
-    , anyType(&anyType_)
-    , unknownType(&unknownType_)
-    , neverType(&neverType_)
-    , anyTypePack(&anyTypePack_)
-    , neverTypePack(&neverTypePack_)
-    , uninhabitableTypePack(&uninhabitableTypePack_)
-    , arena(new TypeArena)
+    : arena(new TypeArena)
+    , debugFreezeArena(FFlag::DebugLuauFreezeArena)
+    , nilType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::NilType}, /*persistent*/ true}))
+    , numberType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Number}, /*persistent*/ true}))
+    , stringType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true}))
+    , booleanType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true}))
+    , threadType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true}))
+    , trueType(arena->addType(TypeVar{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true}))
+    , falseType(arena->addType(TypeVar{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true}))
+    , anyType(arena->addType(TypeVar{AnyTypeVar{}, /*persistent*/ true}))
+    , unknownType(arena->addType(TypeVar{UnknownTypeVar{}, /*persistent*/ true}))
+    , neverType(arena->addType(TypeVar{NeverTypeVar{}, /*persistent*/ true}))
+    , errorType(arena->addType(TypeVar{ErrorTypeVar{}, /*persistent*/ true}))
+    , anyTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, /*persistent*/ true}))
+    , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
+    , uninhabitableTypePack(arena->addTypePack({neverType}, neverTypePack))
+    , errorTypePack(arena->addTypePack(TypePackVar{Unifiable::Error{}, /*persistent*/ true}))
 {
     TypeId stringMetatable = makeStringMetatable();
-    stringType_.ty = PrimitiveTypeVar{PrimitiveTypeVar::String, stringMetatable};
+    asMutable(stringType)->ty = PrimitiveTypeVar{PrimitiveTypeVar::String, stringMetatable};
     persist(stringMetatable);
+    persist(uninhabitableTypePack);
 
-    debugFreezeArena = FFlag::DebugLuauFreezeArena;
     freeze(*arena);
 }
 
@@ -834,12 +821,12 @@ TypeId SingletonTypes::makeStringMetatable()
 
 TypeId SingletonTypes::errorRecoveryType()
 {
-    return &errorType_;
+    return errorType;
 }
 
 TypePackId SingletonTypes::errorRecoveryTypePack()
 {
-    return &errorTypePack_;
+    return errorTypePack;
 }
 
 TypeId SingletonTypes::errorRecoveryType(TypeId guess)
@@ -852,7 +839,7 @@ TypePackId SingletonTypes::errorRecoveryTypePack(TypePackId guess)
     return guess;
 }
 
-SingletonTypes& getSingletonTypes()
+SingletonTypes& DEPRECATED_getSingletonTypes()
 {
     static SingletonTypes singletonTypes;
     return singletonTypes;

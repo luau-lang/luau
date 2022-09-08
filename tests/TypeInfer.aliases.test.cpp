@@ -76,8 +76,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
                                       Location{{1, 21}, {1, 26}},
                                       getMainSourceModule()->name,
                                       TypeMismatch{
-                                          getSingletonTypes().numberType,
-                                          getSingletonTypes().stringType,
+                                          singletonTypes->numberType,
+                                          singletonTypes->stringType,
                                       },
                                   });
     }
@@ -87,8 +87,8 @@ TEST_CASE_FIXTURE(Fixture, "cannot_steal_hoisted_type_alias")
                                       Location{{1, 8}, {1, 26}},
                                       getMainSourceModule()->name,
                                       TypeMismatch{
-                                          getSingletonTypes().numberType,
-                                          getSingletonTypes().stringType,
+                                          singletonTypes->numberType,
+                                          singletonTypes->stringType,
                                       },
                                   });
     }
@@ -501,7 +501,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
     CheckResult result = check("type t10<x> = typeof(table)");
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    TypeId ty = getGlobalBinding(frontend.typeChecker, "table");
+    TypeId ty = getGlobalBinding(frontend, "table");
     CHECK_EQ(toString(ty), "table");
 
     const TableTypeVar* ttv = get<TableTypeVar>(ty);

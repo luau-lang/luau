@@ -6100,6 +6100,7 @@ return
     math.round(7.6),
     bit32.extract(-1, 31),
     bit32.replace(100, 1, 0),
+    math.log(100, 10),
     (type("fin"))
 )",
                         0, 2),
@@ -6153,8 +6154,9 @@ LOADN R45 1
 LOADN R46 8
 LOADN R47 1
 LOADN R48 101
-LOADK R49 K3
-RETURN R0 50
+LOADN R49 2
+LOADK R50 K3
+RETURN R0 51
 )");
 }
 
@@ -6166,7 +6168,12 @@ return
     math.max(1, true),
     string.byte("abc", 42),
     bit32.rshift(10, 42),
-    bit32.extract(1, 2, "3")
+    bit32.extract(1, 2, "3"),
+    bit32.bor(1, true),
+    bit32.band(1, true),
+    bit32.bxor(1, true),
+    bit32.btest(1, true),
+    math.min(1, true)
 )",
                         0, 2),
         R"(
@@ -6193,9 +6200,94 @@ LOADN R6 2
 LOADK R7 K14
 FASTCALL 34 L4
 GETIMPORT R4 16
-CALL R4 3 -1
-L4: RETURN R0 -1
+CALL R4 3 1
+L4: LOADN R6 1
+FASTCALL2K 31 R6 K3 L5
+LOADK R7 K3
+GETIMPORT R5 18
+CALL R5 2 1
+L5: LOADN R7 1
+FASTCALL2K 29 R7 K3 L6
+LOADK R8 K3
+GETIMPORT R6 20
+CALL R6 2 1
+L6: LOADN R8 1
+FASTCALL2K 32 R8 K3 L7
+LOADK R9 K3
+GETIMPORT R7 22
+CALL R7 2 1
+L7: LOADN R9 1
+FASTCALL2K 33 R9 K3 L8
+LOADK R10 K3
+GETIMPORT R8 24
+CALL R8 2 1
+L8: LOADN R10 1
+FASTCALL2K 19 R10 K3 L9
+LOADK R11 K3
+GETIMPORT R9 26
+CALL R9 2 -1
+L9: RETURN R0 -1
 )");
+}
+
+TEST_CASE("BuiltinFoldingProhibitedCoverage")
+{
+    const char* builtins[] = {
+        "math.abs",
+        "math.acos",
+        "math.asin",
+        "math.atan2",
+        "math.atan",
+        "math.ceil",
+        "math.cosh",
+        "math.cos",
+        "math.deg",
+        "math.exp",
+        "math.floor",
+        "math.fmod",
+        "math.ldexp",
+        "math.log10",
+        "math.log",
+        "math.max",
+        "math.min",
+        "math.pow",
+        "math.rad",
+        "math.sinh",
+        "math.sin",
+        "math.sqrt",
+        "math.tanh",
+        "math.tan",
+        "bit32.arshift",
+        "bit32.band",
+        "bit32.bnot",
+        "bit32.bor",
+        "bit32.bxor",
+        "bit32.btest",
+        "bit32.extract",
+        "bit32.lrotate",
+        "bit32.lshift",
+        "bit32.replace",
+        "bit32.rrotate",
+        "bit32.rshift",
+        "type",
+        "string.byte",
+        "string.len",
+        "typeof",
+        "math.clamp",
+        "math.sign",
+        "math.round",
+    };
+
+    for (const char* func : builtins)
+    {
+        std::string source = "return ";
+        source += func;
+        source += "()";
+
+        std::string bc = compileFunction(source.c_str(), 0, 2);
+
+        CHECK(bc.find("FASTCALL") != std::string::npos);
+    }
 }
 
 TEST_CASE("BuiltinFoldingMultret")

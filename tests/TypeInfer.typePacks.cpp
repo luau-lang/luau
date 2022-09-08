@@ -194,7 +194,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
     TypePackId listOfStrings = arena.addTypePack(TypePackVar{VariadicTypePack{typeChecker.stringType}});
 
     // clang-format off
-    addGlobalBinding(typeChecker, "foo",
+    addGlobalBinding(frontend, "foo",
         arena.addType(
             FunctionTypeVar{
                 listOfNumbers,
@@ -203,7 +203,7 @@ TEST_CASE_FIXTURE(Fixture, "variadic_packs")
         ),
         "@test"
     );
-    addGlobalBinding(typeChecker, "bar",
+    addGlobalBinding(frontend, "bar",
         arena.addType(
             FunctionTypeVar{
                 arena.addTypePack({{typeChecker.numberType}, listOfStrings}),

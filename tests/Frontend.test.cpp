@@ -81,8 +81,8 @@ struct FrontendFixture : BuiltinsFixture
 {
     FrontendFixture()
     {
-        addGlobalBinding(typeChecker, "game", frontend.typeChecker.anyType, "@test");
-        addGlobalBinding(typeChecker, "script", frontend.typeChecker.anyType, "@test");
+        addGlobalBinding(frontend, "game", frontend.typeChecker.anyType, "@test");
+        addGlobalBinding(frontend, "script", frontend.typeChecker.anyType, "@test");
     }
 };
 

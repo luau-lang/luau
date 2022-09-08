@@ -58,7 +58,7 @@ public:
 // within a program are borrowed pointers into this set.
 struct TypeChecker
 {
-    explicit TypeChecker(ModuleResolver* resolver, InternalErrorReporter* iceHandler);
+    explicit TypeChecker(ModuleResolver* resolver, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler);
     TypeChecker(const TypeChecker&) = delete;
     TypeChecker& operator=(const TypeChecker&) = delete;
 
@@ -353,6 +353,7 @@ public:
     ModuleName currentModuleName;
 
     std::function<void(const ModuleName&, const ScopePtr&)> prepareModuleScope;
+    NotNull<SingletonTypes> singletonTypes;
     InternalErrorReporter* iceHandler;
 
     UnifierSharedState unifierState;

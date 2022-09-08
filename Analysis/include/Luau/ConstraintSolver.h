@@ -5,13 +5,15 @@
 #include "Luau/Error.h"
 #include "Luau/Variant.h"
 #include "Luau/Constraint.h"
-#include "Luau/ConstraintSolverLogger.h"
 #include "Luau/TypeVar.h"
+#include "Luau/ToString.h"
 
 #include <vector>
 
 namespace Luau
 {
+
+struct DcrLogger;
 
 // TypeId, TypePackId, or Constraint*. It is impossible to know which, but we
 // never dereference this pointer.
@@ -40,6 +42,7 @@ struct HashInstantiationSignature
 struct ConstraintSolver
 {
     TypeArena* arena;
+    NotNull<SingletonTypes> singletonTypes;
     InternalErrorReporter iceReporter;
     // The entire set of constraints that the solver is trying to resolve.
     std::vector<NotNull<Constraint>> constraints;
@@ -69,10 +72,10 @@ struct ConstraintSolver
     NotNull<ModuleResolver> moduleResolver;
     std::vector<RequireCycle> requireCycles;
 
-    ConstraintSolverLogger logger;
+    DcrLogger* logger;
 
-    explicit ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope, ModuleName moduleName, NotNull<ModuleResolver> moduleResolver,
-        std::vector<RequireCycle> requireCycles);
+    explicit ConstraintSolver(TypeArena* arena, NotNull<SingletonTypes> singletonTypes, NotNull<Scope> rootScope, ModuleName moduleName,
+        NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger);
 
     /**
      * Attempts to dispatch all pending constraints and reach a type solution

@@ -15,13 +15,13 @@ struct NormalizeFixture : Fixture
 
     bool isSubtype(TypeId a, TypeId b)
     {
-        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, ice);
+        return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
     }
 };
 
-void createSomeClasses(TypeChecker& typeChecker)
+void createSomeClasses(Frontend& frontend)
 {
-    auto& arena = typeChecker.globalTypes;
+    auto& arena = frontend.globalTypes;
 
     unfreeze(arena);
 
@@ -32,23 +32,23 @@ void createSomeClasses(TypeChecker& typeChecker)
 
     parentClass->props["virtual_method"] = {makeFunction(arena, parentType, {}, {})};
 
-    addGlobalBinding(typeChecker, "Parent", {parentType});
-    typeChecker.globalScope->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
+    addGlobalBinding(frontend, "Parent", {parentType});
+    frontend.getGlobalScope()->exportedTypeBindings["Parent"] = TypeFun{{}, parentType};
 
     TypeId childType = arena.addType(ClassTypeVar{"Child", {}, parentType, std::nullopt, {}, nullptr, "Test"});
 
     ClassTypeVar* childClass = getMutable<ClassTypeVar>(childType);
     childClass->props["virtual_method"] = {makeFunction(arena, childType, {}, {})};
 
-    addGlobalBinding(typeChecker, "Child", {childType});
-    typeChecker.globalScope->exportedTypeBindings["Child"] = TypeFun{{}, childType};
+    addGlobalBinding(frontend, "Child", {childType});
+    frontend.getGlobalScope()->exportedTypeBindings["Child"] = TypeFun{{}, childType};
 
     TypeId unrelatedType = arena.addType(ClassTypeVar{"Unrelated", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
-    addGlobalBinding(typeChecker, "Unrelated", {unrelatedType});
-    typeChecker.globalScope->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
+    addGlobalBinding(frontend, "Unrelated", {unrelatedType});
+    frontend.getGlobalScope()->exportedTypeBindings["Unrelated"] = TypeFun{{}, unrelatedType};
 
-    for (const auto& [name, ty] : typeChecker.globalScope->exportedTypeBindings)
+    for (const auto& [name, ty] : frontend.getGlobalScope()->exportedTypeBindings)
         persist(ty.type);
 
     freeze(arena);
@@ -508,7 +508,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_table")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "classes")
 {
-    createSomeClasses(typeChecker);
+    createSomeClasses(frontend);
 
     check(""); // Ensure that we have a main Module.
 
@@ -596,7 +596,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_with_overlapping_field_that_has_a_sub
     )");
 
     ModulePtr tempModule{new Module};
-    tempModule->scopes.emplace_back(Location(), std::make_shared<Scope>(getSingletonTypes().anyTypePack));
+    tempModule->scopes.emplace_back(Location(), std::make_shared<Scope>(singletonTypes->anyTypePack));
 
     // HACK: Normalization is an in-place operation.  We need to cheat a little here and unfreeze
     // the arena that the type lives in.
@@ -604,7 +604,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_with_overlapping_field_that_has_a_sub
     unfreeze(mainModule->internalTypes);
 
     TypeId tType = requireType("t");
-    normalize(tType, tempModule, *typeChecker.iceHandler);
+    normalize(tType, tempModule, singletonTypes, *typeChecker.iceHandler);
 
     CHECK_EQ("{| x: number? |}", toString(tType, {true}));
 }
@@ -1085,7 +1085,7 @@ TEST_CASE_FIXTURE(Fixture, "bound_typevars_should_only_be_marked_normal_if_their
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "skip_force_normal_on_external_types")
 {
-    createSomeClasses(typeChecker);
+    createSomeClasses(frontend);
 
     CheckResult result = check(R"(
 export type t0 = { a: Child }

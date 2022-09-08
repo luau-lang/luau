@@ -54,11 +54,11 @@ struct Replacer
 
 } // anonymous namespace
 
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, InternalErrorReporter& ice)
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Unifier u{&arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    Unifier u{&arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
     u.anyIsTop = true;
 
     u.tryUnify(subTy, superTy);
@@ -66,11 +66,11 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, InternalError
     return ok;
 }
 
-bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, InternalErrorReporter& ice)
+bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
-    Unifier u{&arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    Unifier u{&arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
     u.anyIsTop = true;
 
     u.tryUnify(subPack, superPack);
@@ -133,15 +133,17 @@ struct Normalize final : TypeVarVisitor
 {
     using TypeVarVisitor::Set;
 
-    Normalize(TypeArena& arena, NotNull<Scope> scope, InternalErrorReporter& ice)
+    Normalize(TypeArena& arena, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
         : arena(arena)
         , scope(scope)
+        , singletonTypes(singletonTypes)
         , ice(ice)
     {
     }
 
     TypeArena& arena;
     NotNull<Scope> scope;
+    NotNull<SingletonTypes> singletonTypes;
     InternalErrorReporter& ice;
 
     int iterationLimit = 0;
@@ -499,9 +501,9 @@ struct Normalize final : TypeVarVisitor
 
         for (TypeId& part : result)
         {
-            if (isSubtype(ty, part, scope, ice))
+            if (isSubtype(ty, part, scope, singletonTypes, ice))
                 return; // no need to do anything
-            else if (isSubtype(part, ty, scope, ice))
+            else if (isSubtype(part, ty, scope, singletonTypes, ice))
             {
                 part = ty; // replace the less general type by the more general one
                 return;
@@ -553,12 +555,12 @@ struct Normalize final : TypeVarVisitor
             bool merged = false;
             for (TypeId& part : result->parts)
             {
-                if (isSubtype(part, ty, scope, ice))
+                if (isSubtype(part, ty, scope, singletonTypes, ice))
                 {
                     merged = true;
                     break; // no need to do anything
                 }
-                else if (isSubtype(ty, part, scope, ice))
+                else if (isSubtype(ty, part, scope, singletonTypes, ice))
                 {
                     merged = true;
                     part = ty; // replace the less general type by the more general one
@@ -691,13 +693,14 @@ struct Normalize final : TypeVarVisitor
 /**
  * @returns A tuple of TypeId and a success indicator. (true indicates that the normalization completed successfully)
  */
-std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Scope> scope, TypeArena& arena, InternalErrorReporter& ice)
+std::pair<TypeId, bool> normalize(
+    TypeId ty, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     CloneState state;
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(ty, arena, state);
 
-    Normalize n{arena, scope, ice};
+    Normalize n{arena, scope, singletonTypes, ice};
     n.traverse(ty);
 
     return {ty, !n.limitExceeded};
@@ -707,39 +710,40 @@ std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Scope> scope, TypeArena& ar
 // reclaim memory used by wantonly allocated intermediate types here.
 // The main wrinkle here is that we don't want clone() to copy a type if the source and dest
 // arena are the same.
-std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Module> module, InternalErrorReporter& ice)
+std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Module> module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
-    return normalize(ty, NotNull{module->getModuleScope().get()}, module->internalTypes, ice);
+    return normalize(ty, NotNull{module->getModuleScope().get()}, module->internalTypes, singletonTypes, ice);
 }
 
-std::pair<TypeId, bool> normalize(TypeId ty, const ModulePtr& module, InternalErrorReporter& ice)
+std::pair<TypeId, bool> normalize(TypeId ty, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
-    return normalize(ty, NotNull{module.get()}, ice);
+    return normalize(ty, NotNull{module.get()}, singletonTypes, ice);
 }
 
 /**
  * @returns A tuple of TypeId and a success indicator. (true indicates that the normalization completed successfully)
  */
-std::pair<TypePackId, bool> normalize(TypePackId tp, NotNull<Scope> scope, TypeArena& arena, InternalErrorReporter& ice)
+std::pair<TypePackId, bool> normalize(
+    TypePackId tp, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     CloneState state;
     if (FFlag::DebugLuauCopyBeforeNormalizing)
         (void)clone(tp, arena, state);
 
-    Normalize n{arena, scope, ice};
+    Normalize n{arena, scope, singletonTypes, ice};
     n.traverse(tp);
 
     return {tp, !n.limitExceeded};
 }
 
-std::pair<TypePackId, bool> normalize(TypePackId tp, NotNull<Module> module, InternalErrorReporter& ice)
+std::pair<TypePackId, bool> normalize(TypePackId tp, NotNull<Module> module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
-    return normalize(tp, NotNull{module->getModuleScope().get()}, module->internalTypes, ice);
+    return normalize(tp, NotNull{module->getModuleScope().get()}, module->internalTypes, singletonTypes, ice);
 }
 
-std::pair<TypePackId, bool> normalize(TypePackId tp, const ModulePtr& module, InternalErrorReporter& ice)
+std::pair<TypePackId, bool> normalize(TypePackId tp, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
-    return normalize(tp, NotNull{module.get()}, ice);
+    return normalize(tp, NotNull{module.get()}, singletonTypes, ice);
 }
 
 } // namespace Luau
