@@ -289,17 +289,19 @@ enum LuauOpcode
     // the first variable is then copied into index; generator/state are immutable, index isn't visible to user code
     LOP_FORGLOOP,
 
-    // FORGPREP_INEXT/FORGLOOP_INEXT: FORGLOOP with 2 output variables (no AUX encoding), assuming generator is luaB_inext
-    // FORGPREP_INEXT prepares the index variable and jumps to FORGLOOP_INEXT
-    // FORGLOOP_INEXT has identical encoding and semantics to FORGLOOP (except for AUX encoding)
+    // FORGPREP_INEXT: prepare FORGLOOP with 2 output variables (no AUX encoding), assuming generator is luaB_inext, and jump to FORGLOOP
+    // A: target register (see FORGLOOP for register layout)
     LOP_FORGPREP_INEXT,
-    LOP_FORGLOOP_INEXT,
 
-    // FORGPREP_NEXT/FORGLOOP_NEXT: FORGLOOP with 2 output variables (no AUX encoding), assuming generator is luaB_next
-    // FORGPREP_NEXT prepares the index variable and jumps to FORGLOOP_NEXT
-    // FORGLOOP_NEXT has identical encoding and semantics to FORGLOOP (except for AUX encoding)
+    // removed in v3
+    LOP_DEP_FORGLOOP_INEXT,
+
+    // FORGPREP_NEXT: prepare FORGLOOP with 2 output variables (no AUX encoding), assuming generator is luaB_next, and jump to FORGLOOP
+    // A: target register (see FORGLOOP for register layout)
     LOP_FORGPREP_NEXT,
-    LOP_FORGLOOP_NEXT,
+
+    // removed in v3
+    LOP_DEP_FORGLOOP_NEXT,
 
     // GETVARARGS: copy variables into the target register from vararg storage for current function
     // A: target register
@@ -343,12 +345,9 @@ enum LuauOpcode
     // B: source register (for VAL/REF) or upvalue index (for UPVAL/UPREF)
     LOP_CAPTURE,
 
-    // JUMPIFEQK, JUMPIFNOTEQK: jumps to target offset if the comparison with constant is true (or false, for NOT variants)
-    // A: source register 1
-    // D: jump offset (-32768..32767; 0 means "next instruction" aka "don't jump")
-    // AUX: constant table index
-    LOP_JUMPIFEQK,
-    LOP_JUMPIFNOTEQK,
+    // removed in v3
+    LOP_DEP_JUMPIFEQK,
+    LOP_DEP_JUMPIFNOTEQK,
 
     // FASTCALL1: perform a fast call of a built-in function using 1 register argument
     // A: builtin function id (see LuauBuiltinFunction)

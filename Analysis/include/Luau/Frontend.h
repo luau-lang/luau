@@ -174,6 +174,9 @@ private:
     ScopePtr globalScope;
 
 public:
+    SingletonTypes singletonTypes_;
+    const NotNull<SingletonTypes> singletonTypes;
+
     FileResolver* fileResolver;
     FrontendModuleResolver moduleResolver;
     FrontendModuleResolver moduleResolverForAutocomplete;

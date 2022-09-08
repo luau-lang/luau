@@ -19,13 +19,13 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_simple")
         declare foo2: typeof(foo)
     )");
 
-    TypeId globalFooTy = getGlobalBinding(frontend.typeChecker, "foo");
+    TypeId globalFooTy = getGlobalBinding(frontend, "foo");
     CHECK_EQ(toString(globalFooTy), "number");
 
-    TypeId globalBarTy = getGlobalBinding(frontend.typeChecker, "bar");
+    TypeId globalBarTy = getGlobalBinding(frontend, "bar");
     CHECK_EQ(toString(globalBarTy), "(number) -> string");
 
-    TypeId globalFoo2Ty = getGlobalBinding(frontend.typeChecker, "foo2");
+    TypeId globalFoo2Ty = getGlobalBinding(frontend, "foo2");
     CHECK_EQ(toString(globalFoo2Ty), "number");
 
     CheckResult result = check(R"(
@@ -48,20 +48,20 @@ TEST_CASE_FIXTURE(Fixture, "definition_file_loading")
         declare function var(...: any): string
     )");
 
-    TypeId globalFooTy = getGlobalBinding(frontend.typeChecker, "foo");
+    TypeId globalFooTy = getGlobalBinding(frontend, "foo");
     CHECK_EQ(toString(globalFooTy), "number");
 
-    std::optional<TypeFun> globalAsdfTy = frontend.typeChecker.globalScope->lookupType("Asdf");
+    std::optional<TypeFun> globalAsdfTy = frontend.getGlobalScope()->lookupType("Asdf");
     REQUIRE(bool(globalAsdfTy));
     CHECK_EQ(toString(globalAsdfTy->type), "number | string");
 
-    TypeId globalBarTy = getGlobalBinding(frontend.typeChecker, "bar");
+    TypeId globalBarTy = getGlobalBinding(frontend, "bar");
     CHECK_EQ(toString(globalBarTy), "(number) -> string");
 
-    TypeId globalFoo2Ty = getGlobalBinding(frontend.typeChecker, "foo2");
+    TypeId globalFoo2Ty = getGlobalBinding(frontend, "foo2");
     CHECK_EQ(toString(globalFoo2Ty), "number");
 
-    TypeId globalVarTy = getGlobalBinding(frontend.typeChecker, "var");
+    TypeId globalVarTy = getGlobalBinding(frontend, "var");
 
     CHECK_EQ(toString(globalVarTy), "(...any) -> string");
 
@@ -85,7 +85,7 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
     freeze(typeChecker.globalTypes);
 
     REQUIRE(!parseFailResult.success);
-    std::optional<Binding> fooTy = tryGetGlobalBinding(typeChecker, "foo");
+    std::optional<Binding> fooTy = tryGetGlobalBinding(frontend, "foo");
     CHECK(!fooTy.has_value());
 
     LoadDefinitionFileResult checkFailResult = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
@@ -95,7 +95,7 @@ TEST_CASE_FIXTURE(Fixture, "load_definition_file_errors_do_not_pollute_global_sc
         "@test");
 
     REQUIRE(!checkFailResult.success);
-    std::optional<Binding> barTy = tryGetGlobalBinding(typeChecker, "bar");
+    std::optional<Binding> barTy = tryGetGlobalBinding(frontend, "bar");
     CHECK(!barTy.has_value());
 }
 

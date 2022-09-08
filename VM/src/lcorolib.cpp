@@ -5,38 +5,16 @@
 #include "lstate.h"
 #include "lvm.h"
 
-#define CO_RUN 0 // running
-#define CO_SUS 1 // suspended
-#define CO_NOR 2 // 'normal' (it resumed another coroutine)
-#define CO_DEAD 3
-
 #define CO_STATUS_ERROR -1
 #define CO_STATUS_BREAK -2
 
-static const char* const statnames[] = {"running", "suspended", "normal", "dead"};
-
-static int auxstatus(lua_State* L, lua_State* co)
-{
-    if (co == L)
-        return CO_RUN;
-    if (co->status == LUA_YIELD)
-        return CO_SUS;
-    if (co->status == LUA_BREAK)
-        return CO_NOR;
-    if (co->status != 0) // some error occurred
-        return CO_DEAD;
-    if (co->ci != co->base_ci) // does it have frames?
-        return CO_NOR;
-    if (co->top == co->base)
-        return CO_DEAD;
-    return CO_SUS; // initial state
-}
+static const char* const statnames[] = {"running", "suspended", "normal", "dead", "dead"}; // dead appears twice for LUA_COERR and LUA_COFIN
 
 static int costatus(lua_State* L)
 {
     lua_State* co = lua_tothread(L, 1);
     luaL_argexpected(L, co, 1, "thread");
-    lua_pushstring(L, statnames[auxstatus(L, co)]);
+    lua_pushstring(L, statnames[lua_costatus(L, co)]);
     return 1;
 }
 
@@ -45,8 +23,8 @@ static int auxresume(lua_State* L, lua_State* co, int narg)
     // error handling for edge cases
     if (co->status != LUA_YIELD)
     {
-        int status = auxstatus(L, co);
-        if (status != CO_SUS)
+        int status = lua_costatus(L, co);
+        if (status != LUA_COSUS)
         {
             lua_pushfstring(L, "cannot resume %s coroutine", statnames[status]);
             return CO_STATUS_ERROR;
@@ -236,8 +214,8 @@ static int coclose(lua_State* L)
     lua_State* co = lua_tothread(L, 1);
     luaL_argexpected(L, co, 1, "thread");
 
-    int status = auxstatus(L, co);
-    if (status != CO_DEAD && status != CO_SUS)
+    int status = lua_costatus(L, co);
+    if (status != LUA_COFIN && status != LUA_COERR && status != LUA_COSUS)
         luaL_error(L, "cannot close %s coroutine", statnames[status]);
 
     if (co->status == LUA_OK || co->status == LUA_YIELD)

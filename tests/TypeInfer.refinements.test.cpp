@@ -50,7 +50,7 @@ struct RefinementClassFixture : Fixture
             {"Y", Property{typeChecker.numberType}},
             {"Z", Property{typeChecker.numberType}},
         };
-        normalize(vec3, scope, arena, *typeChecker.iceHandler);
+        normalize(vec3, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
@@ -58,21 +58,21 @@ struct RefinementClassFixture : Fixture
         TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
         TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
         getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
-        normalize(isA, scope, arena, *typeChecker.iceHandler);
+        normalize(isA, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         getMutable<ClassTypeVar>(inst)->props = {
             {"Name", Property{typeChecker.stringType}},
             {"IsA", Property{isA}},
         };
-        normalize(inst, scope, arena, *typeChecker.iceHandler);
+        normalize(inst, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        normalize(folder, scope, arena, *typeChecker.iceHandler);
+        normalize(folder, scope, arena, singletonTypes, *typeChecker.iceHandler);
         TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassTypeVar>(part)->props = {
             {"Position", Property{vec3}},
         };
-        normalize(part, scope, arena, *typeChecker.iceHandler);
+        normalize(part, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
         typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};

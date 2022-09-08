@@ -7,8 +7,10 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/ToString.h"
+#include "Luau/DcrLogger.h"
 
 LUAU_FASTINT(LuauCheckRecursionLimit);
+LUAU_FASTFLAG(DebugLuauLogSolverToJson);
 
 #include "Luau/Scope.h"
 
@@ -35,17 +37,20 @@ static std::optional<AstExpr*> matchRequire(const AstExprCall& call)
 }
 
 ConstraintGraphBuilder::ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena,
-    NotNull<ModuleResolver> moduleResolver, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope)
+    NotNull<ModuleResolver> moduleResolver, NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger)
     : moduleName(moduleName)
     , module(module)
-    , singletonTypes(getSingletonTypes())
+    , singletonTypes(singletonTypes)
     , arena(arena)
     , rootScope(nullptr)
     , moduleResolver(moduleResolver)
     , ice(ice)
     , globalScope(globalScope)
+    , logger(logger)
 {
-    LUAU_ASSERT(arena);
+    if (FFlag::DebugLuauLogSolverToJson)
+        LUAU_ASSERT(logger);
+
     LUAU_ASSERT(module);
 }
 
@@ -66,6 +71,7 @@ ScopePtr ConstraintGraphBuilder::childScope(AstNode* node, const ScopePtr& paren
     scopes.emplace_back(node->location, scope);
 
     scope->returnType = parent->returnType;
+    scope->varargPack = parent->varargPack;
 
     parent->children.push_back(NotNull{scope.get()});
     module->astScopes[node] = scope.get();
@@ -282,7 +288,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
             return;
 
         TypeId t = check(scope, expr);
-        addConstraint(scope, expr->location, SubtypeConstraint{t, singletonTypes.numberType});
+        addConstraint(scope, expr->location, SubtypeConstraint{t, singletonTypes->numberType});
     };
 
     checkNumber(for_->from);
@@ -290,7 +296,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
     checkNumber(for_->step);
 
     ScopePtr forScope = childScope(for_, scope);
-    forScope->bindings[for_->var] = Binding{singletonTypes.numberType, for_->var->location};
+    forScope->bindings[for_->var] = Binding{singletonTypes->numberType, for_->var->location};
 
     visit(forScope, for_->body);
 }
@@ -435,7 +441,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     }
     else if (AstExprError* err = function->name->as<AstExprError>())
     {
-        functionType = singletonTypes.errorRecoveryType();
+        functionType = singletonTypes->errorRecoveryType();
     }
 
     LUAU_ASSERT(functionType != nullptr);
@@ -657,12 +663,18 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction
     std::vector<TypeId> genericTys;
     genericTys.reserve(generics.size());
     for (auto& [name, generic] : generics)
+    {
         genericTys.push_back(generic.ty);
+        scope->privateTypeBindings[name] = TypeFun{generic.ty};
+    }
 
     std::vector<TypePackId> genericTps;
     genericTps.reserve(genericPacks.size());
     for (auto& [name, generic] : genericPacks)
+    {
         genericTps.push_back(generic.tp);
+        scope->privateTypePackBindings[name] = generic.tp;
+    }
 
     ScopePtr funScope = scope;
     if (!generics.empty() || !genericPacks.empty())
@@ -710,7 +722,7 @@ TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* exp
     if (recursionCount >= FInt::LuauCheckRecursionLimit)
     {
         reportCodeTooComplex(expr->location);
-        return singletonTypes.errorRecoveryTypePack();
+        return singletonTypes->errorRecoveryTypePack();
     }
 
     TypePackId result = nullptr;
@@ -758,7 +770,7 @@ TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* exp
         if (scope->varargPack)
             result = *scope->varargPack;
         else
-            result = singletonTypes.errorRecoveryTypePack();
+            result = singletonTypes->errorRecoveryTypePack();
     }
     else
     {
@@ -778,7 +790,7 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr)
     if (recursionCount >= FInt::LuauCheckRecursionLimit)
     {
         reportCodeTooComplex(expr->location);
-        return singletonTypes.errorRecoveryType();
+        return singletonTypes->errorRecoveryType();
     }
 
     TypeId result = nullptr;
@@ -786,20 +798,20 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr)
     if (auto group = expr->as<AstExprGroup>())
         result = check(scope, group->expr);
     else if (expr->is<AstExprConstantString>())
-        result = singletonTypes.stringType;
+        result = singletonTypes->stringType;
     else if (expr->is<AstExprConstantNumber>())
-        result = singletonTypes.numberType;
+        result = singletonTypes->numberType;
     else if (expr->is<AstExprConstantBool>())
-        result = singletonTypes.booleanType;
+        result = singletonTypes->booleanType;
     else if (expr->is<AstExprConstantNil>())
-        result = singletonTypes.nilType;
+        result = singletonTypes->nilType;
     else if (auto a = expr->as<AstExprLocal>())
     {
         std::optional<TypeId> ty = scope->lookup(a->local);
         if (ty)
             result = *ty;
         else
-            result = singletonTypes.errorRecoveryType(); // FIXME?  Record an error at this point?
+            result = singletonTypes->errorRecoveryType(); // FIXME?  Record an error at this point?
     }
     else if (auto g = expr->as<AstExprGlobal>())
     {
@@ -812,7 +824,7 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr)
              * global that is not already in-scope is definitely an unknown symbol.
              */
             reportError(g->location, UnknownSymbol{g->name.value});
-            result = singletonTypes.errorRecoveryType(); // FIXME?  Record an error at this point?
+            result = singletonTypes->errorRecoveryType(); // FIXME?  Record an error at this point?
         }
     }
     else if (expr->is<AstExprVarargs>())
@@ -842,7 +854,7 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr)
     else if (auto err = expr->as<AstExprError>())
     {
         // Open question: Should we traverse into this?
-        result = singletonTypes.errorRecoveryType();
+        result = singletonTypes->errorRecoveryType();
     }
     else
     {
@@ -903,7 +915,7 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprUnary* unary)
     }
 
     LUAU_UNREACHABLE();
-    return singletonTypes.errorRecoveryType();
+    return singletonTypes->errorRecoveryType();
 }
 
 TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binary)
@@ -1003,7 +1015,7 @@ TypeId ConstraintGraphBuilder::checkExprTable(const ScopePtr& scope, AstExprTabl
         }
         else
         {
-            TypeId numberType = singletonTypes.numberType;
+            TypeId numberType = singletonTypes->numberType;
             // FIXME?  The location isn't quite right here.  Not sure what is
             // right.
             createIndexer(item.value->location, numberType, itemTy);
@@ -1068,6 +1080,23 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         signatureScope = bodyScope;
     }
 
+    std::optional<TypePackId> varargPack;
+
+    if (fn->vararg)
+    {
+        if (fn->varargAnnotation)
+        {
+            TypePackId annotationType = resolveTypePack(signatureScope, fn->varargAnnotation);
+            varargPack = annotationType;
+        }
+        else
+        {
+            varargPack = arena->freshTypePack(signatureScope.get());
+        }
+
+        signatureScope->varargPack = varargPack;
+    }
+
     if (fn->returnAnnotation)
     {
         TypePackId annotatedRetType = resolveTypePack(signatureScope, *fn->returnAnnotation);
@@ -1092,7 +1121,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
     // TODO: Vararg annotation.
     // TODO: Preserve argument names in the function's type.
 
-    FunctionTypeVar actualFunction{arena->addTypePack(argTypes), returnType};
+    FunctionTypeVar actualFunction{arena->addTypePack(argTypes, varargPack), returnType};
     actualFunction.hasNoGenerics = !hasGenerics;
     actualFunction.generics = std::move(genericTypes);
     actualFunction.genericPacks = std::move(genericTypePacks);
@@ -1175,7 +1204,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         else
         {
             reportError(ty->location, UnknownSymbol{ref->name.value, UnknownSymbol::Context::Type});
-            result = singletonTypes.errorRecoveryType();
+            result = singletonTypes->errorRecoveryType();
         }
     }
     else if (auto tab = ty->as<AstTypeTable>())
@@ -1308,12 +1337,12 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
     }
     else if (ty->is<AstTypeError>())
     {
-        result = singletonTypes.errorRecoveryType();
+        result = singletonTypes->errorRecoveryType();
     }
     else
     {
         LUAU_ASSERT(0);
-        result = singletonTypes.errorRecoveryType();
+        result = singletonTypes->errorRecoveryType();
     }
 
     astResolvedTypes[ty] = result;
@@ -1341,13 +1370,13 @@ TypePackId ConstraintGraphBuilder::resolveTypePack(const ScopePtr& scope, AstTyp
         else
         {
             reportError(tp->location, UnknownSymbol{gen->genericName.value, UnknownSymbol::Context::Type});
-            result = singletonTypes.errorRecoveryTypePack();
+            result = singletonTypes->errorRecoveryTypePack();
         }
     }
     else
     {
         LUAU_ASSERT(0);
-        result = singletonTypes.errorRecoveryTypePack();
+        result = singletonTypes->errorRecoveryTypePack();
     }
 
     astResolvedTypePacks[tp] = result;
@@ -1430,11 +1459,17 @@ TypeId ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location locat
 void ConstraintGraphBuilder::reportError(Location location, TypeErrorData err)
 {
     errors.push_back(TypeError{location, moduleName, std::move(err)});
+
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->captureGenerationError(errors.back());
 }
 
 void ConstraintGraphBuilder::reportCodeTooComplex(Location location)
 {
     errors.push_back(TypeError{location, moduleName, CodeTooComplex{}});
+
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->captureGenerationError(errors.back());
 }
 
 struct GlobalPrepopulator : AstVisitor

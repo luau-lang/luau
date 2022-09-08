@@ -12,6 +12,7 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
+#include "Luau/DcrLogger.h"
 
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"
@@ -137,6 +138,7 @@ struct Fixture
     Frontend frontend;
     InternalErrorReporter ice;
     TypeChecker& typeChecker;
+    NotNull<SingletonTypes> singletonTypes;
 
     std::string decorateWithTypes(const std::string& code);
 
@@ -165,6 +167,7 @@ struct ConstraintGraphBuilderFixture : Fixture
     TypeArena arena;
     ModulePtr mainModule;
     ConstraintGraphBuilder cgb;
+    DcrLogger logger;
 
     ScopedFastFlag forceTheFlag;
 

@@ -11,17 +11,20 @@ LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 namespace Luau
 {
 
-Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
+Anyification::Anyification(TypeArena* arena, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler,
+    TypeId anyType, TypePackId anyTypePack)
     : Substitution(TxnLog::empty(), arena)
     , scope(scope)
+    , singletonTypes(singletonTypes)
     , iceHandler(iceHandler)
     , anyType(anyType)
     , anyTypePack(anyTypePack)
 {
 }
 
-Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, InternalErrorReporter* iceHandler, TypeId anyType, TypePackId anyTypePack)
-    : Anyification(arena, NotNull{scope.get()}, iceHandler, anyType, anyTypePack)
+Anyification::Anyification(TypeArena* arena, const ScopePtr& scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler,
+    TypeId anyType, TypePackId anyTypePack)
+    : Anyification(arena, NotNull{scope.get()}, singletonTypes, iceHandler, anyType, anyTypePack)
 {
 }
 
@@ -71,7 +74,7 @@ TypeId Anyification::clean(TypeId ty)
         for (TypeId& ty : copy)
             ty = replace(ty);
         TypeId res = copy.size() == 1 ? copy[0] : addType(UnionTypeVar{std::move(copy)});
-        auto [t, ok] = normalize(res, scope, *arena, *iceHandler);
+        auto [t, ok] = normalize(res, scope, *arena, singletonTypes, *iceHandler);
         if (!ok)
             normalizationTooComplex = true;
         return t;

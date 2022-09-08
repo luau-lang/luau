@@ -9,6 +9,7 @@
 #include "Luau/Quantify.h"
 #include "Luau/ToString.h"
 #include "Luau/Unifier.h"
+#include "Luau/DcrLogger.h"
 #include "Luau/VisitTypeVar.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
@@ -50,8 +51,8 @@ static void dumpConstraints(NotNull<Scope> scope, ToStringOptions& opts)
         dumpConstraints(child, opts);
 }
 
-static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments(
-    const TypeFun& fn, const std::vector<TypeId>& rawTypeArguments, const std::vector<TypePackId>& rawPackArguments, TypeArena* arena)
+static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments(TypeArena* arena, NotNull<SingletonTypes> singletonTypes,
+    const TypeFun& fn, const std::vector<TypeId>& rawTypeArguments, const std::vector<TypePackId>& rawPackArguments)
 {
     std::vector<TypeId> saturatedTypeArguments;
     std::vector<TypeId> extraTypes;
@@ -131,7 +132,7 @@ static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments
             if (!defaultTy)
                 break;
 
-            TypeId instantiatedDefault = atf.substitute(defaultTy).value_or(getSingletonTypes().errorRecoveryType());
+            TypeId instantiatedDefault = atf.substitute(defaultTy).value_or(singletonTypes->errorRecoveryType());
             atf.typeArguments[fn.typeParams[i].ty] = instantiatedDefault;
             saturatedTypeArguments.push_back(instantiatedDefault);
         }
@@ -149,7 +150,7 @@ static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments
             if (!defaultTp)
                 break;
 
-            TypePackId instantiatedDefault = atf.substitute(defaultTp).value_or(getSingletonTypes().errorRecoveryTypePack());
+            TypePackId instantiatedDefault = atf.substitute(defaultTp).value_or(singletonTypes->errorRecoveryTypePack());
             atf.typePackArguments[fn.typePackParams[i].tp] = instantiatedDefault;
             saturatedPackArguments.push_back(instantiatedDefault);
         }
@@ -167,12 +168,12 @@ static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments
     // even if they're missing, so we use the error type as a filler.
     for (size_t i = saturatedTypeArguments.size(); i < typesRequired; ++i)
     {
-        saturatedTypeArguments.push_back(getSingletonTypes().errorRecoveryType());
+        saturatedTypeArguments.push_back(singletonTypes->errorRecoveryType());
     }
 
     for (size_t i = saturatedPackArguments.size(); i < packsRequired; ++i)
     {
-        saturatedPackArguments.push_back(getSingletonTypes().errorRecoveryTypePack());
+        saturatedPackArguments.push_back(singletonTypes->errorRecoveryTypePack());
     }
 
     // At this point, these two conditions should be true. If they aren't we
@@ -242,14 +243,16 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
     }
 }
 
-ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope, ModuleName moduleName, NotNull<ModuleResolver> moduleResolver,
-    std::vector<RequireCycle> requireCycles)
+ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<SingletonTypes> singletonTypes, NotNull<Scope> rootScope, ModuleName moduleName,
+    NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
     : arena(arena)
+    , singletonTypes(singletonTypes)
     , constraints(collectConstraints(rootScope))
     , rootScope(rootScope)
     , currentModuleName(std::move(moduleName))
     , moduleResolver(moduleResolver)
     , requireCycles(requireCycles)
+    , logger(logger)
 {
     opts.exhaustive = true;
 
@@ -262,6 +265,9 @@ ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<Scope> rootScope, M
             block(dep, c);
         }
     }
+
+    if (FFlag::DebugLuauLogSolverToJson)
+        LUAU_ASSERT(logger);
 }
 
 void ConstraintSolver::run()
@@ -277,7 +283,7 @@ void ConstraintSolver::run()
 
     if (FFlag::DebugLuauLogSolverToJson)
     {
-        logger.captureBoundarySnapshot(rootScope, unsolvedConstraints);
+        logger->captureInitialSolverState(rootScope, unsolvedConstraints);
     }
 
     auto runSolverPass = [&](bool force) {
@@ -294,10 +300,11 @@ void ConstraintSolver::run()
             }
 
             std::string saveMe = FFlag::DebugLuauLogSolver ? toString(*c, opts) : std::string{};
+            StepSnapshot snapshot;
 
             if (FFlag::DebugLuauLogSolverToJson)
             {
-                logger.prepareStepSnapshot(rootScope, c, unsolvedConstraints, force);
+                snapshot = logger->prepareStepSnapshot(rootScope, c, force, unsolvedConstraints);
             }
 
             bool success = tryDispatch(c, force);
@@ -311,7 +318,7 @@ void ConstraintSolver::run()
 
                 if (FFlag::DebugLuauLogSolverToJson)
                 {
-                    logger.commitPreparedStepSnapshot();
+                    logger->commitStepSnapshot(snapshot);
                 }
 
                 if (FFlag::DebugLuauLogSolver)
@@ -347,8 +354,7 @@ void ConstraintSolver::run()
 
     if (FFlag::DebugLuauLogSolverToJson)
     {
-        logger.captureBoundarySnapshot(rootScope, unsolvedConstraints);
-        printf("Logger output:\n%s\n", logger.compileOutput().c_str());
+        logger->captureFinalSolverState(rootScope, unsolvedConstraints);
     }
 }
 
@@ -516,7 +522,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
 
     if (isBlocked(leftType))
     {
-        asMutable(resultType)->ty.emplace<BoundTypeVar>(getSingletonTypes().errorRecoveryType());
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(singletonTypes->errorRecoveryType());
         // reportError(constraint->location, CannotInferBinaryOperation{c.op, std::nullopt, CannotInferBinaryOperation::Operation});
         return true;
     }
@@ -571,7 +577,7 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
     if (0 == iteratorTypes.size())
     {
         Anyification anyify{
-            arena, constraint->scope, &iceReporter, getSingletonTypes().errorRecoveryType(), getSingletonTypes().errorRecoveryTypePack()};
+            arena, constraint->scope, singletonTypes, &iceReporter, singletonTypes->errorRecoveryType(), singletonTypes->errorRecoveryTypePack()};
         std::optional<TypePackId> anyified = anyify.substitute(c.variables);
         LUAU_ASSERT(anyified);
         unify(*anyified, c.variables, constraint->scope);
@@ -585,11 +591,11 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
 
     if (get<FunctionTypeVar>(nextTy))
     {
-        TypeId tableTy = getSingletonTypes().nilType;
+        TypeId tableTy = singletonTypes->nilType;
         if (iteratorTypes.size() >= 2)
             tableTy = iteratorTypes[1];
 
-        TypeId firstIndexTy = getSingletonTypes().nilType;
+        TypeId firstIndexTy = singletonTypes->nilType;
         if (iteratorTypes.size() >= 3)
             firstIndexTy = iteratorTypes[2];
 
@@ -644,7 +650,7 @@ struct InfiniteTypeFinder : TypeVarOnceVisitor
         if (!tf.has_value())
             return true;
 
-        auto [typeArguments, packArguments] = saturateArguments(*tf, petv.typeArguments, petv.packArguments, solver->arena);
+        auto [typeArguments, packArguments] = saturateArguments(solver->arena, solver->singletonTypes, *tf, petv.typeArguments, petv.packArguments);
 
         if (follow(tf->type) == follow(signature.fn.type) && (signature.arguments != typeArguments || signature.packArguments != packArguments))
         {
@@ -698,7 +704,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (!tf.has_value())
     {
         reportError(UnknownSymbol{petv->name.value, UnknownSymbol::Context::Type}, constraint->location);
-        bindResult(getSingletonTypes().errorRecoveryType());
+        bindResult(singletonTypes->errorRecoveryType());
         return true;
     }
 
@@ -710,7 +716,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         return true;
     }
 
-    auto [typeArguments, packArguments] = saturateArguments(*tf, petv->typeArguments, petv->packArguments, arena);
+    auto [typeArguments, packArguments] = saturateArguments(arena, singletonTypes, *tf, petv->typeArguments, petv->packArguments);
 
     bool sameTypes = std::equal(typeArguments.begin(), typeArguments.end(), tf->typeParams.begin(), tf->typeParams.end(), [](auto&& itp, auto&& p) {
         return itp == p.ty;
@@ -757,7 +763,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (itf.foundInfiniteType)
     {
         // TODO (CLI-56761): Report an error.
-        bindResult(getSingletonTypes().errorRecoveryType());
+        bindResult(singletonTypes->errorRecoveryType());
         return true;
     }
 
@@ -780,7 +786,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (!maybeInstantiated.has_value())
     {
         // TODO (CLI-56761): Report an error.
-        bindResult(getSingletonTypes().errorRecoveryType());
+        bindResult(singletonTypes->errorRecoveryType());
         return true;
     }
 
@@ -894,7 +900,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         return block_(iteratorTy);
 
     auto anyify = [&](auto ty) {
-        Anyification anyify{arena, constraint->scope, &iceReporter, getSingletonTypes().anyType, getSingletonTypes().anyTypePack};
+        Anyification anyify{arena, constraint->scope, singletonTypes, &iceReporter, singletonTypes->anyType, singletonTypes->anyTypePack};
         std::optional anyified = anyify.substitute(ty);
         if (!anyified)
             reportError(CodeTooComplex{}, constraint->location);
@@ -904,7 +910,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
 
     auto errorify = [&](auto ty) {
         Anyification anyify{
-            arena, constraint->scope, &iceReporter, getSingletonTypes().errorRecoveryType(), getSingletonTypes().errorRecoveryTypePack()};
+            arena, constraint->scope, singletonTypes, &iceReporter, singletonTypes->errorRecoveryType(), singletonTypes->errorRecoveryTypePack()};
         std::optional errorified = anyify.substitute(ty);
         if (!errorified)
             reportError(CodeTooComplex{}, constraint->location);
@@ -973,7 +979,7 @@ bool ConstraintSolver::tryDispatchIterableFunction(
                                                   : firstIndexTy;
 
     // nextTy : (tableTy, indexTy?) -> (indexTy, valueTailTy...)
-    const TypePackId nextArgPack = arena->addTypePack({tableTy, arena->addType(UnionTypeVar{{firstIndex, getSingletonTypes().nilType}})});
+    const TypePackId nextArgPack = arena->addTypePack({tableTy, arena->addType(UnionTypeVar{{firstIndex, singletonTypes->nilType}})});
     const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
     const TypePackId nextRetPack = arena->addTypePack(TypePack{{firstIndex}, valueTailTy});
 
@@ -995,23 +1001,35 @@ void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constrai
 
 void ConstraintSolver::block(NotNull<const Constraint> target, NotNull<const Constraint> constraint)
 {
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->pushBlock(constraint, target);
+
     if (FFlag::DebugLuauLogSolver)
         printf("block Constraint %s on\t%s\n", toString(*target, opts).c_str(), toString(*constraint, opts).c_str());
+
     block_(target, constraint);
 }
 
 bool ConstraintSolver::block(TypeId target, NotNull<const Constraint> constraint)
 {
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->pushBlock(constraint, target);
+
     if (FFlag::DebugLuauLogSolver)
         printf("block TypeId %s on\t%s\n", toString(target, opts).c_str(), toString(*constraint, opts).c_str());
+
     block_(target, constraint);
     return false;
 }
 
 bool ConstraintSolver::block(TypePackId target, NotNull<const Constraint> constraint)
 {
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->pushBlock(constraint, target);
+
     if (FFlag::DebugLuauLogSolver)
         printf("block TypeId %s on\t%s\n", toString(target, opts).c_str(), toString(*constraint, opts).c_str());
+
     block_(target, constraint);
     return false;
 }
@@ -1042,16 +1060,25 @@ void ConstraintSolver::unblock_(BlockedConstraintId progressed)
 
 void ConstraintSolver::unblock(NotNull<const Constraint> progressed)
 {
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->popBlock(progressed);
+
     return unblock_(progressed);
 }
 
 void ConstraintSolver::unblock(TypeId progressed)
 {
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->popBlock(progressed);
+
     return unblock_(progressed);
 }
 
 void ConstraintSolver::unblock(TypePackId progressed)
 {
+    if (FFlag::DebugLuauLogSolverToJson)
+        logger->popBlock(progressed);
+
     return unblock_(progressed);
 }
 
@@ -1086,13 +1113,13 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
 void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> scope)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    Unifier u{arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
 
     u.tryUnify(subType, superType);
 
     if (!u.errors.empty())
     {
-        TypeId errorType = getSingletonTypes().errorRecoveryType();
+        TypeId errorType = singletonTypes->errorRecoveryType();
         u.tryUnify(subType, errorType);
         u.tryUnify(superType, errorType);
     }
@@ -1108,7 +1135,7 @@ void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> sc
 void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    Unifier u{arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
 
     u.tryUnify(subPack, superPack);
 
@@ -1133,7 +1160,7 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
     if (info.name.empty())
     {
         reportError(UnknownRequire{}, location);
-        return getSingletonTypes().errorRecoveryType();
+        return singletonTypes->errorRecoveryType();
     }
 
     std::string humanReadableName = moduleResolver->getHumanReadableModuleName(info.name);
@@ -1141,7 +1168,7 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
     for (const auto& [location, path] : requireCycles)
     {
         if (!path.empty() && path.front() == humanReadableName)
-            return getSingletonTypes().anyType;
+            return singletonTypes->anyType;
     }
 
     ModulePtr module = moduleResolver->getModule(info.name);
@@ -1150,24 +1177,24 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
         if (!moduleResolver->moduleExists(info.name) && !info.optional)
             reportError(UnknownRequire{humanReadableName}, location);
 
-        return getSingletonTypes().errorRecoveryType();
+        return singletonTypes->errorRecoveryType();
     }
 
     if (module->type != SourceCode::Type::Module)
     {
         reportError(IllegalRequire{humanReadableName, "Module is not a ModuleScript. It cannot be required."}, location);
-        return getSingletonTypes().errorRecoveryType();
+        return singletonTypes->errorRecoveryType();
     }
 
     TypePackId modulePack = module->getModuleScope()->returnType;
     if (get<Unifiable::Error>(modulePack))
-        return getSingletonTypes().errorRecoveryType();
+        return singletonTypes->errorRecoveryType();
 
     std::optional<TypeId> moduleType = first(modulePack);
     if (!moduleType)
     {
         reportError(IllegalRequire{humanReadableName, "Module does not return exactly 1 value. It cannot be required."}, location);
-        return getSingletonTypes().errorRecoveryType();
+        return singletonTypes->errorRecoveryType();
     }
 
     return *moduleType;

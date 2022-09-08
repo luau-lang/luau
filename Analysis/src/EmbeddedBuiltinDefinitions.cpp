@@ -187,13 +187,9 @@ declare utf8: {
     char: (...number) -> string,
     charpattern: string,
     codes: (string) -> ((string, number) -> (number, number), string, number),
-    -- FIXME
-    codepoint: (string, number?, number?) -> (number, ...number),
+    codepoint: (string, number?, number?) -> ...number,
     len: (string, number?, number?) -> (number?, number?),
     offset: (string, number?, number?) -> number,
-    nfdnormalize: (string) -> string,
-    nfcnormalize: (string) -> string,
-    graphemes: (string, number?, number?) -> (() -> (number, number)),
 }
 
 -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.

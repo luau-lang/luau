@@ -248,21 +248,22 @@ size_t HashBoolNamePair::operator()(const std::pair<bool, Name>& pair) const
     return std::hash<bool>()(pair.first) ^ std::hash<Name>()(pair.second);
 }
 
-TypeChecker::TypeChecker(ModuleResolver* resolver, InternalErrorReporter* iceHandler)
+TypeChecker::TypeChecker(ModuleResolver* resolver, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter* iceHandler)
     : resolver(resolver)
+    , singletonTypes(singletonTypes)
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
-    , nilType(getSingletonTypes().nilType)
-    , numberType(getSingletonTypes().numberType)
-    , stringType(getSingletonTypes().stringType)
-    , booleanType(getSingletonTypes().booleanType)
-    , threadType(getSingletonTypes().threadType)
-    , anyType(getSingletonTypes().anyType)
-    , unknownType(getSingletonTypes().unknownType)
-    , neverType(getSingletonTypes().neverType)
-    , anyTypePack(getSingletonTypes().anyTypePack)
-    , neverTypePack(getSingletonTypes().neverTypePack)
-    , uninhabitableTypePack(getSingletonTypes().uninhabitableTypePack)
+    , nilType(singletonTypes->nilType)
+    , numberType(singletonTypes->numberType)
+    , stringType(singletonTypes->stringType)
+    , booleanType(singletonTypes->booleanType)
+    , threadType(singletonTypes->threadType)
+    , anyType(singletonTypes->anyType)
+    , unknownType(singletonTypes->unknownType)
+    , neverType(singletonTypes->neverType)
+    , anyTypePack(singletonTypes->anyTypePack)
+    , neverTypePack(singletonTypes->neverTypePack)
+    , uninhabitableTypePack(singletonTypes->uninhabitableTypePack)
     , duplicateTypeAliases{{false, {}}}
 {
     globalScope = std::make_shared<Scope>(globalTypes.addTypePack(TypePackVar{FreeTypePack{TypeLevel{}}}));
@@ -357,7 +358,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
 
     prepareErrorsForDisplay(currentModule->errors);
 
-    currentModule->clonePublicInterface(*iceHandler);
+    currentModule->clonePublicInterface(singletonTypes, *iceHandler);
 
     // Clear unifier cache since it's keyed off internal types that get deallocated
     // This avoids fake cross-module cache hits and keeps cache size at bay when typechecking large module graphs.
@@ -1606,7 +1607,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatTypeAlias& typealias
 
         if (FFlag::LuauLowerBoundsCalculation)
         {
-            auto [t, ok] = normalize(bindingType, currentModule, *iceHandler);
+            auto [t, ok] = normalize(bindingType, currentModule, singletonTypes, *iceHandler);
             bindingType = t;
             if (!ok)
                 reportError(typealias.location, NormalizationTooComplex{});
@@ -1923,7 +1924,7 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findTablePropertyRespectingMeta(errors, lhsType, name, location);
+    auto result = Luau::findTablePropertyRespectingMeta(singletonTypes, errors, lhsType, name, location);
     if (addErrors)
         reportErrors(errors);
     return result;
@@ -1932,7 +1933,7 @@ std::optional<TypeId> TypeChecker::findTablePropertyRespectingMeta(TypeId lhsTyp
 std::optional<TypeId> TypeChecker::findMetatableEntry(TypeId type, std::string entry, const Location& location, bool addErrors)
 {
     ErrorVec errors;
-    auto result = Luau::findMetatableEntry(errors, type, entry, location);
+    auto result = Luau::findMetatableEntry(singletonTypes, errors, type, entry, location);
     if (addErrors)
         reportErrors(errors);
     return result;
@@ -2034,8 +2035,8 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
 
         if (FFlag::LuauLowerBoundsCalculation)
         {
-            auto [t, ok] = normalize(addType(UnionTypeVar{std::move(goodOptions)}), currentModule,
-                *iceHandler); // FIXME Inefficient.  We craft a UnionTypeVar and immediately throw it away.
+            // FIXME Inefficient.  We craft a UnionTypeVar and immediately throw it away.
+            auto [t, ok] = normalize(addType(UnionTypeVar{std::move(goodOptions)}), currentModule, singletonTypes, *iceHandler);
 
             if (!ok)
                 reportError(location, NormalizationTooComplex{});
@@ -2642,8 +2643,8 @@ TypeId TypeChecker::checkRelationalOperation(
 
         std::string metamethodName = opToMetaTableEntry(expr.op);
 
-        std::optional<TypeId> leftMetatable = isString(lhsType) ? std::nullopt : getMetatable(follow(lhsType));
-        std::optional<TypeId> rightMetatable = isString(rhsType) ? std::nullopt : getMetatable(follow(rhsType));
+        std::optional<TypeId> leftMetatable = isString(lhsType) ? std::nullopt : getMetatable(follow(lhsType), singletonTypes);
+        std::optional<TypeId> rightMetatable = isString(rhsType) ? std::nullopt : getMetatable(follow(rhsType), singletonTypes);
 
         if (leftMetatable != rightMetatable)
         {
@@ -2654,7 +2655,7 @@ TypeId TypeChecker::checkRelationalOperation(
                 {
                     for (TypeId leftOption : utv)
                     {
-                        if (getMetatable(follow(leftOption)) == rightMetatable)
+                        if (getMetatable(follow(leftOption), singletonTypes) == rightMetatable)
                         {
                             matches = true;
                             break;
@@ -2668,7 +2669,7 @@ TypeId TypeChecker::checkRelationalOperation(
                     {
                         for (TypeId rightOption : utv)
                         {
-                            if (getMetatable(follow(rightOption)) == leftMetatable)
+                            if (getMetatable(follow(rightOption), singletonTypes) == leftMetatable)
                             {
                                 matches = true;
                                 break;
@@ -4113,7 +4114,7 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
             std::vector<TypeId> adjustedArgTypes;
             auto it = begin(argPack);
             auto endIt = end(argPack);
-            Widen widen{&currentModule->internalTypes};
+            Widen widen{&currentModule->internalTypes, singletonTypes};
             for (; it != endIt; ++it)
             {
                 adjustedArgTypes.push_back(addType(ConstrainedTypeVar{level, {widen(*it)}}));
@@ -4649,7 +4650,7 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
 
         if (FFlag::LuauLowerBoundsCalculation)
         {
-            auto [t, ok] = Luau::normalize(ty, currentModule, *iceHandler);
+            auto [t, ok] = Luau::normalize(ty, currentModule, singletonTypes, *iceHandler);
             if (!ok)
                 reportError(location, NormalizationTooComplex{});
             return t;
@@ -4664,7 +4665,7 @@ TypeId TypeChecker::quantify(const ScopePtr& scope, TypeId ty, Location location
 
         if (FFlag::LuauLowerBoundsCalculation && ftv)
         {
-            auto [t, ok] = Luau::normalize(ty, currentModule, *iceHandler);
+            auto [t, ok] = Luau::normalize(ty, currentModule, singletonTypes, *iceHandler);
             if (!ok)
                 reportError(location, NormalizationTooComplex{});
             return t;
@@ -4701,13 +4702,13 @@ TypeId TypeChecker::anyify(const ScopePtr& scope, TypeId ty, Location location)
 {
     if (FFlag::LuauLowerBoundsCalculation)
     {
-        auto [t, ok] = normalize(ty, currentModule, *iceHandler);
+        auto [t, ok] = normalize(ty, currentModule, singletonTypes, *iceHandler);
         if (!ok)
             reportError(location, NormalizationTooComplex{});
         ty = t;
     }
 
-    Anyification anyification{&currentModule->internalTypes, scope, iceHandler, anyType, anyTypePack};
+    Anyification anyification{&currentModule->internalTypes, scope, singletonTypes, iceHandler, anyType, anyTypePack};
     std::optional<TypeId> any = anyification.substitute(ty);
     if (anyification.normalizationTooComplex)
         reportError(location, NormalizationTooComplex{});
@@ -4724,13 +4725,13 @@ TypePackId TypeChecker::anyify(const ScopePtr& scope, TypePackId ty, Location lo
 {
     if (FFlag::LuauLowerBoundsCalculation)
     {
-        auto [t, ok] = normalize(ty, currentModule, *iceHandler);
+        auto [t, ok] = normalize(ty, currentModule, singletonTypes, *iceHandler);
         if (!ok)
             reportError(location, NormalizationTooComplex{});
         ty = t;
     }
 
-    Anyification anyification{&currentModule->internalTypes, scope, iceHandler, anyType, anyTypePack};
+    Anyification anyification{&currentModule->internalTypes, scope, singletonTypes, iceHandler, anyType, anyTypePack};
     std::optional<TypePackId> any = anyification.substitute(ty);
     if (any.has_value())
         return *any;
@@ -4868,7 +4869,8 @@ void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
 
 Unifier TypeChecker::mkUnifier(const ScopePtr& scope, const Location& location)
 {
-    return Unifier{&currentModule->internalTypes, currentModule->mode, NotNull{scope.get()}, location, Variance::Covariant, unifierState};
+    return Unifier{
+        &currentModule->internalTypes, singletonTypes, currentModule->mode, NotNull{scope.get()}, location, Variance::Covariant, unifierState};
 }
 
 TypeId TypeChecker::freshType(const ScopePtr& scope)
@@ -4883,7 +4885,7 @@ TypeId TypeChecker::freshType(TypeLevel level)
 
 TypeId TypeChecker::singletonType(bool value)
 {
-    return value ? getSingletonTypes().trueType : getSingletonTypes().falseType;
+    return value ? singletonTypes->trueType : singletonTypes->falseType;
 }
 
 TypeId TypeChecker::singletonType(std::string value)
@@ -4894,22 +4896,22 @@ TypeId TypeChecker::singletonType(std::string value)
 
 TypeId TypeChecker::errorRecoveryType(const ScopePtr& scope)
 {
-    return getSingletonTypes().errorRecoveryType();
+    return singletonTypes->errorRecoveryType();
 }
 
 TypeId TypeChecker::errorRecoveryType(TypeId guess)
 {
-    return getSingletonTypes().errorRecoveryType(guess);
+    return singletonTypes->errorRecoveryType(guess);
 }
 
 TypePackId TypeChecker::errorRecoveryTypePack(const ScopePtr& scope)
 {
-    return getSingletonTypes().errorRecoveryTypePack();
+    return singletonTypes->errorRecoveryTypePack();
 }
 
 TypePackId TypeChecker::errorRecoveryTypePack(TypePackId guess)
 {
-    return getSingletonTypes().errorRecoveryTypePack(guess);
+    return singletonTypes->errorRecoveryTypePack(guess);
 }
 
 TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense)
@@ -5836,48 +5838,52 @@ void TypeChecker::resolve(const TypeGuardPredicate& typeguardP, RefinementMap& r
         return;
     }
 
-    using ConditionFunc = bool(TypeId);
-    using SenseToTypeIdPredicate = std::function<TypeIdPredicate(bool)>;
-    auto mkFilter = [](ConditionFunc f, std::optional<TypeId> other = std::nullopt) -> SenseToTypeIdPredicate {
-        return [f, other](bool sense) -> TypeIdPredicate {
-            return [f, other, sense](TypeId ty) -> std::optional<TypeId> {
-                if (FFlag::LuauUnknownAndNeverType && sense && get<UnknownTypeVar>(ty))
-                    return other.value_or(ty);
+    auto refine = [this, &lvalue = typeguardP.lvalue, &refis, &scope, sense](bool(f)(TypeId), std::optional<TypeId> mapsTo = std::nullopt) {
+        TypeIdPredicate predicate = [f, mapsTo, sense](TypeId ty) -> std::optional<TypeId> {
+            if (FFlag::LuauUnknownAndNeverType && sense && get<UnknownTypeVar>(ty))
+                return mapsTo.value_or(ty);
 
-                if (f(ty) == sense)
-                    return ty;
+            if (f(ty) == sense)
+                return ty;
 
-                if (isUndecidable(ty))
-                    return other.value_or(ty);
+            if (isUndecidable(ty))
+                return mapsTo.value_or(ty);
 
-                return std::nullopt;
-            };
+            return std::nullopt;
         };
+
+        refineLValue(lvalue, refis, scope, predicate);
     };
 
     // Note: "vector" never happens here at this point, so we don't have to write something for it.
-    // clang-format off
-    static const std::unordered_map<std::string, SenseToTypeIdPredicate> primitives{
-        // Trivial primitives.
-        {"nil", mkFilter(isNil, nilType)}, // This can still happen when sense is false!
-        {"string", mkFilter(isString, stringType)},
-        {"number", mkFilter(isNumber, numberType)},
-        {"boolean", mkFilter(isBoolean, booleanType)},
-        {"thread", mkFilter(isThread, threadType)},
-
-        // Non-trivial primitives.
-        {"table", mkFilter([](TypeId ty) -> bool { return isTableIntersection(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty); })},
-        {"function", mkFilter([](TypeId ty) -> bool { return isOverloadedFunction(ty) || get<FunctionTypeVar>(ty); })},
-
-        // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.
-        {"userdata", mkFilter([](TypeId ty) -> bool { return get<ClassTypeVar>(ty); })},
-    };
-    // clang-format on
-
-    if (auto it = primitives.find(typeguardP.kind); it != primitives.end())
+    if (typeguardP.kind == "nil")
+        return refine(isNil, nilType); // This can still happen when sense is false!
+    else if (typeguardP.kind == "string")
+        return refine(isString, stringType);
+    else if (typeguardP.kind == "number")
+        return refine(isNumber, numberType);
+    else if (typeguardP.kind == "boolean")
+        return refine(isBoolean, booleanType);
+    else if (typeguardP.kind == "thread")
+        return refine(isThread, threadType);
+    else if (typeguardP.kind == "table")
     {
-        refineLValue(typeguardP.lvalue, refis, scope, it->second(sense));
-        return;
+        return refine([](TypeId ty) -> bool {
+            return isTableIntersection(ty) || get<TableTypeVar>(ty) || get<MetatableTypeVar>(ty);
+        });
+    }
+    else if (typeguardP.kind == "function")
+    {
+        return refine([](TypeId ty) -> bool {
+            return isOverloadedFunction(ty) || get<FunctionTypeVar>(ty);
+        });
+    }
+    else if (typeguardP.kind == "userdata")
+    {
+        // For now, we don't really care about being accurate with userdata if the typeguard was using typeof.
+        return refine([](TypeId ty) -> bool {
+            return get<ClassTypeVar>(ty);
+        });
     }
 
     if (!typeguardP.isTypeof)

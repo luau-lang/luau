@@ -92,10 +92,12 @@ struct ForceNormal : TypeVarOnceVisitor
 
 struct ClonePublicInterface : Substitution
 {
+    NotNull<SingletonTypes> singletonTypes;
     NotNull<Module> module;
 
-    ClonePublicInterface(const TxnLog* log, Module* module)
+    ClonePublicInterface(const TxnLog* log, NotNull<SingletonTypes> singletonTypes, Module* module)
         : Substitution(log, &module->interfaceTypes)
+        , singletonTypes(singletonTypes)
         , module(module)
     {
         LUAU_ASSERT(module);
@@ -147,7 +149,7 @@ struct ClonePublicInterface : Substitution
         else
         {
             module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
-            return getSingletonTypes().errorRecoveryType();
+            return singletonTypes->errorRecoveryType();
         }
     }
 
@@ -163,7 +165,7 @@ struct ClonePublicInterface : Substitution
         else
         {
             module->errors.push_back(TypeError{module->scopes[0].first, UnificationTooComplex{}});
-            return getSingletonTypes().errorRecoveryTypePack();
+            return singletonTypes->errorRecoveryTypePack();
         }
     }
 
@@ -208,7 +210,7 @@ Module::~Module()
     unfreeze(internalTypes);
 }
 
-void Module::clonePublicInterface(InternalErrorReporter& ice)
+void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     LUAU_ASSERT(interfaceTypes.typeVars.empty());
     LUAU_ASSERT(interfaceTypes.typePacks.empty());
@@ -222,7 +224,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
     std::unordered_map<Name, TypeFun>* exportedTypeBindings = &moduleScope->exportedTypeBindings;
 
     TxnLog log;
-    ClonePublicInterface clonePublicInterface{&log, this};
+    ClonePublicInterface clonePublicInterface{&log, singletonTypes, this};
 
     if (FFlag::LuauClonePublicInterfaceLess)
         returnType = clonePublicInterface.cloneTypePack(returnType);
@@ -243,12 +245,12 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
     if (FFlag::LuauLowerBoundsCalculation)
     {
-        normalize(returnType, NotNull{this}, ice);
+        normalize(returnType, NotNull{this}, singletonTypes, ice);
         if (FFlag::LuauForceExportSurfacesToBeNormal)
             forceNormal.traverse(returnType);
         if (varargPack)
         {
-            normalize(*varargPack, NotNull{this}, ice);
+            normalize(*varargPack, NotNull{this}, singletonTypes, ice);
             if (FFlag::LuauForceExportSurfacesToBeNormal)
                 forceNormal.traverse(*varargPack);
         }
@@ -264,7 +266,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
                 tf = clone(tf, interfaceTypes, cloneState);
             if (FFlag::LuauLowerBoundsCalculation)
             {
-                normalize(tf.type, NotNull{this}, ice);
+                normalize(tf.type, NotNull{this}, singletonTypes, ice);
 
                 // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
                 // won't be marked normal.  If the types aren't normal by now, they never will be.
@@ -275,7 +277,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
 
                     if (param.defaultValue)
                     {
-                        normalize(*param.defaultValue, NotNull{this}, ice);
+                        normalize(*param.defaultValue, NotNull{this}, singletonTypes, ice);
                         forceNormal.traverse(*param.defaultValue);
                     }
                 }
@@ -301,7 +303,7 @@ void Module::clonePublicInterface(InternalErrorReporter& ice)
             ty = clone(ty, interfaceTypes, cloneState);
         if (FFlag::LuauLowerBoundsCalculation)
         {
-            normalize(ty, NotNull{this}, ice);
+            normalize(ty, NotNull{this}, singletonTypes, ice);
 
             if (FFlag::LuauForceExportSurfacesToBeNormal)
                 forceNormal.traverse(ty);

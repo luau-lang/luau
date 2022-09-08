@@ -586,7 +586,7 @@ bool isOverloadedFunction(TypeId ty);
 // True when string is a subtype of ty
 bool maybeString(TypeId ty);
 
-std::optional<TypeId> getMetatable(TypeId type);
+std::optional<TypeId> getMetatable(TypeId type, NotNull<struct SingletonTypes> singletonTypes);
 TableTypeVar* getMutableTableType(TypeId type);
 const TableTypeVar* getTableType(TypeId type);
 
@@ -614,21 +614,6 @@ bool hasLength(TypeId ty, DenseHashSet<TypeId>& seen, int* recursionCount);
 
 struct SingletonTypes
 {
-    const TypeId nilType;
-    const TypeId numberType;
-    const TypeId stringType;
-    const TypeId booleanType;
-    const TypeId threadType;
-    const TypeId trueType;
-    const TypeId falseType;
-    const TypeId anyType;
-    const TypeId unknownType;
-    const TypeId neverType;
-
-    const TypePackId anyTypePack;
-    const TypePackId neverTypePack;
-    const TypePackId uninhabitableTypePack;
-
     SingletonTypes();
     ~SingletonTypes();
     SingletonTypes(const SingletonTypes&) = delete;
@@ -644,9 +629,28 @@ private:
     bool debugFreezeArena = false;
 
     TypeId makeStringMetatable();
+
+public:
+    const TypeId nilType;
+    const TypeId numberType;
+    const TypeId stringType;
+    const TypeId booleanType;
+    const TypeId threadType;
+    const TypeId trueType;
+    const TypeId falseType;
+    const TypeId anyType;
+    const TypeId unknownType;
+    const TypeId neverType;
+    const TypeId errorType;
+
+    const TypePackId anyTypePack;
+    const TypePackId neverTypePack;
+    const TypePackId uninhabitableTypePack;
+    const TypePackId errorTypePack;
 };
 
-SingletonTypes& getSingletonTypes();
+// Clip with FFlagLuauNoMoreGlobalSingletonTypes
+SingletonTypes& DEPRECATED_getSingletonTypes();
 
 void persist(TypeId ty);
 void persist(TypePackId tp);

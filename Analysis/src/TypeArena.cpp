@@ -40,6 +40,15 @@ TypeId TypeArena::freshType(Scope* scope)
     return allocated;
 }
 
+TypePackId TypeArena::freshTypePack(Scope* scope)
+{
+    TypePackId allocated = typePacks.allocate(FreeTypePack{scope});
+
+    asMutable(allocated)->owningArena = this;
+
+    return allocated;
+}
+
 TypePackId TypeArena::addTypePack(std::initializer_list<TypeId> types)
 {
     TypePackId allocated = typePacks.allocate(TypePack{std::move(types)});
