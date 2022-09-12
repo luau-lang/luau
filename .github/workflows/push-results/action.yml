@@ -1,0 +1,63 @@
+name: Checkout & push results
+description: Checkout a given repo and push results to GitHub
+inputs:
+  repository:
+    required: true
+    type: string
+    description: The benchmark results repository to check out
+  branch:
+    required: true
+    type: string
+    description: The benchmark results repository's branch to check out
+  token:
+    required: true
+    type: string
+    description: The GitHub token to use for pushing results
+  path:
+    required: true
+    type: string
+    description: The path to check out the results repository to
+  bench_name:
+    required: true
+    type: string
+  bench_tool:
+    required: true
+    type: string
+  bench_output_file_path:
+    required: true
+    type: string
+  bench_external_data_json_path:
+    required: true
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.branch }}
+        token: ${{ inputs.token }}
+        path: ${{ inputs.path }}
+
+    - name: Store results
+      uses: Roblox/rhysd-github-action-benchmark@v-luau
+      with:
+        name: ${{ inputs.bench_name }}
+        tool: ${{ inputs.bench_tool }}
+        gh-pages-branch: ${{ inputs.branch }}
+        output-file-path: ${{ inputs.bench_output_file_path }}
+        external-data-json-path: ${{ inputs.bench_external_data_json_path }}
+
+    - name: Push benchmark results
+      shell: bash
+      run: |
+        echo "Pushing benchmark results..."
+        cd gh-pages
+        git config user.name github-actions
+        git config user.email github@users.noreply.github.com
+        git add *.json
+        git commit -m "Add benchmarks results for ${{ github.sha }}"
+        git push
+        cd ..
