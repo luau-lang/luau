@@ -847,6 +847,19 @@ void lua_setfield(lua_State* L, int idx, const char* k)
     return;
 }
 
+void lua_rawsetfield(lua_State* L, int idx, const char* k)
+{
+    api_checknelems(L, 1);
+    StkId t = index2addr(L, idx);
+    api_checkvalidindex(L, t);
+    if (hvalue(t)->readonly)
+        luaG_runerror(L, "Attempt to modify a readonly table");
+    setobj2t(L, luaH_setstr(L, hvalue(t), luaS_new(L, k)), L->top - 1);
+    luaC_barriert(L, hvalue(t), L->top - 1);
+    L->top--;
+    return;
+}
+
 void lua_rawset(lua_State* L, int idx)
 {
     api_checknelems(L, 2);

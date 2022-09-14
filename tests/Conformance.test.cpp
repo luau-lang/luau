@@ -746,6 +746,8 @@ TEST_CASE("ApiTables")
     lua_newtable(L);
     lua_pushnumber(L, 123.0);
     lua_setfield(L, -2, "key");
+    lua_pushnumber(L, 456.0);
+    lua_rawsetfield(L, -2, "key2");
     lua_pushstring(L, "test");
     lua_rawseti(L, -2, 5);
 
@@ -761,8 +763,8 @@ TEST_CASE("ApiTables")
     lua_pop(L, 1);
 
     // lua_rawgetfield
-    CHECK(lua_rawgetfield(L, -1, "key") == LUA_TNUMBER);
-    CHECK(lua_tonumber(L, -1) == 123.0);
+    CHECK(lua_rawgetfield(L, -1, "key2") == LUA_TNUMBER);
+    CHECK(lua_tonumber(L, -1) == 456.0);
     lua_pop(L, 1);
 
     // lua_rawget
