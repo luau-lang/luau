@@ -851,7 +851,7 @@ void lua_rawsetfield(lua_State* L, int idx, const char* k)
 {
     api_checknelems(L, 1);
     StkId t = index2addr(L, idx);
-    api_checkvalidindex(L, t);
+    api_check(L, ttistable(t));
     if (hvalue(t)->readonly)
         luaG_runerror(L, "Attempt to modify a readonly table");
     setobj2t(L, luaH_setstr(L, hvalue(t), luaS_new(L, k)), L->top - 1);
