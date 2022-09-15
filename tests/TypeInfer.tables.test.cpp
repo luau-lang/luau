@@ -2615,9 +2615,11 @@ do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
 {
+    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
+
     CheckResult result = check("local x = setmetatable({})");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but only 1 is specified", toString(result.errors[0]));
+    CHECK_EQ("Argument count mismatch. Function 'setmetatable' expects 2 arguments, but only 1 is specified", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "instantiate_table_cloning")
@@ -2695,6 +2697,8 @@ local baz = foo[bar]
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_simple_call")
 {
+    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
+
     CheckResult result = check(R"(
 local a = setmetatable({ x = 2 }, {
     __call = function(self)
@@ -2706,7 +2710,7 @@ local c = a(2) -- too many arguments
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
+    CHECK_EQ("Argument count mismatch. Function 'a' expects 1 argument, but 2 are specified", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "access_index_metamethod_that_returns_variadic")

@@ -10,8 +10,6 @@
 #include "ldo.h"
 #include "ldebug.h"
 
-LUAU_FASTFLAG(LuauSimplerUpval)
-
 /*
 ** Main thread combines a thread state and the global state
 */
@@ -79,7 +77,7 @@ static void preinit_state(lua_State* L, global_State* g)
     L->namecall = NULL;
     L->cachedslot = 0;
     L->singlestep = false;
-    L->stackstate = 0;
+    L->isactive = false;
     L->activememcat = 0;
     L->userdata = NULL;
 }
@@ -89,7 +87,6 @@ static void close_state(lua_State* L)
     global_State* g = L->global;
     luaF_close(L, L->stack); // close all upvalues for this thread
     luaC_freeall(L);         // collect all objects
-    LUAU_ASSERT(g->strbufgc == NULL);
     LUAU_ASSERT(g->strt.nuse == 0);
     luaM_freearray(L, L->global->strt.hash, L->global->strt.size, TString*, 0);
     freestack(L, L);
@@ -121,11 +118,6 @@ lua_State* luaE_newthread(lua_State* L)
 
 void luaE_freethread(lua_State* L, lua_State* L1, lua_Page* page)
 {
-    if (!FFlag::LuauSimplerUpval)
-    {
-        luaF_close(L1, L1->stack); // close all upvalues for this thread
-        LUAU_ASSERT(L1->openupval == NULL);
-    }
     global_State* g = L->global;
     if (g->cb.userthread)
         g->cb.userthread(NULL, L1);
@@ -199,7 +191,6 @@ lua_State* lua_newstate(lua_Alloc f, void* ud)
     g->gray = NULL;
     g->grayagain = NULL;
     g->weak = NULL;
-    g->strbufgc = NULL;
     g->totalbytes = sizeof(LG);
     g->gcgoal = LUAI_GCGOAL;
     g->gcstepmul = LUAI_GCSTEPMUL;

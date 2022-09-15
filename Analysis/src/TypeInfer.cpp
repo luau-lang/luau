@@ -32,13 +32,15 @@ LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
+LUAU_FASTFLAGVARIABLE(LuauFunctionArgMismatchDetails, false)
 LUAU_FASTFLAGVARIABLE(LuauInplaceDemoteSkipAllBound, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix3, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
-LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false);
+LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
+LUAU_FASTFLAGVARIABLE(LuauCallUnifyPackTails, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckGenericHOFTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
@@ -1346,7 +1348,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         }
 
         Unifier state = mkUnifier(loopScope, firstValue->location);
-        checkArgumentList(loopScope, state, argPack, iterFunc->argTypes, /*argLocations*/ {});
+        checkArgumentList(loopScope, *firstValue, state, argPack, iterFunc->argTypes, /*argLocations*/ {});
 
         state.log.commit();
 
@@ -3666,8 +3668,8 @@ WithPredicate<TypePackId> TypeChecker::checkExprPackHelper(const ScopePtr& scope
     }
 }
 
-void TypeChecker::checkArgumentList(
-    const ScopePtr& scope, Unifier& state, TypePackId argPack, TypePackId paramPack, const std::vector<Location>& argLocations)
+void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funName, Unifier& state, TypePackId argPack, TypePackId paramPack,
+    const std::vector<Location>& argLocations)
 {
     /* Important terminology refresher:
      * A function requires parameters.
@@ -3679,14 +3681,27 @@ void TypeChecker::checkArgumentList(
 
     size_t paramIndex = 0;
 
-    auto reportCountMismatchError = [&state, &argLocations, paramPack, argPack]() {
+    auto reportCountMismatchError = [&state, &argLocations, paramPack, argPack, &funName]() {
         // For this case, we want the error span to cover every errant extra parameter
         Location location = state.location;
         if (!argLocations.empty())
             location = {state.location.begin, argLocations.back().end};
 
-        size_t minParams = getParameterExtents(&state.log, paramPack).first;
-        state.reportError(TypeError{location, CountMismatch{minParams, std::distance(begin(argPack), end(argPack))}});
+        if (FFlag::LuauFunctionArgMismatchDetails)
+        {
+            std::string namePath;
+            if (std::optional<LValue> lValue = tryGetLValue(funName))
+                namePath = toString(*lValue);
+
+            auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
+            state.reportError(TypeError{location,
+                CountMismatch{minParams, optMaxParams, std::distance(begin(argPack), end(argPack)), CountMismatch::Context::Arg, false, namePath}});
+        }
+        else
+        {
+            size_t minParams = getParameterExtents(&state.log, paramPack).first;
+            state.reportError(TypeError{location, CountMismatch{minParams, std::nullopt, std::distance(begin(argPack), end(argPack))}});
+        }
     };
 
     while (true)
@@ -3698,11 +3713,8 @@ void TypeChecker::checkArgumentList(
             std::optional<TypePackId> argTail = argIter.tail();
             std::optional<TypePackId> paramTail = paramIter.tail();
 
-            // If we hit the end of both type packs simultaneously, then there are definitely no further type
-            // errors to report.  All we need to do is tie up any free tails.
-            //
-            // If one side has a free tail and the other has none at all, we create an empty pack and bind the
-            // free tail to that.
+            // If we hit the end of both type packs simultaneously, we have to unify them.
+            // But if one side has a free tail and the other has none at all, we create an empty pack and bind the free tail to that.
 
             if (argTail)
             {
@@ -3712,6 +3724,10 @@ void TypeChecker::checkArgumentList(
                         state.tryUnify(*paramTail, *argTail);
                     else
                         state.log.replace(*argTail, TypePackVar(TypePack{{}}));
+                }
+                else if (FFlag::LuauCallUnifyPackTails && paramTail)
+                {
+                    state.tryUnify(*argTail, *paramTail);
                 }
             }
             else if (paramTail)
@@ -3784,12 +3800,25 @@ void TypeChecker::checkArgumentList(
                 } // ok
                 else
                 {
-                    size_t minParams = getParameterExtents(&state.log, paramPack).first;
+                    auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
 
                     std::optional<TypePackId> tail = flatten(paramPack, state.log).second;
                     bool isVariadic = tail && Luau::isVariadic(*tail);
 
-                    state.reportError(TypeError{state.location, CountMismatch{minParams, paramIndex, CountMismatch::Context::Arg, isVariadic}});
+                    if (FFlag::LuauFunctionArgMismatchDetails)
+                    {
+                        std::string namePath;
+                        if (std::optional<LValue> lValue = tryGetLValue(funName))
+                            namePath = toString(*lValue);
+
+                        state.reportError(TypeError{
+                            state.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    }
+                    else
+                    {
+                        state.reportError(
+                            TypeError{state.location, CountMismatch{minParams, std::nullopt, paramIndex, CountMismatch::Context::Arg, isVariadic}});
+                    }
                     return;
                 }
                 ++paramIter;
@@ -4185,13 +4214,13 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
     Unifier state = mkUnifier(scope, expr.location);
 
     // Unify return types
-    checkArgumentList(scope, state, retPack, ftv->retTypes, /*argLocations*/ {});
+    checkArgumentList(scope, *expr.func, state, retPack, ftv->retTypes, /*argLocations*/ {});
     if (!state.errors.empty())
     {
         return {};
     }
 
-    checkArgumentList(scope, state, argPack, ftv->argTypes, *argLocations);
+    checkArgumentList(scope, *expr.func, state, argPack, ftv->argTypes, *argLocations);
 
     if (!state.errors.empty())
     {
@@ -4245,7 +4274,7 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
             TypePackId editedArgPack = addTypePack(TypePack{editedParamList});
 
             Unifier editedState = mkUnifier(scope, expr.location);
-            checkArgumentList(scope, editedState, editedArgPack, ftv->argTypes, editedArgLocations);
+            checkArgumentList(scope, *expr.func, editedState, editedArgPack, ftv->argTypes, editedArgLocations);
 
             if (editedState.errors.empty())
             {
@@ -4276,7 +4305,7 @@ bool TypeChecker::handleSelfCallMismatch(const ScopePtr& scope, const AstExprCal
 
                 Unifier editedState = mkUnifier(scope, expr.location);
 
-                checkArgumentList(scope, editedState, editedArgPack, ftv->argTypes, editedArgLocations);
+                checkArgumentList(scope, *expr.func, editedState, editedArgPack, ftv->argTypes, editedArgLocations);
 
                 if (editedState.errors.empty())
                 {
@@ -4345,8 +4374,8 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
         // Unify return types
         if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(overload))
         {
-            checkArgumentList(scope, state, retPack, ftv->retTypes, {});
-            checkArgumentList(scope, state, argPack, ftv->argTypes, argLocations);
+            checkArgumentList(scope, *expr.func, state, retPack, ftv->retTypes, {});
+            checkArgumentList(scope, *expr.func, state, argPack, ftv->argTypes, argLocations);
         }
 
         if (state.errors.empty())

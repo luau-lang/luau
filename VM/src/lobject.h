@@ -332,8 +332,6 @@ typedef struct UpVal
 
             // thread linked list (when open)
             struct UpVal* threadnext;
-            // note: this is the location of a pointer to this upvalue in the previous element that can be either an UpVal or a lua_State
-            struct UpVal** threadprev; // TODO: remove with FFlag::LuauSimplerUpval
         } open;
     } u;
 } UpVal;

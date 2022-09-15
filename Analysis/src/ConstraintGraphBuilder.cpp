@@ -729,6 +729,11 @@ TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* exp
 
     if (AstExprCall* call = expr->as<AstExprCall>())
     {
+        TypeId fnType = check(scope, call->func);
+
+        const size_t constraintIndex = scope->constraints.size();
+        const size_t scopeIndex = scopes.size();
+
         std::vector<TypeId> args;
 
         for (AstExpr* arg : call->args)
@@ -738,7 +743,8 @@ TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* exp
 
         // TODO self
 
-        TypeId fnType = check(scope, call->func);
+        const size_t constraintEndIndex = scope->constraints.size();
+        const size_t scopeEndIndex = scopes.size();
 
         astOriginalCallTypes[call->func] = fnType;
 
@@ -753,7 +759,23 @@ TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* exp
 
         scope->unqueuedConstraints.push_back(
             std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, SubtypeConstraint{inferredFnType, instantiatedType}));
-        NotNull<const Constraint> sc(scope->unqueuedConstraints.back().get());
+        NotNull<Constraint> sc(scope->unqueuedConstraints.back().get());
+
+        // We force constraints produced by checking function arguments to wait
+        // until after we have resolved the constraint on the function itself.
+        // This ensures, for instance, that we start inferring the contents of
+        // lambdas under the assumption that their arguments and return types
+        // will be compatible with the enclosing function call.
+        for (size_t ci = constraintIndex; ci < constraintEndIndex; ++ci)
+            scope->constraints[ci]->dependencies.push_back(sc);
+
+        for (size_t si = scopeIndex; si < scopeEndIndex; ++si)
+        {
+            for (auto& c : scopes[si].second->constraints)
+            {
+                c->dependencies.push_back(sc);
+            }
+        }
 
         addConstraint(scope, call->func->location,
             FunctionCallConstraint{
@@ -1080,7 +1102,7 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
         signatureScope = bodyScope;
     }
 
-    std::optional<TypePackId> varargPack;
+    TypePackId varargPack = nullptr;
 
     if (fn->vararg)
     {
@@ -1096,6 +1118,14 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
 
         signatureScope->varargPack = varargPack;
     }
+    else
+    {
+        varargPack = arena->addTypePack(VariadicTypePack{singletonTypes->anyType, /*hidden*/ true});
+        // We do not add to signatureScope->varargPack because ... is not valid
+        // in functions without an explicit ellipsis.
+    }
+
+    LUAU_ASSERT(nullptr != varargPack);
 
     if (fn->returnAnnotation)
     {

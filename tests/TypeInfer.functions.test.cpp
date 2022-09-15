@@ -1732,4 +1732,56 @@ TEST_CASE_FIXTURE(Fixture, "dont_mutate_the_underlying_head_of_typepack_when_cal
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "improved_function_arg_mismatch_errors")
+{
+    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
+
+    CheckResult result = check(R"(
+local function foo1(a: number) end
+foo1()
+
+local function foo2(a: number, b: string?) end
+foo2()
+
+local function foo3(a: number, b: string?, c: any) end -- any is optional
+foo3()
+
+string.find()
+
+local t = {}
+function t.foo(x: number, y: string?, ...: any) end
+function t:bar(x: number, y: string?) end
+t.foo()
+
+t:bar()
+
+local u = { a = t }
+u.a.foo()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(7, result);
+    CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function 'foo1' expects 1 argument, but none are specified");
+    CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function 'foo2' expects 1 to 2 arguments, but none are specified");
+    CHECK_EQ(toString(result.errors[2]), "Argument count mismatch. Function 'foo3' expects 1 to 3 arguments, but none are specified");
+    CHECK_EQ(toString(result.errors[3]), "Argument count mismatch. Function 'string.find' expects 2 to 4 arguments, but none are specified");
+    CHECK_EQ(toString(result.errors[4]), "Argument count mismatch. Function 't.foo' expects at least 1 argument, but none are specified");
+    CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function 't.bar' expects 2 to 3 arguments, but only 1 is specified");
+    CHECK_EQ(toString(result.errors[6]), "Argument count mismatch. Function 'u.a.foo' expects at least 1 argument, but none are specified");
+}
+
+// This might be surprising, but since 'any' became optional, unannotated functions in non-strict 'expect' 0 arguments
+TEST_CASE_FIXTURE(BuiltinsFixture, "improved_function_arg_mismatch_error_nonstrict")
+{
+    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
+
+    CheckResult result = check(R"(
+--!nonstrict
+local function foo(a, b) end
+foo(string.find("hello", "e"))
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function 'foo' expects 0 to 2 arguments, but 3 are specified");
+}
+
 TEST_SUITE_END();

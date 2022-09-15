@@ -6,9 +6,6 @@
 #include "lmem.h"
 #include "lgc.h"
 
-LUAU_FASTFLAG(LuauSimplerUpval)
-LUAU_FASTFLAG(LuauNoSleepBit)
-
 Proto* luaF_newproto(lua_State* L)
 {
     Proto* f = luaM_newgco(L, Proto, sizeof(Proto), L->activememcat);
@@ -74,21 +71,16 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     UpVal* p;
     while (*pp != NULL && (p = *pp)->v >= level)
     {
-        LUAU_ASSERT(!FFlag::LuauSimplerUpval || !isdead(g, obj2gco(p)));
+        LUAU_ASSERT(!isdead(g, obj2gco(p)));
         LUAU_ASSERT(upisopen(p));
         if (p->v == level)
-        {                                                          // found a corresponding upvalue?
-            if (!FFlag::LuauSimplerUpval && isdead(g, obj2gco(p))) // is it dead?
-                changewhite(obj2gco(p));                           // resurrect it
             return p;
-        }
 
         pp = &p->u.open.threadnext;
     }
 
-    LUAU_ASSERT(luaC_threadactive(L));
-    LUAU_ASSERT(!luaC_threadsleeping(L));
-    LUAU_ASSERT(!FFlag::LuauNoSleepBit || !isblack(obj2gco(L))); // we don't use luaC_threadbarrier because active threads never turn black
+    LUAU_ASSERT(L->isactive);
+    LUAU_ASSERT(!isblack(obj2gco(L))); // we don't use luaC_threadbarrier because active threads never turn black
 
     UpVal* uv = luaM_newgco(L, UpVal, sizeof(UpVal), L->activememcat); // not found: create a new one
     luaC_init(L, uv, LUA_TUPVAL);
@@ -96,22 +88,8 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     uv->v = level; // current value lives in the stack
 
     // chain the upvalue in the threads open upvalue list at the proper position
-    if (FFlag::LuauSimplerUpval)
-    {
-        uv->u.open.threadnext = *pp;
-        *pp = uv;
-    }
-    else
-    {
-        UpVal* next = *pp;
-        uv->u.open.threadnext = next;
-
-        uv->u.open.threadprev = pp;
-        if (next)
-            next->u.open.threadprev = &uv->u.open.threadnext;
-
-        *pp = uv;
-    }
+    uv->u.open.threadnext = *pp;
+    *pp = uv;
 
     // double link the upvalue in the global open upvalue list
     uv->u.open.prev = &g->uvhead;
@@ -123,26 +101,8 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
     return uv;
 }
 
-void luaF_unlinkupval(UpVal* uv)
-{
-    LUAU_ASSERT(!FFlag::LuauSimplerUpval);
-
-    // unlink upvalue from the global open upvalue list
-    LUAU_ASSERT(uv->u.open.next->u.open.prev == uv && uv->u.open.prev->u.open.next == uv);
-    uv->u.open.next->u.open.prev = uv->u.open.prev;
-    uv->u.open.prev->u.open.next = uv->u.open.next;
-
-    // unlink upvalue from the thread open upvalue list
-    *uv->u.open.threadprev = uv->u.open.threadnext;
-
-    if (UpVal* next = uv->u.open.threadnext)
-        next->u.open.threadprev = uv->u.open.threadprev;
-}
-
 void luaF_freeupval(lua_State* L, UpVal* uv, lua_Page* page)
 {
-    if (!FFlag::LuauSimplerUpval && uv->v != &uv->u.value) // is it open?
-        luaF_unlinkupval(uv);                              // remove from open list
     luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page);  // free upvalue
 }
 
@@ -154,41 +114,17 @@ void luaF_close(lua_State* L, StkId level)
     {
         GCObject* o = obj2gco(uv);
         LUAU_ASSERT(!isblack(o) && upisopen(uv));
+        LUAU_ASSERT(!isdead(g, o));
 
-        if (FFlag::LuauSimplerUpval)
-        {
-            LUAU_ASSERT(!isdead(g, o));
+        // unlink value *before* closing it since value storage overlaps
+        L->openupval = uv->u.open.threadnext;
 
-            // unlink value *before* closing it since value storage overlaps
-            L->openupval = uv->u.open.threadnext;
-
-            luaF_closeupval(L, uv, /* dead= */ false);
-        }
-        else
-        {
-            // by removing the upvalue from global/thread open upvalue lists, L->openupval will be pointing to the next upvalue
-            luaF_unlinkupval(uv);
-
-            if (isdead(g, o))
-            {
-                // close the upvalue without copying the dead data so that luaF_freeupval will not unlink again
-                uv->v = &uv->u.value;
-            }
-            else
-            {
-                setobj(L, &uv->u.value, uv->v);
-                uv->v = &uv->u.value;
-                // GC state of a new closed upvalue has to be initialized
-                luaC_upvalclosed(L, uv);
-            }
-        }
+        luaF_closeupval(L, uv, /* dead= */ false);
     }
 }
 
 void luaF_closeupval(lua_State* L, UpVal* uv, bool dead)
 {
-    LUAU_ASSERT(FFlag::LuauSimplerUpval);
-
     // unlink value from all lists *before* closing it since value storage overlaps
     LUAU_ASSERT(uv->u.open.next->u.open.prev == uv && uv->u.open.prev->u.open.next == uv);
     uv->u.open.next->u.open.prev = uv->u.open.prev;

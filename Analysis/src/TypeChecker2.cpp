@@ -408,7 +408,7 @@ struct TypeChecker2
             return;
 
         NotNull<Scope> scope = stack.back();
-        TypeArena tempArena;
+        TypeArena& arena = module->internalTypes;
 
         std::vector<TypeId> variableTypes;
         for (AstLocal* var : forInStatement->vars)
@@ -424,10 +424,10 @@ struct TypeChecker2
         for (size_t i = 0; i < forInStatement->values.size - 1; ++i)
             valueTypes.emplace_back(lookupType(forInStatement->values.data[i]));
         TypePackId iteratorTail = lookupPack(forInStatement->values.data[forInStatement->values.size - 1]);
-        TypePackId iteratorPack = tempArena.addTypePack(valueTypes, iteratorTail);
+        TypePackId iteratorPack = arena.addTypePack(valueTypes, iteratorTail);
 
         // ... and then expand it out to 3 values (if possible)
-        const std::vector<TypeId> iteratorTypes = flatten(tempArena, iteratorPack, 3);
+        const std::vector<TypeId> iteratorTypes = flatten(arena, iteratorPack, 3);
         if (iteratorTypes.empty())
         {
             reportError(GenericError{"for..in loops require at least one value to iterate over.  Got zero"}, getLocation(forInStatement->values));
@@ -456,7 +456,7 @@ struct TypeChecker2
                 reportError(GenericError{"for..in loops must be passed (next, [table[, state]])"}, getLocation(forInStatement->values));
 
             // It is okay if there aren't enough iterators, but the iteratee must provide enough.
-            std::vector<TypeId> expectedVariableTypes = flatten(tempArena, nextFn->retTypes, variableTypes.size());
+            std::vector<TypeId> expectedVariableTypes = flatten(arena, nextFn->retTypes, variableTypes.size());
             if (expectedVariableTypes.size() < variableTypes.size())
                 reportError(GenericError{"next() does not return enough values"}, forInStatement->vars.data[0]->location);
 
@@ -475,23 +475,23 @@ struct TypeChecker2
             // If iteratorTypes is too short to be a valid call to nextFn, we have to report a count mismatch error.
             // If 2 is too short to be a valid call to nextFn, we have to report a count mismatch error.
             // If 2 is too long to be a valid call to nextFn, we have to report a count mismatch error.
-            auto [minCount, maxCount] = getParameterExtents(TxnLog::empty(), nextFn->argTypes);
+            auto [minCount, maxCount] = getParameterExtents(TxnLog::empty(), nextFn->argTypes, /*includeHiddenVariadics*/ true);
 
             if (minCount > 2)
-                reportError(CountMismatch{2, minCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+                reportError(CountMismatch{2, std::nullopt, minCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
             if (maxCount && *maxCount < 2)
-                reportError(CountMismatch{2, *maxCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+                reportError(CountMismatch{2, std::nullopt, *maxCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
 
-            const std::vector<TypeId> flattenedArgTypes = flatten(tempArena, nextFn->argTypes, 2);
+            const std::vector<TypeId> flattenedArgTypes = flatten(arena, nextFn->argTypes, 2);
             const auto [argTypes, argsTail] = Luau::flatten(nextFn->argTypes);
 
             size_t firstIterationArgCount = iteratorTypes.empty() ? 0 : iteratorTypes.size() - 1;
             size_t actualArgCount = expectedVariableTypes.size();
 
             if (firstIterationArgCount < minCount)
-                reportError(CountMismatch{2, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+                reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
             else if (actualArgCount < minCount)
-                reportError(CountMismatch{2, actualArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+                reportError(CountMismatch{2, std::nullopt, actualArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
 
             if (iteratorTypes.size() >= 2 && flattenedArgTypes.size() > 0)
             {

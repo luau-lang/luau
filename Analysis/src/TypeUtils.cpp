@@ -6,6 +6,8 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 
+LUAU_FASTFLAG(LuauFunctionArgMismatchDetails)
+
 namespace Luau
 {
 
@@ -193,7 +195,7 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
     return std::nullopt;
 }
 
-std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp)
+std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics)
 {
     size_t minCount = 0;
     size_t optionalCount = 0;
@@ -216,7 +218,7 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         ++it;
     }
 
-    if (it.tail())
+    if (it.tail() && (!FFlag::LuauFunctionArgMismatchDetails || isVariadicTail(*it.tail(), *log, includeHiddenVariadics)))
         return {minCount, std::nullopt};
     else
         return {minCount, minCount + optionalCount};

@@ -240,6 +240,12 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
             int blockCount = it == cs->blockedConstraints.end() ? 0 : int(it->second);
             printf("\t%d\t\t%s\n", blockCount, toString(*dep, opts).c_str());
         }
+
+        if (auto fcc = get<FunctionCallConstraint>(*c))
+        {
+            for (NotNull<const Constraint> inner : fcc->innerConstraints)
+                printf("\t\t\t%s\n", toString(*inner, opts).c_str());
+        }
     }
 }
 
@@ -522,7 +528,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
 
     if (isBlocked(leftType))
     {
-        asMutable(resultType)->ty.emplace<BoundTypeVar>(singletonTypes->errorRecoveryType());
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
         // reportError(constraint->location, CannotInferBinaryOperation{c.op, std::nullopt, CannotInferBinaryOperation::Operation});
         return true;
     }
@@ -574,10 +580,24 @@ bool ConstraintSolver::tryDispatch(const IterableConstraint& c, NotNull<const Co
     if (iteratorTail)
         return block_(*iteratorTail);
 
+    {
+        bool blocked = false;
+        for (TypeId t : iteratorTypes)
+        {
+            if (isBlocked(t))
+            {
+                block(t, constraint);
+                blocked = true;
+            }
+        }
+
+        if (blocked)
+            return false;
+    }
+
     if (0 == iteratorTypes.size())
     {
-        Anyification anyify{
-            arena, constraint->scope, singletonTypes, &iceReporter, singletonTypes->errorRecoveryType(), singletonTypes->errorRecoveryTypePack()};
+        Anyification anyify{arena, constraint->scope, singletonTypes, &iceReporter, errorRecoveryType(), errorRecoveryTypePack()};
         std::optional<TypePackId> anyified = anyify.substitute(c.variables);
         LUAU_ASSERT(anyified);
         unify(*anyified, c.variables, constraint->scope);
@@ -704,7 +724,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (!tf.has_value())
     {
         reportError(UnknownSymbol{petv->name.value, UnknownSymbol::Context::Type}, constraint->location);
-        bindResult(singletonTypes->errorRecoveryType());
+        bindResult(errorRecoveryType());
         return true;
     }
 
@@ -763,7 +783,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (itf.foundInfiniteType)
     {
         // TODO (CLI-56761): Report an error.
-        bindResult(singletonTypes->errorRecoveryType());
+        bindResult(errorRecoveryType());
         return true;
     }
 
@@ -786,7 +806,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     if (!maybeInstantiated.has_value())
     {
         // TODO (CLI-56761): Report an error.
-        bindResult(singletonTypes->errorRecoveryType());
+        bindResult(errorRecoveryType());
         return true;
     }
 
@@ -863,13 +883,21 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         usedMagic = ftv->dcrMagicFunction(NotNull(this), result, c.astFragment);
     }
 
-    if (!usedMagic)
+    if (usedMagic)
     {
-        for (const auto& inner : c.innerConstraints)
-        {
-            unsolvedConstraints.push_back(inner);
-        }
-
+        // There are constraints that are blocked on these constraints.  If we
+        // are never going to even examine them, then we should not block
+        // anything else on them.
+        //
+        // TODO CLI-58842
+#if 0
+        for (auto& c: c.innerConstraints)
+            unblock(c);
+#endif
+    }
+    else
+    {
+        unsolvedConstraints.insert(end(unsolvedConstraints), begin(c.innerConstraints), end(c.innerConstraints));
         asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
     }
 
@@ -909,8 +937,7 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
     };
 
     auto errorify = [&](auto ty) {
-        Anyification anyify{
-            arena, constraint->scope, singletonTypes, &iceReporter, singletonTypes->errorRecoveryType(), singletonTypes->errorRecoveryTypePack()};
+        Anyification anyify{arena, constraint->scope, singletonTypes, &iceReporter, errorRecoveryType(), errorRecoveryTypePack()};
         std::optional errorified = anyify.substitute(ty);
         if (!errorified)
             reportError(CodeTooComplex{}, constraint->location);
@@ -1119,7 +1146,7 @@ void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> sc
 
     if (!u.errors.empty())
     {
-        TypeId errorType = singletonTypes->errorRecoveryType();
+        TypeId errorType = errorRecoveryType();
         u.tryUnify(subType, errorType);
         u.tryUnify(superType, errorType);
     }
@@ -1160,7 +1187,7 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
     if (info.name.empty())
     {
         reportError(UnknownRequire{}, location);
-        return singletonTypes->errorRecoveryType();
+        return errorRecoveryType();
     }
 
     std::string humanReadableName = moduleResolver->getHumanReadableModuleName(info.name);
@@ -1177,24 +1204,24 @@ TypeId ConstraintSolver::resolveModule(const ModuleInfo& info, const Location& l
         if (!moduleResolver->moduleExists(info.name) && !info.optional)
             reportError(UnknownRequire{humanReadableName}, location);
 
-        return singletonTypes->errorRecoveryType();
+        return errorRecoveryType();
     }
 
     if (module->type != SourceCode::Type::Module)
     {
         reportError(IllegalRequire{humanReadableName, "Module is not a ModuleScript. It cannot be required."}, location);
-        return singletonTypes->errorRecoveryType();
+        return errorRecoveryType();
     }
 
     TypePackId modulePack = module->getModuleScope()->returnType;
     if (get<Unifiable::Error>(modulePack))
-        return singletonTypes->errorRecoveryType();
+        return errorRecoveryType();
 
     std::optional<TypeId> moduleType = first(modulePack);
     if (!moduleType)
     {
         reportError(IllegalRequire{humanReadableName, "Module does not return exactly 1 value. It cannot be required."}, location);
-        return singletonTypes->errorRecoveryType();
+        return errorRecoveryType();
     }
 
     return *moduleType;
@@ -1210,6 +1237,16 @@ void ConstraintSolver::reportError(TypeError e)
 {
     errors.emplace_back(std::move(e));
     errors.back().moduleName = currentModuleName;
+}
+
+TypeId ConstraintSolver::errorRecoveryType() const
+{
+    return singletonTypes->errorRecoveryType();
+}
+
+TypePackId ConstraintSolver::errorRecoveryTypePack() const
+{
+    return singletonTypes->errorRecoveryTypePack();
 }
 
 } // namespace Luau

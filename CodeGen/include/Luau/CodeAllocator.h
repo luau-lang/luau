@@ -24,7 +24,7 @@ struct CodeAllocator
     void* context = nullptr;
 
     // Called when new block is created to create and setup the unwinding information for all the code in the block
-    // Some platforms require this data to be placed inside the block itself, so we also return 'unwindDataSizeInBlock'
+    // If data is placed inside the block itself (some platforms require this), we also return 'unwindDataSizeInBlock'
     void* (*createBlockUnwindInfo)(void* context, uint8_t* block, size_t blockSize, size_t& unwindDataSizeInBlock) = nullptr;
 
     // Called to destroy unwinding information returned by 'createBlockUnwindInfo'
