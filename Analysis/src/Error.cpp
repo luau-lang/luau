@@ -10,7 +10,8 @@
 LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleNameResolution, false)
 LUAU_FASTFLAGVARIABLE(LuauUseInternalCompilerErrorException, false)
 
-static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
+static std::string wrongNumberOfArgsString(
+    size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
     std::string s = "expects ";
 
@@ -19,11 +20,14 @@ static std::string wrongNumberOfArgsString(size_t expectedCount, size_t actualCo
 
     s += std::to_string(expectedCount) + " ";
 
+    if (maximumCount && expectedCount != *maximumCount)
+        s += "to " + std::to_string(*maximumCount) + " ";
+
     if (argPrefix)
         s += std::string(argPrefix) + " ";
 
     s += "argument";
-    if (expectedCount != 1)
+    if ((maximumCount ? *maximumCount : expectedCount) != 1)
         s += "s";
 
     s += ", but ";
@@ -185,7 +189,12 @@ struct ErrorConverter
             return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " + std::to_string(e.actual) +
                    " are required here";
         case CountMismatch::Arg:
-            return "Argument count mismatch. Function " + wrongNumberOfArgsString(e.expected, e.actual, /*argPrefix*/ nullptr, e.isVariadic);
+            if (!e.function.empty())
+                return "Argument count mismatch. Function '" + e.function + "' " +
+                       wrongNumberOfArgsString(e.expected, e.maximum, e.actual, /*argPrefix*/ nullptr, e.isVariadic);
+            else
+                return "Argument count mismatch. Function " +
+                       wrongNumberOfArgsString(e.expected, e.maximum, e.actual, /*argPrefix*/ nullptr, e.isVariadic);
         }
 
         LUAU_ASSERT(!"Unknown context");
@@ -247,10 +256,10 @@ struct ErrorConverter
 
         if (e.typeFun.typeParams.size() != e.actualParameters)
             return "Generic type '" + name + "' " +
-                   wrongNumberOfArgsString(e.typeFun.typeParams.size(), e.actualParameters, "type", !e.typeFun.typePackParams.empty());
+                   wrongNumberOfArgsString(e.typeFun.typeParams.size(), std::nullopt, e.actualParameters, "type", !e.typeFun.typePackParams.empty());
 
         return "Generic type '" + name + "' " +
-               wrongNumberOfArgsString(e.typeFun.typePackParams.size(), e.actualPackParameters, "type pack", /*isVariadic*/ false);
+               wrongNumberOfArgsString(e.typeFun.typePackParams.size(), std::nullopt, e.actualPackParameters, "type pack", /*isVariadic*/ false);
     }
 
     std::string operator()(const Luau::SyntaxError& e) const
@@ -547,7 +556,7 @@ bool DuplicateTypeDefinition::operator==(const DuplicateTypeDefinition& rhs) con
 
 bool CountMismatch::operator==(const CountMismatch& rhs) const
 {
-    return expected == rhs.expected && actual == rhs.actual && context == rhs.context;
+    return expected == rhs.expected && maximum == rhs.maximum && actual == rhs.actual && context == rhs.context && function == rhs.function;
 }
 
 bool FunctionDoesNotTakeSelf::operator==(const FunctionDoesNotTakeSelf&) const

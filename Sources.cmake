@@ -57,13 +57,20 @@ target_sources(Luau.Compiler PRIVATE
 target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/AssemblyBuilderX64.h
     CodeGen/include/Luau/CodeAllocator.h
+    CodeGen/include/Luau/CodeBlockUnwind.h
     CodeGen/include/Luau/Condition.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
     CodeGen/include/Luau/RegisterX64.h
+    CodeGen/include/Luau/UnwindBuilder.h
+    CodeGen/include/Luau/UnwindBuilderDwarf2.h
+    CodeGen/include/Luau/UnwindBuilderWin.h
 
     CodeGen/src/AssemblyBuilderX64.cpp
     CodeGen/src/CodeAllocator.cpp
+    CodeGen/src/CodeBlockUnwind.cpp
+    CodeGen/src/UnwindBuilderDwarf2.cpp
+    CodeGen/src/UnwindBuilderWin.cpp
 )
 
 # Luau.Analysis Sources
@@ -258,9 +265,13 @@ endif()
 if(TARGET Luau.UnitTest)
     # Luau.UnitTest Sources
     target_sources(Luau.UnitTest PRIVATE
+        tests/AstQueryDsl.h
+        tests/ConstraintGraphBuilderFixture.h
         tests/Fixture.h
         tests/IostreamOptional.h
         tests/ScopedFlags.h
+        tests/AstQueryDsl.cpp
+        tests/ConstraintGraphBuilderFixture.cpp
         tests/Fixture.cpp
         tests/AssemblyBuilderX64.test.cpp
         tests/AstJsonEncoder.test.cpp

@@ -167,8 +167,6 @@ typedef struct global_State
     GCObject* grayagain; // list of objects to be traversed atomically
     GCObject* weak;     // list of weak tables (to be cleared)
 
-    TString* strbufgc; // list of all string buffer objects; TODO: remove with LuauNoStrbufLink
-
 
     size_t GCthreshold;                       // when totalbytes > GCthreshold, run GC step
     size_t totalbytes;                        // number of bytes currently allocated
@@ -222,8 +220,8 @@ struct lua_State
     uint8_t status;
 
     uint8_t activememcat; // memory category that is used for new GC object allocations
-    uint8_t stackstate;
 
+    bool isactive;   // thread is currently executing, stack may be mutated without barriers
     bool singlestep; // call debugstep hook after each instruction
 
 

@@ -1,8 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
-#include "Fixture.h"
 #include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/NotNull.h"
+#include "Luau/ToString.h"
 
+#include "ConstraintGraphBuilderFixture.h"
+#include "Fixture.h"
 #include "doctest.h"
 
 using namespace Luau;

@@ -964,4 +964,40 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
+{
+    ScopedFastFlag luauCallUnifyPackTails{"LuauCallUnifyPackTails", true};
+
+    CheckResult result = check(R"(
+        function foo(...: string): number
+            return 1
+        end
+
+        function bar(...: number): number
+            return foo(...)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'string'");
+}
+
+TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
+{
+    ScopedFastFlag luauCallUnifyPackTails{"LuauCallUnifyPackTails", true};
+
+    CheckResult result = check(R"(
+        function foo<T...>(...: T...): T...
+            return ...
+        end
+
+        function bar(...: number): boolean
+            return foo(...)
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
+}
+
 TEST_SUITE_END();

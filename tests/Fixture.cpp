@@ -444,16 +444,6 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
     Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
 }
 
-ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
-    : Fixture()
-    , mainModule(new Module)
-    , cgb(mainModuleName, mainModule, &arena, NotNull(&moduleResolver), singletonTypes, NotNull(&ice), frontend.getGlobalScope(), &logger)
-    , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
-{
-    BlockedTypeVar::nextIndex = 0;
-    BlockedTypePack::nextIndex = 0;
-}
-
 ModuleName fromString(std::string_view name)
 {
     return ModuleName(name);
@@ -514,43 +504,6 @@ void dump(const std::vector<Constraint>& constraints)
     ToStringOptions opts;
     for (const auto& c : constraints)
         printf("%s\n", toString(c, opts).c_str());
-}
-
-FindNthOccurenceOf::FindNthOccurenceOf(Nth nth)
-    : requestedNth(nth)
-{
-}
-
-bool FindNthOccurenceOf::checkIt(AstNode* n)
-{
-    if (theNode)
-        return false;
-
-    if (n->classIndex == requestedNth.classIndex)
-    {
-        // Human factor: the requestedNth starts from 1 because of the term `nth`.
-        if (currentOccurrence + 1 != requestedNth.nth)
-            ++currentOccurrence;
-        else
-            theNode = n;
-    }
-
-    return !theNode; // once found, returns false and stops traversal
-}
-
-bool FindNthOccurenceOf::visit(AstNode* n)
-{
-    return checkIt(n);
-}
-
-bool FindNthOccurenceOf::visit(AstType* t)
-{
-    return checkIt(t);
-}
-
-bool FindNthOccurenceOf::visit(AstTypePack* t)
-{
-    return checkIt(t);
 }
 
 } // namespace Luau

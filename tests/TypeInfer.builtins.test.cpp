@@ -459,7 +459,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "thread_is_a_type")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(*typeChecker.threadType, *requireType("co"));
+    CHECK("thread" == toString(requireType("co")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "coroutine_resume_anything_goes")
@@ -627,6 +627,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_decimal_argument_is_rounded_down
 // Could be flaky if the fix has regressed.
 TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
 {
+    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
+
     CheckResult result = check(R"(
         do end
         local _ = function(l0,...)
@@ -638,8 +640,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ("Argument count mismatch. Function expects at least 1 argument, but none are specified", toString(result.errors[0]));
-    CHECK_EQ("Argument count mismatch. Function expects 1 argument, but none are specified", toString(result.errors[1]));
+    CHECK_EQ("Argument count mismatch. Function '_' expects at least 1 argument, but none are specified", toString(result.errors[0]));
+    CHECK_EQ("Argument count mismatch. Function 'select' expects 1 argument, but none are specified", toString(result.errors[1]));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_way_out_of_range")
@@ -824,12 +826,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "string_lib_self_noself")
 TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_definition")
 {
     CheckResult result = check(R"_(
-local a, b, c = ("hey"):gmatch("(.)(.)(.)")()
+        local a, b, c = ("hey"):gmatch("(.)(.)(.)")()
 
-for c in ("hey"):gmatch("(.)") do
-    print(c:upper())
-end
-)_");
+        for c in ("hey"):gmatch("(.)") do
+            print(c:upper())
+        end
+    )_");
 
     LUAU_REQUIRE_NO_ERRORS(result);
 }
@@ -1008,6 +1010,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
+    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
+
     ScopedFastFlag sff{"LuauSetMetaTableArgsCheck", true};
     CheckResult result = check(R"(
 local a = {b=setmetatable}
@@ -1016,8 +1020,8 @@ a:b()
 a:b({})
     )");
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function expects 2 arguments, but none are specified");
-    CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function expects 2 arguments, but only 1 is specified");
+    CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function 'a.b' expects 2 arguments, but none are specified");
+    CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function 'a.b' expects 2 arguments, but only 1 is specified");
 }
 
 TEST_CASE_FIXTURE(Fixture, "typeof_unresolved_function")

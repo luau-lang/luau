@@ -191,6 +191,9 @@ private:
      **/
     void unblock_(BlockedConstraintId progressed);
 
+    TypeId errorRecoveryType() const;
+    TypePackId errorRecoveryTypePack() const;
+
     ToStringOptions opts;
 };
 

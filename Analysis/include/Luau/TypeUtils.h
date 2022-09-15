@@ -23,6 +23,6 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
     TypeId type, const std::string& prop, const Location& location, bool addErrors, InternalErrorReporter& handle);
 
 // Returns the minimum and maximum number of types the argument list can accept.
-std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp);
+std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics = false);
 
 } // namespace Luau

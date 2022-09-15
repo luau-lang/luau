@@ -92,6 +92,8 @@ inline std::string toString(const Constraint& c)
     return toString(c, ToStringOptions{});
 }
 
+std::string toString(const LValue& lvalue);
+
 std::string toString(const TypeVar& tv, ToStringOptions& opts);
 std::string toString(const TypePackVar& tp, ToStringOptions& opts);
 

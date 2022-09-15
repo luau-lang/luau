@@ -1105,4 +1105,21 @@ end
     CHECK_EQ(*getMainModule()->astResolvedTypes.find(annotation), *ty);
 }
 
+TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")
+{
+    CheckResult result = check(R"(
+        function higher(cb: (number) -> ()) end
+
+        higher(function(n)      -- no error here.  n : number
+            local e: string = n -- error here.  n /: string
+        end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    Location location = result.errors[0].location;
+    CHECK(location.begin.line == 4);
+    CHECK(location.end.line == 4);
+}
+
 TEST_SUITE_END();
