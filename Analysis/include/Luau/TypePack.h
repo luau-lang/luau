@@ -185,6 +185,9 @@ std::pair<std::vector<TypeId>, std::optional<TypePackId>> flatten(TypePackId tp,
 bool isVariadic(TypePackId tp);
 bool isVariadic(TypePackId tp, const TxnLog& log);
 
+// Returns true if the TypePack is Generic or Variadic.  Does not walk TypePacks!!
+bool isVariadicTail(TypePackId tp, const TxnLog& log, bool includeHiddenVariadics = false);
+
 bool containsNever(TypePackId tp);
 
 } // namespace Luau

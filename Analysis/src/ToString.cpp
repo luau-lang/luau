@@ -1519,4 +1519,20 @@ std::string dump(const Constraint& c)
     return s;
 }
 
+std::string toString(const LValue& lvalue)
+{
+    std::string s;
+    for (const LValue* current = &lvalue; current; current = baseof(*current))
+    {
+        if (auto field = get<Field>(*current))
+            s = "." + field->key + s;
+        else if (auto symbol = get<Symbol>(*current))
+            s = toString(*symbol) + s;
+        else
+            LUAU_ASSERT(!"Unknown LValue");
+    }
+
+    return s;
+}
+
 } // namespace Luau

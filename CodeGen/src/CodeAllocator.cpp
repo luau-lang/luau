@@ -6,8 +6,13 @@
 #include <string.h>
 
 #if defined(_WIN32)
+
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <Windows.h>
 
 const size_t kPageSize = 4096;
@@ -135,17 +140,29 @@ bool CodeAllocator::allocate(
     if (codeSize)
         memcpy(blockPos + codeOffset, code, codeSize);
 
-    size_t pageSize = alignToPageSize(unwindInfoSize + totalSize);
+    size_t pageAlignedSize = alignToPageSize(unwindInfoSize + totalSize);
 
-    makePagesExecutable(blockPos, pageSize);
+    makePagesExecutable(blockPos, pageAlignedSize);
     flushInstructionCache(blockPos + codeOffset, codeSize);
 
     result = blockPos + unwindInfoSize;
     resultSize = totalSize;
     resultCodeStart = blockPos + codeOffset;
 
-    blockPos += pageSize;
-    LUAU_ASSERT((uintptr_t(blockPos) & (kPageSize - 1)) == 0); // Allocation ends on page boundary
+    // Ensure that future allocations from the block start from a page boundary.
+    // This is important since we use W^X, and writing to the previous page would require briefly removing
+    // executable bit from it, which may result in access violations if that code is being executed concurrently.
+    if (pageAlignedSize <= size_t(blockEnd - blockPos))
+    {
+        blockPos += pageAlignedSize;
+        LUAU_ASSERT((uintptr_t(blockPos) & (kPageSize - 1)) == 0);
+        LUAU_ASSERT(blockPos <= blockEnd);
+    }
+    else
+    {
+        // Future allocations will need to allocate fresh blocks
+        blockPos = blockEnd;
+    }
 
     return true;
 }

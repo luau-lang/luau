@@ -1,9 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Fixture.h"
 
 #include "Luau/AstQuery.h"
 
+#include "AstQueryDsl.h"
 #include "doctest.h"
+#include "Fixture.h"
 
 using namespace Luau;
 

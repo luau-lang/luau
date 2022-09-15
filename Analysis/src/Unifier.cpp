@@ -22,6 +22,7 @@ LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
+LUAU_FASTFLAG(LuauCallUnifyPackTails)
 
 namespace Luau
 {
@@ -1159,7 +1160,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 size_t actualSize = size(subTp);
                 if (ctx == CountMismatch::Result)
                     std::swap(expectedSize, actualSize);
-                reportError(TypeError{location, CountMismatch{expectedSize, actualSize, ctx}});
+                reportError(TypeError{location, CountMismatch{expectedSize, std::nullopt, actualSize, ctx}});
 
                 while (superIter.good())
                 {
@@ -2118,6 +2119,15 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel de
                 for (; superIter != superEndIter; ++superIter)
                     tp->head.push_back(*superIter);
             }
+            else if (const VariadicTypePack* subVariadic = log.getMutable<VariadicTypePack>(subTailPack);
+                     subVariadic && FFlag::LuauCallUnifyPackTails)
+            {
+                while (superIter != superEndIter)
+                {
+                    tryUnify_(subVariadic->ty, *superIter);
+                    ++superIter;
+                }
+            }
         }
         else
         {
@@ -2125,7 +2135,7 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel de
             {
                 if (!isOptional(*superIter))
                 {
-                    errors.push_back(TypeError{location, CountMismatch{size(superTy), size(subTy), CountMismatch::Return}});
+                    errors.push_back(TypeError{location, CountMismatch{size(superTy), std::nullopt, size(subTy), CountMismatch::Return}});
                     return;
                 }
                 ++superIter;

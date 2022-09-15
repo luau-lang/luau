@@ -127,8 +127,8 @@ struct TypeChecker
         std::optional<Location> originalNameLoc, std::optional<TypeId> selfType, std::optional<TypeId> expectedType);
     void checkFunctionBody(const ScopePtr& scope, TypeId type, const AstExprFunction& function);
 
-    void checkArgumentList(
-        const ScopePtr& scope, Unifier& state, TypePackId paramPack, TypePackId argPack, const std::vector<Location>& argLocations);
+    void checkArgumentList(const ScopePtr& scope, const AstExpr& funName, Unifier& state, TypePackId paramPack, TypePackId argPack,
+        const std::vector<Location>& argLocations);
 
     WithPredicate<TypePackId> checkExprPack(const ScopePtr& scope, const AstExpr& expr);
 

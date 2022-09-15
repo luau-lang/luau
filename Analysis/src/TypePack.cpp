@@ -357,10 +357,15 @@ bool isVariadic(TypePackId tp, const TxnLog& log)
     if (!tail)
         return false;
 
-    if (log.get<GenericTypePack>(*tail))
+    return isVariadicTail(*tail, log);
+}
+
+bool isVariadicTail(TypePackId tp, const TxnLog& log, bool includeHiddenVariadics)
+{
+    if (log.get<GenericTypePack>(tp))
         return true;
 
-    if (auto vtp = log.get<VariadicTypePack>(*tail); vtp && !vtp->hidden)
+    if (auto vtp = log.get<VariadicTypePack>(tp); vtp && (includeHiddenVariadics || !vtp->hidden))
         return true;
 
     return false;

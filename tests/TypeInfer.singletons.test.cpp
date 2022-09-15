@@ -202,6 +202,15 @@ TEST_CASE_FIXTURE(Fixture, "tagged_unions_immutable_tag")
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "table_has_a_boolean")
+{
+    CheckResult result = check(R"(
+        local t={a=1,b=false}
+    )");
+
+    CHECK("{ a: number, b: boolean }" == toString(requireType("t"), {true}));
+}
+
 TEST_CASE_FIXTURE(Fixture, "table_properties_singleton_strings")
 {
     CheckResult result = check(R"(

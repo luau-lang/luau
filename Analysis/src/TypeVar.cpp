@@ -1133,14 +1133,14 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
         size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
 
         if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-            typechecker.reportError(TypeError{expr.location, CountMismatch{numExpectedParams, numActualParams}});
+            typechecker.reportError(TypeError{expr.location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
     }
     else
     {
         size_t actualParamSize = params.size() - paramOffset;
 
         if (expected.size() != actualParamSize && (!tail || expected.size() < actualParamSize))
-            typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), actualParamSize}});
+            typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), std::nullopt, actualParamSize}});
     }
     return WithPredicate<TypePackId>{arena.addTypePack({typechecker.stringType})};
 }

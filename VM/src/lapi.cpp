@@ -34,8 +34,6 @@
  * therefore call luaC_checkGC before luaC_threadbarrier to guarantee the object is pushed to a gray thread.
  */
 
-LUAU_FASTFLAG(LuauSimplerUpval)
-
 const char* lua_ident = "$Lua: Lua 5.1.4 Copyright (C) 1994-2008 Lua.org, PUC-Rio $\n"
                         "$Authors: R. Ierusalimschy, L. H. de Figueiredo & W. Celes $\n"
                         "$URL: www.lua.org $\n";
@@ -847,6 +845,19 @@ void lua_setfield(lua_State* L, int idx, const char* k)
     return;
 }
 
+void lua_rawsetfield(lua_State* L, int idx, const char* k)
+{
+    api_checknelems(L, 1);
+    StkId t = index2addr(L, idx);
+    api_check(L, ttistable(t));
+    if (hvalue(t)->readonly)
+        luaG_runerror(L, "Attempt to modify a readonly table");
+    setobj2t(L, luaH_setstr(L, hvalue(t), luaS_new(L, k)), L->top - 1);
+    luaC_barriert(L, hvalue(t), L->top - 1);
+    L->top--;
+    return;
+}
+
 void lua_rawset(lua_State* L, int idx)
 {
     api_checknelems(L, 2);
@@ -1285,8 +1296,6 @@ const char* lua_setupvalue(lua_State* L, int funcindex, int n)
         L->top--;
         setobj(L, val, L->top);
         luaC_barrier(L, clvalue(fi), L->top);
-        if (!FFlag::LuauSimplerUpval)
-            luaC_upvalbarrier(L, cast_to(UpVal*, NULL), val);
     }
     return name;
 }

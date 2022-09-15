@@ -95,9 +95,11 @@ struct CountMismatch
         Return,
     };
     size_t expected;
+    std::optional<size_t> maximum;
     size_t actual;
     Context context = Arg;
     bool isVariadic = false;
+    std::string function;
 
     bool operator==(const CountMismatch& rhs) const;
 };

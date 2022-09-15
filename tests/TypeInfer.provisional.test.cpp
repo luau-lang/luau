@@ -69,6 +69,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall_returns_what_f_returns")
     CHECK("string" == toString(requireType("c")));
 
     CHECK(expected == decorateWithTypes(code));
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 // We had a bug where if you have two type packs that looks like:
