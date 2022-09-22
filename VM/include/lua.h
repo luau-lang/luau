@@ -316,6 +316,8 @@ LUA_API void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*,
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);
 
+LUA_API void lua_cleartable(lua_State* L, int idx);
+
 /*
 ** reference system, can be used to pin objects
 */
