@@ -100,6 +100,8 @@ struct ConstraintSolver
     bool tryDispatch(const NameConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const TypeAliasExpansionConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
 
     // for a, ... in some_table do
     bool tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
@@ -115,6 +117,16 @@ struct ConstraintSolver
      */
     bool block(TypeId target, NotNull<const Constraint> constraint);
     bool block(TypePackId target, NotNull<const Constraint> constraint);
+
+    // Traverse the type.  If any blocked or pending typevars are found, block
+    // the constraint on them.
+    //
+    // Returns false if a type blocks the constraint.
+    //
+    // FIXME: This use of a boolean for the return result is an appalling
+    // interface.
+    bool recursiveBlock(TypeId target, NotNull<const Constraint> constraint);
+    bool recursiveBlock(TypePackId target, NotNull<const Constraint> constraint);
 
     void unblock(NotNull<const Constraint> progressed);
     void unblock(TypeId progressed);

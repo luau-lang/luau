@@ -558,11 +558,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "greedy_inference_with_shared_self_triggers_f
     CHECK_EQ("Not all codepaths in this function return 'self, a...'.", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "dcr_cant_partially_dispatch_a_constraint")
+TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
 {
     ScopedFastFlag sff[] = {
         {"DebugLuauDeferredConstraintResolution", true},
-        {"LuauSpecialTypesAsterisked", true},
     };
 
     CheckResult result = check(R"(
@@ -577,7 +576,6 @@ TEST_CASE_FIXTURE(Fixture, "dcr_cant_partially_dispatch_a_constraint")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    // We should be able to resolve this to number, but we're not there yet.
     // Solving this requires recognizing that we can partially solve the
     // following constraint:
     //
@@ -586,7 +584,7 @@ TEST_CASE_FIXTURE(Fixture, "dcr_cant_partially_dispatch_a_constraint")
     // The correct thing for us to do is to consider the constraint dispatched,
     // but we need to also record a new constraint number <: *blocked* to finish
     // the job later.
-    CHECK("<a>(a, *error-type*) -> ()" == toString(requireType("prime_iter")));
+    CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_options_cannot_be_unified_together")

@@ -1082,7 +1082,7 @@ TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_
     )");
 }
 
-TEST_CASE_FIXTURE(Fixture, "types stored in astResolvedTypes")
+TEST_CASE_FIXTURE(Fixture, "types_stored_in_astResolvedTypes")
 {
     CheckResult result = check(R"(
 type alias = typeof("hello")
@@ -1120,6 +1120,43 @@ TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_of_higher_order_function")
     Location location = result.errors[0].location;
     CHECK(location.begin.line == 4);
     CHECK(location.end.line == 4);
+}
+
+TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    CheckResult result = check(R"(
+        local function hasDivisors(value: number)
+        end
+
+        function prime_iter(state, index)
+            hasDivisors(index)
+            index += 1
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    // Solving this requires recognizing that we can't dispatch a constraint
+    // like this without doing further work:
+    //
+    //     (*blocked*) -> () <: (number) -> (b...)
+    //
+    // We solve this by searching both types for BlockedTypeVars and block the
+    // constraint on any we find.  It also gets the job done, but I'm worried
+    // about the efficiency of doing so many deep type traversals and it may
+    // make us more prone to getting stuck on constraint cycles.
+    //
+    // If this doesn't pan out, a possible solution is to go further down the
+    // path of supporting partial constraint dispatch.  The way it would work is
+    // that we'd dispatch the above constraint by binding b... to (), but we
+    // would append a new constraint number <: *blocked* to the constraint set
+    // to be solved later.  This should be faster and theoretically less prone
+    // to cyclic constraint dependencies.
+    CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
 }
 
 TEST_SUITE_END();

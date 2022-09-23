@@ -70,6 +70,7 @@ target_link_libraries(Luau.Analysis PUBLIC Luau.Ast)
 
 target_compile_features(Luau.CodeGen PRIVATE cxx_std_17)
 target_include_directories(Luau.CodeGen PUBLIC CodeGen/include)
+target_link_libraries(Luau.CodeGen PRIVATE Luau.VM Luau.VM.Internals) # Code generation needs VM internals
 target_link_libraries(Luau.CodeGen PUBLIC Luau.Common)
 
 target_compile_features(Luau.VM PRIVATE cxx_std_11)

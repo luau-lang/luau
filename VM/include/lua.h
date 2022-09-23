@@ -304,6 +304,7 @@ LUA_API size_t lua_totalbytes(lua_State* L, int category);
 LUA_API l_noret lua_error(lua_State* L);
 
 LUA_API int lua_next(lua_State* L, int idx);
+LUA_API int lua_rawiter(lua_State* L, int idx, int iter);
 
 LUA_API void lua_concat(lua_State* L, int n);
 
@@ -315,6 +316,8 @@ LUA_API void lua_setuserdatatag(lua_State* L, int idx, int tag);
 LUA_API void lua_setuserdatadtor(lua_State* L, int tag, void (*dtor)(lua_State*, void*));
 
 LUA_API void lua_clonefunction(lua_State* L, int idx);
+
+LUA_API void lua_cleartable(lua_State* L, int idx);
 
 /*
 ** reference system, can be used to pin objects

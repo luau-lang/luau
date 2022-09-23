@@ -5,7 +5,6 @@
 
 #include <functional>
 #include <utility>
-#include <vector>
 #include <type_traits>
 #include <stdint.h>
 
@@ -35,22 +34,117 @@ public:
     class iterator;
 
     DenseHashTable(const Key& empty_key, size_t buckets = 0)
-        : count(0)
+        : data(nullptr)
+        , capacity(0)
+        , count(0)
         , empty_key(empty_key)
     {
+        // validate that equality operator is at least somewhat functional
+        LUAU_ASSERT(eq(empty_key, empty_key));
         // buckets has to be power-of-two or zero
         LUAU_ASSERT((buckets & (buckets - 1)) == 0);
 
-        // don't move this to initializer list! this works around an MSVC codegen issue on AMD CPUs:
-        // https://developercommunity.visualstudio.com/t/stdvector-constructor-from-size-t-is-25-times-slow/1546547
         if (buckets)
-            resize_data<Item>(buckets);
+        {
+            data = static_cast<Item*>(::operator new(sizeof(Item) * buckets));
+            capacity = buckets;
+
+            ItemInterface::fill(data, buckets, empty_key);
+        }
+    }
+
+    ~DenseHashTable()
+    {
+        if (data)
+            destroy();
+    }
+
+    DenseHashTable(const DenseHashTable& other)
+        : data(nullptr)
+        , capacity(0)
+        , count(other.count)
+        , empty_key(other.empty_key)
+    {
+        if (other.capacity)
+        {
+            data = static_cast<Item*>(::operator new(sizeof(Item) * other.capacity));
+
+            for (size_t i = 0; i < other.capacity; ++i)
+            {
+                new (&data[i]) Item(other.data[i]);
+                capacity = i + 1; // if Item copy throws, capacity will note the number of initialized objects for destroy() to clean up
+            }
+        }
+    }
+
+    DenseHashTable(DenseHashTable&& other)
+        : data(other.data)
+        , capacity(other.capacity)
+        , count(other.count)
+        , empty_key(other.empty_key)
+    {
+        other.data = nullptr;
+        other.capacity = 0;
+        other.count = 0;
+    }
+
+    DenseHashTable& operator=(DenseHashTable&& other)
+    {
+        if (this != &other)
+        {
+            if (data)
+                destroy();
+
+            data = other.data;
+            capacity = other.capacity;
+            count = other.count;
+            empty_key = other.empty_key;
+
+            other.data = nullptr;
+            other.capacity = 0;
+            other.count = 0;
+        }
+
+        return *this;
+    }
+
+    DenseHashTable& operator=(const DenseHashTable& other)
+    {
+        if (this != &other)
+        {
+            DenseHashTable copy(other);
+            *this = std::move(copy);
+        }
+
+        return *this;
     }
 
     void clear()
     {
-        data.clear();
+        if (count == 0)
+            return;
+
+        if (capacity > 32)
+        {
+            destroy();
+        }
+        else
+        {
+            ItemInterface::destroy(data, capacity);
+            ItemInterface::fill(data, capacity, empty_key);
+        }
+
         count = 0;
+    }
+
+    void destroy()
+    {
+        ItemInterface::destroy(data, capacity);
+
+        ::operator delete(data);
+        data = nullptr;
+
+        capacity = 0;
     }
 
     Item* insert_unsafe(const Key& key)
@@ -58,7 +152,7 @@ public:
         // It is invalid to insert empty_key into the table since it acts as a "entry does not exist" marker
         LUAU_ASSERT(!eq(key, empty_key));
 
-        size_t hashmod = data.size() - 1;
+        size_t hashmod = capacity - 1;
         size_t bucket = hasher(key) & hashmod;
 
         for (size_t probe = 0; probe <= hashmod; ++probe)
@@ -90,12 +184,12 @@ public:
 
     const Item* find(const Key& key) const
     {
-        if (data.empty())
+        if (count == 0)
             return 0;
         if (eq(key, empty_key))
             return 0;
 
-        size_t hashmod = data.size() - 1;
+        size_t hashmod = capacity - 1;
         size_t bucket = hasher(key) & hashmod;
 
         for (size_t probe = 0; probe <= hashmod; ++probe)
@@ -121,18 +215,11 @@ public:
 
     void rehash()
     {
-        size_t newsize = data.empty() ? 16 : data.size() * 2;
-
-        if (data.empty() && data.capacity() >= newsize)
-        {
-            LUAU_ASSERT(count == 0);
-            resize_data<Item>(newsize);
-            return;
-        }
+        size_t newsize = capacity == 0 ? 16 : capacity * 2;
 
         DenseHashTable newtable(empty_key, newsize);
 
-        for (size_t i = 0; i < data.size(); ++i)
+        for (size_t i = 0; i < capacity; ++i)
         {
             const Key& key = ItemInterface::getKey(data[i]);
 
@@ -144,12 +231,14 @@ public:
         }
 
         LUAU_ASSERT(count == newtable.count);
-        data.swap(newtable.data);
+
+        std::swap(data, newtable.data);
+        std::swap(capacity, newtable.capacity);
     }
 
     void rehash_if_full()
     {
-        if (count >= data.size() * 3 / 4)
+        if (count >= capacity * 3 / 4)
         {
             rehash();
         }
@@ -159,7 +248,7 @@ public:
     {
         size_t start = 0;
 
-        while (start < data.size() && eq(ItemInterface::getKey(data[start]), empty_key))
+        while (start < capacity && eq(ItemInterface::getKey(data[start]), empty_key))
             start++;
 
         return const_iterator(this, start);
@@ -167,14 +256,14 @@ public:
 
     const_iterator end() const
     {
-        return const_iterator(this, data.size());
+        return const_iterator(this, capacity);
     }
 
     iterator begin()
     {
         size_t start = 0;
 
-        while (start < data.size() && eq(ItemInterface::getKey(data[start]), empty_key))
+        while (start < capacity && eq(ItemInterface::getKey(data[start]), empty_key))
             start++;
 
         return iterator(this, start);
@@ -182,7 +271,7 @@ public:
 
     iterator end()
     {
-        return iterator(this, data.size());
+        return iterator(this, capacity);
     }
 
     size_t size() const
@@ -227,7 +316,7 @@ public:
 
         const_iterator& operator++()
         {
-            size_t size = set->data.size();
+            size_t size = set->capacity;
 
             do
             {
@@ -286,7 +375,7 @@ public:
 
         iterator& operator++()
         {
-            size_t size = set->data.size();
+            size_t size = set->capacity;
 
             do
             {
@@ -309,23 +398,8 @@ public:
     };
 
 private:
-    template<typename T>
-    void resize_data(size_t count, typename std::enable_if_t<std::is_copy_assignable_v<T>>* dummy = nullptr)
-    {
-        data.resize(count, ItemInterface::create(empty_key));
-    }
-
-    template<typename T>
-    void resize_data(size_t count, typename std::enable_if_t<!std::is_copy_assignable_v<T>>* dummy = nullptr)
-    {
-        size_t size = data.size();
-        data.resize(count);
-
-        for (size_t i = size; i < count; i++)
-            data[i].first = empty_key;
-    }
-
-    std::vector<Item> data;
+    Item* data;
+    size_t capacity;
     size_t count;
     Key empty_key;
     Hash hasher;
@@ -345,9 +419,16 @@ struct ItemInterfaceSet
         item = key;
     }
 
-    static Key create(const Key& key)
+    static void fill(Key* data, size_t count, const Key& key)
     {
-        return key;
+        for (size_t i = 0; i < count; ++i)
+            new (&data[i]) Key(key);
+    }
+
+    static void destroy(Key* data, size_t count)
+    {
+        for (size_t i = 0; i < count; ++i)
+            data[i].~Key();
     }
 };
 
@@ -364,9 +445,22 @@ struct ItemInterfaceMap
         item.first = key;
     }
 
-    static std::pair<Key, Value> create(const Key& key)
+    static void fill(std::pair<Key, Value>* data, size_t count, const Key& key)
     {
-        return std::pair<Key, Value>(key, Value());
+        for (size_t i = 0; i < count; ++i)
+        {
+            new (&data[i].first) Key(key);
+            new (&data[i].second) Value();
+        }
+    }
+
+    static void destroy(std::pair<Key, Value>* data, size_t count)
+    {
+        for (size_t i = 0; i < count; ++i)
+        {
+            data[i].first.~Key();
+            data[i].second.~Value();
+        }
     }
 };
 

@@ -146,6 +146,19 @@ struct GCMetrics
 };
 #endif
 
+#if LUA_CUSTOM_EXECUTION
+
+// Callbacks that can be used to to redirect code execution from Luau bytecode VM to a custom implementation (AoT/JiT/sandboxing/...)
+typedef struct lua_ExecutionCallbacks
+{
+    void* context;
+    void (*destroy)(lua_State* L, Proto* proto); // called when function is destroyed
+    int (*enter)(lua_State* L, Proto* proto);    // called when function is about to start/resume (when execdata is present), return 0 to exit VM
+    void (*setbreakpoint)(lua_State* L, Proto* proto, int line); // called when a breakpoint is set in a function
+} lua_ExecutionCallbacks;
+
+#endif
+
 /*
 ** `global state', shared by all threads of this state
 */
@@ -201,6 +214,10 @@ typedef struct global_State
     void (*udatagc[LUA_UTAG_LIMIT])(lua_State*, void*); // for each userdata tag, a gc callback to be called immediately before freeing memory
 
     lua_Callbacks cb;
+
+#if LUA_CUSTOM_EXECUTION
+    lua_ExecutionCallbacks ecb;
+#endif
 
     GCStats gcstats;
 

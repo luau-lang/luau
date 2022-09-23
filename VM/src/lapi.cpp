@@ -51,6 +51,12 @@ const char* luau_ident = "$Luau: Copyright (C) 2019-2022 Roblox Corporation $\n"
         L->top++; \
     }
 
+#define api_update_top(L, p) \
+    { \
+        api_check(L, p >= L->base && p < L->ci->top); \
+        L->top = p; \
+    }
+
 #define updateatom(L, ts) \
     { \
         if (ts->atom == ATOM_UNDEF) \
@@ -851,7 +857,7 @@ void lua_rawsetfield(lua_State* L, int idx, const char* k)
     StkId t = index2addr(L, idx);
     api_check(L, ttistable(t));
     if (hvalue(t)->readonly)
-        luaG_runerror(L, "Attempt to modify a readonly table");
+        luaG_readonlyerror(L);
     setobj2t(L, luaH_setstr(L, hvalue(t), luaS_new(L, k)), L->top - 1);
     luaC_barriert(L, hvalue(t), L->top - 1);
     L->top--;
@@ -1204,6 +1210,52 @@ int lua_next(lua_State* L, int idx)
     return more;
 }
 
+int lua_rawiter(lua_State* L, int idx, int iter)
+{
+    luaC_threadbarrier(L);
+    StkId t = index2addr(L, idx);
+    api_check(L, ttistable(t));
+    api_check(L, iter >= 0);
+
+    Table* h = hvalue(t);
+    int sizearray = h->sizearray;
+
+    // first we advance iter through the array portion
+    for (; unsigned(iter) < unsigned(sizearray); ++iter)
+    {
+        TValue* e = &h->array[iter];
+
+        if (!ttisnil(e))
+        {
+            StkId top = L->top;
+            setnvalue(top + 0, double(iter + 1));
+            setobj2s(L, top + 1, e);
+            api_update_top(L, top + 2);
+            return iter + 1;
+        }
+    }
+
+    int sizenode = 1 << h->lsizenode;
+
+    // then we advance iter through the hash portion
+    for (; unsigned(iter - sizearray) < unsigned(sizenode); ++iter)
+    {
+        LuaNode* n = &h->node[iter - sizearray];
+
+        if (!ttisnil(gval(n)))
+        {
+            StkId top = L->top;
+            getnodekey(L, top + 0, n);
+            setobj2s(L, top + 1, gval(n));
+            api_update_top(L, top + 2);
+            return iter + 1;
+        }
+    }
+
+    // traversal finished
+    return -1;
+}
+
 void lua_concat(lua_State* L, int n)
 {
     api_checknelems(L, n);
@@ -1374,6 +1426,16 @@ void lua_clonefunction(lua_State* L, int idx)
         setobj2n(L, &newcl->l.uprefs[i], &cl->l.uprefs[i]);
     setclvalue(L, L->top, newcl);
     api_incr_top(L);
+}
+
+void lua_cleartable(lua_State* L, int idx)
+{
+    StkId t = index2addr(L, idx);
+    api_check(L, ttistable(t));
+    Table* tt = hvalue(t);
+    if (tt->readonly)
+        luaG_readonlyerror(L);
+    luaH_clear(tt);
 }
 
 lua_Callbacks* lua_callbacks(lua_State* L)

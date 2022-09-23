@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/UnwindBuilderDwarf2.h"
 
+#include "ByteUtils.h"
+
 #include <string.h>
 
 // General information about Dwarf2 format can be found at:
@@ -10,40 +12,6 @@
 // Information about System V ABI (AMD64) can be found at:
 // https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf [System V Application Binary Interface (AMD64 Architecture Processor Supplement)]
 // Interaction between Dwarf2 and System V ABI can be found in sections '3.6.2 DWARF Register Number Mapping' and '4.2.4 EH_FRAME sections'
-
-static char* writeu8(char* target, uint8_t value)
-{
-    memcpy(target, &value, sizeof(value));
-    return target + sizeof(value);
-}
-
-static char* writeu32(char* target, uint32_t value)
-{
-    memcpy(target, &value, sizeof(value));
-    return target + sizeof(value);
-}
-
-static char* writeu64(char* target, uint64_t value)
-{
-    memcpy(target, &value, sizeof(value));
-    return target + sizeof(value);
-}
-
-static char* writeuleb128(char* target, uint64_t value)
-{
-    do
-    {
-        char byte = value & 0x7f;
-        value >>= 7;
-
-        if (value)
-            byte |= 0x80;
-
-        *target++ = byte;
-    } while (value);
-
-    return target;
-}
 
 // Call frame instruction opcodes
 #define DW_CFA_advance_loc 0x40
@@ -104,7 +72,7 @@ const int kFdeInitialLocationOffset = 8;
 const int kFdeAddressRangeOffset = 16;
 
 // Define canonical frame address expression as [reg + offset]
-static char* defineCfaExpression(char* pos, int dwReg, uint32_t stackOffset)
+static uint8_t* defineCfaExpression(uint8_t* pos, int dwReg, uint32_t stackOffset)
 {
     pos = writeu8(pos, DW_CFA_def_cfa);
     pos = writeuleb128(pos, dwReg);
@@ -113,14 +81,14 @@ static char* defineCfaExpression(char* pos, int dwReg, uint32_t stackOffset)
 }
 
 // Update offset value in canonical frame address expression
-static char* defineCfaExpressionOffset(char* pos, uint32_t stackOffset)
+static uint8_t* defineCfaExpressionOffset(uint8_t* pos, uint32_t stackOffset)
 {
     pos = writeu8(pos, DW_CFA_def_cfa_offset);
     pos = writeuleb128(pos, stackOffset);
     return pos;
 }
 
-static char* defineSavedRegisterLocation(char* pos, int dwReg, uint32_t stackOffset)
+static uint8_t* defineSavedRegisterLocation(uint8_t* pos, int dwReg, uint32_t stackOffset)
 {
     LUAU_ASSERT(stackOffset % kDataAlignFactor == 0 && "stack offsets have to be measured in kDataAlignFactor units");
 
@@ -138,14 +106,14 @@ static char* defineSavedRegisterLocation(char* pos, int dwReg, uint32_t stackOff
     return pos;
 }
 
-static char* advanceLocation(char* pos, uint8_t offset)
+static uint8_t* advanceLocation(uint8_t* pos, uint8_t offset)
 {
     pos = writeu8(pos, DW_CFA_advance_loc1);
     pos = writeu8(pos, offset);
     return pos;
 }
 
-static char* alignPosition(char* start, char* pos)
+static uint8_t* alignPosition(uint8_t* start, uint8_t* pos)
 {
     size_t size = pos - start;
     size_t pad = ((size + kDwarfAlign - 1) & ~(kDwarfAlign - 1)) - size;
@@ -163,7 +131,7 @@ namespace CodeGen
 
 void UnwindBuilderDwarf2::start()
 {
-    char* cieLength = pos;
+    uint8_t* cieLength = pos;
     pos = writeu32(pos, 0); // Length (to be filled later)
 
     pos = writeu32(pos, 0); // CIE id. 0 -- .eh_frame
@@ -245,8 +213,8 @@ void UnwindBuilderDwarf2::finalize(char* target, void* funcAddress, size_t funcS
     memcpy(target, rawData, getSize());
 
     unsigned fdeEntryStartPos = unsigned(fdeEntryStart - rawData);
-    writeu64(target + fdeEntryStartPos + kFdeInitialLocationOffset, uintptr_t(funcAddress));
-    writeu64(target + fdeEntryStartPos + kFdeAddressRangeOffset, funcSize);
+    writeu64((uint8_t*)target + fdeEntryStartPos + kFdeInitialLocationOffset, uintptr_t(funcAddress));
+    writeu64((uint8_t*)target + fdeEntryStartPos + kFdeAddressRangeOffset, funcSize);
 }
 
 } // namespace CodeGen
