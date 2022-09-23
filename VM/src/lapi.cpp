@@ -1376,6 +1376,16 @@ void lua_clonefunction(lua_State* L, int idx)
     api_incr_top(L);
 }
 
+void lua_cleartable(lua_State* L, int idx)
+{
+    StkId t = index2addr(L, idx);
+    api_check(L, ttistable(t));
+    Table* tt = hvalue(t);
+    if (tt->readonly)
+        luaG_runerror(L, "Attempt to modify a readonly table");
+    luaH_clear(tt);
+}
+
 lua_Callbacks* lua_callbacks(lua_State* L)
 {
     return &L->global->cb;

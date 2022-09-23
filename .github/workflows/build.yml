@@ -80,6 +80,7 @@ jobs:
       uses: codecov/codecov-action@v3
       with:
         files: ./coverage.info
+        token: ${{ secrets.CODECOV_TOKEN }}
 
   web:
     runs-on: ubuntu-latest

@@ -778,6 +778,11 @@ TEST_CASE("ApiTables")
     CHECK(strcmp(lua_tostring(L, -1), "test") == 0);
     lua_pop(L, 1);
 
+    // lua_cleartable
+    lua_cleartable(L, -1);
+    lua_pushnil(L);
+    CHECK(lua_next(L, -2) == 0);
+
     lua_pop(L, 1);
 }
 
