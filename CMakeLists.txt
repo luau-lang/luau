@@ -51,6 +51,8 @@ if(LUAU_BUILD_WEB)
     add_executable(Luau.Web)
 endif()
 
+# Proxy target to make it possible to depend on private VM headers
+add_library(Luau.VM.Internals INTERFACE)
 
 include(Sources.cmake)
 
@@ -78,6 +80,8 @@ target_include_directories(Luau.VM PUBLIC VM/include)
 target_link_libraries(Luau.VM PUBLIC Luau.Common)
 
 target_include_directories(isocline PUBLIC extern/isocline/include)
+
+target_include_directories(Luau.VM.Internals INTERFACE VM/src)
 
 set(LUAU_OPTIONS)
 
