@@ -2355,7 +2355,44 @@ static void luau_execute(lua_State* L)
                 }
                 else if (!ttisfunction(ra))
                 {
-                    VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                    Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
+
+                    if (const TValue* fn = fasttm(L, mt, TM_ITER))
+                    {
+                        setobj2s(L, ra + 1, ra);
+                        setobj2s(L, ra, fn);
+
+                        L->top = ra + 2; // func + self arg
+                        LUAU_ASSERT(L->top <= L->stack_last);
+
+                        VM_PROTECT(luaD_call(L, ra, 3));
+                        L->top = L->ci->top;
+
+                        // recompute ra since stack might have been reallocated
+                        ra = VM_REG(LUAU_INSN_A(insn));
+
+                        // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
+                        if (ttisnil(ra))
+                        {
+                            VM_PROTECT(luaG_typeerror(L, ra, "call"));
+                        }
+                    }
+                    else if (fasttm(L, mt, TM_CALL))
+                    {
+                        // table or userdata with __call, will be called during FORGLOOP
+                        // TODO: we might be able to stop supporting this depending on whether it's used in practice
+                    }
+                    else if (ttistable(ra))
+                    {
+                        // set up registers for builtin iteration
+                        setobj2s(L, ra + 1, ra);
+                        setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
+                        setnilvalue(ra);
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                    }
                 }
 
                 pc += LUAU_INSN_D(insn);
@@ -2383,7 +2420,44 @@ static void luau_execute(lua_State* L)
                 }
                 else if (!ttisfunction(ra))
                 {
-                    VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                    Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
+
+                    if (const TValue* fn = fasttm(L, mt, TM_ITER))
+                    {
+                        setobj2s(L, ra + 1, ra);
+                        setobj2s(L, ra, fn);
+
+                        L->top = ra + 2; // func + self arg
+                        LUAU_ASSERT(L->top <= L->stack_last);
+
+                        VM_PROTECT(luaD_call(L, ra, 3));
+                        L->top = L->ci->top;
+
+                        // recompute ra since stack might have been reallocated
+                        ra = VM_REG(LUAU_INSN_A(insn));
+
+                        // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
+                        if (ttisnil(ra))
+                        {
+                            VM_PROTECT(luaG_typeerror(L, ra, "call"));
+                        }
+                    }
+                    else if (fasttm(L, mt, TM_CALL))
+                    {
+                        // table or userdata with __call, will be called during FORGLOOP
+                        // TODO: we might be able to stop supporting this depending on whether it's used in practice
+                    }
+                    else if (ttistable(ra))
+                    {
+                        // set up registers for builtin iteration
+                        setobj2s(L, ra + 1, ra);
+                        setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
+                        setnilvalue(ra);
+                    }
+                    else
+                    {
+                        VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                    }
                 }
 
                 pc += LUAU_INSN_D(insn);
