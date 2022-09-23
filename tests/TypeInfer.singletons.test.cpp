@@ -314,6 +314,31 @@ caused by:
         toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "parametric_tagged_union_alias")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+    };
+
+    CheckResult result = check(R"(
+        type Ok<T> = {success: true, result: T}
+        type Err<T> = {success: false, error: T}
+        type Result<O, E> = Ok<O> | Err<E>
+
+        local a : Result<string, number> = {success = false, result = "hotdogs"}
+        local b : Result<string, number> = {success = true, result = "hotdogs"}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    const std::string expectedError = "Type '{ result: string, success: false }' could not be converted into 'Err<number> | Ok<string>'\n"
+                                      "caused by:\n"
+                                      "  None of the union options are compatible. For example: Table type '{ result: string, success: false }'"
+                                      " not compatible with type 'Err<number>' because the former is missing field 'error'";
+
+    CHECK(toString(result.errors[0]) == expectedError);
+}
+
 TEST_CASE_FIXTURE(Fixture, "if_then_else_expression_singleton_options")
 {
     CheckResult result = check(R"(

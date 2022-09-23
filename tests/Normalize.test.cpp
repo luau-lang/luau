@@ -2,6 +2,7 @@
 
 #include "Fixture.h"
 
+#include "Luau/Common.h"
 #include "doctest.h"
 
 #include "Luau/Normalize.h"
@@ -747,7 +748,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_union")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauFixNormalizationOfCyclicUnions", true},
     };
 
     CheckResult result = check(R"(
@@ -765,7 +765,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_intersection")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauFixNormalizationOfCyclicUnions", true},
     };
 
     CheckResult result = check(R"(
@@ -784,7 +783,6 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_indexers")
 {
     ScopedFastFlag sff[] = {
         {"LuauLowerBoundsCalculation", true},
-        {"LuauFixNormalizationOfCyclicUnions", true},
     };
 
     CheckResult result = check(R"(

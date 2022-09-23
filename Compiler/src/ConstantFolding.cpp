@@ -3,6 +3,7 @@
 
 #include "BuiltinFolding.h"
 
+#include <vector>
 #include <math.h>
 
 namespace Luau

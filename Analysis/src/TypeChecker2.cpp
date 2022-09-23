@@ -307,10 +307,9 @@ struct TypeChecker2
                         if (var->annotation)
                         {
                             TypeId varType = lookupAnnotation(var->annotation);
-                            if (!isSubtype(*it, varType, stack.back(), singletonTypes, ice))
-                            {
-                                reportError(TypeMismatch{varType, *it}, value->location);
-                            }
+                            ErrorVec errors = tryUnify(stack.back(), value->location, *it, varType);
+                            if (!errors.empty())
+                                reportErrors(std::move(errors));
                         }
 
                         ++it;
@@ -325,7 +324,7 @@ struct TypeChecker2
                 if (var->annotation)
                 {
                     TypeId varType = lookupAnnotation(var->annotation);
-                    if (!isSubtype(varType, valueType, stack.back(), singletonTypes, ice))
+                    if (!isSubtype(varType, valueType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
                     {
                         reportError(TypeMismatch{varType, valueType}, value->location);
                     }
@@ -540,7 +539,7 @@ struct TypeChecker2
             visit(rhs);
             TypeId rhsType = lookupType(rhs);
 
-            if (!isSubtype(rhsType, lhsType, stack.back(), singletonTypes, ice))
+            if (!isSubtype(rhsType, lhsType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
             {
                 reportError(TypeMismatch{lhsType, rhsType}, rhs->location);
             }
@@ -691,7 +690,7 @@ struct TypeChecker2
         TypeId actualType = lookupType(number);
         TypeId numberType = singletonTypes->numberType;
 
-        if (!isSubtype(numberType, actualType, stack.back(), singletonTypes, ice))
+        if (!isSubtype(numberType, actualType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
         {
             reportError(TypeMismatch{actualType, numberType}, number->location);
         }
@@ -702,7 +701,7 @@ struct TypeChecker2
         TypeId actualType = lookupType(string);
         TypeId stringType = singletonTypes->stringType;
 
-        if (!isSubtype(stringType, actualType, stack.back(), singletonTypes, ice))
+        if (!isSubtype(stringType, actualType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
         {
             reportError(TypeMismatch{actualType, stringType}, string->location);
         }
@@ -762,7 +761,7 @@ struct TypeChecker2
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);
 
-        if (!isSubtype(expectedType, instantiatedFunctionType, stack.back(), singletonTypes, ice))
+        if (!isSubtype(instantiatedFunctionType, expectedType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
         {
             CloneState cloneState;
             expectedType = clone(expectedType, module->internalTypes, cloneState);
@@ -781,7 +780,7 @@ struct TypeChecker2
             getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
         if (ty)
         {
-            if (!isSubtype(resultType, *ty, stack.back(), singletonTypes, ice))
+            if (!isSubtype(resultType, *ty, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
             {
                 reportError(TypeMismatch{resultType, *ty}, indexName->location);
             }
@@ -814,7 +813,7 @@ struct TypeChecker2
                 TypeId inferredArgTy = *argIt;
                 TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
-                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), singletonTypes, ice))
+                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
                 {
                     reportError(TypeMismatch{annotatedArgTy, inferredArgTy}, arg->location);
                 }
@@ -859,10 +858,10 @@ struct TypeChecker2
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (isSubtype(annotationType, computedType, stack.back(), singletonTypes, ice))
+        if (isSubtype(annotationType, computedType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
             return;
 
-        if (isSubtype(computedType, annotationType, stack.back(), singletonTypes, ice))
+        if (isSubtype(computedType, annotationType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
             return;
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);

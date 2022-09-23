@@ -6,6 +6,8 @@
 #include "Luau/DenseHash.h"
 #include "Luau/Common.h"
 
+#include <vector>
+
 namespace Luau
 {
 
