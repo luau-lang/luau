@@ -69,8 +69,13 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/AssemblyBuilderX64.cpp
     CodeGen/src/CodeAllocator.cpp
     CodeGen/src/CodeBlockUnwind.cpp
+    CodeGen/src/Fallbacks.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
+
+    CodeGen/src/ByteUtils.h
+    CodeGen/src/Fallbacks.h
+    CodeGen/src/FallbacksProlog.h
 )
 
 # Luau.Analysis Sources

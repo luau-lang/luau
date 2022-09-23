@@ -109,6 +109,11 @@
 #define LUA_MAXCAPTURES 32
 #endif
 
+// enables callbacks to redirect code execution from Luau VM to a custom implementation
+#ifndef LUA_CUSTOM_EXECUTION
+#define LUA_CUSTOM_EXECUTION 0
+#endif
+
 // }==================================================================
 
 /*

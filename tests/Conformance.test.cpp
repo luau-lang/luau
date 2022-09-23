@@ -786,6 +786,44 @@ TEST_CASE("ApiTables")
     lua_pop(L, 1);
 }
 
+TEST_CASE("ApiIter")
+{
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    lua_newtable(L);
+    lua_pushnumber(L, 123.0);
+    lua_setfield(L, -2, "key");
+    lua_pushnumber(L, 456.0);
+    lua_rawsetfield(L, -2, "key2");
+    lua_pushstring(L, "test");
+    lua_rawseti(L, -2, 1);
+
+    // Lua-compatible iteration interface: lua_next
+    double sum1 = 0;
+    lua_pushnil(L);
+    while (lua_next(L, -2))
+    {
+        sum1 += lua_tonumber(L, -2); // key
+        sum1 += lua_tonumber(L, -1); // value
+        lua_pop(L, 1); // pop value, key is used by lua_next
+    }
+    CHECK(sum1 == 580);
+
+    // Luau iteration interface: lua_rawiter (faster and preferable to lua_next)
+    double sum2 = 0;
+    for (int index = 0; index = lua_rawiter(L, -1, index), index >= 0; )
+    {
+        sum2 += lua_tonumber(L, -2); // key
+        sum2 += lua_tonumber(L, -1); // value
+        lua_pop(L, 2); // pop both key and value
+    }
+    CHECK(sum2 == 580);
+
+    // pop table
+    lua_pop(L, 1);
+}
+
 TEST_CASE("ApiCalls")
 {
     StateRef globalState = runConformance("apicalls.lua");

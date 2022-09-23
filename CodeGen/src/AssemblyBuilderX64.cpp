@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AssemblyBuilderX64.h"
 
+#include "ByteUtils.h"
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -45,44 +47,6 @@ const unsigned AVX_F3 = 0b10;
 const unsigned AVX_F2 = 0b11;
 
 const unsigned kMaxAlign = 16;
-
-// Utility functions to correctly write data on big endian machines
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-#include <endian.h>
-
-static void writeu32(uint8_t* target, uint32_t value)
-{
-    value = htole32(value);
-    memcpy(target, &value, sizeof(value));
-}
-
-static void writeu64(uint8_t* target, uint64_t value)
-{
-    value = htole64(value);
-    memcpy(target, &value, sizeof(value));
-}
-
-static void writef32(uint8_t* target, float value)
-{
-    static_assert(sizeof(float) == sizeof(uint32_t), "type size must match to reinterpret data");
-    uint32_t data;
-    memcpy(&data, &value, sizeof(value));
-    writeu32(target, data);
-}
-
-static void writef64(uint8_t* target, double value)
-{
-    static_assert(sizeof(double) == sizeof(uint64_t), "type size must match to reinterpret data");
-    uint64_t data;
-    memcpy(&data, &value, sizeof(value));
-    writeu64(target, data);
-}
-#else
-#define writeu32(target, value) memcpy(target, &value, sizeof(value))
-#define writeu64(target, value) memcpy(target, &value, sizeof(value))
-#define writef32(target, value) memcpy(target, &value, sizeof(value))
-#define writef64(target, value) memcpy(target, &value, sizeof(value))
-#endif
 
 AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
     : logText(logText)
@@ -1014,16 +978,14 @@ void AssemblyBuilderX64::placeImm32(int32_t imm)
 {
     uint8_t* pos = codePos;
     LUAU_ASSERT(pos + sizeof(imm) < codeEnd);
-    writeu32(pos, imm);
-    codePos = pos + sizeof(imm);
+    codePos = writeu32(pos, imm);
 }
 
 void AssemblyBuilderX64::placeImm64(int64_t imm)
 {
     uint8_t* pos = codePos;
     LUAU_ASSERT(pos + sizeof(imm) < codeEnd);
-    writeu64(pos, imm);
-    codePos = pos + sizeof(imm);
+    codePos = writeu64(pos, imm);
 }
 
 void AssemblyBuilderX64::placeLabel(Label& label)

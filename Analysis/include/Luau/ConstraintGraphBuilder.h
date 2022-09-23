@@ -125,23 +125,25 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
     void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
 
-    TypePackId checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs);
-    TypePackId checkPack(const ScopePtr& scope, AstExpr* expr);
+    TypePackId checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
+    TypePackId checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});
 
     /**
      * Checks an expression that is expected to evaluate to one type.
      * @param scope the scope the expression is contained within.
      * @param expr the expression to check.
+     * @param expectedType the type of the expression that is expected from its
+     *      surrounding context.  Used to implement bidirectional type checking.
      * @return the type of the expression.
      */
-    TypeId check(const ScopePtr& scope, AstExpr* expr);
+    TypeId check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {});
 
-    TypeId checkExprTable(const ScopePtr& scope, AstExprTable* expr);
+    TypeId check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
     TypeId check(const ScopePtr& scope, AstExprIndexName* indexName);
     TypeId check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
     TypeId check(const ScopePtr& scope, AstExprUnary* unary);
     TypeId check(const ScopePtr& scope, AstExprBinary* binary);
-    TypeId check(const ScopePtr& scope, AstExprIfElse* ifElse);
+    TypeId check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     TypeId check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
 
     struct FunctionSignature

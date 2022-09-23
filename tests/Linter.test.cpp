@@ -1705,8 +1705,6 @@ TEST_CASE_FIXTURE(Fixture, "TestStringInterpolation")
 
 TEST_CASE_FIXTURE(Fixture, "IntegerParsing")
 {
-    ScopedFastFlag luauLintParseIntegerIssues{"LuauLintParseIntegerIssues", true};
-
     LintResult result = lint(R"(
 local _ = 0b10000000000000000000000000000000000000000000000000000000000000000
 local _ = 0x10000000000000000
@@ -1720,7 +1718,6 @@ local _ = 0x10000000000000000
 // TODO: remove with FFlagLuauErrorDoubleHexPrefix
 TEST_CASE_FIXTURE(Fixture, "IntegerParsingDoublePrefix")
 {
-    ScopedFastFlag luauLintParseIntegerIssues{"LuauLintParseIntegerIssues", true};
     ScopedFastFlag luauErrorDoubleHexPrefix{"LuauErrorDoubleHexPrefix", false}; // Lint will be available until we start rejecting code
 
     LintResult result = lint(R"(

@@ -90,18 +90,49 @@ struct TypeAliasExpansionConstraint
     TypeId target;
 };
 
-using ConstraintPtr = std::unique_ptr<struct Constraint>;
-
 struct FunctionCallConstraint
 {
-    std::vector<NotNull<const Constraint>> innerConstraints;
+    std::vector<NotNull<const struct Constraint>> innerConstraints;
     TypeId fn;
     TypePackId result;
     class AstExprCall* astFragment;
 };
 
-using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
-    BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint>;
+// result ~ prim ExpectedType SomeSingletonType MultitonType
+//
+// If ExpectedType is potentially a singleton (an actual singleton or a union
+// that contains a singleton), then result ~ SomeSingletonType
+//
+// else result ~ MultitonType
+struct PrimitiveTypeConstraint
+{
+    TypeId resultType;
+    TypeId expectedType;
+    TypeId singletonType;
+    TypeId multitonType;
+};
+
+// result ~ hasProp type "prop_name"
+//
+// If the subject is a table, bind the result to the named prop.  If the table
+// has an indexer, bind it to the index result type. If the subject is a union,
+// bind the result to the union of its constituents' properties.
+//
+// It would be nice to get rid of this constraint and someday replace it with
+//
+// T <: {p: X}
+//
+// Where {} describes an inexact shape type.
+struct HasPropConstraint
+{
+    TypeId resultType;
+    TypeId subjectType;
+    std::string prop;
+};
+
+using ConstraintV =
+    Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint, BinaryConstraint,
+        IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint, HasPropConstraint>;
 
 struct Constraint
 {
@@ -116,6 +147,8 @@ struct Constraint
 
     std::vector<NotNull<Constraint>> dependencies;
 };
+
+using ConstraintPtr = std::unique_ptr<Constraint>;
 
 inline Constraint& asMutable(const Constraint& c)
 {

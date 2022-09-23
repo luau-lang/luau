@@ -27,13 +27,13 @@ public:
 
 private:
     static const unsigned kRawDataLimit = 128;
-    char rawData[kRawDataLimit];
-    char* pos = rawData;
+    uint8_t rawData[kRawDataLimit];
+    uint8_t* pos = rawData;
 
     uint32_t stackOffset = 0;
 
     // We will remember the FDE location to write some of the fields like entry length, function start and size later
-    char* fdeEntryStart = nullptr;
+    uint8_t* fdeEntryStart = nullptr;
 };
 
 } // namespace CodeGen

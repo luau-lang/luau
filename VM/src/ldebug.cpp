@@ -340,6 +340,11 @@ void luaG_breakpoint(lua_State* L, Proto* p, int line, bool enable)
             p->code[i] |= op;
             LUAU_ASSERT(LUAU_INSN_OP(p->code[i]) == op);
 
+#if LUA_CUSTOM_EXECUTION
+            if (L->global->ecb.setbreakpoint)
+                L->global->ecb.setbreakpoint(L, p, i);
+#endif
+
             // note: this is important!
             // we only patch the *first* instruction in each proto that's attributed to a given line
             // this can be changed, but if requires making patching a bit more nuanced so that we don't patch AUX words

@@ -5,6 +5,7 @@
 #include <algorithm>
 
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
 #include "Luau/Unifier.h"
 #include "Luau/VisitTypeVar.h"
 
@@ -13,8 +14,8 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
-LUAU_FASTFLAGVARIABLE(LuauFixNormalizationOfCyclicUnions, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
 {
@@ -54,24 +55,24 @@ struct Replacer
 
 } // anonymous namespace
 
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Unifier u{&arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
-    u.anyIsTop = true;
+    u.anyIsTop = anyIsTop;
 
     u.tryUnify(subTy, superTy);
     const bool ok = u.errors.empty() && u.log.empty();
     return ok;
 }
 
-bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
+bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Unifier u{&arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
-    u.anyIsTop = true;
+    u.anyIsTop = anyIsTop;
 
     u.tryUnify(subPack, superPack);
     const bool ok = u.errors.empty() && u.log.empty();
@@ -319,18 +320,11 @@ struct Normalize final : TypeVarVisitor
 
         UnionTypeVar* utv = &const_cast<UnionTypeVar&>(utvRef);
 
-        // TODO: Clip tempOptions and optionsRef when clipping FFlag::LuauFixNormalizationOfCyclicUnions
-        std::vector<TypeId> tempOptions;
-        if (!FFlag::LuauFixNormalizationOfCyclicUnions)
-            tempOptions = std::move(utv->options);
-
-        std::vector<TypeId>& optionsRef = FFlag::LuauFixNormalizationOfCyclicUnions ? utv->options : tempOptions;
-
         // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
-        for (TypeId option : optionsRef)
+        for (TypeId option : utv->options)
             traverse(option);
 
-        std::vector<TypeId> newOptions = normalizeUnion(optionsRef);
+        std::vector<TypeId> newOptions = normalizeUnion(utv->options);
 
         const bool normal = areNormal(newOptions, seen, ice);
 
@@ -355,106 +349,54 @@ struct Normalize final : TypeVarVisitor
 
         IntersectionTypeVar* itv = &const_cast<IntersectionTypeVar&>(itvRef);
 
-        if (FFlag::LuauFixNormalizationOfCyclicUnions)
+        std::vector<TypeId> oldParts = itv->parts;
+        IntersectionTypeVar newIntersection;
+
+        for (TypeId part : oldParts)
+            traverse(part);
+
+        std::vector<TypeId> tables;
+        for (TypeId part : oldParts)
         {
-            std::vector<TypeId> oldParts = itv->parts;
-            IntersectionTypeVar newIntersection;
-
-            for (TypeId part : oldParts)
-                traverse(part);
-
-            std::vector<TypeId> tables;
-            for (TypeId part : oldParts)
+            part = follow(part);
+            if (get<TableTypeVar>(part))
+                tables.push_back(part);
+            else
             {
-                part = follow(part);
-                if (get<TableTypeVar>(part))
-                    tables.push_back(part);
-                else
-                {
-                    Replacer replacer{&arena, nullptr, nullptr}; // FIXME this is super super WEIRD
-                    combineIntoIntersection(replacer, &newIntersection, part);
-                }
-            }
-
-            // Don't allocate a new table if there's just one in the intersection.
-            if (tables.size() == 1)
-                newIntersection.parts.push_back(tables[0]);
-            else if (!tables.empty())
-            {
-                const TableTypeVar* first = get<TableTypeVar>(tables[0]);
-                LUAU_ASSERT(first);
-
-                TypeId newTable = arena.addType(TableTypeVar{first->state, first->level});
-                TableTypeVar* ttv = getMutable<TableTypeVar>(newTable);
-                for (TypeId part : tables)
-                {
-                    // Intuition: If combineIntoTable() needs to clone a table, any references to 'part' are cyclic and need
-                    // to be rewritten to point at 'newTable' in the clone.
-                    Replacer replacer{&arena, part, newTable};
-                    combineIntoTable(replacer, ttv, part);
-                }
-
-                newIntersection.parts.push_back(newTable);
-            }
-
-            itv->parts = std::move(newIntersection.parts);
-
-            asMutable(ty)->normal = areNormal(itv->parts, seen, ice);
-
-            if (itv->parts.size() == 1)
-            {
-                TypeId part = itv->parts[0];
-                *asMutable(ty) = BoundTypeVar{part};
+                Replacer replacer{&arena, nullptr, nullptr}; // FIXME this is super super WEIRD
+                combineIntoIntersection(replacer, &newIntersection, part);
             }
         }
-        else
+
+        // Don't allocate a new table if there's just one in the intersection.
+        if (tables.size() == 1)
+            newIntersection.parts.push_back(tables[0]);
+        else if (!tables.empty())
         {
-            std::vector<TypeId> oldParts = std::move(itv->parts);
+            const TableTypeVar* first = get<TableTypeVar>(tables[0]);
+            LUAU_ASSERT(first);
 
-            for (TypeId part : oldParts)
-                traverse(part);
-
-            std::vector<TypeId> tables;
-            for (TypeId part : oldParts)
+            TypeId newTable = arena.addType(TableTypeVar{first->state, first->level});
+            TableTypeVar* ttv = getMutable<TableTypeVar>(newTable);
+            for (TypeId part : tables)
             {
-                part = follow(part);
-                if (get<TableTypeVar>(part))
-                    tables.push_back(part);
-                else
-                {
-                    Replacer replacer{&arena, nullptr, nullptr}; // FIXME this is super super WEIRD
-                    combineIntoIntersection(replacer, itv, part);
-                }
+                // Intuition: If combineIntoTable() needs to clone a table, any references to 'part' are cyclic and need
+                // to be rewritten to point at 'newTable' in the clone.
+                Replacer replacer{&arena, part, newTable};
+                combineIntoTable(replacer, ttv, part);
             }
 
-            // Don't allocate a new table if there's just one in the intersection.
-            if (tables.size() == 1)
-                itv->parts.push_back(tables[0]);
-            else if (!tables.empty())
-            {
-                const TableTypeVar* first = get<TableTypeVar>(tables[0]);
-                LUAU_ASSERT(first);
+            newIntersection.parts.push_back(newTable);
+        }
 
-                TypeId newTable = arena.addType(TableTypeVar{first->state, first->level});
-                TableTypeVar* ttv = getMutable<TableTypeVar>(newTable);
-                for (TypeId part : tables)
-                {
-                    // Intuition: If combineIntoTable() needs to clone a table, any references to 'part' are cyclic and need
-                    // to be rewritten to point at 'newTable' in the clone.
-                    Replacer replacer{&arena, part, newTable};
-                    combineIntoTable(replacer, ttv, part);
-                }
+        itv->parts = std::move(newIntersection.parts);
 
-                itv->parts.push_back(newTable);
-            }
+        asMutable(ty)->normal = areNormal(itv->parts, seen, ice);
 
-            asMutable(ty)->normal = areNormal(itv->parts, seen, ice);
-
-            if (itv->parts.size() == 1)
-            {
-                TypeId part = itv->parts[0];
-                *asMutable(ty) = BoundTypeVar{part};
-            }
+        if (itv->parts.size() == 1)
+        {
+            TypeId part = itv->parts[0];
+            *asMutable(ty) = BoundTypeVar{part};
         }
 
         return false;
@@ -629,21 +571,18 @@ struct Normalize final : TypeVarVisitor
                 table->props.insert({propName, prop});
         }
 
-        if (FFlag::LuauFixNormalizationOfCyclicUnions)
+        if (tyTable->indexer)
         {
-            if (tyTable->indexer)
+            if (table->indexer)
             {
-                if (table->indexer)
-                {
-                    table->indexer->indexType = combine(replacer, replacer.smartClone(tyTable->indexer->indexType), table->indexer->indexType);
-                    table->indexer->indexResultType =
-                        combine(replacer, replacer.smartClone(tyTable->indexer->indexResultType), table->indexer->indexResultType);
-                }
-                else
-                {
-                    table->indexer =
-                        TableIndexer{replacer.smartClone(tyTable->indexer->indexType), replacer.smartClone(tyTable->indexer->indexResultType)};
-                }
+                table->indexer->indexType = combine(replacer, replacer.smartClone(tyTable->indexer->indexType), table->indexer->indexType);
+                table->indexer->indexResultType =
+                    combine(replacer, replacer.smartClone(tyTable->indexer->indexResultType), table->indexer->indexResultType);
+            }
+            else
+            {
+                table->indexer =
+                    TableIndexer{replacer.smartClone(tyTable->indexer->indexType), replacer.smartClone(tyTable->indexer->indexResultType)};
             }
         }
 

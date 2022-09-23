@@ -6,6 +6,7 @@
 #include "Luau/Location.h"
 
 #include <string>
+#include <vector>
 
 namespace Luau
 {
