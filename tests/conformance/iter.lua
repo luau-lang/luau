@@ -13,6 +13,17 @@ do
   a = 0; for i=0, 1, 0.1 do a=a+1 end; assert(a==11)
 end
 
+-- NOTE: getfenv breaks fastcalls for the remainder of the source! hence why this is delayed until the end
+function testgetfenvnext()
+  getfenv().next = {1, 2, 3}
+  local a = 0
+  for i, v in getfenv().next, {1, 2, 3} do a=a+1 end
+  assert(a==3)
+  a = 0
+  for i, v in next, {1, 2, 3} do a=a+1 end
+  assert(a==3)
+end
+
 -- precision tests for for loops
 do
   local a
@@ -192,5 +203,7 @@ do
   end
   assert(x == 15)
 end
+
+testgetfenvnext() -- DONT MOVE THIS LINE
 
 return"OK"
