@@ -141,6 +141,51 @@ LUAU_NOINLINE static void luau_prepareFORN(lua_State* L, StkId plimit, StkId pst
         luaG_forerror(L, pstep, "step");
 }
 
+void luau_prepareFORG(lua_State* L, StkId base, const Instruction* pc, StkId& ra)
+{
+    if (!ttisfunction(ra))
+    {
+        Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
+
+        if (const TValue* fn = fasttm(L, mt, TM_ITER))
+        {
+            setobj2s(L, ra + 1, ra);
+            setobj2s(L, ra, fn);
+
+            L->top = ra + 2; // func + self arg
+            LUAU_ASSERT(L->top <= L->stack_last);
+
+            VM_PROTECT(luaD_call(L, ra, 3));
+            L->top = L->ci->top;
+
+            // recompute ra since stack might have been reallocated
+            ra = VM_REG(LUAU_INSN_A(*pc));
+
+            // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
+            if (ttisnil(ra))
+            {
+                VM_PROTECT(luaG_typeerror(L, ra, "call"));
+            }
+        }
+        else if (fasttm(L, mt, TM_CALL))
+        {
+            // table or userdata with __call, will be called during FORGLOOP
+            // TODO: we might be able to stop supporting this depending on whether it's used in practice
+        }
+        else if (ttistable(ra))
+        {
+            // set up registers for builtin iteration
+            setobj2s(L, ra + 1, ra);
+            setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
+            setnilvalue(ra);
+        }
+        else
+        {
+            VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+        }
+    }
+}
+
 // calls a C function f with no yielding support; optionally save one resulting value to the res register
 // the function and arguments have to already be pushed to L->top
 LUAU_NOINLINE static void luau_callTM(lua_State* L, int nparams, int res)
@@ -2190,51 +2235,7 @@ static void luau_execute(lua_State* L)
                 Instruction insn = *pc++;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
 
-                if (ttisfunction(ra))
-                {
-                    // will be called during FORGLOOP
-                }
-                else
-                {
-                    Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
-
-                    if (const TValue* fn = fasttm(L, mt, TM_ITER))
-                    {
-                        setobj2s(L, ra + 1, ra);
-                        setobj2s(L, ra, fn);
-
-                        L->top = ra + 2; // func + self arg
-                        LUAU_ASSERT(L->top <= L->stack_last);
-
-                        VM_PROTECT(luaD_call(L, ra, 3));
-                        L->top = L->ci->top;
-
-                        // recompute ra since stack might have been reallocated
-                        ra = VM_REG(LUAU_INSN_A(insn));
-
-                        // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
-                        if (ttisnil(ra))
-                        {
-                            VM_PROTECT(luaG_typeerror(L, ra, "call"));
-                        }
-                    }
-                    else if (fasttm(L, mt, TM_CALL))
-                    {
-                        // table or userdata with __call, will be called during FORGLOOP
-                        // TODO: we might be able to stop supporting this depending on whether it's used in practice
-                    }
-                    else if (ttistable(ra))
-                    {
-                        // set up registers for builtin iteration
-                        setobj2s(L, ra + 1, ra);
-                        setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-                        setnilvalue(ra);
-                    }
-                    else
-                    {
-                        VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
-                    }
-                }
+                luau_prepareFORG(L, base, pc, ra);
 
                 pc += LUAU_INSN_D(insn);
                 LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
@@ -2353,46 +2354,9 @@ static void luau_execute(lua_State* L)
                     // ra+1 is already the table
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
-                else if (!ttisfunction(ra))
+                else
                 {
-                    Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
-
-                    if (const TValue* fn = fasttm(L, mt, TM_ITER))
-                    {
-                        setobj2s(L, ra + 1, ra);
-                        setobj2s(L, ra, fn);
-
-                        L->top = ra + 2; // func + self arg
-                        LUAU_ASSERT(L->top <= L->stack_last);
-
-                        VM_PROTECT(luaD_call(L, ra, 3));
-                        L->top = L->ci->top;
-
-                        // recompute ra since stack might have been reallocated
-                        ra = VM_REG(LUAU_INSN_A(insn));
-
-                        // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
-                        if (ttisnil(ra))
-                        {
-                            VM_PROTECT(luaG_typeerror(L, ra, "call"));
-                        }
-                    }
-                    else if (fasttm(L, mt, TM_CALL))
-                    {
-                        // table or userdata with __call, will be called during FORGLOOP
-                        // TODO: we might be able to stop supporting this depending on whether it's used in practice
-                    }
-                    else if (ttistable(ra))
-                    {
-                        // set up registers for builtin iteration
-                        setobj2s(L, ra + 1, ra);
-                        setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-                        setnilvalue(ra);
-                    }
-                    else
-                    {
-                        VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
-                    }
+                    luau_prepareFORG(L, base, pc, ra);
                 }
 
                 pc += LUAU_INSN_D(insn);
@@ -2418,46 +2382,9 @@ static void luau_execute(lua_State* L)
                     // ra+1 is already the table
                     setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
                 }
-                else if (!ttisfunction(ra))
+                else
                 {
-                    Table* mt = ttistable(ra) ? hvalue(ra)->metatable : ttisuserdata(ra) ? uvalue(ra)->metatable : cast_to(Table*, NULL);
-
-                    if (const TValue* fn = fasttm(L, mt, TM_ITER))
-                    {
-                        setobj2s(L, ra + 1, ra);
-                        setobj2s(L, ra, fn);
-
-                        L->top = ra + 2; // func + self arg
-                        LUAU_ASSERT(L->top <= L->stack_last);
-
-                        VM_PROTECT(luaD_call(L, ra, 3));
-                        L->top = L->ci->top;
-
-                        // recompute ra since stack might have been reallocated
-                        ra = VM_REG(LUAU_INSN_A(insn));
-
-                        // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
-                        if (ttisnil(ra))
-                        {
-                            VM_PROTECT(luaG_typeerror(L, ra, "call"));
-                        }
-                    }
-                    else if (fasttm(L, mt, TM_CALL))
-                    {
-                        // table or userdata with __call, will be called during FORGLOOP
-                        // TODO: we might be able to stop supporting this depending on whether it's used in practice
-                    }
-                    else if (ttistable(ra))
-                    {
-                        // set up registers for builtin iteration
-                        setobj2s(L, ra + 1, ra);
-                        setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
-                        setnilvalue(ra);
-                    }
-                    else
-                    {
-                        VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
-                    }
+                    luau_prepareFORG(L, base, pc, ra);
                 }
 
                 pc += LUAU_INSN_D(insn);
