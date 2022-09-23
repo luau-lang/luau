@@ -14,13 +14,20 @@ do
 end
 
 -- NOTE: getfenv breaks fastcalls for the remainder of the source! hence why this is delayed until the end
-function testgetfenvnext()
+function testgetfenvfastpath()
   getfenv().next = {1, 2, 3}
   local a = 0
-  for i, v in getfenv().next, {1, 2, 3} do a=a+1 end
+  for i, v in getfenv().next, {} do a=a+1 end
   assert(a==3)
   a = 0
-  for i, v in next, {1, 2, 3} do a=a+1 end
+  for i, v in next, {} do a=a+1 end
+  assert(a==3)
+  getfenv().ipairs = function() return {1, 2, 3} end
+  a = 0
+  for i, v in getfenv().ipairs({}) do a=a+1 end
+  assert(a==3)
+  a = 0
+  for i, v in ipairs({}) do a=a+1 end
   assert(a==3)
 end
 
@@ -204,6 +211,6 @@ do
   assert(x == 15)
 end
 
-testgetfenvnext() -- DONT MOVE THIS LINE
+testgetfenvfastpath() -- DONT MOVE THIS LINE
 
 return"OK"
