@@ -46,7 +46,7 @@ local a2: A = b1 -- ok
 local b2: B = a1 -- not ok
 ```
 
-## Primitive types
+## Builtin types
 
 Lua VM supports 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax), and `userdata` is represented by [concrete types](#roblox-types); other types can be specified by their name.
 
@@ -69,7 +69,7 @@ local a
 local b = nil
 ```
 
-## `unknown` type
+### `unknown` type
 
 `unknown` is also said to be the _top_ type, that is it's a union of all types.
 
@@ -100,7 +100,7 @@ if typeof(x) == "number" then
 end
 ```
 
-## `never` type
+### `never` type
 
 `never` is also said to be the _bottom_ type, meaning there doesn't exist a value that inhabits the type `never`. In fact, it is the _dual_ of `unknown`. `never` is useful in many scenarios, and one such use case is when type refinements proves it impossible:
 
@@ -111,7 +111,7 @@ if typeof(x) == "number" and typeof(x) == "string" then
 end
 ```
 
-## `any` type
+### `any` type
 
 `any` is just like `unknown`, except that it allows itself to be used as an arbitrary type without further checks or annotations. Essentially, it's an opt-out from the type system entirely.
 
