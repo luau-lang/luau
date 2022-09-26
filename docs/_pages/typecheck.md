@@ -79,7 +79,7 @@ local b: unknown = 5
 local c: unknown = function() return 5 end
 ```
 
-Unlike `any`, `unknown` will not allow itself to inhabit into a different type!
+Unlike `any`, `unknown` will not allow itself to be used as a different type!
 
 ```lua
 local function unknown(): unknown
@@ -113,7 +113,7 @@ end
 
 ## `any` type
 
-`any` is just like `unknown`, except that it allows itself to inhabit into a different type. Essentially, it's an opt-out from the type system entirely.
+`any` is just like `unknown`, except that it allows itself to be used as an arbitrary type without further checks or annotations. Essentially, it's an opt-out from the type system entirely.
 
 ```lua
 local x: any = 5
