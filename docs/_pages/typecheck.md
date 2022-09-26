@@ -102,7 +102,7 @@ end
 
 ## `never` type
 
-`never` is the _dual_ of `unknown`, meaning that there doesn't exist a value that inhabits the type `never`. `never` is useful in many scenarios, and one such use case is when type refinements proves it impossible:
+`never` is also said to be the _bottom_ type, meaning there doesn't exist a value that inhabits the type `never`. In fact, it is the _dual_ of `unknown`. `never` is useful in many scenarios, and one such use case is when type refinements proves it impossible:
 
 ```lua
 local x = unknown()
