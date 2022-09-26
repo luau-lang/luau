@@ -50,7 +50,7 @@ local b2: B = a1 -- not ok
 
 Lua VM supports 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax), and `userdata` is represented by [concrete types](#roblox-types); other types can be specified by their name.
 
-The type inference engine also provides these builtin types: [`unknown`](#unknown-type), [`never`](#never-type), and [`any`](#any-type).
+The type checker also provides the builtin types [`unknown`](#unknown-type), [`never`](#never-type), and [`any`](#any-type).
 
 ```lua
 local s = "foo"
