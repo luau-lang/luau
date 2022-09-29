@@ -21,9 +21,9 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: configure
-      run: cmake . -DCMAKE_BUILD_TYPE=Release -GNinja
+      run: cmake . -DCMAKE_BUILD_TYPE=Release
     - name: build
-      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release
+      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release -j 3 -- /p:CL_MPcount=3
     - uses: actions/upload-artifact@v2
       if: matrix.os != 'windows'
       with:
