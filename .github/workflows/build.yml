@@ -37,6 +37,22 @@ jobs:
          ./luau tests/conformance/assert.lua
          ./luau-analyze tests/conformance/assert.lua
 
+  ubuntu-clang-10:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v1
+    - name: make test
+      run: |
+        CXX=clang++-10 make -j3 config=sanitize werror=1 test
+    - name: make test w/flags
+      run: |
+        CXX=clang++-10 make -j3 config=sanitize werror=1 flags=true test
+    - name: make cli
+      run: |
+         CXX=clang++-10 make -j3 config=sanitize werror=1 luau luau-analyze # match config with tests to improve build time
+         ./luau tests/conformance/assert.lua
+         ./luau-analyze tests/conformance/assert.lua
+
   ubuntu-clang:
     runs-on: ubuntu-latest
     steps:
