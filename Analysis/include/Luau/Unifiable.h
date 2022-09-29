@@ -85,6 +85,7 @@ struct Free
 {
     explicit Free(TypeLevel level);
     explicit Free(Scope* scope);
+    explicit Free(Scope* scope, TypeLevel level);
 
     int index;
     TypeLevel level;

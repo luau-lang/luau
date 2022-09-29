@@ -235,7 +235,7 @@ void lua_remove(lua_State* L, int idx)
     StkId p = index2addr(L, idx);
     api_checkvalidindex(L, p);
     while (++p < L->top)
-        setobjs2s(L, p - 1, p);
+        setobj2s(L, p - 1, p);
     L->top--;
     return;
 }
@@ -246,8 +246,8 @@ void lua_insert(lua_State* L, int idx)
     StkId p = index2addr(L, idx);
     api_checkvalidindex(L, p);
     for (StkId q = L->top; q > p; q--)
-        setobjs2s(L, q, q - 1);
-    setobjs2s(L, p, L->top);
+        setobj2s(L, q, q - 1);
+    setobj2s(L, p, L->top);
     return;
 }
 
@@ -614,7 +614,7 @@ void lua_pushlstring(lua_State* L, const char* s, size_t len)
 {
     luaC_checkGC(L);
     luaC_threadbarrier(L);
-    setsvalue2s(L, L->top, luaS_newlstr(L, s, len));
+    setsvalue(L, L->top, luaS_newlstr(L, s, len));
     api_incr_top(L);
     return;
 }
@@ -1269,7 +1269,7 @@ void lua_concat(lua_State* L, int n)
     else if (n == 0)
     { // push empty string
         luaC_threadbarrier(L);
-        setsvalue2s(L, L->top, luaS_newlstr(L, "", 0));
+        setsvalue(L, L->top, luaS_newlstr(L, "", 0));
         api_incr_top(L);
     }
     // else n == 1; nothing to do

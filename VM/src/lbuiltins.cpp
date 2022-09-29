@@ -789,7 +789,7 @@ static int luauF_type(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
         int tt = ttype(arg0);
         TString* ttname = L->global->ttname[tt];
 
-        setsvalue2s(L, res, ttname);
+        setsvalue(L, res, ttname);
         return 1;
     }
 
@@ -861,7 +861,7 @@ static int luauF_char(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 
         buffer[nparams] = 0;
 
-        setsvalue2s(L, res, luaS_newlstr(L, buffer, nparams));
+        setsvalue(L, res, luaS_newlstr(L, buffer, nparams));
         return 1;
     }
 
@@ -887,7 +887,7 @@ static int luauF_typeof(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
     {
         const TString* ttname = luaT_objtypenamestr(L, arg0);
 
-        setsvalue2s(L, res, ttname);
+        setsvalue(L, res, ttname);
         return 1;
     }
 
@@ -904,7 +904,7 @@ static int luauF_sub(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 
         if (i >= 1 && j >= i && unsigned(j - 1) < unsigned(ts->len))
         {
-            setsvalue2s(L, res, luaS_newlstr(L, getstr(ts) + (i - 1), j - i + 1));
+            setsvalue(L, res, luaS_newlstr(L, getstr(ts) + (i - 1), j - i + 1));
             return 1;
         }
     }
@@ -993,12 +993,13 @@ static int luauF_rawset(lua_State* L, StkId res, TValue* arg0, int nresults, Stk
         else if (ttisvector(key) && luai_vecisnan(vvalue(key)))
             return -1;
 
-        if (hvalue(arg0)->readonly)
+        Table* t = hvalue(arg0);
+        if (t->readonly)
             return -1;
 
         setobj2s(L, res, arg0);
-        setobj2t(L, luaH_set(L, hvalue(arg0), args), args + 1);
-        luaC_barriert(L, hvalue(arg0), args + 1);
+        setobj2t(L, luaH_set(L, t, args), args + 1);
+        luaC_barriert(L, t, args + 1);
         return 1;
     }
 
@@ -1009,12 +1010,13 @@ static int luauF_tinsert(lua_State* L, StkId res, TValue* arg0, int nresults, St
 {
     if (nparams == 2 && nresults <= 0 && ttistable(arg0))
     {
-        if (hvalue(arg0)->readonly)
+        Table* t = hvalue(arg0);
+        if (t->readonly)
             return -1;
 
-        int pos = luaH_getn(hvalue(arg0)) + 1;
-        setobj2t(L, luaH_setnum(L, hvalue(arg0), pos), args);
-        luaC_barriert(L, hvalue(arg0), args);
+        int pos = luaH_getn(t) + 1;
+        setobj2t(L, luaH_setnum(L, t, pos), args);
+        luaC_barriert(L, t, args);
         return 0;
     }
 
@@ -1193,6 +1195,60 @@ static int luauF_extractk(lua_State* L, StkId res, TValue* arg0, int nresults, S
     return -1;
 }
 
+static int luauF_getmetatable(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    if (nparams >= 1 && nresults <= 1)
+    {
+        Table* mt = NULL;
+        if (ttistable(arg0))
+            mt = hvalue(arg0)->metatable;
+        else if (ttisuserdata(arg0))
+            mt = uvalue(arg0)->metatable;
+        else
+            mt = L->global->mt[ttype(arg0)];
+
+        const TValue* mtv = mt ? luaH_getstr(mt, L->global->tmname[TM_METATABLE]) : luaO_nilobject;
+        if (!ttisnil(mtv))
+        {
+            setobj2s(L, res, mtv);
+            return 1;
+        }
+
+        if (mt)
+        {
+            sethvalue(L, res, mt);
+            return 1;
+        }
+        else
+        {
+            setnilvalue(res);
+            return 1;
+        }
+    }
+
+    return -1;
+}
+
+static int luauF_setmetatable(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    // note: setmetatable(_, nil) is rare so we use fallback for it to optimize the fast path
+    if (nparams >= 2 && nresults <= 1 && ttistable(arg0) && ttistable(args))
+    {
+        Table* t = hvalue(arg0);
+        if (t->readonly || t->metatable != NULL)
+            return -1; // note: overwriting non-null metatable is very rare but it requires __metatable check
+
+        Table* mt = hvalue(args);
+        t->metatable = mt;
+        luaC_objbarrier(L, t, mt);
+
+        sethvalue(L, res, t);
+        return 1;
+    }
+
+    return -1;
+}
+
 luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
@@ -1268,4 +1324,7 @@ luau_FastFunction luauF_table[256] = {
     luauF_rawlen,
 
     luauF_extractk,
+
+    luauF_getmetatable,
+    luauF_setmetatable,
 };

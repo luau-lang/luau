@@ -26,7 +26,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* Data, size_t Size)
     static Luau::NullModuleResolver moduleResolver;
     static Luau::InternalErrorReporter iceHandler;
     static Luau::TypeChecker sharedEnv(&moduleResolver, &iceHandler);
-    static int once = (Luau::registerBuiltinTypes(sharedEnv), 1);
+    static int once = (Luau::registerBuiltinGlobals(sharedEnv), 1);
     (void)once;
     static int once2 = (Luau::freeze(sharedEnv.globalTypes), 1);
     (void)once2;

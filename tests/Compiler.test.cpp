@@ -798,6 +798,8 @@ RETURN R0 1
 
 TEST_CASE("TableSizePredictionSetMetatable")
 {
+    ScopedFastFlag sff("LuauCompileBuiltinMT", true);
+
     CHECK_EQ("\n" + compileFunction0(R"(
 local t = setmetatable({}, nil)
 t.field1 = 1
@@ -805,14 +807,15 @@ t.field2 = 2
 return t
 )"),
         R"(
-GETIMPORT R0 1
 NEWTABLE R1 2 0
-LOADNIL R2
+FASTCALL2K 61 R1 K0 L0
+LOADK R2 K0
+GETIMPORT R0 2
 CALL R0 2 1
-LOADN R1 1
-SETTABLEKS R1 R0 K2
-LOADN R1 2
+L0: LOADN R1 1
 SETTABLEKS R1 R0 K3
+LOADN R1 2
+SETTABLEKS R1 R0 K4
 RETURN R0 1
 )");
 }

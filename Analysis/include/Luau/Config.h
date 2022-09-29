@@ -17,12 +17,9 @@ constexpr const char* kConfigName = ".luaurc";
 
 struct Config
 {
-    Config()
-    {
-        enabledLint.setDefaults();
-    }
+    Config();
 
-    Mode mode = Mode::NoCheck;
+    Mode mode;
 
     ParseOptions parseOptions;
 

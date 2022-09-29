@@ -200,20 +200,14 @@ typedef struct lua_TValue
 ** different types of sets, according to destination
 */
 
-// from stack to (same) stack
-#define setobjs2s setobj
-// to stack (not from same stack)
+// to stack
 #define setobj2s setobj
-#define setsvalue2s setsvalue
-#define sethvalue2s sethvalue
-#define setptvalue2s setptvalue
-// from table to same table
+// from table to same table (no barrier)
 #define setobjt2t setobj
-// to table
+// to table (needs barrier)
 #define setobj2t setobj
-// to new object
+// to new object (no barrier)
 #define setobj2n setobj
-#define setsvalue2n setsvalue
 
 #define setttype(obj, tt) (ttype(obj) = (tt))
 

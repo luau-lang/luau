@@ -220,6 +220,9 @@ void TypeCloner::operator()(const SingletonTypeVar& t)
 
 void TypeCloner::operator()(const FunctionTypeVar& t)
 {
+    // FISHY: We always erase the scope when we clone things.  clone() was
+    // originally written so that we could copy a module's type surface into an
+    // export arena.  This probably dates to that.
     TypeId result = dest.addType(FunctionTypeVar{TypeLevel{0, 0}, {}, {}, nullptr, nullptr, t.definition, t.hasSelf});
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(result);
     LUAU_ASSERT(ftv != nullptr);
@@ -436,7 +439,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
 
     if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(ty))
     {
-        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+        FunctionTypeVar clone = FunctionTypeVar{ftv->level, ftv->scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
         clone.generics = ftv->generics;
         clone.genericPacks = ftv->genericPacks;
         clone.magicFunction = ftv->magicFunction;
@@ -448,7 +451,7 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
     else if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
     {
         LUAU_ASSERT(!ttv->boundTo);
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->state};
+        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, ttv->level, ttv->scope, ttv->state};
         clone.definitionModuleName = ttv->definitionModuleName;
         clone.name = ttv->name;
         clone.syntheticName = ttv->syntheticName;

@@ -49,8 +49,10 @@ struct Scope
     std::unordered_map<Name, TypeFun> exportedTypeBindings;
     std::unordered_map<Name, TypeFun> privateTypeBindings;
     std::unordered_map<Name, Location> typeAliasLocations;
-
     std::unordered_map<Name, std::unordered_map<Name, TypeFun>> importedTypeBindings;
+
+    DenseHashSet<Name> builtinTypeNames{""};
+    void addBuiltinTypeBinding(const Name& name, const TypeFun& tyFun);
 
     std::optional<TypeId> lookup(Symbol sym);
 
@@ -61,7 +63,7 @@ struct Scope
     std::optional<TypePackId> lookupPack(const Name& name);
 
     // WARNING: This function linearly scans for a string key of equal value!  It is thus O(n**2)
-    std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true);
+    std::optional<Binding> linearSearchForBinding(const std::string& name, bool traverseScopeChain = true) const;
 
     RefinementMap refinements;
 
@@ -72,5 +74,14 @@ struct Scope
     std::unordered_map<Name, TypeId> typeAliasTypeParameters;
     std::unordered_map<Name, TypePackId> typeAliasTypePackParameters;
 };
+
+// Returns true iff the left scope encloses the right scope.  A Scope* equal to
+// nullptr is considered to be the outermost-possible scope.
+bool subsumesStrict(Scope* left, Scope* right);
+
+// Returns true if the left scope encloses the right scope, or if they are the
+// same scope.  As in subsumesStrict(), nullptr is considered to be the
+// outermost-possible scope.
+bool subsumes(Scope* left, Scope* right);
 
 } // namespace Luau

@@ -96,7 +96,7 @@ int registerTypes(Luau::TypeChecker& env)
     using namespace Luau;
     using std::nullopt;
 
-    Luau::registerBuiltinTypes(env);
+    Luau::registerBuiltinGlobals(env);
 
     TypeArena& arena = env.globalTypes;
 

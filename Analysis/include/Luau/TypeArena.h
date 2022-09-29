@@ -30,6 +30,7 @@ struct TypeArena
 
     TypeId freshType(TypeLevel level);
     TypeId freshType(Scope* scope);
+    TypeId freshType(Scope* scope, TypeLevel level);
 
     TypePackId freshTypePack(Scope* scope);
 

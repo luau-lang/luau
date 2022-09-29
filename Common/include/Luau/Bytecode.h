@@ -517,6 +517,10 @@ enum LuauBuiltinFunction
 
     // bit32.extract(_, k, k)
     LBF_BIT32_EXTRACTK,
+
+    // get/setmetatable
+    LBF_GETMETATABLE,
+    LBF_SETMETATABLE,
 };
 
 // Capture type, used in LOP_CAPTURE

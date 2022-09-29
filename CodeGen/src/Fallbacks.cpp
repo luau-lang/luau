@@ -720,7 +720,7 @@ const Instruction* execute_LOP_CALL(lua_State* L, const Instruction* pc, Closure
 
         int i;
         for (i = nresults; i != 0 && vali < valend; i--)
-            setobjs2s(L, res++, vali++);
+            setobj2s(L, res++, vali++);
         while (i-- > 0)
             setnilvalue(res++);
 
@@ -756,7 +756,7 @@ const Instruction* execute_LOP_RETURN(lua_State* L, const Instruction* pc, Closu
     // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
     int i;
     for (i = nresults; i != 0 && vali < valend; i--)
-        setobjs2s(L, res++, vali++);
+        setobj2s(L, res++, vali++);
     while (i-- > 0)
         setnilvalue(res++);
 
@@ -1667,7 +1667,7 @@ const Instruction* execute_LOP_CONCAT(lua_State* L, const Instruction* pc, Closu
 
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
-    setobjs2s(L, ra, base + b);
+    setobj2s(L, ra, base + b);
     VM_PROTECT(luaC_checkGC(L));
     return pc;
 }
@@ -2003,9 +2003,9 @@ const Instruction* execute_LOP_FORGLOOP(lua_State* L, const Instruction* pc, Clo
     else
     {
         // note: it's safe to push arguments past top for complicated reasons (see top of the file)
-        setobjs2s(L, ra + 3 + 2, ra + 2);
-        setobjs2s(L, ra + 3 + 1, ra + 1);
-        setobjs2s(L, ra + 3, ra);
+        setobj2s(L, ra + 3 + 2, ra + 2);
+        setobj2s(L, ra + 3 + 1, ra + 1);
+        setobj2s(L, ra + 3, ra);
 
         L->top = ra + 3 + 3; // func + 2 args (state and index)
         LUAU_ASSERT(L->top <= L->stack_last);
@@ -2017,7 +2017,7 @@ const Instruction* execute_LOP_FORGLOOP(lua_State* L, const Instruction* pc, Clo
         ra = VM_REG(LUAU_INSN_A(insn));
 
         // copy first variable back into the iteration index
-        setobjs2s(L, ra + 2, ra + 3);
+        setobj2s(L, ra + 2, ra + 3);
 
         // note that we need to increment pc by 1 to exit the loop since we need to skip over aux
         pc += ttisnil(ra + 3) ? 1 : LUAU_INSN_D(insn);
@@ -2094,7 +2094,7 @@ const Instruction* execute_LOP_GETVARARGS(lua_State* L, const Instruction* pc, C
         StkId ra = VM_REG(LUAU_INSN_A(insn)); // previous call may change the stack
 
         for (int j = 0; j < n; j++)
-            setobjs2s(L, ra + j, base - n + j);
+            setobj2s(L, ra + j, base - n + j);
 
         L->top = ra + n;
         return pc;
@@ -2104,7 +2104,7 @@ const Instruction* execute_LOP_GETVARARGS(lua_State* L, const Instruction* pc, C
         StkId ra = VM_REG(LUAU_INSN_A(insn));
 
         for (int j = 0; j < b && j < n; j++)
-            setobjs2s(L, ra + j, base - n + j);
+            setobj2s(L, ra + j, base - n + j);
         for (int j = n; j < b; j++)
             setnilvalue(ra + j);
         return pc;
@@ -2183,7 +2183,7 @@ const Instruction* execute_LOP_PREPVARARGS(lua_State* L, const Instruction* pc, 
 
     for (int i = 0; i < numparams; ++i)
     {
-        setobjs2s(L, base + i, fixed + i);
+        setobj2s(L, base + i, fixed + i);
         setnilvalue(fixed + i);
     }
 

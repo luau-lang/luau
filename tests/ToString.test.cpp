@@ -790,4 +790,20 @@ TEST_CASE_FIXTURE(Fixture, "toStringNamedFunction_hide_self_param")
     CHECK_EQ("foo:method<a>(arg: string): ()", toStringNamedFunction("foo:method", *ftv, opts));
 }
 
+TEST_CASE_FIXTURE(Fixture, "tostring_unsee_ttv_if_array")
+{
+    ScopedFastFlag sff("LuauUnseeArrayTtv", true);
+
+    CheckResult result = check(R"(
+        local x: {string}
+        -- This code is constructed very specifically to use the same (by pointer
+        -- identity) type in the function twice.
+        local y: (typeof(x), typeof(x)) -> ()
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK(toString(requireType("y")) == "({string}, {string}) -> ()");
+}
+
 TEST_SUITE_END();

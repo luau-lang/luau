@@ -1159,4 +1159,38 @@ TEST_CASE_FIXTURE(Fixture, "dcr_can_partially_dispatch_a_constraint")
     CHECK("<a>(a, number) -> ()" == toString(requireType("prime_iter")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_return_values_in_nonstrict")
+{
+    CheckResult result = check(R"(
+        --!nonstrict
+        function validate(stats, hits, misses)
+            local checked = {}
+
+            for _,l in ipairs(hits) do
+                if not (stats[l] and stats[l] > 0) then
+                    return false, string.format("expected line %d to be hit", l)
+                end
+                checked[l] = true
+            end
+
+            for _,l in ipairs(misses) do
+                if not (stats[l] and stats[l] == 0) then
+                    return false, string.format("expected line %d to be missed", l)
+                end
+                checked[l] = true
+            end
+
+            for k,v in pairs(stats) do
+                if type(k) == "number" and not checked[k] then
+                    return false, string.format("expected line %d to be absent", k)
+                end
+            end
+
+            return true
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

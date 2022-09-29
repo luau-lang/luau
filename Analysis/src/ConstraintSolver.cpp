@@ -8,9 +8,11 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/Quantify.h"
 #include "Luau/ToString.h"
+#include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/VisitTypeVar.h"
+#include "Luau/TypeUtils.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
@@ -439,6 +441,7 @@ bool ConstraintSolver::tryDispatch(const PackSubtypeConstraint& c, NotNull<const
         return block(c.superPack, constraint);
 
     unify(c.subPack, c.superPack, constraint->scope);
+
     return true;
 }
 
@@ -465,7 +468,7 @@ bool ConstraintSolver::tryDispatch(const InstantiationConstraint& c, NotNull<con
     if (isBlocked(c.superType))
         return block(c.superType, constraint);
 
-    Instantiation inst(TxnLog::empty(), arena, TypeLevel{});
+    Instantiation inst(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
 
     std::optional<TypeId> instantiated = inst.substitute(c.superType);
     LUAU_ASSERT(instantiated); // TODO FIXME HANDLE THIS
@@ -909,7 +912,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     if (ftv && ftv->dcrMagicFunction != nullptr)
     {
-        usedMagic = ftv->dcrMagicFunction(NotNull(this), result, c.astFragment);
+        usedMagic = ftv->dcrMagicFunction(MagicFunctionCallContext{NotNull(this), c.callSite, c.argsPack, result});
     }
 
     if (usedMagic)
@@ -1087,6 +1090,63 @@ bool ConstraintSolver::tryDispatchIterableTable(TypeId iteratorTy, const Iterabl
         else
             errorify(c.variables);
     }
+    else if (std::optional<TypeId> iterFn = findMetatableEntry(singletonTypes, errors, iteratorTy, "__iter", Location{}))
+    {
+        if (isBlocked(*iterFn))
+        {
+            return block(*iterFn, constraint);
+        }
+
+        Instantiation instantiation(TxnLog::empty(), arena, TypeLevel{}, constraint->scope);
+
+        if (std::optional<TypeId> instantiatedIterFn = instantiation.substitute(*iterFn))
+        {
+            if (auto iterFtv = get<FunctionTypeVar>(*instantiatedIterFn))
+            {
+                TypePackId expectedIterArgs = arena->addTypePack({iteratorTy});
+                unify(iterFtv->argTypes, expectedIterArgs, constraint->scope);
+
+                std::vector<TypeId> iterRets = flatten(*arena, singletonTypes, iterFtv->retTypes, 2);
+
+                if (iterRets.size() < 1)
+                {
+                    // We've done what we can; this will get reported as an
+                    // error by the type checker.
+                    return true;
+                }
+
+                TypeId nextFn = iterRets[0];
+                TypeId table = iterRets.size() == 2 ? iterRets[1] : arena->freshType(constraint->scope);
+
+                if (std::optional<TypeId> instantiatedNextFn = instantiation.substitute(nextFn))
+                {
+                    const TypeId firstIndex = arena->freshType(constraint->scope);
+
+                    // nextTy : (iteratorTy, indexTy?) -> (indexTy, valueTailTy...)
+                    const TypePackId nextArgPack = arena->addTypePack({table, arena->addType(UnionTypeVar{{firstIndex, singletonTypes->nilType}})});
+                    const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
+                    const TypePackId nextRetPack = arena->addTypePack(TypePack{{firstIndex}, valueTailTy});
+
+                    const TypeId expectedNextTy = arena->addType(FunctionTypeVar{nextArgPack, nextRetPack});
+                    unify(*instantiatedNextFn, expectedNextTy, constraint->scope);
+
+                    pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, nextRetPack});
+                }
+                else
+                {
+                    reportError(UnificationTooComplex{}, constraint->location);
+                }
+            }
+            else
+            {
+                // TODO: Support __call and function overloads (what does an overload even mean for this?)
+            }
+        }
+        else
+        {
+            reportError(UnificationTooComplex{}, constraint->location);
+        }
+    }
     else if (auto iteratorMetatable = get<MetatableTypeVar>(iteratorTy))
     {
         TypeId metaTy = follow(iteratorMetatable->metatable);
@@ -1124,7 +1184,7 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     const TypePackId valueTailTy = arena->addTypePack(FreeTypePack{constraint->scope});
     const TypePackId nextRetPack = arena->addTypePack(TypePack{{firstIndex}, valueTailTy});
 
-    const TypeId expectedNextTy = arena->addType(FunctionTypeVar{nextArgPack, nextRetPack});
+    const TypeId expectedNextTy = arena->addType(FunctionTypeVar{TypeLevel{}, constraint->scope, nextArgPack, nextRetPack});
     unify(nextTy, expectedNextTy, constraint->scope);
 
     pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, nextRetPack});
@@ -1297,6 +1357,7 @@ void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> sc
 {
     UnifierSharedState sharedState{&iceReporter};
     Unifier u{arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    u.useScopes = true;
 
     u.tryUnify(subType, superType);
 
@@ -1319,6 +1380,7 @@ void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<S
 {
     UnifierSharedState sharedState{&iceReporter};
     Unifier u{arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    u.useScopes = true;
 
     u.tryUnify(subPack, superPack);
 

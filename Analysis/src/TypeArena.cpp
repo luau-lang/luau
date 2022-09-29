@@ -40,6 +40,15 @@ TypeId TypeArena::freshType(Scope* scope)
     return allocated;
 }
 
+TypeId TypeArena::freshType(Scope* scope, TypeLevel level)
+{
+    TypeId allocated = typeVars.allocate(FreeTypeVar{scope, level});
+
+    asMutable(allocated)->owningArena = this;
+
+    return allocated;
+}
+
 TypePackId TypeArena::freshTypePack(Scope* scope)
 {
     TypePackId allocated = typePacks.allocate(FreeTypePack{scope});
