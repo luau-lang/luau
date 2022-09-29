@@ -507,7 +507,7 @@ Returns a formatted version of the input arguments using a [printf-style format 
 - `q`: expects a string and produces the same string quoted using double quotation marks, with escaped special characters if necessary
 - `s`: expects a string and produces the same string verbatim
 
-The formats support modifiers `-`, `+`, ` `, `#` and `0`, as well as field width and precision modifiers - with the exception of `*`.
+The formats support modifiers `-`, `+`, space, `#` and `0`, as well as field width and precision modifiers - with the exception of `*`.
 
 ```
 function string.gmatch(s: string, p: string): <iterator>

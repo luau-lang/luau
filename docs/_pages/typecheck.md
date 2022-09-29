@@ -46,11 +46,11 @@ local a2: A = b1 -- ok
 local b2: B = a1 -- not ok
 ```
 
-## Primitive types
+## Builtin types
 
 Lua VM supports 8 primitive types: `nil`, `string`, `number`, `boolean`, `table`, `function`, `thread`, and `userdata`. Of these, `table` and `function` are not represented by name, but have their dedicated syntax as covered in this [syntax document](syntax), and `userdata` is represented by [concrete types](#roblox-types); other types can be specified by their name.
 
-Additionally, we also have `any` which is a special built-in type. It effectively disables all type checking, and thus should be used as last resort.
+The type checker also provides the builtin types [`unknown`](#unknown-type), [`never`](#never-type), and [`any`](#any-type).
 
 ```lua
 local s = "foo"
@@ -67,6 +67,57 @@ There's a special case where we intentionally avoid inferring `nil`. It's a good
 ```lua
 local a
 local b = nil
+```
+
+### `unknown` type
+
+`unknown` is also said to be the _top_ type, that is it's a union of all types.
+
+```lua
+local a: unknown = "hello world!"
+local b: unknown = 5
+local c: unknown = function() return 5 end
+```
+
+Unlike `any`, `unknown` will not allow itself to be used as a different type!
+
+```lua
+local function unknown(): unknown
+    return if math.random() > 0.5 then "hello world!" else 5
+end
+
+local a: string = unknown() -- not ok
+local b: number = unknown() -- not ok
+local c: string | number = unknown() -- not ok
+```
+
+In order to turn a variable of type `unknown` into a different type, you must apply [type refinements](#type-refinements) on that variable.
+
+```lua
+local x = unknown()
+if typeof(x) == "number" then
+    -- x : number
+end
+```
+
+### `never` type
+
+`never` is also said to be the _bottom_ type, meaning there doesn't exist a value that inhabits the type `never`. In fact, it is the _dual_ of `unknown`. `never` is useful in many scenarios, and one such use case is when type refinements proves it impossible:
+
+```lua
+local x = unknown()
+if typeof(x) == "number" and typeof(x) == "string" then
+    -- x : never
+end
+```
+
+### `any` type
+
+`any` is just like `unknown`, except that it allows itself to be used as an arbitrary type without further checks or annotations. Essentially, it's an opt-out from the type system entirely.
+
+```lua
+local x: any = 5
+local y: string = x -- no type errors here!
 ```
 
 ## Function types
