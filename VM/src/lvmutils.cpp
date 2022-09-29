@@ -38,7 +38,7 @@ int luaV_tostring(lua_State* L, StkId obj)
         double n = nvalue(obj);
         char* e = luai_num2str(s, n);
         LUAU_ASSERT(e < s + sizeof(s));
-        setsvalue2s(L, obj, luaS_newlstr(L, s, e - s));
+        setsvalue(L, obj, luaS_newlstr(L, s, e - s));
         return 1;
     }
 }
@@ -70,7 +70,7 @@ static StkId callTMres(lua_State* L, StkId res, const TValue* f, const TValue* p
     luaD_call(L, L->top - 3, 1);
     res = restorestack(L, result);
     L->top--;
-    setobjs2s(L, res, L->top);
+    setobj2s(L, res, L->top);
     return res;
 }
 
@@ -350,11 +350,11 @@ void luaV_concat(lua_State* L, int total, int last)
 
             if (tl < LUA_BUFFERSIZE)
             {
-                setsvalue2s(L, top - n, luaS_newlstr(L, buffer, tl));
+                setsvalue(L, top - n, luaS_newlstr(L, buffer, tl));
             }
             else
             {
-                setsvalue2s(L, top - n, luaS_buffinish(L, ts));
+                setsvalue(L, top - n, luaS_buffinish(L, ts));
             }
         }
         total -= n - 1; // got `n' strings to create 1 new
@@ -582,7 +582,7 @@ LUAU_NOINLINE void luaV_tryfuncTM(lua_State* L, StkId func)
     if (!ttisfunction(tm))
         luaG_typeerror(L, func, "call");
     for (StkId p = L->top; p > func; p--) // open space for metamethod
-        setobjs2s(L, p, p - 1);
+        setobj2s(L, p, p - 1);
     L->top++;              // stack space pre-allocated by the caller
     setobj2s(L, func, tm); // tag method is the new function to be called
 }

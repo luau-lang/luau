@@ -474,6 +474,17 @@ FunctionTypeVar::FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackI
 {
 }
 
+FunctionTypeVar::FunctionTypeVar(
+    TypeLevel level, Scope* scope, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
+    : level(level)
+    , scope(scope)
+    , argTypes(argTypes)
+    , retTypes(retTypes)
+    , definition(std::move(defn))
+    , hasSelf(hasSelf)
+{
+}
+
 FunctionTypeVar::FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
     std::optional<FunctionDefinition> defn, bool hasSelf)
     : generics(generics)
@@ -497,9 +508,23 @@ FunctionTypeVar::FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, 
 {
 }
 
-TableTypeVar::TableTypeVar(TableState state, TypeLevel level)
+FunctionTypeVar::FunctionTypeVar(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks,
+    TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
+    : level(level)
+    , scope(scope)
+    , generics(generics)
+    , genericPacks(genericPacks)
+    , argTypes(argTypes)
+    , retTypes(retTypes)
+    , definition(std::move(defn))
+    , hasSelf(hasSelf)
+{
+}
+
+TableTypeVar::TableTypeVar(TableState state, TypeLevel level, Scope* scope)
     : state(state)
     , level(level)
+    , scope(scope)
 {
 }
 
@@ -508,6 +533,15 @@ TableTypeVar::TableTypeVar(const Props& props, const std::optional<TableIndexer>
     , indexer(indexer)
     , state(state)
     , level(level)
+{
+}
+
+TableTypeVar::TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, Scope* scope, TableState state)
+    : props(props)
+    , indexer(indexer)
+    , state(state)
+    , level(level)
+    , scope(scope)
 {
 }
 

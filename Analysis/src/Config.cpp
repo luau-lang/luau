@@ -4,15 +4,18 @@
 #include "Luau/Lexer.h"
 #include "Luau/StringUtils.h"
 
-namespace
+LUAU_FASTFLAGVARIABLE(LuauEnableNonstrictByDefaultForLuauConfig, false)
+
+namespace Luau
 {
 
 using Error = std::optional<std::string>;
 
-}
-
-namespace Luau
+Config::Config()
+    : mode(FFlag::LuauEnableNonstrictByDefaultForLuauConfig ? Mode::Nonstrict : Mode::NoCheck)
 {
+    enabledLint.setDefaults();
+}
 
 static Error parseBoolean(bool& result, const std::string& value)
 {

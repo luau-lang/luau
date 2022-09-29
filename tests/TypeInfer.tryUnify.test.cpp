@@ -271,4 +271,40 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "txnlog_preserves_pack_owner")
     CHECK_EQ(a->owningArena, &arena);
 }
 
+TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table")
+{
+    ScopedFastFlag sff("DebugLuauDeferredConstraintResolution", true);
+
+    TableTypeVar::Props freeProps{
+        {"foo", {typeChecker.numberType}},
+    };
+
+    TypeId free = arena.addType(TableTypeVar{freeProps, std::nullopt, TypeLevel{}, TableState::Free});
+
+    TableTypeVar::Props indexProps{
+        {"foo", {typeChecker.stringType}},
+    };
+
+    TypeId index = arena.addType(TableTypeVar{indexProps, std::nullopt, TypeLevel{}, TableState::Sealed});
+
+    TableTypeVar::Props mtProps{
+        {"__index", {index}},
+    };
+
+    TypeId mt = arena.addType(TableTypeVar{mtProps, std::nullopt, TypeLevel{}, TableState::Sealed});
+
+    TypeId target = arena.addType(TableTypeVar{TableState::Unsealed, TypeLevel{}});
+    TypeId metatable = arena.addType(MetatableTypeVar{target, mt});
+
+    state.tryUnify(metatable, free);
+    state.log.commit();
+
+    REQUIRE_EQ(state.errors.size(), 1);
+
+    std::string expected = "Type '{ @metatable {| __index: {| foo: string |} |}, {  } }' could not be converted into '{- foo: number -}'\n"
+        "caused by:\n"
+        "  Type 'number' could not be converted into 'string'";
+    CHECK_EQ(toString(state.errors[0]), expected);
+}
+
 TEST_SUITE_END();

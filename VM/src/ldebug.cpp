@@ -83,7 +83,7 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     Proto* fp = getluaproto(ci);
     const LocVar* var = fp ? luaF_getlocal(fp, n, currentpc(L, ci)) : NULL;
     if (var)
-        setobjs2s(L, ci->base + var->reg, L->top - 1);
+        setobj2s(L, ci->base + var->reg, L->top - 1);
     L->top--; // pop value
     const char* name = var ? getstr(var->varname) : NULL;
     return name;

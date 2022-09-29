@@ -8,7 +8,6 @@
 #include "Luau/TypeVar.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
-
 #include "Luau/BuiltinDefinitions.h"
 
 #include "doctest.h"
@@ -20,6 +19,8 @@
 static const char* mainModuleName = "MainModule";
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAG(LuauReportShadowedTypeAlias)
 
 namespace Luau
 {
@@ -96,6 +97,8 @@ Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     configResolver.defaultConfig.mode = Mode::Strict;
     configResolver.defaultConfig.enabledLint.warningMask = ~0ull;
     configResolver.defaultConfig.parseOptions.captureComments = true;
+
+    registerBuiltinTypes(frontend);
 
     Luau::freeze(frontend.typeChecker.globalTypes);
     Luau::freeze(frontend.typeCheckerForAutocomplete.globalTypes);
@@ -435,9 +438,9 @@ BuiltinsFixture::BuiltinsFixture(bool freeze, bool prepareAutocomplete)
     Luau::unfreeze(frontend.typeChecker.globalTypes);
     Luau::unfreeze(frontend.typeCheckerForAutocomplete.globalTypes);
 
-    registerBuiltinTypes(frontend);
+    registerBuiltinGlobals(frontend);
     if (prepareAutocomplete)
-        registerBuiltinTypes(frontend.typeCheckerForAutocomplete);
+        registerBuiltinGlobals(frontend.typeCheckerForAutocomplete);
     registerTestTypes();
 
     Luau::freeze(frontend.typeChecker.globalTypes);

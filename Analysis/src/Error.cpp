@@ -169,7 +169,10 @@ struct ErrorConverter
 
     std::string operator()(const Luau::DuplicateTypeDefinition& e) const
     {
-        return "Redefinition of type '" + e.name + "', previously defined at line " + std::to_string(e.previousLocation.begin.line + 1);
+        std::string s = "Redefinition of type '" + e.name + "'";
+        if (e.previousLocation)
+            s += ", previously defined at line " + std::to_string(e.previousLocation->begin.line + 1);
+        return s;
     }
 
     std::string operator()(const Luau::CountMismatch& e) const
@@ -183,11 +186,14 @@ struct ErrorConverter
         case CountMismatch::Return:
             return "Expected to return " + std::to_string(e.expected) + " value" + expectedS + ", but " + std::to_string(e.actual) + " " +
                    actualVerb + " returned here";
-        case CountMismatch::Result:
+        case CountMismatch::FunctionResult:
             // It is alright if right hand side produces more values than the
             // left hand side accepts. In this context consider only the opposite case.
-            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ". " + std::to_string(e.actual) +
-                   " are required here";
+            return "Function only returns " + std::to_string(e.expected) + " value" + expectedS + ", but " + std::to_string(e.actual) + " " +
+                   actualVerb + " required here";
+        case CountMismatch::ExprListResult:
+            return "Expression list has " + std::to_string(e.expected) + " value" + expectedS + ", but " + std::to_string(e.actual) + " " +
+                   actualVerb + " required here";
         case CountMismatch::Arg:
             if (!e.function.empty())
                 return "Argument count mismatch. Function '" + e.function + "' " +

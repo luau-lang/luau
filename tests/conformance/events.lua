@@ -24,6 +24,9 @@ assert(getmetatable(nil) == nil)
 a={}; setmetatable(a, {__metatable = "xuxu",
                     __tostring=function(x) return x.name end})
 assert(getmetatable(a) == "xuxu")
+ud=newproxy(true); getmetatable(ud).__metatable = "xuxu"
+assert(getmetatable(ud) == "xuxu")
+
 local res,err = pcall(tostring, a)
 assert(not res and err == "'__tostring' must return a string")
 -- cannot change a protected metatable

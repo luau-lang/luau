@@ -240,7 +240,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
             case LBC_CONSTANT_STRING:
             {
                 TString* v = readString(strings, data, size, offset);
-                setsvalue2n(L, &p->k[j], v);
+                setsvalue(L, &p->k[j], v);
                 break;
             }
 

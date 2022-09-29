@@ -104,6 +104,7 @@ struct ConstraintSolver
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
 
     // for a, ... in some_table do
+    // also handles __iter metamethod
     bool tryDispatchIterableTable(TypeId iteratorTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
 
     // for a, ... in next_function, t, ... do

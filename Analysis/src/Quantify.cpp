@@ -15,19 +15,6 @@ LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 namespace Luau
 {
 
-/// @return true if outer encloses inner
-static bool subsumes(Scope* outer, Scope* inner)
-{
-    while (inner)
-    {
-        if (inner == outer)
-            return true;
-        inner = inner->parent.get();
-    }
-
-    return false;
-}
-
 struct Quantifier final : TypeVarOnceVisitor
 {
     TypeLevel level;
@@ -41,12 +28,6 @@ struct Quantifier final : TypeVarOnceVisitor
         : level(level)
     {
         LUAU_ASSERT(!FFlag::DebugLuauDeferredConstraintResolution);
-    }
-
-    explicit Quantifier(Scope* scope)
-        : scope(scope)
-    {
-        LUAU_ASSERT(FFlag::DebugLuauDeferredConstraintResolution);
     }
 
     /// @return true if outer encloses inner
@@ -66,13 +47,10 @@ struct Quantifier final : TypeVarOnceVisitor
     {
         seenMutableType = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ftv.scope) : !level.subsumes(ftv.level))
+        if (!level.subsumes(ftv.level))
             return false;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution)
-            *asMutable(ty) = GenericTypeVar{scope};
-        else
-            *asMutable(ty) = GenericTypeVar{level};
+        *asMutable(ty) = GenericTypeVar{level};
 
         generics.push_back(ty);
 
@@ -85,7 +63,7 @@ struct Quantifier final : TypeVarOnceVisitor
 
         seenMutableType = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ctv->scope) : !level.subsumes(ctv->level))
+        if (!level.subsumes(ctv->level))
             return false;
 
         std::vector<TypeId> opts = std::move(ctv->parts);
@@ -113,7 +91,7 @@ struct Quantifier final : TypeVarOnceVisitor
         if (ttv.state == TableState::Free)
             seenMutableType = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ttv.scope) : !level.subsumes(ttv.level))
+        if (!level.subsumes(ttv.level))
         {
             if (ttv.state == TableState::Unsealed)
                 seenMutableType = true;
@@ -137,7 +115,7 @@ struct Quantifier final : TypeVarOnceVisitor
     {
         seenMutableType = true;
 
-        if (FFlag::DebugLuauDeferredConstraintResolution ? !subsumes(scope, ftp.scope) : !level.subsumes(ftp.level))
+        if (!level.subsumes(ftp.level))
             return false;
 
         *asMutable(tp) = GenericTypePack{level};
@@ -197,20 +175,6 @@ void quantify(TypeId ty, TypeLevel level)
     }
 }
 
-void quantify(TypeId ty, Scope* scope)
-{
-    Quantifier q{scope};
-    q.traverse(ty);
-
-    FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(ty);
-    LUAU_ASSERT(ftv);
-    ftv->generics.insert(ftv->generics.end(), q.generics.begin(), q.generics.end());
-    ftv->genericPacks.insert(ftv->genericPacks.end(), q.genericPacks.begin(), q.genericPacks.end());
-
-    if (ftv->generics.empty() && ftv->genericPacks.empty() && !q.seenMutableType && !q.seenGenericType)
-        ftv->hasNoGenerics = true;
-}
-
 struct PureQuantifier : Substitution
 {
     Scope* scope;
@@ -253,7 +217,7 @@ struct PureQuantifier : Substitution
     {
         if (auto ftv = get<FreeTypeVar>(ty))
         {
-            TypeId result = arena->addType(GenericTypeVar{});
+            TypeId result = arena->addType(GenericTypeVar{scope});
             insertedGenerics.push_back(result);
             return result;
         }
@@ -264,7 +228,8 @@ struct PureQuantifier : Substitution
             LUAU_ASSERT(resultTable);
 
             *resultTable = *ttv;
-            resultTable->scope = nullptr;
+            resultTable->level = TypeLevel{};
+            resultTable->scope = scope;
             resultTable->state = TableState::Generic;
 
             return result;
@@ -306,6 +271,7 @@ TypeId quantify(TypeArena* arena, TypeId ty, Scope* scope)
 
     FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(*result);
     LUAU_ASSERT(ftv);
+    ftv->scope = scope;
     ftv->generics.insert(ftv->generics.end(), quantifier.insertedGenerics.begin(), quantifier.insertedGenerics.end());
     ftv->genericPacks.insert(ftv->genericPacks.end(), quantifier.insertedGenericPacks.begin(), quantifier.insertedGenericPacks.end());
     ftv->hasNoGenerics = ftv->generics.empty() && ftv->genericPacks.empty();

@@ -1208,12 +1208,10 @@ static bool autocompleteIfElseExpression(
     }
 }
 
-static AutocompleteContext autocompleteExpression(const SourceModule& sourceModule, const Module& module, const TypeChecker& typeChecker,
+static AutocompleteContext autocompleteExpression(const SourceModule& sourceModule, const Module& module, NotNull<SingletonTypes> singletonTypes,
     TypeArena* typeArena, const std::vector<AstNode*>& ancestry, Position position, AutocompleteEntryMap& result)
 {
     LUAU_ASSERT(!ancestry.empty());
-
-    NotNull<SingletonTypes> singletonTypes = typeChecker.singletonTypes;
 
     AstNode* node = ancestry.rbegin()[0];
 
@@ -1254,16 +1252,16 @@ static AutocompleteContext autocompleteExpression(const SourceModule& sourceModu
             scope = scope->parent;
         }
 
-        TypeCorrectKind correctForNil = checkTypeCorrectKind(module, typeArena, singletonTypes, node, position, typeChecker.nilType);
+        TypeCorrectKind correctForNil = checkTypeCorrectKind(module, typeArena, singletonTypes, node, position, singletonTypes->nilType);
         TypeCorrectKind correctForTrue = checkTypeCorrectKind(module, typeArena, singletonTypes, node, position, singletonTypes->trueType);
         TypeCorrectKind correctForFalse = checkTypeCorrectKind(module, typeArena, singletonTypes, node, position, singletonTypes->falseType);
         TypeCorrectKind correctForFunction =
             functionIsExpectedAt(module, node, position).value_or(false) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
 
         result["if"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false};
-        result["true"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForTrue};
-        result["false"] = {AutocompleteEntryKind::Keyword, typeChecker.booleanType, false, false, correctForFalse};
-        result["nil"] = {AutocompleteEntryKind::Keyword, typeChecker.nilType, false, false, correctForNil};
+        result["true"] = {AutocompleteEntryKind::Keyword, singletonTypes->booleanType, false, false, correctForTrue};
+        result["false"] = {AutocompleteEntryKind::Keyword, singletonTypes->booleanType, false, false, correctForFalse};
+        result["nil"] = {AutocompleteEntryKind::Keyword, singletonTypes->nilType, false, false, correctForNil};
         result["not"] = {AutocompleteEntryKind::Keyword};
         result["function"] = {AutocompleteEntryKind::Keyword, std::nullopt, false, false, correctForFunction};
 
@@ -1274,11 +1272,11 @@ static AutocompleteContext autocompleteExpression(const SourceModule& sourceModu
     return AutocompleteContext::Expression;
 }
 
-static AutocompleteResult autocompleteExpression(const SourceModule& sourceModule, const Module& module, const TypeChecker& typeChecker,
+static AutocompleteResult autocompleteExpression(const SourceModule& sourceModule, const Module& module, NotNull<SingletonTypes> singletonTypes,
     TypeArena* typeArena, const std::vector<AstNode*>& ancestry, Position position)
 {
     AutocompleteEntryMap result;
-    AutocompleteContext context = autocompleteExpression(sourceModule, module, typeChecker, typeArena, ancestry, position, result);
+    AutocompleteContext context = autocompleteExpression(sourceModule, module, singletonTypes, typeArena, ancestry, position, result);
     return {result, ancestry, context};
 }
 
@@ -1385,13 +1383,13 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
     return std::nullopt;
 }
 
-static AutocompleteResult autocomplete(const SourceModule& sourceModule, const ModulePtr& module, const TypeChecker& typeChecker,
-    TypeArena* typeArena, Position position, StringCompletionCallback callback)
+static AutocompleteResult autocomplete(const SourceModule& sourceModule, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes,
+    Scope* globalScope, Position position, StringCompletionCallback callback)
 {
     if (isWithinComment(sourceModule, position))
         return {};
 
-    NotNull<SingletonTypes> singletonTypes = typeChecker.singletonTypes;
+    TypeArena typeArena;
 
     std::vector<AstNode*> ancestry = findAncestryAtPositionForAutocomplete(sourceModule, position);
     LUAU_ASSERT(!ancestry.empty());
@@ -1419,11 +1417,10 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
         if (!FFlag::LuauSelfCallAutocompleteFix3 && isString(ty))
-            return {autocompleteProps(
-                        *module, typeArena, singletonTypes, typeChecker.globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry),
+            return {autocompleteProps(*module, &typeArena, singletonTypes, globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry),
                 ancestry, AutocompleteContext::Property};
         else
-            return {autocompleteProps(*module, typeArena, singletonTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
+            return {autocompleteProps(*module, &typeArena, singletonTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {
@@ -1441,7 +1438,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         if (statLocal->vars.size == 1 && (!statLocal->equalsSignLocation || position < statLocal->equalsSignLocation->begin))
             return {{{"function", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Unknown};
         else if (statLocal->equalsSignLocation && position >= statLocal->equalsSignLocation->end)
-            return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+            return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
         else
             return {};
     }
@@ -1455,7 +1452,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
             if (statFor->from->location.containsClosed(position) || statFor->to->location.containsClosed(position) ||
                 (statFor->step && statFor->step->location.containsClosed(position)))
-                return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+                return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
 
             return {};
         }
@@ -1485,7 +1482,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             AstExpr* lastExpr = statForIn->values.data[statForIn->values.size - 1];
 
             if (lastExpr->location.containsClosed(position))
-                return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+                return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
 
             if (position > lastExpr->location.end)
                 return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
@@ -1509,7 +1506,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             return {{{"do", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
 
         if (!statWhile->hasDo || position < statWhile->doLocation.begin)
-            return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+            return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
 
         if (statWhile->hasDo && position > statWhile->doLocation.end)
             return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
@@ -1526,7 +1523,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     else if (AstStatIf* statIf = parent->as<AstStatIf>(); statIf && node->is<AstStatBlock>())
     {
         if (statIf->condition->is<AstExprError>())
-            return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+            return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
         else if (!statIf->thenLocation || statIf->thenLocation->containsClosed(position))
             return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     }
@@ -1534,7 +1531,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
              statIf && (!statIf->thenLocation || statIf->thenLocation->containsClosed(position)))
         return {{{"then", AutocompleteEntry{AutocompleteEntryKind::Keyword}}}, ancestry, AutocompleteContext::Keyword};
     else if (AstStatRepeat* statRepeat = node->as<AstStatRepeat>(); statRepeat && statRepeat->condition->is<AstExprError>())
-        return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+        return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
     else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>()))
@@ -1546,7 +1543,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             {
                 if (auto it = module->astExpectedTypes.find(exprTable))
                 {
-                    auto result = autocompleteProps(*module, typeArena, singletonTypes, *it, PropIndexType::Key, ancestry);
+                    auto result = autocompleteProps(*module, &typeArena, singletonTypes, *it, PropIndexType::Key, ancestry);
 
                     // Remove keys that are already completed
                     for (const auto& item : exprTable->items)
@@ -1560,7 +1557,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
 
                     // If we know for sure that a key is being written, do not offer general expression suggestions
                     if (!key)
-                        autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position, result);
+                        autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position, result);
 
                     return {result, ancestry, AutocompleteContext::Property};
                 }
@@ -1588,7 +1585,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
             if (auto idxExpr = ancestry.at(ancestry.size() - 2)->as<AstExprIndexExpr>())
             {
                 if (auto it = module->astTypes.find(idxExpr->expr))
-                    autocompleteProps(*module, typeArena, singletonTypes, follow(*it), PropIndexType::Point, ancestry, result);
+                    autocompleteProps(*module, &typeArena, singletonTypes, follow(*it), PropIndexType::Point, ancestry, result);
             }
             else if (auto binExpr = ancestry.at(ancestry.size() - 2)->as<AstExprBinary>())
             {
@@ -1604,12 +1601,10 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     }
 
     if (node->is<AstExprConstantNumber>())
-    {
         return {};
-    }
 
     if (node->asExpr())
-        return autocompleteExpression(sourceModule, *module, typeChecker, typeArena, ancestry, position);
+        return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
     else if (node->asStat())
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
 
@@ -1628,15 +1623,15 @@ AutocompleteResult autocomplete(Frontend& frontend, const ModuleName& moduleName
     if (!sourceModule)
         return {};
 
-    TypeChecker& typeChecker = frontend.typeCheckerForAutocomplete;
     ModulePtr module = frontend.moduleResolverForAutocomplete.getModule(moduleName);
 
     if (!module)
         return {};
 
-    AutocompleteResult autocompleteResult = autocomplete(*sourceModule, module, typeChecker, &frontend.arenaForAutocomplete, position, callback);
+    NotNull<SingletonTypes> singletonTypes = frontend.singletonTypes;
+    Scope* globalScope = frontend.typeCheckerForAutocomplete.globalScope.get();
 
-    frontend.arenaForAutocomplete.clear();
+    AutocompleteResult autocompleteResult = autocomplete(*sourceModule, module, singletonTypes, globalScope, position, callback);
 
     return autocompleteResult;
 }

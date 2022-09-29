@@ -837,6 +837,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "calling_function_with_anytypepack_doesnt_lea
 
 TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 {
+    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
+
     CheckResult result = check(R"(
         --!strict
 
@@ -851,7 +853,49 @@ TEST_CASE_FIXTURE(Fixture, "too_many_return_values")
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::FunctionResult);
+    CHECK_EQ(acm->expected, 1);
+    CHECK_EQ(acm->actual, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "too_many_return_values_in_parentheses")
+{
+    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
+
+    CheckResult result = check(R"(
+        --!strict
+
+        function f()
+            return 55
+        end
+
+        local a, b = (f())
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::FunctionResult);
+    CHECK_EQ(acm->expected, 1);
+    CHECK_EQ(acm->actual, 2);
+}
+
+TEST_CASE_FIXTURE(Fixture, "too_many_return_values_no_function")
+{
+    ScopedFastFlag sff{"LuauBetterMessagingOnCountMismatch", true};
+
+    CheckResult result = check(R"(
+        --!strict
+
+        local a, b = 55
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CountMismatch* acm = get<CountMismatch>(result.errors[0]);
+    REQUIRE(acm);
+    CHECK_EQ(acm->context, CountMismatch::ExprListResult);
     CHECK_EQ(acm->expected, 1);
     CHECK_EQ(acm->actual, 2);
 }
@@ -1271,7 +1315,7 @@ local b: B = a
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type '(number, number) -> number' could not be converted into '(number, number) -> (number, boolean)'
 caused by:
-  Function only returns 1 value. 2 are required here)");
+  Function only returns 1 value, but 2 are required here)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_function_mismatch_ret")

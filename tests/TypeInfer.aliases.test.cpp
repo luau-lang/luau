@@ -443,7 +443,8 @@ TEST_CASE_FIXTURE(Fixture, "reported_location_is_correct_when_type_alias_are_dup
     auto dtd = get<DuplicateTypeDefinition>(result.errors[0]);
     REQUIRE(dtd);
     CHECK_EQ(dtd->name, "B");
-    CHECK_EQ(dtd->previousLocation.begin.line + 1, 3);
+    REQUIRE(dtd->previousLocation);
+    CHECK_EQ(dtd->previousLocation->begin.line + 1, 3);
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringify_optional_parameterized_alias")
@@ -866,6 +867,42 @@ TEST_CASE_FIXTURE(Fixture, "recursive_types_restriction_not_ok")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "report_shadowed_aliases")
+{
+    ScopedFastFlag sff{"LuauReportShadowedTypeAlias", true};
+
+    // We allow a previous type alias to depend on a future type alias. That exact feature enables a confusing example, like the following snippet,
+    // which has the type alias FakeString point to the type alias `string` that which points to `number`.
+    CheckResult result = check(R"(
+        type MyString = string
+        type string = number
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Redefinition of type 'string'");
+
+    std::optional<TypeId> t1 = lookupType("MyString");
+    REQUIRE(t1);
+    CHECK(isPrim(*t1, PrimitiveTypeVar::String));
+
+    std::optional<TypeId> t2 = lookupType("string");
+    REQUIRE(t2);
+    CHECK(isPrim(*t2, PrimitiveTypeVar::String));
+}
+
+TEST_CASE_FIXTURE(Fixture, "it_is_ok_to_shadow_user_defined_alias")
+{
+    CheckResult result = check(R"(
+        type T = number
+
+        do
+            type T = string
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

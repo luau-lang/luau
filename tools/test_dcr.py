@@ -39,7 +39,7 @@ class Handler(x.ContentHandler):
 
         elif name == "OverallResultsAsserts":
             if self.currentTest:
-                passed = 0 == safeParseInt(attrs["failures"])
+                passed = attrs["test_case_success"] == "true"
 
                 dottedName = ".".join(self.currentTest)
 

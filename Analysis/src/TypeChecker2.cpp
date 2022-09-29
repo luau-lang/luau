@@ -17,9 +17,15 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
+LUAU_FASTFLAG(DebugLuauMagicTypes);
 
 namespace Luau
 {
+
+// TypeInfer.h
+// TODO move these
+using PrintLineProc = void(*)(const std::string&);
+extern PrintLineProc luauPrintLine;
 
 /* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
  * TypeChecker2 uses this to maintain knowledge about which scope encloses every
@@ -114,6 +120,19 @@ struct TypeChecker2
 
     TypeId lookupAnnotation(AstType* annotation)
     {
+        if (FFlag::DebugLuauMagicTypes)
+        {
+            if (auto ref = annotation->as<AstTypeReference>(); ref && ref->name == "_luau_print" && ref->parameters.size > 0)
+            {
+                if (auto ann = ref->parameters.data[0].type)
+                {
+                    TypeId argTy = lookupAnnotation(ref->parameters.data[0].type);
+                    luauPrintLine(format("_luau_print (%d, %d): %s\n", annotation->location.begin.line, annotation->location.begin.column, toString(argTy).c_str()));
+                    return follow(argTy);
+                }
+            }
+        }
+
         TypeId* ty = module->astResolvedTypes.find(annotation);
         LUAU_ASSERT(ty);
         return follow(*ty);
@@ -284,50 +303,49 @@ struct TypeChecker2
 
     void visit(AstStatLocal* local)
     {
-        for (size_t i = 0; i < local->values.size; ++i)
+        size_t count = std::max(local->values.size, local->vars.size);
+        for (size_t i = 0; i < count; ++i)
         {
-            AstExpr* value = local->values.data[i];
+            AstExpr* value = i < local->values.size ? local->values.data[i] : nullptr;
 
-            visit(value);
+            if (value)
+                visit(value);
 
-            if (i == local->values.size - 1)
+            if (i != local->values.size - 1)
             {
-                if (i < local->values.size)
+                AstLocal* var = i < local->vars.size ? local->vars.data[i] : nullptr;
+
+                if (var && var->annotation)
                 {
-                    TypePackId valueTypes = lookupPack(value);
-                    auto it = begin(valueTypes);
-                    for (size_t j = i; j < local->vars.size; ++j)
-                    {
-                        if (it == end(valueTypes))
-                        {
-                            break;
-                        }
-
-                        AstLocal* var = local->vars.data[i];
-                        if (var->annotation)
-                        {
-                            TypeId varType = lookupAnnotation(var->annotation);
-                            ErrorVec errors = tryUnify(stack.back(), value->location, *it, varType);
-                            if (!errors.empty())
-                                reportErrors(std::move(errors));
-                        }
-
-                        ++it;
-                    }
+                    TypeId varType = lookupAnnotation(var->annotation);
+                    TypeId valueType = value ? lookupType(value) : nullptr;
+                    if (valueType && !isSubtype(varType, valueType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+                        reportError(TypeMismatch{varType, valueType}, value->location);
                 }
             }
             else
             {
-                TypeId valueType = lookupType(value);
-                AstLocal* var = local->vars.data[i];
+                LUAU_ASSERT(value);
 
-                if (var->annotation)
+                TypePackId valueTypes = lookupPack(value);
+                auto it = begin(valueTypes);
+                for (size_t j = i; j < local->vars.size; ++j)
                 {
-                    TypeId varType = lookupAnnotation(var->annotation);
-                    if (!isSubtype(varType, valueType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+                    if (it == end(valueTypes))
                     {
-                        reportError(TypeMismatch{varType, valueType}, value->location);
+                        break;
                     }
+
+                    AstLocal* var = local->vars.data[i];
+                    if (var->annotation)
+                    {
+                        TypeId varType = lookupAnnotation(var->annotation);
+                        ErrorVec errors = tryUnify(stack.back(), value->location, *it, varType);
+                        if (!errors.empty())
+                            reportErrors(std::move(errors));
+                    }
+
+                    ++it;
                 }
             }
         }
@@ -343,50 +361,6 @@ struct TypeChecker2
         if (forStatement->step)
             visit(forStatement->step);
         visit(forStatement->body);
-    }
-
-    // "Render" a type pack out to an array of a given length.  Expands
-    // variadics and various other things to get there.
-    std::vector<TypeId> flatten(TypeArena& arena, TypePackId pack, size_t length)
-    {
-        std::vector<TypeId> result;
-
-        auto it = begin(pack);
-        auto endIt = end(pack);
-
-        while (it != endIt)
-        {
-            result.push_back(*it);
-
-            if (result.size() >= length)
-                return result;
-
-            ++it;
-        }
-
-        if (!it.tail())
-            return result;
-
-        TypePackId tail = *it.tail();
-        if (get<TypePack>(tail))
-            LUAU_ASSERT(0);
-        else if (auto vtp = get<VariadicTypePack>(tail))
-        {
-            while (result.size() < length)
-                result.push_back(vtp->ty);
-        }
-        else if (get<FreeTypePack>(tail) || get<GenericTypePack>(tail))
-        {
-            while (result.size() < length)
-                result.push_back(arena.addType(FreeTypeVar{nullptr}));
-        }
-        else if (auto etp = get<Unifiable::Error>(tail))
-        {
-            while (result.size() < length)
-                result.push_back(singletonTypes->errorRecoveryType());
-        }
-
-        return result;
     }
 
     void visit(AstStatForIn* forInStatement)
@@ -426,13 +400,79 @@ struct TypeChecker2
         TypePackId iteratorPack = arena.addTypePack(valueTypes, iteratorTail);
 
         // ... and then expand it out to 3 values (if possible)
-        const std::vector<TypeId> iteratorTypes = flatten(arena, iteratorPack, 3);
+        const std::vector<TypeId> iteratorTypes = flatten(arena, singletonTypes, iteratorPack, 3);
         if (iteratorTypes.empty())
         {
             reportError(GenericError{"for..in loops require at least one value to iterate over.  Got zero"}, getLocation(forInStatement->values));
             return;
         }
         TypeId iteratorTy = follow(iteratorTypes[0]);
+
+        auto checkFunction = [this, &arena, &scope, &forInStatement, &variableTypes](const FunctionTypeVar* iterFtv, std::vector<TypeId> iterTys, bool isMm)
+        {
+            if (iterTys.size() < 1 || iterTys.size() > 3)
+            {
+                if (isMm)
+                    reportError(GenericError{"__iter metamethod must return (next[, table[, state]])"}, getLocation(forInStatement->values));
+                else
+                    reportError(GenericError{"for..in loops must be passed (next[, table[, state]])"}, getLocation(forInStatement->values));
+
+                return;
+            }
+            
+            // It is okay if there aren't enough iterators, but the iteratee must provide enough.
+            std::vector<TypeId> expectedVariableTypes = flatten(arena, singletonTypes, iterFtv->retTypes, variableTypes.size());
+            if (expectedVariableTypes.size() < variableTypes.size())
+            {
+                if (isMm)
+                    reportError(GenericError{"__iter metamethod's next() function does not return enough values"}, getLocation(forInStatement->values));
+                else
+                    reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
+            }
+
+            for (size_t i = 0; i < std::min(expectedVariableTypes.size(), variableTypes.size()); ++i)
+                reportErrors(tryUnify(scope, forInStatement->vars.data[i]->location, variableTypes[i], expectedVariableTypes[i]));
+            
+            // nextFn is going to be invoked with (arrayTy, startIndexTy)
+
+            // It will be passed two arguments on every iteration save the
+            // first.
+
+            // It may be invoked with 0 or 1 argument on the first iteration.
+            // This depends on the types in iterateePack and therefore
+            // iteratorTypes.
+
+            // If iteratorTypes is too short to be a valid call to nextFn, we have to report a count mismatch error.
+            // If 2 is too short to be a valid call to nextFn, we have to report a count mismatch error.
+            // If 2 is too long to be a valid call to nextFn, we have to report a count mismatch error.
+            auto [minCount, maxCount] = getParameterExtents(TxnLog::empty(), iterFtv->argTypes, /*includeHiddenVariadics*/ true);
+
+            if (minCount > 2)
+                reportError(CountMismatch{2, std::nullopt, minCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            if (maxCount && *maxCount < 2)
+                reportError(CountMismatch{2, std::nullopt, *maxCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+
+            const std::vector<TypeId> flattenedArgTypes = flatten(arena, singletonTypes, iterFtv->argTypes, 2);
+            size_t firstIterationArgCount = iterTys.empty() ? 0 : iterTys.size() - 1;
+            size_t actualArgCount = expectedVariableTypes.size();
+
+            if (firstIterationArgCount < minCount)
+                reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+            else if (actualArgCount < minCount)
+                reportError(CountMismatch{2, std::nullopt, actualArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
+
+            if (iterTys.size() >= 2 && flattenedArgTypes.size() > 0)
+            {
+                size_t valueIndex = forInStatement->values.size > 1 ? 1 : 0;
+                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iterTys[1], flattenedArgTypes[0]));
+            }
+
+            if (iterTys.size() == 3 && flattenedArgTypes.size() > 1)
+            {
+                size_t valueIndex = forInStatement->values.size > 2 ? 2 : 0;
+                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iterTys[2], flattenedArgTypes[1]));
+            }
+        };
 
         /*
          * If the first iterator argument is a function
@@ -451,58 +491,7 @@ struct TypeChecker2
          */
         if (const FunctionTypeVar* nextFn = get<FunctionTypeVar>(iteratorTy))
         {
-            if (iteratorTypes.size() < 1 || iteratorTypes.size() > 3)
-                reportError(GenericError{"for..in loops must be passed (next, [table[, state]])"}, getLocation(forInStatement->values));
-
-            // It is okay if there aren't enough iterators, but the iteratee must provide enough.
-            std::vector<TypeId> expectedVariableTypes = flatten(arena, nextFn->retTypes, variableTypes.size());
-            if (expectedVariableTypes.size() < variableTypes.size())
-                reportError(GenericError{"next() does not return enough values"}, forInStatement->vars.data[0]->location);
-
-            for (size_t i = 0; i < std::min(expectedVariableTypes.size(), variableTypes.size()); ++i)
-                reportErrors(tryUnify(scope, forInStatement->vars.data[i]->location, variableTypes[i], expectedVariableTypes[i]));
-
-            // nextFn is going to be invoked with (arrayTy, startIndexTy)
-
-            // It will be passed two arguments on every iteration save the
-            // first.
-
-            // It may be invoked with 0 or 1 argument on the first iteration.
-            // This depends on the types in iterateePack and therefore
-            // iteratorTypes.
-
-            // If iteratorTypes is too short to be a valid call to nextFn, we have to report a count mismatch error.
-            // If 2 is too short to be a valid call to nextFn, we have to report a count mismatch error.
-            // If 2 is too long to be a valid call to nextFn, we have to report a count mismatch error.
-            auto [minCount, maxCount] = getParameterExtents(TxnLog::empty(), nextFn->argTypes, /*includeHiddenVariadics*/ true);
-
-            if (minCount > 2)
-                reportError(CountMismatch{2, std::nullopt, minCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
-            if (maxCount && *maxCount < 2)
-                reportError(CountMismatch{2, std::nullopt, *maxCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
-
-            const std::vector<TypeId> flattenedArgTypes = flatten(arena, nextFn->argTypes, 2);
-            const auto [argTypes, argsTail] = Luau::flatten(nextFn->argTypes);
-
-            size_t firstIterationArgCount = iteratorTypes.empty() ? 0 : iteratorTypes.size() - 1;
-            size_t actualArgCount = expectedVariableTypes.size();
-
-            if (firstIterationArgCount < minCount)
-                reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
-            else if (actualArgCount < minCount)
-                reportError(CountMismatch{2, std::nullopt, actualArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
-
-            if (iteratorTypes.size() >= 2 && flattenedArgTypes.size() > 0)
-            {
-                size_t valueIndex = forInStatement->values.size > 1 ? 1 : 0;
-                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iteratorTypes[1], flattenedArgTypes[0]));
-            }
-
-            if (iteratorTypes.size() == 3 && flattenedArgTypes.size() > 1)
-            {
-                size_t valueIndex = forInStatement->values.size > 2 ? 2 : 0;
-                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iteratorTypes[2], flattenedArgTypes[1]));
-            }
+            checkFunction(nextFn, iteratorTypes, false);
         }
         else if (const TableTypeVar* ttv = get<TableTypeVar>(iteratorTy))
         {
@@ -518,6 +507,62 @@ struct TypeChecker2
         else if (get<AnyTypeVar>(iteratorTy) || get<ErrorTypeVar>(iteratorTy))
         {
             // nothing
+        }
+        else if (std::optional<TypeId> iterMmTy = findMetatableEntry(singletonTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
+        {
+            Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}, scope};
+
+            if (std::optional<TypeId> instantiatedIterMmTy = instantiation.substitute(*iterMmTy))
+            {
+                if (const FunctionTypeVar* iterMmFtv = get<FunctionTypeVar>(*instantiatedIterMmTy))
+                {
+                    TypePackId argPack = arena.addTypePack({iteratorTy});
+                    reportErrors(tryUnify(scope, forInStatement->values.data[0]->location, argPack, iterMmFtv->argTypes));
+
+                    std::vector<TypeId> mmIteratorTypes = flatten(arena, singletonTypes, iterMmFtv->retTypes, 3);
+
+                    if (mmIteratorTypes.size() == 0)
+                    {
+                        reportError(GenericError{"__iter must return at least one value"}, forInStatement->values.data[0]->location);
+                        return;
+                    }
+
+                    TypeId nextFn = follow(mmIteratorTypes[0]);
+
+                    if (std::optional<TypeId> instantiatedNextFn = instantiation.substitute(nextFn))
+                    {
+                        std::vector<TypeId> instantiatedIteratorTypes = mmIteratorTypes;
+                        instantiatedIteratorTypes[0] = *instantiatedNextFn;
+
+                        if (const FunctionTypeVar* nextFtv = get<FunctionTypeVar>(*instantiatedNextFn))
+                        {
+                            checkFunction(nextFtv, instantiatedIteratorTypes, true);
+                        }
+                        else
+                        {
+                            reportError(CannotCallNonFunction{*instantiatedNextFn}, forInStatement->values.data[0]->location);
+                        }
+                    }
+                    else
+                    {
+                        reportError(UnificationTooComplex{}, forInStatement->values.data[0]->location);
+                    }
+                }
+                else
+                {
+                    // TODO: This will not tell the user that this is because the
+                    // metamethod isn't callable. This is not ideal, and we should
+                    // improve this error message.
+                    
+                    // TODO: This will also not handle intersections of functions or
+                    // callable tables (which are supported by the runtime).
+                    reportError(CannotCallNonFunction{*iterMmTy}, forInStatement->values.data[0]->location);
+                }
+            }
+            else
+            {
+                reportError(UnificationTooComplex{}, forInStatement->values.data[0]->location);
+            }
         }
         else
         {
@@ -730,7 +775,7 @@ struct TypeChecker2
             visit(arg);
 
         TypeArena arena;
-        Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}};
+        Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}, stack.back()};
 
         TypePackId expectedRetType = lookupPack(call);
         TypeId functionType = lookupType(call->func);

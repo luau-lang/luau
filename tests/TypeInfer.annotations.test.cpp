@@ -745,7 +745,12 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_is_not_special_without_the_flag")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
 {
-    // Luau::resetPrintLine();
+    static std::vector<std::string> output;
+    output.clear();
+    Luau::setPrintLine([](const std::string& s) {
+        output.push_back(s);
+    });
+
     ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
 
     CheckResult result = check(R"(
@@ -753,6 +758,8 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "luau_print_is_magic_if_the_flag_is_set")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+
+    REQUIRE(1 == output.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "luau_print_is_not_special_without_the_flag")

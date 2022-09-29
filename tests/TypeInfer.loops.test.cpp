@@ -526,6 +526,16 @@ TEST_CASE_FIXTURE(Fixture, "fuzz_fail_missing_instantitation_follow")
     )");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_with_generic_next")
+{
+    CheckResult result = check(R"(
+        for k: number, v: number in next, {1, 2, 3} do
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "loop_iter_basic")
 {
     CheckResult result = check(R"(
@@ -584,16 +594,75 @@ TEST_CASE_FIXTURE(Fixture, "loop_iter_no_indexer_nonstrict")
     LUAU_REQUIRE_ERROR_COUNT(0, result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_iter_metamethod")
+TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_nil")
 {
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
     CheckResult result = check(R"(
-        local t = {}
-        setmetatable(t, { __iter = function(o) return next, o.children end })
+        local t = setmetatable({}, { __iter = function(o) return next, nil end, })
+        for k: number, v: string in t do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Type 'nil' could not be converted into '{- [a]: b -}'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local t = setmetatable({}, { __iter = function(o) end })
+        for k: number, v: string in t do
+        end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(result.errors[0] == TypeError{
+        Location{{2, 36}, {2, 37}},
+        GenericError{"__iter must return at least one value"},
+    });
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local t = setmetatable({
+            children = {"foo"}
+        }, { __iter = function(o) return next, o.children end })
         for k: number, v: string in t do
         end
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(0, result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok_with_inference")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local t = setmetatable({
+            children = {"foo"}
+        }, { __iter = function(o) return next, o.children end })
+
+        local a, b
+        for k, v in t do
+            a = k
+            b = v
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(toString(requireType("a")) == "number");
+    CHECK(toString(requireType("b")) == "string");
 }
 
 TEST_SUITE_END();

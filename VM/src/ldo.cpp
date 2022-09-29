@@ -263,18 +263,18 @@ static void seterrorobj(lua_State* L, int errcode, StkId oldtop)
     {
     case LUA_ERRMEM:
     {
-        setsvalue2s(L, oldtop, luaS_newliteral(L, LUA_MEMERRMSG)); // can not fail because string is pinned in luaopen
+        setsvalue(L, oldtop, luaS_newliteral(L, LUA_MEMERRMSG)); // can not fail because string is pinned in luaopen
         break;
     }
     case LUA_ERRERR:
     {
-        setsvalue2s(L, oldtop, luaS_newliteral(L, LUA_ERRERRMSG)); // can not fail because string is pinned in luaopen
+        setsvalue(L, oldtop, luaS_newliteral(L, LUA_ERRERRMSG)); // can not fail because string is pinned in luaopen
         break;
     }
     case LUA_ERRSYNTAX:
     case LUA_ERRRUN:
     {
-        setobjs2s(L, oldtop, L->top - 1); // error message on current top
+        setobj2s(L, oldtop, L->top - 1); // error message on current top
         break;
     }
     }
@@ -419,7 +419,7 @@ static void resume_handle(lua_State* L, void* ud)
 static int resume_error(lua_State* L, const char* msg)
 {
     L->top = L->ci->base;
-    setsvalue2s(L, L->top, luaS_new(L, msg));
+    setsvalue(L, L->top, luaS_new(L, msg));
     incr_top(L);
     return LUA_ERRRUN;
 }
@@ -525,8 +525,8 @@ static void callerrfunc(lua_State* L, void* ud)
 {
     StkId errfunc = cast_to(StkId, ud);
 
-    setobjs2s(L, L->top, L->top - 1);
-    setobjs2s(L, L->top - 1, errfunc);
+    setobj2s(L, L->top, L->top - 1);
+    setobj2s(L, L->top - 1, errfunc);
     incr_top(L);
     luaD_call(L, L->top - 2, 1);
 }

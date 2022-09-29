@@ -224,4 +224,46 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         return {minCount, minCount + optionalCount};
 }
 
+std::vector<TypeId> flatten(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length)
+{
+    std::vector<TypeId> result;
+
+    auto it = begin(pack);
+    auto endIt = end(pack);
+
+    while (it != endIt)
+    {
+        result.push_back(*it);
+
+        if (result.size() >= length)
+            return result;
+
+        ++it;
+    }
+
+    if (!it.tail())
+        return result;
+
+    TypePackId tail = *it.tail();
+    if (get<TypePack>(tail))
+        LUAU_ASSERT(0);
+    else if (auto vtp = get<VariadicTypePack>(tail))
+    {
+        while (result.size() < length)
+            result.push_back(vtp->ty);
+    }
+    else if (get<FreeTypePack>(tail) || get<GenericTypePack>(tail))
+    {
+        while (result.size() < length)
+            result.push_back(arena.addType(FreeTypeVar{nullptr}));
+    }
+    else if (auto etp = get<Unifiable::Error>(tail))
+    {
+        while (result.size() < length)
+            result.push_back(singletonTypes->errorRecoveryType());
+    }
+
+    return result;
+}
+
 } // namespace Luau
