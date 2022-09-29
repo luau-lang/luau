@@ -23,7 +23,11 @@ jobs:
     - name: configure
       run: cmake . -DCMAKE_BUILD_TYPE=Release
     - name: build
-      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release -j 3 -- /p:CL_MPcount=3
+      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release -j 3
+      if: matrix.os != 'windows'
+    - name: build
+      run: cmake --build . --target Luau.Repl.CLI Luau.Analyze.CLI --config Release -- /p:CL_MPcount=3
+      if: matrix.os == 'windows'
     - uses: actions/upload-artifact@v2
       if: matrix.os != 'windows'
       with:
