@@ -94,8 +94,9 @@ struct FunctionCallConstraint
 {
     std::vector<NotNull<const struct Constraint>> innerConstraints;
     TypeId fn;
+    TypePackId argsPack;
     TypePackId result;
-    class AstExprCall* astFragment;
+    class AstExprCall* callSite;
 };
 
 // result ~ prim ExpectedType SomeSingletonType MultitonType

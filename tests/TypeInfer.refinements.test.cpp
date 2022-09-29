@@ -256,28 +256,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
     REQUIRE_EQ("number", toString(requireType("b")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_only_look_up_types_from_global_scope")
-{
-    CheckResult result = check(R"(
-        type ActuallyString = string
-
-        do -- Necessary. Otherwise toposort has ActuallyString come after string type alias.
-            type string = number
-            local foo: string = 1
-
-            if type(foo) == "string" then
-                local bar: ActuallyString = foo
-                local baz: boolean = foo
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("never", toString(requireTypeAtPosition({8, 44})));
-    CHECK_EQ("never", toString(requireTypeAtPosition({9, 38})));
-}
-
 TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
 {
     CheckResult result = check(R"(

@@ -27,6 +27,7 @@ namespace Luau
 
 struct TypeArena;
 struct Scope;
+using ScopePtr = std::shared_ptr<Scope>;
 
 /**
  * There are three kinds of type variables:
@@ -264,7 +265,15 @@ struct WithPredicate
 using MagicFunction = std::function<std::optional<WithPredicate<TypePackId>>(
     struct TypeChecker&, const std::shared_ptr<struct Scope>&, const class AstExprCall&, WithPredicate<TypePackId>)>;
 
-using DcrMagicFunction = std::function<bool(NotNull<struct ConstraintSolver>, TypePackId, const class AstExprCall*)>;
+struct MagicFunctionCallContext
+{
+    NotNull<struct ConstraintSolver> solver;
+    const class AstExprCall* callSite;
+    TypePackId arguments;
+    TypePackId result;
+};
+
+using DcrMagicFunction = std::function<bool(MagicFunctionCallContext)>;
 
 struct FunctionTypeVar
 {
@@ -277,10 +286,14 @@ struct FunctionTypeVar
 
     // Local monomorphic function
     FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
+    FunctionTypeVar(
+        TypeLevel level, Scope* scope, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     // Local polymorphic function
     FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
         std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
+    FunctionTypeVar(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
+        TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
     TypeLevel level;
     Scope* scope = nullptr;
@@ -345,8 +358,9 @@ struct TableTypeVar
     using Props = std::map<Name, Property>;
 
     TableTypeVar() = default;
-    explicit TableTypeVar(TableState state, TypeLevel level);
+    explicit TableTypeVar(TableState state, TypeLevel level, Scope* scope = nullptr);
     TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, TableState state);
+    TableTypeVar(const Props& props, const std::optional<TableIndexer>& indexer, TypeLevel level, Scope* scope, TableState state);
 
     Props props;
     std::optional<TableIndexer> indexer;

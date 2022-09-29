@@ -499,7 +499,7 @@ TEST_CASE("Types")
         Luau::SingletonTypes singletonTypes;
         Luau::TypeChecker env(&moduleResolver, Luau::NotNull{&singletonTypes}, &iceHandler);
 
-        Luau::registerBuiltinTypes(env);
+        Luau::registerBuiltinGlobals(env);
         Luau::freeze(env.globalTypes);
 
         lua_newtable(L);

@@ -14,6 +14,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauSpecialTypesAsterisked, false)
 LUAU_FASTFLAGVARIABLE(LuauFixNameMaps, false)
+LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -632,6 +633,10 @@ struct TypeVarStringifier
             state.emit("{");
             stringify(ttv.indexer->indexResultType);
             state.emit("}");
+
+            if (FFlag::LuauUnseeArrayTtv)
+                state.unsee(&ttv);
+
             return;
         }
 

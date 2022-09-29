@@ -80,9 +80,11 @@ struct TypeChecker
     void check(const ScopePtr& scope, const AstStatForIn& forin);
     void check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatFunction& function);
     void check(const ScopePtr& scope, TypeId ty, const ScopePtr& funScope, const AstStatLocalFunction& function);
-    void check(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0, bool forwardDeclare = false);
+    void check(const ScopePtr& scope, const AstStatTypeAlias& typealias);
     void check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass);
     void check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
+
+    void prototype(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0);
 
     void checkBlock(const ScopePtr& scope, const AstStatBlock& statement);
     void checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& statement);
@@ -392,8 +394,12 @@ private:
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };
 
+using PrintLineProc = void(*)(const std::string&);
+
+extern PrintLineProc luauPrintLine;
+
 // Unit test hook
-void setPrintLine(void (*pl)(const std::string& s));
+void setPrintLine(PrintLineProc pl);
 void resetPrintLine();
 
 } // namespace Luau

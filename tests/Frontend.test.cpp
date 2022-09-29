@@ -1070,12 +1070,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
 
     fileResolver.source["Module/A"] = R"(
         type KeyOfTestEvents = "test-file-start" | "test-file-success" | "test-file-failure" | "test-case-result"
-        type unknown = any
+        type MyAny = any
 
         export type TestFileEvent<T = KeyOfTestEvents> = (
             eventName: T,
             args: any --[[ ROBLOX TODO: Unhandled node for type: TSIndexedAccessType ]] --[[ TestEvents[T] ]]
-        ) -> unknown
+        ) -> MyAny
 
         return {}
     )";

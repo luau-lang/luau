@@ -44,7 +44,7 @@ TypeId Instantiation::clean(TypeId ty)
     const FunctionTypeVar* ftv = log->getMutable<FunctionTypeVar>(ty);
     LUAU_ASSERT(ftv);
 
-    FunctionTypeVar clone = FunctionTypeVar{level, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
+    FunctionTypeVar clone = FunctionTypeVar{level, scope, ftv->argTypes, ftv->retTypes, ftv->definition, ftv->hasSelf};
     clone.magicFunction = ftv->magicFunction;
     clone.dcrMagicFunction = ftv->dcrMagicFunction;
     clone.tags = ftv->tags;
@@ -53,7 +53,7 @@ TypeId Instantiation::clean(TypeId ty)
 
     // Annoyingly, we have to do this even if there are no generics,
     // to replace any generic tables.
-    ReplaceGenerics replaceGenerics{log, arena, level, ftv->generics, ftv->genericPacks};
+    ReplaceGenerics replaceGenerics{log, arena, level, scope, ftv->generics, ftv->genericPacks};
 
     // TODO: What to do if this returns nullopt?
     // We don't have access to the error-reporting machinery
@@ -114,12 +114,12 @@ TypeId ReplaceGenerics::clean(TypeId ty)
     LUAU_ASSERT(isDirty(ty));
     if (const TableTypeVar* ttv = log->getMutable<TableTypeVar>(ty))
     {
-        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, level, TableState::Free};
+        TableTypeVar clone = TableTypeVar{ttv->props, ttv->indexer, level, scope, TableState::Free};
         clone.definitionModuleName = ttv->definitionModuleName;
         return addType(std::move(clone));
     }
     else
-        return addType(FreeTypeVar{level});
+        return addType(FreeTypeVar{scope, level});
 }
 
 TypePackId ReplaceGenerics::clean(TypePackId tp)

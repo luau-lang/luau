@@ -4,7 +4,6 @@
 # Given a profile dump, this tool generates a flame graph based on the stacks listed in the profile
 # The result of analysis is a .svg file which can be viewed in a browser
 
-import sys
 import svg
 import argparse
 import json

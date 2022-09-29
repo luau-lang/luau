@@ -81,7 +81,7 @@ struct OnlyTablesCanHaveMethods
 struct DuplicateTypeDefinition
 {
     Name name;
-    Location previousLocation;
+    std::optional<Location> previousLocation;
 
     bool operator==(const DuplicateTypeDefinition& rhs) const;
 };
@@ -91,7 +91,8 @@ struct CountMismatch
     enum Context
     {
         Arg,
-        Result,
+        FunctionResult,
+        ExprListResult,
         Return,
     };
     size_t expected;

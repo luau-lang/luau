@@ -18,6 +18,13 @@ Free::Free(Scope* scope)
 {
 }
 
+Free::Free(Scope* scope, TypeLevel level)
+    : index(++nextIndex)
+    , level(level)
+    , scope(scope)
+{
+}
+
 int Free::nextIndex = 0;
 
 Generic::Generic()

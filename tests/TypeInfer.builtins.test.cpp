@@ -11,6 +11,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 LUAU_FASTFLAG(LuauStringFormatArgumentErrorFix)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("BuiltinTests");
 
@@ -596,6 +597,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "xpcall")
     CHECK_EQ("boolean", toString(requireType("c")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "trivial_select")
+{
+    CheckResult result = check(R"(
+        local a:number = select(1, 42)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(BuiltinsFixture, "see_thru_select")
 {
     CheckResult result = check(R"(
@@ -679,10 +689,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("any", toString(requireType("foo")));
-    CHECK_EQ("any", toString(requireType("bar")));
-    CHECK_EQ("any", toString(requireType("baz")));
-    CHECK_EQ("any", toString(requireType("quux")));
+    if (FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauSpecialTypesAsterisked)
+    {
+        CHECK_EQ("string", toString(requireType("foo")));
+        CHECK_EQ("*error-type*", toString(requireType("bar")));
+        CHECK_EQ("*error-type*", toString(requireType("baz")));
+        CHECK_EQ("*error-type*", toString(requireType("quux")));
+    }
+    else
+    {
+        CHECK_EQ("any", toString(requireType("foo")));
+        CHECK_EQ("any", toString(requireType("bar")));
+        CHECK_EQ("any", toString(requireType("baz")));
+        CHECK_EQ("any", toString(requireType("quux")));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_string_head")
@@ -698,10 +718,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("any", toString(requireType("foo")));
-    CHECK_EQ("any", toString(requireType("bar")));
-    CHECK_EQ("any", toString(requireType("baz")));
-    CHECK_EQ("any", toString(requireType("quux")));
+    if (FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauSpecialTypesAsterisked)
+    {
+        CHECK_EQ("string", toString(requireType("foo")));
+        CHECK_EQ("string", toString(requireType("bar")));
+        CHECK_EQ("*error-type*", toString(requireType("baz")));
+        CHECK_EQ("*error-type*", toString(requireType("quux")));
+    }
+    else
+    {
+        CHECK_EQ("any", toString(requireType("foo")));
+        CHECK_EQ("any", toString(requireType("bar")));
+        CHECK_EQ("any", toString(requireType("baz")));
+        CHECK_EQ("any", toString(requireType("quux")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_format_as_method")
@@ -1099,7 +1129,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_default_capture")
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::FunctionResult);
     CHECK_EQ(acm->expected, 1);
     CHECK_EQ(acm->actual, 4);
 
@@ -1116,7 +1146,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_balanced_escaped_parens
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::FunctionResult);
     CHECK_EQ(acm->expected, 3);
     CHECK_EQ(acm->actual, 4);
 
@@ -1135,7 +1165,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "gmatch_capture_types_parens_in_sets_are_igno
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::FunctionResult);
     CHECK_EQ(acm->expected, 2);
     CHECK_EQ(acm->actual, 3);
 
@@ -1288,7 +1318,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "find_capture_types3")
 
     CountMismatch* acm = get<CountMismatch>(result.errors[0]);
     REQUIRE(acm);
-    CHECK_EQ(acm->context, CountMismatch::Result);
+    CHECK_EQ(acm->context, CountMismatch::FunctionResult);
     CHECK_EQ(acm->expected, 2);
     CHECK_EQ(acm->actual, 4);
 

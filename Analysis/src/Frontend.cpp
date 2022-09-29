@@ -400,6 +400,7 @@ Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, c
     , typeCheckerForAutocomplete(&moduleResolverForAutocomplete, singletonTypes, &iceHandler)
     , configResolver(configResolver)
     , options(options)
+    , globalScope(typeChecker.globalScope)
 {
 }
 
@@ -505,7 +506,10 @@ CheckResult Frontend::check(const ModuleName& name, std::optional<FrontendOption
                     typeCheckerForAutocomplete.unifierIterationLimit = std::nullopt;
             }
 
-            ModulePtr moduleForAutocomplete = typeCheckerForAutocomplete.check(sourceModule, Mode::Strict, environmentScope);
+            ModulePtr moduleForAutocomplete = FFlag::DebugLuauDeferredConstraintResolution
+                                                  ? check(sourceModule, mode, environmentScope, requireCycles, /*forAutocomplete*/ true)
+                                                  : typeCheckerForAutocomplete.check(sourceModule, Mode::Strict, environmentScope);
+
             moduleResolverForAutocomplete.modules[moduleName] = moduleForAutocomplete;
 
             double duration = getTimestamp() - timestamp;
@@ -837,7 +841,8 @@ ScopePtr Frontend::getGlobalScope()
     return globalScope;
 }
 
-ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope, std::vector<RequireCycle> requireCycles)
+ModulePtr Frontend::check(
+    const SourceModule& sourceModule, Mode mode, const ScopePtr& environmentScope, std::vector<RequireCycle> requireCycles, bool forAutocomplete)
 {
     ModulePtr result = std::make_shared<Module>();
 
@@ -852,7 +857,11 @@ ModulePtr Frontend::check(const SourceModule& sourceModule, Mode mode, const Sco
         }
     }
 
-    ConstraintGraphBuilder cgb{sourceModule.name, result, &result->internalTypes, NotNull(&moduleResolver), singletonTypes, NotNull(&iceHandler), getGlobalScope(), logger.get()};
+    const NotNull<ModuleResolver> mr{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver};
+    const ScopePtr& globalScope{forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope};
+
+    ConstraintGraphBuilder cgb{
+        sourceModule.name, result, &result->internalTypes, mr, singletonTypes, NotNull(&iceHandler), globalScope, logger.get()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 

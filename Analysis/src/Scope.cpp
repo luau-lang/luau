@@ -21,6 +21,12 @@ Scope::Scope(const ScopePtr& parent, int subLevel)
     level.subLevel = subLevel;
 }
 
+void Scope::addBuiltinTypeBinding(const Name& name, const TypeFun& tyFun)
+{
+    exportedTypeBindings[name] = tyFun;
+    builtinTypeNames.insert(name);
+}
+
 std::optional<TypeFun> Scope::lookupType(const Name& name)
 {
     const Scope* scope = this;
@@ -82,9 +88,9 @@ std::optional<TypePackId> Scope::lookupPack(const Name& name)
     }
 }
 
-std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bool traverseScopeChain)
+std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bool traverseScopeChain) const
 {
-    Scope* scope = this;
+    const Scope* scope = this;
 
     while (scope)
     {
@@ -120,6 +126,24 @@ std::optional<TypeId> Scope::lookup(Symbol sym)
         else
             return std::nullopt;
     }
+}
+
+bool subsumesStrict(Scope* left, Scope* right)
+{
+    while (right)
+    {
+        if (right->parent.get() == left)
+            return true;
+
+        right = right->parent.get();
+    }
+
+    return false;
+}
+
+bool subsumes(Scope* left, Scope* right)
+{
+    return left == right || subsumesStrict(left, right);
 }
 
 } // namespace Luau

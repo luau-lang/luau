@@ -8,8 +8,10 @@
 namespace Luau
 {
 
-void registerBuiltinTypes(TypeChecker& typeChecker);
 void registerBuiltinTypes(Frontend& frontend);
+
+void registerBuiltinGlobals(TypeChecker& typeChecker);
+void registerBuiltinGlobals(Frontend& frontend);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types);
 TypeId makeIntersection(TypeArena& arena, std::vector<TypeId>&& types);

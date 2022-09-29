@@ -270,7 +270,7 @@ int main(int argc, char** argv)
     CliConfigResolver configResolver(mode);
     Luau::Frontend frontend(&fileResolver, &configResolver, frontendOptions);
 
-    Luau::registerBuiltinTypes(frontend.typeChecker);
+    Luau::registerBuiltinGlobals(frontend.typeChecker);
     Luau::freeze(frontend.typeChecker.globalTypes);
 
 #ifdef CALLGRIND

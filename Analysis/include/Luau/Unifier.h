@@ -60,6 +60,7 @@ struct Unifier
     Location location;
     Variance variance = Covariant;
     bool anyIsTop = false; // If true, we consider any to be a top type.  If false, it is a familiar but weird mix of top and bottom all at once.
+    bool useScopes = false; // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
 
     UnifierSharedState& sharedState;
@@ -140,6 +141,6 @@ private:
     std::optional<int> firstPackErrorPos;
 };
 
-void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, TypePackId tp);
+void promoteTypeLevels(TxnLog& log, const TypeArena* arena, TypeLevel minLevel, Scope* outerScope, bool useScope, TypePackId tp);
 
 } // namespace Luau

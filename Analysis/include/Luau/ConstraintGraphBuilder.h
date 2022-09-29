@@ -124,6 +124,7 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatDeclareGlobal* declareGlobal);
     void visit(const ScopePtr& scope, AstStatDeclareClass* declareClass);
     void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
+    void visit(const ScopePtr& scope, AstStatError* error);
 
     TypePackId checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
     TypePackId checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});

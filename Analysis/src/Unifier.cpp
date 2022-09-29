@@ -23,6 +23,7 @@ LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(LuauCallUnifyPackTails)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
 {
@@ -33,10 +34,15 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
     const TypeArena* typeArena = nullptr;
     TypeLevel minLevel;
 
-    PromoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel)
+    Scope* outerScope = nullptr;
+    bool useScopes;
+
+    PromoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, Scope* outerScope, bool useScopes)
         : log(log)
         , typeArena(typeArena)
         , minLevel(minLevel)
+        , outerScope(outerScope)
+        , useScopes(useScopes)
     {
     }
 
@@ -44,9 +50,18 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
     void promote(TID ty, T* t)
     {
         LUAU_ASSERT(t);
-        if (minLevel.subsumesStrict(t->level))
+
+        if (useScopes)
         {
-            log.changeLevel(ty, minLevel);
+            if (subsumesStrict(outerScope, t->scope))
+                log.changeScope(ty, NotNull{outerScope});
+        }
+        else
+        {
+            if (minLevel.subsumesStrict(t->level))
+            {
+                log.changeLevel(ty, minLevel);
+            }
         }
     }
 
@@ -123,23 +138,23 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
     }
 };
 
-static void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypeId ty)
+static void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, Scope* outerScope, bool useScopes, TypeId ty)
 {
     // Type levels of types from other modules are already global, so we don't need to promote anything inside
     if (ty->owningArena != typeArena)
         return;
 
-    PromoteTypeLevels ptl{log, typeArena, minLevel};
+    PromoteTypeLevels ptl{log, typeArena, minLevel, outerScope, useScopes};
     ptl.traverse(ty);
 }
 
-void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, TypePackId tp)
+void promoteTypeLevels(TxnLog& log, const TypeArena* typeArena, TypeLevel minLevel, Scope* outerScope, bool useScopes, TypePackId tp)
 {
     // Type levels of types from other modules are already global, so we don't need to promote anything inside
     if (tp->owningArena != typeArena)
         return;
 
-    PromoteTypeLevels ptl{log, typeArena, minLevel};
+    PromoteTypeLevels ptl{log, typeArena, minLevel, outerScope, useScopes};
     ptl.traverse(tp);
 }
 
@@ -318,6 +333,16 @@ static std::optional<std::pair<Luau::Name, const SingletonTypeVar*>> getTableMat
     return std::nullopt;
 }
 
+// TODO: Inline and clip with FFlag::DebugLuauDeferredConstraintResolution
+template<typename TY_A, typename TY_B>
+static bool subsumes(bool useScopes, TY_A* left, TY_B* right)
+{
+    if (useScopes)
+        return subsumes(left->scope, right->scope);
+    else
+        return left->level.subsumes(right->level);
+}
+
 Unifier::Unifier(TypeArena* types, NotNull<SingletonTypes> singletonTypes, Mode mode, NotNull<Scope> scope, const Location& location,
     Variance variance, UnifierSharedState& sharedState, TxnLog* parentLog)
     : types(types)
@@ -375,7 +400,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     auto superFree = log.getMutable<FreeTypeVar>(superTy);
     auto subFree = log.getMutable<FreeTypeVar>(subTy);
 
-    if (superFree && subFree && superFree->level.subsumes(subFree->level))
+    if (superFree && subFree && subsumes(useScopes, superFree, subFree))
     {
         if (!occursCheck(subTy, superTy))
             log.replace(subTy, BoundTypeVar(superTy));
@@ -386,7 +411,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     {
         if (!occursCheck(superTy, subTy))
         {
-            if (superFree->level.subsumes(subFree->level))
+            if (subsumes(useScopes, superFree, subFree))
             {
                 log.changeLevel(subTy, superFree->level);
             }
@@ -400,7 +425,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     {
         // Unification can't change the level of a generic.
         auto subGeneric = log.getMutable<GenericTypeVar>(subTy);
-        if (subGeneric && !subGeneric->level.subsumes(superFree->level))
+        if (subGeneric && !subsumes(useScopes, subGeneric, superFree))
         {
             // TODO: a more informative error message? CLI-39912
             reportError(TypeError{location, GenericError{"Generic subtype escaping scope"}});
@@ -409,7 +434,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
         if (!occursCheck(superTy, subTy))
         {
-            promoteTypeLevels(log, types, superFree->level, subTy);
+            promoteTypeLevels(log, types, superFree->level, superFree->scope, useScopes, subTy);
 
             Widen widen{types, singletonTypes};
             log.replace(superTy, BoundTypeVar(widen(subTy)));
@@ -429,7 +454,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
         // Unification can't change the level of a generic.
         auto superGeneric = log.getMutable<GenericTypeVar>(superTy);
-        if (superGeneric && !superGeneric->level.subsumes(subFree->level))
+        if (superGeneric && !subsumes(useScopes, superGeneric, subFree))
         {
             // TODO: a more informative error message? CLI-39912
             reportError(TypeError{location, GenericError{"Generic supertype escaping scope"}});
@@ -438,7 +463,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
         if (!occursCheck(subTy, superTy))
         {
-            promoteTypeLevels(log, types, subFree->level, superTy);
+            promoteTypeLevels(log, types, subFree->level, subFree->scope, useScopes, superTy);
             log.replace(subTy, BoundTypeVar(superTy));
         }
 
@@ -855,6 +880,7 @@ struct WeirdIter
     size_t index;
     bool growing;
     TypeLevel level;
+    Scope* scope = nullptr;
 
     WeirdIter(TypePackId packId, TxnLog& log)
         : packId(packId)
@@ -915,6 +941,7 @@ struct WeirdIter
         LUAU_ASSERT(log.getMutable<TypePack>(newTail));
 
         level = log.getMutable<Unifiable::Free>(packId)->level;
+        scope = log.getMutable<Unifiable::Free>(packId)->scope;
         log.replace(packId, BoundTypePack(newTail));
         packId = newTail;
         pack = log.getMutable<TypePack>(newTail);
@@ -1055,8 +1082,8 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
         auto superIter = WeirdIter(superTp, log);
         auto subIter = WeirdIter(subTp, log);
 
-        auto mkFreshType = [this](TypeLevel level) {
-            return types->freshType(level);
+        auto mkFreshType = [this](Scope* scope, TypeLevel level) {
+            return types->freshType(scope, level);
         };
 
         const TypePackId emptyTp = types->addTypePack(TypePack{{}, std::nullopt});
@@ -1072,12 +1099,12 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
 
             if (superIter.good() && subIter.growing)
             {
-                subIter.pushType(mkFreshType(subIter.level));
+                subIter.pushType(mkFreshType(subIter.scope, subIter.level));
             }
 
             if (subIter.good() && superIter.growing)
             {
-                superIter.pushType(mkFreshType(superIter.level));
+                superIter.pushType(mkFreshType(superIter.scope, superIter.level));
             }
 
             if (superIter.good() && subIter.good())
@@ -1158,7 +1185,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                 // these to produce the expected error message.
                 size_t expectedSize = size(superTp);
                 size_t actualSize = size(subTp);
-                if (ctx == CountMismatch::Result)
+                if (ctx == CountMismatch::FunctionResult || ctx == CountMismatch::ExprListResult)
                     std::swap(expectedSize, actualSize);
                 reportError(TypeError{location, CountMismatch{expectedSize, std::nullopt, actualSize, ctx}});
 
@@ -1271,7 +1298,7 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         else if (!innerState.errors.empty())
             reportError(TypeError{location, TypeMismatch{superTy, subTy, "", innerState.errors.front()}});
 
-        innerState.ctx = CountMismatch::Result;
+        innerState.ctx = CountMismatch::FunctionResult;
         innerState.tryUnify_(subFunction->retTypes, superFunction->retTypes);
 
         if (!reported)
@@ -1295,7 +1322,7 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
         ctx = CountMismatch::Arg;
         tryUnify_(superFunction->argTypes, subFunction->argTypes, isFunctionCall);
 
-        ctx = CountMismatch::Result;
+        ctx = CountMismatch::FunctionResult;
         tryUnify_(subFunction->retTypes, superFunction->retTypes);
     }
 
@@ -1693,8 +1720,45 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
         {
         case TableState::Free:
         {
-            tryUnify_(subTy, superMetatable->table);
-            log.bindTable(subTy, superTy);
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+            {
+                Unifier innerState = makeChildUnifier();
+                bool missingProperty = false;
+
+                for (const auto& [propName, prop] : subTable->props)
+                {
+                    if (std::optional<TypeId> mtPropTy = findTablePropertyRespectingMeta(superTy, propName))
+                    {
+                        innerState.tryUnify(prop.type, *mtPropTy);
+                    }
+                    else
+                    {
+                        reportError(mismatchError);
+                        missingProperty = true;
+                        break;
+                    }
+                }
+
+                if (const TableTypeVar* superTable = log.get<TableTypeVar>(log.follow(superMetatable->table)))
+                {
+                    // TODO: Unify indexers.
+                }
+
+                if (auto e = hasUnificationTooComplex(innerState.errors))
+                    reportError(*e);
+                else if (!innerState.errors.empty())
+                    reportError(TypeError{location, TypeMismatch{reversed ? subTy : superTy, reversed ? superTy : subTy, "", innerState.errors.front()}});
+                else if (!missingProperty)
+                {
+                    log.concat(std::move(innerState.log));
+                    log.bindTable(subTy, superTy);
+                }
+            }
+            else
+            {
+                tryUnify_(subTy, superMetatable->table);
+                log.bindTable(subTy, superTy);
+            }
 
             break;
         }

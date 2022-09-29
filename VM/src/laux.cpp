@@ -400,7 +400,7 @@ char* luaL_extendbuffer(luaL_Buffer* B, size_t additionalsize, int boxloc)
         lua_insert(L, boxloc);
     }
 
-    setsvalue2s(L, L->top + boxloc, newStorage);
+    setsvalue(L, L->top + boxloc, newStorage);
     B->p = newStorage->data + (B->p - base);
     B->end = newStorage->data + nextsize;
     B->storage = newStorage;
@@ -451,11 +451,11 @@ void luaL_pushresult(luaL_Buffer* B)
         // if we finished just at the end of the string buffer, we can convert it to a mutable stirng without a copy
         if (B->p == B->end)
         {
-            setsvalue2s(L, L->top - 1, luaS_buffinish(L, storage));
+            setsvalue(L, L->top - 1, luaS_buffinish(L, storage));
         }
         else
         {
-            setsvalue2s(L, L->top - 1, luaS_newlstr(L, storage->data, B->p - storage->data));
+            setsvalue(L, L->top - 1, luaS_newlstr(L, storage->data, B->p - storage->data));
         }
     }
     else
