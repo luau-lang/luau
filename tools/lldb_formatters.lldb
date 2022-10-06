@@ -5,3 +5,6 @@ type synthetic add -x "^Luau::Variant<.+>$" -l lldb_formatters.LuauVariantSynthe
 type summary add -x "^Luau::Variant<.+>$" -F lldb_formatters.luau_variant_summary
 
 type synthetic add -x "^Luau::AstArray<.+>$" -l lldb_formatters.AstArraySyntheticChildrenProvider
+
+type summary add --summary-string "${var.line}:${var.column}" Luau::Position
+type summary add --summary-string "${var.begin}-${var.end}" Luau::Location

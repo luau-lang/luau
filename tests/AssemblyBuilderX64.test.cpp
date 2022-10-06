@@ -240,12 +240,12 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfAbsoluteJumps")
 {
-    SINGLE_COMPARE(jmp(rax), 0x48, 0xff, 0xe0);
-    SINGLE_COMPARE(jmp(r14), 0x49, 0xff, 0xe6);
-    SINGLE_COMPARE(jmp(qword[r14 + rdx * 4]), 0x49, 0xff, 0x24, 0x96);
-    SINGLE_COMPARE(call(rax), 0x48, 0xff, 0xd0);
-    SINGLE_COMPARE(call(r14), 0x49, 0xff, 0xd6);
-    SINGLE_COMPARE(call(qword[r14 + rdx * 4]), 0x49, 0xff, 0x14, 0x96);
+    SINGLE_COMPARE(jmp(rax), 0xff, 0xe0);
+    SINGLE_COMPARE(jmp(r14), 0x41, 0xff, 0xe6);
+    SINGLE_COMPARE(jmp(qword[r14 + rdx * 4]), 0x41, 0xff, 0x24, 0x96);
+    SINGLE_COMPARE(call(rax), 0xff, 0xd0);
+    SINGLE_COMPARE(call(r14), 0x41, 0xff, 0xd6);
+    SINGLE_COMPARE(call(qword[r14 + rdx * 4]), 0x41, 0xff, 0x14, 0x96);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfImul")

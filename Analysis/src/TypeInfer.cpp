@@ -32,19 +32,21 @@ LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
+LUAU_FASTFLAG(LuauTypeNormalization2)
 LUAU_FASTFLAGVARIABLE(LuauFunctionArgMismatchDetails, false)
-LUAU_FASTFLAGVARIABLE(LuauInplaceDemoteSkipAllBound, false)
 LUAU_FASTFLAGVARIABLE(LuauLowerBoundsCalculation, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
-LUAU_FASTFLAGVARIABLE(LuauSelfCallAutocompleteFix3, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
+LUAU_FASTFLAGVARIABLE(LuauAnyifyModuleReturnGenerics, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAGVARIABLE(LuauCallUnifyPackTails, false)
 LUAU_FASTFLAGVARIABLE(LuauCheckGenericHOFTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
+LUAU_FASTFLAGVARIABLE(LuauFixVarargExprHeadType, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
 LUAU_FASTFLAGVARIABLE(LuauUnionOfTypesFollow, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
@@ -255,6 +257,7 @@ TypeChecker::TypeChecker(ModuleResolver* resolver, NotNull<SingletonTypes> singl
     , singletonTypes(singletonTypes)
     , iceHandler(iceHandler)
     , unifierState(iceHandler)
+    , normalizer(nullptr, singletonTypes, NotNull{&unifierState})
     , nilType(singletonTypes->nilType)
     , numberType(singletonTypes->numberType)
     , stringType(singletonTypes->stringType)
@@ -301,12 +304,13 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     LUAU_TIMETRACE_SCOPE("TypeChecker::check", "TypeChecker");
     LUAU_TIMETRACE_ARGUMENT("module", module.name.c_str());
 
-    currentModule.reset(new Module());
+    currentModule.reset(new Module);
     currentModule->type = module.type;
     currentModule->allocator = module.allocator;
     currentModule->names = module.names;
 
     iceHandler->moduleName = module.name;
+    normalizer.arena = &currentModule->internalTypes;
 
     if (FFlag::LuauAutocompleteDynamicLimits)
     {
@@ -351,14 +355,22 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     if (get<FreeTypePack>(follow(moduleScope->returnType)))
         moduleScope->returnType = addTypePack(TypePack{{}, std::nullopt});
     else
-    {
         moduleScope->returnType = anyify(moduleScope, moduleScope->returnType, Location{});
-    }
+
+    if (FFlag::LuauAnyifyModuleReturnGenerics)
+        moduleScope->returnType = anyifyModuleReturnTypePackGenerics(moduleScope->returnType);
 
     for (auto& [_, typeFun] : moduleScope->exportedTypeBindings)
         typeFun.type = anyify(moduleScope, typeFun.type, Location{});
 
     prepareErrorsForDisplay(currentModule->errors);
+
+    if (FFlag::LuauTypeNormalization2)
+    {
+        // Clear the normalizer caches, since they contain types from the internal type surface
+        normalizer.clearCaches();
+        normalizer.arena = nullptr;
+    }
 
     currentModule->clonePublicInterface(singletonTypes, *iceHandler);
 
@@ -474,7 +486,7 @@ struct InplaceDemoter : TypeVarOnceVisitor
     TypeArena* arena;
 
     InplaceDemoter(TypeLevel level, TypeArena* arena)
-        : TypeVarOnceVisitor(/* skipBoundTypes= */ FFlag::LuauInplaceDemoteSkipAllBound)
+        : TypeVarOnceVisitor(/* skipBoundTypes= */ true)
         , newLevel(level)
         , arena(arena)
     {
@@ -492,12 +504,6 @@ struct InplaceDemoter : TypeVarOnceVisitor
         }
 
         return false;
-    }
-
-    bool visit(TypeId ty, const BoundTypeVar& btyRef) override
-    {
-        LUAU_ASSERT(!FFlag::LuauInplaceDemoteSkipAllBound);
-        return true;
     }
 
     bool visit(TypeId ty) override
@@ -1029,8 +1035,11 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
 
         if (right)
         {
-            if (!maybeGeneric(left) && isGeneric(right))
-                right = instantiate(scope, right, loc);
+            if (!FFlag::LuauInstantiateInSubtyping)
+            {
+                if (!maybeGeneric(left) && isGeneric(right))
+                    right = instantiate(scope, right, loc);
+            }
 
             // Setting a table entry to nil doesn't mean nil is the type of the indexer, it is just deleting the entry
             const TableTypeVar* destTableTypeReceivingNil = nullptr;
@@ -1104,7 +1113,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatLocal& local)
         variableTypes.push_back(ty);
         expectedTypes.push_back(ty);
 
-        instantiateGenerics.push_back(annotation != nullptr && !maybeGeneric(ty));
+        // with FFlag::LuauInstantiateInSubtyping enabled, we shouldn't need to produce instantiateGenerics at all.
+        if (!FFlag::LuauInstantiateInSubtyping)
+            instantiateGenerics.push_back(annotation != nullptr && !maybeGeneric(ty));
     }
 
     if (local.values.size > 0)
@@ -1729,9 +1740,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
             {
                 ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
                 ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
-
-                if (FFlag::LuauSelfCallAutocompleteFix3)
-                    ftv->hasSelf = true;
+                ftv->hasSelf = true;
             }
         }
 
@@ -1905,8 +1914,18 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     if (get<TypePack>(varargPack))
     {
-        std::vector<TypeId> types = flatten(varargPack).first;
-        return {!types.empty() ? types[0] : nilType};
+        if (FFlag::LuauFixVarargExprHeadType)
+        {
+            if (std::optional<TypeId> ty = first(varargPack))
+                return {*ty};
+
+            return {nilType};
+        }
+        else
+        {
+            std::vector<TypeId> types = flatten(varargPack).first;
+            return {!types.empty() ? types[0] : nilType};
+        }
     }
     else if (get<FreeTypePack>(varargPack))
     {
@@ -3967,7 +3986,10 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
         }
         else
         {
-            unifyWithInstantiationIfNeeded(*argIter, *paramIter, scope, state);
+            if (FFlag::LuauInstantiateInSubtyping)
+                state.tryUnify(*argIter, *paramIter, /*isFunctionCall*/ false);
+            else
+                unifyWithInstantiationIfNeeded(*argIter, *paramIter, scope, state);
             ++argIter;
             ++paramIter;
         }
@@ -4523,8 +4545,11 @@ WithPredicate<TypePackId> TypeChecker::checkExprList(const ScopePtr& scope, cons
 
             TypeId actualType = substituteFreeForNil && expr->is<AstExprConstantNil>() ? freshType(scope) : type;
 
-            if (instantiateGenerics.size() > i && instantiateGenerics[i])
-                actualType = instantiate(scope, actualType, expr->location);
+            if (!FFlag::LuauInstantiateInSubtyping)
+            {
+                if (instantiateGenerics.size() > i && instantiateGenerics[i])
+                    actualType = instantiate(scope, actualType, expr->location);
+            }
 
             if (expectedType)
             {
@@ -4686,6 +4711,8 @@ bool TypeChecker::unifyWithInstantiationIfNeeded(TypeId subTy, TypeId superTy, c
 
 void TypeChecker::unifyWithInstantiationIfNeeded(TypeId subTy, TypeId superTy, const ScopePtr& scope, Unifier& state)
 {
+    LUAU_ASSERT(!FFlag::LuauInstantiateInSubtyping);
+
     if (!maybeGeneric(subTy))
         // Quick check to see if we definitely can't instantiate
         state.tryUnify(subTy, superTy, /*isFunctionCall*/ false);
@@ -4828,6 +4855,33 @@ TypePackId TypeChecker::anyify(const ScopePtr& scope, TypePackId ty, Location lo
     }
 }
 
+TypePackId TypeChecker::anyifyModuleReturnTypePackGenerics(TypePackId tp)
+{
+    tp = follow(tp);
+
+    if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
+        return get<GenericTypeVar>(vtp->ty) ? anyTypePack : tp;
+
+    if (!get<TypePack>(follow(tp)))
+        return tp;
+
+    std::vector<TypeId> resultTypes;
+    std::optional<TypePackId> resultTail;
+
+    TypePackIterator it = begin(tp);
+
+    for (TypePackIterator e = end(tp); it != e; ++it)
+    {
+        TypeId ty = follow(*it);
+        resultTypes.push_back(get<GenericTypeVar>(ty) ? anyType : ty);
+    }
+
+    if (std::optional<TypePackId> tail = it.tail())
+        resultTail = anyifyModuleReturnTypePackGenerics(*tail);
+
+    return addTypePack(resultTypes, resultTail);
+}
+
 void TypeChecker::reportError(const TypeError& error)
 {
     if (currentModule->mode == Mode::NoCheck)
@@ -4955,8 +5009,7 @@ void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
 
 Unifier TypeChecker::mkUnifier(const ScopePtr& scope, const Location& location)
 {
-    return Unifier{
-        &currentModule->internalTypes, singletonTypes, currentModule->mode, NotNull{scope.get()}, location, Variance::Covariant, unifierState};
+    return Unifier{NotNull{&normalizer}, currentModule->mode, NotNull{scope.get()}, location, Variance::Covariant};
 }
 
 TypeId TypeChecker::freshType(const ScopePtr& scope)

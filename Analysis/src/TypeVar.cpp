@@ -27,6 +27,7 @@ LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauStringFormatArgumentErrorFix, false)
 LUAU_FASTFLAGVARIABLE(LuauNoMoreGlobalSingletonTypes, false)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 namespace Luau
 {
@@ -339,6 +340,8 @@ bool isSubset(const UnionTypeVar& super, const UnionTypeVar& sub)
 // then instantiate U if `isGeneric(U)` is true, and `maybeGeneric(T)` is false.
 bool isGeneric(TypeId ty)
 {
+    LUAU_ASSERT(!FFlag::LuauInstantiateInSubtyping);
+
     ty = follow(ty);
     if (auto ftv = get<FunctionTypeVar>(ty))
         return ftv->generics.size() > 0 || ftv->genericPacks.size() > 0;
@@ -350,6 +353,8 @@ bool isGeneric(TypeId ty)
 
 bool maybeGeneric(TypeId ty)
 {
+    LUAU_ASSERT(!FFlag::LuauInstantiateInSubtyping);
+
     if (FFlag::LuauMaybeGenericIntersectionTypes)
     {
         ty = follow(ty);

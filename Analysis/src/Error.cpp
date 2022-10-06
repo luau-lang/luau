@@ -511,11 +511,11 @@ TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reas
 {
 }
 
-TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, TypeError error)
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error)
     : wantedType(wantedType)
     , givenType(givenType)
     , reason(reason)
-    , error(std::make_shared<TypeError>(std::move(error)))
+    , error(error ? std::make_shared<TypeError>(std::move(*error)) : nullptr)
 {
 }
 

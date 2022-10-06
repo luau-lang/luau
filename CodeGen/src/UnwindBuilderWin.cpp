@@ -32,6 +32,16 @@ struct UnwindInfoWin
     uint8_t frameregoff : 4;
 };
 
+void UnwindBuilderWin::setBeginOffset(size_t beginOffset)
+{
+    this->beginOffset = beginOffset;
+}
+
+size_t UnwindBuilderWin::getBeginOffset() const
+{
+    return beginOffset;
+}
+
 void UnwindBuilderWin::start()
 {
     stackOffset = 8; // Return address was pushed by calling the function

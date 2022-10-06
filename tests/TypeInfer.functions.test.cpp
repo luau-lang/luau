@@ -2,6 +2,7 @@
 
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
+#include "Luau/Error.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
@@ -14,6 +15,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
@@ -1087,10 +1089,20 @@ f(function(a, b, c, ...) return a + b end)
 
     LUAU_REQUIRE_ERRORS(result);
 
-    CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
+    if (FFlag::LuauInstantiateInSubtyping)
+    {
+        CHECK_EQ(R"(Type '<a>(number, number, a) -> number' could not be converted into '(number, number) -> number'
 caused by:
   Argument count mismatch. Function expects 3 arguments, but only 2 are specified)",
-        toString(result.errors[0]));
+            toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
+caused by:
+  Argument count mismatch. Function expects 3 arguments, but only 2 are specified)",
+            toString(result.errors[0]));
+    }
 
     // Infer from variadic packs into elements
     result = check(R"(
@@ -1189,10 +1201,20 @@ f(function(a, b, c, ...) return a + b end)
 
     LUAU_REQUIRE_ERRORS(result);
 
-    CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
+    if (FFlag::LuauInstantiateInSubtyping)
+    {
+        CHECK_EQ(R"(Type '<a>(number, number, a) -> number' could not be converted into '(number, number) -> number'
 caused by:
   Argument count mismatch. Function expects 3 arguments, but only 2 are specified)",
-        toString(result.errors[0]));
+            toString(result.errors[0]));
+    }
+    else
+    {
+        CHECK_EQ(R"(Type '(number, number, a) -> number' could not be converted into '(number, number) -> number'
+caused by:
+  Argument count mismatch. Function expects 3 arguments, but only 2 are specified)",
+            toString(result.errors[0]));
+    }
 
     // Infer from variadic packs into elements
     result = check(R"(

@@ -17,8 +17,8 @@ struct TryUnifyFixture : Fixture
     ScopePtr globalScope{new Scope{arena.addTypePack({TypeId{}})}};
     InternalErrorReporter iceHandler;
     UnifierSharedState unifierState{&iceHandler};
-
-    Unifier state{&arena, singletonTypes, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant, unifierState};
+    Normalizer normalizer{&arena, singletonTypes, NotNull{&unifierState}};
+    Unifier state{NotNull{&normalizer}, Mode::Strict, NotNull{globalScope.get()}, Location{}, Variance::Covariant};
 };
 
 TEST_SUITE_BEGIN("TryUnifyTests");

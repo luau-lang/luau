@@ -51,7 +51,7 @@ namespace Luau
 namespace CodeGen
 {
 
-void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, size_t& unwindDataSizeInBlock)
+void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, size_t& beginOffset)
 {
 #if defined(_WIN32) && defined(_M_X64)
     UnwindBuilder* unwind = (UnwindBuilder*)context;
@@ -75,7 +75,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
         return nullptr;
     }
 
-    unwindDataSizeInBlock = unwindSize;
+    beginOffset = unwindSize + unwind->getBeginOffset();
     return block;
 #elif !defined(_WIN32)
     UnwindBuilder* unwind = (UnwindBuilder*)context;
@@ -94,7 +94,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
     __register_frame(unwindData);
 #endif
 
-    unwindDataSizeInBlock = unwindSize;
+    beginOffset = unwindSize + unwind->getBeginOffset();
     return block;
 #endif
 

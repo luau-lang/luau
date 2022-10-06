@@ -401,13 +401,15 @@ struct lua_Debug
     const char* name;           // (n)
     const char* what;           // (s) `Lua', `C', `main', `tail'
     const char* source;         // (s)
+    const char* short_src;      // (s)
     int linedefined;            // (s)
     int currentline;            // (l)
     unsigned char nupvals;      // (u) number of upvalues
     unsigned char nparams;      // (a) number of parameters
     char isvararg;              // (a)
-    char short_src[LUA_IDSIZE]; // (s)
     void* userdata;             // only valid in luau_callhook
+
+    char ssbuf[LUA_IDSIZE];
 };
 
 // }======================================================================

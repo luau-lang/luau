@@ -14,7 +14,10 @@ namespace CodeGen
 class UnwindBuilder
 {
 public:
-    virtual ~UnwindBuilder() {}
+    virtual ~UnwindBuilder() = default;
+
+    virtual void setBeginOffset(size_t beginOffset) = 0;
+    virtual size_t getBeginOffset() const = 0;
 
     virtual void start() = 0;
 

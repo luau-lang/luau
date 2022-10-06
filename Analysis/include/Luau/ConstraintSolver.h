@@ -7,6 +7,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/TypeVar.h"
 #include "Luau/ToString.h"
+#include "Luau/Normalize.h"
 
 #include <vector>
 
@@ -44,6 +45,7 @@ struct ConstraintSolver
     TypeArena* arena;
     NotNull<SingletonTypes> singletonTypes;
     InternalErrorReporter iceReporter;
+    NotNull<Normalizer> normalizer;
     // The entire set of constraints that the solver is trying to resolve.
     std::vector<NotNull<Constraint>> constraints;
     NotNull<Scope> rootScope;
@@ -74,8 +76,11 @@ struct ConstraintSolver
 
     DcrLogger* logger;
 
-    explicit ConstraintSolver(TypeArena* arena, NotNull<SingletonTypes> singletonTypes, NotNull<Scope> rootScope, ModuleName moduleName,
+    explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, ModuleName moduleName,
         NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger);
+
+    // Randomize the order in which to dispatch constraints
+    void randomize(unsigned seed);
 
     /**
      * Attempts to dispatch all pending constraints and reach a type solution
@@ -85,8 +90,9 @@ struct ConstraintSolver
 
     bool done();
 
-    /** Attempt to dispatch a constraint.  Returns true if it was successful.
-     * If tryDispatch() returns false, the constraint remains in the unsolved set and will be retried later.
+    /** Attempt to dispatch a constraint.  Returns true if it was successful. If
+     * tryDispatch() returns false, the constraint remains in the unsolved set
+     * and will be retried later.
      */
     bool tryDispatch(NotNull<const Constraint> c, bool force);
 

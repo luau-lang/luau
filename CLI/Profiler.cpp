@@ -82,11 +82,13 @@ static void profilerLoop()
 
         if (now - last >= 1.0 / double(gProfiler.frequency))
         {
-            gProfiler.ticks += uint64_t((now - last) * 1e6);
+            int64_t ticks = int64_t((now - last) * 1e6);
+
+            gProfiler.ticks += ticks;
             gProfiler.samples++;
             gProfiler.callbacks->interrupt = profilerTrigger;
 
-            last = now;
+            last += ticks * 1e-6;
         }
         else
         {

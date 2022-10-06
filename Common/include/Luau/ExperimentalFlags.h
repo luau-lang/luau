@@ -13,6 +13,7 @@ inline bool isFlagExperimental(const char* flag)
     static const char* kList[] = {
         "LuauLowerBoundsCalculation",
         "LuauInterpolatedStringBaseSupport",
+        "LuauInstantiateInSubtyping", // requires some fixes to lua-apps code
         // makes sure we always have at least one entry
         nullptr,
     };

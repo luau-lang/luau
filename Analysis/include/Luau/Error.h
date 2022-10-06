@@ -16,7 +16,7 @@ struct TypeMismatch
     TypeMismatch() = default;
     TypeMismatch(TypeId wantedType, TypeId givenType);
     TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason);
-    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, TypeError error);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error);
 
     TypeId wantedType = nullptr;
     TypeId givenType = nullptr;

@@ -96,12 +96,12 @@ TEST_CASE("CodeAllocationWithUnwindCallbacks")
         data.resize(8);
 
         allocator.context = &info;
-        allocator.createBlockUnwindInfo = [](void* context, uint8_t* block, size_t blockSize, size_t& unwindDataSizeInBlock) -> void* {
+        allocator.createBlockUnwindInfo = [](void* context, uint8_t* block, size_t blockSize, size_t& beginOffset) -> void* {
             Info& info = *(Info*)context;
 
             CHECK(info.unwind.size() == 8);
             memcpy(block, info.unwind.data(), info.unwind.size());
-            unwindDataSizeInBlock = 8;
+            beginOffset = 8;
 
             info.block = block;
 
@@ -194,10 +194,12 @@ TEST_CASE("Dwarf2UnwindCodesX64")
 // Windows x64 ABI
 constexpr RegisterX64 rArg1 = rcx;
 constexpr RegisterX64 rArg2 = rdx;
+constexpr RegisterX64 rArg3 = r8;
 #else
 // System V AMD64 ABI
 constexpr RegisterX64 rArg1 = rdi;
 constexpr RegisterX64 rArg2 = rsi;
+constexpr RegisterX64 rArg3 = rdx;
 #endif
 
 constexpr RegisterX64 rNonVol1 = r12;
@@ -311,6 +313,119 @@ TEST_CASE("GeneratedCodeExecutionWithThrow")
     {
         CHECK(strcmp(error.what(), "testing") == 0);
     }
+}
+
+TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGate")
+{
+    AssemblyBuilderX64 build(/* logText= */ false);
+
+#if defined(_WIN32)
+    std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderWin>();
+#else
+    std::unique_ptr<UnwindBuilder> unwind = std::make_unique<UnwindBuilderDwarf2>();
+#endif
+
+    unwind->start();
+
+    // Prologue (some of these registers don't have to be saved, but we want to have a big prologue)
+    build.push(r10);
+    unwind->save(r10);
+    build.push(r11);
+    unwind->save(r11);
+    build.push(r12);
+    unwind->save(r12);
+    build.push(r13);
+    unwind->save(r13);
+    build.push(r14);
+    unwind->save(r14);
+    build.push(r15);
+    unwind->save(r15);
+    build.push(rbp);
+    unwind->save(rbp);
+
+    int stackSize = 64;
+    int localsSize = 16;
+
+    build.sub(rsp, stackSize + localsSize);
+    unwind->allocStack(stackSize + localsSize);
+
+    build.lea(rbp, qword[rsp + stackSize]);
+    unwind->setupFrameReg(rbp, stackSize);
+
+    unwind->finish();
+
+    size_t prologueSize = build.setLabel().location;
+
+    // Body
+    build.mov(rax, rArg1);
+    build.mov(rArg1, 25);
+    build.jmp(rax);
+
+    Label returnOffset = build.setLabel();
+
+    // Epilogue
+    build.lea(rsp, qword[rbp + localsSize]);
+    build.pop(rbp);
+    build.pop(r15);
+    build.pop(r14);
+    build.pop(r13);
+    build.pop(r12);
+    build.pop(r11);
+    build.pop(r10);
+    build.ret();
+
+    build.finalize();
+
+    size_t blockSize = 4096; // Force allocate to create a new block each time
+    size_t maxTotalSize = 1024 * 1024;
+    CodeAllocator allocator(blockSize, maxTotalSize);
+
+    allocator.context = unwind.get();
+    allocator.createBlockUnwindInfo = createBlockUnwindInfo;
+    allocator.destroyBlockUnwindInfo = destroyBlockUnwindInfo;
+
+    uint8_t* nativeData1;
+    size_t sizeNativeData1;
+    uint8_t* nativeEntry1;
+    REQUIRE(
+        allocator.allocate(build.data.data(), build.data.size(), build.code.data(), build.code.size(), nativeData1, sizeNativeData1, nativeEntry1));
+    REQUIRE(nativeEntry1);
+
+    // Now we set the offset at the begining so that functions in new blocks will not overlay the locations
+    // specified by the unwind information of the entry function
+    unwind->setBeginOffset(prologueSize);
+
+    using FunctionType = int64_t(void*, void (*)(int64_t), void*);
+    FunctionType* f = (FunctionType*)nativeEntry1;
+
+    uint8_t* nativeExit = nativeEntry1 + returnOffset.location;
+
+    AssemblyBuilderX64 build2(/* logText= */ false);
+
+    build2.mov(r12, rArg3);
+    build2.call(rArg2);
+    build2.jmp(r12);
+
+    build2.finalize();
+
+    uint8_t* nativeData2;
+    size_t sizeNativeData2;
+    uint8_t* nativeEntry2;
+    REQUIRE(allocator.allocate(
+        build2.data.data(), build2.data.size(), build2.code.data(), build2.code.size(), nativeData2, sizeNativeData2, nativeEntry2));
+    REQUIRE(nativeEntry2);
+
+    // To simplify debugging, CHECK_THROWS_WITH_AS is not used here
+    try
+    {
+        f(nativeEntry2, throwing, nativeExit);
+    }
+    catch (const std::runtime_error& error)
+    {
+        CHECK(strcmp(error.what(), "testing") == 0);
+    }
+
+    REQUIRE(nativeEntry2);
 }
 
 #endif

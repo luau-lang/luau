@@ -2955,8 +2955,6 @@ local abc = b@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_on_class")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     loadDefinition(R"(
 declare class Foo
     function one(self): number
@@ -2995,8 +2993,6 @@ t.@1
 
 TEST_CASE_FIXTURE(ACFixture, "do_compatible_self_calls")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 local t = {}
 function t:m() end
@@ -3011,8 +3007,6 @@ t:@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 local t = {}
 function t.m() end
@@ -3027,8 +3021,6 @@ t:@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_incompatible_self_calls_2")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 local f: (() -> number) & ((number) -> number) = function(x: number?) return 2 end
 local t = {}
@@ -3059,8 +3051,6 @@ t:@1
 
 TEST_CASE_FIXTURE(ACFixture, "no_wrong_compatible_self_calls_with_generics")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 local t = {}
 function t.m<T>(a: T) end
@@ -3076,8 +3066,6 @@ t:@1
 
 TEST_CASE_FIXTURE(ACFixture, "string_prim_self_calls_are_fine")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 local s = "hello"
 s:@1
@@ -3095,8 +3083,6 @@ s:@1
 
 TEST_CASE_FIXTURE(ACFixture, "string_prim_non_self_calls_are_avoided")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 local s = "hello"
 s.@1
@@ -3112,8 +3098,6 @@ s.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_non_self_calls_are_fine")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 string.@1
     )");
@@ -3143,8 +3127,6 @@ table.@1
 
 TEST_CASE_FIXTURE(ACBuiltinsFixture, "library_self_calls_are_invalid")
 {
-    ScopedFastFlag selfCallAutocompleteFix3{"LuauSelfCallAutocompleteFix3", true};
-
     check(R"(
 string:@1
     )");

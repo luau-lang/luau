@@ -356,6 +356,11 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_with_any_prop")
 
 TEST_CASE_FIXTURE(NormalizeFixture, "intersection")
 {
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
     check(R"(
         local a: number & string
         local b: number
@@ -374,8 +379,9 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection")
     CHECK(!isSubtype(c, a));
     CHECK(isSubtype(a, c));
 
-    CHECK(!isSubtype(d, a));
-    CHECK(!isSubtype(a, d));
+    // These types are both equivalent to never
+    CHECK(isSubtype(d, a));
+    CHECK(isSubtype(a, d));
 }
 
 TEST_CASE_FIXTURE(NormalizeFixture, "union_and_intersection")

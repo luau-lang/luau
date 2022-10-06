@@ -24,13 +24,15 @@ struct CodeAllocator
     void* context = nullptr;
 
     // Called when new block is created to create and setup the unwinding information for all the code in the block
-    // If data is placed inside the block itself (some platforms require this), we also return 'unwindDataSizeInBlock'
-    void* (*createBlockUnwindInfo)(void* context, uint8_t* block, size_t blockSize, size_t& unwindDataSizeInBlock) = nullptr;
+    // 'startOffset' reserves space for data at the beginning of the page
+    void* (*createBlockUnwindInfo)(void* context, uint8_t* block, size_t blockSize, size_t& startOffset) = nullptr;
 
     // Called to destroy unwinding information returned by 'createBlockUnwindInfo'
     void (*destroyBlockUnwindInfo)(void* context, void* unwindData) = nullptr;
 
-    static const size_t kMaxUnwindDataSize = 128;
+    // Unwind information can be placed inside the block with some implementation-specific reservations at the beginning
+    // But to simplify block space checks, we limit the max size of all that data
+    static const size_t kMaxReservedDataSize = 256;
 
     bool allocateNewBlock(size_t& unwindInfoSize);
 
