@@ -91,7 +91,7 @@ CodeAllocator::CodeAllocator(size_t blockSize, size_t maxTotalSize)
     : blockSize(blockSize)
     , maxTotalSize(maxTotalSize)
 {
-    LUAU_ASSERT(blockSize > kMaxUnwindDataSize);
+    LUAU_ASSERT(blockSize > kMaxReservedDataSize);
     LUAU_ASSERT(maxTotalSize >= blockSize);
 }
 
@@ -116,15 +116,15 @@ bool CodeAllocator::allocate(
     size_t totalSize = alignedDataSize + codeSize;
 
     // Function has to fit into a single block with unwinding information
-    if (totalSize > blockSize - kMaxUnwindDataSize)
+    if (totalSize > blockSize - kMaxReservedDataSize)
         return false;
 
-    size_t unwindInfoSize = 0;
+    size_t startOffset = 0;
 
     // We might need a new block
     if (totalSize > size_t(blockEnd - blockPos))
     {
-        if (!allocateNewBlock(unwindInfoSize))
+        if (!allocateNewBlock(startOffset))
             return false;
 
         LUAU_ASSERT(totalSize <= size_t(blockEnd - blockPos));
@@ -132,20 +132,20 @@ bool CodeAllocator::allocate(
 
     LUAU_ASSERT((uintptr_t(blockPos) & (kPageSize - 1)) == 0); // Allocation starts on page boundary
 
-    size_t dataOffset = unwindInfoSize + alignedDataSize - dataSize;
-    size_t codeOffset = unwindInfoSize + alignedDataSize;
+    size_t dataOffset = startOffset + alignedDataSize - dataSize;
+    size_t codeOffset = startOffset + alignedDataSize;
 
     if (dataSize)
         memcpy(blockPos + dataOffset, data, dataSize);
     if (codeSize)
         memcpy(blockPos + codeOffset, code, codeSize);
 
-    size_t pageAlignedSize = alignToPageSize(unwindInfoSize + totalSize);
+    size_t pageAlignedSize = alignToPageSize(startOffset + totalSize);
 
     makePagesExecutable(blockPos, pageAlignedSize);
     flushInstructionCache(blockPos + codeOffset, codeSize);
 
-    result = blockPos + unwindInfoSize;
+    result = blockPos + startOffset;
     resultSize = totalSize;
     resultCodeStart = blockPos + codeOffset;
 
@@ -190,7 +190,7 @@ bool CodeAllocator::allocateNewBlock(size_t& unwindInfoSize)
         // 'Round up' to preserve 16 byte alignment of the following data and code
         unwindInfoSize = (unwindInfoSize + 15) & ~15;
 
-        LUAU_ASSERT(unwindInfoSize <= kMaxUnwindDataSize);
+        LUAU_ASSERT(unwindInfoSize <= kMaxReservedDataSize);
 
         if (!unwindInfo)
             return false;

@@ -83,8 +83,13 @@ struct FrontendOptions
     // is complete.
     bool retainFullTypeGraphs = false;
 
-    // Run typechecking only in mode required for autocomplete (strict mode in order to get more precise type information)
+    // Run typechecking only in mode required for autocomplete (strict mode in
+    // order to get more precise type information)
     bool forAutocomplete = false;
+
+    // If not empty, randomly shuffle the constraint set before attempting to
+    // solve.  Use this value to seed the random number generator.
+    std::optional<unsigned> randomizeConstraintResolutionSeed;
 };
 
 struct CheckResult

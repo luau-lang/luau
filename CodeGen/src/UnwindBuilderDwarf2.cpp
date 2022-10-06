@@ -129,6 +129,16 @@ namespace Luau
 namespace CodeGen
 {
 
+void UnwindBuilderDwarf2::setBeginOffset(size_t beginOffset)
+{
+    this->beginOffset = beginOffset;
+}
+
+size_t UnwindBuilderDwarf2::getBeginOffset() const
+{
+    return beginOffset;
+}
+
 void UnwindBuilderDwarf2::start()
 {
     uint8_t* cieLength = pos;

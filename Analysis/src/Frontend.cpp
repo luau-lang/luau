@@ -860,12 +860,18 @@ ModulePtr Frontend::check(
     const NotNull<ModuleResolver> mr{forAutocomplete ? &moduleResolverForAutocomplete : &moduleResolver};
     const ScopePtr& globalScope{forAutocomplete ? typeCheckerForAutocomplete.globalScope : typeChecker.globalScope};
 
+    Normalizer normalizer{&result->internalTypes, singletonTypes, NotNull{&typeChecker.unifierState}};
+
     ConstraintGraphBuilder cgb{
         sourceModule.name, result, &result->internalTypes, mr, singletonTypes, NotNull(&iceHandler), globalScope, logger.get()};
     cgb.visit(sourceModule.root);
     result->errors = std::move(cgb.errors);
 
-    ConstraintSolver cs{&result->internalTypes, singletonTypes, NotNull(cgb.rootScope), sourceModule.name, NotNull(&moduleResolver), requireCycles, logger.get()};
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull(cgb.rootScope), sourceModule.name, NotNull(&moduleResolver), requireCycles, logger.get()};
+
+    if (options.randomizeConstraintResolutionSeed)
+        cs.randomize(*options.randomizeConstraintResolutionSeed);
+
     cs.run();
 
     for (TypeError& e : cs.errors)

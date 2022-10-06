@@ -22,4 +22,25 @@
     </Expand>
   </Type>
 
+  <Type Name="Luau::AstName">
+    <DisplayString>{value,na}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::AstLocal">
+    <DisplayString>{name.value,na}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Symbol">
+    <DisplayString Condition="local">local {local->name.value,na}</DisplayString>
+    <DisplayString>global {global.value,na}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Position">
+    <DisplayString>{line}:{column}</DisplayString>
+  </Type>
+
+  <Type Name="Luau::Location">
+    <DisplayString>{begin}-{end}</DisplayString>
+  </Type>
+
 </AutoVisualizer>

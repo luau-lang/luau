@@ -1000,4 +1000,23 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
     CHECK_EQ(toString(result.errors[0]), "Type 'number' could not be converted into 'boolean'");
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
+{
+    ScopedFastFlag luauFixVarargExprHeadType{"LuauFixVarargExprHeadType", true};
+
+    CheckResult result = check(R"(
+        local function wrapReject<TArg, TResult>(fn: (self: any, ...TArg) -> ...TResult): (self: any, ...TArg) -> ...TResult
+            return function(self, ...)
+                local arguments = { ... }
+                local ok, result = pcall(function()
+                    return fn(self, table.unpack(arguments))
+                end)
+                return result
+            end
+        end 
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

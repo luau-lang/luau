@@ -22,6 +22,9 @@ struct UnwindCodeWin
 class UnwindBuilderWin : public UnwindBuilder
 {
 public:
+    void setBeginOffset(size_t beginOffset) override;
+    size_t getBeginOffset() const override;
+
     void start() override;
 
     void spill(int espOffset, RegisterX64 reg) override;
@@ -36,6 +39,8 @@ public:
     void finalize(char* target, void* funcAddress, size_t funcSize) const override;
 
 private:
+    size_t beginOffset = 0;
+
     // Windows unwind codes are written in reverse, so we have to collect them all first
     std::vector<UnwindCodeWin> unwindCodes;
 

@@ -4,6 +4,7 @@ MAKEFLAGS+=-r -j8
 COMMA=,
 
 config=debug
+protobuf=system
 
 BUILD=build/$(config)
 
@@ -95,10 +96,20 @@ ifeq ($(config),fuzz)
 	CXX=clang++ # our fuzzing infra relies on llvm fuzzer
 	CXXFLAGS+=-fsanitize=address,fuzzer -Ibuild/libprotobuf-mutator -O2
 	LDFLAGS+=-fsanitize=address,fuzzer
+	LPROTOBUF=-lprotobuf
+	DPROTOBUF=-D CMAKE_BUILD_TYPE=Release -D LIB_PROTO_MUTATOR_TESTING=OFF
+	EPROTOC=protoc
 endif
 
 ifeq ($(config),profile)
 	CXXFLAGS+=-O2 -DNDEBUG -gdwarf-4 -DCALLGRIND=1
+endif
+
+ifeq ($(protobuf),download)
+	CXXFLAGS+=-Ibuild/libprotobuf-mutator/external.protobuf/include
+	LPROTOBUF=build/libprotobuf-mutator/external.protobuf/lib/libprotobuf.a
+	DPROTOBUF+=-D LIB_PROTO_MUTATOR_DOWNLOAD_PROTOBUF=ON
+	EPROTOC=../build/libprotobuf-mutator/external.protobuf/bin/protoc
 endif
 
 # target-specific flags
@@ -115,7 +126,7 @@ $(FUZZ_OBJECTS): CXXFLAGS+=-std=c++17 -ICommon/include -IAst/include -ICompiler/
 
 $(TESTS_TARGET): LDFLAGS+=-lpthread
 $(REPL_CLI_TARGET): LDFLAGS+=-lpthread
-fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a -lprotobuf
+fuzz-proto fuzz-prototest: LDFLAGS+=build/libprotobuf-mutator/src/libfuzzer/libprotobuf-mutator-libfuzzer.a build/libprotobuf-mutator/src/libprotobuf-mutator.a $(LPROTOBUF)
 
 # pseudo targets
 .PHONY: all test clean coverage format luau-size aliases
@@ -199,7 +210,7 @@ $(BUILD)/%.c.o: %.c
 
 # protobuf fuzzer setup
 fuzz/luau.pb.cpp: fuzz/luau.proto build/libprotobuf-mutator
-	cd fuzz && protoc luau.proto --cpp_out=.
+	cd fuzz && $(EPROTOC) luau.proto --cpp_out=.
 	mv fuzz/luau.pb.cc fuzz/luau.pb.cpp
 
 $(BUILD)/fuzz/proto.cpp.o: fuzz/luau.pb.cpp
@@ -207,7 +218,7 @@ $(BUILD)/fuzz/protoprint.cpp.o: fuzz/luau.pb.cpp
 
 build/libprotobuf-mutator:
 	git clone https://github.com/google/libprotobuf-mutator build/libprotobuf-mutator
-	CXX= cmake -S build/libprotobuf-mutator -B build/libprotobuf-mutator -D CMAKE_BUILD_TYPE=Release -D LIB_PROTO_MUTATOR_TESTING=OFF
+	CXX= cmake -S build/libprotobuf-mutator -B build/libprotobuf-mutator $(DPROTOBUF)
 	make -C build/libprotobuf-mutator -j8
 
 # picks up include dependencies for all object files

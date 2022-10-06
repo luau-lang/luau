@@ -14,6 +14,8 @@
 #include "Luau/VisitTypeVar.h"
 #include "Luau/TypeUtils.h"
 
+#include <random>
+
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 LUAU_FASTFLAG(LuauFixNameMaps)
@@ -251,10 +253,11 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
     }
 }
 
-ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<SingletonTypes> singletonTypes, NotNull<Scope> rootScope, ModuleName moduleName,
+ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, ModuleName moduleName,
     NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
-    : arena(arena)
-    , singletonTypes(singletonTypes)
+    : arena(normalizer->arena)
+    , singletonTypes(normalizer->singletonTypes)
+    , normalizer(normalizer)
     , constraints(collectConstraints(rootScope))
     , rootScope(rootScope)
     , currentModuleName(std::move(moduleName))
@@ -276,6 +279,12 @@ ConstraintSolver::ConstraintSolver(TypeArena* arena, NotNull<SingletonTypes> sin
 
     if (FFlag::DebugLuauLogSolverToJson)
         LUAU_ASSERT(logger);
+}
+
+void ConstraintSolver::randomize(unsigned seed)
+{
+    std::mt19937 g(seed);
+    std::shuffle(begin(unsolvedConstraints), end(unsolvedConstraints), g);
 }
 
 void ConstraintSolver::run()
@@ -1355,8 +1364,7 @@ bool ConstraintSolver::isBlocked(NotNull<const Constraint> constraint)
 
 void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> scope)
 {
-    UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    Unifier u{normalizer, Mode::Strict, scope, Location{}, Covariant};
     u.useScopes = true;
 
     u.tryUnify(subType, superType);
@@ -1379,7 +1387,7 @@ void ConstraintSolver::unify(TypeId subType, TypeId superType, NotNull<Scope> sc
 void ConstraintSolver::unify(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope)
 {
     UnifierSharedState sharedState{&iceReporter};
-    Unifier u{arena, singletonTypes, Mode::Strict, scope, Location{}, Covariant, sharedState};
+    Unifier u{normalizer, Mode::Strict, scope, Location{}, Covariant};
     u.useScopes = true;
 
     u.tryUnify(subPack, superPack);

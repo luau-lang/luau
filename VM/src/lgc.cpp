@@ -13,8 +13,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauBetterThreadMark, false)
-
 /*
  * Luau uses an incremental non-generational non-moving mark&sweep garbage collector.
  *
@@ -473,54 +471,25 @@ static size_t propagatemark(global_State* g)
 
         bool active = th->isactive || th == th->global->mainthread;
 
-        if (FFlag::LuauBetterThreadMark)
+        traversestack(g, th);
+
+        // active threads will need to be rescanned later to mark new stack writes so we mark them gray again
+        if (active)
         {
-            traversestack(g, th);
+            th->gclist = g->grayagain;
+            g->grayagain = o;
 
-            // active threads will need to be rescanned later to mark new stack writes so we mark them gray again
-            if (active)
-            {
-                th->gclist = g->grayagain;
-                g->grayagain = o;
-
-                black2gray(o);
-            }
-
-            // the stack needs to be cleared after the last modification of the thread state before sweep begins
-            // if the thread is inactive, we might not see the thread in this cycle so we must clear it now
-            if (!active || g->gcstate == GCSatomic)
-                clearstack(th);
-
-            // we could shrink stack at any time but we opt to do it during initial mark to do that just once per cycle
-            if (g->gcstate == GCSpropagate)
-                shrinkstack(th);
+            black2gray(o);
         }
-        else
-        {
-            // TODO: Refactor this logic!
-            if (!active && g->gcstate == GCSpropagate)
-            {
-                traversestack(g, th);
-                clearstack(th);
-            }
-            else
-            {
-                th->gclist = g->grayagain;
-                g->grayagain = o;
 
-                black2gray(o);
+        // the stack needs to be cleared after the last modification of the thread state before sweep begins
+        // if the thread is inactive, we might not see the thread in this cycle so we must clear it now
+        if (!active || g->gcstate == GCSatomic)
+            clearstack(th);
 
-                traversestack(g, th);
-
-                // final traversal?
-                if (g->gcstate == GCSatomic)
-                    clearstack(th);
-            }
-
-            // we could shrink stack at any time but we opt to skip it during atomic since it's redundant to do that more than once per cycle
-            if (g->gcstate != GCSatomic)
-                shrinkstack(th);
-        }
+        // we could shrink stack at any time but we opt to do it during initial mark to do that just once per cycle
+        if (g->gcstate == GCSpropagate)
+            shrinkstack(th);
 
         return sizeof(lua_State) + sizeof(TValue) * th->stacksize + sizeof(CallInfo) * th->size_ci;
     }

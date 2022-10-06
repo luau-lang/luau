@@ -21,6 +21,7 @@
 #include <sys/sysctl.h>
 #endif
 
+#include <random>
 #include <optional>
 
 // Indicates if verbose output is enabled; can be overridden via --verbose
@@ -29,6 +30,10 @@ bool verbose = false;
 
 // Default optimization level for conformance test; can be overridden via -On
 int optimizationLevel = 1;
+
+// Something to seed a pseudorandom number generator with.  Defaults to
+// something from std::random_device.
+std::optional<unsigned> randomSeed;
 
 static bool skipFastFlag(const char* flagName)
 {
@@ -261,6 +266,16 @@ int main(int argc, char** argv)
             optimizationLevel = level;
     }
 
+    int rseed = -1;
+    if (doctest::parseIntOption(argc, argv, "--random-seed=", doctest::option_int, rseed))
+        randomSeed = unsigned(rseed);
+
+    if (doctest::parseOption(argc, argv, "--randomize") && !randomSeed)
+    {
+        randomSeed = std::random_device()();
+        printf("Using RNG seed %u\n", *randomSeed);
+    }
+
     if (std::vector<doctest::String> flags; doctest::parseCommaSepArgs(argc, argv, "--fflags=", flags))
         setFastFlags(flags);
 
@@ -295,6 +310,8 @@ int main(int argc, char** argv)
         printf(" --verbose                             Enables verbose output (e.g. lua 'print' statements)\n");
         printf(" --fflags=                             Sets specified fast flags\n");
         printf(" --list-fflags                         List all fast flags\n");
+        printf(" --randomize                           Use a random RNG seed\n");
+        printf(" --random-seed=n                       Use a particular RNG seed\n");
     }
     return result;
 }

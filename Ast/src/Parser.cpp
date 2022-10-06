@@ -25,6 +25,8 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauTypeAnnotationLocationChange, false)
 
+LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
+
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
 bool lua_telemetry_parsed_double_prefix_hex_integer = false;
@@ -1062,6 +1064,12 @@ void Parser::parseExprList(TempVector<AstExpr*>& result)
     {
         nextLexeme();
 
+        if (FFlag::LuauCommaParenWarnings && lexer.current().type == ')')
+        {
+            report(lexer.current().location, "Expected expression after ',' but got ')' instead");
+            break;
+        }
+
         result.push_back(parseExpr());
     }
 }
@@ -1148,7 +1156,14 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
         result.push_back(parseTypeAnnotation());
         if (lexer.current().type != ',')
             break;
+
         nextLexeme();
+
+        if (FFlag::LuauCommaParenWarnings && lexer.current().type == ')')
+        {
+            report(lexer.current().location, "Expected type after ',' but got ')' instead");
+            break;
+        }
     }
 
     return nullptr;
@@ -2514,7 +2529,15 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
             }
 
             if (lexer.current().type == ',')
+            {
                 nextLexeme();
+
+                if (FFlag::LuauCommaParenWarnings && lexer.current().type == '>')
+                {
+                    report(lexer.current().location, "Expected type after ',' but got '>' instead");
+                    break;
+                }
+            }
             else
                 break;
         }

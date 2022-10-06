@@ -234,6 +234,8 @@ public:
     TypeId anyify(const ScopePtr& scope, TypeId ty, Location location);
     TypePackId anyify(const ScopePtr& scope, TypePackId ty, Location location);
 
+    TypePackId anyifyModuleReturnTypePackGenerics(TypePackId ty);
+
     void reportError(const TypeError& error);
     void reportError(const Location& location, TypeErrorData error);
     void reportErrors(const ErrorVec& errors);
@@ -359,6 +361,7 @@ public:
     InternalErrorReporter* iceHandler;
 
     UnifierSharedState unifierState;
+    Normalizer normalizer;
 
     std::vector<RequireCycle> requireCycles;
 

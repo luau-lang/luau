@@ -508,6 +508,9 @@ assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(
 assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(cmp('abc', 'abd')) end)() == "true,true,false,false")
 assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(cmp('ab\\0c', 'ab\\0d')) end)() == "true,true,false,false")
 assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(cmp('ab\\0c', 'ab\\0')) end)() == "false,false,true,true")
+assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(cmp('\\0a', '\\0b')) end)() == "true,true,false,false")
+assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(cmp('a', 'a\\0')) end)() == "true,true,false,false")
+assert((function() function cmp(a,b) return a<b,a<=b,a>b,a>=b end return concat(cmp('a', '\200')) end)() == "true,true,false,false")
 
 -- array access
 assert((function() local a = {4,5,6} return a[3] end)() == 6)

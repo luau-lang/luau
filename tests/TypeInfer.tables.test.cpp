@@ -11,7 +11,8 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(LuauLowerBoundsCalculation)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2038,11 +2039,22 @@ caused by:
 caused by:
   Property 'y' is not compatible. Type 'string' could not be converted into 'number')");
 
-    CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+    if (FFlag::LuauInstantiateInSubtyping)
+    {
+        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
+caused by:
+  Type '{ __call: <a, b>(a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
+caused by:
+  Property '__call' is not compatible. Type '<a, b>(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
+    }
+    else
+    {
+        CHECK_EQ(toString(result.errors[1]), R"(Type 'b2' could not be converted into 'a2'
 caused by:
   Type '{ __call: (a, b) -> () }' could not be converted into '{ __call: <a>(a) -> () }'
 caused by:
   Property '__call' is not compatible. Type '(a, b) -> ()' could not be converted into '<a>(a) -> ()'; different number of generic type parameters)");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
@@ -3171,6 +3183,55 @@ caused by:
   The former's metatable does not satisfy the requirements. Table type 'string' not compatible with type 't1 where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}' because the former is missing field 'absolutely_no_scalar_has_this_method')",
         toString(result.errors[0]));
     CHECK_EQ("<a, b...>(t1) -> string where t1 = {+ absolutely_no_scalar_has_this_method: (t1) -> (a, b...) +}", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_tables_in_call_is_unsound")
+{
+    ScopedFastFlag sff[]{
+        {"LuauInstantiateInSubtyping", true},
+    };
+
+    CheckResult result = check(R"(
+        --!strict
+        local t = {}
+        function t.m(x) return x end
+        local a : string = t.m("hi")
+        local b : number = t.m(5)
+        function f(x : { m : (number)->number })
+            x.m = function(x) return 1+x end
+        end
+        f(t) -- This shouldn't typecheck
+        local c : string = t.m("hi")
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(toString(result.errors[0]), R"(Type 't' could not be converted into '{| m: (number) -> number |}'
+caused by:
+  Property 'm' is not compatible. Type '<a>(a) -> a' could not be converted into '(number) -> number'; different number of generic type parameters)");
+    // this error message is not great since the underlying issue is that the context is invariant,
+    // and `(number) -> number` cannot be a subtype of `<a>(a) -> a`.
+}
+
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generic_table_instantiation_potential_regression")
+{
+    CheckResult result = check(R"(
+--!strict
+
+function f(x)
+  x.p = 5
+  return x
+end
+local g : ({ p : number, q : string }) -> ({ p : number, r : boolean }) = f
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    MissingProperties* error = get<MissingProperties>(result.errors[0]);
+    REQUIRE(error != nullptr);
+    REQUIRE(error->properties.size() == 1);
+
+    CHECK_EQ("r", error->properties[0]);
 }
 
 TEST_SUITE_END();

@@ -12,6 +12,8 @@
 #include <string.h>
 #include <stdio.h>
 
+LUAU_FASTFLAGVARIABLE(LuauFasterGetInfo, false)
+
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -89,9 +91,9 @@ const char* lua_setlocal(lua_State* L, int level, int n)
     return name;
 }
 
-static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
+static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f, CallInfo* ci)
 {
-    int status = 1;
+    Closure* cl = NULL;
     for (; *what; what++)
     {
         switch (*what)
@@ -103,14 +105,23 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
                 ar->source = "=[C]";
                 ar->what = "C";
                 ar->linedefined = -1;
+                if (FFlag::LuauFasterGetInfo)
+                    ar->short_src = "[C]";
             }
             else
             {
-                ar->source = getstr(f->l.p->source);
+                TString* source = f->l.p->source;
+                ar->source = getstr(source);
                 ar->what = "Lua";
                 ar->linedefined = f->l.p->linedefined;
+                if (FFlag::LuauFasterGetInfo)
+                    ar->short_src = luaO_chunkid(ar->ssbuf, sizeof(ar->ssbuf), getstr(source), source->len);
             }
-            luaO_chunkid(ar->short_src, ar->source, LUA_IDSIZE);
+            if (!FFlag::LuauFasterGetInfo)
+            {
+                luaO_chunkid(ar->ssbuf, LUA_IDSIZE, ar->source, 0);
+                ar->short_src = ar->ssbuf;
+            }
             break;
         }
         case 'l':
@@ -150,10 +161,15 @@ static int auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closure* f,
             ar->name = ci ? getfuncname(ci_func(ci)) : getfuncname(f);
             break;
         }
+        case 'f':
+        {
+            cl = f;
+            break;
+        }
         default:;
         }
     }
-    return status;
+    return cl;
 }
 
 int lua_stackdepth(lua_State* L)
@@ -163,7 +179,6 @@ int lua_stackdepth(lua_State* L)
 
 int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
 {
-    int status = 0;
     Closure* f = NULL;
     CallInfo* ci = NULL;
     if (level < 0)
@@ -180,15 +195,28 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
     }
     if (f)
     {
-        status = auxgetinfo(L, what, ar, f, ci);
-        if (strchr(what, 'f'))
+        if (FFlag::LuauFasterGetInfo)
         {
-            luaC_threadbarrier(L);
-            setclvalue(L, L->top, f);
-            incr_top(L);
+            // auxgetinfo fills ar and optionally requests to put closure on stack
+            if (Closure* fcl = auxgetinfo(L, what, ar, f, ci))
+            {
+                luaC_threadbarrier(L);
+                setclvalue(L, L->top, fcl);
+                incr_top(L);
+            }
+        }
+        else
+        {
+            auxgetinfo(L, what, ar, f, ci);
+            if (strchr(what, 'f'))
+            {
+                luaC_threadbarrier(L);
+                setclvalue(L, L->top, f);
+                incr_top(L);
+            }
         }
     }
-    return status;
+    return f ? 1 : 0;
 }
 
 static const char* getfuncname(Closure* cl)
@@ -284,10 +312,11 @@ static void pusherror(lua_State* L, const char* msg)
     CallInfo* ci = L->ci;
     if (isLua(ci))
     {
-        char buff[LUA_IDSIZE]; // add file:line information
-        luaO_chunkid(buff, getstr(getluaproto(ci)->source), LUA_IDSIZE);
+        TString* source = getluaproto(ci)->source;
+        char chunkbuf[LUA_IDSIZE]; // add file:line information
+        const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), getstr(source), source->len);
         int line = currentline(L, ci);
-        luaO_pushfstring(L, "%s:%d: %s", buff, line, msg);
+        luaO_pushfstring(L, "%s:%d: %s", chunkid, line, msg);
     }
     else
     {

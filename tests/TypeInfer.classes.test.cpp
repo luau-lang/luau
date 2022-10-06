@@ -480,4 +480,38 @@ local a: ChildClass = i
     CHECK_EQ("Type 'ChildClass' from 'Test' could not be converted into 'ChildClass' from 'MainModule'", toString(result.errors[0]));
 }
 
+TEST_CASE_FIXTURE(ClassFixture, "intersections_of_unions_of_classes")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : (BaseClass | Vector2) & (ChildClass | AnotherChild)
+        local y : (ChildClass | AnotherChild)
+        x = y
+        y = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : (BaseClass & ChildClass) | (BaseClass & AnotherChild) | (BaseClass & Vector2)
+        local y : (ChildClass | AnotherChild)
+        x = y
+        y = x
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

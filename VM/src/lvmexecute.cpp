@@ -781,6 +781,7 @@ reentry:
 
                     default:
                         LUAU_ASSERT(!"Unknown upvalue capture type");
+                        LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
                     }
                 }
 
@@ -1184,7 +1185,9 @@ reentry:
                         // slow path after switch()
                         break;
 
-                    default:;
+                    default:
+                        LUAU_ASSERT(!"Unknown value type");
+                        LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
                     }
 
                     // slow-path: tables with metatables and userdata values
@@ -1296,7 +1299,9 @@ reentry:
                         // slow path after switch()
                         break;
 
-                    default:;
+                    default:
+                        LUAU_ASSERT(!"Unknown value type");
+                        LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
                     }
 
                     // slow-path: tables with metatables and userdata values

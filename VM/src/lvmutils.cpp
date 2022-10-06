@@ -220,8 +220,13 @@ int luaV_strcmp(const TString* ls, const TString* rs)
         return 0;
 
     const char* l = getstr(ls);
-    size_t ll = ls->len;
     const char* r = getstr(rs);
+
+    // always safe to read one character because even empty strings are nul terminated
+    if (*l != *r)
+        return uint8_t(*l) - uint8_t(*r);
+
+    size_t ll = ls->len;
     size_t lr = rs->len;
     size_t lmin = ll < lr ? ll : lr;
 
