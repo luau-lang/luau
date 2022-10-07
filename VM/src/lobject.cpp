@@ -15,6 +15,8 @@
 
 
 
+LUAU_FASTFLAG(LuauFasterGetInfo)
+
 const TValue luaO_nilobject_ = {{NULL}, {0}, LUA_TNIL};
 
 int luaO_log2(unsigned int x)
@@ -117,44 +119,68 @@ const char* luaO_pushfstring(lua_State* L, const char* fmt, ...)
     return msg;
 }
 
-void luaO_chunkid(char* out, const char* source, size_t bufflen)
+const char* luaO_chunkid(char* buf, size_t buflen, const char* source, size_t srclen)
 {
     if (*source == '=')
     {
-        source++; // skip the `='
-        size_t srclen = strlen(source);
-        size_t dstlen = srclen < bufflen ? srclen : bufflen - 1;
-        memcpy(out, source, dstlen);
-        out[dstlen] = '\0';
+        if (FFlag::LuauFasterGetInfo)
+        {
+            if (srclen <= buflen)
+                return source + 1;
+            // truncate the part after =
+            memcpy(buf, source + 1, buflen - 1);
+            buf[buflen - 1] = '\0';
+        }
+        else
+        {
+            source++; // skip the `='
+            size_t len = strlen(source);
+            size_t dstlen = len < buflen ? len : buflen - 1;
+            memcpy(buf, source, dstlen);
+            buf[dstlen] = '\0';
+        }
     }
     else if (*source == '@')
     {
-        size_t l;
-        source++; // skip the `@'
-        bufflen -= sizeof("...");
-        l = strlen(source);
-        strcpy(out, "");
-        if (l > bufflen)
+        if (FFlag::LuauFasterGetInfo)
         {
-            source += (l - bufflen); // get last part of file name
-            strcat(out, "...");
-        }
-        strcat(out, source);
-    }
-    else
-    {                                         // out = [string "string"]
-        size_t len = strcspn(source, "\n\r"); // stop at first newline
-        bufflen -= sizeof("[string \"...\"]");
-        if (len > bufflen)
-            len = bufflen;
-        strcpy(out, "[string \"");
-        if (source[len] != '\0')
-        { // must truncate?
-            strncat(out, source, len);
-            strcat(out, "...");
+            if (srclen <= buflen)
+                return source + 1;
+            // truncate the part after @
+            memcpy(buf, "...", 3);
+            memcpy(buf + 3, source + srclen - (buflen - 4), buflen - 4);
+            buf[buflen - 1] = '\0';
         }
         else
-            strcat(out, source);
-        strcat(out, "\"]");
+        {
+            size_t l;
+            source++; // skip the `@'
+            buflen -= sizeof("...");
+            l = strlen(source);
+            strcpy(buf, "");
+            if (l > buflen)
+            {
+                source += (l - buflen); // get last part of file name
+                strcat(buf, "...");
+            }
+            strcat(buf, source);
+        }
     }
+    else
+    {                                         // buf = [string "string"]
+        size_t len = strcspn(source, "\n\r"); // stop at first newline
+        buflen -= sizeof("[string \"...\"]");
+        if (len > buflen)
+            len = buflen;
+        strcpy(buf, "[string \"");
+        if (source[len] != '\0')
+        { // must truncate?
+            strncat(buf, source, len);
+            strcat(buf, "...");
+        }
+        else
+            strcat(buf, source);
+        strcat(buf, "\"]");
+    }
+    return buf;
 }

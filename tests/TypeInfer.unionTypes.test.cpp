@@ -541,5 +541,182 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
             R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
 }
 
+TEST_CASE_FIXTURE(Fixture, "union_true_and_false")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : boolean
+        local y1 : (true | false) = x -- OK
+        local y2 : (true | false | (string & number)) = x -- OK
+        local y3 : (true | (string & number) | false) = x -- OK
+        local y4 : (true | (boolean & true) | false) = x -- OK
+     )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : (number) -> number?
+        local y : ((number?) -> number?) | ((number) -> number) = x -- OK
+     )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_generic_functions")
+{
+    CheckResult result = check(R"(
+        local x : <a>(a) -> a?
+        local y : (<a>(a?) -> a?) | (<b>(b) -> b) = x -- Not OK
+     )");
+
+    // TODO: should this example typecheck?
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_generic_typepack_functions")
+{
+    CheckResult result = check(R"(
+        local x : <a...>(number, a...) -> (number?, a...)
+        local y : (<a...>(number?, a...) -> (number?, a...)) | (<b...>(number, b...) -> (number, b...)) = x -- Not OK
+     )");
+
+    // TODO: should this example typecheck?
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+      function f<a,b>()
+        local x : (a) -> a?
+        local y : ((a?) -> nil) | ((a) -> a) = x -- OK
+        local z : ((b?) -> nil) | ((b) -> b) = x -- Not OK
+      end
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '(a) -> a?' could not be converted into '((b) -> b) | ((b?) -> nil)'; none of the union options are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+      function f<a...>()
+        local x : (number, a...) -> (number?, a...)
+        local y : ((number | string, a...) -> (number, a...)) | ((number?, a...) -> (nil, a...)) = x -- OK
+        local z : ((number) -> number) | ((number?, a...) -> (number?, a...)) = x -- Not OK
+      end
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '(number, a...) -> (number?, a...)' could not be converted into '((number) -> number) | ((number?, a...) -> (number?, a...))'; none of the union options are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : (number) -> number?
+        local y : ((number?) -> number) | ((number | string) -> nil) = x -- OK
+        local z : ((number, string?) -> number) | ((number) -> nil) = x -- Not OK
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '(number) -> number?' could not be converted into '((number) -> nil) | ((number, string?) -> number)'; none of the union options are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : () -> (number | string)
+        local y : (() -> number) | (() -> string) = x -- OK
+        local z : (() -> number) | (() -> (string, string)) = x -- Not OK
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '() -> number | string' could not be converted into '(() -> (string, string)) | (() -> number)'; none of the union options are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : (...nil) -> (...number?)
+        local y : ((...string?) -> (...number)) | ((...number?) -> nil) = x -- OK
+        local z : ((...string?) -> (...number)) | ((...string?) -> nil) = x -- OK
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '(...nil) -> (...number?)' could not be converted into '((...string?) -> (...number)) | ((...string?) -> nil)'; none of the union options are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : (number) -> ()
+        local y : ((number?) -> ()) | ((...number) -> ()) = x -- OK
+        local z : ((number?) -> ()) | ((...number?) -> ()) = x -- Not OK
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '(number) -> ()' could not be converted into '((...number?) -> ()) | ((number?) -> ())'; none of the union options are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics")
+{
+    ScopedFastFlag sffs[] {
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        local x : () -> (number?, ...number)
+        local y : (() -> (...number)) | (() -> nil) = x -- OK
+        local z : (() -> (...number)) | (() -> number) = x -- OK
+     )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ(toString(result.errors[0]), "Type '() -> (number?, ...number)' could not be converted into '(() -> (...number)) | (() -> number)'; none of the union options are compatible");
+}
 
 TEST_SUITE_END();

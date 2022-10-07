@@ -10,6 +10,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauCheckGenericHOFTypes)
+LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
@@ -960,7 +961,11 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("((number) -> number, string) -> number", toString(tm->wantedType));
-    CHECK_EQ("((number) -> number, number) -> number", toString(tm->givenType));
+    if (FFlag::LuauInstantiateInSubtyping)
+        CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
+    else
+        CHECK_EQ("((number) -> number, number) -> number", toString(tm->givenType));
+
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
@@ -980,7 +985,10 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
     REQUIRE(tm);
     CHECK_EQ("(string, string) -> number", toString(tm->wantedType));
-    CHECK_EQ("((string) -> number, string) -> number", toString(*tm->givenType));
+    if (FFlag::LuauInstantiateInSubtyping)
+        CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
+    else
+        CHECK_EQ("((string) -> number, string) -> number", toString(*tm->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "self_recursive_instantiated_param")
@@ -1110,6 +1118,15 @@ local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not i
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
+    else if (FFlag::LuauInstantiateInSubtyping)
+    {
+        LUAU_REQUIRE_ERRORS(result);
+        CHECK_EQ(
+            R"(Type '<a, b, c...>(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'
+caused by:
+  Argument #1 type is not compatible. Generic subtype escaping scope)",
+            toString(result.errors[0]));
+    }
     else
     {
         LUAU_REQUIRE_ERRORS(result);
@@ -1217,6 +1234,50 @@ TEST_CASE_FIXTURE(Fixture, "do_not_always_instantiate_generic_intersection_types
         local _Arr : Array<any> & Array_Statics = {} :: Array_Statics
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "hof_subtype_instantiation_regression")
+{
+    CheckResult result = check(R"(
+--!strict
+
+local function defaultSort<T>(a: T, b: T)
+    return true
+end
+type A = any
+return function<T>(array: {T}): {T}
+    table.sort(array, defaultSort)
+    return array
+end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "higher_rank_polymorphism_should_not_accept_instantiated_arguments")
+{
+    ScopedFastFlag sffs[] = {
+        {"LuauInstantiateInSubtyping", true},
+        {"LuauCheckGenericHOFTypes", true}, // necessary because of interactions with the test
+    };
+
+    CheckResult result = check(R"(
+--!strict
+
+local function instantiate(f: <a>(a) -> a): (number) -> number
+    return f
+end
+
+instantiate(function(x: string) return "foo" end)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    auto tm1 = get<TypeMismatch>(result.errors[0]);
+    REQUIRE(tm1);
+
+    CHECK_EQ("<a>(a) -> a", toString(tm1->wantedType));
+    CHECK_EQ("<a>(string) -> string", toString(tm1->givenType));
 }
 
 TEST_SUITE_END();

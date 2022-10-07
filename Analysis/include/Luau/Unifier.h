@@ -9,6 +9,7 @@
 #include "Luau/TxnLog.h"
 #include "Luau/TypeArena.h"
 #include "Luau/UnifierSharedState.h"
+#include "Normalize.h"
 
 #include <unordered_set>
 
@@ -52,6 +53,7 @@ struct Unifier
 {
     TypeArena* const types;
     NotNull<SingletonTypes> singletonTypes;
+    NotNull<Normalizer> normalizer;
     Mode mode;
 
     NotNull<Scope> scope; // const Scope maybe
@@ -60,13 +62,14 @@ struct Unifier
     Location location;
     Variance variance = Covariant;
     bool anyIsTop = false; // If true, we consider any to be a top type.  If false, it is a familiar but weird mix of top and bottom all at once.
+    bool normalize; // Normalize unions and intersections if necessary
     bool useScopes = false; // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
 
     UnifierSharedState& sharedState;
 
-    Unifier(TypeArena* types, NotNull<SingletonTypes> singletonTypes, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance,
-        UnifierSharedState& sharedState, TxnLog* parentLog = nullptr);
+    Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance,
+        TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
@@ -84,6 +87,7 @@ private:
     void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTypeVar* uv, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionTypeVar* uv);
     void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeVar* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);
+    void tryUnifyNormalizedTypes(TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason, std::optional<TypeError> error = std::nullopt);
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);
@@ -91,6 +95,8 @@ private:
     void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
+
+    TypePackId tryApplyOverloadedFunction(TypeId function, const NormalizedFunctionType& overloads, TypePackId args);
 
     TypeId widen(TypeId ty);
     TypePackId widen(TypePackId tp);

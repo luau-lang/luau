@@ -12,8 +12,6 @@
 #include <unordered_set>
 #include <utility>
 
-LUAU_FASTFLAG(LuauSelfCallAutocompleteFix3)
-
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
@@ -139,7 +137,8 @@ static bool checkTypeMatch(TypeId subTy, TypeId superTy, NotNull<Scope> scope, T
 {
     InternalErrorReporter iceReporter;
     UnifierSharedState unifierState(&iceReporter);
-    Unifier unifier(typeArena, singletonTypes, Mode::Strict, scope, Location(), Variance::Covariant, unifierState);
+    Normalizer normalizer{typeArena, singletonTypes, NotNull{&unifierState}};
+    Unifier unifier(NotNull<Normalizer>{&normalizer}, Mode::Strict, scope, Location(), Variance::Covariant);
 
     return unifier.canUnify(subTy, superTy).empty();
 }
@@ -151,18 +150,6 @@ static TypeCorrectKind checkTypeCorrectKind(
 
     NotNull<Scope> moduleScope{module.getModuleScope().get()};
 
-    auto canUnify = [&typeArena, singletonTypes, moduleScope](TypeId subTy, TypeId superTy) {
-        LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix3);
-
-        InternalErrorReporter iceReporter;
-        UnifierSharedState unifierState(&iceReporter);
-        Unifier unifier(typeArena, singletonTypes, Mode::Strict, moduleScope, Location(), Variance::Covariant, unifierState);
-
-        unifier.tryUnify(subTy, superTy);
-        bool ok = unifier.errors.empty();
-        return ok;
-    };
-
     auto typeAtPosition = findExpectedTypeAt(module, node, position);
 
     if (!typeAtPosition)
@@ -170,30 +157,11 @@ static TypeCorrectKind checkTypeCorrectKind(
 
     TypeId expectedType = follow(*typeAtPosition);
 
-    auto checkFunctionType = [typeArena, singletonTypes, moduleScope, &canUnify, &expectedType](const FunctionTypeVar* ftv) {
-        if (FFlag::LuauSelfCallAutocompleteFix3)
-        {
-            if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
-                return checkTypeMatch(*firstRetTy, expectedType, moduleScope, typeArena, singletonTypes);
+    auto checkFunctionType = [typeArena, singletonTypes, moduleScope, &expectedType](const FunctionTypeVar* ftv) {
+        if (std::optional<TypeId> firstRetTy = first(ftv->retTypes))
+            return checkTypeMatch(*firstRetTy, expectedType, moduleScope, typeArena, singletonTypes);
 
-            return false;
-        }
-        else
-        {
-            auto [retHead, retTail] = flatten(ftv->retTypes);
-
-            if (!retHead.empty() && canUnify(retHead.front(), expectedType))
-                return true;
-
-            // We might only have a variadic tail pack, check if the element is compatible
-            if (retTail)
-            {
-                if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*retTail)); vtp && canUnify(vtp->ty, expectedType))
-                    return true;
-            }
-
-            return false;
-        }
+        return false;
     };
 
     // We also want to suggest functions that return compatible result
@@ -212,11 +180,8 @@ static TypeCorrectKind checkTypeCorrectKind(
         }
     }
 
-    if (FFlag::LuauSelfCallAutocompleteFix3)
-        return checkTypeMatch(ty, expectedType, NotNull{module.getModuleScope().get()}, typeArena, singletonTypes) ? TypeCorrectKind::Correct
-                                                                                                                   : TypeCorrectKind::None;
-    else
-        return canUnify(ty, expectedType) ? TypeCorrectKind::Correct : TypeCorrectKind::None;
+    return checkTypeMatch(ty, expectedType, NotNull{module.getModuleScope().get()}, typeArena, singletonTypes) ? TypeCorrectKind::Correct
+                                                                                                               : TypeCorrectKind::None;
 }
 
 enum class PropIndexType
@@ -230,51 +195,14 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
     PropIndexType indexType, const std::vector<AstNode*>& nodes, AutocompleteEntryMap& result, std::unordered_set<TypeId>& seen,
     std::optional<const ClassTypeVar*> containingClass = std::nullopt)
 {
-    if (FFlag::LuauSelfCallAutocompleteFix3)
-        rootTy = follow(rootTy);
-
+    rootTy = follow(rootTy);
     ty = follow(ty);
 
     if (seen.count(ty))
         return;
     seen.insert(ty);
 
-    auto isWrongIndexer_DEPRECATED = [indexType, useStrictFunctionIndexers = !!get<ClassTypeVar>(ty)](Luau::TypeId type) {
-        LUAU_ASSERT(!FFlag::LuauSelfCallAutocompleteFix3);
-
-        if (indexType == PropIndexType::Key)
-            return false;
-
-        bool colonIndex = indexType == PropIndexType::Colon;
-
-        if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(type))
-        {
-            return useStrictFunctionIndexers ? colonIndex != ftv->hasSelf : false;
-        }
-        else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(type))
-        {
-            bool allHaveSelf = true;
-            for (auto subType : itv->parts)
-            {
-                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(Luau::follow(subType)))
-                {
-                    allHaveSelf &= ftv->hasSelf;
-                }
-                else
-                {
-                    return colonIndex;
-                }
-            }
-            return useStrictFunctionIndexers ? colonIndex != allHaveSelf : false;
-        }
-        else
-        {
-            return colonIndex;
-        }
-    };
     auto isWrongIndexer = [typeArena, singletonTypes, &module, rootTy, indexType](Luau::TypeId type) {
-        LUAU_ASSERT(FFlag::LuauSelfCallAutocompleteFix3);
-
         if (indexType == PropIndexType::Key)
             return false;
 
@@ -337,7 +265,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
                     AutocompleteEntryKind::Property,
                     type,
                     prop.deprecated,
-                    FFlag::LuauSelfCallAutocompleteFix3 ? isWrongIndexer(type) : isWrongIndexer_DEPRECATED(type),
+                    isWrongIndexer(type),
                     typeCorrect,
                     containingClass,
                     &prop,
@@ -380,31 +308,8 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
     {
         autocompleteProps(module, typeArena, singletonTypes, rootTy, mt->table, indexType, nodes, result, seen);
 
-        if (FFlag::LuauSelfCallAutocompleteFix3)
-        {
-            if (auto mtable = get<TableTypeVar>(mt->metatable))
-                fillMetatableProps(mtable);
-        }
-        else
-        {
-            auto mtable = get<TableTypeVar>(mt->metatable);
-            if (!mtable)
-                return;
-
-            auto indexIt = mtable->props.find("__index");
-            if (indexIt != mtable->props.end())
-            {
-                TypeId followed = follow(indexIt->second.type);
-                if (get<TableTypeVar>(followed) || get<MetatableTypeVar>(followed))
-                    autocompleteProps(module, typeArena, singletonTypes, rootTy, followed, indexType, nodes, result, seen);
-                else if (auto indexFunction = get<FunctionTypeVar>(followed))
-                {
-                    std::optional<TypeId> indexFunctionResult = first(indexFunction->retTypes);
-                    if (indexFunctionResult)
-                        autocompleteProps(module, typeArena, singletonTypes, rootTy, *indexFunctionResult, indexType, nodes, result, seen);
-                }
-            }
-        }
+        if (auto mtable = get<TableTypeVar>(mt->metatable))
+            fillMetatableProps(mtable);
     }
     else if (auto i = get<IntersectionTypeVar>(ty))
     {
@@ -446,9 +351,6 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
             AutocompleteEntryMap inner;
             std::unordered_set<TypeId> innerSeen;
 
-            if (!FFlag::LuauSelfCallAutocompleteFix3)
-                innerSeen = seen;
-
             if (isNil(*iter))
             {
                 ++iter;
@@ -472,7 +374,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
             ++iter;
         }
     }
-    else if (auto pt = get<PrimitiveTypeVar>(ty); pt && FFlag::LuauSelfCallAutocompleteFix3)
+    else if (auto pt = get<PrimitiveTypeVar>(ty))
     {
         if (pt->metatable)
         {
@@ -480,7 +382,7 @@ static void autocompleteProps(const Module& module, TypeArena* typeArena, NotNul
                 fillMetatableProps(mtable);
         }
     }
-    else if (FFlag::LuauSelfCallAutocompleteFix3 && get<StringSingleton>(get<SingletonTypeVar>(ty)))
+    else if (get<StringSingleton>(get<SingletonTypeVar>(ty)))
     {
         autocompleteProps(module, typeArena, singletonTypes, rootTy, singletonTypes->stringType, indexType, nodes, result, seen);
     }
@@ -1416,11 +1318,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         TypeId ty = follow(*it);
         PropIndexType indexType = indexName->op == ':' ? PropIndexType::Colon : PropIndexType::Point;
 
-        if (!FFlag::LuauSelfCallAutocompleteFix3 && isString(ty))
-            return {autocompleteProps(*module, &typeArena, singletonTypes, globalScope->bindings[AstName{"string"}].typeId, indexType, ancestry),
-                ancestry, AutocompleteContext::Property};
-        else
-            return {autocompleteProps(*module, &typeArena, singletonTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
+        return {autocompleteProps(*module, &typeArena, singletonTypes, ty, indexType, ancestry), ancestry, AutocompleteContext::Property};
     }
     else if (auto typeReference = node->as<AstTypeReference>())
     {

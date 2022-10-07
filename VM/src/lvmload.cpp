@@ -148,16 +148,16 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     // 0 means the rest of the bytecode is the error message
     if (version == 0)
     {
-        char chunkid[LUA_IDSIZE];
-        luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
+        char chunkbuf[LUA_IDSIZE];
+        const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
         lua_pushfstring(L, "%s%.*s", chunkid, int(size - offset), data + offset);
         return 1;
     }
 
     if (version < LBC_VERSION_MIN || version > LBC_VERSION_MAX)
     {
-        char chunkid[LUA_IDSIZE];
-        luaO_chunkid(chunkid, chunkname, LUA_IDSIZE);
+        char chunkbuf[LUA_IDSIZE];
+        const char* chunkid = luaO_chunkid(chunkbuf, sizeof(chunkbuf), chunkname, strlen(chunkname));
         lua_pushfstring(L, "%s: bytecode version mismatch (expected [%d..%d], got %d)", chunkid, LBC_VERSION_MIN, LBC_VERSION_MAX, version);
         return 1;
     }

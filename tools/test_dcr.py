@@ -22,6 +22,10 @@ def safeParseInt(i, default=0):
         return default
 
 
+def makeDottedName(path):
+    return ".".join(path)
+
+
 class Handler(x.ContentHandler):
     def __init__(self, failList):
         self.currentTest = []
@@ -41,7 +45,7 @@ class Handler(x.ContentHandler):
             if self.currentTest:
                 passed = attrs["test_case_success"] == "true"
 
-                dottedName = ".".join(self.currentTest)
+                dottedName = makeDottedName(self.currentTest)
 
                 # Sometimes we get multiple XML trees for the same test. All of
                 # them must report a pass in order for us to consider the test
@@ -58,6 +62,10 @@ class Handler(x.ContentHandler):
 
         elif name == "TestSuite":
             self.currentTest.pop()
+
+
+def print_stderr(*args, **kw):
+    print(*args, **kw, file=sys.stderr)
 
 
 def main():
@@ -80,6 +88,16 @@ def main():
         help="Write a new faillist.txt after running tests.",
     )
 
+    parser.add_argument("--randomize", action="store_true", help="Pick a random seed")
+
+    parser.add_argument(
+        "--random-seed",
+        action="store",
+        dest="random_seed",
+        type=int,
+        help="Accept a specific RNG seed",
+    )
+
     args = parser.parse_args()
 
     failList = loadFailList()
@@ -90,7 +108,12 @@ def main():
         "--fflags=true,DebugLuauDeferredConstraintResolution=true",
     ]
 
-    print('>', ' '.join(commandLine), file=sys.stderr)
+    if args.random_seed:
+        commandLine.append("--random-seed=" + str(args.random_seed))
+    elif args.randomize:
+        commandLine.append("--randomize")
+
+    print_stderr(">", " ".join(commandLine))
 
     p = sp.Popen(
         commandLine,
@@ -104,15 +127,21 @@ def main():
             sys.stdout.buffer.write(line)
         return
     else:
-        x.parse(p.stdout, handler)
+        try:
+            x.parse(p.stdout, handler)
+        except x.SAXParseException as e:
+            print_stderr(
+                f"XML parsing failed during test {makeDottedName(handler.currentTest)}.  That probably means that the test crashed"
+            )
+            sys.exit(1)
 
     p.wait()
 
     for testName, passed in handler.results.items():
         if passed and testName in failList:
-            print("UNEXPECTED: {} should have failed".format(testName))
+            print_stderr(f"UNEXPECTED: {testName} should have failed")
         elif not passed and testName not in failList:
-            print("UNEXPECTED: {} should have passed".format(testName))
+            print_stderr(f"UNEXPECTED: {testName} should have passed")
 
     if args.write:
         newFailList = sorted(
@@ -126,14 +155,11 @@ def main():
         with open(FAIL_LIST_PATH, "w", newline="\n") as f:
             for name in newFailList:
                 print(name, file=f)
-        print("Updated faillist.txt", file=sys.stderr)
+        print_stderr("Updated faillist.txt")
 
     if handler.numSkippedTests > 0:
-        print(
-            "{} test(s) were skipped!  That probably means that a test segfaulted!".format(
-                handler.numSkippedTests
-            ),
-            file=sys.stderr,
+        print_stderr(
+            f"{handler.numSkippedTests} test(s) were skipped!  That probably means that a test segfaulted!"
         )
         sys.exit(1)
 
@@ -143,7 +169,7 @@ def main():
     )
 
     if ok:
-        print("Everything in order!", file=sys.stderr)
+        print_stderr("Everything in order!")
 
     sys.exit(0 if ok else 1)
 

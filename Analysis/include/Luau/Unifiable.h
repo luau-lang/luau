@@ -96,7 +96,7 @@ struct Free
     bool forwardedTypeAlias = false;
 
 private:
-    static int nextIndex;
+    static int DEPRECATED_nextIndex;
 };
 
 template<typename Id>
@@ -127,7 +127,7 @@ struct Generic
     bool explicitName = false;
 
 private:
-    static int nextIndex;
+    static int DEPRECATED_nextIndex;
 };
 
 struct Error

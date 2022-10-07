@@ -21,14 +21,14 @@ end
 return math.max(fib(5), 1)
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnknownGlobal")
 {
     LintResult result = lint("--!nocheck\nreturn foo");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Unknown global 'foo'");
 }
 
@@ -39,7 +39,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
 
     LintResult result = lintTyped("Wait(5)");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Global 'Wait' is deprecated, use 'wait' instead");
 }
 
@@ -53,7 +53,7 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobalNoReplacement")
 
     LintResult result = lintTyped("Version()");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Global 'Version' is deprecated");
 }
 
@@ -64,7 +64,7 @@ local _ = 5
 return _
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Placeholder value '_' is read here; consider using a named variable");
 }
 
@@ -75,7 +75,7 @@ _ = 5
 print(_)
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Placeholder value '_' is read here; consider using a named variable");
 }
 
@@ -86,7 +86,7 @@ local _ = 5
 _ = 6
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "BuiltinGlobalWrite")
@@ -100,7 +100,7 @@ end
 assert(5)
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Built-in global 'math' is overwritten here; consider using a local or changing the name");
     CHECK_EQ(result.warnings[1].text, "Built-in global 'assert' is overwritten here; consider using a local or changing the name");
 }
@@ -111,7 +111,7 @@ TEST_CASE_FIXTURE(Fixture, "MultilineBlock")
 if true then print(1) print(2) print(3) end
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "A new statement is on the same line; add semi-colon on previous statement to silence");
 }
 
@@ -121,7 +121,7 @@ TEST_CASE_FIXTURE(Fixture, "MultilineBlockSemicolonsWhitelisted")
 print(1); print(2); print(3)
 )");
 
-    CHECK(result.warnings.empty());
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "MultilineBlockMissedSemicolon")
@@ -130,7 +130,7 @@ TEST_CASE_FIXTURE(Fixture, "MultilineBlockMissedSemicolon")
 print(1); print(2) print(3)
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "A new statement is on the same line; add semi-colon on previous statement to silence");
 }
 
@@ -142,7 +142,7 @@ local _x do
 end
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "ConfusingIndentation")
@@ -152,7 +152,7 @@ print(math.max(1,
 2))
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Statement spans multiple lines; use indentation to silence");
 }
 
@@ -167,7 +167,7 @@ end
 return bar()
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Global 'foo' is only used in the enclosing function 'bar'; consider changing it to local");
 }
 
@@ -188,7 +188,7 @@ end
 return bar() + baz()
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Global 'foo' is never read before being written. Consider changing it to local");
 }
 
@@ -213,7 +213,7 @@ end
 return bar() + baz() + read()
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalWithConditional")
@@ -233,7 +233,7 @@ end
 return bar() + baz()
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocal3WithConditionalRead")
@@ -257,7 +257,7 @@ end
 return bar() + baz() + read()
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalInnerRead")
@@ -275,7 +275,7 @@ function baz() bar = 0 end
 return foo() + baz()
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "GlobalAsLocalMulti")
@@ -304,7 +304,7 @@ fnA() -- prints "true", "nil"
 fnB() -- prints "false", "nil"
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text,
         "Global 'moreInternalLogic' is only used in the enclosing function defined at line 2; consider changing it to local");
 }
@@ -319,7 +319,7 @@ local arg = 5
 print(arg)
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'arg' shadows previous declaration at line 2");
 }
 
@@ -337,7 +337,7 @@ end
 return bar()
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'global' shadows a global variable used at line 3");
 }
 
@@ -352,7 +352,7 @@ end
 return bar()
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'a' shadows previous declaration at line 2");
 }
 
@@ -372,7 +372,7 @@ end
 return bar()
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'arg' is never used; prefix with '_' to silence");
     CHECK_EQ(result.warnings[1].text, "Variable 'blarg' is never used; prefix with '_' to silence");
 }
@@ -387,7 +387,7 @@ local Roact = require(game.Packages.Roact)
 local _Roact = require(game.Packages.Roact)
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Import 'Roact' is never used; prefix with '_' to silence");
 }
 
@@ -412,7 +412,7 @@ end
 return foo()
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Function 'bar' is never used; prefix with '_' to silence");
     CHECK_EQ(result.warnings[1].text, "Function 'qux' is never used; prefix with '_' to silence");
 }
@@ -427,7 +427,7 @@ end
 print("hi!")
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 5);
     CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always returns)");
 }
@@ -443,7 +443,7 @@ end
 print("hi!")
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
     CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always breaks)");
 }
@@ -459,7 +459,7 @@ end
 print("hi!")
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
     CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always continues)");
 }
@@ -495,7 +495,7 @@ end
 return { foo1, foo2, foo3 }
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 7);
     CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always returns)");
 }
@@ -515,7 +515,7 @@ end
 return foo1
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeAssertFalseReturnSilent")
@@ -532,7 +532,7 @@ end
 return foo1
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeErrorReturnNonSilentBranchy")
@@ -550,7 +550,7 @@ end
 return foo1
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 7);
     CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always errors)");
 }
@@ -571,7 +571,7 @@ end
 return foo1
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 8);
     CHECK_EQ(result.warnings[0].text, "Unreachable code (previous statement always errors)");
 }
@@ -589,7 +589,7 @@ end
 return foo1
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnreachableCodeLoopRepeat")
@@ -605,8 +605,8 @@ end
 return foo1
 )");
 
-    CHECK_EQ(result.warnings.size(),
-        0); // this is technically a bug, since the repeat body always returns; fixing this bug is a bit more involved than I'd like
+    // this is technically a bug, since the repeat body always returns; fixing this bug is a bit more involved than I'd like
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "UnknownType")
@@ -633,7 +633,7 @@ local _o02 = type(game) == "vector"
 local _o03 = typeof(game) == "Part"
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 3);
+    REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 2);
     CHECK_EQ(result.warnings[0].text, "Unknown type 'Part' (expected primitive type)");
     CHECK_EQ(result.warnings[1].location.begin.line, 3);
@@ -654,7 +654,7 @@ for i=#t,1,-1 do
 end
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
     CHECK_EQ(result.warnings[0].text, "For loop should iterate backwards; did you forget to specify -1 as step?");
 }
@@ -669,7 +669,7 @@ for i=8,1,-1 do
 end
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 1);
     CHECK_EQ(result.warnings[0].text, "For loop should iterate backwards; did you forget to specify -1 as step?");
 }
@@ -684,7 +684,7 @@ for i=1.3,7.5,1 do
 end
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 1);
     CHECK_EQ(result.warnings[0].text, "For loop ends at 7.3 instead of 7.5; did you forget to specify step?");
 }
@@ -702,7 +702,7 @@ for i=#t,0 do
 end
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 1);
     CHECK_EQ(result.warnings[0].text, "For loop starts at 0, but arrays start at 1");
     CHECK_EQ(result.warnings[1].location.begin.line, 7);
@@ -730,7 +730,7 @@ local _a,_b,_c = pcall(), nil
 end
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 5);
     CHECK_EQ(result.warnings[0].text, "Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence");
     CHECK_EQ(result.warnings[1].location.begin.line, 11);
@@ -795,7 +795,7 @@ end
 return f1,f2,f3,f4,f5,f6,f7
 )");
 
-    CHECK_EQ(result.warnings.size(), 3);
+    REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 4);
     CHECK_EQ(result.warnings[0].text,
         "Function 'f1' can implicitly return no values even though there's an explicit return at line 4; add explicit return to silence");
@@ -851,7 +851,7 @@ end
 return f1,f2,f3,f4
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].location.begin.line, 25);
     CHECK_EQ(result.warnings[0].text,
         "Function 'f3' can implicitly return no values even though there's an explicit return at line 21; add explicit return to silence");
@@ -874,7 +874,7 @@ type InputData = {
 }
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "BreakFromInfiniteLoopMakesStatementReachable")
@@ -893,7 +893,7 @@ until true
 return 1
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "IgnoreLintAll")
@@ -903,7 +903,7 @@ TEST_CASE_FIXTURE(Fixture, "IgnoreLintAll")
 return foo
 )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "IgnoreLintSpecific")
@@ -914,7 +914,7 @@ local x = 1
 return foo
 )");
 
-    CHECK_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'x' is never used; prefix with '_' to silence");
 }
 
@@ -933,7 +933,7 @@ local _ = ("%"):format()
 string.format("hello %+10d %.02f %%", 4, 5)
 )");
 
-    CHECK_EQ(result.warnings.size(), 4);
+    REQUIRE(4 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid format string: unfinished format specifier");
     CHECK_EQ(result.warnings[1].text, "Invalid format string: invalid format specifier: must be a string format specifier or %");
     CHECK_EQ(result.warnings[2].text, "Invalid format string: invalid format specifier: must be a string format specifier or %");
@@ -973,7 +973,7 @@ string.packsize("c99999999999999999999")
 string.packsize("=!1bbbI3c42")
 )");
 
-    CHECK_EQ(result.warnings.size(), 11);
+    REQUIRE(11 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid pack format: unexpected character; must be a pack specifier or space");
     CHECK_EQ(result.warnings[1].text, "Invalid pack format: unexpected character; must be a pack specifier or space");
     CHECK_EQ(result.warnings[2].text, "Invalid pack format: unexpected character; must be a pack specifier or space");
@@ -1017,7 +1017,7 @@ local _ = s:match("%q")
 string.match(s, "[A-Z]+(%d)%1")
 )");
 
-    CHECK_EQ(result.warnings.size(), 14);
+    REQUIRE(14 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
     CHECK_EQ(result.warnings[1].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
     CHECK_EQ(result.warnings[2].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
@@ -1049,7 +1049,7 @@ string.match(s, "((a)%1)")
 string.match(s, "((a)%3)")
 )~");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid match pattern: invalid capture reference, must refer to a closed capture");
     CHECK_EQ(result.warnings[0].location.begin.line, 7);
     CHECK_EQ(result.warnings[1].text, "Invalid match pattern: invalid capture reference, must refer to a valid capture");
@@ -1087,7 +1087,7 @@ string.match(s, "[]|'[]")
 string.match(s, "[^]|'[]")
 )~");
 
-    CHECK_EQ(result.warnings.size(), 7);
+    REQUIRE(7 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid match pattern: expected ] at the end of the string to close a set");
     CHECK_EQ(result.warnings[1].text, "Invalid match pattern: expected ] at the end of the string to close a set");
     CHECK_EQ(result.warnings[2].text, "Invalid match pattern: character range can't include character sets");
@@ -1118,7 +1118,7 @@ string.find("foo");
 ("foo"):find()
 )");
 
-    CHECK_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
     CHECK_EQ(result.warnings[0].location.begin.line, 4);
     CHECK_EQ(result.warnings[1].text, "Invalid match pattern: invalid character class, must refer to a defined class or its inverse");
@@ -1141,7 +1141,7 @@ string.gsub(s, '[A-Z]+(%d)', "%0%1")
 string.gsub(s, 'foo', "%0")
 )");
 
-    CHECK_EQ(result.warnings.size(), 4);
+    REQUIRE(4 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid match replacement: unfinished replacement");
     CHECK_EQ(result.warnings[1].text, "Invalid match replacement: unexpected replacement character; must be a digit or %");
     CHECK_EQ(result.warnings[2].text, "Invalid match replacement: invalid capture index, must refer to pattern capture");
@@ -1162,7 +1162,7 @@ os.date("it's %c now")
 os.date("!*t")
 )");
 
-    CHECK_EQ(result.warnings.size(), 4);
+    REQUIRE(4 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid date format: unfinished replacement");
     CHECK_EQ(result.warnings[1].text, "Invalid date format: unexpected replacement character; must be a date format specifier or %");
     CHECK_EQ(result.warnings[2].text, "Invalid date format: unexpected replacement character; must be a date format specifier or %");
@@ -1181,7 +1181,7 @@ s:match("[]")
 nons:match("[]")
 )~");
 
-    REQUIRE_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Invalid match pattern: expected ] at the end of the string to close a set");
     CHECK_EQ(result.warnings[0].location.begin.line, 3);
     CHECK_EQ(result.warnings[1].text, "Invalid match pattern: expected ] at the end of the string to close a set");
@@ -1231,7 +1231,7 @@ _ = {
 }
 )");
 
-    CHECK_EQ(result.warnings.size(), 6);
+    REQUIRE(6 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Table field 'first' is a duplicate; previously defined at line 3");
     CHECK_EQ(result.warnings[1].text, "Table field 'first' is a duplicate; previously defined at line 9");
     CHECK_EQ(result.warnings[2].text, "Table index 1 is a duplicate; previously defined as a list entry");
@@ -1248,7 +1248,7 @@ TEST_CASE_FIXTURE(Fixture, "ImportOnlyUsedInTypeAnnotation")
         local x: Foo.Y = 1
     )");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'x' is never used; prefix with '_' to silence");
 }
 
@@ -1259,7 +1259,7 @@ TEST_CASE_FIXTURE(Fixture, "DisableUnknownGlobalWithTypeChecking")
         unknownGlobal()
     )");
 
-    REQUIRE_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_spurious_warning_after_a_function_type_alias")
@@ -1271,7 +1271,7 @@ TEST_CASE_FIXTURE(Fixture, "no_spurious_warning_after_a_function_type_alias")
         return exports
     )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
@@ -1294,7 +1294,7 @@ TEST_CASE_FIXTURE(Fixture, "use_all_parent_scopes_for_globals")
 
     LintResult result = frontend.lint("A");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeadLocalsUsed")
@@ -1320,7 +1320,7 @@ do
 end
     )");
 
-    CHECK_EQ(result.warnings.size(), 3);
+    REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Variable 'x' defined at line 4 is never initialized or assigned; initialize with 'nil' to silence");
     CHECK_EQ(result.warnings[1].text, "Assigning 2 values to 3 variables initializes extra variables with nil; add 'nil' to value list to silence");
     CHECK_EQ(result.warnings[2].text, "Variable 'c' defined at line 12 is never initialized or assigned; initialize with 'nil' to silence");
@@ -1333,7 +1333,7 @@ local foo
 function foo() end
     )");
 
-    CHECK_EQ(result.warnings.size(), 0);
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateGlobalFunction")
@@ -1408,7 +1408,7 @@ TEST_CASE_FIXTURE(Fixture, "DontTriggerTheWarningIfTheFunctionsAreInDifferentSco
         return c
     )");
 
-    CHECK(result.warnings.empty());
+    REQUIRE(0 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
@@ -1444,7 +1444,7 @@ TEST_CASE_FIXTURE(Fixture, "LintHygieneUAF")
         local h: Hooty.Pt
     )");
 
-    CHECK_EQ(result.warnings.size(), 12);
+    REQUIRE(12 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedApi")
@@ -1478,7 +1478,7 @@ return function (i: Instance)
 end
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 3);
+    REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Member 'Instance.Wait' is deprecated");
     CHECK_EQ(result.warnings[1].text, "Member 'toHSV' is deprecated, use 'Color3:ToHSV' instead");
     CHECK_EQ(result.warnings[2].text, "Member 'Instance.DataCost' is deprecated");
@@ -1511,7 +1511,7 @@ table.create(42, {})
 table.create(42, {} :: {})
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 10);
+    REQUIRE(10 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "table.insert will insert the value before the last element, which is likely a bug; consider removing the "
                                       "second argument or wrap it in parentheses to silence");
     CHECK_EQ(result.warnings[1].text, "table.insert will append the value to the table; consider removing the second argument for efficiency");
@@ -1556,7 +1556,7 @@ _ = true and true or false -- no warning since this is is a common pattern used 
 _ = if true then 1 elseif true then 2 else 3
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 8);
+    REQUIRE(8 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 4);
     CHECK_EQ(result.warnings[1].text, "Condition has already been checked on column 5");
@@ -1580,7 +1580,7 @@ elseif correct({a = 1, b = 2 * (-2), c = opaque.path['with']("calls", false)}) t
 end
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 4");
     CHECK_EQ(result.warnings[0].location.begin.line + 1, 5);
 }
@@ -1601,7 +1601,7 @@ end
 return foo, moo, a1, a2
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 4);
+    REQUIRE(4 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Function parameter 'a1' already defined on column 14");
     CHECK_EQ(result.warnings[1].text, "Variable 'a1' is never used; prefix with '_' to silence");
     CHECK_EQ(result.warnings[2].text, "Variable 'a1' already defined on column 7");
@@ -1618,7 +1618,7 @@ _ = math.random() < 0.5 and 0 or 42
 _ = (math.random() < 0.5 and false) or 42 -- currently ignored
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "The and-or expression always evaluates to the second alternative because the first alternative is false; "
                                       "consider using if-then-else expression instead");
     CHECK_EQ(result.warnings[1].text, "The and-or expression always evaluates to the second alternative because the first alternative is nil; "
@@ -1640,7 +1640,7 @@ do end
 --!nolint
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 6);
+    REQUIRE(6 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Unknown comment directive 'struct'; did you mean 'strict'?");
     CHECK_EQ(result.warnings[1].text, "Unknown comment directive 'nolintGlobal'");
     CHECK_EQ(result.warnings[2].text, "nolint directive refers to unknown lint rule 'Global'");
@@ -1656,7 +1656,7 @@ TEST_CASE_FIXTURE(Fixture, "WrongCommentMuteSelf")
 --!struct
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 0); // --!nolint disables WrongComment lint :)
+    REQUIRE(0 == result.warnings.size()); // --!nolint disables WrongComment lint :)
 }
 
 TEST_CASE_FIXTURE(Fixture, "DuplicateConditionsIfStatAndExpr")
@@ -1668,7 +1668,7 @@ elseif if 0 then 5 else 4 then
 end
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Condition has already been checked on line 2");
 }
 
@@ -1681,13 +1681,13 @@ TEST_CASE_FIXTURE(Fixture, "WrongCommentOptimize")
 --!optimize 2
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 3);
+    REQUIRE(3 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "optimize directive requires an optimization level");
     CHECK_EQ(result.warnings[1].text, "optimize directive uses unknown optimization level 'me', 0..2 expected");
     CHECK_EQ(result.warnings[2].text, "optimize directive uses unknown optimization level '100500', 0..2 expected");
 
     result = lint("--!optimize   ");
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "optimize directive requires an optimization level");
 }
 
@@ -1700,7 +1700,7 @@ TEST_CASE_FIXTURE(Fixture, "TestStringInterpolation")
         local _ = `unknown {foo}`
     )");
 
-    REQUIRE_EQ(result.warnings.size(), 1);
+    REQUIRE(1 == result.warnings.size());
 }
 
 TEST_CASE_FIXTURE(Fixture, "IntegerParsing")
@@ -1710,7 +1710,7 @@ local _ = 0b10000000000000000000000000000000000000000000000000000000000000000
 local _ = 0x10000000000000000
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "Binary number literal exceeded available precision and has been truncated to 2^64");
     CHECK_EQ(result.warnings[1].text, "Hexadecimal number literal exceeded available precision and has been truncated to 2^64");
 }
@@ -1725,7 +1725,7 @@ local _ = 0x0x123
 local _ = 0x0xffffffffffffffffffffffffffffffffff
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 2);
+    REQUIRE(2 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text,
         "Hexadecimal number literal has a double prefix, which will fail to parse in the future; remove the extra 0x to fix");
     CHECK_EQ(result.warnings[1].text,
@@ -1756,7 +1756,7 @@ local _ = (a <= b) == 0
 local _ = a <= (b == 0)
 )");
 
-    REQUIRE_EQ(result.warnings.size(), 5);
+    REQUIRE(5 == result.warnings.size());
     CHECK_EQ(result.warnings[0].text, "not X == Y is equivalent to (not X) == Y; consider using X ~= Y, or add parentheses to silence");
     CHECK_EQ(result.warnings[1].text, "not X ~= Y is equivalent to (not X) ~= Y; consider using X == Y, or add parentheses to silence");
     CHECK_EQ(result.warnings[2].text, "not X <= Y is equivalent to (not X) <= Y; add parentheses to silence");

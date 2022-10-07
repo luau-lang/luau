@@ -354,10 +354,15 @@ void AssemblyBuilderX64::jmp(Label& label)
 
 void AssemblyBuilderX64::jmp(OperandX64 op)
 {
+    LUAU_ASSERT((op.cat == CategoryX64::reg ? op.base.size : op.memSize) == SizeX64::qword);
+
     if (logText)
         log("jmp", op);
 
-    placeRex(op);
+    // Indirect absolute calls always work in 64 bit width mode, so REX.W is optional
+    // While we could keep an optional prefix, in Windows x64 ABI it signals a tail call return statement to the unwinder
+    placeRexNoW(op);
+
     place(0xff);
     placeModRegMem(op, 4);
     commit();
@@ -376,10 +381,14 @@ void AssemblyBuilderX64::call(Label& label)
 
 void AssemblyBuilderX64::call(OperandX64 op)
 {
+    LUAU_ASSERT((op.cat == CategoryX64::reg ? op.base.size : op.memSize) == SizeX64::qword);
+
     if (logText)
         log("call", op);
 
-    placeRex(op);
+    // Indirect absolute calls always work in 64 bit width mode, so REX.W is optional
+    placeRexNoW(op);
+
     place(0xff);
     placeModRegMem(op, 2);
     commit();
@@ -831,6 +840,21 @@ void AssemblyBuilderX64::placeRex(OperandX64 op)
         code = REX_W(op.base.size == SizeX64::qword) | REX_B(op.base);
     else if (op.cat == CategoryX64::mem)
         code = REX_W(op.memSize == SizeX64::qword) | REX_X(op.index) | REX_B(op.base);
+    else
+        LUAU_ASSERT(!"No encoding for left operand of this category");
+
+    if (code != 0)
+        place(code | 0x40);
+}
+
+void AssemblyBuilderX64::placeRexNoW(OperandX64 op)
+{
+    uint8_t code = 0;
+
+    if (op.cat == CategoryX64::reg)
+        code = REX_B(op.base);
+    else if (op.cat == CategoryX64::mem)
+        code = REX_X(op.index) | REX_B(op.base);
     else
         LUAU_ASSERT(!"No encoding for left operand of this category");
 

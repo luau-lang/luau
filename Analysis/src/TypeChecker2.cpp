@@ -280,7 +280,8 @@ struct TypeChecker2
         TypePackId actualRetType = reconstructPack(ret->list, arena);
 
         UnifierSharedState sharedState{&ice};
-        Unifier u{&arena, singletonTypes, Mode::Strict, stack.back(), ret->location, Covariant, sharedState};
+        Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
+        Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
         u.anyIsTop = true;
 
         u.tryUnify(actualRetType, expectedRetType);
@@ -1206,7 +1207,8 @@ struct TypeChecker2
     ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy)
     {
         UnifierSharedState sharedState{&ice};
-        Unifier u{&module->internalTypes, singletonTypes, Mode::Strict, scope, location, Covariant, sharedState};
+        Normalizer normalizer{&module->internalTypes, singletonTypes, NotNull{&sharedState}};
+        Unifier u{NotNull{&normalizer}, Mode::Strict, scope, location, Covariant};
         u.anyIsTop = true;
         u.tryUnify(subTy, superTy);
 

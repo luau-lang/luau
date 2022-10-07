@@ -12,6 +12,9 @@ namespace CodeGen
 class UnwindBuilderDwarf2 : public UnwindBuilder
 {
 public:
+    void setBeginOffset(size_t beginOffset) override;
+    size_t getBeginOffset() const override;
+
     void start() override;
 
     void spill(int espOffset, RegisterX64 reg) override;
@@ -26,6 +29,8 @@ public:
     void finalize(char* target, void* funcAddress, size_t funcSize) const override;
 
 private:
+    size_t beginOffset = 0;
+
     static const unsigned kRawDataLimit = 128;
     uint8_t rawData[kRawDataLimit];
     uint8_t* pos = rawData;

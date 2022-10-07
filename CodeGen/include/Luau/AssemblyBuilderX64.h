@@ -152,6 +152,7 @@ private:
     void placeModRegMem(OperandX64 rhs, uint8_t regop);
     void placeRex(RegisterX64 op);
     void placeRex(OperandX64 op);
+    void placeRexNoW(OperandX64 op);
     void placeRex(RegisterX64 lhs, OperandX64 rhs);
     void placeVex(OperandX64 dst, OperandX64 src1, OperandX64 src2, bool setW, uint8_t mode, uint8_t prefix);
     void placeImm8Or32(int32_t imm);
