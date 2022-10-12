@@ -191,7 +191,7 @@ The other difference between Luau’s type system and off-the-shelf semantic sub
 The common case for wanting negated types is in typechecking conditionals:
 ```lua
 -- initially x has type T
-if (type(x) == “string”) then
+if (type(x) == "string") then
   --  in this branch x has type T & string
 else
   -- in this branch x has type T & ~string
