@@ -21,7 +21,7 @@ False positives are especially poor for onboarding new users. If a type-curious 
 
 Inaccuracies in type errors are inevitable, since it is undecidable to decide ahead of time whether a runtime error will be triggered. Type system designers have to choose whether to live with false positives or false negatives. In Luau this is determined by the mode: `strict` mode errs on the side of false positives, and `nonstrict` mode errs on the side of false negatives.
 
-While inaccuracies are inevitable, we try to remove them whenever possible, since they result in spurious errors, and imprecision in type-driven tooling like autocorrect or API documentation.
+While inaccuracies are inevitable, we try to remove them whenever possible, since they result in spurious errors, and imprecision in type-driven tooling like autocomplete or API documentation.
 
 ## Subtyping as a source of false positives
 
@@ -51,7 +51,7 @@ This class of false positives no longer occurs in Luau, as we have moved from ou
 
 ## Syntactic subtyping
 
-AKA “what we did before”.
+AKA “what we did before.”
 
 Syntactic subtyping is a syntax-directed recursive algorithm. The interesting cases to deal with intersection and union types are:
 
@@ -80,7 +80,7 @@ This is typical of syntactic subtyping: when it returns a “yes” result, it i
 
 ## Semantic subtyping
 
-AKA “what we do now”.
+AKA “what we do now.”
 
 Rather than thinking of subtyping as being syntax-directed, we first consider its semantics, and later return to how the semantics is implemented. For this, we adopt semantic subtyping:
 
@@ -93,7 +93,7 @@ For example:
 
 | Type | Semantics |
 |------|-----------|
-| `number` | {1, 2, 3, …} |
+| `number` | { 1, 2, 3, … } |
 | `string` | {“foo” “bar”, … } |
 | `nil` | { nil } |
 | `number?` | { nil, 1, 2, 3, … } |
@@ -160,27 +160,27 @@ Because of these performance issues, we still use syntactic subtyping as our fir
 
 ## Pragmatic semantic subtyping
 
-Off-the-shelf semantic subtyping is slightly different from what is implemented in Luau, because it requires models to be *set-theoretic*, which requires that inhabitants of function types “act like functions”. There are two reasons why we drop this requirement.
+Off-the-shelf semantic subtyping is slightly different from what is implemented in Luau, because it requires models to be *set-theoretic*, which requires that inhabitants of function types “act like functions.” There are two reasons why we drop this requirement.
 
 **Firstly**, we normalize function types to an intersection of functions, for example a horrible mess of unions and intersections of functions:
 ```
-(number? -> number?) | ((number -> number) & (string? -> string?))
+((number?) -> number?) | (((number) -> number) & ((string?) -> string?))
 ```
 normalizes to an overloaded function:
 ```
-(number -> number?) & (nil -> (number | string)?)
+((number) -> number?) & ((nil) -> (number | string)?)
 ```
 Set-theoretic semantic subtyping does not support this normalization, and instead normalizes functions to *disjunctive normal form* (unions of intersections of functions). We do not do this for ergonomic reasons: overloaded functions are idiomatic in Luau, but DNF is not, and we do not want to present users with such non-idiomatic types.
 
 Our normalization relies on rewriting away unions of function types:
 ```
-(A -> B) | (C -> D)   →   (A & C) -> (B | D) 
+((A) -> B) | ((C) -> D)   →   (A & C) -> (B | D) 
 ```
 This normalization is sound in our model, but not in set-theoretic models.
 
-**Secondly**, in Luau, the type of a function application `f(x)` is `B` if `f` has type `A -> B` and `x` has type `A`. Unexpectedly, this is not always true in set-theoretic models, due to uninhabited types. In set-theoretic models, if `x` has type `never` then `f(x)` has type `never`. We do not want to burden users with the idea that function application has a special corner case, especially since that corner case can only arise in dead code.
+**Secondly**, in Luau, the type of a function application `f(x)` is `B` if `f` has type `(A) -> B` and `x` has type `A`. Unexpectedly, this is not always true in set-theoretic models, due to uninhabited types. In set-theoretic models, if `x` has type `never` then `f(x)` has type `never`. We do not want to burden users with the idea that function application has a special corner case, especially since that corner case can only arise in dead code.
 
-In set-theoretic models, `never -> A` is a subtype of `never -> B`, no matter what `A` and `B` are. This is not true in Luau.
+In set-theoretic models, `(never) -> A` is a subtype of `(never) -> B`, no matter what `A` and `B` are. This is not true in Luau.
 
 For these two reasons (which are largely about ergonomics rather than anything technical) we drop the set-theoretic requirement, and use *pragmatic* semantic subtyping.
 
@@ -199,7 +199,7 @@ end
 ```
 This uses a negated type `~string` inhabited by values that are not strings.
 
-In Luau, we only allow this kind of typing refinement on named types like `string`, `function`, `Part` and so on, and *not* on structural types like `A -> B`, which avoids the common case of general negated types.
+In Luau, we only allow this kind of typing refinement on named types like `string`, `function`, `Part` and so on, and *not* on structural types like `(A) -> B`, which avoids the common case of general negated types.
 
 ## Prototyping and verification
 
