@@ -94,7 +94,7 @@ For example:
 | Type | Semantics |
 |------|-----------|
 | `number` | { 1, 2, 3, … } |
-| `string` | {“foo” “bar”, … } |
+| `string` | { “foo”, “bar”, … } |
 | `nil` | { nil } |
 | `number?` | { nil, 1, 2, 3, … } |
 | `string?` | { nil, “foo”, “bar”, … } |
