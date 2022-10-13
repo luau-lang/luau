@@ -9,7 +9,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauCheckGenericHOFTypes)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
@@ -783,8 +782,6 @@ local TheDispatcher: Dispatcher = {
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_few")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check(R"(
 function test(a: number)
     return 1
@@ -802,8 +799,6 @@ wrapper(test)
 
 TEST_CASE_FIXTURE(Fixture, "generic_argument_count_too_many")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check(R"(
 function test2(a: number, b: string)
     return 1
@@ -965,7 +960,6 @@ TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments")
         CHECK_EQ("<a, b...>((a) -> (b...), a) -> (b...)", toString(tm->givenType));
     else
         CHECK_EQ("((number) -> number, number) -> number", toString(tm->givenType));
-
 }
 
 TEST_CASE_FIXTURE(Fixture, "instantiate_generic_function_in_assignments2")
@@ -1114,27 +1108,7 @@ local b = sumrec(sum) -- ok
 local c = sumrec(function(x, y, f) return f(x, y) end) -- type binders are not inferred
     )");
 
-    if (FFlag::LuauCheckGenericHOFTypes)
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
-    else if (FFlag::LuauInstantiateInSubtyping)
-    {
-        LUAU_REQUIRE_ERRORS(result);
-        CHECK_EQ(
-            R"(Type '<a, b, c...>(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'
-caused by:
-  Argument #1 type is not compatible. Generic subtype escaping scope)",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_ERRORS(result);
-        CHECK_EQ(
-            "Type '(a, b, (a, b) -> (c...)) -> (c...)' could not be converted into '<a>(a, a, (a, a) -> a) -> a'; different number of generic type "
-            "parameters",
-            toString(result.errors[0]));
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "substitution_with_bound_table")
@@ -1258,7 +1232,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "higher_rank_polymorphism_should_not_accept_i
 {
     ScopedFastFlag sffs[] = {
         {"LuauInstantiateInSubtyping", true},
-        {"LuauCheckGenericHOFTypes", true}, // necessary because of interactions with the test
     };
 
     CheckResult result = check(R"(

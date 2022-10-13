@@ -8,7 +8,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 
 TEST_SUITE_BEGIN("IntersectionTypes");
 
@@ -306,10 +305,7 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table '{| x: number, y: number |}'");
-    else
-        CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
+    CHECK_EQ(toString(result.errors[0]), "Cannot add property 'z' to table 'X & Y'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
@@ -333,16 +329,9 @@ TEST_CASE_FIXTURE(Fixture, "table_intersection_write_sealed_indirect")
     CHECK_EQ(toString(result.errors[0]), R"(Type '(string, number) -> string' could not be converted into '(string) -> string'
 caused by:
   Argument count mismatch. Function expects 2 arguments, but only 1 is specified)");
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table '{| x: (number) -> number, y: (string) -> string |}'");
-    else
-        CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
+    CHECK_EQ(toString(result.errors[1]), "Cannot add property 'z' to table 'X & Y'");
     CHECK_EQ(toString(result.errors[2]), "Type 'number' could not be converted into 'string'");
-
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table '{| x: (number) -> number, y: (string) -> string |}'");
-    else
-        CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
+    CHECK_EQ(toString(result.errors[3]), "Cannot add property 'w' to table 'X & Y'");
 }
 
 TEST_CASE_FIXTURE(Fixture, "table_write_sealed_indirect")
@@ -381,15 +370,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_intersection_setmetatable")
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_part")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", false}};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
 type Z = { z: number }
-
 type XYZ = X & Y & Z
-
 local a: XYZ = 3
     )");
 
@@ -401,15 +386,11 @@ caused by:
 
 TEST_CASE_FIXTURE(Fixture, "error_detailed_intersection_all")
 {
-    ScopedFastFlag flags[] = {{"LuauLowerBoundsCalculation", false}};
-
     CheckResult result = check(R"(
 type X = { x: number }
 type Y = { y: number }
 type Z = { z: number }
-
 type XYZ = X & Y & Z
-
 local a: XYZ
 local b: number = a
     )");
@@ -468,12 +449,13 @@ TEST_CASE_FIXTURE(Fixture, "intersect_false_and_bool_and_false")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // TODO: odd stringification of `false & (boolean & false)`.)
-    CHECK_EQ(toString(result.errors[0]), "Type 'boolean & false & false' could not be converted into 'true'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type 'boolean & false & false' could not be converted into 'true'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -485,12 +467,13 @@ TEST_CASE_FIXTURE(Fixture, "intersect_saturate_overloaded_functions")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> number?) & ((string?) -> string?)' could not be converted into '(number) -> number'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> number?) & ((string?) -> string?)' could not be converted into '(number) -> number'; "
+                                         "none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -502,12 +485,13 @@ TEST_CASE_FIXTURE(Fixture, "union_saturate_overloaded_functions")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number) -> number) & ((string) -> string)' could not be converted into '(boolean | number) -> boolean | number'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((number) -> number) & ((string) -> string)' could not be converted into '(boolean | number) -> "
+                                         "boolean | number'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -519,7 +503,8 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '{| p: number?, q: number?, r: number? |} & {| p: number?, q: string? |}' could not be converted into '{| p: nil |}'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '{| p: number?, q: number?, r: number? |} & {| p: number?, q: string? |}' could not be converted into "
+                                         "'{| p: nil |}'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
@@ -531,12 +516,13 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_top_properties")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '{| p: number?, q: any |} & {| p: unknown, q: string? |}' could not be converted into '{| p: string?, q: number? |}'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '{| p: number?, q: any |} & {| p: unknown, q: string? |}' could not be converted into '{| p: string?, "
+                                         "q: number? |}'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -549,12 +535,13 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
 
     // TODO: this should not produce type errors, since never <: { p : never }
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '{| p: never, q: string? |} & {| p: number?, q: never |}' could not be converted into 'never'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '{| p: never, q: string? |} & {| p: number?, q: never |}' could not be converted into 'never'; none "
+                                         "of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -566,12 +553,14 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> {| p: number |} & {| q: number |}) & ((string?) -> {| p: number |} & {| r: number |})' could not be converted into '(number?) -> {| p: number, q: number, r: number |}'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '((number?) -> {| p: number |} & {| q: number |}) & ((string?) -> {| p: number |} & {| r: number |})' could not be converted into "
+        "'(number?) -> {| p: number, q: number, r: number |}'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -585,12 +574,13 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> a | number) & ((string?) -> a | string)' could not be converted into '(number?) -> a'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> a | number) & ((string?) -> a | string)' could not be converted into '(number?) -> a'; "
+                                         "none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -604,12 +594,13 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generics")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((a?) -> a | b) & ((c?) -> b | c)' could not be converted into '(a?) -> (a & c) | b'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '((a?) -> a | b) & ((c?) -> b | c)' could not be converted into '(a?) -> (a & c) | b'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -623,12 +614,13 @@ TEST_CASE_FIXTURE(Fixture, "overloaded_functions_mentioning_generic_packs")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number?, a...) -> (number?, b...)) & ((string?, a...) -> (string?, b...))' could not be converted into '(nil, b...) -> (nil, a...)'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((number?, a...) -> (number?, b...)) & ((string?, a...) -> (string?, b...))' could not be converted "
+                                         "into '(nil, b...) -> (nil, a...)'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -642,12 +634,13 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_result")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((nil) -> unknown) & ((number) -> number)' could not be converted into '(number?) -> number?'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((nil) -> unknown) & ((number) -> number)' could not be converted into '(number?) -> number?'; none "
+                                         "of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -661,12 +654,13 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_unknown_arguments")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number) -> number?) & ((unknown) -> string?)' could not be converted into '(number?) -> nil'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((number) -> number?) & ((unknown) -> string?)' could not be converted into '(number?) -> nil'; none "
+                                         "of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -680,12 +674,13 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_result")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((nil) -> never) & ((number) -> number)' could not be converted into '(number?) -> never'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((nil) -> never) & ((number) -> number)' could not be converted into '(number?) -> never'; none of "
+                                         "the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_arguments")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -699,7 +694,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_never_arguments")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((never) -> string?) & ((number) -> number?)' could not be converted into '(number?) -> nil'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((never) -> string?) & ((number) -> number?)' could not be converted into '(number?) -> nil'; none "
+                                         "of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_variadics")
@@ -711,7 +707,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_overlapping_results_and_
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> (...number)) & ((string?) -> number | string)' could not be converted into '(number | string) -> (number, number?)'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((number?) -> (...number)) & ((string?) -> number | string)' could not be converted into '(number | "
+                                         "string) -> (number, number?)'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
@@ -725,7 +722,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_1")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(() -> (a...)) & (() -> (b...))' could not be converted into '() -> ()'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '(() -> (a...)) & (() -> (b...))' could not be converted into '() -> ()'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
@@ -739,7 +737,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_2")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((a...) -> ()) & ((b...) -> ())' could not be converted into '() -> ()'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '((a...) -> ()) & ((b...) -> ())' could not be converted into '() -> ()'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_3")
@@ -753,7 +752,8 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_3")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(() -> (a...)) & (() -> (number?, a...))' could not be converted into '() -> number'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '(() -> (a...)) & (() -> (number?, a...))' could not be converted into '() -> number'; none of the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
@@ -767,12 +767,13 @@ TEST_CASE_FIXTURE(Fixture, "overloadeded_functions_with_weird_typepacks_4")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((a...) -> ()) & ((number, a...) -> number)' could not be converted into '(number?) -> ()'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '((a...) -> ()) & ((number, a...) -> number)' could not be converted into '(number?) -> ()'; none of "
+                                         "the intersection parts are compatible");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -800,7 +801,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -826,7 +827,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_subtypes")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -849,7 +850,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with table")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -874,7 +875,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with table")
 
 TEST_CASE_FIXTURE(Fixture, "CLI-44817")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };

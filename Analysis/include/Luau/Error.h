@@ -33,7 +33,6 @@ struct UnknownSymbol
     {
         Binding,
         Type,
-        Generic
     };
     Name name;
     Context context;

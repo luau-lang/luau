@@ -572,6 +572,7 @@ void BytecodeBuilder::addDebugRemark(const char* format, ...)
     debugRemarkBuffer += '\0';
 
     debugRemarks.emplace_back(uint32_t(insns.size()), uint32_t(offset));
+    dumpRemarks.emplace_back(debugLine, debugRemarkBuffer.c_str() + offset);
 }
 
 void BytecodeBuilder::finalize()
@@ -1944,6 +1945,42 @@ std::string BytecodeBuilder::dumpEverything() const
 
         result += functions[i].dump;
         result += "\n";
+    }
+
+    return result;
+}
+
+std::string BytecodeBuilder::dumpSourceRemarks() const
+{
+    std::string result;
+
+    size_t nextRemark = 0;
+
+    std::vector<std::pair<int, std::string>> remarks = dumpRemarks;
+    std::sort(remarks.begin(), remarks.end());
+
+    for (size_t i = 0; i < dumpSource.size(); ++i)
+    {
+        const std::string& line = dumpSource[i];
+
+        size_t indent = 0;
+        while (indent < line.length() && (line[indent] == ' ' || line[indent] == '\t'))
+            indent++;
+
+        while (nextRemark < remarks.size() && remarks[nextRemark].first == int(i + 1))
+        {
+            formatAppend(result, "%.*s-- remark: %s\n", int(indent), line.c_str(), remarks[nextRemark].second.c_str());
+            nextRemark++;
+
+            // skip duplicate remarks (due to inlining/unrolling)
+            while (nextRemark < remarks.size() && remarks[nextRemark] == remarks[nextRemark - 1])
+                nextRemark++;
+        }
+
+        result += line;
+
+        if (i + 1 < dumpSource.size())
+            result += '\n';
     }
 
     return result;

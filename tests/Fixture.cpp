@@ -92,7 +92,8 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
 
 Fixture::Fixture(bool freeze, bool prepareAutocomplete)
     : sff_DebugLuauFreezeArena("DebugLuauFreezeArena", freeze)
-    , frontend(&fileResolver, &configResolver, {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* randomConstraintResolutionSeed */ randomSeed})
+    , frontend(&fileResolver, &configResolver,
+          {/* retainFullTypeGraphs= */ true, /* forAutocomplete */ false, /* randomConstraintResolutionSeed */ randomSeed})
     , typeChecker(frontend.typeChecker)
     , singletonTypes(frontend.singletonTypes)
 {

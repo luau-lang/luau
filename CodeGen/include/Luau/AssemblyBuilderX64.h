@@ -15,6 +15,14 @@ namespace Luau
 namespace CodeGen
 {
 
+enum class RoundingModeX64
+{
+    RoundToNearestEven = 0b00,
+    RoundToNegativeInfinity = 0b01,
+    RoundToPositiveInfinity = 0b10,
+    RoundToZero = 0b11,
+};
+
 class AssemblyBuilderX64
 {
 public:
@@ -48,6 +56,8 @@ public:
     void imul(OperandX64 op);
     void neg(OperandX64 op);
     void not_(OperandX64 op);
+    void dec(OperandX64 op);
+    void inc(OperandX64 op);
 
     // Additional forms of imul
     void imul(OperandX64 lhs, OperandX64 rhs);
@@ -82,13 +92,12 @@ public:
 
     void vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
-    void vcomisd(OperandX64 src1, OperandX64 src2);
     void vucomisd(OperandX64 src1, OperandX64 src2);
 
     void vcvttsd2si(OperandX64 dst, OperandX64 src);
     void vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
 
-    void vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mode);
+    void vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode); // inexact
 
     void vsqrtpd(OperandX64 dst, OperandX64 src);
     void vsqrtps(OperandX64 dst, OperandX64 src);
@@ -120,12 +129,16 @@ public:
     OperandX64 f32x4(float x, float y, float z, float w);
     OperandX64 bytes(const void* ptr, size_t size, size_t align = 8);
 
+    void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
+
     // Resulting data and code that need to be copied over one after the other
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
     std::vector<uint8_t> code;
 
     std::string text;
+
+    const bool logText = false;
 
 private:
     // Instruction archetypes
@@ -178,7 +191,6 @@ private:
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(const char* opcode, Label label);
     void log(OperandX64 op);
-    void logAppend(const char* fmt, ...);
 
     const char* getSizeName(SizeX64 size);
     const char* getRegisterName(RegisterX64 reg);
@@ -187,7 +199,6 @@ private:
     std::vector<Label> pendingLabels;
     std::vector<uint32_t> labelLocations;
 
-    bool logText = false;
     bool finalized = false;
 
     size_t dataPos = 0;

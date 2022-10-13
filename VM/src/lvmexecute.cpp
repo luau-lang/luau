@@ -16,6 +16,8 @@
 
 #include <string.h>
 
+LUAU_FASTFLAGVARIABLE(LuauNoTopRestoreInFastCall, false)
+
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -2537,6 +2539,8 @@ reentry:
 
                     if (n >= 0)
                     {
+                        // when nresults != MULTRET, L->top might be pointing to the middle of stack frame if nparams is equal to MULTRET
+                        // instead of restoring L->top to L->ci->top if nparams is MULTRET, we do it unconditionally to skip an extra check
                         L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
@@ -2613,7 +2617,15 @@ reentry:
 
                     if (n >= 0)
                     {
-                        L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
+                        if (FFlag::LuauNoTopRestoreInFastCall)
+                        {
+                            if (nresults == LUA_MULTRET)
+                                L->top = ra + n;
+                        }
+                        else
+                        {
+                            L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
+                        }
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
@@ -2661,7 +2673,15 @@ reentry:
 
                     if (n >= 0)
                     {
-                        L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
+                        if (FFlag::LuauNoTopRestoreInFastCall)
+                        {
+                            if (nresults == LUA_MULTRET)
+                                L->top = ra + n;
+                        }
+                        else
+                        {
+                            L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
+                        }
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
@@ -2709,7 +2729,15 @@ reentry:
 
                     if (n >= 0)
                     {
-                        L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
+                        if (FFlag::LuauNoTopRestoreInFastCall)
+                        {
+                            if (nresults == LUA_MULTRET)
+                                L->top = ra + n;
+                        }
+                        else
+                        {
+                            L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
+                        }
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));

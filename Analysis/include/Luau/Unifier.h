@@ -61,15 +61,15 @@ struct Unifier
     ErrorVec errors;
     Location location;
     Variance variance = Covariant;
-    bool anyIsTop = false; // If true, we consider any to be a top type.  If false, it is a familiar but weird mix of top and bottom all at once.
-    bool normalize; // Normalize unions and intersections if necessary
+    bool anyIsTop = false;  // If true, we consider any to be a top type.  If false, it is a familiar but weird mix of top and bottom all at once.
+    bool normalize;         // Normalize unions and intersections if necessary
     bool useScopes = false; // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
 
     UnifierSharedState& sharedState;
 
-    Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance,
-        TxnLog* parentLog = nullptr);
+    Unifier(
+        NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog = nullptr);
 
     // Test whether the two type vars unify.  Never commits the result.
     ErrorVec canUnify(TypeId subTy, TypeId superTy);
@@ -87,7 +87,8 @@ private:
     void tryUnifyTypeWithUnion(TypeId subTy, TypeId superTy, const UnionTypeVar* uv, bool cacheEnabled, bool isFunctionCall);
     void tryUnifyTypeWithIntersection(TypeId subTy, TypeId superTy, const IntersectionTypeVar* uv);
     void tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeVar* uv, TypeId superTy, bool cacheEnabled, bool isFunctionCall);
-    void tryUnifyNormalizedTypes(TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason, std::optional<TypeError> error = std::nullopt);
+    void tryUnifyNormalizedTypes(TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason,
+        std::optional<TypeError> error = std::nullopt);
     void tryUnifyPrimitives(TypeId subTy, TypeId superTy);
     void tryUnifySingletons(TypeId subTy, TypeId superTy);
     void tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCall = false);

@@ -6,7 +6,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
@@ -360,10 +359,7 @@ a.x = 2
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ("Value of type '{| x: number, y: number |}?' could be nil", toString(result.errors[0]));
-    else
-        CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", toString(result.errors[0]));
+    CHECK_EQ("Value of type '({| x: number |} & {| y: number |})?' could be nil", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "optional_length_error")
@@ -532,18 +528,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_union_write_indirect")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     // NOTE: union normalization will improve this message
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(toString(result.errors[0]), "Type '(string) -> number' could not be converted into '(number) -> string'\n"
-                                             "caused by:\n"
-                                             "  Argument #1 type is not compatible. Type 'number' could not be converted into 'string'");
-    else
-        CHECK_EQ(toString(result.errors[0]),
-            R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
+    CHECK_EQ(toString(result.errors[0]),
+        R"(Type '(string) -> number' could not be converted into '((number) -> string) | ((number) -> string)'; none of the union options are compatible)");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_true_and_false")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -561,7 +552,7 @@ TEST_CASE_FIXTURE(Fixture, "union_true_and_false")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -598,7 +589,7 @@ TEST_CASE_FIXTURE(Fixture, "union_of_generic_typepack_functions")
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -612,12 +603,13 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(a) -> a?' could not be converted into '((b) -> b) | ((b?) -> nil)'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '(a) -> a?' could not be converted into '((b) -> b) | ((b?) -> nil)'; none of the union options are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -631,12 +623,13 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_mentioning_generic_typepacks")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(number, a...) -> (number?, a...)' could not be converted into '((number) -> number) | ((number?, a...) -> (number?, a...))'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '(number, a...) -> (number?, a...)' could not be converted into '((number) -> number) | ((number?, "
+                                         "a...) -> (number?, a...))'; none of the union options are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -648,12 +641,13 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_arities")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(number) -> number?' could not be converted into '((number) -> nil) | ((number, string?) -> number)'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '(number) -> number?' could not be converted into '((number) -> nil) | ((number, string?) -> "
+                                         "number)'; none of the union options are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -665,12 +659,13 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_arities")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '() -> number | string' could not be converted into '(() -> (string, string)) | (() -> number)'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '() -> number | string' could not be converted into '(() -> (string, string)) | (() -> number)'; none "
+                                         "of the union options are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -682,12 +677,13 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_variadics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(...nil) -> (...number?)' could not be converted into '((...string?) -> (...number)) | ((...string?) -> nil)'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '(...nil) -> (...number?)' could not be converted into '((...string?) -> (...number)) | ((...string?) "
+                                         "-> nil)'; none of the union options are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -699,12 +695,13 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_arg_variadics")
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '(number) -> ()' could not be converted into '((...number?) -> ()) | ((number?) -> ())'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '(number) -> ()' could not be converted into '((...number?) -> ()) | ((number?) -> ())'; none of the union options are compatible");
 }
 
 TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -716,7 +713,8 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
      )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '() -> (number?, ...number)' could not be converted into '(() -> (...number)) | (() -> number)'; none of the union options are compatible");
+    CHECK_EQ(toString(result.errors[0]), "Type '() -> (number?, ...number)' could not be converted into '(() -> (...number)) | (() -> number)'; none "
+                                         "of the union options are compatible");
 }
 
 TEST_SUITE_END();

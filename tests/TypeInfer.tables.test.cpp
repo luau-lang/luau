@@ -11,7 +11,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TableTests");
@@ -1196,10 +1195,7 @@ TEST_CASE_FIXTURE(Fixture, "pass_incompatible_union_to_a_generic_table_without_c
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK(get<MissingProperties>(result.errors[0]));
-    else
-        CHECK(get<TypeMismatch>(result.errors[0]));
+    CHECK(get<TypeMismatch>(result.errors[0]));
 }
 
 // This unit test could be flaky if the fix has regressed.
@@ -2627,8 +2623,6 @@ do end
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dont_crash_when_setmetatable_does_not_produce_a_metatabletypevar")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check("local x = setmetatable({})");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Argument count mismatch. Function 'setmetatable' expects 2 arguments, but only 1 is specified", toString(result.errors[0]));
@@ -2709,8 +2703,6 @@ local baz = foo[bar]
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_simple_call")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check(R"(
 local a = setmetatable({ x = 2 }, {
     __call = function(self)
@@ -2887,7 +2879,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "dont_leak_free_table_props")
 TEST_CASE_FIXTURE(Fixture, "inferred_return_type_of_free_table")
 {
     ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
+        // {"LuauLowerBoundsCalculation", true},
         {"DebugLuauSharedSelf", true},
     };
 

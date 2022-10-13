@@ -12,6 +12,7 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 LUAU_FASTFLAG(LuauFixNameMaps);
+LUAU_FASTFLAG(LuauFunctionReturnStringificationFixup);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -568,6 +569,22 @@ TEST_CASE_FIXTURE(Fixture, "toString_the_boundTo_table_type_contained_within_a_T
 
     CHECK_EQ("{| hello: number, world: number |}", toString(&tpv1));
     CHECK_EQ("{| hello: number, world: number |}", toString(&tpv2));
+}
+
+TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_return_type_if_pack_has_an_empty_head_link")
+{
+    TypeArena arena;
+    TypePackId realTail = arena.addTypePack({singletonTypes->stringType});
+    TypePackId emptyTail = arena.addTypePack({}, realTail);
+
+    TypePackId argList = arena.addTypePack({singletonTypes->stringType});
+
+    TypeId functionType = arena.addType(FunctionTypeVar{argList, emptyTail});
+
+    if (FFlag::LuauFunctionReturnStringificationFixup)
+        CHECK("(string) -> string" == toString(functionType));
+    else
+        CHECK("(string) -> (string)" == toString(functionType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union")

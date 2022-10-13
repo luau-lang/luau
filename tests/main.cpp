@@ -21,7 +21,6 @@
 #include <sys/sysctl.h>
 #endif
 
-#include <random>
 #include <optional>
 
 // Indicates if verbose output is enabled; can be overridden via --verbose
@@ -31,8 +30,10 @@ bool verbose = false;
 // Default optimization level for conformance test; can be overridden via -On
 int optimizationLevel = 1;
 
-// Something to seed a pseudorandom number generator with.  Defaults to
-// something from std::random_device.
+// Run conformance tests with native code generation
+bool codegen = false;
+
+// Something to seed a pseudorandom number generator with
 std::optional<unsigned> randomSeed;
 
 static bool skipFastFlag(const char* flagName)
@@ -257,6 +258,11 @@ int main(int argc, char** argv)
         verbose = true;
     }
 
+    if (doctest::parseFlag(argc, argv, "--codegen"))
+    {
+        codegen = true;
+    }
+
     int level = -1;
     if (doctest::parseIntOption(argc, argv, "-O", doctest::option_int, level))
     {
@@ -272,7 +278,7 @@ int main(int argc, char** argv)
 
     if (doctest::parseOption(argc, argv, "--randomize") && !randomSeed)
     {
-        randomSeed = std::random_device()();
+        randomSeed = unsigned(time(nullptr));
         printf("Using RNG seed %u\n", *randomSeed);
     }
 

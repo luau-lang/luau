@@ -657,50 +657,9 @@ struct AssertionCatcher
 int AssertionCatcher::tripped;
 } // namespace
 
-TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice")
-{
-    ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", false},
-    };
-
-    AssertionCatcher ac;
-
-    CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
-        )"),
-        std::runtime_error);
-
-    LUAU_ASSERT(1 == AssertionCatcher::tripped);
-}
-
-TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_handler")
-{
-    ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", false},
-    };
-
-    bool caught = false;
-
-    frontend.iceHandler.onInternalError = [&](const char*) {
-        caught = true;
-    };
-
-    CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
-        )"),
-        std::runtime_error);
-
-    CHECK_EQ(true, caught);
-}
-
 TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
 {
-    ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", true},
-    };
+    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
 
     AssertionCatcher ac;
 
@@ -714,10 +673,7 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
 
 TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler")
 {
-    ScopedFastFlag sffs[] = {
-        {"DebugLuauMagicTypes", true},
-        {"LuauUseInternalCompilerErrorException", true},
-    };
+    ScopedFastFlag sffs{"DebugLuauMagicTypes", true};
 
     bool caught = false;
 

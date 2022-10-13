@@ -192,6 +192,7 @@ int luau_load(lua_State* L, const char* chunkname, const char* data, size_t size
     {
         Proto* p = luaF_newproto(L);
         p->source = source;
+        p->bytecodeid = int(i);
 
         p->maxstacksize = read<uint8_t>(data, size, offset);
         p->numparams = read<uint8_t>(data, size, offset);

@@ -8,7 +8,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleNameResolution, false)
-LUAU_FASTFLAGVARIABLE(LuauUseInternalCompilerErrorException, false)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
@@ -122,8 +121,6 @@ struct ErrorConverter
             return "Unknown global '" + e.name + "'";
         case UnknownSymbol::Type:
             return "Unknown type '" + e.name + "'";
-        case UnknownSymbol::Generic:
-            return "Unknown generic '" + e.name + "'";
         }
 
         LUAU_ASSERT(!"Unexpected context for UnknownSymbol");
@@ -902,46 +899,22 @@ void copyErrors(ErrorVec& errors, TypeArena& destArena)
 
 void InternalErrorReporter::ice(const std::string& message, const Location& location)
 {
-    if (FFlag::LuauUseInternalCompilerErrorException)
-    {
-        InternalCompilerError error(message, moduleName, location);
+    InternalCompilerError error(message, moduleName, location);
 
-        if (onInternalError)
-            onInternalError(error.what());
+    if (onInternalError)
+        onInternalError(error.what());
 
-        throw error;
-    }
-    else
-    {
-        std::runtime_error error("Internal error in " + moduleName + " at " + toString(location) + ": " + message);
-
-        if (onInternalError)
-            onInternalError(error.what());
-
-        throw error;
-    }
+    throw error;
 }
 
 void InternalErrorReporter::ice(const std::string& message)
 {
-    if (FFlag::LuauUseInternalCompilerErrorException)
-    {
-        InternalCompilerError error(message, moduleName);
+    InternalCompilerError error(message, moduleName);
 
-        if (onInternalError)
-            onInternalError(error.what());
+    if (onInternalError)
+        onInternalError(error.what());
 
-        throw error;
-    }
-    else
-    {
-        std::runtime_error error("Internal error in " + moduleName + ": " + message);
-
-        if (onInternalError)
-            onInternalError(error.what());
-
-        throw error;
-    }
+    throw error;
 }
 
 const char* InternalCompilerError::what() const throw()

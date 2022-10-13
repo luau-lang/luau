@@ -25,7 +25,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauStringFormatArgumentErrorFix, false)
 LUAU_FASTFLAGVARIABLE(LuauNoMoreGlobalSingletonTypes, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
@@ -1166,21 +1165,12 @@ std::optional<WithPredicate<TypePackId>> magicFunctionFormat(
     }
 
     // if we know the argument count or if we have too many arguments for sure, we can issue an error
-    if (FFlag::LuauStringFormatArgumentErrorFix)
-    {
-        size_t numActualParams = params.size();
-        size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
+    size_t numActualParams = params.size();
+    size_t numExpectedParams = expected.size() + 1; // + 1 for the format string
 
-        if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
-            typechecker.reportError(TypeError{expr.location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
-    }
-    else
-    {
-        size_t actualParamSize = params.size() - paramOffset;
+    if (numExpectedParams != numActualParams && (!tail || numExpectedParams < numActualParams))
+        typechecker.reportError(TypeError{expr.location, CountMismatch{numExpectedParams, std::nullopt, numActualParams}});
 
-        if (expected.size() != actualParamSize && (!tail || expected.size() < actualParamSize))
-            typechecker.reportError(TypeError{expr.location, CountMismatch{expected.size(), std::nullopt, actualParamSize}});
-    }
     return WithPredicate<TypePackId>{arena.addTypePack({typechecker.stringType})};
 }
 

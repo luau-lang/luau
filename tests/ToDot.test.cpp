@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
-
 using namespace Luau;
 
 struct ToDotClassFixture : Fixture
@@ -111,29 +109,7 @@ local function f(a, ...: string) return a end
     ToDotOptions opts;
     opts.showPointers = false;
 
-    if (FFlag::LuauLowerBoundsCalculation)
-    {
-        CHECK_EQ(R"(digraph graphname {
-n1 [label="FunctionTypeVar 1"];
-n1 -> n2 [label="arg"];
-n2 [label="TypePack 2"];
-n2 -> n3;
-n3 [label="GenericTypeVar 3"];
-n2 -> n4 [label="tail"];
-n4 [label="VariadicTypePack 4"];
-n4 -> n5;
-n5 [label="string"];
-n1 -> n6 [label="ret"];
-n6 [label="TypePack 6"];
-n6 -> n7;
-n7 [label="BoundTypeVar 7"];
-n7 -> n3;
-})",
-            toDot(requireType("f"), opts));
-    }
-    else
-    {
-        CHECK_EQ(R"(digraph graphname {
+    CHECK_EQ(R"(digraph graphname {
 n1 [label="FunctionTypeVar 1"];
 n1 -> n2 [label="arg"];
 n2 [label="TypePack 2"];
@@ -149,8 +125,7 @@ n6 -> n7;
 n7 [label="TypePack 7"];
 n7 -> n3;
 })",
-            toDot(requireType("f"), opts));
-    }
+        toDot(requireType("f"), opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "union")

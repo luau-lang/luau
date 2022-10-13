@@ -4,20 +4,6 @@ print('testing metatables')
 
 local unpack = table.unpack
 
-X = 20; B = 30
-
-local _G = getfenv()
-setfenv(1, setmetatable({}, {__index=_G}))
-
-collectgarbage()
-
-X = X+10
-assert(X == 30 and _G.X == 20)
-B = false
-assert(B == false)
-B = nil
-assert(B == 30)
-
 assert(getmetatable{} == nil)
 assert(getmetatable(4) == nil)
 assert(getmetatable(nil) == nil)
@@ -299,13 +285,7 @@ x = c(3,4,5)
 assert(i == 3 and x[1] == 3 and x[3] == 5)
 
 
-assert(_G.X == 20)
-assert(_G == getfenv(0))
-
 print'+'
-
-local _g = _G
-setfenv(1, setmetatable({}, {__index=function (_,k) return _g[k] end}))
 
 -- testing proxies
 assert(getmetatable(newproxy()) == nil)
@@ -479,5 +459,24 @@ do
     assert(ei[k] == v)
   end
 end
+
+function testfenv()
+  X = 20; B = 30
+
+  local _G = getfenv()
+  setfenv(1, setmetatable({}, {__index=_G}))
+
+  X = X+10
+  assert(X == 30 and _G.X == 20)
+  B = false
+  assert(B == false)
+  B = nil
+  assert(B == 30)
+
+  assert(_G.X == 20)
+  assert(_G == getfenv(0))
+end
+
+testfenv() -- DONT MOVE THIS LINE
 
 return 'OK'

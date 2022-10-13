@@ -263,11 +263,14 @@ static int luauF_log(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 
 static int luauF_max(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        double r = nvalue(arg0);
+        double a1 = nvalue(arg0);
+        double a2 = nvalue(args);
 
-        for (int i = 2; i <= nparams; ++i)
+        double r = (a2 > a1) ? a2 : a1;
+
+        for (int i = 3; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
                 return -1;
@@ -286,11 +289,14 @@ static int luauF_max(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 
 static int luauF_min(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        double r = nvalue(arg0);
+        double a1 = nvalue(arg0);
+        double a2 = nvalue(args);
 
-        for (int i = 2; i <= nparams; ++i)
+        double r = (a2 < a1) ? a2 : a1;
+
+        for (int i = 3; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
                 return -1;
@@ -439,22 +445,18 @@ static int luauF_arshift(lua_State* L, StkId res, TValue* arg0, int nresults, St
 
 static int luauF_band(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && nresults <= 1)
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        uint32_t r = ~0u;
+        double a1 = nvalue(arg0);
+        double a2 = nvalue(args);
 
-        if (!ttisnumber(arg0))
-            return -1;
+        unsigned u1, u2;
+        luai_num2unsigned(u1, a1);
+        luai_num2unsigned(u2, a2);
 
-        {
-            double a1 = nvalue(arg0);
-            unsigned u;
-            luai_num2unsigned(u, a1);
+        uint32_t r = u1 & u2;
 
-            r &= u;
-        }
-
-        for (int i = 2; i <= nparams; ++i)
+        for (int i = 3; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
                 return -1;
@@ -492,22 +494,18 @@ static int luauF_bnot(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 
 static int luauF_bor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && nresults <= 1)
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        uint32_t r = 0;
+        double a1 = nvalue(arg0);
+        double a2 = nvalue(args);
 
-        if (!ttisnumber(arg0))
-            return -1;
+        unsigned u1, u2;
+        luai_num2unsigned(u1, a1);
+        luai_num2unsigned(u2, a2);
 
-        {
-            double a1 = nvalue(arg0);
-            unsigned u;
-            luai_num2unsigned(u, a1);
+        uint32_t r = u1 | u2;
 
-            r |= u;
-        }
-
-        for (int i = 2; i <= nparams; ++i)
+        for (int i = 3; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
                 return -1;
@@ -528,22 +526,18 @@ static int luauF_bor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 
 static int luauF_bxor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && nresults <= 1)
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        uint32_t r = 0;
+        double a1 = nvalue(arg0);
+        double a2 = nvalue(args);
 
-        if (!ttisnumber(arg0))
-            return -1;
+        unsigned u1, u2;
+        luai_num2unsigned(u1, a1);
+        luai_num2unsigned(u2, a2);
 
-        {
-            double a1 = nvalue(arg0);
-            unsigned u;
-            luai_num2unsigned(u, a1);
+        uint32_t r = u1 ^ u2;
 
-            r ^= u;
-        }
-
-        for (int i = 2; i <= nparams; ++i)
+        for (int i = 3; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
                 return -1;
@@ -564,22 +558,18 @@ static int luauF_bxor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 
 static int luauF_btest(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
-    if (nparams >= 1 && nresults <= 1)
+    if (nparams >= 2 && nresults <= 1 && ttisnumber(arg0) && ttisnumber(args))
     {
-        uint32_t r = ~0u;
+        double a1 = nvalue(arg0);
+        double a2 = nvalue(args);
 
-        if (!ttisnumber(arg0))
-            return -1;
+        unsigned u1, u2;
+        luai_num2unsigned(u1, a1);
+        luai_num2unsigned(u2, a2);
 
-        {
-            double a1 = nvalue(arg0);
-            unsigned u;
-            luai_num2unsigned(u, a1);
+        uint32_t r = u1 & u2;
 
-            r &= u;
-        }
-
-        for (int i = 2; i <= nparams; ++i)
+        for (int i = 3; i <= nparams; ++i)
         {
             if (!ttisnumber(args + (i - 2)))
                 return -1;

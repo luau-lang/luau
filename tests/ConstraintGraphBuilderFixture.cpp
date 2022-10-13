@@ -14,4 +14,4 @@ ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     BlockedTypePack::nextIndex = 0;
 }
 
-}
+} // namespace Luau

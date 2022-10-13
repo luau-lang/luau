@@ -482,7 +482,7 @@ local a: ChildClass = i
 
 TEST_CASE_FIXTURE(ClassFixture, "intersections_of_unions_of_classes")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -499,7 +499,7 @@ TEST_CASE_FIXTURE(ClassFixture, "intersections_of_unions_of_classes")
 
 TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
 {
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };

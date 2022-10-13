@@ -42,4 +42,4 @@ bool FindNthOccurenceOf::visit(AstTypePack* t)
     return checkIt(t);
 }
 
-}
+} // namespace Luau

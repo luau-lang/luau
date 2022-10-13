@@ -45,8 +45,6 @@ TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobal")
 
 TEST_CASE_FIXTURE(Fixture, "DeprecatedGlobalNoReplacement")
 {
-    ScopedFastFlag sff{"LuauLintFixDeprecationMessage", true};
-
     // Normally this would be defined externally, so hack it in for testing
     const char* deprecationReplacementString = "";
     addGlobalBinding(frontend, "Version", Binding{typeChecker.anyType, {}, true, deprecationReplacementString});

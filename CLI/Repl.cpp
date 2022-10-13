@@ -4,6 +4,7 @@
 #include "lua.h"
 #include "lualib.h"
 
+#include "Luau/CodeGen.h"
 #include "Luau/Compiler.h"
 #include "Luau/BytecodeBuilder.h"
 #include "Luau/Parser.h"
@@ -46,10 +47,14 @@ enum class CompileFormat
 {
     Text,
     Binary,
+    Remarks,
+    Codegen,
     Null
 };
 
 constexpr int MaxTraversalLimit = 50;
+
+static bool codegen = false;
 
 // Ctrl-C handling
 static void sigintCallback(lua_State* L, int gc)
@@ -159,6 +164,9 @@ static int lua_require(lua_State* L)
     std::string bytecode = Luau::compile(*source, copts());
     if (luau_load(ML, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
+        if (codegen)
+            Luau::CodeGen::compile(ML, -1);
+
         if (coverageActive())
             coverageTrack(ML, -1);
 
@@ -242,6 +250,9 @@ static int lua_callgrind(lua_State* L)
 
 void setupState(lua_State* L)
 {
+    if (codegen)
+        Luau::CodeGen::create(L);
+
     luaL_openlibs(L);
 
     static const luaL_Reg funcs[] = {
@@ -275,6 +286,9 @@ std::string runCode(lua_State* L, const std::string& source)
 
         return error;
     }
+
+    if (codegen)
+        Luau::CodeGen::compile(L, -1);
 
     lua_State* T = lua_newthread(L);
 
@@ -604,6 +618,9 @@ static bool runFile(const char* name, lua_State* GL, bool repl)
 
     if (luau_load(L, chunkname.c_str(), bytecode.data(), bytecode.size(), 0) == 0)
     {
+        if (codegen)
+            Luau::CodeGen::compile(L, -1);
+
         if (coverageActive())
             coverageTrack(L, -1);
 
@@ -656,6 +673,20 @@ static void reportError(const char* name, const Luau::CompileError& error)
     report(name, error.getLocation(), "CompileError", error.what());
 }
 
+static std::string getCodegenAssembly(const char* name, const std::string& bytecode)
+{
+    std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    setupState(L);
+
+    if (luau_load(L, name, bytecode.data(), bytecode.size(), 0) == 0)
+        return Luau::CodeGen::getAssemblyText(L, -1);
+
+    fprintf(stderr, "Error loading bytecode %s\n", name);
+    return "";
+}
+
 static bool compileFile(const char* name, CompileFormat format)
 {
     std::optional<std::string> source = readFile(name);
@@ -675,6 +706,11 @@ static bool compileFile(const char* name, CompileFormat format)
                              Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
+        else if (format == CompileFormat::Remarks)
+        {
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
+            bcb.setDumpSource(*source);
+        }
 
         Luau::compileOrThrow(bcb, *source, copts());
 
@@ -683,8 +719,14 @@ static bool compileFile(const char* name, CompileFormat format)
         case CompileFormat::Text:
             printf("%s", bcb.dumpEverything().c_str());
             break;
+        case CompileFormat::Remarks:
+            printf("%s", bcb.dumpSourceRemarks().c_str());
+            break;
         case CompileFormat::Binary:
             fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
+            break;
+        case CompileFormat::Codegen:
+            printf("%s", getCodegenAssembly(name, bcb.getBytecode()).c_str());
             break;
         case CompileFormat::Null:
             break;
@@ -713,7 +755,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available modes:\n");
     printf("  omitted: compile and run input files one by one\n");
-    printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary or text)\n");
+    printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary, text, remarks, codegen or null)\n");
     printf("\n");
     printf("Available options:\n");
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
@@ -723,6 +765,7 @@ static void displayHelp(const char* argv0)
     printf("  -g<n>: compile with debug level n (default 1, n should be between 0 and 2).\n");
     printf("  --profile[=N]: profile the code using N Hz sampling (default 10000) and output results to profile.out\n");
     printf("  --timetrace: record compiler time tracing information into trace.json\n");
+    printf("  --codegen: execute code using native code generation\n");
 }
 
 static int assertionHandler(const char* expr, const char* file, int line, const char* function)
@@ -760,6 +803,14 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[1], "--compile=text") == 0)
         {
             compileFormat = CompileFormat::Text;
+        }
+        else if (strcmp(argv[1], "--compile=remarks") == 0)
+        {
+            compileFormat = CompileFormat::Remarks;
+        }
+        else if (strcmp(argv[1], "--compile=codegen") == 0)
+        {
+            compileFormat = CompileFormat::Codegen;
         }
         else if (strcmp(argv[1], "--compile=null") == 0)
         {
@@ -811,6 +862,10 @@ int replMain(int argc, char** argv)
         {
             profile = atoi(argv[i] + 10);
         }
+        else if (strcmp(argv[i], "--codegen") == 0)
+        {
+            codegen = true;
+        }
         else if (strcmp(argv[i], "--coverage") == 0)
         {
             coverage = true;
@@ -839,10 +894,24 @@ int replMain(int argc, char** argv)
     }
 #endif
 
+#if !LUA_CUSTOM_EXECUTION
+    if (codegen)
+    {
+        fprintf(stderr, "To run with --codegen, Luau has to be built with LUA_CUSTOM_EXECUTION enabled\n");
+        return 1;
+    }
+#endif
+
     const std::vector<std::string> files = getSourceFiles(argc, argv);
     if (mode == CliMode::Unknown)
     {
         mode = files.empty() ? CliMode::Repl : CliMode::RunSourceFiles;
+    }
+
+    if (mode != CliMode::Compile && codegen && !Luau::CodeGen::isSupported())
+    {
+        fprintf(stderr, "Cannot enable --codegen, native code generation is not supported in current configuration\n");
+        return 1;
     }
 
     switch (mode)

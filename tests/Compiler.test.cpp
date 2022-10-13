@@ -2873,6 +2873,43 @@ RETURN R0 0
 )");
 }
 
+TEST_CASE("SourceRemarks")
+{
+    const char* source = R"(
+local a, b = ...
+
+local function foo(x)
+    return(math.abs(x))
+end
+
+return foo(a) + foo(assert(b))
+)";
+
+    Luau::BytecodeBuilder bcb;
+    bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
+    bcb.setDumpSource(source);
+
+    Luau::CompileOptions options;
+    options.optimizationLevel = 2;
+
+    Luau::compileOrThrow(bcb, source, options);
+
+    std::string remarks = bcb.dumpSourceRemarks();
+
+    CHECK_EQ(remarks, R"(
+local a, b = ...
+
+local function foo(x)
+    -- remark: builtin math.abs/1
+    return(math.abs(x))
+end
+
+-- remark: builtin assert/1
+-- remark: inlining succeeded (cost 2, profit 2.50x, depth 0)
+return foo(a) + foo(assert(b))
+)");
+}
+
 TEST_CASE("AssignmentConflict")
 {
     // assignments are left to right
@@ -5042,7 +5079,6 @@ GETIMPORT R2 2
 CALL R2 0 0
 RETURN R1 1
 )");
-
 }
 
 TEST_CASE("InlineNestedLoops")

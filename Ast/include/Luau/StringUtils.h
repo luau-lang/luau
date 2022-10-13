@@ -1,16 +1,12 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/Common.h"
+
 #include <vector>
 #include <string>
 
 #include <stdarg.h>
-
-#if defined(__GNUC__)
-#define LUAU_PRINTF_ATTR(fmt, arg) __attribute__((format(printf, fmt, arg)))
-#else
-#define LUAU_PRINTF_ATTR(fmt, arg)
-#endif
 
 namespace Luau
 {
