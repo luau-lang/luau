@@ -186,7 +186,7 @@ For these two reasons (which are largely about ergonomics rather than anything t
 
 ## Negation types
 
-The other difference between Luau’s type system and off-the-shelf semantic subtyping is that Luau does not support negated types.
+The other difference between Luau’s type system and off-the-shelf semantic subtyping is that Luau does not support all negated types.
 
 The common case for wanting negated types is in typechecking conditionals:
 ```lua
@@ -199,7 +199,7 @@ end
 ```
 This uses a negated type `~string` inhabited by values that are not strings.
 
-In Luau, we only allow this kind of typing refinement on named types like `string`, `function`, `Part` and so on, and *not* on structural types like `(A) -> B`, which avoids the common case of general negated types.
+In Luau, we only allow this kind of typing refinement on *test types* like `string`, `function`, `Part` and so on, and *not* on structural types like `(A) -> B`, which avoids the common case of general negated types.
 
 ## Prototyping and verification
 
@@ -236,4 +236,5 @@ If you want to find out more about Luau and semantic subtyping, you might want t
 * Giuseppe Castagna, *Covariance and Contravariance*, Logical Methods in Computer Science 16(1), 2022. <https://arxiv.org/abs/1809.01427>
 * Giuseppe Castagna and Alain Frisch, *A gentle introduction to semantic subtyping*, Proc. Principles and practice of declarative programming (PPDP), pp 198–208, 2005. <https://doi.org/10.1145/1069774.1069793>
 * Giuseppe Castagna, Mickaël Laurent, Kim Nguyễn, Matthew Lutze, *On Type-Cases, Union Elimination, and Occurrence Typing*, Principles of Programming Languages (POPL), 2022. <https://doi.org/10.1145/3498674>
+* Sam Tobin-Hochstadt and Matthias Felleisen, *Logical types for untyped languages*. International Conference on Functional Programming (ICFP), 2010. https://doi.org/10.1145/1863543.1863561
 
