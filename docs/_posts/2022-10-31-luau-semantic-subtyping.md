@@ -4,7 +4,7 @@ title:  "Semantic Subtyping in Luau"
 author: Alan Jeffrey
 ---
 
-Luau is the first production language to include semantic subtyping, which removes one source of spurious type errors.
+Luau is the first programming language to put semantic subtyping in the hands of millions of creators.
 
 ## Minimizing false positives
 
@@ -55,7 +55,7 @@ AKA “what we did before.”
 
 Syntactic subtyping is a syntax-directed recursive algorithm. The interesting cases to deal with intersection and union types are:
 
-* Reflexivity: `T` is a subtype of `T`
+i* Reflexivity: `T` is a subtype of `T`
 * Intersection L: `(T₁ & … & Tⱼ)` is a subtype of `U` whenever some of the `Tᵢ` are subtypes of `U`
 * Union L: `(T₁ | … | Tⱼ)` is a subtype of `U` whenever all of the `Tᵢ` are subtypes of `U`
 * Intersection R: `T` is a subtype of `(U₁ & … & Uⱼ)` whenever `T` is a subtype of some of the `Uᵢ`
@@ -111,7 +111,7 @@ and since subtypes are interpreted as set inclusions:
 | `(number?) & (string?)` | `nil` | { nil } ⊆ { nil } |
 
 
-So according to semantic subtyping, `(number?) & (string?)` is a subtype of `nil`.
+So according to semantic subtyping, `(number?) & (string?)` is equivalent to `nil`, but syntactic subtyping only supports one direction.
 
 This is all fine and good, but if we want to use semantic subtyping in tools, we need an algorithm, and it turns out checking semantic subtyping is non-trivial.
 
@@ -215,9 +215,8 @@ Prototyping is not perfect, for example the main issues that we hit in productio
 
 Semantic subtyping has removed one source of false positives, but we still have others to track down:
 
-* overloaded function application,
+* overloaded function applications and operators,
 * property access on expressions of complex type, 
-* overloaded operators (such as `+` or `*`), which in Luau may be metamethods,
 * read-only properties of tables,
 * variables that change type over time (aka typestates),
 * …
@@ -237,4 +236,11 @@ If you want to find out more about Luau and semantic subtyping, you might want t
 * Giuseppe Castagna and Alain Frisch, *A gentle introduction to semantic subtyping*, Proc. Principles and practice of declarative programming (PPDP), pp 198–208, 2005. <https://doi.org/10.1145/1069774.1069793>
 * Giuseppe Castagna, Mickaël Laurent, Kim Nguyễn, Matthew Lutze, *On Type-Cases, Union Elimination, and Occurrence Typing*, Principles of Programming Languages (POPL), 2022. <https://doi.org/10.1145/3498674>
 * Sam Tobin-Hochstadt and Matthias Felleisen, *Logical types for untyped languages*. International Conference on Functional Programming (ICFP), 2010. https://doi.org/10.1145/1863543.1863561
+* José Valim, *My Future with Elixir: set-theoretic types*, 2022. https://elixir-lang.org/blog/2022/10/05/my-future-with-elixir-set-theoretic-types/
 
+Some other languages which support semantic subtyping…
+
+* ℂDuce <https://www.cduce.org/>
+* Ballerina <https://ballerina.io>
+* Elixir <https://elixir-lang.org/>
+* eqWAlizer <https://github.com/WhatsApp/eqwalizer>
