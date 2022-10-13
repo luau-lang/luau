@@ -244,3 +244,5 @@ Some other languages which support semantic subtyping…
 * Ballerina <https://ballerina.io>
 * Elixir <https://elixir-lang.org/>
 * eqWAlizer <https://github.com/WhatsApp/eqwalizer>
+
+And if you want to see the production code, it's in the C++ definitions of [tryUnifyNormalizedTypes](https://github.com/Roblox/luau/blob/d6aa35583e4be14304d2a17c7d11c8819756beb6/Analysis/src/Unifier.cpp#L868) and [NormalizedType](https://github.com/Roblox/luau/blob/d6aa35583e4be14304d2a17c7d11c8819756beb6/Analysis/include/Luau/Normalize.h#L134) in the [open source Luau repo](https://github.com/Roblox/luau).
