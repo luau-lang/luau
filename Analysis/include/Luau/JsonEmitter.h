@@ -240,7 +240,7 @@ void write(JsonEmitter& emitter, const std::unordered_map<std::string, T>& map)
 
     for (const auto& [k, v] : map)
         o.writePair(k, v);
-    
+
     o.finish();
 }
 

@@ -8,6 +8,7 @@
 #include "Luau/TypeInfer.h"
 #include "Luau/StringUtils.h"
 #include "Luau/BytecodeBuilder.h"
+#include "Luau/CodeGen.h"
 
 #include "doctest.h"
 #include "ScopedFlags.h"
@@ -17,6 +18,7 @@
 #include <math.h>
 
 extern bool verbose;
+extern bool codegen;
 extern int optimizationLevel;
 
 static lua_CompileOptions defaultOptions()
@@ -137,7 +139,7 @@ int lua_silence(lua_State* L)
 using StateRef = std::unique_ptr<lua_State, void (*)(lua_State*)>;
 
 static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = nullptr, void (*yield)(lua_State* L) = nullptr,
-    lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr)
+    lua_State* initialLuaState = nullptr, lua_CompileOptions* options = nullptr, bool skipCodegen = false)
 {
     std::string path = __FILE__;
     path.erase(path.find_last_of("\\/"));
@@ -155,6 +157,9 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
         initialLuaState = luaL_newstate();
     StateRef globalState(initialLuaState, lua_close);
     lua_State* L = globalState.get();
+
+    if (codegen && !skipCodegen && Luau::CodeGen::isSupported())
+        Luau::CodeGen::create(L);
 
     luaL_openlibs(L);
 
@@ -206,6 +211,9 @@ static StateRef runConformance(const char* name, void (*setup)(lua_State* L) = n
     char* bytecode = luau_compile(source.data(), source.size(), &opts, &bytecodeSize);
     int result = luau_load(L, chunkname.c_str(), bytecode, bytecodeSize, 0);
     free(bytecode);
+
+    if (result == 0 && codegen && !skipCodegen && Luau::CodeGen::isSupported())
+        Luau::CodeGen::compile(L, -1);
 
     int status = (result == 0) ? lua_resume(L, nullptr, 0) : LUA_ERRSYNTAX;
 
@@ -563,19 +571,19 @@ TEST_CASE("Debugger")
             };
 
             // add breakpoint() function
-            lua_pushcfunction(
+            lua_pushcclosurek(
                 L,
                 [](lua_State* L) -> int {
                     int line = luaL_checkinteger(L, 1);
                     bool enabled = luaL_optboolean(L, 2, true);
 
                     lua_Debug ar = {};
-                    lua_getinfo(L, 1, "f", &ar);
+                    lua_getinfo(L, lua_stackdepth(L) - 1, "f", &ar);
 
                     lua_breakpoint(L, -1, line, enabled);
                     return 0;
                 },
-                "breakpoint");
+                "breakpoint", 0, nullptr);
             lua_setglobal(L, "breakpoint");
         },
         [](lua_State* L) {
@@ -656,9 +664,9 @@ TEST_CASE("Debugger")
                 interruptedthread = nullptr;
             }
         },
-        nullptr, &copts);
+        nullptr, &copts, /* skipCodegen */ true); // Native code doesn't support debugging yet
 
-    CHECK(breakhits == 10); // 2 hits per breakpoint
+    CHECK(breakhits == 12); // 2 hits per breakpoint
 }
 
 TEST_CASE("SameHash")
@@ -806,17 +814,17 @@ TEST_CASE("ApiIter")
     {
         sum1 += lua_tonumber(L, -2); // key
         sum1 += lua_tonumber(L, -1); // value
-        lua_pop(L, 1); // pop value, key is used by lua_next
+        lua_pop(L, 1);               // pop value, key is used by lua_next
     }
     CHECK(sum1 == 580);
 
     // Luau iteration interface: lua_rawiter (faster and preferable to lua_next)
     double sum2 = 0;
-    for (int index = 0; index = lua_rawiter(L, -1, index), index >= 0; )
+    for (int index = 0; index = lua_rawiter(L, -1, index), index >= 0;)
     {
         sum2 += lua_tonumber(L, -2); // key
         sum2 += lua_tonumber(L, -1); // value
-        lua_pop(L, 2); // pop both key and value
+        lua_pop(L, 2);               // pop both key and value
     }
     CHECK(sum2 == 580);
 
@@ -1188,7 +1196,13 @@ TEST_CASE("Interrupt")
         5,
         5,
         6,
-        11,
+        18,
+        13,
+        13,
+        13,
+        13,
+        16,
+        20,
     };
     static int index;
 
@@ -1282,6 +1296,21 @@ TEST_CASE("UserdataApi")
 
     *(int*)ud3 = 43;
     *(char*)ud4 = 3;
+
+    // user data with named metatable
+    luaL_newmetatable(L, "udata1");
+    luaL_newmetatable(L, "udata2");
+
+    void* ud5 = lua_newuserdata(L, 0);
+    lua_getfield(L, LUA_REGISTRYINDEX, "udata1");
+    lua_setmetatable(L, -2);
+
+    void* ud6 = lua_newuserdata(L, 0);
+    lua_getfield(L, LUA_REGISTRYINDEX, "udata2");
+    lua_setmetatable(L, -2);
+
+    CHECK(luaL_checkudata(L, -2, "udata1") == ud5);
+    CHECK(luaL_checkudata(L, -1, "udata2") == ud6);
 
     globalState.reset();
 
@@ -1492,6 +1521,11 @@ TEST_CASE("Userdata")
             "int64");
         lua_setglobal(L, "int64");
     });
+}
+
+TEST_CASE("SafeEnv")
+{
+    runConformance("safeenv.lua");
 }
 
 TEST_SUITE_END();

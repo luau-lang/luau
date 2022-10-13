@@ -43,7 +43,7 @@ static bool matchSetmetatable(const AstExprCall& call)
 
     if (call.args.size != 2)
         return false;
-    
+
     const AstExprGlobal* funcAsGlobal = call.func->as<AstExprGlobal>();
     if (!funcAsGlobal || funcAsGlobal->name != smt)
         return false;
@@ -52,7 +52,8 @@ static bool matchSetmetatable(const AstExprCall& call)
 }
 
 ConstraintGraphBuilder::ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena,
-    NotNull<ModuleResolver> moduleResolver, NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger)
+    NotNull<ModuleResolver> moduleResolver, NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope,
+    DcrLogger* logger)
     : moduleName(moduleName)
     , module(module)
     , singletonTypes(singletonTypes)

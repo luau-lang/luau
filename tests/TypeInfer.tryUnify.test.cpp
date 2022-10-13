@@ -302,8 +302,8 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
     REQUIRE_EQ(state.errors.size(), 1);
 
     std::string expected = "Type '{ @metatable {| __index: {| foo: string |} |}, {  } }' could not be converted into '{- foo: number -}'\n"
-        "caused by:\n"
-        "  Type 'number' could not be converted into 'string'";
+                           "caused by:\n"
+                           "  Type 'number' could not be converted into 'string'";
     CHECK_EQ(toString(state.errors[0]), expected);
 }
 

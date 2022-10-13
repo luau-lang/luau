@@ -37,6 +37,9 @@ enum class Condition
     Zero,
     NotZero,
 
+    Parity,
+    NotParity,
+
     Count
 };
 

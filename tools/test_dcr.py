@@ -5,6 +5,9 @@ import os.path
 import subprocess as sp
 import sys
 import xml.sax as x
+import colorama as c
+
+c.init()
 
 SCRIPT_PATH = os.path.split(sys.argv[0])[0]
 FAIL_LIST_PATH = os.path.join(SCRIPT_PATH, "faillist.txt")
@@ -35,6 +38,10 @@ class Handler(x.ContentHandler):
 
         self.numSkippedTests = 0
 
+        self.pass_count = 0
+        self.fail_count = 0
+        self.test_count = 0
+
     def startElement(self, name, attrs):
         if name == "TestSuite":
             self.currentTest.append(attrs["name"])
@@ -52,6 +59,12 @@ class Handler(x.ContentHandler):
                 # to have passed.
                 r = self.results.get(dottedName, True)
                 self.results[dottedName] = r and passed
+
+                self.test_count += 1
+                if passed:
+                    self.pass_count += 1
+                else:
+                    self.fail_count += 1
 
         elif name == "OverallResultsTestCases":
             self.numSkippedTests = safeParseInt(attrs.get("skipped", 0))
@@ -137,11 +150,33 @@ def main():
 
     p.wait()
 
+    unexpected_fails = 0
+    unexpected_passes = 0
+
     for testName, passed in handler.results.items():
         if passed and testName in failList:
-            print_stderr(f"UNEXPECTED: {testName} should have failed")
+            unexpected_passes += 1
+            print_stderr(
+                f"UNEXPECTED: {c.Fore.RED}{testName}{c.Fore.RESET} should have failed"
+            )
         elif not passed and testName not in failList:
-            print_stderr(f"UNEXPECTED: {testName} should have passed")
+            unexpected_fails += 1
+            print_stderr(
+                f"UNEXPECTED: {c.Fore.GREEN}{testName}{c.Fore.RESET} should have passed"
+            )
+
+    if unexpected_fails or unexpected_passes:
+        print_stderr("")
+        print_stderr(f"Unexpected fails:  {unexpected_fails}")
+        print_stderr(f"Unexpected passes: {unexpected_passes}")
+
+    pass_percent = int(handler.pass_count / handler.test_count * 100)
+
+    print_stderr("")
+    print_stderr(
+        f"{handler.pass_count} of {handler.test_count} tests passed.  ({pass_percent}%)"
+    )
+    print_stderr(f"{handler.fail_count} tests failed.")
 
     if args.write:
         newFailList = sorted(

@@ -12,6 +12,7 @@ option(LUAU_BUILD_WEB "Build Web module" OFF)
 option(LUAU_WERROR "Warnings as errors" OFF)
 option(LUAU_STATIC_CRT "Link with the static CRT (/MT)" OFF)
 option(LUAU_EXTERN_C "Use extern C for all APIs" OFF)
+option(LUAU_NATIVE "Enable support for native code generation" OFF)
 
 if(LUAU_STATIC_CRT)
     cmake_minimum_required(VERSION 3.15)
@@ -132,6 +133,10 @@ if(LUAU_EXTERN_C)
     target_compile_definitions(Luau.Compiler PUBLIC LUACODE_API=extern\"C\")
 endif()
 
+if(LUAU_NATIVE)
+    target_compile_definitions(Luau.VM PUBLIC LUA_CUSTOM_EXECUTION=1)
+endif()
+
 if (MSVC AND MSVC_VERSION GREATER_EQUAL 1924)
     # disable partial redundancy elimination which regresses interpreter codegen substantially in VS2022:
     # https://developercommunity.visualstudio.com/t/performance-regression-on-a-complex-interpreter-lo/1631863
@@ -167,7 +172,7 @@ if(LUAU_BUILD_CLI)
 
     target_include_directories(Luau.Repl.CLI PRIVATE extern extern/isocline/include)
 
-    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.VM isocline)
+    target_link_libraries(Luau.Repl.CLI PRIVATE Luau.Compiler Luau.CodeGen Luau.VM isocline)
 
     if(UNIX)
         find_library(LIBPTHREAD pthread)
@@ -193,11 +198,11 @@ if(LUAU_BUILD_TESTS)
 
     target_compile_options(Luau.Conformance PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.Conformance PRIVATE extern)
-    target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Compiler Luau.VM)
+    target_link_libraries(Luau.Conformance PRIVATE Luau.Analysis Luau.Compiler Luau.CodeGen Luau.VM)
 
     target_compile_options(Luau.CLI.Test PRIVATE ${LUAU_OPTIONS})
     target_include_directories(Luau.CLI.Test PRIVATE extern CLI)
-    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.VM isocline)
+    target_link_libraries(Luau.CLI.Test PRIVATE Luau.Compiler Luau.CodeGen Luau.VM isocline)
     if(UNIX)
         find_library(LIBPTHREAD pthread)
         if (LIBPTHREAD)

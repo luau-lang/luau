@@ -14,8 +14,12 @@ namespace CodeGen
 // TODO: more assertions on operand sizes
 
 const uint8_t codeForCondition[] = {
-    0x0, 0x1, 0x2, 0x3, 0x2, 0x6, 0x7, 0x3, 0x4, 0xc, 0xe, 0xf, 0xd, 0x3, 0x7, 0x6, 0x2, 0x5, 0xd, 0xf, 0xe, 0xc, 0x4, 0x5};
+    0x0, 0x1, 0x2, 0x3, 0x2, 0x6, 0x7, 0x3, 0x4, 0xc, 0xe, 0xf, 0xd, 0x3, 0x7, 0x6, 0x2, 0x5, 0xd, 0xf, 0xe, 0xc, 0x4, 0x5, 0xa, 0xb};
 static_assert(sizeof(codeForCondition) / sizeof(codeForCondition[0]) == size_t(Condition::Count), "all conditions have to be covered");
+
+const char* textForCondition[] = {"jo", "jno", "jc", "jnc", "jb", "jbe", "ja", "jae", "je", "jl", "jle", "jg", "jge", "jnb", "jnbe", "jna", "jnae",
+    "jne", "jnl", "jnle", "jng", "jnge", "jz", "jnz", "jp", "jnp"};
+static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(Condition::Count), "all conditions have to be covered");
 
 #define OP_PLUS_REG(op, reg) ((op) + (reg & 0x7))
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
@@ -47,6 +51,8 @@ const unsigned AVX_F3 = 0b10;
 const unsigned AVX_F2 = 0b11;
 
 const unsigned kMaxAlign = 16;
+
+const uint8_t kRoundingPrecisionInexact = 0b1000;
 
 AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
     : logText(logText)
@@ -255,6 +261,16 @@ void AssemblyBuilderX64::not_(OperandX64 op)
     placeUnaryModRegMem("not", op, 0xf6, 0xf7, 2);
 }
 
+void AssemblyBuilderX64::dec(OperandX64 op)
+{
+    placeUnaryModRegMem("dec", op, 0xfe, 0xff, 1);
+}
+
+void AssemblyBuilderX64::inc(OperandX64 op)
+{
+    placeUnaryModRegMem("inc", op, 0xfe, 0xff, 0);
+}
+
 void AssemblyBuilderX64::imul(OperandX64 lhs, OperandX64 rhs)
 {
     if (logText)
@@ -338,7 +354,7 @@ void AssemblyBuilderX64::ret()
 
 void AssemblyBuilderX64::jcc(Condition cond, Label& label)
 {
-    placeJcc("je", label, codeForCondition[size_t(cond)]);
+    placeJcc(textForCondition[size_t(cond)], label, codeForCondition[size_t(cond)]);
 }
 
 void AssemblyBuilderX64::jmp(Label& label)
@@ -442,11 +458,6 @@ void AssemblyBuilderX64::vxorpd(OperandX64 dst, OperandX64 src1, OperandX64 src2
     placeAvx("vxorpd", dst, src1, src2, 0x57, false, AVX_0F, AVX_66);
 }
 
-void AssemblyBuilderX64::vcomisd(OperandX64 src1, OperandX64 src2)
-{
-    placeAvx("vcomisd", src1, src2, 0x2f, false, AVX_0F, AVX_66);
-}
-
 void AssemblyBuilderX64::vucomisd(OperandX64 src1, OperandX64 src2)
 {
     placeAvx("vucomisd", src1, src2, 0x2e, false, AVX_0F, AVX_66);
@@ -462,9 +473,9 @@ void AssemblyBuilderX64::vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 s
     placeAvx("vcvtsi2sd", dst, src1, src2, 0x2a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::dword, AVX_0F, AVX_F2);
 }
 
-void AssemblyBuilderX64::vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, uint8_t mode)
+void AssemblyBuilderX64::vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode)
 {
-    placeAvx("vroundsd", dst, src1, src2, mode, 0x0b, false, AVX_0F3A, AVX_66);
+    placeAvx("vroundsd", dst, src1, src2, uint8_t(roundingMode) | kRoundingPrecisionInexact, 0x0b, false, AVX_0F3A, AVX_66);
 }
 
 void AssemblyBuilderX64::vsqrtpd(OperandX64 dst, OperandX64 src)
@@ -534,6 +545,8 @@ void AssemblyBuilderX64::finalize()
     // Resolve jump targets
     for (Label fixup : pendingLabels)
     {
+        // If this assertion fires, a label was used in jmp without calling setLabel
+        LUAU_ASSERT(labelLocations[fixup.id - 1] != ~0u);
         uint32_t value = labelLocations[fixup.id - 1] - (fixup.location + 4);
         writeu32(&code[fixup.location], value);
     }
@@ -552,7 +565,7 @@ void AssemblyBuilderX64::finalize()
 Label AssemblyBuilderX64::setLabel()
 {
     Label label{nextLabel++, getCodeSize()};
-    labelLocations.push_back(0);
+    labelLocations.push_back(~0u);
 
     if (logText)
         log(label);
@@ -565,7 +578,7 @@ void AssemblyBuilderX64::setLabel(Label& label)
     if (label.id == 0)
     {
         label.id = nextLabel++;
-        labelLocations.push_back(0);
+        labelLocations.push_back(~0u);
     }
 
     label.location = getCodeSize();
@@ -1019,7 +1032,7 @@ void AssemblyBuilderX64::placeLabel(Label& label)
         if (label.id == 0)
         {
             label.id = nextLabel++;
-            labelLocations.push_back(0);
+            labelLocations.push_back(~0u);
         }
 
         pendingLabels.push_back({label.id, getCodeSize()});

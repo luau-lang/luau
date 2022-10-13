@@ -38,10 +38,10 @@ enum lua_Status
 enum lua_CoStatus
 {
     LUA_CORUN = 0, // running
-    LUA_COSUS, // suspended
-    LUA_CONOR, // 'normal' (it resumed another coroutine)
-    LUA_COFIN, // finished
-    LUA_COERR, // finished with error
+    LUA_COSUS,     // suspended
+    LUA_CONOR,     // 'normal' (it resumed another coroutine)
+    LUA_COFIN,     // finished
+    LUA_COERR,     // finished with error
 };
 
 typedef struct lua_State lua_State;
@@ -398,16 +398,16 @@ LUA_API const char* lua_debugtrace(lua_State* L);
 
 struct lua_Debug
 {
-    const char* name;           // (n)
-    const char* what;           // (s) `Lua', `C', `main', `tail'
-    const char* source;         // (s)
-    const char* short_src;      // (s)
-    int linedefined;            // (s)
-    int currentline;            // (l)
-    unsigned char nupvals;      // (u) number of upvalues
-    unsigned char nparams;      // (a) number of parameters
-    char isvararg;              // (a)
-    void* userdata;             // only valid in luau_callhook
+    const char* name;      // (n)
+    const char* what;      // (s) `Lua', `C', `main', `tail'
+    const char* source;    // (s)
+    const char* short_src; // (s)
+    int linedefined;       // (s)
+    int currentline;       // (l)
+    unsigned char nupvals; // (u) number of upvalues
+    unsigned char nparams; // (a) number of parameters
+    char isvararg;         // (a)
+    void* userdata;        // only valid in luau_callhook
 
     char ssbuf[LUA_IDSIZE];
 };

@@ -7,9 +7,9 @@
 
 #include "doctest.h"
 
-using namespace Luau;
+LUAU_FASTFLAG(LuauFunctionReturnStringificationFixup);
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+using namespace Luau;
 
 TEST_SUITE_BEGIN("TypePackTests");
 
@@ -311,7 +311,7 @@ local c: Packed<string, number, boolean>
     auto ttvA = get<TableTypeVar>(requireType("a"));
     REQUIRE(ttvA);
     CHECK_EQ(toString(requireType("a")), "Packed<number>");
-    if (FFlag::LuauLowerBoundsCalculation)
+    if (FFlag::LuauFunctionReturnStringificationFixup)
         CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
     else
         CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
@@ -966,8 +966,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "detect_cyclic_typepacks2")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 {
-    ScopedFastFlag luauCallUnifyPackTails{"LuauCallUnifyPackTails", true};
-
     CheckResult result = check(R"(
         function foo(...: string): number
             return 1
@@ -984,8 +982,6 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 {
-    ScopedFastFlag luauCallUnifyPackTails{"LuauCallUnifyPackTails", true};
-
     CheckResult result = check(R"(
         function foo<T...>(...: T...): T...
             return ...

@@ -54,4 +54,19 @@ breakpoint(49, false) -- validate that disabling breakpoints works
 
 bar()
 
+local function breakpointSetFromMetamethod()
+	local a = setmetatable({}, {
+		__index = function()
+			breakpoint(67)
+			return 2
+		end
+	})
+
+	local b = a.x
+
+	assert(b == 2)
+end
+
+breakpointSetFromMetamethod()
+
 return 'OK'

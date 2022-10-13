@@ -17,8 +17,10 @@ struct SingletonTypes;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop = true);
-bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop = true);
+bool isSubtype(
+    TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop = true);
+bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice,
+    bool anyIsTop = true);
 
 std::pair<TypeId, bool> normalize(
     TypeId ty, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
@@ -68,13 +70,14 @@ public:
             insert(*it);
     }
 
-    bool operator ==(const TypeIds& there) const;
+    bool operator==(const TypeIds& there) const;
     size_t getHash() const;
 };
 
 } // namespace Luau
 
-template<> struct std::hash<Luau::TypeIds>
+template<>
+struct std::hash<Luau::TypeIds>
 {
     std::size_t operator()(const Luau::TypeIds& tys) const
     {
@@ -82,7 +85,8 @@ template<> struct std::hash<Luau::TypeIds>
     }
 };
 
-template<> struct std::hash<const Luau::TypeIds*>
+template<>
+struct std::hash<const Luau::TypeIds*>
 {
     std::size_t operator()(const Luau::TypeIds* tys) const
     {
@@ -90,7 +94,8 @@ template<> struct std::hash<const Luau::TypeIds*>
     }
 };
 
-template<> struct std::equal_to<Luau::TypeIds>
+template<>
+struct std::equal_to<Luau::TypeIds>
 {
     bool operator()(const Luau::TypeIds& here, const Luau::TypeIds& there) const
     {
@@ -98,7 +103,8 @@ template<> struct std::equal_to<Luau::TypeIds>
     }
 };
 
-template<> struct std::equal_to<const Luau::TypeIds*>
+template<>
+struct std::equal_to<const Luau::TypeIds*>
 {
     bool operator()(const Luau::TypeIds* here, const Luau::TypeIds* there) const
     {
@@ -160,7 +166,7 @@ struct NormalizedType
 
     // The string part of the type.
     // This may be the `string` type, or a union of singletons.
-    NormalizedStringType strings = std::map<std::string,TypeId>{};
+    NormalizedStringType strings = std::map<std::string, TypeId>{};
 
     // The thread part of the type.
     // This type is either never or thread.

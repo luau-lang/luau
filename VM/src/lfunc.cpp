@@ -108,7 +108,7 @@ UpVal* luaF_findupval(lua_State* L, StkId level)
 
 void luaF_freeupval(lua_State* L, UpVal* uv, lua_Page* page)
 {
-    luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page);  // free upvalue
+    luaM_freegco(L, uv, sizeof(UpVal), uv->memcat, page); // free upvalue
 }
 
 void luaF_close(lua_State* L, StkId level)

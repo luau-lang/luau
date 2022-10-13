@@ -102,6 +102,11 @@ public:
 
     void setDumpSource(const std::string& source);
 
+    bool needsDebugRemarks() const
+    {
+        return (dumpFlags & Dump_Remarks) != 0;
+    }
+
     const std::string& getBytecode() const
     {
         LUAU_ASSERT(!bytecode.empty()); // did you forget to call finalize?
@@ -110,6 +115,7 @@ public:
 
     std::string dumpFunction(uint32_t id) const;
     std::string dumpEverything() const;
+    std::string dumpSourceRemarks() const;
 
     static uint32_t getImportId(int32_t id0);
     static uint32_t getImportId(int32_t id0, int32_t id1);
@@ -243,6 +249,7 @@ private:
 
     uint32_t dumpFlags = 0;
     std::vector<std::string> dumpSource;
+    std::vector<std::pair<int, std::string>> dumpRemarks;
 
     std::string (BytecodeBuilder::*dumpFunctionPtr)() const = nullptr;
 

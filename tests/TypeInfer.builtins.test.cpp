@@ -8,9 +8,7 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
-LUAU_FASTFLAG(LuauStringFormatArgumentErrorFix)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -637,8 +635,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_decimal_argument_is_rounded_down
 // Could be flaky if the fix has regressed.
 TEST_CASE_FIXTURE(BuiltinsFixture, "bad_select_should_not_crash")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check(R"(
         do end
         local _ = function(l0,...)
@@ -754,14 +750,7 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    if (FFlag::LuauStringFormatArgumentErrorFix)
-    {
-        CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but 3 are specified", toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ("Argument count mismatch. Function expects 1 argument, but 2 are specified", toString(result.errors[0]));
-    }
+    CHECK_EQ("Argument count mismatch. Function expects 2 arguments, but 3 are specified", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
@@ -778,8 +767,6 @@ TEST_CASE_FIXTURE(Fixture, "string_format_use_correct_argument2")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "string_format_use_correct_argument3")
 {
-    ScopedFastFlag LuauStringFormatArgumentErrorFix{"LuauStringFormatArgumentErrorFix", true};
-
     CheckResult result = check(R"(
         local s1 = string.format("%d")
         local s2 = string.format("%d", 1)
@@ -966,10 +953,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ("((boolean | number)?) -> number | true", toString(requireType("f")));
-    else
-        CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
+    CHECK_EQ("((boolean | number)?) -> boolean | number", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "assert_removes_falsy_types2")
@@ -1040,8 +1024,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     ScopedFastFlag sff{"LuauSetMetaTableArgsCheck", true};
     CheckResult result = check(R"(
 local a = {b=setmetatable}

@@ -10,11 +10,11 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauSpecialTypesAsterisked, false)
 LUAU_FASTFLAGVARIABLE(LuauFixNameMaps, false)
 LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
+LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -523,7 +523,7 @@ struct TypeVarStringifier
 
         bool plural = true;
 
-        if (FFlag::LuauLowerBoundsCalculation)
+        if (FFlag::LuauFunctionReturnStringificationFixup)
         {
             auto retBegin = begin(ftv.retTypes);
             auto retEnd = end(ftv.retTypes);
