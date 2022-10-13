@@ -55,7 +55,7 @@ AKA “what we did before.”
 
 Syntactic subtyping is a syntax-directed recursive algorithm. The interesting cases to deal with intersection and union types are:
 
-i* Reflexivity: `T` is a subtype of `T`
+* Reflexivity: `T` is a subtype of `T`
 * Intersection L: `(T₁ & … & Tⱼ)` is a subtype of `U` whenever some of the `Tᵢ` are subtypes of `U`
 * Union L: `(T₁ | … | Tⱼ)` is a subtype of `U` whenever all of the `Tᵢ` are subtypes of `U`
 * Intersection R: `T` is a subtype of `(U₁ & … & Uⱼ)` whenever `T` is a subtype of some of the `Uᵢ`
