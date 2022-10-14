@@ -94,7 +94,7 @@ void initHelperFunctions(NativeState& data)
         "fast call tables are not of the same length");
 
     // Replace missing fast call functions with an empty placeholder that forces LOP_CALL fallback
-    for (int i = 0; i < int(sizeof(data.context.luauF_table) / sizeof(data.context.luauF_table[0])); i++)
+    for (size_t i = 0; i < sizeof(data.context.luauF_table) / sizeof(data.context.luauF_table[0]); i++)
         data.context.luauF_table[i] = luauF_table[i] ? luauF_table[i] : luauF_missing;
 
     data.context.luaV_lessthan = luaV_lessthan;
