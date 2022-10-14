@@ -4,7 +4,7 @@ title:  "Semantic Subtyping in Luau"
 author: Alan Jeffrey
 ---
 
-Luau is the first programming language to put semantic subtyping in the hands of millions of creators.
+Luau is the first programming language to put the power of semantic subtyping in the hands of millions of creators.
 
 ## Minimizing false positives
 
@@ -19,7 +19,7 @@ reports a type error which cannot happen at runtime, since by the time `x + 1` i
 
 False positives are especially poor for onboarding new users. If a type-curious creator switches on typechecking and is immediately faced with a wall of spurious red squiggles, there is a strong incentive to immediately switch it off again.
 
-Inaccuracies in type errors are inevitable, since it is undecidable to decide ahead of time whether a runtime error will be triggered. Type system designers have to choose whether to live with false positives or false negatives. In Luau this is determined by the mode: `strict` mode errs on the side of false positives, and `nonstrict` mode errs on the side of false negatives.
+Inaccuracies in type errors are inevitable, since it is impossible to decide ahead of time whether a runtime error will be triggered. Type system designers have to choose whether to live with false positives or false negatives. In Luau this is determined by the mode: `strict` mode errs on the side of false positives, and `nonstrict` mode errs on the side of false negatives.
 
 While inaccuracies are inevitable, we try to remove them whenever possible, since they result in spurious errors, and imprecision in type-driven tooling like autocomplete or API documentation.
 
@@ -121,16 +121,16 @@ NP-hard to be precise.
 
 We can reduce graph coloring to semantic subtyping by coding up a graph as a Luau type such that checking subtyping on types has the same result as checking for the impossibility of coloring the graph
 
-*  `N` = intersection of `{ p : c } -> { p : c }` for each node `p` and color `c`
-*  `V` = intersection of `{ p : c, q : c } -> never` for each vertex `(p, q)` and color `c` 
+*  `V` = intersection of `{ p : c } -> { p : c }` for each vertex `p` and color `c`
+*  `E` = intersection of `{ p : c, q : c } -> never` for each edge `(p, q)` and color `c`
 *  `C` = intersection of `{ p : c }` for each node node `p` and color `c`
 
-Now `N & V` is a subtype of `C -> never` when it is impossible to color the graph, and so subtype checking is NP-hard. We deal with this in two ways:
+Now `V & E` is a subtype of `C -> never` when it is impossible to color the graph, and so subtype checking is NP-hard. We deal with this in two ways:
 
 * we cache types to reduce memory footprint, and
 * give up with a “Code Too Complex” error if the cache of types gets too large.
 
-Hopefully this doesn’t come up in practice much. There is good evidence that issues like this don’t arise in practice from experience with type systems like that of Standard ML, which is EXPTIME-complete, but in practice you have to go out of your way to code up Turing Machine tapes as types.
+Hopefully this doesn’t come up in practice much. There is good evidence that issues like this don’t arise in practice from experience with type systems like that of Standard ML, which is [EXPTIME-complete](https://dl.acm.org/doi/abs/10.1145/96709.96748), but in practice you have to go out of your way to code up Turing Machine tapes as types.
 
 ## Type normalization
 
@@ -203,7 +203,7 @@ In Luau, we only allow this kind of typing refinement on *test types* like `stri
 
 ## Prototyping and verification
 
-During the design of Luau’s semantic subtyping algorithm, there were changes made (for example initially we thought we were going to be able to use set-theoretic subtyping). During this time of rapid change, it was important to be able to iterate quickly, so we initially implemented a prototype rather than jumping straight to a production implementation.
+During the design of Luau’s semantic subtyping algorithm, there were changes made (for example initially we thought we were going to be able to use set-theoretic subtyping). During this time of rapid change, it was important to be able to iterate quickly, so we initially implemented a [prototype](https://github.com/luau-lang/agda-typeck) rather than jumping straight to a production implementation.
 
 Validating the prototype was important, since subtyping algorithms can have unexpected corner cases. For this reason, we adopted Agda as the prototyping language. As well as supporting unit testing, Agda supports mechanized verification, so we are confident in the design.
 
@@ -221,7 +221,7 @@ Semantic subtyping has removed one source of false positives, but we still have 
 * variables that change type over time (aka typestates),
 * …
 
-Once these are tracked down, we are confident that we will be able to deliver a high-quality typechecker, with far fewer frustrating spurious red squiggles.
+The quest to remove spurious red squiggles continues!
 
 ## Further reading
 
