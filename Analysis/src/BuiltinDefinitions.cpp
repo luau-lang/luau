@@ -497,7 +497,7 @@ static bool dcrMagicFunctionSelect(MagicFunctionCallContext context)
                 asMutable(context.result)->ty.emplace<BoundTypePack>(resTypePack);
             }
             else if (tail)
-               asMutable(context.result)->ty.emplace<BoundTypePack>(*tail);
+                asMutable(context.result)->ty.emplace<BoundTypePack>(*tail);
 
             return true;
         }
@@ -507,7 +507,8 @@ static bool dcrMagicFunctionSelect(MagicFunctionCallContext context)
 
     if (AstExprConstantString* str = arg1->as<AstExprConstantString>())
     {
-        if (str->value.size == 1 && str->value.data[0] == '#') {
+        if (str->value.size == 1 && str->value.data[0] == '#')
+        {
             TypePackId numberTypePack = context.solver->arena->addTypePack({context.solver->singletonTypes->numberType});
             asMutable(context.result)->ty.emplace<BoundTypePack>(numberTypePack);
             return true;

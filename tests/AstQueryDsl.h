@@ -80,4 +80,4 @@ T* query(AstNode* node, const std::vector<Nth>& nths = {nth<T>(N)})
     return node ? node->as<T>() : nullptr;
 }
 
-}
+} // namespace Luau

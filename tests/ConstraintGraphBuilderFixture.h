@@ -24,4 +24,4 @@ struct ConstraintGraphBuilderFixture : Fixture
     ConstraintGraphBuilderFixture();
 };
 
-}
+} // namespace Luau

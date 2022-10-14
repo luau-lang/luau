@@ -4,15 +4,17 @@
 #include "Fallbacks.h"
 #include "FallbacksProlog.h"
 
-const Instruction* execute_LOP_NOP(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_NOP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     LUAU_ASSERT(insn == 0);
     return pc;
 }
 
-const Instruction* execute_LOP_LOADNIL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_LOADNIL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -20,8 +22,9 @@ const Instruction* execute_LOP_LOADNIL(lua_State* L, const Instruction* pc, Clos
     return pc;
 }
 
-const Instruction* execute_LOP_LOADB(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_LOADB(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -32,8 +35,9 @@ const Instruction* execute_LOP_LOADB(lua_State* L, const Instruction* pc, Closur
     return pc;
 }
 
-const Instruction* execute_LOP_LOADN(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_LOADN(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -41,8 +45,9 @@ const Instruction* execute_LOP_LOADN(lua_State* L, const Instruction* pc, Closur
     return pc;
 }
 
-const Instruction* execute_LOP_LOADK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_LOADK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     TValue* kv = VM_KV(LUAU_INSN_D(insn));
@@ -51,8 +56,9 @@ const Instruction* execute_LOP_LOADK(lua_State* L, const Instruction* pc, Closur
     return pc;
 }
 
-const Instruction* execute_LOP_MOVE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_MOVE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -61,8 +67,9 @@ const Instruction* execute_LOP_MOVE(lua_State* L, const Instruction* pc, Closure
     return pc;
 }
 
-const Instruction* execute_LOP_GETGLOBAL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETGLOBAL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     uint32_t aux = *pc++;
@@ -92,8 +99,9 @@ const Instruction* execute_LOP_GETGLOBAL(lua_State* L, const Instruction* pc, Cl
     }
 }
 
-const Instruction* execute_LOP_SETGLOBAL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SETGLOBAL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     uint32_t aux = *pc++;
@@ -124,8 +132,9 @@ const Instruction* execute_LOP_SETGLOBAL(lua_State* L, const Instruction* pc, Cl
     }
 }
 
-const Instruction* execute_LOP_GETUPVAL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETUPVAL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     TValue* ur = VM_UV(LUAU_INSN_B(insn));
@@ -135,8 +144,9 @@ const Instruction* execute_LOP_GETUPVAL(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_SETUPVAL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SETUPVAL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     TValue* ur = VM_UV(LUAU_INSN_B(insn));
@@ -147,8 +157,9 @@ const Instruction* execute_LOP_SETUPVAL(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_CLOSEUPVALS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_CLOSEUPVALS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -157,8 +168,9 @@ const Instruction* execute_LOP_CLOSEUPVALS(lua_State* L, const Instruction* pc, 
     return pc;
 }
 
-const Instruction* execute_LOP_GETIMPORT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETIMPORT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     TValue* kv = VM_KV(LUAU_INSN_D(insn));
@@ -183,8 +195,9 @@ const Instruction* execute_LOP_GETIMPORT(lua_State* L, const Instruction* pc, Cl
     }
 }
 
-const Instruction* execute_LOP_GETTABLEKS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETTABLEKS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -300,8 +313,9 @@ const Instruction* execute_LOP_GETTABLEKS(lua_State* L, const Instruction* pc, C
     return pc;
 }
 
-const Instruction* execute_LOP_SETTABLEKS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SETTABLEKS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -376,8 +390,9 @@ const Instruction* execute_LOP_SETTABLEKS(lua_State* L, const Instruction* pc, C
     }
 }
 
-const Instruction* execute_LOP_GETTABLE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETTABLE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -406,8 +421,9 @@ const Instruction* execute_LOP_GETTABLE(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_SETTABLE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SETTABLE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -437,8 +453,9 @@ const Instruction* execute_LOP_SETTABLE(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_GETTABLEN(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETTABLEN(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -465,8 +482,9 @@ const Instruction* execute_LOP_GETTABLEN(lua_State* L, const Instruction* pc, Cl
     return pc;
 }
 
-const Instruction* execute_LOP_SETTABLEN(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SETTABLEN(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -494,8 +512,9 @@ const Instruction* execute_LOP_SETTABLEN(lua_State* L, const Instruction* pc, Cl
     return pc;
 }
 
-const Instruction* execute_LOP_NEWCLOSURE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_NEWCLOSURE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -527,6 +546,7 @@ const Instruction* execute_LOP_NEWCLOSURE(lua_State* L, const Instruction* pc, C
 
         default:
             LUAU_ASSERT(!"Unknown upvalue capture type");
+            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
         }
     }
 
@@ -534,8 +554,9 @@ const Instruction* execute_LOP_NEWCLOSURE(lua_State* L, const Instruction* pc, C
     return pc;
 }
 
-const Instruction* execute_LOP_NAMECALL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_NAMECALL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -641,8 +662,9 @@ const Instruction* execute_LOP_NAMECALL(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_CALL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_CALL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     VM_INTERRUPT();
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -734,8 +756,9 @@ const Instruction* execute_LOP_CALL(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_RETURN(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_RETURN(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     VM_INTERRUPT();
     Instruction insn = *pc++;
     StkId ra = &base[LUAU_INSN_A(insn)]; // note: this can point to L->top if b == LUA_MULTRET making VM_REG unsafe to use
@@ -785,8 +808,9 @@ const Instruction* execute_LOP_RETURN(lua_State* L, const Instruction* pc, Closu
     return pc;
 }
 
-const Instruction* execute_LOP_JUMP(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
 
     pc += LUAU_INSN_D(insn);
@@ -794,8 +818,9 @@ const Instruction* execute_LOP_JUMP(lua_State* L, const Instruction* pc, Closure
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPIF(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIF(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -804,8 +829,9 @@ const Instruction* execute_LOP_JUMPIF(lua_State* L, const Instruction* pc, Closu
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPIFNOT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFNOT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -814,8 +840,9 @@ const Instruction* execute_LOP_JUMPIFNOT(lua_State* L, const Instruction* pc, Cl
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPIFEQ(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFEQ(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -906,7 +933,9 @@ const Instruction* execute_LOP_JUMPIFEQ(lua_State* L, const Instruction* pc, Clo
             // slow path after switch()
             break;
 
-        default:;
+        default:
+            LUAU_ASSERT(!"Unknown value type");
+            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
         }
 
         // slow-path: tables with metatables and userdata values
@@ -926,8 +955,9 @@ const Instruction* execute_LOP_JUMPIFEQ(lua_State* L, const Instruction* pc, Clo
     }
 }
 
-const Instruction* execute_LOP_JUMPIFNOTEQ(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFNOTEQ(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -1018,7 +1048,9 @@ const Instruction* execute_LOP_JUMPIFNOTEQ(lua_State* L, const Instruction* pc, 
             // slow path after switch()
             break;
 
-        default:;
+        default:
+            LUAU_ASSERT(!"Unknown value type");
+            LUAU_UNREACHABLE(); // improves switch() codegen by eliding opcode bounds checks
         }
 
         // slow-path: tables with metatables and userdata values
@@ -1038,8 +1070,9 @@ const Instruction* execute_LOP_JUMPIFNOTEQ(lua_State* L, const Instruction* pc, 
     }
 }
 
-const Instruction* execute_LOP_JUMPIFLE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFLE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -1071,8 +1104,9 @@ const Instruction* execute_LOP_JUMPIFLE(lua_State* L, const Instruction* pc, Clo
     }
 }
 
-const Instruction* execute_LOP_JUMPIFNOTLE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFNOTLE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -1104,8 +1138,9 @@ const Instruction* execute_LOP_JUMPIFNOTLE(lua_State* L, const Instruction* pc, 
     }
 }
 
-const Instruction* execute_LOP_JUMPIFLT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFLT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -1137,8 +1172,9 @@ const Instruction* execute_LOP_JUMPIFLT(lua_State* L, const Instruction* pc, Clo
     }
 }
 
-const Instruction* execute_LOP_JUMPIFNOTLT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPIFNOTLT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -1170,8 +1206,9 @@ const Instruction* execute_LOP_JUMPIFNOTLT(lua_State* L, const Instruction* pc, 
     }
 }
 
-const Instruction* execute_LOP_ADD(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_ADD(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1216,8 +1253,9 @@ const Instruction* execute_LOP_ADD(lua_State* L, const Instruction* pc, Closure*
     }
 }
 
-const Instruction* execute_LOP_SUB(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SUB(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1262,8 +1300,9 @@ const Instruction* execute_LOP_SUB(lua_State* L, const Instruction* pc, Closure*
     }
 }
 
-const Instruction* execute_LOP_MUL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_MUL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1323,8 +1362,9 @@ const Instruction* execute_LOP_MUL(lua_State* L, const Instruction* pc, Closure*
     }
 }
 
-const Instruction* execute_LOP_DIV(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DIV(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1384,8 +1424,9 @@ const Instruction* execute_LOP_DIV(lua_State* L, const Instruction* pc, Closure*
     }
 }
 
-const Instruction* execute_LOP_MOD(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_MOD(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1407,8 +1448,9 @@ const Instruction* execute_LOP_MOD(lua_State* L, const Instruction* pc, Closure*
     }
 }
 
-const Instruction* execute_LOP_POW(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_POW(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1428,8 +1470,9 @@ const Instruction* execute_LOP_POW(lua_State* L, const Instruction* pc, Closure*
     }
 }
 
-const Instruction* execute_LOP_ADDK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_ADDK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1449,8 +1492,9 @@ const Instruction* execute_LOP_ADDK(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_SUBK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SUBK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1470,8 +1514,9 @@ const Instruction* execute_LOP_SUBK(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_MULK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_MULK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1516,8 +1561,9 @@ const Instruction* execute_LOP_MULK(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_DIVK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DIVK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1562,8 +1608,9 @@ const Instruction* execute_LOP_DIVK(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_MODK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_MODK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1585,8 +1632,9 @@ const Instruction* execute_LOP_MODK(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_POWK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_POWK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1612,8 +1660,9 @@ const Instruction* execute_LOP_POWK(lua_State* L, const Instruction* pc, Closure
     }
 }
 
-const Instruction* execute_LOP_AND(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_AND(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1623,8 +1672,9 @@ const Instruction* execute_LOP_AND(lua_State* L, const Instruction* pc, Closure*
     return pc;
 }
 
-const Instruction* execute_LOP_OR(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_OR(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1634,8 +1684,9 @@ const Instruction* execute_LOP_OR(lua_State* L, const Instruction* pc, Closure* 
     return pc;
 }
 
-const Instruction* execute_LOP_ANDK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_ANDK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1645,8 +1696,9 @@ const Instruction* execute_LOP_ANDK(lua_State* L, const Instruction* pc, Closure
     return pc;
 }
 
-const Instruction* execute_LOP_ORK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_ORK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1656,8 +1708,9 @@ const Instruction* execute_LOP_ORK(lua_State* L, const Instruction* pc, Closure*
     return pc;
 }
 
-const Instruction* execute_LOP_CONCAT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_CONCAT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int b = LUAU_INSN_B(insn);
     int c = LUAU_INSN_C(insn);
@@ -1672,8 +1725,9 @@ const Instruction* execute_LOP_CONCAT(lua_State* L, const Instruction* pc, Closu
     return pc;
 }
 
-const Instruction* execute_LOP_NOT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_NOT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1683,8 +1737,9 @@ const Instruction* execute_LOP_NOT(lua_State* L, const Instruction* pc, Closure*
     return pc;
 }
 
-const Instruction* execute_LOP_MINUS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_MINUS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1726,8 +1781,9 @@ const Instruction* execute_LOP_MINUS(lua_State* L, const Instruction* pc, Closur
     }
 }
 
-const Instruction* execute_LOP_LENGTH(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_LENGTH(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = VM_REG(LUAU_INSN_B(insn));
@@ -1764,8 +1820,9 @@ const Instruction* execute_LOP_LENGTH(lua_State* L, const Instruction* pc, Closu
     }
 }
 
-const Instruction* execute_LOP_NEWTABLE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_NEWTABLE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     int b = LUAU_INSN_B(insn);
@@ -1776,8 +1833,9 @@ const Instruction* execute_LOP_NEWTABLE(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_DUPTABLE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DUPTABLE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     TValue* kv = VM_KV(LUAU_INSN_D(insn));
@@ -1787,8 +1845,9 @@ const Instruction* execute_LOP_DUPTABLE(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_SETLIST(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_SETLIST(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     StkId rb = &base[LUAU_INSN_B(insn)]; // note: this can point to L->top if c == LUA_MULTRET making VM_REG unsafe to use
@@ -1819,8 +1878,9 @@ const Instruction* execute_LOP_SETLIST(lua_State* L, const Instruction* pc, Clos
     return pc;
 }
 
-const Instruction* execute_LOP_FORNPREP(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FORNPREP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -1843,8 +1903,9 @@ const Instruction* execute_LOP_FORNPREP(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_FORNLOOP(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FORNLOOP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     VM_INTERRUPT();
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -1870,8 +1931,9 @@ const Instruction* execute_LOP_FORNLOOP(lua_State* L, const Instruction* pc, Clo
     }
 }
 
-const Instruction* execute_LOP_FORGPREP(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FORGPREP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -1926,8 +1988,9 @@ const Instruction* execute_LOP_FORGPREP(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_FORGLOOP(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FORGLOOP(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     VM_INTERRUPT();
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -2026,8 +2089,9 @@ const Instruction* execute_LOP_FORGLOOP(lua_State* L, const Instruction* pc, Clo
     }
 }
 
-const Instruction* execute_LOP_FORGPREP_INEXT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FORGPREP_INEXT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -2048,14 +2112,16 @@ const Instruction* execute_LOP_FORGPREP_INEXT(lua_State* L, const Instruction* p
     return pc;
 }
 
-const Instruction* execute_LOP_DEP_FORGLOOP_INEXT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DEP_FORGLOOP_INEXT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     LUAU_ASSERT(!"Unsupported deprecated opcode");
     LUAU_UNREACHABLE();
 }
 
-const Instruction* execute_LOP_FORGPREP_NEXT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FORGPREP_NEXT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
 
@@ -2076,14 +2142,16 @@ const Instruction* execute_LOP_FORGPREP_NEXT(lua_State* L, const Instruction* pc
     return pc;
 }
 
-const Instruction* execute_LOP_DEP_FORGLOOP_NEXT(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DEP_FORGLOOP_NEXT(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     LUAU_ASSERT(!"Unsupported deprecated opcode");
     LUAU_UNREACHABLE();
 }
 
-const Instruction* execute_LOP_GETVARARGS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_GETVARARGS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int b = LUAU_INSN_B(insn) - 1;
     int n = cast_int(base - L->ci->func) - cl->l.p->numparams - 1;
@@ -2111,8 +2179,9 @@ const Instruction* execute_LOP_GETVARARGS(lua_State* L, const Instruction* pc, C
     }
 }
 
-const Instruction* execute_LOP_DUPCLOSURE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DUPCLOSURE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     TValue* kv = VM_KV(LUAU_INSN_D(insn));
@@ -2166,8 +2235,9 @@ const Instruction* execute_LOP_DUPCLOSURE(lua_State* L, const Instruction* pc, C
     return pc;
 }
 
-const Instruction* execute_LOP_PREPVARARGS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_PREPVARARGS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int numparams = LUAU_INSN_A(insn);
 
@@ -2196,8 +2266,9 @@ const Instruction* execute_LOP_PREPVARARGS(lua_State* L, const Instruction* pc, 
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPBACK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPBACK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     VM_INTERRUPT();
     Instruction insn = *pc++;
 
@@ -2206,8 +2277,9 @@ const Instruction* execute_LOP_JUMPBACK(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_LOADKX(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_LOADKX(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
     uint32_t aux = *pc++;
@@ -2217,8 +2289,9 @@ const Instruction* execute_LOP_LOADKX(lua_State* L, const Instruction* pc, Closu
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPX(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPX(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     VM_INTERRUPT();
     Instruction insn = *pc++;
 
@@ -2227,8 +2300,9 @@ const Instruction* execute_LOP_JUMPX(lua_State* L, const Instruction* pc, Closur
     return pc;
 }
 
-const Instruction* execute_LOP_FASTCALL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FASTCALL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int bfid = LUAU_INSN_A(insn);
     int skip = LUAU_INSN_C(insn);
@@ -2273,8 +2347,9 @@ const Instruction* execute_LOP_FASTCALL(lua_State* L, const Instruction* pc, Clo
     }
 }
 
-const Instruction* execute_LOP_COVERAGE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_COVERAGE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int hits = LUAU_INSN_E(insn);
 
@@ -2285,26 +2360,30 @@ const Instruction* execute_LOP_COVERAGE(lua_State* L, const Instruction* pc, Clo
     return pc;
 }
 
-const Instruction* execute_LOP_CAPTURE(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_CAPTURE(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     LUAU_ASSERT(!"CAPTURE is a pseudo-opcode and must be executed as part of NEWCLOSURE");
     LUAU_UNREACHABLE();
 }
 
-const Instruction* execute_LOP_DEP_JUMPIFEQK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DEP_JUMPIFEQK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     LUAU_ASSERT(!"Unsupported deprecated opcode");
     LUAU_UNREACHABLE();
 }
 
-const Instruction* execute_LOP_DEP_JUMPIFNOTEQK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_DEP_JUMPIFNOTEQK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     LUAU_ASSERT(!"Unsupported deprecated opcode");
     LUAU_UNREACHABLE();
 }
 
-const Instruction* execute_LOP_FASTCALL1(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FASTCALL1(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int bfid = LUAU_INSN_A(insn);
     TValue* arg = VM_REG(LUAU_INSN_B(insn));
@@ -2349,8 +2428,9 @@ const Instruction* execute_LOP_FASTCALL1(lua_State* L, const Instruction* pc, Cl
     }
 }
 
-const Instruction* execute_LOP_FASTCALL2(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FASTCALL2(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int bfid = LUAU_INSN_A(insn);
     int skip = LUAU_INSN_C(insn) - 1;
@@ -2397,8 +2477,9 @@ const Instruction* execute_LOP_FASTCALL2(lua_State* L, const Instruction* pc, Cl
     }
 }
 
-const Instruction* execute_LOP_FASTCALL2K(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_FASTCALL2K(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     int bfid = LUAU_INSN_A(insn);
     int skip = LUAU_INSN_C(insn) - 1;
@@ -2445,14 +2526,15 @@ const Instruction* execute_LOP_FASTCALL2K(lua_State* L, const Instruction* pc, C
     }
 }
 
-const Instruction* execute_LOP_BREAK(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_BREAK(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
     LUAU_ASSERT(!"Unsupported deprecated opcode");
     LUAU_UNREACHABLE();
 }
 
-const Instruction* execute_LOP_JUMPXEQKNIL(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPXEQKNIL(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -2464,8 +2546,9 @@ const Instruction* execute_LOP_JUMPXEQKNIL(lua_State* L, const Instruction* pc, 
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPXEQKB(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPXEQKB(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -2475,8 +2558,9 @@ const Instruction* execute_LOP_JUMPXEQKB(lua_State* L, const Instruction* pc, Cl
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPXEQKN(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPXEQKN(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));
@@ -2497,8 +2581,9 @@ const Instruction* execute_LOP_JUMPXEQKN(lua_State* L, const Instruction* pc, Cl
     return pc;
 }
 
-const Instruction* execute_LOP_JUMPXEQKS(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)
+const Instruction* execute_LOP_JUMPXEQKS(lua_State* L, const Instruction* pc, StkId base, TValue* k)
 {
+    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);
     Instruction insn = *pc++;
     uint32_t aux = *pc;
     StkId ra = VM_REG(LUAU_INSN_A(insn));

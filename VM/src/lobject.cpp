@@ -13,8 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-
-
 LUAU_FASTFLAG(LuauFasterGetInfo)
 
 const TValue luaO_nilobject_ = {{NULL}, {0}, LUA_TNIL};

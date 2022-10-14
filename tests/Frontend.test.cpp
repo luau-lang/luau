@@ -1029,7 +1029,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
 {
     ScopedFastFlag sff[] = {
         {"LuauForceExportSurfacesToBeNormal", true},
-        {"LuauLowerBoundsCalculation", true},
     };
 
     fileResolver.source["Module/A"] = R"(
@@ -1065,7 +1064,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
 {
     ScopedFastFlag sff[] = {
         {"LuauForceExportSurfacesToBeNormal", true},
-        {"LuauLowerBoundsCalculation", true},
     };
 
     fileResolver.source["Module/A"] = R"(

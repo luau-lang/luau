@@ -58,6 +58,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/include/Luau/AssemblyBuilderX64.h
     CodeGen/include/Luau/CodeAllocator.h
     CodeGen/include/Luau/CodeBlockUnwind.h
+    CodeGen/include/Luau/CodeGen.h
     CodeGen/include/Luau/Condition.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
@@ -69,13 +70,25 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/AssemblyBuilderX64.cpp
     CodeGen/src/CodeAllocator.cpp
     CodeGen/src/CodeBlockUnwind.cpp
+    CodeGen/src/CodeGen.cpp
+    CodeGen/src/CodeGenX64.cpp
+    CodeGen/src/EmitBuiltinsX64.cpp
+    CodeGen/src/EmitCommonX64.cpp
+    CodeGen/src/EmitInstructionX64.cpp
     CodeGen/src/Fallbacks.cpp
+    CodeGen/src/NativeState.cpp
     CodeGen/src/UnwindBuilderDwarf2.cpp
     CodeGen/src/UnwindBuilderWin.cpp
 
     CodeGen/src/ByteUtils.h
+    CodeGen/src/CustomExecUtils.h
+    CodeGen/src/CodeGenX64.h
+    CodeGen/src/EmitBuiltinsX64.h
+    CodeGen/src/EmitCommonX64.h
+    CodeGen/src/EmitInstructionX64.h
     CodeGen/src/Fallbacks.h
     CodeGen/src/FallbacksProlog.h
+    CodeGen/src/NativeState.h
 )
 
 # Luau.Analysis Sources
@@ -210,6 +223,7 @@ target_sources(Luau.VM PRIVATE
     VM/src/lvmexecute.cpp
     VM/src/lvmload.cpp
     VM/src/lvmutils.cpp
+
     VM/src/lapi.h
     VM/src/lbuiltins.h
     VM/src/lbytecode.h

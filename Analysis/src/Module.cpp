@@ -15,7 +15,6 @@
 #include <algorithm>
 
 LUAU_FASTFLAG(LuauAnyifyModuleReturnGenerics)
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
 LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess, false);
@@ -244,19 +243,6 @@ void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, Intern
 
     ForceNormal forceNormal{&interfaceTypes};
 
-    if (FFlag::LuauLowerBoundsCalculation)
-    {
-        normalize(returnType, NotNull{this}, singletonTypes, ice);
-        if (FFlag::LuauForceExportSurfacesToBeNormal)
-            forceNormal.traverse(returnType);
-        if (varargPack)
-        {
-            normalize(*varargPack, NotNull{this}, singletonTypes, ice);
-            if (FFlag::LuauForceExportSurfacesToBeNormal)
-                forceNormal.traverse(*varargPack);
-        }
-    }
-
     if (exportedTypeBindings)
     {
         for (auto& [name, tf] : *exportedTypeBindings)
@@ -265,24 +251,6 @@ void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, Intern
                 tf = clonePublicInterface.cloneTypeFun(tf);
             else
                 tf = clone(tf, interfaceTypes, cloneState);
-            if (FFlag::LuauLowerBoundsCalculation)
-            {
-                normalize(tf.type, NotNull{this}, singletonTypes, ice);
-
-                // We're about to freeze the memory.  We know that the flag is conservative by design.  Cyclic tables
-                // won't be marked normal.  If the types aren't normal by now, they never will be.
-                forceNormal.traverse(tf.type);
-                for (GenericTypeDefinition param : tf.typeParams)
-                {
-                    forceNormal.traverse(param.ty);
-
-                    if (param.defaultValue)
-                    {
-                        normalize(*param.defaultValue, NotNull{this}, singletonTypes, ice);
-                        forceNormal.traverse(*param.defaultValue);
-                    }
-                }
-            }
         }
     }
 
@@ -305,13 +273,6 @@ void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, Intern
             ty = clonePublicInterface.cloneType(ty);
         else
             ty = clone(ty, interfaceTypes, cloneState);
-        if (FFlag::LuauLowerBoundsCalculation)
-        {
-            normalize(ty, NotNull{this}, singletonTypes, ice);
-
-            if (FFlag::LuauForceExportSurfacesToBeNormal)
-                forceNormal.traverse(ty);
-        }
     }
 
     freeze(internalTypes);

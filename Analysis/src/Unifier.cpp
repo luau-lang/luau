@@ -18,14 +18,12 @@ LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
 LUAU_FASTINT(LuauTypeInferIterationLimit);
 LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeNormalizer, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
-LUAU_FASTFLAG(LuauCallUnifyPackTails)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 namespace Luau
@@ -346,8 +344,7 @@ static bool subsumes(bool useScopes, TY_A* left, TY_B* right)
         return left->level.subsumes(right->level);
 }
 
-Unifier::Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location,
-    Variance variance, TxnLog* parentLog)
+Unifier::Unifier(NotNull<Normalizer> normalizer, Mode mode, NotNull<Scope> scope, const Location& location, Variance variance, TxnLog* parentLog)
     : types(normalizer->arena)
     , singletonTypes(normalizer->singletonTypes)
     , normalizer(normalizer)
@@ -529,7 +526,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     {
         tryUnifyUnionWithType(subTy, subUnion, superTy);
     }
-    else if (const UnionTypeVar* uv = (FFlag::LuauSubtypeNormalizer? nullptr: log.getMutable<UnionTypeVar>(superTy)))
+    else if (const UnionTypeVar* uv = (FFlag::LuauSubtypeNormalizer ? nullptr : log.getMutable<UnionTypeVar>(superTy)))
     {
         tryUnifyTypeWithUnion(subTy, superTy, uv, cacheEnabled, isFunctionCall);
     }
@@ -865,7 +862,8 @@ void Unifier::tryUnifyIntersectionWithType(TypeId subTy, const IntersectionTypeV
     }
 }
 
-void Unifier::tryUnifyNormalizedTypes(TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason, std::optional<TypeError> error)
+void Unifier::tryUnifyNormalizedTypes(
+    TypeId subTy, TypeId superTy, const NormalizedType& subNorm, const NormalizedType& superNorm, std::string reason, std::optional<TypeError> error)
 {
     LUAU_ASSERT(FFlag::LuauSubtypeNormalizer);
 
@@ -1371,12 +1369,12 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
             else
             {
                 // A union type including nil marks an optional argument
-                if ((!FFlag::LuauLowerBoundsCalculation || isNonstrictMode()) && superIter.good() && isOptional(*superIter))
+                if (superIter.good() && isOptional(*superIter))
                 {
                     superIter.advance();
                     continue;
                 }
-                else if ((!FFlag::LuauLowerBoundsCalculation || isNonstrictMode()) && subIter.good() && isOptional(*subIter))
+                else if (subIter.good() && isOptional(*subIter))
                 {
                     subIter.advance();
                     continue;
@@ -1394,7 +1392,7 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
                     return;
                 }
 
-                if ((!FFlag::LuauLowerBoundsCalculation || isNonstrictMode()) && !isFunctionCall && subIter.good())
+                if (!isFunctionCall && subIter.good())
                 {
                     // Sometimes it is ok to pass too many arguments
                     return;
@@ -1491,7 +1489,6 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
 
             numGenerics = std::min(superFunction->generics.size(), subFunction->generics.size());
             numGenericPacks = std::min(superFunction->genericPacks.size(), subFunction->genericPacks.size());
-
         }
         else
         {
@@ -2012,7 +2009,8 @@ void Unifier::tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed)
                 if (auto e = hasUnificationTooComplex(innerState.errors))
                     reportError(*e);
                 else if (!innerState.errors.empty())
-                    reportError(TypeError{location, TypeMismatch{reversed ? subTy : superTy, reversed ? superTy : subTy, "", innerState.errors.front()}});
+                    reportError(
+                        TypeError{location, TypeMismatch{reversed ? subTy : superTy, reversed ? superTy : subTy, "", innerState.errors.front()}});
                 else if (!missingProperty)
                 {
                     log.concat(std::move(innerState.log));
@@ -2448,8 +2446,7 @@ void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel de
                 for (; superIter != superEndIter; ++superIter)
                     tp->head.push_back(*superIter);
             }
-            else if (const VariadicTypePack* subVariadic = log.getMutable<VariadicTypePack>(subTailPack);
-                     subVariadic && FFlag::LuauCallUnifyPackTails)
+            else if (const VariadicTypePack* subVariadic = log.getMutable<VariadicTypePack>(subTailPack))
             {
                 while (superIter != superEndIter)
                 {

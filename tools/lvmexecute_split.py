@@ -43,16 +43,23 @@ for line in input:
 
         if match:
             inst = match[1]
-            signature = "const Instruction* execute_" + inst + "(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)"
+            signature = "const Instruction* execute_" + inst + "(lua_State* L, const Instruction* pc, StkId base, TValue* k)"
             header += signature + ";\n"
             function = signature + "\n"
+            function += "{\n"
+            function += "    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);\n"
             state = 1
 
-    # find the end of an instruction
+    # first line of the instruction which is "{"
     elif state == 1:
+        assert(line == "            {\n")
+        state = 2
+
+    # find the end of an instruction
+    elif state == 2:
         # remove jumps back into the native code
         if line == "#if LUA_CUSTOM_EXECUTION\n":
-            state = 2
+            state = 3
             continue
 
         if line[0] == ' ':
@@ -70,7 +77,7 @@ for line in input:
         if match:
             # break is not supported
             if inst == "LOP_BREAK":
-                function = "const Instruction* execute_" + inst + "(lua_State* L, const Instruction* pc, Closure* cl, StkId base, TValue* k)\n"
+                function = "const Instruction* execute_" + inst + "(lua_State* L, const Instruction* pc, StkId base, TValue* k)\n"
                 function += "{\n    LUAU_ASSERT(!\"Unsupported deprecated opcode\");\n    LUAU_UNREACHABLE();\n}\n"
             # handle fallthrough
             elif inst == "LOP_NAMECALL":
@@ -81,14 +88,14 @@ for line in input:
             state = 0
 
     # skip LUA_CUSTOM_EXECUTION code blocks
-    elif state == 2:
+    elif state == 3:
         if line == "#endif\n":
-            state = 3
+            state = 4
             continue
 
     # skip extra line
-    elif state == 3:
-        state = 1
+    elif state == 4:
+        state = 2
 
 # make sure we found the ending
 assert(state == 0)

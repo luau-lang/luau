@@ -57,7 +57,7 @@ void write(JsonEmitter& emitter, const ConstraintGenerationLog& log)
     emitter.writeRaw(":");
 
     ObjectEmitter locationEmitter = emitter.writeObject();
-    
+
     for (const auto& [id, location] : log.constraintLocations)
     {
         locationEmitter.writePair(id, location);
@@ -232,7 +232,7 @@ void DcrLogger::captureSource(std::string source)
 void DcrLogger::captureGenerationError(const TypeError& error)
 {
     std::string stringifiedError = toString(error);
-    generationLog.errors.push_back(ErrorSnapshot {
+    generationLog.errors.push_back(ErrorSnapshot{
         /* message */ stringifiedError,
         /* location */ error.location,
     });
@@ -298,7 +298,8 @@ void DcrLogger::captureInitialSolverState(const Scope* rootScope, const std::vec
     }
 }
 
-StepSnapshot DcrLogger::prepareStepSnapshot(const Scope* rootScope, NotNull<const Constraint> current, bool force, const std::vector<NotNull<const Constraint>>& unsolvedConstraints)
+StepSnapshot DcrLogger::prepareStepSnapshot(
+    const Scope* rootScope, NotNull<const Constraint> current, bool force, const std::vector<NotNull<const Constraint>>& unsolvedConstraints)
 {
     ScopeSnapshot scopeSnapshot = snapshotScope(rootScope, opts);
     std::string currentId = toPointerId(current);
@@ -344,7 +345,7 @@ void DcrLogger::captureFinalSolverState(const Scope* rootScope, const std::vecto
 void DcrLogger::captureTypeCheckError(const TypeError& error)
 {
     std::string stringifiedError = toString(error);
-    checkLog.errors.push_back(ErrorSnapshot {
+    checkLog.errors.push_back(ErrorSnapshot{
         /* message */ stringifiedError,
         /* location */ error.location,
     });
@@ -359,7 +360,7 @@ std::vector<ConstraintBlock> DcrLogger::snapshotBlocks(NotNull<const Constraint>
     }
 
     std::vector<ConstraintBlock> snapshot;
-    
+
     for (const ConstraintBlockTarget& target : it->second)
     {
         if (const TypeId* ty = get_if<TypeId>(&target))

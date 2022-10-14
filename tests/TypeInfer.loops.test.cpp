@@ -622,9 +622,9 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_not_enough_returns")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK(result.errors[0] == TypeError{
-        Location{{2, 36}, {2, 37}},
-        GenericError{"__iter must return at least one value"},
-    });
+                                  Location{{2, 36}, {2, 37}},
+                                  GenericError{"__iter must return at least one value"},
+                              });
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "loop_iter_metamethod_ok")

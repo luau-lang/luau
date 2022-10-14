@@ -119,17 +119,9 @@ NormalizedType::NormalizedType(NotNull<SingletonTypes> singletonTypes)
 
 static bool isInhabited(const NormalizedType& norm)
 {
-    return !get<NeverTypeVar>(norm.tops)
-        || !get<NeverTypeVar>(norm.booleans)
-        || !norm.classes.empty()
-        || !get<NeverTypeVar>(norm.errors)
-        || !get<NeverTypeVar>(norm.nils)
-        || !get<NeverTypeVar>(norm.numbers)
-        || !norm.strings || !norm.strings->empty()
-        || !get<NeverTypeVar>(norm.threads)
-        || norm.functions
-        || !norm.tables.empty()
-        || !norm.tyvars.empty();
+    return !get<NeverTypeVar>(norm.tops) || !get<NeverTypeVar>(norm.booleans) || !norm.classes.empty() || !get<NeverTypeVar>(norm.errors) ||
+           !get<NeverTypeVar>(norm.nils) || !get<NeverTypeVar>(norm.numbers) || !norm.strings || !norm.strings->empty() ||
+           !get<NeverTypeVar>(norm.threads) || norm.functions || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
 static int tyvarIndex(TypeId ty)
@@ -139,7 +131,7 @@ static int tyvarIndex(TypeId ty)
     else if (const FreeTypeVar* ftv = get<FreeTypeVar>(ty))
         return ftv->index;
     else
-        return 0;        
+        return 0;
 }
 
 #ifdef LUAU_ASSERTENABLED
@@ -193,7 +185,7 @@ static bool isNormalizedString(const NormalizedStringType& ty)
 {
     if (!ty)
         return true;
-    
+
     for (auto& [str, ty] : *ty)
     {
         if (const SingletonTypeVar* stv = get<SingletonTypeVar>(ty))
@@ -272,24 +264,24 @@ static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
 
 static void assertInvariant(const NormalizedType& norm)
 {
-    #ifdef LUAU_ASSERTENABLED
-        if (!FFlag::DebugLuauCheckNormalizeInvariant)
-            return;
+#ifdef LUAU_ASSERTENABLED
+    if (!FFlag::DebugLuauCheckNormalizeInvariant)
+        return;
 
-        LUAU_ASSERT(isNormalizedTop(norm.tops));
-        LUAU_ASSERT(isNormalizedBoolean(norm.booleans));
-        LUAU_ASSERT(areNormalizedClasses(norm.classes));
-        LUAU_ASSERT(isNormalizedError(norm.errors));
-        LUAU_ASSERT(isNormalizedNil(norm.nils));
-        LUAU_ASSERT(isNormalizedNumber(norm.numbers));
-        LUAU_ASSERT(isNormalizedString(norm.strings));
-        LUAU_ASSERT(isNormalizedThread(norm.threads));
-        LUAU_ASSERT(areNormalizedFunctions(norm.functions));
-        LUAU_ASSERT(areNormalizedTables(norm.tables));
-        LUAU_ASSERT(isNormalizedTyvar(norm.tyvars));
-        for (auto& [_, child] : norm.tyvars)
-            assertInvariant(*child);
-    #endif
+    LUAU_ASSERT(isNormalizedTop(norm.tops));
+    LUAU_ASSERT(isNormalizedBoolean(norm.booleans));
+    LUAU_ASSERT(areNormalizedClasses(norm.classes));
+    LUAU_ASSERT(isNormalizedError(norm.errors));
+    LUAU_ASSERT(isNormalizedNil(norm.nils));
+    LUAU_ASSERT(isNormalizedNumber(norm.numbers));
+    LUAU_ASSERT(isNormalizedString(norm.strings));
+    LUAU_ASSERT(isNormalizedThread(norm.threads));
+    LUAU_ASSERT(areNormalizedFunctions(norm.functions));
+    LUAU_ASSERT(areNormalizedTables(norm.tables));
+    LUAU_ASSERT(isNormalizedTyvar(norm.tyvars));
+    for (auto& [_, child] : norm.tyvars)
+        assertInvariant(*child);
+#endif
 }
 
 Normalizer::Normalizer(TypeArena* arena, NotNull<SingletonTypes> singletonTypes, NotNull<UnifierSharedState> sharedState)
@@ -359,7 +351,7 @@ TypeId Normalizer::unionType(TypeId here, TypeId there)
         return there;
     if (get<NeverTypeVar>(there) || get<AnyTypeVar>(here))
         return here;
-    
+
     TypeIds tmps;
 
     if (const UnionTypeVar* utv = get<UnionTypeVar>(here))
@@ -405,7 +397,7 @@ TypeId Normalizer::intersectionType(TypeId here, TypeId there)
         return here;
     if (get<NeverTypeVar>(there) || get<AnyTypeVar>(here))
         return there;
-    
+
     TypeIds tmps;
 
     if (const IntersectionTypeVar* utv = get<IntersectionTypeVar>(here))
@@ -516,13 +508,13 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
 
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
-    
+
     bool hereSubThere = true;
     bool thereSubHere = true;
 
     TypePackIterator ith = begin(here);
     TypePackIterator itt = begin(there);
-    
+
     while (ith != end(here) && itt != end(there))
     {
         TypeId hty = *ith;
@@ -537,8 +529,8 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
         itt++;
     }
 
-    auto dealWithDifferentArities = [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere, bool& thereSubHere)
-    {
+    auto dealWithDifferentArities = [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere,
+                                        bool& thereSubHere) {
         if (ith != end(here))
         {
             TypeId tty = singletonTypes->nilType;
@@ -591,13 +583,13 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
                     if (ty != tvtp->ty)
                         hereSubThere = false;
                     bool hidden = hvtp->hidden & tvtp->hidden;
-                    tail = arena->addTypePack(VariadicTypePack{ty,hidden});
+                    tail = arena->addTypePack(VariadicTypePack{ty, hidden});
                 }
-                else 
+                else
                     // Luau doesn't have unions of type pack variables
                     return std::nullopt;
             }
-            else 
+            else
                 // Luau doesn't have unions of type pack variables
                 return std::nullopt;
         }
@@ -627,7 +619,7 @@ std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePack
     else if (thereSubHere)
         return here;
     if (!head.empty())
-        return arena->addTypePack(TypePack{head,tail});
+        return arena->addTypePack(TypePack{head, tail});
     else if (tail)
         return *tail;
     else
@@ -639,10 +631,10 @@ std::optional<TypeId> Normalizer::unionOfFunctions(TypeId here, TypeId there)
 {
     if (get<ErrorTypeVar>(here))
         return here;
-        
+
     if (get<ErrorTypeVar>(there))
         return there;
-        
+
     const FunctionTypeVar* hftv = get<FunctionTypeVar>(here);
     LUAU_ASSERT(hftv);
     const FunctionTypeVar* tftv = get<FunctionTypeVar>(there);
@@ -665,7 +657,7 @@ std::optional<TypeId> Normalizer::unionOfFunctions(TypeId here, TypeId there)
         return here;
     if (*argTypes == tftv->argTypes && *retTypes == tftv->retTypes)
         return there;
-        
+
     FunctionTypeVar result{*argTypes, *retTypes};
     result.generics = hftv->generics;
     result.genericPacks = hftv->genericPacks;
@@ -802,9 +794,9 @@ bool Normalizer::withinResourceLimits()
 
     // Check the recursion count
     if (sharedState->counters.recursionLimit > 0)
-         if (sharedState->counters.recursionLimit < sharedState->counters.recursionCount)
-             return false;
-    
+        if (sharedState->counters.recursionLimit < sharedState->counters.recursionCount)
+            return false;
+
     return true;
 }
 
@@ -1000,13 +992,13 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
 
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
-    
+
     bool hereSubThere = true;
     bool thereSubHere = true;
 
     TypePackIterator ith = begin(here);
     TypePackIterator itt = begin(there);
-    
+
     while (ith != end(here) && itt != end(there))
     {
         TypeId hty = *ith;
@@ -1021,8 +1013,8 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
         itt++;
     }
 
-    auto dealWithDifferentArities = [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere, bool& thereSubHere)
-    {
+    auto dealWithDifferentArities = [&](TypePackIterator& ith, TypePackIterator itt, TypePackId here, TypePackId there, bool& hereSubThere,
+                                        bool& thereSubHere) {
         if (ith != end(here))
         {
             TypeId tty = singletonTypes->nilType;
@@ -1075,13 +1067,13 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
                     if (ty != tvtp->ty)
                         hereSubThere = false;
                     bool hidden = hvtp->hidden & tvtp->hidden;
-                    tail = arena->addTypePack(VariadicTypePack{ty,hidden});
+                    tail = arena->addTypePack(VariadicTypePack{ty, hidden});
                 }
-                else 
+                else
                     // Luau doesn't have unions of type pack variables
                     return std::nullopt;
             }
-            else 
+            else
                 // Luau doesn't have unions of type pack variables
                 return std::nullopt;
         }
@@ -1105,7 +1097,7 @@ std::optional<TypePackId> Normalizer::intersectionOfTypePacks(TypePackId here, T
     else if (thereSubHere)
         return there;
     if (!head.empty())
-        return arena->addTypePack(TypePack{head,tail});
+        return arena->addTypePack(TypePack{head, tail});
     else if (tail)
         return *tail;
     else
@@ -1146,7 +1138,7 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         return std::nullopt;
     if (httv->state == TableState::Generic || tttv->state == TableState::Generic)
         return std::nullopt;
-        
+
     TableState state = httv->state;
     if (tttv->state == TableState::Unsealed)
         state = tttv->state;
@@ -1226,21 +1218,20 @@ std::optional<TypeId> Normalizer::intersectionOfTables(TypeId here, TypeId there
         }
         else
             return std::nullopt;
-        
     }
     else if (hmtable)
     {
         if (table == htable)
             return here;
         else
-            return arena->addType(MetatableTypeVar{table, hmtable});    
+            return arena->addType(MetatableTypeVar{table, hmtable});
     }
     else if (tmtable)
     {
         if (table == ttable)
             return there;
         else
-            return arena->addType(MetatableTypeVar{table, tmtable});    
+            return arena->addType(MetatableTypeVar{table, tmtable});
     }
     else
         return table;
@@ -1280,7 +1271,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
         return std::nullopt;
     if (hftv->retTypes != tftv->retTypes)
         return std::nullopt;
-    
+
     std::optional<TypePackId> argTypes = unionOfTypePacks(hftv->argTypes, tftv->argTypes);
     if (!argTypes)
         return std::nullopt;
@@ -1289,7 +1280,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
         return here;
     if (*argTypes == tftv->argTypes)
         return there;
-        
+
     FunctionTypeVar result{*argTypes, hftv->retTypes};
     result.generics = hftv->generics;
     result.genericPacks = hftv->genericPacks;
@@ -1299,7 +1290,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
 std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId there)
 {
     // Deep breath...
-    // 
+    //
     // When we come to check overloaded functions for subtyping,
     // we have to compare (F1 & ... & FM) <: (G1 & ... G GN)
     // where each Fi or Gj is a function type. Now that intersection on the right is no
@@ -1319,12 +1310,12 @@ std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId th
     //
     // So subtyping on overloaded functions "just" boils down to defining Apply<F, T>.
     //
-    // Now for non-overloaded functions, this is easy! 
+    // Now for non-overloaded functions, this is easy!
     // Apply<(R -> S), T> is S if T <: R, and an error type otherwise.
     //
     // But for overloaded functions it's not so simple. We'd like Apply<F1 & ... & FM, T>
     // to just be Apply<F1, T> & ... & Apply<FM, T> but oh dear
-    // 
+    //
     //   if f : ((number -> number) & (string -> string))
     //   and x : (number | string)
     //   then f(x) : (number | string)
@@ -1334,7 +1325,7 @@ std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId th
     //   Apply<((number -> number) & (string -> string)), (number | string)> is (number | string)
     //
     // but
-    // 
+    //
     //   Apply<(number -> number), (number | string)> is an error
     //   Apply<(string -> string), (number | string)> is an error
     //
@@ -1382,7 +1373,7 @@ std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId th
     //   Covariance and Contravariance, Giuseppe Castagna,
     //   Logical Methods in Computer Science 16(1), 2022
     //   https://arxiv.org/abs/1809.01427
-    //   
+    //
     //   A gentle introduction to semantic subtyping, Giuseppe Castagna and Alain Frisch,
     //   Proc. Principles and practice of declarative programming 2005, pp 198–208
     //   https://doi.org/10.1145/1069774.1069793
@@ -1398,7 +1389,7 @@ std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId th
         return std::nullopt;
     if (hftv->genericPacks != tftv->genericPacks)
         return std::nullopt;
-    
+
     std::optional<TypePackId> argTypes = unionOfTypePacks(hftv->argTypes, tftv->argTypes);
     if (!argTypes)
         return std::nullopt;
@@ -1416,7 +1407,7 @@ void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, T
 {
     if (!heres)
         return;
-    
+
     for (auto it = heres->begin(); it != heres->end();)
     {
         TypeId here = *it;
@@ -1450,7 +1441,7 @@ void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const Normali
     {
         heres = std::nullopt;
         return;
-    }   
+    }
     else
     {
         for (TypeId there : *theres)
@@ -1530,7 +1521,7 @@ bool Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& th
         if (isInhabited(inter))
             it++;
         else
-            it = here.tyvars.erase(it);                
+            it = here.tyvars.erase(it);
     }
     return true;
 }
@@ -1757,7 +1748,8 @@ bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<Singl
     return ok;
 }
 
-bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
+bool isSubtype(
+    TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
@@ -2377,4 +2369,3 @@ std::pair<TypePackId, bool> normalize(TypePackId tp, const ModulePtr& module, No
 }
 
 } // namespace Luau
-

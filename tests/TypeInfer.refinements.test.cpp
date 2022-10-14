@@ -7,7 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 using namespace Luau;
@@ -608,10 +607,7 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ("{| x: number, y: number |}", toString(requireTypeAtPosition({4, 28})));
-    else
-        CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28})));
+    CHECK_EQ("{| x: number |} & {| y: number |}", toString(requireTypeAtPosition({4, 28})));
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 

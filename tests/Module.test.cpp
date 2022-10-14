@@ -11,7 +11,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -107,11 +106,8 @@ TEST_CASE_FIXTURE(Fixture, "deepClone_cyclic_table")
     REQUIRE(methodReturnType);
 
     CHECK_EQ(methodReturnType, counterCopy);
-    if (FFlag::LuauLowerBoundsCalculation)
-        CHECK_EQ(3, dest.typePacks.size()); // function args, its return type, and the hidden any... pack
-    else
-        CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
-    CHECK_EQ(2, dest.typeVars.size());      // One table and one function
+    CHECK_EQ(2, dest.typePacks.size()); // one for the function args, and another for its return type
+    CHECK_EQ(2, dest.typeVars.size());  // One table and one function
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "builtin_types_point_into_globalTypes_arena")

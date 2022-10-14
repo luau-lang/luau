@@ -290,6 +290,7 @@ typedef struct Proto
     int sizelineinfo;
     int linegaplog2;
     int linedefined;
+    int bytecodeid;
 
 
     uint8_t nups; // number of upvalues

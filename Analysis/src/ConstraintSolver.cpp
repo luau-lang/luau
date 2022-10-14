@@ -14,8 +14,6 @@
 #include "Luau/VisitTypeVar.h"
 #include "Luau/TypeUtils.h"
 
-#include <random>
-
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
 LUAU_FASTFLAG(LuauFixNameMaps)
@@ -283,13 +281,27 @@ ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope
 
 void ConstraintSolver::randomize(unsigned seed)
 {
-    std::mt19937 g(seed);
-    std::shuffle(begin(unsolvedConstraints), end(unsolvedConstraints), g);
+    if (unsolvedConstraints.empty())
+        return;
+
+    unsigned int rng = seed;
+
+    for (size_t i = unsolvedConstraints.size() - 1; i > 0; --i)
+    {
+        // Fisher-Yates shuffle
+        size_t j = rng % (i + 1);
+
+        std::swap(unsolvedConstraints[i], unsolvedConstraints[j]);
+
+        // LCG RNG, constants from Numerical Recipes
+        // This may occasionally result in skewed shuffles due to distribution properties, but this is a debugging tool so it should be good enough
+        rng = rng * 1664525 + 1013904223;
+    }
 }
 
 void ConstraintSolver::run()
 {
-    if (done())
+    if (isDone())
         return;
 
     if (FFlag::DebugLuauLogSolver)
@@ -364,6 +376,8 @@ void ConstraintSolver::run()
             progress |= runSolverPass(true);
     } while (progress);
 
+    finalizeModule();
+
     if (FFlag::DebugLuauLogSolver)
     {
         dumpBindings(rootScope, opts);
@@ -375,9 +389,22 @@ void ConstraintSolver::run()
     }
 }
 
-bool ConstraintSolver::done()
+bool ConstraintSolver::isDone()
 {
     return unsolvedConstraints.empty();
+}
+
+void ConstraintSolver::finalizeModule()
+{
+    Anyification a{arena, rootScope, singletonTypes, &iceReporter, singletonTypes->anyType, singletonTypes->anyTypePack};
+    std::optional<TypePackId> returnType = a.substitute(rootScope->returnType);
+    if (!returnType)
+    {
+        reportError(CodeTooComplex{}, Location{});
+        rootScope->returnType = singletonTypes->errorTypePack;
+    }
+    else
+        rootScope->returnType = *returnType;
 }
 
 bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool force)
@@ -506,25 +533,25 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
 
     switch (c.op)
     {
-        case AstExprUnary::Not:
+    case AstExprUnary::Not:
+    {
+        asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->booleanType);
+        return true;
+    }
+    case AstExprUnary::Len:
+    {
+        asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->numberType);
+        return true;
+    }
+    case AstExprUnary::Minus:
+    {
+        if (isNumber(operandType) || get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType))
         {
-            asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->booleanType);
+            asMutable(c.resultType)->ty.emplace<BoundTypeVar>(c.operandType);
             return true;
         }
-        case AstExprUnary::Len:
-        {
-            asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->numberType);
-            return true;
-        }
-        case AstExprUnary::Minus:
-        {
-            if (isNumber(operandType) || get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType))
-            {
-                asMutable(c.resultType)->ty.emplace<BoundTypeVar>(c.operandType);
-                return true;
-            }
-            break;
-        }
+        break;
+    }
     }
 
     LUAU_ASSERT(false); // TODO metatable handling

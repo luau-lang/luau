@@ -14,12 +14,10 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
-LUAU_FASTFLAG(LuauCheckGenericHOFTypes);
 
 using namespace Luau;
 
@@ -89,7 +87,6 @@ TEST_CASE_FIXTURE(Fixture, "infer_in_nocheck_mode")
 {
     ScopedFastFlag sff[]{
         {"DebugLuauDeferredConstraintResolution", false},
-        {"LuauLowerBoundsCalculation", true},
     };
 
     CheckResult result = check(R"(
@@ -1001,21 +998,23 @@ TEST_CASE_FIXTURE(Fixture, "cli_50041_committing_txnlog_in_apollo_client_error")
         end
     )");
 
-    if (FFlag::LuauInstantiateInSubtyping && !FFlag::LuauCheckGenericHOFTypes)
+    if (FFlag::LuauInstantiateInSubtyping)
     {
         // though this didn't error before the flag, it seems as though it should error since fields of a table are invariant.
-        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be unsound.
+        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be
+        // unsound.
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-        CHECK_EQ(R"(Type 't1 where t1 = {+ getStoreFieldName: (t1, {| fieldName: string |} & {| from: number? |}) -> (a, b...) +}' could not be converted into 'Policies'
+        CHECK_EQ(
+            R"(Type 't1 where t1 = {+ getStoreFieldName: (t1, {| fieldName: string |} & {| from: number? |}) -> (a, b...) +}' could not be converted into 'Policies'
 caused by:
   Property 'getStoreFieldName' is not compatible. Type 't1 where t1 = ({+ getStoreFieldName: t1 +}, {| fieldName: string |} & {| from: number? |}) -> (a, b...)' could not be converted into '(Policies, FieldSpecifier) -> string'
 caused by:
   Argument #2 type is not compatible. Type 'FieldSpecifier' could not be converted into 'FieldSpecifier & {| from: number? |}'
 caused by:
   Not all intersection parts are compatible. Table type 'FieldSpecifier' not compatible with type '{| from: number? |}' because the former has extra field 'fieldName')",
-                 toString(result.errors[0]));
+            toString(result.errors[0]));
     }
     else
     {
@@ -1044,7 +1043,7 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_no_ice")
 TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
 {
     ScopedFastInt sfi("LuauTypeInferRecursionLimit", 10);
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
         {"LuauAutocompleteDynamicLimits", true},
@@ -1057,14 +1056,14 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
         end
     )");
 
-    LUAU_REQUIRE_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Internal error: Code is too complex to typecheck! Consider adding type annotations around this area", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_infer_cache_limit_normalizer")
 {
     ScopedFastInt sfi("LuauNormalizeCacheLimit", 10);
-    ScopedFastFlag sffs[] {
+    ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
     };
@@ -1099,45 +1098,6 @@ TEST_CASE_FIXTURE(Fixture, "follow_on_new_types_in_substitution")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-}
-
-/**
- * The problem we had here was that the type of q in B.h was initially inferring to {} | {prop: free} before we bound
- * that second table to the enclosing union.
- */
-TEST_CASE_FIXTURE(Fixture, "do_not_bind_a_free_table_to_a_union_containing_that_table")
-{
-    ScopedFastFlag flag[] = {
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        --!strict
-
-        local A = {}
-
-        function A:f()
-            local t = {}
-
-            for key, value in pairs(self) do
-                t[key] = value
-            end
-
-            return t
-        end
-
-        local B = A:f()
-
-        function B.g(t)
-            assert(type(t) == "table")
-            assert(t.prop ~= nil)
-        end
-
-        function B.h(q)
-            q = q or {}
-            return q or {}
-        end
-    )");
 }
 
 TEST_CASE_FIXTURE(Fixture, "types_stored_in_astResolvedTypes")

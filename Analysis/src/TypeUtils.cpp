@@ -6,8 +6,6 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 
-LUAU_FASTFLAG(LuauFunctionArgMismatchDetails)
-
 namespace Luau
 {
 
@@ -218,7 +216,7 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         ++it;
     }
 
-    if (it.tail() && (!FFlag::LuauFunctionArgMismatchDetails || isVariadicTail(*it.tail(), *log, includeHiddenVariadics)))
+    if (it.tail() && isVariadicTail(*it.tail(), *log, includeHiddenVariadics))
         return {minCount, std::nullopt};
     else
         return {minCount, minCount + optionalCount};

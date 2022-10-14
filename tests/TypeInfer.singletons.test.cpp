@@ -421,28 +421,6 @@ TEST_CASE_FIXTURE(Fixture, "widening_happens_almost_everywhere_except_for_tables
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
-{
-    ScopedFastFlag sff{"LuauLowerBoundsCalculation", true};
-
-    CheckResult result = check(R"(
-        local function foo(t, x)
-            if x == "hi" or x == "bye" then
-                table.insert(t, x)
-            end
-
-            return t
-        end
-
-        local t = foo({}, "hi")
-        table.insert(t, "totally_unrelated_type" :: "totally_unrelated_type")
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("{string}", toString(requireType("t")));
-}
-
 TEST_CASE_FIXTURE(Fixture, "functions_are_not_to_be_widened")
 {
     CheckResult result = check(R"(

@@ -254,20 +254,20 @@ return m
     if (FFlag::LuauInstantiateInSubtyping)
     {
         // though this didn't error before the flag, it seems as though it should error since fields of a table are invariant.
-        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be unsound.
+        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be
+        // unsound.
 
         LUAU_REQUIRE_ERROR_COUNT(1, result);
 
         CHECK_EQ(R"(Type 'n' could not be converted into 't1 where t1 = {- Clone: (t1) -> (a...) -}'
 caused by:
   Property 'Clone' is not compatible. Type '<a>(a) -> ()' could not be converted into 't1 where t1 = ({- Clone: t1 -}) -> (a...)'; different number of generic type parameters)",
-                 toString(result.errors[0]));
+            toString(result.errors[0]));
     }
     else
     {
         LUAU_REQUIRE_NO_ERRORS(result);
     }
-
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "custom_require_global")

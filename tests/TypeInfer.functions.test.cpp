@@ -14,7 +14,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
@@ -297,22 +296,6 @@ TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_rets")
 
     LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ("t1 where t1 = () -> t1", toString(requireType("f")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "cyclic_function_type_in_args")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        function f(g)
-            return f(f)
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("t1 where t1 = <a...>(t1) -> (a...)", toString(requireType("f")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "another_higher_order_function")
@@ -1132,16 +1115,13 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    if (!FFlag::LuauLowerBoundsCalculation)
-    {
-        // Return type doesn't inference 'nil'
-        result = check(R"(
-            function f(a: (number) -> nil) return a(4) end
-            f(function(x) print(x) end)
-        )");
+    // Return type doesn't inference 'nil'
+    result = check(R"(
+        function f(a: (number) -> nil) return a(4) end
+        f(function(x) print(x) end)
+    )");
 
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "infer_anonymous_function_arguments")
@@ -1244,16 +1224,13 @@ f(function(x) return x * 2 end)
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     CHECK_EQ("Type 'number' could not be converted into 'Table'", toString(result.errors[0]));
 
-    if (!FFlag::LuauLowerBoundsCalculation)
-    {
-        // Return type doesn't inference 'nil'
-        result = check(R"(
-            function f(a: (number) -> nil) return a(4) end
-            f(function(x) print(x) end)
-        )");
+    // Return type doesn't inference 'nil'
+    result = check(R"(
+        function f(a: (number) -> nil) return a(4) end
+        f(function(x) print(x) end)
+    )");
 
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "infer_anonymous_function_arguments_outside_call")
@@ -1434,87 +1411,6 @@ end
     LUAU_REQUIRE_ERROR_COUNT(2, result);
     CHECK_EQ(toString(result.errors[0]), R"(Type 'string' could not be converted into 'number')");
     CHECK_EQ(toString(result.errors[1]), R"(Type 'string' could not be converted into 'number')");
-}
-
-TEST_CASE_FIXTURE(Fixture, "inconsistent_return_types")
-{
-    const ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        function foo(a: boolean, b: number)
-            if a then
-                return nil
-            else
-                return b
-            end
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("(boolean, number) -> number?", toString(requireType("foo")));
-
-    // TODO: Test multiple returns
-    // Think of various cases where typepacks need to grow.  maybe consult other tests
-    // Basic normalization of ConstrainedTypeVars during quantification
-}
-
-TEST_CASE_FIXTURE(Fixture, "inconsistent_higher_order_function")
-{
-    const ScopedFastFlag flags[] = {
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        function foo(f)
-            f(5)
-            f("six")
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("<a...>((number | string) -> (a...)) -> ()", toString(requireType("foo")));
-}
-
-
-/* The bug here is that we are using the same level 2.0 for both the body of resolveDispatcher and the
- * lambda useCallback.
- *
- * I think what we want to do is, at each scope level, never reuse the same sublevel.
- *
- * We also adjust checkBlock to consider the syntax `local x = function() ... end` to be sortable
- * in the same way as `local function x() ... end`.  This causes the function `resolveDispatcher` to be
- * checked before the lambda.
- */
-TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time")
-{
-    ScopedFastFlag sff[] = {
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        --!strict
-
-        local function resolveDispatcher()
-            return (nil :: any) :: {useCallback: (any) -> any}
-        end
-
-        local useCallback = function(deps: any)
-            return resolveDispatcher().useCallback(deps)
-        end
-    )");
-
-    // LUAU_REQUIRE_NO_ERRORS is particularly unhelpful when this test is broken.
-    // You get a TypeMismatch error where both types stringify the same.
-
-    CHECK(result.errors.empty());
-    if (!result.errors.empty())
-    {
-        for (const auto& e : result.errors)
-            printf("%s: %s\n", toString(e.location).c_str(), toString(e).c_str());
-    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "inferred_higher_order_functions_are_quantified_at_the_right_time2")
@@ -1700,56 +1596,6 @@ TEST_CASE_FIXTURE(Fixture, "occurs_check_failure_in_function_return_type")
     CHECK(nullptr != get<OccursCheckFailed>(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "quantify_constrained_types")
-{
-    ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        --!strict
-        local function foo(f)
-            f(5)
-            f("hi")
-            local function g()
-                return f
-            end
-            local h = g()
-            h(true)
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-
-    CHECK_EQ("<a...>((boolean | number | string) -> (a...)) -> ()", toString(requireType("foo")));
-}
-
-TEST_CASE_FIXTURE(Fixture, "call_o_with_another_argument_after_foo_was_quantified")
-{
-    ScopedFastFlag sff[]{
-        {"LuauLowerBoundsCalculation", true},
-    };
-
-    CheckResult result = check(R"(
-        local function f(o)
-            local t = {}
-            t[o] = true
-
-            local function foo(o)
-                o.m1(5)
-                t[o] = nil
-            end
-
-            o.m1("hi")
-
-            return t
-        end
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-    // TODO: check the normalized type of f
-}
-
 TEST_CASE_FIXTURE(Fixture, "free_is_not_bound_to_unknown")
 {
     CheckResult result = check(R"(
@@ -1800,8 +1646,6 @@ TEST_CASE_FIXTURE(Fixture, "dont_mutate_the_underlying_head_of_typepack_when_cal
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "improved_function_arg_mismatch_errors")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check(R"(
 local function foo1(a: number) end
 foo1()
@@ -1838,8 +1682,6 @@ u.a.foo()
 // This might be surprising, but since 'any' became optional, unannotated functions in non-strict 'expect' 0 arguments
 TEST_CASE_FIXTURE(BuiltinsFixture, "improved_function_arg_mismatch_error_nonstrict")
 {
-    ScopedFastFlag luauFunctionArgMismatchDetails{"LuauFunctionArgMismatchDetails", true};
-
     CheckResult result = check(R"(
 --!nonstrict
 local function foo(a, b) end

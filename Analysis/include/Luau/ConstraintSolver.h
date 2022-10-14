@@ -76,8 +76,8 @@ struct ConstraintSolver
 
     DcrLogger* logger;
 
-    explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, ModuleName moduleName,
-        NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger);
+    explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, ModuleName moduleName, NotNull<ModuleResolver> moduleResolver,
+        std::vector<RequireCycle> requireCycles, DcrLogger* logger);
 
     // Randomize the order in which to dispatch constraints
     void randomize(unsigned seed);
@@ -88,7 +88,9 @@ struct ConstraintSolver
      **/
     void run();
 
-    bool done();
+    bool isDone();
+
+    void finalizeModule();
 
     /** Attempt to dispatch a constraint.  Returns true if it was successful. If
      * tryDispatch() returns false, the constraint remains in the unsolved set

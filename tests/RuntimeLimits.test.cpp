@@ -15,8 +15,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauLowerBoundsCalculation);
-
 struct LimitFixture : BuiltinsFixture
 {
 #if defined(_NOOPT) || defined(_DEBUG)
@@ -267,10 +265,7 @@ TEST_CASE_FIXTURE(LimitFixture, "typescript_port_of_Result_type")
     CheckResult result = check(src);
     CodeTooComplex ctc;
 
-    if (FFlag::LuauLowerBoundsCalculation)
-        LUAU_REQUIRE_ERRORS(result);
-    else
-        CHECK(hasError(result, &ctc));
+    CHECK(hasError(result, &ctc));
 }
 
 TEST_SUITE_END();

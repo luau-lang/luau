@@ -93,6 +93,7 @@ assert((function() local a = 1 a = a * 2 return a end)() == 2)
 assert((function() local a = 1 a = a / 2 return a end)() == 0.5)
 assert((function() local a = 5 a = a % 2 return a end)() == 1)
 assert((function() local a = 3 a = a ^ 2 return a end)() == 9)
+assert((function() local a = 9 a = a ^ 0.5 return a end)() == 3)
 
 assert((function() local a = '1' a = a .. '2' return a end)() == "12")
 assert((function() local a = '1' a = a .. '2' .. '3' return a end)() == "123")
@@ -474,6 +475,12 @@ assert(rawequal(1, 2) == false)
 assert(rawequal("a", "a") == true)
 assert(rawequal("a", "b") == false)
 assert((function() a = {} b = {} mt = { __eq = function(l, r) return #l == #r end } setmetatable(a, mt) setmetatable(b, mt) return concat(a == b, rawequal(a, b)) end)() == "true,false")
+
+-- rawequal fallback
+assert(concat(pcall(rawequal, "a", "a")) == "true,true")
+assert(concat(pcall(rawequal, "a", "b")) == "true,false")
+assert(concat(pcall(rawequal, "a", nil)) == "true,false")
+assert(pcall(rawequal, "a") == false)
 
 -- metatable ops
 local function vec3t(x, y, z)

@@ -397,7 +397,7 @@ private:
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };
 
-using PrintLineProc = void(*)(const std::string&);
+using PrintLineProc = void (*)(const std::string&);
 
 extern PrintLineProc luauPrintLine;
 

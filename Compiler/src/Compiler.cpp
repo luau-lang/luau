@@ -709,6 +709,17 @@ struct Compiler
             if (const int* id = builtins.find(expr))
                 bfid = *id;
 
+        if (bfid >= 0 && bytecode.needsDebugRemarks())
+        {
+            Builtin builtin = getBuiltin(expr->func, globals, variables);
+            bool lastMult = expr->args.size > 0 && isExprMultRet(expr->args.data[expr->args.size - 1]);
+
+            if (builtin.object.value)
+                bytecode.addDebugRemark("builtin %s.%s/%d%s", builtin.object.value, builtin.method.value, int(expr->args.size), lastMult ? "+" : "");
+            else if (builtin.method.value)
+                bytecode.addDebugRemark("builtin %s/%d%s", builtin.method.value, int(expr->args.size), lastMult ? "+" : "");
+        }
+
         if (bfid == LBF_SELECT_VARARG)
         {
             // Optimization: compile select(_, ...) as FASTCALL1; the builtin will read variadic arguments directly
@@ -917,6 +928,9 @@ struct Compiler
             if (cid >= 0 && cid < 32768)
                 shared = int16_t(cid);
         }
+
+        if (shared < 0)
+            bytecode.addDebugRemark("allocation: closure with %d upvalues", int(captures.size()));
 
         if (shared >= 0)
             bytecode.emitAD(LOP_DUPCLOSURE, target, shared);
@@ -1599,6 +1613,8 @@ struct Compiler
         {
             TableShape shape = tableShapes[expr];
 
+            bytecode.addDebugRemark("allocation: table hash %d", shape.hashSize);
+
             bytecode.emitABC(LOP_NEWTABLE, target, encodeHashSize(shape.hashSize), 0);
             bytecode.emitAux(shape.arraySize);
             return;
@@ -1671,6 +1687,8 @@ struct Compiler
             if (tid < 0)
                 CompileError::raise(expr->location, "Exceeded constant limit; simplify the code to compile");
 
+            bytecode.addDebugRemark("allocation: table template %d", hashSize);
+
             if (tid < 32768)
             {
                 bytecode.emitAD(LOP_DUPTABLE, reg, int16_t(tid));
@@ -1690,8 +1708,17 @@ struct Compiler
             bool trailingVarargs = last && last->kind == AstExprTable::Item::List && last->value->is<AstExprVarargs>();
             LUAU_ASSERT(!trailingVarargs || arraySize > 0);
 
+            unsigned int arrayAllocation = arraySize - trailingVarargs + indexSize;
+
+            if (hashSize == 0)
+                bytecode.addDebugRemark("allocation: table array %d", arrayAllocation);
+            else if (arrayAllocation == 0)
+                bytecode.addDebugRemark("allocation: table hash %d", hashSize);
+            else
+                bytecode.addDebugRemark("allocation: table hash %d array %d", hashSize, arrayAllocation);
+
             bytecode.emitABC(LOP_NEWTABLE, reg, uint8_t(encodedHashSize), 0);
-            bytecode.emitAux(arraySize - trailingVarargs + indexSize);
+            bytecode.emitAux(arrayAllocation);
         }
 
         unsigned int arrayChunkSize = std::min(16u, arraySize);

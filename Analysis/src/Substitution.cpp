@@ -9,7 +9,6 @@
 #include <stdexcept>
 
 LUAU_FASTFLAGVARIABLE(LuauSubstitutionFixMissingFields, false)
-LUAU_FASTFLAG(LuauLowerBoundsCalculation)
 LUAU_FASTFLAG(LuauClonePublicInterfaceLess)
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
 LUAU_FASTFLAGVARIABLE(LuauClassTypeVarsInSubstitution, false)
@@ -553,9 +552,6 @@ TypePackId Substitution::replace(TypePackId tp)
 
 void Substitution::replaceChildren(TypeId ty)
 {
-    if (BoundTypeVar* btv = log->getMutable<BoundTypeVar>(ty); FFlag::LuauLowerBoundsCalculation && btv)
-        btv->boundTo = replace(btv->boundTo);
-
     LUAU_ASSERT(ty == log->follow(ty));
 
     if (ignoreChildren(ty))

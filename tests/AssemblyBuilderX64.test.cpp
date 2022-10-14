@@ -177,6 +177,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseUnaryInstructionForms")
     SINGLE_COMPARE(imul(r9), 0x49, 0xf7, 0xe9);
     SINGLE_COMPARE(neg(r9), 0x49, 0xf7, 0xd9);
     SINGLE_COMPARE(not_(r12), 0x49, 0xf7, 0xd4);
+    SINGLE_COMPARE(inc(r12), 0x49, 0xff, 0xc4);
+    SINGLE_COMPARE(dec(ecx), 0xff, 0xc9);
+    SINGLE_COMPARE(dec(byte[rdx]), 0xfe, 0x0a);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfMov")
@@ -365,7 +368,6 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXUnaryMergeInstructionForms")
     SINGLE_COMPARE(vsqrtss(xmm8, xmm10, dword[r9]), 0xc4, 0x41, 0xaa, 0x51, 0x01);
 
     // Coverage for other instructions that follow the same pattern
-    SINGLE_COMPARE(vcomisd(xmm8, xmm10), 0xc4, 0x41, 0xf9, 0x2f, 0xc2);
     SINGLE_COMPARE(vucomisd(xmm1, xmm4), 0xc4, 0xe1, 0xf9, 0x2e, 0xcc);
 }
 
@@ -405,9 +407,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXConversionInstructionForms")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXTernaryInstructionForms")
 {
-    SINGLE_COMPARE(vroundsd(xmm7, xmm12, xmm3, 9), 0xc4, 0xe3, 0x99, 0x0b, 0xfb, 0x09);
-    SINGLE_COMPARE(vroundsd(xmm8, xmm13, xmmword[r13 + rdx], 9), 0xc4, 0x43, 0x91, 0x0b, 0x44, 0x15, 0x00, 0x09);
-    SINGLE_COMPARE(vroundsd(xmm9, xmm14, xmmword[rcx + r10], 1), 0xc4, 0x23, 0x89, 0x0b, 0x0c, 0x11, 0x01);
+    SINGLE_COMPARE(vroundsd(xmm7, xmm12, xmm3, RoundingModeX64::RoundToNegativeInfinity), 0xc4, 0xe3, 0x99, 0x0b, 0xfb, 0x09);
+    SINGLE_COMPARE(
+        vroundsd(xmm8, xmm13, xmmword[r13 + rdx], RoundingModeX64::RoundToPositiveInfinity), 0xc4, 0x43, 0x91, 0x0b, 0x44, 0x15, 0x00, 0x0a);
+    SINGLE_COMPARE(vroundsd(xmm9, xmm14, xmmword[rcx + r10], RoundingModeX64::RoundToZero), 0xc4, 0x23, 0x89, 0x0b, 0x0c, 0x11, 0x0b);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "MiscInstructions")
@@ -441,7 +444,7 @@ TEST_CASE("LogTest")
     build.movsx(rsi, word[r12]);
     build.imul(rcx, rdx);
     build.imul(rcx, rdx, 8);
-    build.vroundsd(xmm1, xmm2, xmm3, 5);
+    build.vroundsd(xmm1, xmm2, xmm3, RoundingModeX64::RoundToNearestEven);
     build.pop(r12);
     build.ret();
     build.int3();
@@ -469,7 +472,7 @@ TEST_CASE("LogTest")
  movsx       rsi,word ptr [r12]
  imul        rcx,rdx
  imul        rcx,rdx,8
- vroundsd    xmm1,xmm2,xmm3,5
+ vroundsd    xmm1,xmm2,xmm3,8
  pop         r12
  ret
  int3

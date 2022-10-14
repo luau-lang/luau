@@ -24,7 +24,7 @@ namespace Luau
 
 // TypeInfer.h
 // TODO move these
-using PrintLineProc = void(*)(const std::string&);
+using PrintLineProc = void (*)(const std::string&);
 extern PrintLineProc luauPrintLine;
 
 /* Push a scope onto the end of a stack for the lifetime of the StackPusher instance.
@@ -127,7 +127,8 @@ struct TypeChecker2
                 if (auto ann = ref->parameters.data[0].type)
                 {
                     TypeId argTy = lookupAnnotation(ref->parameters.data[0].type);
-                    luauPrintLine(format("_luau_print (%d, %d): %s\n", annotation->location.begin.line, annotation->location.begin.column, toString(argTy).c_str()));
+                    luauPrintLine(format(
+                        "_luau_print (%d, %d): %s\n", annotation->location.begin.line, annotation->location.begin.column, toString(argTy).c_str()));
                     return follow(argTy);
                 }
             }
@@ -409,8 +410,8 @@ struct TypeChecker2
         }
         TypeId iteratorTy = follow(iteratorTypes[0]);
 
-        auto checkFunction = [this, &arena, &scope, &forInStatement, &variableTypes](const FunctionTypeVar* iterFtv, std::vector<TypeId> iterTys, bool isMm)
-        {
+        auto checkFunction = [this, &arena, &scope, &forInStatement, &variableTypes](
+                                 const FunctionTypeVar* iterFtv, std::vector<TypeId> iterTys, bool isMm) {
             if (iterTys.size() < 1 || iterTys.size() > 3)
             {
                 if (isMm)
@@ -420,20 +421,21 @@ struct TypeChecker2
 
                 return;
             }
-            
+
             // It is okay if there aren't enough iterators, but the iteratee must provide enough.
             std::vector<TypeId> expectedVariableTypes = flatten(arena, singletonTypes, iterFtv->retTypes, variableTypes.size());
             if (expectedVariableTypes.size() < variableTypes.size())
             {
                 if (isMm)
-                    reportError(GenericError{"__iter metamethod's next() function does not return enough values"}, getLocation(forInStatement->values));
+                    reportError(
+                        GenericError{"__iter metamethod's next() function does not return enough values"}, getLocation(forInStatement->values));
                 else
                     reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
             }
 
             for (size_t i = 0; i < std::min(expectedVariableTypes.size(), variableTypes.size()); ++i)
                 reportErrors(tryUnify(scope, forInStatement->vars.data[i]->location, variableTypes[i], expectedVariableTypes[i]));
-            
+
             // nextFn is going to be invoked with (arrayTy, startIndexTy)
 
             // It will be passed two arguments on every iteration save the
@@ -509,7 +511,8 @@ struct TypeChecker2
         {
             // nothing
         }
-        else if (std::optional<TypeId> iterMmTy = findMetatableEntry(singletonTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
+        else if (std::optional<TypeId> iterMmTy =
+                     findMetatableEntry(singletonTypes, module->errors, iteratorTy, "__iter", forInStatement->values.data[0]->location))
         {
             Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}, scope};
 
@@ -554,7 +557,7 @@ struct TypeChecker2
                     // TODO: This will not tell the user that this is because the
                     // metamethod isn't callable. This is not ideal, and we should
                     // improve this error message.
-                    
+
                     // TODO: This will also not handle intersections of functions or
                     // callable tables (which are supported by the runtime).
                     reportError(CannotCallNonFunction{*iterMmTy}, forInStatement->values.data[0]->location);
