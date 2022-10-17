@@ -9,7 +9,6 @@ on:
       - "papers/**"
       - "rfcs/**"
       - "*.md"
-  pull_request:
 
 jobs:
   callgrind:
