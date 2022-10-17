@@ -10,8 +10,6 @@ on:
       - "rfcs/**"
       - "*.md"
   pull_request:
-    branches:
-      - benchmark
 
 jobs:
   callgrind:
