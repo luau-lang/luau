@@ -10,12 +10,16 @@ Luau is the first programming language to put the power of semantic subtyping in
 
 One of the issues with type error reporting in tools like the Script Analysis widget in Roblox Studio is *false positives*. These are warnings that are artifacts of the analysis, and don’t correspond to errors which can occur at runtime. For example, the program
 ```lua
-  local x
-  x = nil
-  x = 5
-  print(x + 1)
+  local x : CFrame = CFrame.new()
+  local y : Vector3 | CFrame
+  if (math.random()) then
+    y = CFrame.new()
+  else
+    y = Vector3.new()
+  end
+  local z : Vector3 | CFrame = x * y
 ```
-reports a type error which cannot happen at runtime, since by the time `x + 1` is executed, `x` is `5`, not `nil`.
+reports a type error which cannot happen at runtime, since `CFrame` supports mutliplication by both `Vector3` and `CFrame`. (Its type is `((CFrame, CFrame) -> CFrame) & ((CFrame, Vector3) -> Vector3)`.)
 
 False positives are especially poor for onboarding new users. If a type-curious creator switches on typechecking and is immediately faced with a wall of spurious red squiggles, there is a strong incentive to immediately switch it off again.
 
