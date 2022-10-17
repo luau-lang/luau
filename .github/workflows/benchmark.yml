@@ -9,6 +9,9 @@ on:
       - "papers/**"
       - "rfcs/**"
       - "*.md"
+  pull_request:
+    branches:
+      - benchmark
 
 jobs:
   callgrind:
@@ -53,7 +56,7 @@ jobs:
 
       - name: Run benchmark (bench-codegen)
         run: |
-          python bench/bench.py --callgrind --vm "./luau --codegen -O2" | tee -a bench-codegen-output.txt
+          python bench/bench.py --callgrind --vm "./luau-codegen --codegen -O2" | tee -a bench-codegen-output.txt
 
       - name: Run benchmark (analyze)
         run: |
