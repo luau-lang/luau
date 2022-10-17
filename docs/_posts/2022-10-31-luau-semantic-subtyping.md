@@ -121,11 +121,42 @@ NP-hard to be precise.
 
 We can reduce graph coloring to semantic subtyping by coding up a graph as a Luau type such that checking subtyping on types has the same result as checking for the impossibility of coloring the graph
 
-*  `V` = intersection of `{ p : c } -> { p : c }` for each vertex `p` and color `c`
-*  `E` = intersection of `{ p : c, q : c } -> never` for each edge `(p, q)` and color `c`
-*  `C` = intersection of `{ p : c }` for each node node `p` and color `c`
+For example, coloring a three-node, two color graph can be done using types:
 
-Now `V & E` is a subtype of `C -> never` when it is impossible to color the graph, and so subtype checking is NP-hard. We deal with this in two ways:
+```lua
+type Red = "red"
+type Blue = "blue"
+type Color = Red | Blue
+type Coloring = (Color) -> (Color) -> (Color) -> boolean
+type Uncolorable = (Color) -> (Color) -> (Color) -> false
+```
+
+Then a graph can be encoded as an overload function type with
+subtype `Uncolourable` and supertype `Coloring`, as an overloaded
+function which returns `false` when a constraint is violated. Each
+overload encodes one constraint. For example a line has constraints
+saying that adjacent nodes cannot have the same color:
+
+```lua
+type Line = Coloring
+  & ((Red) -> (Red) -> (Color) -> false)
+  & ((Blue) -> (Blue) -> (Color) -> false)
+  & ((Color) -> (Red) -> (Red) -> false)
+  & ((Color) -> (Blue) -> (Blue) -> false)
+```
+
+A triangle is similar, but the end points also cannot have the same color:
+
+```lua
+type Triangle = Line
+  & ((Red) -> (Color) -> (Red) -> false)
+  & ((Blue) -> (Color) -> (Blue) -> false)
+```
+
+Now, `Triangle` is a subtype of `Uncolorable`, but `Line is not`, since the line can be 2-colored.
+This can be generalized to any finite graph with any finite number of colors, and so subtype checking is NP-hard.
+
+We deal with this in two ways:
 
 * we cache types to reduce memory footprint, and
 * give up with a “Code Too Complex” error if the cache of types gets too large.
