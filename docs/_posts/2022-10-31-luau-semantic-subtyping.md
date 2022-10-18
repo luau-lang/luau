@@ -161,7 +161,7 @@ type Triangle = Line
   & ((Blue) -> (Color) -> (Blue) -> false)
 ```
 
-Now, `Triangle` is a subtype of `Uncolorable`, but `Line is not`, since the line can be 2-colored.
+Now, `Triangle` is a subtype of `Uncolorable`, but `Line` is not, since the line can be 2-colored.
 This can be generalized to any finite graph with any finite number of colors, and so subtype checking is NP-hard.
 
 We deal with this in two ways:
