@@ -29,7 +29,7 @@ While inaccuracies are inevitable, we try to remove them whenever possible, sinc
 
 ## Subtyping as a source of false positives
 
-One of the sources of false positives in Luau (and many other similar languages like TypeScript or Flow) is *subtyping*. Subtyping is used whenever a variable is initialized or assigned to, and whenever a function is called: the type system checks that the type of the expression is a subtype of the type of the variable. For example, if we types to the above program
+One of the sources of false positives in Luau (and many other similar languages like TypeScript or Flow) is *subtyping*. Subtyping is used whenever a variable is initialized or assigned to, and whenever a function is called: the type system checks that the type of the expression is a subtype of the type of the variable. For example, if we add types to the above program
 ```lua
   local x : CFrame = CFrame.new()
   local y : Vector3 | CFrame
