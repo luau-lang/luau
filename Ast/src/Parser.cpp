@@ -905,6 +905,25 @@ AstStat* Parser::parseDeclaration(const Location& start)
             {
                 props.push_back(parseDeclaredClassMethod());
             }
+            else if (lexer.current().type == '[')
+            {
+                const Lexeme begin = lexer.current();
+                nextLexeme(); // [
+
+                std::optional<AstArray<char>> chars = parseCharArray();
+
+                expectMatchAndConsume(']', begin);
+                expectAndConsume(':', "property type annotation");
+                AstType* type = parseTypeAnnotation();
+
+                // TODO: since AstName conains a char*, it can't contain null
+                bool containsNull = chars && (strnlen(chars->data, chars->size) < chars->size);
+
+                if (chars && !containsNull)
+                    props.push_back(AstDeclaredClassProp{AstName(chars->data), type, false});
+                else
+                    report(begin.location, "String literal contains malformed escape sequence");
+            }
             else
             {
                 Name propName = parseName("property name");
