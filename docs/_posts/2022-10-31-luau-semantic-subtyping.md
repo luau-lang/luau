@@ -10,16 +10,16 @@ Luau is the first programming language to put the power of semantic subtyping in
 
 One of the issues with type error reporting in tools like the Script Analysis widget in Roblox Studio is *false positives*. These are warnings that are artifacts of the analysis, and don’t correspond to errors which can occur at runtime. For example, the program
 ```lua
-  local x : CFrame = CFrame.new()
-  local y : Vector3 | CFrame
+  local x = CFrame.new()
+  local y
   if (math.random()) then
     y = CFrame.new()
   else
     y = Vector3.new()
   end
-  local z : Vector3 | CFrame = x * y
+  local z = x * y
 ```
-reports a type error which cannot happen at runtime, since `CFrame` supports mutliplication by both `Vector3` and `CFrame`. (Its type is `((CFrame, CFrame) -> CFrame) & ((CFrame, Vector3) -> Vector3)`.)
+reports a type error which cannot happen at runtime, since `CFrame` supports multiplication by both `Vector3` and `CFrame`. (Its type is `((CFrame, CFrame) -> CFrame) & ((CFrame, Vector3) -> Vector3)`.)
 
 False positives are especially poor for onboarding new users. If a type-curious creator switches on typechecking and is immediately faced with a wall of spurious red squiggles, there is a strong incentive to immediately switch it off again.
 
@@ -29,14 +29,18 @@ While inaccuracies are inevitable, we try to remove them whenever possible, sinc
 
 ## Subtyping as a source of false positives
 
-One of the sources of false positives in Luau (and many other similar languages like TypeScript or Flow) is *subtyping*. Subtyping is used whenever a variable is initialized or assigned to: the type system checks that the type of the expression is a subtype of the type of the variable. For example in the program
+One of the sources of false positives in Luau (and many other similar languages like TypeScript or Flow) is *subtyping*. Subtyping is used whenever a variable is initialized or assigned to, and whenever a function is called: the type system checks that the type of the expression is a subtype of the type of the variable. For example, if we types to the above program
 ```lua
-  local x : number? = nil
-  local y : number = 5
-  y = x -- TypeError: Type 'number?' could not be converted into 'number'
-  x = y
+  local x : CFrame = CFrame.new()
+  local y : Vector3 | CFrame
+  if (math.random()) then
+    y = CFrame.new()
+  else
+    y = Vector3.new()
+  end
+  local z : Vector3 | CFrame = x * y
 ```
-The assignment `x = y` is fine, since `number` is a subtype of `number?`, but the assignment `y = x` is not, since `number?` is not a subtype of `number`.
+then the type system checks that the type of `CFrame` multiplication is a subtype of `(CFrame, Vector3 | CFrame) -> (Vector3 | CFrame)`.
 
 Subtyping is a very useful feature, and it supports rich type constructs like type union (`T | U`) and intersection (`T & U`). For example, `number?` is implemented as a union type `(number | nil)`, inhabited by values that are either numbers or `nil`.
 
@@ -136,7 +140,7 @@ type Uncolorable = (Color) -> (Color) -> (Color) -> false
 ```
 
 Then a graph can be encoded as an overload function type with
-subtype `Uncolourable` and supertype `Coloring`, as an overloaded
+subtype `Uncolorable` and supertype `Coloring`, as an overloaded
 function which returns `false` when a constraint is violated. Each
 overload encodes one constraint. For example a line has constraints
 saying that adjacent nodes cannot have the same color:
