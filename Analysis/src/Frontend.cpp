@@ -807,12 +807,12 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
         sourceNode.dirtyModule = true;
         sourceNode.dirtyModuleForAutocomplete = true;
 
-        if (0 == reverseDeps.count(name))
+        if (0 == reverseDeps.count(next))
             continue;
 
-        sourceModules.erase(name);
+        sourceModules.erase(next);
 
-        const std::vector<ModuleName>& dependents = reverseDeps[name];
+        const std::vector<ModuleName>& dependents = reverseDeps[next];
         queue.insert(queue.end(), dependents.begin(), dependents.end());
     }
 }

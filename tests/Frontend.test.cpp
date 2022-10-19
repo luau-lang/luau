@@ -517,7 +517,7 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
     CHECK_EQ("{| b_value: string |}", toString(*bExports));
 }
 
-TEST_CASE_FIXTURE(FrontendFixture, "mark_transitive_deps_as_dirty")
+TEST_CASE_FIXTURE(FrontendFixture, "mark_non_immediate_reverse_deps_as_dirty")
 {
     fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
     fileResolver.source["game/Gui/Modules/B"] = R"(
