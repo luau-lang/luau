@@ -262,6 +262,10 @@ Semantic subtyping has removed one source of false positives, but we still have 
 
 The quest to remove spurious red squiggles continues!
 
+## Acknowledgments
+
+Thanks to Giuseppe Castagna and Ben Greenman for helpful comments on drafts of this post.
+
 ## Further reading
 
 If you want to find out more about Luau and semantic subtyping, you might want to check out…
