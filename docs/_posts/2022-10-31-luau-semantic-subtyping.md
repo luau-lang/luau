@@ -66,8 +66,8 @@ Syntactic subtyping is a syntax-directed recursive algorithm. The interesting ca
 * Reflexivity: `T` is a subtype of `T`
 * Intersection L: `(T₁ & … & Tⱼ)` is a subtype of `U` whenever some of the `Tᵢ` are subtypes of `U`
 * Union L: `(T₁ | … | Tⱼ)` is a subtype of `U` whenever all of the `Tᵢ` are subtypes of `U`
-* Intersection R: `T` is a subtype of `(U₁ & … & Uⱼ)` whenever `T` is a subtype of some of the `Uᵢ`
-* Union R: `T` is a subtype of `(U₁ | … | Uⱼ)` whenever `T` is a subtype of all of the `Uᵢ`.
+* Intersection R: `T` is a subtype of `(U₁ & … & Uⱼ)` whenever `T` is a subtype of all of the `Uᵢ`
+* Union R: `T` is a subtype of `(U₁ | … | Uⱼ)` whenever `T` is a subtype of some of the `Uᵢ`.
 
 For example:
 
