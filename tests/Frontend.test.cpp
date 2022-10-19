@@ -642,11 +642,9 @@ TEST_CASE_FIXTURE(FrontendFixture, "report_syntax_error_in_required_file")
 
     CHECK_EQ("Modules/A", result.errors[0].moduleName);
 
-    bool b = std::any_of(begin(result.errors), end(result.errors),
-        [](auto&& e) -> bool
-        {
-            return get<SyntaxError>(e);
-        });
+    bool b = std::any_of(begin(result.errors), end(result.errors), [](auto&& e) -> bool {
+        return get<SyntaxError>(e);
+    });
     if (!b)
     {
         CHECK_MESSAGE(false, "Expected a syntax error!");
