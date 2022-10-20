@@ -30,6 +30,7 @@ LUAU_FASTFLAGVARIABLE(LuauAutocompleteDynamicLimits, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
+LUAU_FASTFLAGVARIABLE(LuauFixMarkDirtyReverseDeps, false)
 
 namespace Luau
 {
@@ -807,13 +808,26 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
         sourceNode.dirtyModule = true;
         sourceNode.dirtyModuleForAutocomplete = true;
 
-        if (0 == reverseDeps.count(next))
-            continue;
+        if (FFlag::LuauFixMarkDirtyReverseDeps)
+        {
+            if (0 == reverseDeps.count(next))
+                continue;
 
-        sourceModules.erase(next);
+            sourceModules.erase(next);
 
-        const std::vector<ModuleName>& dependents = reverseDeps[next];
-        queue.insert(queue.end(), dependents.begin(), dependents.end());
+            const std::vector<ModuleName>& dependents = reverseDeps[next];
+            queue.insert(queue.end(), dependents.begin(), dependents.end());
+        }
+        else
+        {
+            if (0 == reverseDeps.count(name))
+                continue;
+
+            sourceModules.erase(name);
+
+            const std::vector<ModuleName>& dependents = reverseDeps[name];
+            queue.insert(queue.end(), dependents.begin(), dependents.end());
+        }
     }
 }
 
