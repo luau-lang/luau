@@ -26,34 +26,34 @@ declare bit32: {
 }
 
 declare math: {
-    frexp: (number) -> (number, number),
-    ldexp: (number, number) -> number,
-    fmod: (number, number) -> number,
-    modf: (number) -> (number, number),
-    pow: (number, number) -> number,
-    exp: (number) -> number,
+    frexp: (n: number) -> (number, number),
+    ldexp: (s: number, e: number) -> number,
+    fmod: (x: number, y: number) -> number,
+    modf: (n: number) -> (number, number),
+    pow: (x: number, y: number) -> number,
+    exp: (n: number) -> number,
 
-    ceil: (number) -> number,
-    floor: (number) -> number,
-    abs: (number) -> number,
-    sqrt: (number) -> number,
+    ceil: (n: number) -> number,
+    floor: (n: number) -> number,
+    abs: (n: number) -> number,
+    sqrt: (n: number) -> number,
 
-    log: (number, number?) -> number,
-    log10: (number) -> number,
+    log: (n: number, base: number?) -> number,
+    log10: (n: number) -> number,
 
-    rad: (number) -> number,
-    deg: (number) -> number,
+    rad: (n: number) -> number,
+    deg: (n: number) -> number,
 
-    sin: (number) -> number,
-    cos: (number) -> number,
-    tan: (number) -> number,
-    sinh: (number) -> number,
-    cosh: (number) -> number,
-    tanh: (number) -> number,
-    atan: (number) -> number,
-    acos: (number) -> number,
-    asin: (number) -> number,
-    atan2: (number, number) -> number,
+    sin: (n: number) -> number,
+    cos: (n: number) -> number,
+    tan: (n: number) -> number,
+    sinh: (n: number) -> number,
+    cosh: (n: number) -> number,
+    tanh: (n: number) -> number,
+    atan: (n: number) -> number,
+    acos: (n: number) -> number,
+    asin: (n: number) -> number,
+    atan2: (y: number, x: number) -> number,
 
     min: (number, ...number) -> number,
     max: (number, ...number) -> number,
@@ -61,13 +61,13 @@ declare math: {
     pi: number,
     huge: number,
 
-    randomseed: (number) -> (),
+    randomseed: (seed: number) -> (),
     random: (number?, number?) -> number,
 
-    sign: (number) -> number,
-    clamp: (number, number, number) -> number,
-    noise: (number, number?, number?) -> number,
-    round: (number) -> number,
+    sign: (n: number) -> number,
+    clamp: (n: number, min: number, max: number) -> number,
+    noise: (x: number, y: number?, z: number?) -> number,
+    round: (n: number) -> number,
 }
 
 type DateTypeArg = {
