@@ -3,14 +3,16 @@
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/DcrLogger.h"
 #include "Luau/Instantiation.h"
 #include "Luau/Location.h"
+#include "Luau/Metamethods.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/Quantify.h"
 #include "Luau/ToString.h"
+#include "Luau/TypeUtils.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
-#include "Luau/DcrLogger.h"
 #include "Luau/VisitTypeVar.h"
 #include "Luau/TypeUtils.h"
 
@@ -438,6 +440,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*fcc, constraint);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
+    else if (auto rc = get<RefinementConstraint>(*constraint))
+        success = tryDispatch(*rc, constraint);
     else
         LUAU_ASSERT(false);
 
@@ -564,44 +568,192 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     TypeId rightType = follow(c.rightType);
     TypeId resultType = follow(c.resultType);
 
-    if (isBlocked(leftType) || isBlocked(rightType))
-    {
-        /* Compound assignments create constraints of the form
-         *
-         *     A <: Binary<op, A, B>
-         *
-         * This constraint is the one that is meant to unblock A, so it doesn't
-         * make any sense to stop and wait for someone else to do it.
-         */
-        if (leftType != resultType && rightType != resultType)
-        {
-            block(c.leftType, constraint);
-            block(c.rightType, constraint);
-            return false;
-        }
-    }
+    bool isLogical = c.op == AstExprBinary::Op::And || c.op == AstExprBinary::Op::Or;
 
-    if (isNumber(leftType))
-    {
-        unify(leftType, rightType, constraint->scope);
-        asMutable(resultType)->ty.emplace<BoundTypeVar>(leftType);
-        return true;
-    }
+    /* Compound assignments create constraints of the form
+     *
+     *     A <: Binary<op, A, B>
+     *
+     * This constraint is the one that is meant to unblock A, so it doesn't
+     * make any sense to stop and wait for someone else to do it.
+     */
+
+    if (isBlocked(leftType) && leftType != resultType)
+        return block(c.leftType, constraint);
+
+    if (isBlocked(rightType) && rightType != resultType)
+        return block(c.rightType, constraint);
 
     if (!force)
     {
-        if (get<FreeTypeVar>(leftType))
+        // Logical expressions may proceed if the LHS is free.
+        if (get<FreeTypeVar>(leftType) && !isLogical)
             return block(leftType, constraint);
     }
 
-    if (isBlocked(leftType))
+    // Logical expressions may proceed if the LHS is free.
+    if (isBlocked(leftType) || (get<FreeTypeVar>(leftType) && !isLogical))
     {
         asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
-        // reportError(constraint->location, CannotInferBinaryOperation{c.op, std::nullopt, CannotInferBinaryOperation::Operation});
+        unblock(resultType);
         return true;
     }
 
-    // TODO metatables, classes
+    // For or expressions, the LHS will never have nil as a possible output.
+    // Consider:
+    // local foo = nil or 2
+    // `foo` will always be 2.
+    if (c.op == AstExprBinary::Op::Or)
+        leftType = stripNil(singletonTypes, *arena, leftType);
+
+    // Metatables go first, even if there is primitive behavior.
+    if (auto it = kBinaryOpMetamethods.find(c.op); it != kBinaryOpMetamethods.end())
+    {
+        // Metatables are not the same. The metamethod will not be invoked.
+        if ((c.op == AstExprBinary::Op::CompareEq || c.op == AstExprBinary::Op::CompareNe) &&
+            getMetatable(leftType, singletonTypes) != getMetatable(rightType, singletonTypes))
+        {
+            // TODO: Boolean singleton false? The result is _always_ boolean false.
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(singletonTypes->booleanType);
+            unblock(resultType);
+            return true;
+        }
+
+        std::optional<TypeId> mm;
+
+        // The LHS metatable takes priority over the RHS metatable, where
+        // present.
+        if (std::optional<TypeId> leftMm = findMetatableEntry(singletonTypes, errors, leftType, it->second, constraint->location))
+            mm = leftMm;
+        else if (std::optional<TypeId> rightMm = findMetatableEntry(singletonTypes, errors, rightType, it->second, constraint->location))
+            mm = rightMm;
+
+        if (mm)
+        {
+            // TODO: Is a table with __call legal here?
+            // TODO: Overloads
+            if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
+            {
+                TypePackId inferredArgs;
+                // For >= and > we invoke __lt and __le respectively with
+                // swapped argument ordering.
+                if (c.op == AstExprBinary::Op::CompareGe || c.op == AstExprBinary::Op::CompareGt)
+                {
+                    inferredArgs = arena->addTypePack({rightType, leftType});
+                }
+                else
+                {
+                    inferredArgs = arena->addTypePack({leftType, rightType});
+                }
+
+                unify(inferredArgs, ftv->argTypes, constraint->scope);
+
+                TypeId mmResult;
+
+                // Comparison operations always evaluate to a boolean,
+                // regardless of what the metamethod returns.
+                switch (c.op)
+                {
+                case AstExprBinary::Op::CompareEq:
+                case AstExprBinary::Op::CompareNe:
+                case AstExprBinary::Op::CompareGe:
+                case AstExprBinary::Op::CompareGt:
+                case AstExprBinary::Op::CompareLe:
+                case AstExprBinary::Op::CompareLt:
+                    mmResult = singletonTypes->booleanType;
+                    break;
+                default:
+                    mmResult = first(ftv->retTypes).value_or(errorRecoveryType());
+                }
+
+                asMutable(resultType)->ty.emplace<BoundTypeVar>(mmResult);
+                unblock(resultType);
+                return true;
+            }
+        }
+
+        // If there's no metamethod available, fall back to primitive behavior.
+    }
+
+    // If any is present, the expression must evaluate to any as well.
+    bool leftAny = get<AnyTypeVar>(leftType) || get<ErrorTypeVar>(leftType);
+    bool rightAny = get<AnyTypeVar>(rightType) || get<ErrorTypeVar>(rightType);
+    bool anyPresent = leftAny || rightAny;
+
+    switch (c.op)
+    {
+    // For arithmetic operators, if the LHS is a number, the RHS must be a
+    // number as well. The result will also be a number.
+    case AstExprBinary::Op::Add:
+    case AstExprBinary::Op::Sub:
+    case AstExprBinary::Op::Mul:
+    case AstExprBinary::Op::Div:
+    case AstExprBinary::Op::Pow:
+    case AstExprBinary::Op::Mod:
+        if (isNumber(leftType))
+        {
+            unify(leftType, rightType, constraint->scope);
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(anyPresent ? singletonTypes->anyType : leftType);
+            unblock(resultType);
+            return true;
+        }
+
+        break;
+    // For concatenation, if the LHS is a string, the RHS must be a string as
+    // well. The result will also be a string.
+    case AstExprBinary::Op::Concat:
+        if (isString(leftType))
+        {
+            unify(leftType, rightType, constraint->scope);
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(anyPresent ? singletonTypes->anyType : leftType);
+            unblock(resultType);
+            return true;
+        }
+
+        break;
+    // Inexact comparisons require that the types be both numbers or both
+    // strings, and evaluate to a boolean.
+    case AstExprBinary::Op::CompareGe:
+    case AstExprBinary::Op::CompareGt:
+    case AstExprBinary::Op::CompareLe:
+    case AstExprBinary::Op::CompareLt:
+        if ((isNumber(leftType) && isNumber(rightType)) || (isString(leftType) && isString(rightType)))
+        {
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(singletonTypes->booleanType);
+            unblock(resultType);
+            return true;
+        }
+
+        break;
+    // == and ~= always evaluate to a boolean, and impose no other constraints
+    // on their parameters.
+    case AstExprBinary::Op::CompareEq:
+    case AstExprBinary::Op::CompareNe:
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(singletonTypes->booleanType);
+        unblock(resultType);
+        return true;
+    // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is
+    // truthy.
+    case AstExprBinary::Op::And:
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(unionOfTypes(rightType, singletonTypes->booleanType, constraint->scope, false));
+        unblock(resultType);
+        return true;
+    // Or evaluates to the LHS type if the LHS is truthy, and the RHS type if
+    // LHS is falsey.
+    case AstExprBinary::Op::Or:
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(unionOfTypes(rightType, leftType, constraint->scope, true));
+        unblock(resultType);
+        return true;
+    default:
+        iceReporter.ice("Unhandled AstExprBinary::Op for binary operation", constraint->location);
+        break;
+    }
+
+    // We failed to either evaluate a metamethod or invoke primitive behavior.
+    unify(leftType, errorRecoveryType(), constraint->scope);
+    unify(rightType, errorRecoveryType(), constraint->scope);
+    asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
+    unblock(resultType);
 
     return true;
 }
@@ -943,6 +1095,31 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         return block(c.fn, constraint);
     }
 
+    // We don't support magic __call metamethods.
+    if (std::optional<TypeId> callMm = findMetatableEntry(singletonTypes, errors, fn, "__call", constraint->location))
+    {
+        std::vector<TypeId> args{fn};
+
+        for (TypeId arg : c.argsPack)
+            args.push_back(arg);
+
+        TypeId instantiatedType = arena->addType(BlockedTypeVar{});
+        TypeId inferredFnType =
+            arena->addType(FunctionTypeVar(TypeLevel{}, constraint->scope.get(), arena->addTypePack(TypePack{args, {}}), c.result));
+
+        // Alter the inner constraints.
+        LUAU_ASSERT(c.innerConstraints.size() == 2);
+
+        asMutable(*c.innerConstraints.at(0)).c = InstantiationConstraint{instantiatedType, *callMm};
+        asMutable(*c.innerConstraints.at(1)).c = SubtypeConstraint{inferredFnType, instantiatedType};
+
+        unsolvedConstraints.insert(end(unsolvedConstraints), begin(c.innerConstraints), end(c.innerConstraints));
+
+        asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
+        unblock(c.result);
+        return true;
+    }
+
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fn);
     bool usedMagic = false;
 
@@ -1055,6 +1232,29 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
 
     if (resultType)
         asMutable(c.resultType)->ty.emplace<BoundTypeVar>(resultType);
+
+    return true;
+}
+
+bool ConstraintSolver::tryDispatch(const RefinementConstraint& c, NotNull<const Constraint> constraint)
+{
+    // TODO: Figure out exact details on when refinements need to be blocked.
+    // It's possible that it never needs to be, since we can just use intersection types with the discriminant type?
+
+    if (!constraint->scope->parent)
+        iceReporter.ice("No parent scope");
+
+    std::optional<TypeId> previousTy = constraint->scope->parent->lookup(c.def);
+    if (!previousTy)
+        iceReporter.ice("No previous type");
+
+    std::optional<TypeId> useTy = constraint->scope->lookup(c.def);
+    if (!useTy)
+        iceReporter.ice("The def is not bound to a type");
+
+    TypeId resultTy = follow(*useTy);
+    std::vector<TypeId> parts{*previousTy, c.discriminantType};
+    asMutable(resultTy)->ty.emplace<IntersectionTypeVar>(std::move(parts));
 
     return true;
 }
@@ -1500,6 +1700,41 @@ TypeId ConstraintSolver::errorRecoveryType() const
 TypePackId ConstraintSolver::errorRecoveryTypePack() const
 {
     return singletonTypes->errorRecoveryTypePack();
+}
+
+TypeId ConstraintSolver::unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, bool unifyFreeTypes)
+{
+    a = follow(a);
+    b = follow(b);
+
+    if (unifyFreeTypes && (get<FreeTypeVar>(a) || get<FreeTypeVar>(b)))
+    {
+        Unifier u{normalizer, Mode::Strict, scope, Location{}, Covariant};
+        u.useScopes = true;
+        u.tryUnify(b, a);
+
+        if (u.errors.empty())
+        {
+            u.log.commit();
+            return a;
+        }
+        else
+        {
+            return singletonTypes->errorRecoveryType(singletonTypes->anyType);
+        }
+    }
+
+    if (*a == *b)
+        return a;
+
+    std::vector<TypeId> types = reduceUnion({a, b});
+    if (types.empty())
+        return singletonTypes->neverType;
+
+    if (types.size() == 1)
+        return types[0];
+
+    return arena->addType(UnionTypeVar{types});
 }
 
 } // namespace Luau

@@ -16,6 +16,7 @@ D = os.date("*t", t)
 assert(os.date(string.rep("%d", 1000), t) ==
        string.rep(os.date("%d", t), 1000))
 assert(os.date(string.rep("%", 200)) == string.rep("%", 100))
+assert(os.date("", -1) == nil)
 
 local function checkDateTable (t)
   local D = os.date("!*t", t)

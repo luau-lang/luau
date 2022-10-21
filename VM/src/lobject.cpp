@@ -13,8 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-LUAU_FASTFLAG(LuauFasterGetInfo)
-
 const TValue luaO_nilobject_ = {{NULL}, {0}, LUA_TNIL};
 
 int luaO_log2(unsigned int x)
@@ -121,48 +119,20 @@ const char* luaO_chunkid(char* buf, size_t buflen, const char* source, size_t sr
 {
     if (*source == '=')
     {
-        if (FFlag::LuauFasterGetInfo)
-        {
-            if (srclen <= buflen)
-                return source + 1;
-            // truncate the part after =
-            memcpy(buf, source + 1, buflen - 1);
-            buf[buflen - 1] = '\0';
-        }
-        else
-        {
-            source++; // skip the `='
-            size_t len = strlen(source);
-            size_t dstlen = len < buflen ? len : buflen - 1;
-            memcpy(buf, source, dstlen);
-            buf[dstlen] = '\0';
-        }
+        if (srclen <= buflen)
+            return source + 1;
+        // truncate the part after =
+        memcpy(buf, source + 1, buflen - 1);
+        buf[buflen - 1] = '\0';
     }
     else if (*source == '@')
     {
-        if (FFlag::LuauFasterGetInfo)
-        {
-            if (srclen <= buflen)
-                return source + 1;
-            // truncate the part after @
-            memcpy(buf, "...", 3);
-            memcpy(buf + 3, source + srclen - (buflen - 4), buflen - 4);
-            buf[buflen - 1] = '\0';
-        }
-        else
-        {
-            size_t l;
-            source++; // skip the `@'
-            buflen -= sizeof("...");
-            l = strlen(source);
-            strcpy(buf, "");
-            if (l > buflen)
-            {
-                source += (l - buflen); // get last part of file name
-                strcat(buf, "...");
-            }
-            strcat(buf, source);
-        }
+        if (srclen <= buflen)
+            return source + 1;
+        // truncate the part after @
+        memcpy(buf, "...", 3);
+        memcpy(buf + 3, source + srclen - (buflen - 4), buflen - 4);
+        buf[buflen - 1] = '\0';
     }
     else
     {                                         // buf = [string "string"]

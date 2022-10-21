@@ -29,4 +29,23 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
 // various other things to get there.
 std::vector<TypeId> flatten(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length);
 
+/**
+ * Reduces a union by decomposing to the any/error type if it appears in the
+ * type list, and by merging child unions. Also strips out duplicate (by pointer
+ * identity) types.
+ * @param types the input type list to reduce.
+ * @returns the reduced type list.
+*/
+std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
+
+/**
+ * Tries to remove nil from a union type, if there's another option. T | nil
+ * reduces to T, but nil itself does not reduce.
+ * @param singletonTypes the singleton types to use
+ * @param arena the type arena to allocate the new type in, if necessary
+ * @param ty the type to remove nil from
+ * @returns a type with nil removed, or nil itself if that were the only option.
+*/
+TypeId stripNil(NotNull<SingletonTypes> singletonTypes, TypeArena& arena, TypeId ty);
+
 } // namespace Luau

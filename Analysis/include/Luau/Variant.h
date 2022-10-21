@@ -105,7 +105,7 @@ public:
 
         tableDtor[typeId](&storage);
         typeId = tid;
-        new (&storage) TT(std::forward<Args>(args)...);
+        new (&storage) TT{std::forward<Args>(args)...};
 
         return *reinterpret_cast<T*>(&storage);
     }

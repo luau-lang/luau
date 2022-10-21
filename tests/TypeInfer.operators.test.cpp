@@ -13,6 +13,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+
 TEST_SUITE_BEGIN("TypeInferOperators");
 
 TEST_CASE_FIXTURE(Fixture, "or_joins_types")
@@ -33,7 +35,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_extras")
         local x:number|string = s
         local y = x or "s"
     )");
-    CHECK_EQ(0, result.errors.size());
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(toString(*requireType("s")), "number | string");
     CHECK_EQ(toString(*requireType("y")), "number | string");
 }
@@ -44,7 +46,7 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
         local s = "a" or "b"
         local x:string = s
     )");
-    CHECK_EQ(0, result.errors.size());
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*requireType("s"), *typeChecker.stringType);
 }
 
@@ -54,7 +56,7 @@ TEST_CASE_FIXTURE(Fixture, "and_adds_boolean")
         local s = "a" and 10
         local x:boolean|number = s
     )");
-    CHECK_EQ(0, result.errors.size());
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(toString(*requireType("s")), "boolean | number");
 }
 
@@ -64,7 +66,7 @@ TEST_CASE_FIXTURE(Fixture, "and_adds_boolean_no_superfluous_union")
         local s = "a" and true
         local x:boolean = s
     )");
-    CHECK_EQ(0, result.errors.size());
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(*requireType("x"), *typeChecker.booleanType);
 }
 
@@ -73,7 +75,7 @@ TEST_CASE_FIXTURE(Fixture, "and_or_ternary")
     CheckResult result = check(R"(
         local s = (1/2) > 0.5 and "a" or 10
     )");
-    CHECK_EQ(0, result.errors.size());
+    LUAU_REQUIRE_NO_ERRORS(result);
     CHECK_EQ(toString(*requireType("s")), "number | string");
 }
 
@@ -81,7 +83,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "primitive_arith_no_metatable")
 {
     CheckResult result = check(R"(
         function add(a: number, b: string)
-            return a + (tonumber(b) :: number), a .. b
+            return a + (tonumber(b) :: number), tostring(a) .. b
         end
         local n, s = add(2,"3")
     )");
@@ -558,15 +560,21 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "disallow_string_and_types_without_metatables
     LUAU_REQUIRE_ERROR_COUNT(3, result);
 
     TypeMismatch* tm = get<TypeMismatch>(result.errors[0]);
-    REQUIRE_EQ(*tm->wantedType, *typeChecker.numberType);
-    REQUIRE_EQ(*tm->givenType, *typeChecker.stringType);
+    REQUIRE(tm);
+    CHECK_EQ(*tm->wantedType, *typeChecker.numberType);
+    CHECK_EQ(*tm->givenType, *typeChecker.stringType);
+
+    GenericError* gen1 = get<GenericError>(result.errors[1]);
+    REQUIRE(gen1);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ(gen1->message, "Operator + is not applicable for '{ value: number }' and 'number' because neither type has a metatable");
+    else
+        CHECK_EQ(gen1->message, "Binary operator '+' not supported by types 'foo' and 'number'");
 
     TypeMismatch* tm2 = get<TypeMismatch>(result.errors[2]);
+    REQUIRE(tm2);
     CHECK_EQ(*tm2->wantedType, *typeChecker.numberType);
     CHECK_EQ(*tm2->givenType, *requireType("foo"));
-
-    GenericError* gen2 = get<GenericError>(result.errors[1]);
-    REQUIRE_EQ(gen2->message, "Binary operator '+' not supported by types 'foo' and 'number'");
 }
 
 // CLI-29033
@@ -611,12 +619,10 @@ TEST_CASE_FIXTURE(Fixture, "strict_binary_op_where_lhs_unknown")
 {
     std::vector<std::string> ops = {"+", "-", "*", "/", "%", "^", ".."};
 
-    std::string src = R"(
-        function foo(a, b)
-    )";
+    std::string src = "function foo(a, b)\n";
 
     for (const auto& op : ops)
-        src += "local _ = a " + op + "b\n";
+        src += "local _ = a " + op + " b\n";
 
     src += "end";
 
@@ -651,7 +657,11 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
-    CHECK_EQ("Type 'boolean' cannot be compared with relational operator <", ge->message);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Types 'boolean' and 'boolean' cannot be compared with relational operator <", ge->message);
+    else
+        CHECK_EQ("Type 'boolean' cannot be compared with relational operator <", ge->message);
 }
 
 TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operators2")
@@ -666,7 +676,10 @@ TEST_CASE_FIXTURE(Fixture, "error_on_invalid_operand_types_to_relational_operato
 
     GenericError* ge = get<GenericError>(result.errors[0]);
     REQUIRE(ge);
-    CHECK_EQ("Type 'number | string' cannot be compared with relational operator <", ge->message);
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        CHECK_EQ("Types 'number | string' and 'number | string' cannot be compared with relational operator <", ge->message);
+    else
+        CHECK_EQ("Type 'number | string' cannot be compared with relational operator <", ge->message);
 }
 
 TEST_CASE_FIXTURE(Fixture, "cli_38355_recursive_union")
@@ -889,6 +902,65 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "mm_ops_must_return_a_value")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local mm = {
+            __add = function(self, other)
+                return
+            end,
+        }
+
+        local x = setmetatable({}, mm)
+        local y = x + 123
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+
+    CHECK(requireType("y") == singletonTypes->errorRecoveryType());
+
+    const GenericError* ge = get<GenericError>(result.errors[0]);
+    REQUIRE(ge);
+    CHECK(ge->message == "Metamethod '__add' must return a value");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local mm1 = {
+            __lt = function(self, other)
+                return 123
+            end,
+        }
+
+        local mm2 = {
+            __lt = function(self, other)
+                return
+            end,
+        }
+
+        local o1 = setmetatable({}, mm1)
+        local v1 = o1 < o1
+
+        local o2 = setmetatable({}, mm2)
+        local v2 = o2 < o2
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK(requireType("v1") == singletonTypes->booleanType);
+    CHECK(requireType("v2") == singletonTypes->booleanType);
+
+    CHECK(toString(result.errors[0]) == "Metamethod '__lt' must return type 'boolean'");
+    CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return type 'boolean'");
 }
 
 TEST_SUITE_END();

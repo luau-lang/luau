@@ -7,8 +7,6 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleNameResolution, false)
-
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
 {
@@ -70,7 +68,7 @@ struct ErrorConverter
             {
                 if (auto wantedDefinitionModule = getDefinitionModuleName(tm.wantedType))
                 {
-                    if (FFlag::LuauTypeMismatchModuleNameResolution && fileResolver != nullptr)
+                    if (fileResolver != nullptr)
                     {
                         std::string givenModuleName = fileResolver->getHumanReadableModuleName(*givenDefinitionModule);
                         std::string wantedModuleName = fileResolver->getHumanReadableModuleName(*wantedDefinitionModule);
@@ -96,14 +94,7 @@ struct ErrorConverter
             if (!tm.reason.empty())
                 result += tm.reason + " ";
 
-            if (FFlag::LuauTypeMismatchModuleNameResolution)
-            {
-                result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
-            }
-            else
-            {
-                result += Luau::toString(*tm.error);
-            }
+            result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
         }
         else if (!tm.reason.empty())
         {

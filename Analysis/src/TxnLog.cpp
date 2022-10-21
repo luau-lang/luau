@@ -251,7 +251,7 @@ PendingType* TxnLog::bindTable(TypeId ty, std::optional<TypeId> newBoundTo)
 
 PendingType* TxnLog::changeLevel(TypeId ty, TypeLevel newLevel)
 {
-    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty) || get<ConstrainedTypeVar>(ty));
+    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty));
 
     PendingType* newTy = queue(ty);
     if (FreeTypeVar* ftv = Luau::getMutable<FreeTypeVar>(newTy))
@@ -266,11 +266,6 @@ PendingType* TxnLog::changeLevel(TypeId ty, TypeLevel newLevel)
     else if (FunctionTypeVar* ftv = Luau::getMutable<FunctionTypeVar>(newTy))
     {
         ftv->level = newLevel;
-    }
-    else if (ConstrainedTypeVar* ctv = Luau::getMutable<ConstrainedTypeVar>(newTy))
-    {
-        if (FFlag::LuauUnknownAndNeverType)
-            ctv->level = newLevel;
     }
 
     return newTy;
@@ -291,7 +286,7 @@ PendingTypePack* TxnLog::changeLevel(TypePackId tp, TypeLevel newLevel)
 
 PendingType* TxnLog::changeScope(TypeId ty, NotNull<Scope> newScope)
 {
-    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty) || get<ConstrainedTypeVar>(ty));
+    LUAU_ASSERT(get<FreeTypeVar>(ty) || get<TableTypeVar>(ty) || get<FunctionTypeVar>(ty));
 
     PendingType* newTy = queue(ty);
     if (FreeTypeVar* ftv = Luau::getMutable<FreeTypeVar>(newTy))
@@ -306,10 +301,6 @@ PendingType* TxnLog::changeScope(TypeId ty, NotNull<Scope> newScope)
     else if (FunctionTypeVar* ftv = Luau::getMutable<FunctionTypeVar>(newTy))
     {
         ftv->scope = newScope;
-    }
-    else if (ConstrainedTypeVar* ctv = Luau::getMutable<ConstrainedTypeVar>(newTy))
-    {
-        ctv->scope = newScope;
     }
 
     return newTy;

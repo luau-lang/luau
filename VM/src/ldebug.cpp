@@ -12,8 +12,6 @@
 #include <string.h>
 #include <stdio.h>
 
-LUAU_FASTFLAGVARIABLE(LuauFasterGetInfo, false)
-
 static const char* getfuncname(Closure* f);
 
 static int currentpc(lua_State* L, CallInfo* ci)
@@ -105,8 +103,7 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
                 ar->source = "=[C]";
                 ar->what = "C";
                 ar->linedefined = -1;
-                if (FFlag::LuauFasterGetInfo)
-                    ar->short_src = "[C]";
+                ar->short_src = "[C]";
             }
             else
             {
@@ -114,13 +111,7 @@ static Closure* auxgetinfo(lua_State* L, const char* what, lua_Debug* ar, Closur
                 ar->source = getstr(source);
                 ar->what = "Lua";
                 ar->linedefined = f->l.p->linedefined;
-                if (FFlag::LuauFasterGetInfo)
-                    ar->short_src = luaO_chunkid(ar->ssbuf, sizeof(ar->ssbuf), getstr(source), source->len);
-            }
-            if (!FFlag::LuauFasterGetInfo)
-            {
-                luaO_chunkid(ar->ssbuf, LUA_IDSIZE, ar->source, 0);
-                ar->short_src = ar->ssbuf;
+                ar->short_src = luaO_chunkid(ar->ssbuf, sizeof(ar->ssbuf), getstr(source), source->len);
             }
             break;
         }
@@ -195,25 +186,12 @@ int lua_getinfo(lua_State* L, int level, const char* what, lua_Debug* ar)
     }
     if (f)
     {
-        if (FFlag::LuauFasterGetInfo)
+        // auxgetinfo fills ar and optionally requests to put closure on stack
+        if (Closure* fcl = auxgetinfo(L, what, ar, f, ci))
         {
-            // auxgetinfo fills ar and optionally requests to put closure on stack
-            if (Closure* fcl = auxgetinfo(L, what, ar, f, ci))
-            {
-                luaC_threadbarrier(L);
-                setclvalue(L, L->top, fcl);
-                incr_top(L);
-            }
-        }
-        else
-        {
-            auxgetinfo(L, what, ar, f, ci);
-            if (strchr(what, 'f'))
-            {
-                luaC_threadbarrier(L);
-                setclvalue(L, L->top, f);
-                incr_top(L);
-            }
+            luaC_threadbarrier(L);
+            setclvalue(L, L->top, fcl);
+            incr_top(L);
         }
     }
     return f ? 1 : 0;

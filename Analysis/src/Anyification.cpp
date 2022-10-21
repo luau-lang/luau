@@ -37,8 +37,6 @@ bool Anyification::isDirty(TypeId ty)
         return (ttv->state == TableState::Free || ttv->state == TableState::Unsealed);
     else if (log->getMutable<FreeTypeVar>(ty))
         return true;
-    else if (get<ConstrainedTypeVar>(ty))
-        return true;
     else
         return false;
 }
@@ -65,19 +63,7 @@ TypeId Anyification::clean(TypeId ty)
         clone.syntheticName = ttv->syntheticName;
         clone.tags = ttv->tags;
         TypeId res = addType(std::move(clone));
-        asMutable(res)->normal = ty->normal;
         return res;
-    }
-    else if (auto ctv = get<ConstrainedTypeVar>(ty))
-    {
-        std::vector<TypeId> copy = ctv->parts;
-        for (TypeId& ty : copy)
-            ty = replace(ty);
-        TypeId res = copy.size() == 1 ? copy[0] : addType(UnionTypeVar{std::move(copy)});
-        auto [t, ok] = normalize(res, scope, *arena, singletonTypes, *iceHandler);
-        if (!ok)
-            normalizationTooComplex = true;
-        return t;
     }
     else
         return anyType;

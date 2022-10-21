@@ -306,6 +306,8 @@ do    -- testing initial position
   assert(i == 4 and p == 17)
   local i, p = unpack("!4 i4", x, -#x)
   assert(i == 1 and p == 5)
+  local i, p = unpack("!4 i4", x, 0)
+  assert(i == 1 and p == 5)
 
   -- limits
   for i = 1, #x + 1 do

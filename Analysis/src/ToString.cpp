@@ -400,29 +400,6 @@ struct TypeVarStringifier
             state.emit(state.getName(ty));
     }
 
-    void operator()(TypeId, const ConstrainedTypeVar& ctv)
-    {
-        state.result.invalid = true;
-
-        state.emit("[");
-        if (FFlag::DebugLuauVerboseTypeNames)
-            state.emit(ctv.level);
-        state.emit("[");
-
-        bool first = true;
-        for (TypeId ty : ctv.parts)
-        {
-            if (first)
-                first = false;
-            else
-                state.emit("|");
-
-            stringify(ty);
-        }
-
-        state.emit("]]");
-    }
-
     void operator()(TypeId, const BlockedTypeVar& btv)
     {
         state.emit("*blocked-");
@@ -870,6 +847,28 @@ struct TypeVarStringifier
     void operator()(TypeId, const NeverTypeVar& ttv)
     {
         state.emit("never");
+    }
+
+    void operator()(TypeId ty, const UseTypeVar&)
+    {
+        stringify(follow(ty));
+    }
+
+    void operator()(TypeId, const NegationTypeVar& ntv)
+    {
+        state.emit("~");
+
+        // The precedence of `~` should be less than `|` and `&`.
+        TypeId followed = follow(ntv.ty);
+        bool parens = get<UnionTypeVar>(followed) || get<IntersectionTypeVar>(followed);
+
+        if (parens)
+            state.emit("(");
+
+        stringify(ntv.ty);
+
+        if (parens)
+            state.emit(")");
     }
 };
 
@@ -1442,7 +1441,7 @@ std::string generateName(size_t i)
 
 std::string toString(const Constraint& constraint, ToStringOptions& opts)
 {
-    auto go = [&opts](auto&& c) {
+    auto go = [&opts](auto&& c) -> std::string {
         using T = std::decay_t<decltype(c)>;
 
         // TODO: Inline and delete this function when clipping FFlag::LuauFixNameMaps
@@ -1525,6 +1524,10 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         else if constexpr (std::is_same_v<T, HasPropConstraint>)
         {
             return tos(c.resultType, opts) + " ~ hasProp " + tos(c.subjectType, opts) + ", \"" + c.prop + "\"";
+        }
+        else if constexpr (std::is_same_v<T, RefinementConstraint>)
+        {
+            return "TODO";
         }
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");

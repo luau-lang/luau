@@ -60,36 +60,6 @@ bool isWithinComment(const SourceModule& sourceModule, Position pos)
     return contains(pos, *iter);
 }
 
-struct ForceNormal : TypeVarOnceVisitor
-{
-    const TypeArena* typeArena = nullptr;
-
-    ForceNormal(const TypeArena* typeArena)
-        : typeArena(typeArena)
-    {
-    }
-
-    bool visit(TypeId ty) override
-    {
-        if (ty->owningArena != typeArena)
-            return false;
-
-        asMutable(ty)->normal = true;
-        return true;
-    }
-
-    bool visit(TypeId ty, const FreeTypeVar& ftv) override
-    {
-        visit(ty);
-        return true;
-    }
-
-    bool visit(TypePackId tp, const FreeTypePack& ftp) override
-    {
-        return true;
-    }
-};
-
 struct ClonePublicInterface : Substitution
 {
     NotNull<SingletonTypes> singletonTypes;
@@ -241,8 +211,6 @@ void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, Intern
         moduleScope->varargPack = varargPack;
     }
 
-    ForceNormal forceNormal{&interfaceTypes};
-
     if (exportedTypeBindings)
     {
         for (auto& [name, tf] : *exportedTypeBindings)
@@ -262,7 +230,6 @@ void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, Intern
             {
                 auto t = asMutable(ty);
                 t->ty = AnyTypeVar{};
-                t->normal = true;
             }
         }
     }

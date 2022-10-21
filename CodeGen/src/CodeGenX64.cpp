@@ -48,7 +48,7 @@ bool initEntryFunction(NativeState& data)
 
     unwind.start();
 
-    if (getCurrentX64ABI() == X64ABI::Windows)
+    if (build.abi == ABIX64::Windows)
     {
         // Place arguments in home space
         build.mov(qword[rsp + 16], rArg2);
@@ -121,7 +121,7 @@ bool initEntryFunction(NativeState& data)
     build.pop(rbp);
     build.pop(rbx);
 
-    if (getCurrentX64ABI() == X64ABI::Windows)
+    if (build.abi == ABIX64::Windows)
     {
         build.pop(rsi);
         build.pop(rdi);

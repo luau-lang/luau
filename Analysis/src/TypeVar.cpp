@@ -57,6 +57,13 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
             return btv->boundTo;
         else if (auto ttv = get<TableTypeVar>(mapper(ty)))
             return ttv->boundTo;
+        else if (auto utv = get<UseTypeVar>(mapper(ty)))
+        {
+            std::optional<TypeId> ty = utv->scope->lookup(utv->def);
+            if (!ty)
+                throw std::runtime_error("UseTypeVar must map to another TypeId");
+            return *ty;
+        }
         else
             return std::nullopt;
     };
@@ -760,6 +767,8 @@ SingletonTypes::SingletonTypes()
     , unknownType(arena->addType(TypeVar{UnknownTypeVar{}, /*persistent*/ true}))
     , neverType(arena->addType(TypeVar{NeverTypeVar{}, /*persistent*/ true}))
     , errorType(arena->addType(TypeVar{ErrorTypeVar{}, /*persistent*/ true}))
+    , falsyType(arena->addType(TypeVar{UnionTypeVar{{falseType, nilType}}, /*persistent*/ true}))
+    , truthyType(arena->addType(TypeVar{NegationTypeVar{falsyType}, /*persistent*/ true}))
     , anyTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, /*persistent*/ true}))
     , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
     , uninhabitableTypePack(arena->addTypePack({neverType}, neverTypePack))
@@ -896,7 +905,6 @@ void persist(TypeId ty)
             continue;
 
         asMutable(t)->persistent = true;
-        asMutable(t)->normal = true; // all persistent types are assumed to be normal
 
         if (auto btv = get<BoundTypeVar>(t))
             queue.push_back(btv->boundTo);
@@ -931,11 +939,6 @@ void persist(TypeId ty)
         else if (auto itv = get<IntersectionTypeVar>(t))
         {
             for (TypeId opt : itv->parts)
-                queue.push_back(opt);
-        }
-        else if (auto ctv = get<ConstrainedTypeVar>(t))
-        {
-            for (TypeId opt : ctv->parts)
                 queue.push_back(opt);
         }
         else if (auto mtv = get<MetatableTypeVar>(t))
@@ -990,8 +993,6 @@ const TypeLevel* getLevel(TypeId ty)
         return &ttv->level;
     else if (auto ftv = get<FunctionTypeVar>(ty))
         return &ftv->level;
-    else if (auto ctv = get<ConstrainedTypeVar>(ty))
-        return &ctv->level;
     else
         return nullptr;
 }
@@ -1056,11 +1057,6 @@ const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv)
     return itv->parts;
 }
 
-const std::vector<TypeId>& getTypes(const ConstrainedTypeVar* ctv)
-{
-    return ctv->parts;
-}
-
 UnionTypeVarIterator begin(const UnionTypeVar* utv)
 {
     return UnionTypeVarIterator{utv};
@@ -1080,17 +1076,6 @@ IntersectionTypeVarIterator end(const IntersectionTypeVar* itv)
 {
     return IntersectionTypeVarIterator{};
 }
-
-ConstrainedTypeVarIterator begin(const ConstrainedTypeVar* ctv)
-{
-    return ConstrainedTypeVarIterator{ctv};
-}
-
-ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
-{
-    return ConstrainedTypeVarIterator{};
-}
-
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {

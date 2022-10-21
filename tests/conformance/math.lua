@@ -283,6 +283,13 @@ assert(math.fmod(-3, 2) == -1)
 assert(math.fmod(3, -2) == 1)
 assert(math.fmod(-3, -2) == -1)
 
+-- pow
+assert(math.pow(2, 0) == 1)
+assert(math.pow(2, 2) == 4)
+assert(math.pow(4, 0.5) == 2)
+assert(math.pow(-2, 2) == 4)
+assert(tostring(math.pow(-2, 0.5)) == "nan")
+
 -- most of the tests above go through fastcall path
 -- to make sure the basic implementations are also correct we test these functions with string->number coercions
 assert(math.abs("-4") == 4)

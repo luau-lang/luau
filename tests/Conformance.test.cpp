@@ -536,9 +536,15 @@ TEST_CASE("Debugger")
 {
     static int breakhits = 0;
     static lua_State* interruptedthread = nullptr;
+    static bool singlestep = false;
+    static int stephits = 0;
+
+    SUBCASE("") { singlestep = false; }
+    SUBCASE("SingleStep") { singlestep = true; }
 
     breakhits = 0;
     interruptedthread = nullptr;
+    stephits = 0;
 
     lua_CompileOptions copts = defaultOptions();
     copts.debugLevel = 2;
@@ -547,6 +553,13 @@ TEST_CASE("Debugger")
         "debugger.lua",
         [](lua_State* L) {
             lua_Callbacks* cb = lua_callbacks(L);
+
+            lua_singlestep(L, singlestep);
+
+            // this will only be called in single-step mode
+            cb->debugstep = [](lua_State* L, lua_Debug* ar) {
+                stephits++;
+            };
 
             // for breakpoints to work we should make sure debugbreak is installed
             cb->debugbreak = [](lua_State* L, lua_Debug* ar) {
@@ -667,6 +680,9 @@ TEST_CASE("Debugger")
         nullptr, &copts, /* skipCodegen */ true); // Native code doesn't support debugging yet
 
     CHECK(breakhits == 12); // 2 hits per breakpoint
+
+    if (singlestep)
+        CHECK(stephits > 100); // note; this will depend on number of instructions which can vary, so we just make sure the callback gets hit often
 }
 
 TEST_CASE("SameHash")
@@ -1526,6 +1542,53 @@ TEST_CASE("Userdata")
 TEST_CASE("SafeEnv")
 {
     runConformance("safeenv.lua");
+}
+
+TEST_CASE("HugeFunction")
+{
+    std::string source;
+
+    // add non-executed block that requires JUMPKX and generates a lot of constants that take available short (15-bit) constant space
+    source += "if ... then\n";
+    source += "local _ = {\n";
+
+    for (int i = 0; i < 40000; ++i)
+    {
+        source += "0.";
+        source += std::to_string(i);
+        source += ",";
+    }
+
+    source += "}\n";
+    source += "end\n";
+
+    // use failed fast-calls with imports and constants to exercise all of the more complex fallback sequences
+    source += "return bit32.lshift('84', -1)";
+
+    StateRef globalState(luaL_newstate(), lua_close);
+    lua_State* L = globalState.get();
+
+    if (codegen && Luau::CodeGen::isSupported())
+        Luau::CodeGen::create(L);
+
+    luaL_openlibs(L);
+    luaL_sandbox(L);
+    luaL_sandboxthread(L);
+
+    size_t bytecodeSize = 0;
+    char* bytecode = luau_compile(source.data(), source.size(), nullptr, &bytecodeSize);
+    int result = luau_load(L, "=HugeFunction", bytecode, bytecodeSize, 0);
+    free(bytecode);
+
+    REQUIRE(result == 0);
+
+    if (codegen && Luau::CodeGen::isSupported())
+        Luau::CodeGen::compile(L, -1);
+
+    int status = lua_resume(L, nullptr, 0);
+    REQUIRE(status == 0);
+
+    CHECK(lua_tonumber(L, -1) == 42);
 }
 
 TEST_SUITE_END();

@@ -74,4 +74,6 @@ checkerror("wrap around", table.move, {}, 1, maxI, 2)
 checkerror("wrap around", table.move, {}, 1, 2, maxI)
 checkerror("wrap around", table.move, {}, minI, -2, 2)
 
+checkerror("readonly", table.move, table.freeze({}), 1, 1, 1)
+
 return"OK"

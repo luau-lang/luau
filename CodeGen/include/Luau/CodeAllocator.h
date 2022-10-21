@@ -11,6 +11,8 @@ namespace Luau
 namespace CodeGen
 {
 
+constexpr uint32_t kCodeAlignment = 32;
+
 struct CodeAllocator
 {
     CodeAllocator(size_t blockSize, size_t maxTotalSize);

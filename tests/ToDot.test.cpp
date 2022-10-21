@@ -79,8 +79,8 @@ n1 [label="AnyTypeVar 1"];
 TEST_CASE_FIXTURE(Fixture, "bound")
 {
     CheckResult result = check(R"(
-local a = 444
-local b = a
+function a(): number return 444 end
+local b = a()
 )");
     LUAU_REQUIRE_NO_ERRORS(result);
 
@@ -365,27 +365,6 @@ n2 -> n3 [label="x"];
 n3 [label="number"];
 })",
         toDot(*ty, opts));
-}
-
-TEST_CASE_FIXTURE(Fixture, "constrained")
-{
-    // ConstrainedTypeVars never appear in the final type graph, so we have to create one directly
-    // to dotify it.
-    TypeVar t{ConstrainedTypeVar{TypeLevel{}, {typeChecker.numberType, typeChecker.stringType, typeChecker.nilType}}};
-
-    ToDotOptions opts;
-    opts.showPointers = false;
-
-    CHECK_EQ(R"(digraph graphname {
-n1 [label="ConstrainedTypeVar 1"];
-n1 -> n2;
-n2 [label="number"];
-n1 -> n3;
-n3 [label="string"];
-n1 -> n4;
-n4 [label="nil"];
-})",
-        toDot(&t, opts));
 }
 
 TEST_CASE_FIXTURE(Fixture, "singletontypes")

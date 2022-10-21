@@ -7,11 +7,28 @@ namespace Luau
 ConstraintGraphBuilderFixture::ConstraintGraphBuilderFixture()
     : Fixture()
     , mainModule(new Module)
-    , cgb("MainModule", mainModule, &arena, NotNull(&moduleResolver), singletonTypes, NotNull(&ice), frontend.getGlobalScope(), &logger)
     , forceTheFlag{"DebugLuauDeferredConstraintResolution", true}
 {
     BlockedTypeVar::nextIndex = 0;
     BlockedTypePack::nextIndex = 0;
+}
+
+void ConstraintGraphBuilderFixture::generateConstraints(const std::string& code)
+{
+    AstStatBlock* root = parse(code);
+    dfg = std::make_unique<DataFlowGraph>(DataFlowGraphBuilder::build(root, NotNull{&ice}));
+    cgb = std::make_unique<ConstraintGraphBuilder>("MainModule", mainModule, &arena, NotNull(&moduleResolver), singletonTypes, NotNull(&ice),
+        frontend.getGlobalScope(), &logger, NotNull{dfg.get()});
+    cgb->visit(root);
+    rootScope = cgb->rootScope;
+    constraints = Luau::collectConstraints(NotNull{cgb->rootScope});
+}
+
+void ConstraintGraphBuilderFixture::solve(const std::string& code)
+{
+    generateConstraints(code);
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, "MainModule", NotNull(&moduleResolver), {}, &logger};
+    cs.run();
 }
 
 } // namespace Luau

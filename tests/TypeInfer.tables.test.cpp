@@ -11,6 +11,8 @@
 
 using namespace Luau;
 
+LUAU_FASTFLAG(LuauLowerBoundsCalculation);
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 TEST_SUITE_BEGIN("TableTests");
@@ -44,7 +46,7 @@ TEST_CASE_FIXTURE(Fixture, "augment_table")
     const TableTypeVar* tType = get<TableTypeVar>(requireType("t"));
     REQUIRE(tType != nullptr);
 
-    CHECK(tType->props.find("foo") != tType->props.end());
+    CHECK(1 == tType->props.count("foo"));
 }
 
 TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
@@ -101,7 +103,11 @@ TEST_CASE_FIXTURE(Fixture, "updating_sealed_table_prop_is_ok")
 
 TEST_CASE_FIXTURE(Fixture, "cannot_change_type_of_unsealed_table_prop")
 {
-    CheckResult result = check("local t = {}    t.prop = 999    t.prop = 'hello'");
+    CheckResult result = check(R"(
+        local t = {}
+        t.prop = 999
+        t.prop = 'hello'
+    )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
@@ -858,11 +864,12 @@ TEST_CASE_FIXTURE(Fixture, "assigning_to_an_unsealed_table_with_string_literal_s
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(*typeChecker.stringType, *requireType("a"));
+    CHECK("string" == toString(*typeChecker.stringType));
 
     TableTypeVar* tableType = getMutable<TableTypeVar>(requireType("t"));
     REQUIRE(tableType != nullptr);
     REQUIRE(tableType->indexer == std::nullopt);
+    REQUIRE(0 != tableType->props.count("a"));
 
     TypeId propertyA = tableType->props["a"].type;
     REQUIRE(propertyA != nullptr);
@@ -2390,9 +2397,12 @@ TEST_CASE_FIXTURE(Fixture, "wrong_assign_does_hit_indexer")
 
 TEST_CASE_FIXTURE(Fixture, "nil_assign_doesnt_hit_no_indexer")
 {
-    CheckResult result = check("local a = {a=1, b=2} a['a'] = nil");
+    CheckResult result = check(R"(
+        local a = {a=1, b=2}
+        a['a'] = nil
+    )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(result.errors[0], (TypeError{Location{Position{0, 30}, Position{0, 33}}, TypeMismatch{
+    CHECK_EQ(result.errors[0], (TypeError{Location{Position{2, 17}, Position{2, 20}}, TypeMismatch{
                                                                                           typeChecker.numberType,
                                                                                           typeChecker.nilType,
                                                                                       }}));
@@ -2699,6 +2709,62 @@ local baz = foo[bar]
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(result.errors[0].location, Location{Position{3, 16}, Position{3, 19}});
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_basic")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local a = setmetatable({
+            a = 1,
+        }, {
+            __call = function(self, b: number)
+                return self.a * b
+            end,
+        })
+
+        local foo = a(12)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(requireType("foo") == singletonTypes->numberType);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_must_be_callable")
+{
+    CheckResult result = check(R"(
+        local a = setmetatable({}, {
+            __call = 123,
+        })
+
+        local foo = a()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(result.errors[0] == TypeError{
+                                  Location{{5, 20}, {5, 21}},
+                                  CannotCallNonFunction{singletonTypes->numberType},
+                              });
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_call_metamethod_generic")
+{
+    CheckResult result = check(R"(
+        local a = setmetatable({}, {
+            __call = function<T>(self, b: T)
+                return b
+            end,
+        })
+
+        local foo = a(12)
+        local bar = a("bar")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK(requireType("foo") == singletonTypes->numberType);
+    CHECK(requireType("bar") == singletonTypes->stringType);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "table_simple_call")

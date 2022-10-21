@@ -391,26 +391,6 @@ TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("Normalize");
 
-TEST_CASE_FIXTURE(NormalizeFixture, "union_with_overlapping_field_that_has_a_subtype_relationship")
-{
-    check(R"(
-        local t: {x: number} | {x: number?}
-    )");
-
-    ModulePtr tempModule{new Module};
-    tempModule->scopes.emplace_back(Location(), std::make_shared<Scope>(singletonTypes->anyTypePack));
-
-    // HACK: Normalization is an in-place operation.  We need to cheat a little here and unfreeze
-    // the arena that the type lives in.
-    ModulePtr mainModule = getMainModule();
-    unfreeze(mainModule->internalTypes);
-
-    TypeId tType = requireType("t");
-    normalize(tType, tempModule, singletonTypes, *typeChecker.iceHandler);
-
-    CHECK_EQ("{| x: number? |}", toString(tType, {true}));
-}
-
 TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 {
     check(R"(
