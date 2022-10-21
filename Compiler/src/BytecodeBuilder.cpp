@@ -269,7 +269,7 @@ void BytecodeBuilder::endFunction(uint8_t maxstacksize, uint8_t numupvalues)
 
     // this call is indirect to make sure we only gain link time dependency on dumpCurrentFunction when needed
     if (dumpFunctionPtr)
-        func.dump = (this->*dumpFunctionPtr)();
+        func.dump = (this->*dumpFunctionPtr)(func.dumpinstoffs);
 
     insns.clear();
     lines.clear();
@@ -1079,6 +1079,12 @@ uint8_t BytecodeBuilder::getVersion()
 #ifdef LUAU_ASSERTENABLED
 void BytecodeBuilder::validate() const
 {
+    validateInstructions();
+    validateVariadic();
+}
+
+void BytecodeBuilder::validateInstructions() const
+{
 #define VREG(v) LUAU_ASSERT(unsigned(v) < func.maxstacksize)
 #define VREGRANGE(v, count) LUAU_ASSERT(unsigned(v + (count < 0 ? 0 : count)) <= func.maxstacksize)
 #define VUPVAL(v) LUAU_ASSERT(unsigned(v) < func.numupvalues)
@@ -1090,26 +1096,27 @@ void BytecodeBuilder::validate() const
 
     const Function& func = functions[currentFunction];
 
-    // first pass: tag instruction offsets so that we can validate jumps
-    std::vector<uint8_t> insnvalid(insns.size(), false);
+    // tag instruction offsets so that we can validate jumps
+    std::vector<uint8_t> insnvalid(insns.size(), 0);
 
     for (size_t i = 0; i < insns.size();)
     {
-        uint8_t op = LUAU_INSN_OP(insns[i]);
+        uint32_t insn = insns[i];
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
 
         insnvalid[i] = true;
 
-        i += getOpLength(LuauOpcode(op));
+        i += getOpLength(op);
         LUAU_ASSERT(i <= insns.size());
     }
 
     std::vector<uint8_t> openCaptures;
 
-    // second pass: validate the rest of the bytecode
+    // validate individual instructions
     for (size_t i = 0; i < insns.size();)
     {
         uint32_t insn = insns[i];
-        uint8_t op = LUAU_INSN_OP(insn);
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
 
         switch (op)
         {
@@ -1452,7 +1459,7 @@ void BytecodeBuilder::validate() const
             LUAU_ASSERT(!"Unsupported opcode");
         }
 
-        i += getOpLength(LuauOpcode(op));
+        i += getOpLength(op);
         LUAU_ASSERT(i <= insns.size());
     }
 
@@ -1468,6 +1475,126 @@ void BytecodeBuilder::validate() const
 #undef VCONST
 #undef VCONSTANY
 #undef VJUMP
+}
+
+void BytecodeBuilder::validateVariadic() const
+{
+    // validate MULTRET sequences: instructions that produce a variadic sequence and consume one must come in pairs
+    // we classify instructions into four groups: producers, consumers, neutral and others
+    // any producer (an instruction that produces more than one value) must be followed by 0 or more neutral instructions
+    // and a consumer (that consumes more than one value); these form a variadic sequence.
+    // except for producer, no instruction in the variadic sequence may be a jump target.
+    // from the execution perspective, producer adjusts L->top to point to one past the last result, neutral instructions
+    // leave L->top unmodified, and consumer adjusts L->top back to the stack frame end.
+    // consumers invalidate all values after L->top after they execute (which we currently don't validate)
+    bool variadicSeq = false;
+
+    std::vector<uint8_t> insntargets(insns.size(), 0);
+
+    for (size_t i = 0; i < insns.size();)
+    {
+        uint32_t insn = insns[i];
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
+
+        int target = getJumpTarget(insn, uint32_t(i));
+
+        if (target >= 0 && !isFastCall(op))
+        {
+            LUAU_ASSERT(unsigned(target) < insns.size());
+
+            insntargets[target] = true;
+        }
+
+        i += getOpLength(op);
+        LUAU_ASSERT(i <= insns.size());
+    }
+
+    for (size_t i = 0; i < insns.size();)
+    {
+        uint32_t insn = insns[i];
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(insn));
+
+        if (variadicSeq)
+        {
+            // no instruction inside the sequence, including the consumer, may be a jump target
+            // this guarantees uninterrupted L->top adjustment flow
+            LUAU_ASSERT(!insntargets[i]);
+        }
+
+        if (op == LOP_CALL)
+        {
+            // note: calls may end one variadic sequence and start a new one
+
+            if (LUAU_INSN_B(insn) == 0)
+            {
+                // consumer instruction ens a variadic sequence
+                LUAU_ASSERT(variadicSeq);
+                variadicSeq = false;
+            }
+            else
+            {
+                // CALL is not a neutral instruction so it can't be present in a variadic sequence unless it's a consumer
+                LUAU_ASSERT(!variadicSeq);
+            }
+
+            if (LUAU_INSN_C(insn) == 0)
+            {
+                // producer instruction starts a variadic sequence
+                LUAU_ASSERT(!variadicSeq);
+                variadicSeq = true;
+            }
+        }
+        else if (op == LOP_GETVARARGS && LUAU_INSN_B(insn) == 0)
+        {
+            // producer instruction starts a variadic sequence
+            LUAU_ASSERT(!variadicSeq);
+            variadicSeq = true;
+        }
+        else if ((op == LOP_RETURN && LUAU_INSN_B(insn) == 0) || (op == LOP_SETLIST && LUAU_INSN_C(insn) == 0))
+        {
+            // consumer instruction ends a variadic sequence
+            LUAU_ASSERT(variadicSeq);
+            variadicSeq = false;
+        }
+        else if (op == LOP_FASTCALL)
+        {
+            int callTarget = int(i + LUAU_INSN_C(insn) + 1);
+            LUAU_ASSERT(unsigned(callTarget) < insns.size() && LUAU_INSN_OP(insns[callTarget]) == LOP_CALL);
+
+            if (LUAU_INSN_B(insns[callTarget]) == 0)
+            {
+                // consumer instruction ends a variadic sequence; however, we can't terminate it yet because future analysis of CALL will do it
+                // during FASTCALL fallback, the instructions between this and CALL consumer are going to be executed before L->top so they must
+                // be neutral; as such, we will defer termination of variadic sequence until CALL analysis
+                LUAU_ASSERT(variadicSeq);
+            }
+            else
+            {
+                // FASTCALL is not a neutral instruction so it can't be present in a variadic sequence unless it's linked to CALL consumer
+                LUAU_ASSERT(!variadicSeq);
+            }
+
+            // note: if FASTCALL is linked to a CALL producer, the instructions between FASTCALL and CALL are technically not part of an executed
+            // variadic sequence since they are never executed if FASTCALL does anything, so it's okay to skip their validation until CALL
+            // (we can't simply start a variadic sequence here because that would trigger assertions during linked CALL validation)
+        }
+        else if (op == LOP_CLOSEUPVALS || op == LOP_NAMECALL || op == LOP_GETIMPORT || op == LOP_MOVE || op == LOP_GETUPVAL || op == LOP_GETGLOBAL ||
+                 op == LOP_GETTABLEKS || op == LOP_COVERAGE)
+        {
+            // instructions inside a variadic sequence must be neutral (can't change L->top)
+            // while there are many neutral instructions like this, here we check that the instruction is one of the few
+            // that we'd expect to exist in FASTCALL fallback sequences or between consecutive CALLs for encoding reasons
+        }
+        else
+        {
+            LUAU_ASSERT(!variadicSeq);
+        }
+
+        i += getOpLength(op);
+        LUAU_ASSERT(i <= insns.size());
+    }
+
+    LUAU_ASSERT(!variadicSeq);
 }
 #endif
 
@@ -1800,7 +1927,7 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
     }
 }
 
-std::string BytecodeBuilder::dumpCurrentFunction() const
+std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs) const
 {
     if ((dumpFlags & Dump_Code) == 0)
         return std::string();
@@ -1850,10 +1977,14 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
         if (labels[i] == 0)
             labels[i] = nextLabel++;
 
+    dumpinstoffs.reserve(insns.size());
+
     for (size_t i = 0; i < insns.size();)
     {
         const uint32_t* code = &insns[i];
         uint8_t op = LUAU_INSN_OP(*code);
+
+        dumpinstoffs.push_back(int(result.size()));
 
         if (op == LOP_PREPVARARGS)
         {
@@ -1896,6 +2027,8 @@ std::string BytecodeBuilder::dumpCurrentFunction() const
         i += getOpLength(LuauOpcode(op));
         LUAU_ASSERT(i <= insns.size());
     }
+
+    dumpinstoffs.push_back(int(result.size()));
 
     return result;
 }
@@ -1984,6 +2117,22 @@ std::string BytecodeBuilder::dumpSourceRemarks() const
     }
 
     return result;
+}
+
+void BytecodeBuilder::annotateInstruction(std::string& result, uint32_t fid, uint32_t instid) const
+{
+    if ((dumpFlags & Dump_Code) == 0)
+        return;
+
+    LUAU_ASSERT(fid < functions.size());
+
+    const Function& function = functions[fid];
+    const std::string& dump = function.dump;
+    const std::vector<int>& dumpinstoffs = function.dumpinstoffs;
+
+    LUAU_ASSERT(instid + 1 < dumpinstoffs.size());
+
+    formatAppend(result, "%.*s", dumpinstoffs[instid + 1] - dumpinstoffs[instid], dump.data() + dumpinstoffs[instid]);
 }
 
 } // namespace Luau

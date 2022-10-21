@@ -798,8 +798,6 @@ RETURN R0 1
 
 TEST_CASE("TableSizePredictionSetMetatable")
 {
-    ScopedFastFlag sff("LuauCompileBuiltinMT", true);
-
     CHECK_EQ("\n" + compileFunction0(R"(
 local t = setmetatable({}, nil)
 t.field1 = 1

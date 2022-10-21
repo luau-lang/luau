@@ -31,7 +31,6 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
-LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTFLAG(LuauTypeNormalization2)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
@@ -280,11 +279,8 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     iceHandler->moduleName = module.name;
     normalizer.arena = &currentModule->internalTypes;
 
-    if (FFlag::LuauAutocompleteDynamicLimits)
-    {
-        unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-        unifierState.counters.iterationLimit = unifierIterationLimit ? *unifierIterationLimit : FInt::LuauTypeInferIterationLimit;
-    }
+    unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    unifierState.counters.iterationLimit = unifierIterationLimit ? *unifierIterationLimit : FInt::LuauTypeInferIterationLimit;
 
     ScopePtr parentScope = environmentScope.value_or(globalScope);
     ScopePtr moduleScope = std::make_shared<Scope>(parentScope);
@@ -771,16 +767,6 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatRepeat& statement)
     checkBlock(repScope, *statement.body);
 
     checkExpr(repScope, *statement.condition);
-}
-
-void TypeChecker::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const ScopePtr& scope, const Location& location)
-{
-    Unifier state = mkUnifier(scope, location);
-    state.unifyLowerBound(subTy, superTy, demotedLevel);
-
-    state.log.commit();
-
-    reportErrors(state.errors);
 }
 
 struct Demoter : Substitution
@@ -2089,39 +2075,6 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
         reportError(location, UnknownProperty{type, name});
 
     return std::nullopt;
-}
-
-std::vector<TypeId> TypeChecker::reduceUnion(const std::vector<TypeId>& types)
-{
-    std::vector<TypeId> result;
-    for (TypeId t : types)
-    {
-        t = follow(t);
-        if (get<NeverTypeVar>(t))
-            continue;
-
-        if (get<ErrorTypeVar>(t) || get<AnyTypeVar>(t))
-            return {t};
-
-        if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
-        {
-            for (TypeId ty : utv)
-            {
-                ty = follow(ty);
-                if (get<NeverTypeVar>(ty))
-                    continue;
-                if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
-                    return {ty};
-
-                if (result.end() == std::find(result.begin(), result.end(), ty))
-                    result.push_back(ty);
-            }
-        }
-        else if (std::find(result.begin(), result.end(), t) == result.end())
-            result.push_back(t);
-    }
-
-    return result;
 }
 
 std::optional<TypeId> TypeChecker::tryStripUnionFromNil(TypeId ty)
@@ -4597,7 +4550,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
 
     Instantiation instantiation{log, &currentModule->internalTypes, scope->level, /*scope*/ nullptr};
 
-    if (FFlag::LuauAutocompleteDynamicLimits && instantiationChildLimit)
+    if (instantiationChildLimit)
         instantiation.childLimit = *instantiationChildLimit;
 
     std::optional<TypeId> instantiated = instantiation.substitute(ty);

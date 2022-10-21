@@ -87,35 +87,59 @@ print'+'
 
 -- testing tables dynamically built
 local lim = 130
-local a = {}; a[2] = 1; check(a, 0, 1)
-a = {}; a[0] = 1; check(a, 0, 1); a[2] = 1; check(a, 0, 2)
-a = {}; a[0] = 1; a[1] = 1; check(a, 1, 1)
-a = {}
-for i = 1,lim do
-  a[i] = 1
-  assert(#a == i)
-  check(a, mp2(i), 0)
+
+do
+  local a = {}; a[2] = 1; check(a, 0, 1)
+  a = {}; a[0] = 1; check(a, 0, 1); a[2] = 1; check(a, 0, 2)
+  a = {}; a[0] = 1; a[1] = 1; check(a, 1, 1)
+  a = {}
+  for i = 1,lim do
+    a[i] = 1
+    assert(#a == i)
+    check(a, mp2(i), 0)
+  end
 end
 
-a = {}
-for i = 1,lim do
-  a['a'..i] = 1
-  assert(#a == 0)
-  check(a, 0, mp2(i))
+do
+  local a = {}
+  for i = 1,lim do
+    a['a'..i] = 1
+    assert(#a == 0)
+    check(a, 0, mp2(i))
+  end
 end
 
-a = {}
-for i=1,16 do a[i] = i end
-check(a, 16, 0)
-for i=1,11 do a[i] = nil end
-for i=30,40 do a[i] = nil end   -- force a rehash (?)
-check(a, 0, 8)
-a[10] = 1
-for i=30,40 do a[i] = nil end   -- force a rehash (?)
-check(a, 0, 8)
-for i=1,14 do a[i] = nil end
-for i=30,50 do a[i] = nil end   -- force a rehash (?)
-check(a, 0, 4)
+do
+  local a = {}
+  for i=1,16 do a[i] = i end
+  check(a, 16, 0)
+  for i=1,11 do a[i] = nil end
+  for i=30,40 do a[i] = nil end   -- force a rehash (?)
+  check(a, 0, 8)
+  a[10] = 1
+  for i=30,40 do a[i] = nil end   -- force a rehash (?)
+  check(a, 0, 8)
+  for i=1,14 do a[i] = nil end
+  for i=30,50 do a[i] = nil end   -- force a rehash (?)
+  check(a, 0, 4)
+end
+
+do   -- rehash moving elements from array to hash
+  local a = {}
+  for i = 1, 100 do a[i] = i end
+  check(a, 128, 0)
+
+  for i = 5, 95 do a[i] = nil end
+  check(a, 128, 0)
+
+  a.x = 1     -- force a re-hash
+  check(a, 4, 8)
+
+  for i = 1, 4 do assert(a[i] == i) end
+  for i = 5, 95 do assert(a[i] == nil) end
+  for i = 96, 100 do assert(a[i] == i) end
+  assert(a.x == 1)
+end
 
 -- reverse filling
 for i=1,lim do
@@ -610,6 +634,56 @@ do
   child.foo = 10
 
   assert(hit and child.foo == nil and parent.foo == nil)
+end
+
+-- testing next x GC of deleted keys
+do
+  local co = coroutine.wrap(function (t)
+    for k, v in pairs(t) do
+        local k1 = next(t)    -- all previous keys were deleted
+        assert(k == k1)       -- current key is the first in the table
+        t[k] = nil
+        local expected = (type(k) == "table" and k[1] or
+                          type(k) == "function" and k() or
+                          string.sub(k, 1, 1))
+        assert(expected == v)
+        coroutine.yield(v)
+    end
+  end)
+  local t = {}
+  t[{1}] = 1    -- add several unanchored, collectable keys
+  t[{2}] = 2
+  t[string.rep("a", 50)] = "a"    -- long string
+  t[string.rep("b", 50)] = "b"
+  t[{3}] = 3
+  t[string.rep("c", 10)] = "c"    -- short string
+  t[function () return 10 end] = 10
+  local count = 7
+  while co(t) do
+    collectgarbage("collect")   -- collect dead keys
+    count = count - 1
+  end
+  assert(count == 0 and next(t) == nil)    -- traversed the whole table
+end
+  
+-- test error cases for table functions
+do
+  assert(pcall(table.insert, {}) == false)
+  assert(pcall(table.insert, {}, 1, 2, 3) == false)
+  assert(pcall(table.insert, table.freeze({1, 2, 3}), 4) == false)
+  assert(pcall(table.insert, table.freeze({1, 2, 3}), 1, 4) == false)
+
+  assert(pcall(table.remove, table.freeze({1})) == false)
+
+  assert(pcall(table.concat, {true}) == false)
+
+  assert(pcall(table.create) == false)
+  assert(pcall(table.create, -1) == false)
+  assert(pcall(table.create, 1e9) == false)
+
+  assert(pcall(table.find, {}, 42, 0) == false)
+
+  assert(pcall(table.clear, table.freeze({})) == false)
 end
 
 return"OK"

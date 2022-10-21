@@ -4,8 +4,6 @@
 #include "Luau/Bytecode.h"
 #include "Luau/Compiler.h"
 
-LUAU_FASTFLAGVARIABLE(LuauCompileBuiltinMT, false)
-
 namespace Luau
 {
 namespace Compile
@@ -66,13 +64,10 @@ static int getBuiltinFunctionId(const Builtin& builtin, const CompileOptions& op
     if (builtin.isGlobal("select"))
         return LBF_SELECT_VARARG;
 
-    if (FFlag::LuauCompileBuiltinMT)
-    {
-        if (builtin.isGlobal("getmetatable"))
-            return LBF_GETMETATABLE;
-        if (builtin.isGlobal("setmetatable"))
-            return LBF_SETMETATABLE;
-    }
+    if (builtin.isGlobal("getmetatable"))
+        return LBF_GETMETATABLE;
+    if (builtin.isGlobal("setmetatable"))
+        return LBF_SETMETATABLE;
 
     if (builtin.object == "math")
     {

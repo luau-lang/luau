@@ -73,11 +73,6 @@ void Tarjan::visitChildren(TypeId ty, int index)
         for (TypeId part : itv->parts)
             visitChild(part);
     }
-    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
-    {
-        for (TypeId part : ctv->parts)
-            visitChild(part);
-    }
     else if (const PendingExpansionTypeVar* petv = get<PendingExpansionTypeVar>(ty))
     {
         for (TypeId a : petv->typeArguments)
@@ -96,6 +91,10 @@ void Tarjan::visitChildren(TypeId ty, int index)
 
         if (ctv->metatable)
             visitChild(*ctv->metatable);
+    }
+    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(ty))
+    {
+        visitChild(ntv->ty);
     }
 }
 
@@ -605,11 +604,6 @@ void Substitution::replaceChildren(TypeId ty)
         for (TypeId& part : itv->parts)
             part = replace(part);
     }
-    else if (ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(ty))
-    {
-        for (TypeId& part : ctv->parts)
-            part = replace(part);
-    }
     else if (PendingExpansionTypeVar* petv = getMutable<PendingExpansionTypeVar>(ty))
     {
         for (TypeId& a : petv->typeArguments)
@@ -628,6 +622,10 @@ void Substitution::replaceChildren(TypeId ty)
 
         if (ctv->metatable)
             ctv->metatable = replace(*ctv->metatable);
+    }
+    else if (NegationTypeVar* ntv = getMutable<NegationTypeVar>(ty))
+    {
+        ntv->ty = replace(ntv->ty);
     }
 }
 

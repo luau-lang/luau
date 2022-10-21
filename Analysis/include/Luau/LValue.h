@@ -14,6 +14,8 @@ struct TypeVar;
 using TypeId = const TypeVar*;
 
 struct Field;
+
+// Deprecated. Do not use in new work.
 using LValue = Variant<Symbol, Field>;
 
 struct Field

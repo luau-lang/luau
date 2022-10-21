@@ -41,9 +41,9 @@ TEST_CASE("CodeAllocation")
 
     REQUIRE(allocator.allocate(data.data(), data.size(), code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
     CHECK(nativeData != nullptr);
-    CHECK(sizeNativeData == 16 + 128);
+    CHECK(sizeNativeData == kCodeAlignment + 128);
     CHECK(nativeEntry != nullptr);
-    CHECK(nativeEntry == nativeData + 16);
+    CHECK(nativeEntry == nativeData + kCodeAlignment);
 }
 
 TEST_CASE("CodeAllocationFailure")
@@ -118,15 +118,16 @@ TEST_CASE("CodeAllocationWithUnwindCallbacks")
 
         REQUIRE(allocator.allocate(data.data(), data.size(), code.data(), code.size(), nativeData, sizeNativeData, nativeEntry));
         CHECK(nativeData != nullptr);
-        CHECK(sizeNativeData == 16 + 128);
+        CHECK(sizeNativeData == kCodeAlignment + 128);
         CHECK(nativeEntry != nullptr);
-        CHECK(nativeEntry == nativeData + 16);
-        CHECK(nativeData == info.block + 16);
+        CHECK(nativeEntry == nativeData + kCodeAlignment);
+        CHECK(nativeData == info.block + kCodeAlignment);
     }
 
     CHECK(info.destroyCalled);
 }
 
+#if !defined(LUAU_BIG_ENDIAN)
 TEST_CASE("WindowsUnwindCodesX64")
 {
     UnwindBuilderWin unwind;
@@ -156,6 +157,7 @@ TEST_CASE("WindowsUnwindCodesX64")
     REQUIRE(data.size() == expected.size());
     CHECK(memcmp(data.data(), expected.data(), expected.size()) == 0);
 }
+#endif
 
 TEST_CASE("Dwarf2UnwindCodesX64")
 {

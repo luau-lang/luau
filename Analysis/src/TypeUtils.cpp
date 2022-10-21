@@ -6,6 +6,8 @@
 #include "Luau/ToString.h"
 #include "Luau/TypeInfer.h"
 
+#include <algorithm>
+
 namespace Luau
 {
 
@@ -146,18 +148,15 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
             return std::nullopt;
         }
 
+        goodOptions = reduceUnion(goodOptions);
+
         if (goodOptions.empty())
             return singletonTypes->neverType;
 
         if (goodOptions.size() == 1)
             return goodOptions[0];
 
-        // TODO: inefficient.
-        TypeId result = arena->addType(UnionTypeVar{std::move(goodOptions)});
-        auto [ty, ok] = normalize(result, NotNull{scope.get()}, *arena, singletonTypes, handle);
-        if (!ok && addErrors)
-            errors.push_back(TypeError{location, NormalizationTooComplex{}});
-        return ok ? ty : singletonTypes->anyType;
+        return arena->addType(UnionTypeVar{std::move(goodOptions)});
     }
     else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(type))
     {
@@ -262,6 +261,81 @@ std::vector<TypeId> flatten(TypeArena& arena, NotNull<SingletonTypes> singletonT
     }
 
     return result;
+}
+
+std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)
+{
+    std::vector<TypeId> result;
+    for (TypeId t : types)
+    {
+        t = follow(t);
+        if (get<NeverTypeVar>(t))
+            continue;
+
+        if (get<ErrorTypeVar>(t) || get<AnyTypeVar>(t))
+            return {t};
+
+        if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
+        {
+            for (TypeId ty : utv)
+            {
+                ty = follow(ty);
+                if (get<NeverTypeVar>(ty))
+                    continue;
+                if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
+                    return {ty};
+
+                if (result.end() == std::find(result.begin(), result.end(), ty))
+                    result.push_back(ty);
+            }
+        }
+        else if (std::find(result.begin(), result.end(), t) == result.end())
+            result.push_back(t);
+    }
+
+    return result;
+}
+
+static std::optional<TypeId> tryStripUnionFromNil(TypeArena& arena, TypeId ty)
+{
+    if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+    {
+        if (!std::any_of(begin(utv), end(utv), isNil))
+            return ty;
+
+        std::vector<TypeId> result;
+
+        for (TypeId option : utv)
+        {
+            if (!isNil(option))
+                result.push_back(option);
+        }
+
+        if (result.empty())
+            return std::nullopt;
+
+        return result.size() == 1 ? result[0] : arena.addType(UnionTypeVar{std::move(result)});
+    }
+
+    return std::nullopt;
+}
+
+TypeId stripNil(NotNull<SingletonTypes> singletonTypes, TypeArena& arena, TypeId ty)
+{
+    ty = follow(ty);
+
+    if (get<UnionTypeVar>(ty))
+    {
+        std::optional<TypeId> cleaned = tryStripUnionFromNil(arena, ty);
+
+        // If there is no union option without 'nil'
+        if (!cleaned)
+            return singletonTypes->nilType;
+
+        return follow(*cleaned);
+    }
+
+    return follow(ty);
 }
 
 } // namespace Luau

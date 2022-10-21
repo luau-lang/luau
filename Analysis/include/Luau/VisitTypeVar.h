@@ -103,10 +103,6 @@ struct GenericTypeVarVisitor
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const ConstrainedTypeVar& ctv)
-    {
-        return visit(ty);
-    }
     virtual bool visit(TypeId ty, const PrimitiveTypeVar& ptv)
     {
         return visit(ty);
@@ -156,6 +152,14 @@ struct GenericTypeVarVisitor
         return visit(ty);
     }
     virtual bool visit(TypeId ty, const SingletonTypeVar& stv)
+    {
+        return visit(ty);
+    }
+    virtual bool visit(TypeId ty, const UseTypeVar& utv)
+    {
+        return visit(ty);
+    }
+    virtual bool visit(TypeId ty, const NegationTypeVar& ntv)
     {
         return visit(ty);
     }
@@ -216,14 +220,6 @@ struct GenericTypeVarVisitor
             visit(ty, *gtv);
         else if (auto etv = get<ErrorTypeVar>(ty))
             visit(ty, *etv);
-        else if (auto ctv = get<ConstrainedTypeVar>(ty))
-        {
-            if (visit(ty, *ctv))
-            {
-                for (TypeId part : ctv->parts)
-                    traverse(part);
-            }
-        }
         else if (auto ptv = get<PrimitiveTypeVar>(ty))
             visit(ty, *ptv);
         else if (auto ftv = get<FunctionTypeVar>(ty))
@@ -325,6 +321,10 @@ struct GenericTypeVarVisitor
                     traverse(a);
             }
         }
+        else if (auto utv = get<UseTypeVar>(ty))
+            visit(ty, *utv);
+        else if (auto ntv = get<NegationTypeVar>(ty))
+            visit(ty, *ntv);
         else if (!FFlag::LuauCompleteVisitor)
             return visit_detail::unsee(seen, ty);
         else

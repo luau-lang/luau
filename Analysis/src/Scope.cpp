@@ -27,6 +27,44 @@ void Scope::addBuiltinTypeBinding(const Name& name, const TypeFun& tyFun)
     builtinTypeNames.insert(name);
 }
 
+std::optional<TypeId> Scope::lookup(Symbol sym) const
+{
+    auto r = const_cast<Scope*>(this)->lookupEx(sym);
+    if (r)
+        return r->first;
+    else
+        return std::nullopt;
+}
+
+std::optional<std::pair<TypeId, Scope*>> Scope::lookupEx(Symbol sym)
+{
+    Scope* s = this;
+
+    while (true)
+    {
+        auto it = s->bindings.find(sym);
+        if (it != s->bindings.end())
+            return std::pair{it->second.typeId, s};
+
+        if (s->parent)
+            s = s->parent.get();
+        else
+            return std::nullopt;
+    }
+}
+
+// TODO: We might kill Scope::lookup(Symbol) once data flow is fully fleshed out with type states and control flow analysis.
+std::optional<TypeId> Scope::lookup(DefId def) const
+{
+    for (const Scope* current = this; current; current = current->parent.get())
+    {
+        if (auto ty = current->dcrRefinements.find(def))
+            return *ty;
+    }
+
+    return std::nullopt;
+}
+
 std::optional<TypeFun> Scope::lookupType(const Name& name)
 {
     const Scope* scope = this;
@@ -109,23 +147,6 @@ std::optional<Binding> Scope::linearSearchForBinding(const std::string& name, bo
     }
 
     return std::nullopt;
-}
-
-std::optional<TypeId> Scope::lookup(Symbol sym)
-{
-    Scope* s = this;
-
-    while (true)
-    {
-        auto it = s->bindings.find(sym);
-        if (it != s->bindings.end())
-            return it->second.typeId;
-
-        if (s->parent)
-            s = s->parent.get();
-        else
-            return std::nullopt;
-    }
 }
 
 bool subsumesStrict(Scope* left, Scope* right)

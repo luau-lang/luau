@@ -467,6 +467,8 @@ type I<S..., R...> = W<number, (string, S...), R...>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit")
 {
+    ScopedFastFlag sff("LuauFunctionReturnStringificationFixup", true);
+
     CheckResult result = check(R"(
 type X<T...> = (T...) -> (T...)
 
@@ -490,6 +492,8 @@ type F = X<(string, ...number)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi")
 {
+    ScopedFastFlag sff("LuauFunctionReturnStringificationFixup", true);
+
     CheckResult result = check(R"(
 type Y<T..., U...> = (T...) -> (U...)
 
