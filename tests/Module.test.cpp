@@ -226,24 +226,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
     CHECK_EQ(clonedTtv->state, TableState::Free);
 }
 
-TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")
-{
-    TypeArena src;
-
-    TypeId constrained = src.addType(ConstrainedTypeVar{TypeLevel{}, {singletonTypes->numberType, singletonTypes->stringType}});
-
-    TypeArena dest;
-    CloneState cloneState;
-
-    TypeId cloned = clone(constrained, dest, cloneState);
-    CHECK_NE(constrained, cloned);
-
-    const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(cloned);
-    REQUIRE_EQ(2, ctv->parts.size());
-    CHECK_EQ(singletonTypes->numberType, ctv->parts[0]);
-    CHECK_EQ(singletonTypes->stringType, ctv->parts[1]);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
 {
     fileResolver.source["Module/A"] = R"(

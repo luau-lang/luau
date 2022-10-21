@@ -436,7 +436,6 @@ TEST_CASE("proof_that_isBoolean_uses_all_of")
 TEST_CASE("content_reassignment")
 {
     TypeVar myAny{AnyTypeVar{}, /*presistent*/ true};
-    myAny.normal = true;
     myAny.documentationSymbol = "@global/any";
 
     TypeArena arena;
@@ -446,7 +445,6 @@ TEST_CASE("content_reassignment")
 
     CHECK(get<AnyTypeVar>(futureAny) != nullptr);
     CHECK(!futureAny->persistent);
-    CHECK(futureAny->normal);
     CHECK(futureAny->documentationSymbol == "@global/any");
     CHECK(futureAny->owningArena == &arena);
 }

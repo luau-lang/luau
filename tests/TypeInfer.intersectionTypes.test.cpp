@@ -781,7 +781,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables")
     CheckResult result = check(R"(
         local a : string? = nil
         local b : number? = nil
-    
+
         local x = setmetatable({}, { p = 5, q = a });
         local y = setmetatable({}, { q = b, r = "hi" });
         local z = setmetatable({}, { p = 5, q = nil, r = "hi" });

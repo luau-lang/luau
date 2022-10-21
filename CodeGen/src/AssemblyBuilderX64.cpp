@@ -29,7 +29,7 @@ static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(C
 #define REX_X(reg) (((reg).index & 0x8) >> 2)
 #define REX_B(reg) (((reg).index & 0x8) >> 3)
 
-#define AVX_W(value) (!(value) ? 0x80 : 0x0)
+#define AVX_W(value) ((value) ? 0x80 : 0x0)
 #define AVX_R(reg) ((~(reg).index & 0x8) << 4)
 #define AVX_X(reg) ((~(reg).index & 0x8) << 3)
 #define AVX_B(reg) ((~(reg).index & 0x8) << 2)
@@ -50,12 +50,23 @@ const unsigned AVX_66 = 0b01;
 const unsigned AVX_F3 = 0b10;
 const unsigned AVX_F2 = 0b11;
 
-const unsigned kMaxAlign = 16;
+const unsigned kMaxAlign = 32;
+const unsigned kMaxInstructionLength = 16;
 
 const uint8_t kRoundingPrecisionInexact = 0b1000;
 
+static ABIX64 getCurrentX64ABI()
+{
+#if defined(_WIN32)
+    return ABIX64::Windows;
+#else
+    return ABIX64::SystemV;
+#endif
+}
+
 AssemblyBuilderX64::AssemblyBuilderX64(bool logText)
     : logText(logText)
+    , abi(getCurrentX64ABI())
 {
     data.resize(4096);
     dataPos = data.size(); // data is filled backwards
@@ -416,6 +427,153 @@ void AssemblyBuilderX64::int3()
         log("int3");
 
     place(0xcc);
+    commit();
+}
+
+void AssemblyBuilderX64::nop(uint32_t length)
+{
+    while (length != 0)
+    {
+        uint32_t step = length > 9 ? 9 : length;
+        length -= step;
+
+        switch (step)
+        {
+        case 1:
+            if (logText)
+                logAppend(" nop\n");
+            place(0x90);
+            break;
+        case 2:
+            if (logText)
+                logAppend(" xchg        ax, ax ; %u-byte nop\n", step);
+            place(0x66);
+            place(0x90);
+            break;
+        case 3:
+            if (logText)
+                logAppend(" nop         dword ptr[rax] ; %u-byte nop\n", step);
+            place(0x0f);
+            place(0x1f);
+            place(0x00);
+            break;
+        case 4:
+            if (logText)
+                logAppend(" nop         dword ptr[rax] ; %u-byte nop\n", step);
+            place(0x0f);
+            place(0x1f);
+            place(0x40);
+            place(0x00);
+            break;
+        case 5:
+            if (logText)
+                logAppend(" nop         dword ptr[rax+rax] ; %u-byte nop\n", step);
+            place(0x0f);
+            place(0x1f);
+            place(0x44);
+            place(0x00);
+            place(0x00);
+            break;
+        case 6:
+            if (logText)
+                logAppend(" nop         word ptr[rax+rax] ; %u-byte nop\n", step);
+            place(0x66);
+            place(0x0f);
+            place(0x1f);
+            place(0x44);
+            place(0x00);
+            place(0x00);
+            break;
+        case 7:
+            if (logText)
+                logAppend(" nop         dword ptr[rax] ; %u-byte nop\n", step);
+            place(0x0f);
+            place(0x1f);
+            place(0x80);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            break;
+        case 8:
+            if (logText)
+                logAppend(" nop         dword ptr[rax+rax] ; %u-byte nop\n", step);
+            place(0x0f);
+            place(0x1f);
+            place(0x84);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            break;
+        case 9:
+            if (logText)
+                logAppend(" nop         word ptr[rax+rax] ; %u-byte nop\n", step);
+            place(0x66);
+            place(0x0f);
+            place(0x1f);
+            place(0x84);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            place(0x00);
+            break;
+        }
+
+        commit();
+    }
+}
+
+void AssemblyBuilderX64::align(uint32_t alignment, AlignmentDataX64 data)
+{
+    LUAU_ASSERT((alignment & (alignment - 1)) == 0);
+
+    uint32_t size = getCodeSize();
+    uint32_t pad = ((size + alignment - 1) & ~(alignment - 1)) - size;
+
+    switch (data)
+    {
+    case AlignmentDataX64::Nop:
+        if (logText)
+            logAppend("; align %u\n", alignment);
+
+        nop(pad);
+        break;
+    case AlignmentDataX64::Int3:
+        if (logText)
+            logAppend("; align %u using int3\n", alignment);
+
+        while (codePos + pad > codeEnd)
+            extend();
+
+        for (uint32_t i = 0; i < pad; ++i)
+            place(0xcc);
+
+        commit();
+        break;
+    case AlignmentDataX64::Ud2:
+        if (logText)
+            logAppend("; align %u using ud2\n", alignment);
+
+        while (codePos + pad > codeEnd)
+            extend();
+
+        uint32_t i = 0;
+
+        for (; i + 1 < pad; i += 2)
+        {
+            place(0x0f);
+            place(0x0b);
+        }
+
+        if (i < pad)
+            place(0xcc);
+
+        commit();
+        break;
+    }
 }
 
 void AssemblyBuilderX64::vaddpd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
@@ -465,12 +623,12 @@ void AssemblyBuilderX64::vucomisd(OperandX64 src1, OperandX64 src2)
 
 void AssemblyBuilderX64::vcvttsd2si(OperandX64 dst, OperandX64 src)
 {
-    placeAvx("vcvttsd2si", dst, src, 0x2c, dst.base.size == SizeX64::dword, AVX_0F, AVX_F2);
+    placeAvx("vcvttsd2si", dst, src, 0x2c, dst.base.size == SizeX64::qword, AVX_0F, AVX_F2);
 }
 
 void AssemblyBuilderX64::vcvtsi2sd(OperandX64 dst, OperandX64 src1, OperandX64 src2)
 {
-    placeAvx("vcvtsi2sd", dst, src1, src2, 0x2a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::dword, AVX_0F, AVX_F2);
+    placeAvx("vcvtsi2sd", dst, src1, src2, 0x2a, (src2.cat == CategoryX64::reg ? src2.base.size : src2.memSize) == SizeX64::qword, AVX_0F, AVX_F2);
 }
 
 void AssemblyBuilderX64::vroundsd(OperandX64 dst, OperandX64 src1, OperandX64 src2, RoundingModeX64 roundingMode)
@@ -624,6 +782,21 @@ OperandX64 AssemblyBuilderX64::bytes(const void* ptr, size_t size, size_t align)
     size_t pos = allocateData(size, align);
     memcpy(&data[pos], ptr, size);
     return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
+}
+
+void AssemblyBuilderX64::logAppend(const char* fmt, ...)
+{
+    char buf[256];
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, args);
+    va_end(args);
+    text.append(buf);
+}
+
+uint32_t AssemblyBuilderX64::getCodeSize() const
+{
+    return uint32_t(codePos - code.data());
 }
 
 void AssemblyBuilderX64::placeBinary(const char* name, OperandX64 lhs, OperandX64 rhs, uint8_t codeimm8, uint8_t codeimm, uint8_t codeimmImm8,
@@ -1054,7 +1227,7 @@ void AssemblyBuilderX64::commit()
 {
     LUAU_ASSERT(codePos <= codeEnd);
 
-    if (codeEnd - codePos < 16)
+    if (codeEnd - codePos < kMaxInstructionLength)
         extend();
 }
 
@@ -1065,11 +1238,6 @@ void AssemblyBuilderX64::extend()
     code.resize(code.size() * 2);
     codePos = code.data() + count;
     codeEnd = code.data() + code.size();
-}
-
-uint32_t AssemblyBuilderX64::getCodeSize()
-{
-    return uint32_t(codePos - code.data());
 }
 
 size_t AssemblyBuilderX64::allocateData(size_t size, size_t align)
@@ -1174,8 +1342,10 @@ void AssemblyBuilderX64::log(OperandX64 op)
         {
             if (op.imm >= 0 && op.imm <= 9)
                 logAppend("+%d", op.imm);
-            else
+            else if (op.imm > 0)
                 logAppend("+0%Xh", op.imm);
+            else
+                logAppend("-0%Xh", -op.imm);
         }
 
         text.append("]");
@@ -1191,17 +1361,7 @@ void AssemblyBuilderX64::log(OperandX64 op)
     }
 }
 
-void AssemblyBuilderX64::logAppend(const char* fmt, ...)
-{
-    char buf[256];
-    va_list args;
-    va_start(args, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, args);
-    va_end(args);
-    text.append(buf);
-}
-
-const char* AssemblyBuilderX64::getSizeName(SizeX64 size)
+const char* AssemblyBuilderX64::getSizeName(SizeX64 size) const
 {
     static const char* sizeNames[] = {"none", "byte", "word", "dword", "qword", "xmmword", "ymmword"};
 
@@ -1209,7 +1369,7 @@ const char* AssemblyBuilderX64::getSizeName(SizeX64 size)
     return sizeNames[unsigned(size)];
 }
 
-const char* AssemblyBuilderX64::getRegisterName(RegisterX64 reg)
+const char* AssemblyBuilderX64::getRegisterName(RegisterX64 reg) const
 {
     static const char* names[][16] = {{"rip", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""},
         {"al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil", "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"},

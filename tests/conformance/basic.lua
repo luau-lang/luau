@@ -93,7 +93,10 @@ assert((function() local a = 1 a = a * 2 return a end)() == 2)
 assert((function() local a = 1 a = a / 2 return a end)() == 0.5)
 assert((function() local a = 5 a = a % 2 return a end)() == 1)
 assert((function() local a = 3 a = a ^ 2 return a end)() == 9)
+assert((function() local a = 3 a = a ^ 3 return a end)() == 27)
 assert((function() local a = 9 a = a ^ 0.5 return a end)() == 3)
+assert((function() local a = -2 a = a ^ 2 return a end)() == 4)
+assert((function() local a = -2 a = a ^ 0.5 return tostring(a) end)() == "nan")
 
 assert((function() local a = '1' a = a .. '2' return a end)() == "12")
 assert((function() local a = '1' a = a .. '2' .. '3' return a end)() == "123")
@@ -706,7 +709,11 @@ end
 assert(chainTest(100) == "v0,v100")
 
 -- this validates import fallbacks
+assert(idontexist == nil)
+assert(math.idontexist == nil)
 assert(pcall(function() return idontexist.a end) == false)
+assert(pcall(function() return math.pow.a end) == false)
+assert(pcall(function() return math.a.b end) == false)
 
 -- make sure that NaN is preserved by the bytecode compiler
 local realnan = tostring(math.abs(0)/math.abs(0))

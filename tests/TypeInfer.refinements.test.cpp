@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 using namespace Luau;
 
@@ -49,7 +50,6 @@ struct RefinementClassFixture : Fixture
             {"Y", Property{typeChecker.numberType}},
             {"Z", Property{typeChecker.numberType}},
         };
-        normalize(vec3, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         TypeId inst = arena.addType(ClassTypeVar{"Instance", {}, std::nullopt, std::nullopt, {}, nullptr, "Test"});
 
@@ -57,21 +57,17 @@ struct RefinementClassFixture : Fixture
         TypePackId isARets = arena.addTypePack({typeChecker.booleanType});
         TypeId isA = arena.addType(FunctionTypeVar{isAParams, isARets});
         getMutable<FunctionTypeVar>(isA)->magicFunction = magicFunctionInstanceIsA;
-        normalize(isA, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         getMutable<ClassTypeVar>(inst)->props = {
             {"Name", Property{typeChecker.stringType}},
             {"IsA", Property{isA}},
         };
-        normalize(inst, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         TypeId folder = typeChecker.globalTypes.addType(ClassTypeVar{"Folder", {}, inst, std::nullopt, {}, nullptr, "Test"});
-        normalize(folder, scope, arena, singletonTypes, *typeChecker.iceHandler);
         TypeId part = typeChecker.globalTypes.addType(ClassTypeVar{"Part", {}, inst, std::nullopt, {}, nullptr, "Test"});
         getMutable<ClassTypeVar>(part)->props = {
             {"Position", Property{vec3}},
         };
-        normalize(part, scope, arena, singletonTypes, *typeChecker.iceHandler);
 
         typeChecker.globalScope->exportedTypeBindings["Vector3"] = TypeFun{{}, vec3};
         typeChecker.globalScope->exportedTypeBindings["Instance"] = TypeFun{{}, inst};
@@ -102,8 +98,16 @@ TEST_CASE_FIXTURE(Fixture, "is_truthy_constraint")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("string", toString(requireTypeAtPosition({3, 26})));
-    CHECK_EQ("nil", toString(requireTypeAtPosition({5, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & ~(false?)", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("(string?) & ~~(false?)", toString(requireTypeAtPosition({5, 26})));
+    }
+    else
+    {
+        CHECK_EQ("string", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("nil", toString(requireTypeAtPosition({5, 26})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint")
@@ -120,8 +124,16 @@ TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 26})));
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & ~~(false?)", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("(string?) & ~~~(false?)", toString(requireTypeAtPosition({5, 26})));
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "parenthesized_expressions_are_followed_through")
@@ -138,8 +150,16 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_expressions_are_followed_through")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 26})));
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & ~~(false?)", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("(string?) & ~~~(false?)", toString(requireTypeAtPosition({5, 26})));
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({5, 26})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_constraint")
@@ -963,19 +983,27 @@ TEST_CASE_FIXTURE(Fixture, "and_or_peephole_refinement")
 TEST_CASE_FIXTURE(Fixture, "narrow_boolean_to_true_or_false")
 {
     CheckResult result = check(R"(
-        local function is_true(b: true) end
-        local function is_false(b: false) end
-
         local function f(x: boolean)
             if x then
-                is_true(x)
+                local foo = x
             else
-                is_false(x)
+                local foo = x
             end
         end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("boolean & ~(false?)", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("boolean & ~~(false?)", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("true", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("false", toString(requireTypeAtPosition({5, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "discriminate_on_properties_of_disjoint_tables_where_that_property_is_true_or_false")

@@ -94,6 +94,11 @@ constexpr OperandX64 operator+(RegisterX64 reg, int32_t disp)
     return OperandX64(SizeX64::none, noreg, 1, reg, disp);
 }
 
+constexpr OperandX64 operator-(RegisterX64 reg, int32_t disp)
+{
+    return OperandX64(SizeX64::none, noreg, 1, reg, -disp);
+}
+
 constexpr OperandX64 operator+(RegisterX64 base, RegisterX64 index)
 {
     LUAU_ASSERT(index.index != 4 && "sp cannot be used as index");

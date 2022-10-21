@@ -57,29 +57,6 @@ struct Quantifier final : TypeVarOnceVisitor
         return false;
     }
 
-    bool visit(TypeId ty, const ConstrainedTypeVar&) override
-    {
-        ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(ty);
-
-        seenMutableType = true;
-
-        if (!level.subsumes(ctv->level))
-            return false;
-
-        std::vector<TypeId> opts = std::move(ctv->parts);
-
-        // We might transmute, so it's not safe to rely on the builtin traversal logic
-        for (TypeId opt : opts)
-            traverse(opt);
-
-        if (opts.size() == 1)
-            *asMutable(ty) = BoundTypeVar{opts[0]};
-        else
-            *asMutable(ty) = UnionTypeVar{std::move(opts)};
-
-        return false;
-    }
-
     bool visit(TypeId ty, const TableTypeVar&) override
     {
         LUAU_ASSERT(getMutable<TableTypeVar>(ty));

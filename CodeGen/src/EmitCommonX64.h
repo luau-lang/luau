@@ -35,11 +35,11 @@ constexpr RegisterX64 rConstants = r12;     // TValue* k
 constexpr OperandX64 sClosure = qword[rbp + 0]; // Closure* cl
 constexpr OperandX64 sCode = qword[rbp + 8];    // Instruction* code
 
+// TODO: These should be replaced with a portable call function that checks the ABI at runtime and reorders moves accordingly to avoid conflicts
 #if defined(_WIN32)
 
 constexpr RegisterX64 rArg1 = rcx;
 constexpr RegisterX64 rArg2 = rdx;
-constexpr RegisterX64 rArg2d = edx;
 constexpr RegisterX64 rArg3 = r8;
 constexpr RegisterX64 rArg4 = r9;
 constexpr RegisterX64 rArg5 = noreg;
@@ -51,7 +51,6 @@ constexpr OperandX64 sArg6 = qword[rsp + 40];
 
 constexpr RegisterX64 rArg1 = rdi;
 constexpr RegisterX64 rArg2 = rsi;
-constexpr RegisterX64 rArg2d = esi;
 constexpr RegisterX64 rArg3 = rdx;
 constexpr RegisterX64 rArg4 = rcx;
 constexpr RegisterX64 rArg5 = r8;
@@ -62,6 +61,11 @@ constexpr OperandX64 sArg6 = noreg;
 #endif
 
 constexpr unsigned kTValueSizeLog2 = 4;
+constexpr unsigned kLuaNodeSizeLog2 = 5;
+constexpr unsigned kLuaNodeTagMask = 0xf;
+
+constexpr unsigned kOffsetOfLuaNodeTag = 12; // offsetof cannot be used on a bit field
+constexpr unsigned kOffsetOfInstructionC = 3;
 
 inline OperandX64 luauReg(int ri)
 {
@@ -88,9 +92,24 @@ inline OperandX64 luauConstant(int ki)
     return xmmword[rConstants + ki * sizeof(TValue)];
 }
 
+inline OperandX64 luauConstantTag(int ki)
+{
+    return dword[rConstants + ki * sizeof(TValue) + offsetof(TValue, tt)];
+}
+
 inline OperandX64 luauConstantValue(int ki)
 {
     return qword[rConstants + ki * sizeof(TValue) + offsetof(TValue, value)];
+}
+
+inline OperandX64 luauNodeKeyValue(RegisterX64 node)
+{
+    return qword[node + offsetof(LuaNode, key) + offsetof(TKey, value)];
+}
+
+inline OperandX64 luauNodeValue(RegisterX64 node)
+{
+    return xmmword[node + offsetof(LuaNode, val)];
 }
 
 inline void setLuauReg(AssemblyBuilderX64& build, RegisterX64 tmp, int ri, OperandX64 op)
@@ -99,6 +118,14 @@ inline void setLuauReg(AssemblyBuilderX64& build, RegisterX64 tmp, int ri, Opera
 
     build.vmovups(tmp, op);
     build.vmovups(luauReg(ri), tmp);
+}
+
+inline void setNodeValue(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 op, int ri)
+{
+    LUAU_ASSERT(op.cat == CategoryX64::mem);
+
+    build.vmovups(tmp, luauReg(ri));
+    build.vmovups(op, tmp);
 }
 
 inline void jumpIfTagIs(AssemblyBuilderX64& build, int ri, lua_Type tag, Label& label)
@@ -153,9 +180,37 @@ inline void jumpIfTableIsReadOnly(AssemblyBuilderX64& build, RegisterX64 table, 
     build.jcc(Condition::NotEqual, label);
 }
 
+inline void jumpIfNodeKeyTagIsNot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, lua_Type tag, Label& label)
+{
+    tmp.size = SizeX64::dword;
+
+    build.mov(tmp, dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeTag]);
+    build.and_(tmp, kLuaNodeTagMask);
+    build.cmp(tmp, tag);
+    build.jcc(Condition::NotEqual, label);
+}
+
+inline void jumpIfNodeValueTagIs(AssemblyBuilderX64& build, RegisterX64 node, lua_Type tag, Label& label)
+{
+    build.cmp(dword[node + offsetof(LuaNode, val) + offsetof(TValue, tt)], tag);
+    build.jcc(Condition::Equal, label);
+}
+
+inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, OperandX64 expectedKey, Label& label)
+{
+    jumpIfNodeKeyTagIsNot(build, tmp, node, LUA_TSTRING, label);
+
+    build.mov(tmp, expectedKey);
+    build.cmp(tmp, luauNodeKeyValue(node));
+    build.jcc(Condition::NotEqual, label);
+
+    jumpIfNodeValueTagIs(build, node, LUA_TNIL, label);
+}
+
 void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, Condition cond, Label& label);
 void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, Condition cond, Label& label, int pcpos);
 
+RegisterX64 getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int pcpos);
 void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, int ri, Label& label);
 
 void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, int pcpos, TMS tm);
@@ -164,6 +219,9 @@ void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init, i
 void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos);
 void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos);
 void callBarrierTable(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int ra, Label& skip);
+void callBarrierObject(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
+void callBarrierTableFast(AssemblyBuilderX64& build, RegisterX64 table, Label& skip);
+void callCheckGc(AssemblyBuilderX64& build, int pcpos, bool savepc, Label& skip);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);

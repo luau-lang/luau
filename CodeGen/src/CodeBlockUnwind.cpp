@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/CodeBlockUnwind.h"
 
+#include "Luau/CodeAllocator.h"
 #include "Luau/UnwindBuilder.h"
 
 #include <string.h>
@@ -58,7 +59,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 
     // All unwinding related data is placed together at the start of the block
     size_t unwindSize = sizeof(RUNTIME_FUNCTION) + unwind->getSize();
-    unwindSize = (unwindSize + 15) & ~15; // Align to 16 bytes
+    unwindSize = (unwindSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1); // Match code allocator alignment
     LUAU_ASSERT(blockSize >= unwindSize);
 
     RUNTIME_FUNCTION* runtimeFunc = (RUNTIME_FUNCTION*)block;
@@ -82,7 +83,7 @@ void* createBlockUnwindInfo(void* context, uint8_t* block, size_t blockSize, siz
 
     // All unwinding related data is placed together at the start of the block
     size_t unwindSize = unwind->getSize();
-    unwindSize = (unwindSize + 15) & ~15; // Align to 16 bytes
+    unwindSize = (unwindSize + (kCodeAlignment - 1)) & ~(kCodeAlignment - 1); // Match code allocator alignment
     LUAU_ASSERT(blockSize >= unwindSize);
 
     char* unwindData = (char*)block;

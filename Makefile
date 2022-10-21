@@ -148,14 +148,19 @@ clean:
 	rm -rf $(EXECUTABLE_ALIASES)
 
 coverage: $(TESTS_TARGET)
-	$(TESTS_TARGET) --fflags=true
-	mv default.profraw default-flags.profraw
 	$(TESTS_TARGET)
-	llvm-profdata merge default.profraw default-flags.profraw -o default.profdata
-	rm default.profraw default-flags.profraw
+	mv default.profraw tests.profraw
+	$(TESTS_TARGET) --fflags=true
+	mv default.profraw tests-flags.profraw
+	$(TESTS_TARGET) -ts=Conformance --codegen
+	mv default.profraw codegen.profraw
+	$(TESTS_TARGET) -ts=Conformance --codegen --fflags=true
+	mv default.profraw codegen-flags.profraw
+	llvm-profdata merge tests.profraw tests-flags.profraw codegen.profraw codegen-flags.profraw -o default.profdata
+	rm *.profraw
 	llvm-cov show -format=html -show-instantiations=false -show-line-counts=true -show-region-summary=false -ignore-filename-regex=\(tests\|extern\|CLI\)/.* -output-dir=coverage --instr-profile default.profdata build/coverage/luau-tests
 	llvm-cov report -ignore-filename-regex=\(tests\|extern\|CLI\)/.* -show-region-summary=false --instr-profile default.profdata build/coverage/luau-tests
-	llvm-cov export -format lcov --instr-profile default.profdata build/coverage/luau-tests >coverage.info
+	llvm-cov export -ignore-filename-regex=\(tests\|extern\|CLI\)/.* -format lcov --instr-profile default.profdata build/coverage/luau-tests >coverage.info
 
 format:
 	git ls-files '*.h' '*.cpp' | xargs clang-format-11 -i

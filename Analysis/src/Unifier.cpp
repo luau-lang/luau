@@ -13,16 +13,13 @@
 
 #include <algorithm>
 
-LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
-LUAU_FASTINT(LuauTypeInferIterationLimit);
-LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
-LUAU_FASTINTVARIABLE(LuauTypeInferLowerBoundsIterationLimit, 2000);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeNormalizer, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
+LUAU_FASTFLAGVARIABLE(LuauOverloadedFunctionSubtypingPerf, false);
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
@@ -92,15 +89,6 @@ struct PromoteTypeLevels final : TypeVarOnceVisitor
             return true;
 
         promote(ty, log.getMutable<FreeTypeVar>(ty));
-        return true;
-    }
-
-    bool visit(TypeId ty, const ConstrainedTypeVar&) override
-    {
-        if (!FFlag::LuauUnknownAndNeverType)
-            return visit(ty);
-
-        promote(ty, log.getMutable<ConstrainedTypeVar>(ty));
         return true;
     }
 
@@ -368,26 +356,14 @@ void Unifier::tryUnify(TypeId subTy, TypeId superTy, bool isFunctionCall, bool i
 
 void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool isIntersection)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     ++sharedState.counters.iterationCount;
 
-    if (FFlag::LuauAutocompleteDynamicLimits)
+    if (sharedState.counters.iterationLimit > 0 && sharedState.counters.iterationLimit < sharedState.counters.iterationCount)
     {
-        if (sharedState.counters.iterationLimit > 0 && sharedState.counters.iterationLimit < sharedState.counters.iterationCount)
-        {
-            reportError(TypeError{location, UnificationTooComplex{}});
-            return;
-        }
-    }
-    else
-    {
-        if (FInt::LuauTypeInferIterationLimit > 0 && FInt::LuauTypeInferIterationLimit < sharedState.counters.iterationCount)
-        {
-            reportError(TypeError{location, UnificationTooComplex{}});
-            return;
-        }
+        reportError(TypeError{location, UnificationTooComplex{}});
+        return;
     }
 
     superTy = log.follow(superTy);
@@ -395,9 +371,6 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     if (superTy == subTy)
         return;
-
-    if (log.get<ConstrainedTypeVar>(superTy))
-        return tryUnifyWithConstrainedSuperTypeVar(subTy, superTy);
 
     auto superFree = log.getMutable<FreeTypeVar>(superTy);
     auto subFree = log.getMutable<FreeTypeVar>(subTy);
@@ -520,9 +493,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
 
     size_t errorCount = errors.size();
 
-    if (log.get<ConstrainedTypeVar>(subTy))
-        tryUnifyWithConstrainedSubTypeVar(subTy, superTy);
-    else if (const UnionTypeVar* subUnion = log.getMutable<UnionTypeVar>(subTy))
+    if (const UnionTypeVar* subUnion = log.getMutable<UnionTypeVar>(subTy))
     {
         tryUnifyUnionWithType(subTy, subUnion, superTy);
     }
@@ -1011,10 +982,17 @@ TypePackId Unifier::tryApplyOverloadedFunction(TypeId function, const Normalized
                     log.concat(std::move(innerState.log));
                     if (result)
                     {
+                        if (FFlag::LuauOverloadedFunctionSubtypingPerf)
+                        {
+                            innerState.log.clear();
+                            innerState.tryUnify_(*result, ftv->retTypes);
+                        }
+                        if (FFlag::LuauOverloadedFunctionSubtypingPerf && innerState.errors.empty())
+                            log.concat(std::move(innerState.log));
                         // Annoyingly, since we don't support intersection of generic type packs,
                         // the intersection may fail. We rather arbitrarily use the first matching overload
                         // in that case.
-                        if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks(*result, ftv->retTypes))
+                        else if (std::optional<TypePackId> intersect = normalizer->intersectionOfTypePacks(*result, ftv->retTypes))
                             result = intersect;
                     }
                     else
@@ -1214,26 +1192,14 @@ void Unifier::tryUnify(TypePackId subTp, TypePackId superTp, bool isFunctionCall
  */
 void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCall)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     ++sharedState.counters.iterationCount;
 
-    if (FFlag::LuauAutocompleteDynamicLimits)
+    if (sharedState.counters.iterationLimit > 0 && sharedState.counters.iterationLimit < sharedState.counters.iterationCount)
     {
-        if (sharedState.counters.iterationLimit > 0 && sharedState.counters.iterationLimit < sharedState.counters.iterationCount)
-        {
-            reportError(TypeError{location, UnificationTooComplex{}});
-            return;
-        }
-    }
-    else
-    {
-        if (FInt::LuauTypeInferIterationLimit > 0 && FInt::LuauTypeInferIterationLimit < sharedState.counters.iterationCount)
-        {
-            reportError(TypeError{location, UnificationTooComplex{}});
-            return;
-        }
+        reportError(TypeError{location, UnificationTooComplex{}});
+        return;
     }
 
     superTp = log.follow(superTp);
@@ -2314,186 +2280,6 @@ std::optional<TypeId> Unifier::findTablePropertyRespectingMeta(TypeId lhsType, N
     return Luau::findTablePropertyRespectingMeta(singletonTypes, errors, lhsType, name, location);
 }
 
-void Unifier::tryUnifyWithConstrainedSubTypeVar(TypeId subTy, TypeId superTy)
-{
-    const ConstrainedTypeVar* subConstrained = get<ConstrainedTypeVar>(subTy);
-    if (!subConstrained)
-        ice("tryUnifyWithConstrainedSubTypeVar received non-ConstrainedTypeVar subTy!");
-
-    const std::vector<TypeId>& subTyParts = subConstrained->parts;
-
-    // A | B <: T if A <: T and B <: T
-    bool failed = false;
-    std::optional<TypeError> unificationTooComplex;
-
-    const size_t count = subTyParts.size();
-
-    for (size_t i = 0; i < count; ++i)
-    {
-        TypeId type = subTyParts[i];
-        Unifier innerState = makeChildUnifier();
-        innerState.tryUnify_(type, superTy);
-
-        if (i == count - 1)
-            log.concat(std::move(innerState.log));
-
-        ++i;
-
-        if (auto e = hasUnificationTooComplex(innerState.errors))
-            unificationTooComplex = e;
-
-        if (!innerState.errors.empty())
-        {
-            failed = true;
-            break;
-        }
-    }
-
-    if (unificationTooComplex)
-        reportError(*unificationTooComplex);
-    else if (failed)
-        reportError(TypeError{location, TypeMismatch{superTy, subTy}});
-    else
-        log.replace(subTy, BoundTypeVar{superTy});
-}
-
-void Unifier::tryUnifyWithConstrainedSuperTypeVar(TypeId subTy, TypeId superTy)
-{
-    ConstrainedTypeVar* superC = log.getMutable<ConstrainedTypeVar>(superTy);
-    if (!superC)
-        ice("tryUnifyWithConstrainedSuperTypeVar received non-ConstrainedTypeVar superTy!");
-
-    // subTy could be a
-    //  table
-    //  metatable
-    //  class
-    //  function
-    //  primitive
-    //  free
-    //  generic
-    //  intersection
-    //  union
-    // Do we really just tack it on?  I think we might!
-    // We can certainly do some deduplication.
-    // Is there any point to deducing Player|Instance when we could just reduce to Instance?
-    // Is it actually ok to have multiple free types in a single intersection?  What if they are later unified into the same type?
-    // Maybe we do a simplification step during quantification.
-
-    auto it = std::find(superC->parts.begin(), superC->parts.end(), subTy);
-    if (it != superC->parts.end())
-        return;
-
-    superC->parts.push_back(subTy);
-}
-
-void Unifier::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel)
-{
-    // The duplication between this and regular typepack unification is tragic.
-
-    auto superIter = begin(superTy, &log);
-    auto superEndIter = end(superTy);
-
-    auto subIter = begin(subTy, &log);
-    auto subEndIter = end(subTy);
-
-    int count = FInt::LuauTypeInferLowerBoundsIterationLimit;
-
-    for (; subIter != subEndIter; ++subIter)
-    {
-        if (0 >= --count)
-            ice("Internal recursion counter limit exceeded in Unifier::unifyLowerBound");
-
-        if (superIter != superEndIter)
-        {
-            tryUnify_(*subIter, *superIter);
-            ++superIter;
-            continue;
-        }
-
-        if (auto t = superIter.tail())
-        {
-            TypePackId tailPack = follow(*t);
-
-            if (log.get<FreeTypePack>(tailPack) && occursCheck(tailPack, subTy))
-                return;
-
-            FreeTypePack* freeTailPack = log.getMutable<FreeTypePack>(tailPack);
-            if (!freeTailPack)
-                return;
-
-            TypePack* tp = getMutable<TypePack>(log.replace(tailPack, TypePack{}));
-
-            for (; subIter != subEndIter; ++subIter)
-            {
-                tp->head.push_back(types->addType(ConstrainedTypeVar{demotedLevel, {follow(*subIter)}}));
-            }
-
-            tp->tail = subIter.tail();
-        }
-
-        return;
-    }
-
-    if (superIter != superEndIter)
-    {
-        if (auto subTail = subIter.tail())
-        {
-            TypePackId subTailPack = follow(*subTail);
-            if (get<FreeTypePack>(subTailPack))
-            {
-                TypePack* tp = getMutable<TypePack>(log.replace(subTailPack, TypePack{}));
-
-                for (; superIter != superEndIter; ++superIter)
-                    tp->head.push_back(*superIter);
-            }
-            else if (const VariadicTypePack* subVariadic = log.getMutable<VariadicTypePack>(subTailPack))
-            {
-                while (superIter != superEndIter)
-                {
-                    tryUnify_(subVariadic->ty, *superIter);
-                    ++superIter;
-                }
-            }
-        }
-        else
-        {
-            while (superIter != superEndIter)
-            {
-                if (!isOptional(*superIter))
-                {
-                    errors.push_back(TypeError{location, CountMismatch{size(superTy), std::nullopt, size(subTy), CountMismatch::Return}});
-                    return;
-                }
-                ++superIter;
-            }
-        }
-
-        return;
-    }
-
-    // Both iters are at their respective tails
-    auto subTail = subIter.tail();
-    auto superTail = superIter.tail();
-    if (subTail && superTail)
-        tryUnify(*subTail, *superTail);
-    else if (subTail)
-    {
-        const FreeTypePack* freeSubTail = log.getMutable<FreeTypePack>(*subTail);
-        if (freeSubTail)
-        {
-            log.replace(*subTail, TypePack{});
-        }
-    }
-    else if (superTail)
-    {
-        const FreeTypePack* freeSuperTail = log.getMutable<FreeTypePack>(*superTail);
-        if (freeSuperTail)
-        {
-            log.replace(*superTail, TypePack{});
-        }
-    }
-}
-
 bool Unifier::occursCheck(TypeId needle, TypeId haystack)
 {
     sharedState.tempSeenTy.clear();
@@ -2503,8 +2289,7 @@ bool Unifier::occursCheck(TypeId needle, TypeId haystack)
 
 bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack)
 {
-    RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     bool occurrence = false;
 
@@ -2547,11 +2332,6 @@ bool Unifier::occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId hays
         for (TypeId ty : a->parts)
             check(ty);
     }
-    else if (auto a = log.getMutable<ConstrainedTypeVar>(haystack))
-    {
-        for (TypeId ty : a->parts)
-            check(ty);
-    }
 
     return occurrence;
 }
@@ -2579,8 +2359,7 @@ bool Unifier::occursCheck(DenseHashSet<TypePackId>& seen, TypePackId needle, Typ
     if (!log.getMutable<Unifiable::Free>(needle))
         ice("Expected needle pack to be free");
 
-    RecursionLimiter _ra(&sharedState.counters.recursionCount,
-        FFlag::LuauAutocompleteDynamicLimits ? sharedState.counters.recursionLimit : FInt::LuauTypeInferRecursionLimit);
+    RecursionLimiter _ra(&sharedState.counters.recursionCount, sharedState.counters.recursionLimit);
 
     while (!log.getMutable<ErrorTypeVar>(haystack))
     {

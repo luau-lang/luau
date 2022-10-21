@@ -13,6 +13,11 @@ assert(getmetatable(a) == "xuxu")
 ud=newproxy(true); getmetatable(ud).__metatable = "xuxu"
 assert(getmetatable(ud) == "xuxu")
 
+assert(pcall(getmetatable) == false)
+assert(pcall(function() return getmetatable() end) == false)
+assert(select(2, pcall(getmetatable, {})) == nil)
+assert(select(2, pcall(getmetatable, ud)) == "xuxu")
+
 local res,err = pcall(tostring, a)
 assert(not res and err == "'__tostring' must return a string")
 -- cannot change a protected metatable
@@ -475,6 +480,9 @@ function testfenv()
 
   assert(_G.X == 20)
   assert(_G == getfenv(0))
+
+  assert(pcall(getfenv, 10) == false)
+  assert(pcall(setfenv, setfenv, {}) == false)
 end
 
 testfenv() -- DONT MOVE THIS LINE

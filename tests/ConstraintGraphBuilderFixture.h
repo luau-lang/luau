@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/ConstraintGraphBuilder.h"
+#include "Luau/ConstraintSolver.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/TypeArena.h"
 #include "Luau/Module.h"
@@ -16,12 +17,22 @@ struct ConstraintGraphBuilderFixture : Fixture
 {
     TypeArena arena;
     ModulePtr mainModule;
-    ConstraintGraphBuilder cgb;
     DcrLogger logger;
+    UnifierSharedState sharedState{&ice};
+    Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
+
+    std::unique_ptr<DataFlowGraph> dfg;
+    std::unique_ptr<ConstraintGraphBuilder> cgb;
+    Scope* rootScope = nullptr;
+
+    std::vector<NotNull<Constraint>> constraints;
 
     ScopedFastFlag forceTheFlag;
 
     ConstraintGraphBuilderFixture();
+
+    void generateConstraints(const std::string& code);
+    void solve(const std::string& code);
 };
 
 } // namespace Luau

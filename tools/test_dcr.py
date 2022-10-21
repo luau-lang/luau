@@ -42,6 +42,8 @@ class Handler(x.ContentHandler):
         self.fail_count = 0
         self.test_count = 0
 
+        self.crashed_tests = []
+
     def startElement(self, name, attrs):
         if name == "TestSuite":
             self.currentTest.append(attrs["name"])
@@ -68,6 +70,10 @@ class Handler(x.ContentHandler):
 
         elif name == "OverallResultsTestCases":
             self.numSkippedTests = safeParseInt(attrs.get("skipped", 0))
+
+        elif name == "Exception":
+            if attrs.get("crash") == "true":
+                self.crashed_tests.append(makeDottedName(self.currentTest))
 
     def endElement(self, name):
         if name == "TestCase":
@@ -192,15 +198,23 @@ def main():
                 print(name, file=f)
         print_stderr("Updated faillist.txt")
 
-    if handler.numSkippedTests > 0:
-        print_stderr(
-            f"{handler.numSkippedTests} test(s) were skipped!  That probably means that a test segfaulted!"
-        )
-        sys.exit(1)
+    if handler.crashed_tests:
+        print_stderr()
+        for test in handler.crashed_tests:
+            print_stderr(
+                f"{c.Fore.RED}{test}{c.Fore.RESET} threw an exception and crashed the test process!"
+            )
 
-    ok = all(
-        not passed == (dottedName in failList)
-        for dottedName, passed in handler.results.items()
+    if handler.numSkippedTests > 0:
+        print_stderr(f"{handler.numSkippedTests} test(s) were skipped!")
+
+    ok = (
+        not handler.crashed_tests
+        and handler.numSkippedTests == 0
+        and all(
+            not passed == (dottedName in failList)
+            for dottedName, passed in handler.results.items()
+        )
     )
 
     if ok:

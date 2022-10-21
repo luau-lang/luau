@@ -1046,7 +1046,6 @@ TEST_CASE_FIXTURE(Fixture, "type_infer_recursion_limit_normalizer")
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
-        {"LuauAutocompleteDynamicLimits", true},
     };
 
     CheckResult result = check(R"(

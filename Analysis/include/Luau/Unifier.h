@@ -119,12 +119,7 @@ private:
 
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name);
 
-    void tryUnifyWithConstrainedSubTypeVar(TypeId subTy, TypeId superTy);
-    void tryUnifyWithConstrainedSuperTypeVar(TypeId subTy, TypeId superTy);
-
 public:
-    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel);
-
     // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
     bool occursCheck(TypeId needle, TypeId haystack);
     bool occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
