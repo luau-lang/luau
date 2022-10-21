@@ -362,4 +362,21 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_overload_metamethods")
     CHECK_EQ(toString(requireType("shouldBeVector")), "Vector3");
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
+{
+    loadDefinition(R"(
+        declare class Foo
+            ["a property"]: string
+        end
+    )");
+
+    CheckResult result = check(R"(
+        local x: Foo
+        local y = x["a property"]
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ(toString(requireType("y")), "string");
+}
+
 TEST_SUITE_END();

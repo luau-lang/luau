@@ -32,6 +32,12 @@ jobs:
           CXX=g++ make config=profile luau
           cp luau luau-gcc
 
+      - name: Build Luau (codegen)
+        run: |
+          make config=profile clean
+          CXX=clang++ make config=profile native=1 luau
+          cp luau luau-codegen
+
       - name: Build Luau (clang)
         run: |
           make config=profile clean
@@ -44,6 +50,10 @@ jobs:
       - name: Run benchmark (bench)
         run: |
           python bench/bench.py --callgrind --vm "./luau -O2" | tee -a bench-output.txt
+
+      - name: Run benchmark (bench-codegen)
+        run: |
+          python bench/bench.py --callgrind --vm "./luau-codegen --codegen -O2" | tee -a bench-codegen-output.txt
 
       - name: Run benchmark (analyze)
         run: |
@@ -82,6 +92,14 @@ jobs:
           tool: "benchmarkluau"
           output-file-path: ./bench-output.txt
           external-data-json-path: ./gh-pages/bench.json
+
+      - name: Store results (bench-codegen)
+        uses: Roblox/rhysd-github-action-benchmark@v-luau
+        with:
+          name: callgrind codegen
+          tool: "benchmarkluau"
+          output-file-path: ./bench-codegen-output.txt
+          external-data-json-path: ./gh-pages/bench-codegen.json
 
       - name: Store results (bench-gcc)
         uses: Roblox/rhysd-github-action-benchmark@v-luau

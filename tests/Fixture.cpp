@@ -430,7 +430,8 @@ LoadDefinitionFileResult Fixture::loadDefinition(const std::string& source)
     LoadDefinitionFileResult result = frontend.loadDefinitionFile(source, "@test");
     freeze(typeChecker.globalTypes);
 
-    dumpErrors(result.module);
+    if (result.module)
+        dumpErrors(result.module);
     REQUIRE_MESSAGE(result.success, "loadDefinition: unable to load definition file");
     return result;
 }
