@@ -72,6 +72,41 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
     CHECK_EQ(symbol, "@test/global/foo/overload/(string) -> number");
 }
 
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
+{
+    loadDefinition(R"(
+        declare class Foo
+            function bar(self, x: string): number
+        end
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
+        local x: Foo
+        x:bar("asdf")
+    )",
+        Position(2, 11));
+
+    CHECK_EQ(symbol, "@test/globaltype/Foo.bar");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_class_method")
+{
+    loadDefinition(R"(
+        declare class Foo
+            function bar(self, x: string): number
+            function bar(self, x: number): string
+        end
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
+        local x: Foo
+        x:bar("asdf")
+    )",
+        Position(2, 11));
+
+    CHECK_EQ(symbol, "@test/globaltype/Foo.bar/overload/(Foo, string) -> number");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("AstQuery");
