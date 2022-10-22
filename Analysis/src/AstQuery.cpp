@@ -466,7 +466,7 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
 
     if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
     {
-        return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, *binding->documentationSymbol);
+        return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
     }
 
     if (targetExpr)
