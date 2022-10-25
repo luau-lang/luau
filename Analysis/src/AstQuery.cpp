@@ -428,7 +428,7 @@ ExprOrLocal findExprOrLocalAtPosition(const SourceModule& source, Position pos)
 }
 
 static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
-    const Module& module, const Luau::TypeId ty, const AstExpr* parentExpr, const std::optional<DocumentationSymbol> documentationSymbol)
+    const Module& module, const TypeId ty, const AstExpr* parentExpr, const std::optional<DocumentationSymbol> documentationSymbol)
 {
     if (!documentationSymbol)
         return std::nullopt;
