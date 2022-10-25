@@ -72,6 +72,73 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_fn")
     CHECK_EQ(symbol, "@test/global/foo/overload/(string) -> number");
 }
 
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
+{
+    loadDefinition(R"(
+        declare class Foo
+            function bar(self, x: string): number
+        end
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
+        local x: Foo
+        x:bar("asdf")
+    )",
+        Position(2, 11));
+
+    CHECK_EQ(symbol, "@test/globaltype/Foo.bar");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_class_method")
+{
+    loadDefinition(R"(
+        declare class Foo
+            function bar(self, x: string): number
+            function bar(self, x: number): string
+        end
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
+        local x: Foo
+        x:bar("asdf")
+    )",
+        Position(2, 11));
+
+    CHECK_EQ(symbol, "@test/globaltype/Foo.bar/overload/(Foo, string) -> number");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_function_prop")
+{
+    loadDefinition(R"(
+        declare Foo: {
+            new: (number) -> string
+        }
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
+        Foo.new("asdf")
+    )",
+        Position(1, 13));
+
+    CHECK_EQ(symbol, "@test/global/Foo.new");
+}
+
+TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_overloaded_function_prop")
+{
+    loadDefinition(R"(
+        declare Foo: {
+            new: ((number) -> string) & ((string) -> number)
+        }
+    )");
+
+    std::optional<DocumentationSymbol> symbol = getDocSymbol(R"(
+        Foo.new("asdf")
+    )",
+        Position(1, 13));
+
+    CHECK_EQ(symbol, "@test/global/Foo.new/overload/(string) -> number");
+}
+
 TEST_SUITE_END();
 
 TEST_SUITE_BEGIN("AstQuery");
