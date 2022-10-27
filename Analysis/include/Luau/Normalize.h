@@ -106,9 +106,68 @@ struct std::equal_to<const Luau::TypeIds*>
 namespace Luau
 {
 
-// A normalized string type is either `string` (represented by `nullopt`)
-// or a union of string singletons.
-using NormalizedStringType = std::optional<std::map<std::string, TypeId>>;
+/** A normalized string type is either `string` (represented by `nullopt`) or a
+ * union of string singletons.
+ *
+ * When FFlagLuauNegatedStringSingletons is unset, the representation is as
+ * follows:
+ *
+ * * The `string` data type is represented by the option `singletons` having the
+ *   value `std::nullopt`.
+ * * The type `never` is represented by `singletons` being populated with an
+ *   empty map.
+ * * A union of string singletons is represented by a map populated by the names
+ *   and TypeIds of the singletons contained therein.
+ *
+ * When FFlagLuauNegatedStringSingletons is set, the representation is as
+ * follows:
+ *
+ * * A union of string singletons is finite and includes the singletons named by
+ *   the `singletons` field.
+ * * An intersection of negated string singletons is cofinite and includes the
+ *   singletons excluded by the `singletons` field.  It is implied that cofinite
+ *   values are exclusions from `string` itself.
+ * * The `string` data type is a cofinite set minus zero elements.
+ * * The `never` data type is a finite set plus zero elements.
+ */
+struct NormalizedStringType
+{
+    // When false, this type represents a union of singleton string types.
+    // eg "a" | "b" | "c"
+    //
+    // When true, this type represents string intersected with negated string
+    // singleton types.
+    // eg string & ~"a" & ~"b" & ...
+    bool isCofinite = false;
+
+    // TODO: This field cannot be nullopt when FFlagLuauNegatedStringSingletons
+    // is set. When clipping that flag, we can remove the wrapping optional.
+    std::optional<std::map<std::string, TypeId>> singletons;
+
+    void resetToString();
+    void resetToNever();
+
+    bool isNever() const;
+    bool isString() const;
+
+    /// Returns true if the string has finite domain.
+    ///
+    /// Important subtlety: This method returns true for `never`.  The empty set
+    /// is indeed an empty set.
+    bool isUnion() const;
+
+    /// Returns true if the string has infinite domain.
+    bool isIntersection() const;
+
+    bool includes(const std::string& str) const;
+
+    static const NormalizedStringType never;
+
+    NormalizedStringType() = default;
+    NormalizedStringType(bool isCofinite, std::optional<std::map<std::string, TypeId>> singletons);
+};
+
+bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr);
 
 // A normalized function type is either `never` (represented by `nullopt`)
 // or an intersection of function types.
@@ -157,7 +216,7 @@ struct NormalizedType
 
     // The string part of the type.
     // This may be the `string` type, or a union of singletons.
-    NormalizedStringType strings = std::map<std::string, TypeId>{};
+    NormalizedStringType strings;
 
     // The thread part of the type.
     // This type is either never or thread.
@@ -231,8 +290,14 @@ public:
     bool unionNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
     bool unionNormalWithTy(NormalizedType& here, TypeId there, int ignoreSmallerTyvars = -1);
 
+    // ------- Negations
+    NormalizedType negateNormal(const NormalizedType& here);
+    TypeIds negateAll(const TypeIds& theres);
+    TypeId negate(TypeId there);
+    void subtractPrimitive(NormalizedType& here, TypeId ty);
+    void subtractSingleton(NormalizedType& here, TypeId ty);
+
     // ------- Normalizing intersections
-    void intersectTysWithTy(TypeIds& here, TypeId there);
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
     void intersectClasses(TypeIds& heres, const TypeIds& theres);

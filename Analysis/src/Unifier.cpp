@@ -16,6 +16,7 @@
 LUAU_FASTINT(LuauTypeInferTypePackLoopLimit);
 LUAU_FASTFLAG(LuauErrorRecoveryType);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAGVARIABLE(LuauReportTypeMismatchForTypePackUnificationFailure, false)
 LUAU_FASTFLAGVARIABLE(LuauSubtypeNormalizer, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
@@ -273,7 +274,7 @@ TypeId Widen::clean(TypeId ty)
 
 TypePackId Widen::clean(TypePackId)
 {
-    throw std::runtime_error("Widen attempted to clean a dirty type pack?");
+    throwRuntimeError("Widen attempted to clean a dirty type pack?");
 }
 
 bool Widen::ignoreChildren(TypeId ty)
@@ -550,6 +551,12 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     // The order in which we perform this test is significant in the case that both types are classes.
     else if (log.getMutable<ClassTypeVar>(subTy))
         tryUnifyWithClass(subTy, superTy, /*reversed*/ true);
+
+    else if (log.get<NegationTypeVar>(superTy))
+        tryUnifyTypeWithNegation(subTy, superTy);
+
+    else if (log.get<NegationTypeVar>(subTy))
+        tryUnifyNegationWithType(subTy, superTy);
 
     else
         reportError(TypeError{location, TypeMismatch{superTy, subTy}});
@@ -866,13 +873,7 @@ void Unifier::tryUnifyNormalizedTypes(
         if (!get<PrimitiveTypeVar>(superNorm.numbers))
             return reportError(TypeError{location, TypeMismatch{superTy, subTy, reason, error}});
 
-    if (subNorm.strings && superNorm.strings)
-    {
-        for (auto [name, ty] : *subNorm.strings)
-            if (!superNorm.strings->count(name))
-                return reportError(TypeError{location, TypeMismatch{superTy, subTy, reason, error}});
-    }
-    else if (!subNorm.strings && superNorm.strings)
+    if (!isSubtype(subNorm.strings, superNorm.strings))
         return reportError(TypeError{location, TypeMismatch{superTy, subTy, reason, error}});
 
     if (get<PrimitiveTypeVar>(subNorm.threads))
@@ -1392,7 +1393,10 @@ void Unifier::tryUnify_(TypePackId subTp, TypePackId superTp, bool isFunctionCal
     }
     else
     {
-        reportError(TypeError{location, GenericError{"Failed to unify type packs"}});
+        if (FFlag::LuauReportTypeMismatchForTypePackUnificationFailure)
+            reportError(TypeError{location, TypePackMismatch{subTp, superTp}});
+        else
+            reportError(TypeError{location, GenericError{"Failed to unify type packs"}});
     }
 }
 
@@ -1441,7 +1445,10 @@ void Unifier::tryUnifyFunctions(TypeId subTy, TypeId superTy, bool isFunctionCal
 
     bool shouldInstantiate = (numGenerics == 0 && subFunction->generics.size() > 0) || (numGenericPacks == 0 && subFunction->genericPacks.size() > 0);
 
-    if (FFlag::LuauInstantiateInSubtyping && variance == Covariant && shouldInstantiate)
+    // TODO: This is unsound when the context is invariant, but the annotation burden without allowing it and without
+    // read-only properties is too high for lua-apps. Read-only properties _should_ resolve their issue by allowing
+    // generic methods in tables to be marked read-only.
+    if (FFlag::LuauInstantiateInSubtyping && shouldInstantiate)
     {
         Instantiation instantiation{&log, types, scope->level, scope};
 
@@ -1576,6 +1583,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
 {
     TableTypeVar* superTable = log.getMutable<TableTypeVar>(superTy);
     TableTypeVar* subTable = log.getMutable<TableTypeVar>(subTy);
+    TableTypeVar* instantiatedSubTable = subTable;
 
     if (!superTable || !subTable)
         ice("passed non-table types to unifyTables");
@@ -1593,6 +1601,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
             if (instantiated.has_value())
             {
                 subTable = log.getMutable<TableTypeVar>(*instantiated);
+                instantiatedSubTable = subTable;
 
                 if (!subTable)
                     ice("instantiation made a table type into a non-table type in tryUnifyTables");
@@ -1696,7 +1705,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         // txn log.
         TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
         TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
-        if (superTable != newSuperTable || subTable != newSubTable)
+        if (superTable != newSuperTable || (subTable != newSubTable && subTable != instantiatedSubTable))
         {
             if (errors.empty())
                 return tryUnifyTables(subTy, superTy, isIntersection);
@@ -1758,7 +1767,7 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         // txn log.
         TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
         TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
-        if (superTable != newSuperTable || subTable != newSubTable)
+        if (superTable != newSuperTable || (subTable != newSubTable && subTable != instantiatedSubTable))
         {
             if (errors.empty())
                 return tryUnifyTables(subTy, superTy, isIntersection);
@@ -2096,6 +2105,34 @@ void Unifier::tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed)
     }
     else
         return fail();
+}
+
+void Unifier::tryUnifyTypeWithNegation(TypeId subTy, TypeId superTy)
+{
+    const NegationTypeVar* ntv = get<NegationTypeVar>(superTy);
+    if (!ntv)
+        ice("tryUnifyTypeWithNegation superTy must be a negation type");
+
+    const NormalizedType* subNorm = normalizer->normalize(subTy);
+    const NormalizedType* superNorm = normalizer->normalize(superTy);
+    if (!subNorm || !superNorm)
+        return reportError(TypeError{location, UnificationTooComplex{}});
+
+    // T </: ~U iff T <: U
+    Unifier state = makeChildUnifier();
+    state.tryUnifyNormalizedTypes(subTy, superTy, *subNorm, *superNorm, "");
+    if (state.errors.empty())
+        reportError(TypeError{location, TypeMismatch{superTy, subTy}});
+}
+
+void Unifier::tryUnifyNegationWithType(TypeId subTy, TypeId superTy)
+{
+    const NegationTypeVar* ntv = get<NegationTypeVar>(subTy);
+    if (!ntv)
+        ice("tryUnifyNegationWithType subTy must be a negation type");
+
+    // TODO: ~T </: U iff T <: U
+    reportError(TypeError{location, TypeMismatch{superTy, subTy}});
 }
 
 static void queueTypePack(std::vector<TypeId>& queue, DenseHashSet<TypePackId>& seenTypePacks, Unifier& state, TypePackId a, TypePackId anyTypePack)

@@ -229,6 +229,48 @@ TEST_CASE_FIXTURE(Fixture, "too_many_arguments")
     CHECK_EQ(0, acm->actual);
 }
 
+TEST_CASE_FIXTURE(Fixture, "too_many_arguments_error_location")
+{
+    ScopedFastFlag sff{"LuauArgMismatchReportFunctionLocation", true};
+
+    CheckResult result = check(R"(
+        --!strict
+
+        function myfunction(a: number, b:number) end
+        myfunction(1)
+
+        function getmyfunction()
+            return myfunction
+        end
+        getmyfunction()()
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    {
+        TypeError err = result.errors[0];
+
+        // Ensure the location matches the location of the function identifier
+        CHECK_EQ(err.location, Location(Position(4, 8), Position(4, 18)));
+
+        auto acm = get<CountMismatch>(err);
+        REQUIRE(acm);
+        CHECK_EQ(2, acm->expected);
+        CHECK_EQ(1, acm->actual);
+    }
+    {
+        TypeError err = result.errors[1];
+
+        // Ensure the location matches the location of the expression returning the function
+        CHECK_EQ(err.location, Location(Position(9, 8), Position(9, 23)));
+
+        auto acm = get<CountMismatch>(err);
+        REQUIRE(acm);
+        CHECK_EQ(2, acm->expected);
+        CHECK_EQ(0, acm->actual);
+    }
+}
+
 TEST_CASE_FIXTURE(Fixture, "recursive_function")
 {
     CheckResult result = check(R"(
@@ -1659,17 +1701,20 @@ foo3()
 string.find()
 
 local t = {}
-function t.foo(x: number, y: string?, ...: any) end
+function t.foo(x: number, y: string?, ...: any) return 1 end
 function t:bar(x: number, y: string?) end
 t.foo()
 
 t:bar()
 
-local u = { a = t }
+local u = { a = t, b = function() return t end }
 u.a.foo()
+local x = (u.a).foo()
+
+u.b().foo()
     )");
 
-    LUAU_REQUIRE_ERROR_COUNT(7, result);
+    LUAU_REQUIRE_ERROR_COUNT(9, result);
     CHECK_EQ(toString(result.errors[0]), "Argument count mismatch. Function 'foo1' expects 1 argument, but none are specified");
     CHECK_EQ(toString(result.errors[1]), "Argument count mismatch. Function 'foo2' expects 1 to 2 arguments, but none are specified");
     CHECK_EQ(toString(result.errors[2]), "Argument count mismatch. Function 'foo3' expects 1 to 3 arguments, but none are specified");
@@ -1677,6 +1722,8 @@ u.a.foo()
     CHECK_EQ(toString(result.errors[4]), "Argument count mismatch. Function 't.foo' expects at least 1 argument, but none are specified");
     CHECK_EQ(toString(result.errors[5]), "Argument count mismatch. Function 't.bar' expects 2 to 3 arguments, but only 1 is specified");
     CHECK_EQ(toString(result.errors[6]), "Argument count mismatch. Function 'u.a.foo' expects at least 1 argument, but none are specified");
+    CHECK_EQ(toString(result.errors[7]), "Argument count mismatch. Function 'u.a.foo' expects at least 1 argument, but none are specified");
+    CHECK_EQ(toString(result.errors[8]), "Argument count mismatch. Function expects at least 1 argument, but none are specified");
 }
 
 // This might be surprising, but since 'any' became optional, unannotated functions in non-strict 'expect' 0 arguments

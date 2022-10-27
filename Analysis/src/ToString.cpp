@@ -11,6 +11,7 @@
 #include <stdexcept>
 
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAG(LuauLvaluelessPath)
 LUAU_FASTFLAGVARIABLE(LuauSpecialTypesAsterisked, false)
 LUAU_FASTFLAGVARIABLE(LuauFixNameMaps, false)
 LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
@@ -434,7 +435,7 @@ struct TypeVarStringifier
             return;
         default:
             LUAU_ASSERT(!"Unknown primitive type");
-            throw std::runtime_error("Unknown primitive type " + std::to_string(ptv.type));
+            throwRuntimeError("Unknown primitive type " + std::to_string(ptv.type));
         }
     }
 
@@ -451,7 +452,7 @@ struct TypeVarStringifier
         else
         {
             LUAU_ASSERT(!"Unknown singleton type");
-            throw std::runtime_error("Unknown singleton type");
+            throwRuntimeError("Unknown singleton type");
         }
     }
 
@@ -1538,6 +1539,8 @@ std::string dump(const Constraint& c)
 
 std::string toString(const LValue& lvalue)
 {
+    LUAU_ASSERT(!FFlag::LuauLvaluelessPath);
+
     std::string s;
     for (const LValue* current = &lvalue; current; current = baseof(*current))
     {
@@ -1552,4 +1555,37 @@ std::string toString(const LValue& lvalue)
     return s;
 }
 
+std::optional<std::string> getFunctionNameAsString(const AstExpr& expr)
+{
+    LUAU_ASSERT(FFlag::LuauLvaluelessPath);
+
+    const AstExpr* curr = &expr;
+    std::string s;
+
+    for (;;)
+    {
+        if (auto local = curr->as<AstExprLocal>())
+            return local->local->name.value + s;
+
+        if (auto global = curr->as<AstExprGlobal>())
+            return global->name.value + s;
+
+        if (auto indexname = curr->as<AstExprIndexName>())
+        {
+            curr = indexname->expr;
+
+            s = "." + std::string(indexname->index.value) + s;
+        }
+        else if (auto group = curr->as<AstExprGroup>())
+        {
+            curr = group->expr;
+        }
+        else
+        {
+            return std::nullopt;
+        }
+    }
+
+    return s;
+}
 } // namespace Luau

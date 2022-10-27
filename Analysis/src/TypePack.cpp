@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TypePack.h"
 
+#include "Luau/Error.h"
 #include "Luau/TxnLog.h"
 
 #include <stdexcept>
@@ -234,7 +235,7 @@ TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
                 cycleTester = nullptr;
 
             if (tp == cycleTester)
-                throw std::runtime_error("Luau::follow detected a TypeVar cycle!!");
+                throwRuntimeError("Luau::follow detected a TypeVar cycle!!");
         }
     }
 }

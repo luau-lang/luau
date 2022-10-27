@@ -7,6 +7,8 @@
 
 #include "doctest.h"
 
+LUAU_FASTFLAG(LuauIceExceptionInheritanceChange)
+
 using namespace Luau;
 
 TEST_SUITE_BEGIN("AnnotationTests");
@@ -664,8 +666,8 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag")
     AssertionCatcher ac;
 
     CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
-        )"),
+        local a: _luau_ice = 55
+    )"),
         InternalCompilerError);
 
     LUAU_ASSERT(1 == AssertionCatcher::tripped);
@@ -682,8 +684,8 @@ TEST_CASE_FIXTURE(Fixture, "luau_ice_triggers_an_ice_exception_with_flag_handler
     };
 
     CHECK_THROWS_AS(check(R"(
-            local a: _luau_ice = 55
-        )"),
+        local a: _luau_ice = 55
+    )"),
         InternalCompilerError);
 
     CHECK_EQ(true, caught);

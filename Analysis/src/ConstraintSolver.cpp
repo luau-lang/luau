@@ -544,6 +544,7 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
     }
     case AstExprUnary::Len:
     {
+        // __len must return a number.
         asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->numberType);
         return true;
     }
@@ -552,13 +553,46 @@ bool ConstraintSolver::tryDispatch(const UnaryConstraint& c, NotNull<const Const
         if (isNumber(operandType) || get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType))
         {
             asMutable(c.resultType)->ty.emplace<BoundTypeVar>(c.operandType);
-            return true;
         }
-        break;
+        else if (std::optional<TypeId> mm = findMetatableEntry(singletonTypes, errors, operandType, "__unm", constraint->location))
+        {
+            const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm));
+
+            if (!ftv)
+            {
+                if (std::optional<TypeId> callMm = findMetatableEntry(singletonTypes, errors, follow(*mm), "__call", constraint->location))
+                {
+                    ftv = get<FunctionTypeVar>(follow(*callMm));
+                }
+            }
+
+            if (!ftv)
+            {
+                asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->errorRecoveryType());
+                return true;
+            }
+
+            TypePackId argsPack = arena->addTypePack({operandType});
+            unify(ftv->argTypes, argsPack, constraint->scope);
+
+            TypeId result = singletonTypes->errorRecoveryType();
+            if (ftv)
+            {
+                result = first(ftv->retTypes).value_or(singletonTypes->errorRecoveryType());
+            }
+
+            asMutable(c.resultType)->ty.emplace<BoundTypeVar>(result);
+        }
+        else
+        {
+            asMutable(c.resultType)->ty.emplace<BoundTypeVar>(singletonTypes->errorRecoveryType());
+        }
+
+        return true;
     }
     }
 
-    LUAU_ASSERT(false); // TODO metatable handling
+    LUAU_ASSERT(false);
     return false;
 }
 
@@ -862,6 +896,10 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
         ttv->name = c.name;
     else if (MetatableTypeVar* mtv = getMutable<MetatableTypeVar>(target))
         mtv->syntheticName = c.name;
+    else if (get<IntersectionTypeVar>(target) || get<UnionTypeVar>(target))
+    {
+        // nothing (yet)
+    }
     else
         return block(c.namedType, constraint);
 

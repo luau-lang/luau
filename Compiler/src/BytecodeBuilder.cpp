@@ -1977,14 +1977,14 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
         if (labels[i] == 0)
             labels[i] = nextLabel++;
 
-    dumpinstoffs.reserve(insns.size());
+    dumpinstoffs.resize(insns.size() + 1, -1);
 
     for (size_t i = 0; i < insns.size();)
     {
         const uint32_t* code = &insns[i];
         uint8_t op = LUAU_INSN_OP(*code);
 
-        dumpinstoffs.push_back(int(result.size()));
+        dumpinstoffs[i] = int(result.size());
 
         if (op == LOP_PREPVARARGS)
         {
@@ -2028,7 +2028,7 @@ std::string BytecodeBuilder::dumpCurrentFunction(std::vector<int>& dumpinstoffs)
         LUAU_ASSERT(i <= insns.size());
     }
 
-    dumpinstoffs.push_back(int(result.size()));
+    dumpinstoffs[insns.size()] = int(result.size());
 
     return result;
 }
@@ -2119,7 +2119,7 @@ std::string BytecodeBuilder::dumpSourceRemarks() const
     return result;
 }
 
-void BytecodeBuilder::annotateInstruction(std::string& result, uint32_t fid, uint32_t instid) const
+void BytecodeBuilder::annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const
 {
     if ((dumpFlags & Dump_Code) == 0)
         return;
@@ -2130,9 +2130,15 @@ void BytecodeBuilder::annotateInstruction(std::string& result, uint32_t fid, uin
     const std::string& dump = function.dump;
     const std::vector<int>& dumpinstoffs = function.dumpinstoffs;
 
-    LUAU_ASSERT(instid + 1 < dumpinstoffs.size());
+    uint32_t next = instpos + 1;
 
-    formatAppend(result, "%.*s", dumpinstoffs[instid + 1] - dumpinstoffs[instid], dump.data() + dumpinstoffs[instid]);
+    LUAU_ASSERT(next < dumpinstoffs.size());
+
+    // Skip locations of multi-dword instructions
+    while (next < dumpinstoffs.size() && dumpinstoffs[next] == -1)
+        next++;
+
+    formatAppend(result, "%.*s", dumpinstoffs[next] - dumpinstoffs[instpos], dump.data() + dumpinstoffs[instpos]);
 }
 
 } // namespace Luau

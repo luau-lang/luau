@@ -48,7 +48,17 @@ struct HashBoolNamePair
     size_t operator()(const std::pair<bool, Name>& pair) const;
 };
 
-class TimeLimitError : public std::exception
+class TimeLimitError : public InternalCompilerError
+{
+public:
+    explicit TimeLimitError(const std::string& moduleName)
+        : InternalCompilerError("Typeinfer failed to complete in allotted time", moduleName)
+    {
+        LUAU_ASSERT(FFlag::LuauIceExceptionInheritanceChange);
+    }
+};
+
+class TimeLimitError_DEPRECATED : public std::exception
 {
 public:
     virtual const char* what() const throw();
@@ -236,6 +246,7 @@ public:
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);
+    [[noreturn]] void throwTimeLimitError();
 
     ScopePtr childFunctionScope(const ScopePtr& parent, const Location& location, int subLevel = 0);
     ScopePtr childScope(const ScopePtr& parent, const Location& location);
