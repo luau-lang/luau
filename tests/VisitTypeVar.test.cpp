@@ -22,7 +22,14 @@ TEST_CASE_FIXTURE(Fixture, "throw_when_limit_is_exceeded")
 
     TypeId tType = requireType("t");
 
-    CHECK_THROWS_AS(toString(tType), RecursionLimitException);
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        CHECK_THROWS_AS(toString(tType), RecursionLimitException);
+    }
+    else
+    {
+        CHECK_THROWS_AS(toString(tType), RecursionLimitException_DEPRECATED);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "dont_throw_when_limit_is_high_enough")

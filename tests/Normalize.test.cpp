@@ -10,13 +10,16 @@
 
 using namespace Luau;
 
-struct NormalizeFixture : Fixture
+namespace
+{
+struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
         return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
     }
 };
+}
 
 void createSomeClasses(Frontend& frontend)
 {
@@ -55,7 +58,7 @@ void createSomeClasses(Frontend& frontend)
 
 TEST_SUITE_BEGIN("isSubtype");
 
-TEST_CASE_FIXTURE(NormalizeFixture, "primitives")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "primitives")
 {
     check(R"(
         local a = 41
@@ -75,7 +78,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "primitives")
     CHECK(!isSubtype(d, a));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "functions")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "functions")
 {
     check(R"(
         function a(x: number): number return x end
@@ -96,7 +99,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions")
     CHECK(isSubtype(a, d));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "functions_and_any")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_and_any")
 {
     check(R"(
         function a(n: number) return "string" end
@@ -114,7 +117,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions_and_any")
     CHECK(!isSubtype(a, b));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "variadic_functions_with_no_head")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
 {
     check(R"(
         local a: (...number) -> ()
@@ -129,7 +132,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "variadic_functions_with_no_head")
 }
 
 #if 0
-TEST_CASE_FIXTURE(NormalizeFixture, "variadic_function_with_head")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_function_with_head")
 {
     check(R"(
         local a: (...number) -> ()
@@ -144,7 +147,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "variadic_function_with_head")
 }
 #endif
 
-TEST_CASE_FIXTURE(NormalizeFixture, "union")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "union")
 {
     check(R"(
         local a: number | string
@@ -171,7 +174,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union")
     CHECK(!isSubtype(d, b));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "table_with_union_prop")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_union_prop")
 {
     check(R"(
         local a: {x: number}
@@ -185,7 +188,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_with_union_prop")
     CHECK(!isSubtype(b, a));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "table_with_any_prop")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
 {
     check(R"(
         local a: {x: number}
@@ -199,7 +202,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_with_any_prop")
     CHECK(!isSubtype(b, a));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "intersection")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection")
 {
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
@@ -229,7 +232,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection")
     CHECK(isSubtype(a, d));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "union_and_intersection")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "union_and_intersection")
 {
     check(R"(
             local a: number & string
@@ -243,7 +246,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_and_intersection")
     CHECK(isSubtype(a, b));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "tables")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
 {
     check(R"(
         local a: {x: number}
@@ -271,7 +274,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "tables")
 }
 
 #if 0
-TEST_CASE_FIXTURE(NormalizeFixture, "table_indexers_are_invariant")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "table_indexers_are_invariant")
 {
     check(R"(
         local a: {[string]: number}
@@ -290,7 +293,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "table_indexers_are_invariant")
     CHECK(isSubtype(a, c));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "mismatched_indexers")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "mismatched_indexers")
 {
     check(R"(
         local a: {x: number}
@@ -309,7 +312,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "mismatched_indexers")
     CHECK(isSubtype(b, c));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_table")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "cyclic_table")
 {
     check(R"(
         type A = {method: (A) -> ()}
@@ -348,7 +351,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "cyclic_table")
 }
 #endif
 
-TEST_CASE_FIXTURE(NormalizeFixture, "classes")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "classes")
 {
     createSomeClasses(frontend);
 
@@ -365,7 +368,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "classes")
 }
 
 #if 0
-TEST_CASE_FIXTURE(NormalizeFixture, "metatable" * doctest::expected_failures{1})
+TEST_CASE_FIXTURE(IsSubtypeFixture, "metatable" * doctest::expected_failures{1})
 {
      check(R"(
         local T = {}
@@ -389,7 +392,111 @@ TEST_CASE_FIXTURE(NormalizeFixture, "metatable" * doctest::expected_failures{1})
 
 TEST_SUITE_END();
 
+struct NormalizeFixture : Fixture
+{
+    ScopedFastFlag sff{"LuauNegatedStringSingletons", true};
+
+    TypeArena arena;
+    InternalErrorReporter iceHandler;
+    UnifierSharedState unifierState{&iceHandler};
+    Normalizer normalizer{&arena, singletonTypes, NotNull{&unifierState}};
+
+    NormalizeFixture()
+    {
+        registerNotType(*this, arena);
+    }
+
+    TypeId normal(const std::string& annotation)
+    {
+        CheckResult result = check("type _Res = " + annotation);
+        LUAU_REQUIRE_NO_ERRORS(result);
+        std::optional<TypeId> ty = lookupType("_Res");
+        REQUIRE(ty);
+        const NormalizedType* norm = normalizer.normalize(*ty);
+        REQUIRE(norm);
+        return normalizer.typeFromNormal(*norm);
+    }
+};
+
 TEST_SUITE_BEGIN("Normalize");
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negate_string")
+{
+    CHECK("number" == toString(normal(R"(
+        (number | string) & Not<string>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negate_string_from_cofinite_string_intersection")
+{
+    CHECK("number" == toString(normal(R"(
+        (number | (string & Not<"hello"> & Not<"world">)) & Not<string>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "no_op_negation_is_dropped")
+{
+    CHECK("number" == toString(normal(R"(
+        number & Not<string>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "union_of_negation")
+{
+    CHECK("string" == toString(normal(R"(
+        (string & Not<"hello">) | "hello"
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_truthy")
+{
+    CHECK("number | string | true" == toString(normal(R"(
+        (string | number | boolean | nil) & Not<false | nil>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_truthy_expressed_as_intersection")
+{
+    CHECK("number | string | true" == toString(normal(R"(
+        (string | number | boolean | nil) & Not<false> & Not<nil>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "union_of_union")
+{
+    CHECK(R"("alpha" | "beta" | "gamma")" == toString(normal(R"(
+        ("alpha" | "beta") | "gamma"
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "union_of_negations")
+{
+    CHECK(R"(string & ~"world")" == toString(normal(R"(
+        (string & Not<"hello"> & Not<"world">) | (string & Not<"goodbye"> & Not<"world">)
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negate_boolean")
+{
+    CHECK("true" == toString(normal(R"(
+        boolean & Not<false>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negate_boolean_2")
+{
+    CHECK("never" == toString(normal(R"(
+        true & Not<true>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "bare_negation")
+{
+    // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
+    CHECK("(number | string | thread)?" == toString(normal(R"(
+        Not<boolean>
+    )")));
+}
 
 TEST_CASE_FIXTURE(Fixture, "higher_order_function")
 {

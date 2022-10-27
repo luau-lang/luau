@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauIceExceptionInheritanceChange);
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -278,7 +279,14 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     TypeArena dest;
     CloneState cloneState;
 
-    CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
+    }
+    else
+    {
+        CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException_DEPRECATED);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")

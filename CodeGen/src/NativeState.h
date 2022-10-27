@@ -3,13 +3,16 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/CodeAllocator.h"
+#include "Luau/Label.h"
 
 #include <memory>
 
 #include <stdint.h>
 
+#include "ldebug.h"
 #include "lobject.h"
 #include "ltm.h"
+#include "lstate.h"
 
 typedef int (*luau_FastFunction)(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams);
 
@@ -77,6 +80,11 @@ struct NativeContext
     void (*luaF_close)(lua_State* L, StkId level) = nullptr;
 
     double (*libm_pow)(double, double) = nullptr;
+
+    // Helper functions
+    bool (*forgLoopNodeIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;
+    bool (*forgLoopNonTableFallback)(lua_State* L, int insnA, int aux) = nullptr;
+    void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
 };
 
 struct NativeState

@@ -16,7 +16,6 @@
 
 #include "isocline.h"
 
-#include <algorithm>
 #include <memory>
 
 #ifdef _WIN32
@@ -688,11 +687,11 @@ static std::string getCodegenAssembly(const char* name, const std::string& bytec
     return "";
 }
 
-static void annotateInstruction(void* context, std::string& text, int fid, int instid)
+static void annotateInstruction(void* context, std::string& text, int fid, int instpos)
 {
     Luau::BytecodeBuilder& bcb = *(Luau::BytecodeBuilder*)context;
 
-    bcb.annotateInstruction(text, fid, instid);
+    bcb.annotateInstruction(text, fid, instpos);
 }
 
 struct CompileStats
@@ -711,7 +710,8 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
         return false;
     }
 
-    stats.lines += std::count(source->begin(), source->end(), '\n');
+    // NOTE: Normally, you should use Luau::compile or luau_compile (see lua_require as an example)
+    // This function is much more complicated because it supports many output human-readable formats through internal interfaces
 
     try
     {
@@ -736,7 +736,16 @@ static bool compileFile(const char* name, CompileFormat format, CompileStats& st
             bcb.setDumpSource(*source);
         }
 
-        Luau::compileOrThrow(bcb, *source, copts());
+        Luau::Allocator allocator;
+        Luau::AstNameTable names(allocator);
+        Luau::ParseResult result = Luau::Parser::parse(source->c_str(), source->size(), names, allocator);
+
+        if (!result.errors.empty())
+            throw Luau::ParseErrors(result.errors);
+
+        stats.lines += result.lines;
+
+        Luau::compileOrThrow(bcb, result, names, copts());
         stats.bytecode += bcb.getBytecode().size();
 
         switch (format)

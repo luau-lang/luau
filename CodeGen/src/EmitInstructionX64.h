@@ -16,7 +16,7 @@ namespace CodeGen
 class AssemblyBuilderX64;
 enum class Condition;
 struct Label;
-struct NativeState;
+struct ModuleHelpers;
 
 void emitInstLoadNil(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstLoadB(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
@@ -24,6 +24,7 @@ void emitInstLoadN(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstLoadK(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstLoadKX(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstMove(AssemblyBuilderX64& build, const Instruction* pc);
+void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstJump(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstJumpBack(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstJumpIf(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, bool not_);
@@ -52,12 +53,17 @@ void emitInstSetList(AssemblyBuilderX64& build, const Instruction* pc, int pcpos
 void emitInstGetUpval(AssemblyBuilderX64& build, const Instruction* pc, int pcpos);
 void emitInstSetUpval(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstCloseUpvals(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
-void emitInstFastCall1(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
-void emitInstFastCall2(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
-void emitInstFastCall2K(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
-void emitInstFastCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
+int emitInstFastCall1(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
+int emitInstFastCall2(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
+int emitInstFastCall2K(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
+int emitInstFastCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
+void emitinstForGLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Label& fallback);
+void emitinstForGLoopFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
+void emitInstForGPrepNext(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Label& fallback);
+void emitInstForGPrepInext(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Label& fallback);
+void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr);
 void emitInstAnd(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstAndK(AssemblyBuilderX64& build, const Instruction* pc);
 void emitInstOr(AssemblyBuilderX64& build, const Instruction* pc);

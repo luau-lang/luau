@@ -913,4 +913,14 @@ TEST_CASE_FIXTURE(Fixture, "it_is_ok_to_shadow_user_defined_alias")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "cannot_create_cyclic_type_with_unknown_module")
+{
+    CheckResult result = check(R"(
+        type AAA = B.AAA
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(toString(result.errors[0]) == "Unknown type 'B.AAA'");
+}
+
 TEST_SUITE_END();

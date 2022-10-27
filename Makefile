@@ -75,7 +75,7 @@ endif
 
 # configuration-specific flags
 ifeq ($(config),release)
-	CXXFLAGS+=-O2 -DNDEBUG
+	CXXFLAGS+=-O2 -DNDEBUG -fno-math-errno
 endif
 
 ifeq ($(config),coverage)
@@ -102,7 +102,7 @@ ifeq ($(config),fuzz)
 endif
 
 ifeq ($(config),profile)
-	CXXFLAGS+=-O2 -DNDEBUG -gdwarf-4 -DCALLGRIND=1
+	CXXFLAGS+=-O2 -DNDEBUG -fno-math-errno -gdwarf-4 -DCALLGRIND=1
 endif
 
 ifeq ($(protobuf),download)

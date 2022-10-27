@@ -67,6 +67,13 @@ constexpr unsigned kLuaNodeTagMask = 0xf;
 constexpr unsigned kOffsetOfLuaNodeTag = 12; // offsetof cannot be used on a bit field
 constexpr unsigned kOffsetOfInstructionC = 3;
 
+// Leaf functions that are placed in every module to perform common instruction sequences
+struct ModuleHelpers
+{
+    Label exitContinueVm;
+    Label exitNoContinueVm;
+};
+
 inline OperandX64 luauReg(int ri)
 {
     return xmmword[rBase + ri * sizeof(TValue)];
@@ -105,6 +112,12 @@ inline OperandX64 luauConstantValue(int ki)
 inline OperandX64 luauNodeKeyValue(RegisterX64 node)
 {
     return qword[node + offsetof(LuaNode, key) + offsetof(TKey, value)];
+}
+
+// Note: tag has dirty upper bits
+inline OperandX64 luauNodeKeyTag(RegisterX64 node)
+{
+    return dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeTag];
 }
 
 inline OperandX64 luauNodeValue(RegisterX64 node)
@@ -184,7 +197,7 @@ inline void jumpIfNodeKeyTagIsNot(AssemblyBuilderX64& build, RegisterX64 tmp, Re
 {
     tmp.size = SizeX64::dword;
 
-    build.mov(tmp, dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeTag]);
+    build.mov(tmp, luauNodeKeyTag(node));
     build.and_(tmp, kLuaNodeTagMask);
     build.cmp(tmp, tag);
     build.jcc(Condition::NotEqual, label);

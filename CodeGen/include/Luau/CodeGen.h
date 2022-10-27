@@ -17,7 +17,7 @@ void create(lua_State* L);
 // Builds target function and all inner functions
 void compile(lua_State* L, int idx);
 
-using annotatorFn = void (*)(void* context, std::string& result, int fid, int instid);
+using annotatorFn = void (*)(void* context, std::string& result, int fid, int instpos);
 
 struct AssemblyOptions
 {

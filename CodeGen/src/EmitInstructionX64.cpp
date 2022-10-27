@@ -34,7 +34,7 @@ void emitInstLoadB(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, 
     build.mov(luauRegTag(ra), LUA_TBOOLEAN);
 
     if (int target = LUAU_INSN_C(*pc))
-        build.jmp(labelarr[pcpos + target + 1]);
+        build.jmp(labelarr[pcpos + 1 + target]);
 }
 
 void emitInstLoadN(AssemblyBuilderX64& build, const Instruction* pc)
@@ -72,23 +72,185 @@ void emitInstMove(AssemblyBuilderX64& build, const Instruction* pc)
     build.vmovups(luauReg(ra), xmm0);
 }
 
+void emitInstReturn(AssemblyBuilderX64& build, ModuleHelpers& helpers, const Instruction* pc, int pcpos, Label* labelarr)
+{
+    emitInterrupt(build, pcpos);
+
+    int ra = LUAU_INSN_A(*pc);
+    int b = LUAU_INSN_B(*pc) - 1;
+
+    RegisterX64 ci = r8;
+    RegisterX64 cip = r9;
+    RegisterX64 res = rdi;
+    RegisterX64 nresults = esi;
+
+    build.mov(ci, qword[rState + offsetof(lua_State, ci)]);
+    build.lea(cip, qword[ci - sizeof(CallInfo)]);
+
+    // res = ci->func; note: we assume CALL always puts func+args and expects results to start at func
+    build.mov(res, qword[ci + offsetof(CallInfo, func)]);
+    // nresults = ci->nresults
+    build.mov(nresults, dword[ci + offsetof(CallInfo, nresults)]);
+
+    {
+        Label skipResultCopy;
+
+        RegisterX64 counter = ecx;
+
+        if (b == 0)
+        {
+            // Our instruction doesn't have any results, so just fill results expected in parent with 'nil'
+            build.test(nresults, nresults);                  // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
+            build.jcc(Condition::LessEqual, skipResultCopy); // jle jumps if SF != OF or ZF == 1
+
+            build.mov(counter, nresults);
+
+            Label repeatNilLoop = build.setLabel();
+            build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
+            build.add(res, sizeof(TValue));
+            build.dec(counter);
+            build.jcc(Condition::NotZero, repeatNilLoop);
+        }
+        else if (b == 1)
+        {
+            // Try setting our 1 result
+            build.test(nresults, nresults);
+            build.jcc(Condition::Zero, skipResultCopy);
+
+            build.lea(counter, dword[nresults - 1]);
+
+            build.vmovups(xmm0, luauReg(ra));
+            build.vmovups(xmmword[res], xmm0);
+            build.add(res, sizeof(TValue));
+
+            // Fill the rest of the expected results with 'nil'
+            build.test(counter, counter);                    // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
+            build.jcc(Condition::LessEqual, skipResultCopy); // jle jumps if SF != OF or ZF == 1
+
+            Label repeatNilLoop = build.setLabel();
+            build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
+            build.add(res, sizeof(TValue));
+            build.dec(counter);
+            build.jcc(Condition::NotZero, repeatNilLoop);
+        }
+        else
+        {
+            RegisterX64 vali = rax;
+            RegisterX64 valend = rdx;
+
+            // Copy return values into parent stack (but only up to nresults!)
+            build.test(nresults, nresults);
+            build.jcc(Condition::Zero, skipResultCopy);
+
+            // vali = ra
+            build.lea(vali, luauRegValue(ra));
+
+            // Copy as much as possible for MULTRET calls, and only as much as needed otherwise
+            if (b == LUA_MULTRET)
+                build.mov(valend, qword[rState + offsetof(lua_State, top)]); // valend = L->top
+            else
+                build.lea(valend, luauRegValue(ra + b)); // valend = ra + b
+
+            build.mov(counter, nresults);
+
+            Label repeatValueLoop, exitValueLoop;
+
+            build.setLabel(repeatValueLoop);
+            build.cmp(vali, valend);
+            build.jcc(Condition::NotBelow, exitValueLoop);
+
+            build.vmovups(xmm0, xmmword[vali]);
+            build.vmovups(xmmword[res], xmm0);
+            build.add(vali, sizeof(TValue));
+            build.add(res, sizeof(TValue));
+            build.dec(counter);
+            build.jcc(Condition::NotZero, repeatValueLoop);
+
+            build.setLabel(exitValueLoop);
+
+            // Fill the rest of the expected results with 'nil'
+            build.test(counter, counter);                    // test here will set SF=1 for a negative number, ZF=1 for zero and OF=0
+            build.jcc(Condition::LessEqual, skipResultCopy); // jle jumps if SF != OF or ZF == 1
+
+            Label repeatNilLoop = build.setLabel();
+            build.mov(dword[res + offsetof(TValue, tt)], LUA_TNIL);
+            build.add(res, sizeof(TValue));
+            build.dec(counter);
+            build.jcc(Condition::NotZero, repeatNilLoop);
+        }
+
+        build.setLabel(skipResultCopy);
+    }
+
+    build.mov(qword[rState + offsetof(lua_State, ci)], cip);     // L->ci = cip
+    build.mov(rBase, qword[cip + offsetof(CallInfo, base)]);     // sync base = L->base while we have a chance
+    build.mov(qword[rState + offsetof(lua_State, base)], rBase); // L->base = cip->base
+
+    // Start with result for LUA_MULTRET/exit value
+    build.mov(qword[rState + offsetof(lua_State, top)], res); // L->top = res
+
+    // Unlikely, but this might be the last return from VM
+    build.test(byte[ci + offsetof(CallInfo, flags)], LUA_CALLINFO_RETURN);
+    build.jcc(Condition::NotZero, helpers.exitNoContinueVm);
+
+    Label skipFixedRetTop;
+    build.test(nresults, nresults);              // test here will set SF=1 for a negative number and it always sets OF to 0
+    build.jcc(Condition::Less, skipFixedRetTop); // jl jumps if SF != OF
+    build.mov(rax, qword[cip + offsetof(CallInfo, top)]);
+    build.mov(qword[rState + offsetof(lua_State, top)], rax); // L->top = cip->top
+    build.setLabel(skipFixedRetTop);
+
+    // Returning back to the previous function is a bit tricky
+    // Registers alive: r9 (cip)
+    RegisterX64 proto = rcx;
+    RegisterX64 execdata = rbx;
+
+    // Change closure
+    build.mov(rax, qword[cip + offsetof(CallInfo, func)]);
+    build.mov(rax, qword[rax + offsetof(TValue, value.gc)]);
+    build.mov(sClosure, rax);
+
+    build.mov(proto, qword[rax + offsetof(Closure, l.p)]);
+
+    build.mov(execdata, qword[proto + offsetofProtoExecData]);
+    build.test(execdata, execdata);
+    build.jcc(Condition::Zero, helpers.exitContinueVm); // Continue in interpreter if function has no native data
+
+    // Change constants
+    build.mov(rConstants, qword[proto + offsetof(Proto, k)]);
+
+    // Change code
+    build.mov(rdx, qword[proto + offsetof(Proto, code)]);
+    build.mov(sCode, rdx);
+
+    build.mov(rax, qword[cip + offsetof(CallInfo, savedpc)]);
+
+    // To get instruction index from instruction pointer, we need to divide byte offset by 4
+    // But we will actually need to scale instruction index by 8 back to byte offset later so it cancels out
+    build.sub(rax, rdx);
+
+    // Get new instruction location and jump to it
+    build.mov(rdx, qword[execdata + offsetof(NativeProto, instTargets)]);
+    build.jmp(qword[rdx + rax * 2]);
+}
+
 void emitInstJump(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
-    build.jmp(labelarr[pcpos + LUAU_INSN_D(*pc) + 1]);
+    build.jmp(labelarr[pcpos + 1 + LUAU_INSN_D(*pc)]);
 }
 
 void emitInstJumpBack(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
     emitInterrupt(build, pcpos);
 
-    build.jmp(labelarr[pcpos + LUAU_INSN_D(*pc) + 1]);
+    build.jmp(labelarr[pcpos + 1 + LUAU_INSN_D(*pc)]);
 }
 
 void emitInstJumpIf(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, bool not_)
 {
     int ra = LUAU_INSN_A(*pc);
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
     Label& exit = labelarr[pcpos + 1];
 
     if (not_)
@@ -102,7 +264,7 @@ void emitInstJumpIfEq(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     int ra = LUAU_INSN_A(*pc);
     int rb = pc[1];
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
     Label& exit = labelarr[pcpos + 2];
 
     build.mov(eax, luauRegTag(ra));
@@ -121,7 +283,7 @@ void emitInstJumpIfEq(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
 
 void emitInstJumpIfEqFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, bool not_)
 {
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
 
     jumpOnAnyCmpFallback(build, LUAU_INSN_A(*pc), pc[1], not_ ? Condition::NotEqual : Condition::Equal, target, pcpos);
 }
@@ -131,7 +293,7 @@ void emitInstJumpIfCond(AssemblyBuilderX64& build, const Instruction* pc, int pc
     int ra = LUAU_INSN_A(*pc);
     int rb = pc[1];
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
 
     // fast-path: number
     jumpIfTagIsNot(build, ra, LUA_TNUMBER, fallback);
@@ -142,7 +304,7 @@ void emitInstJumpIfCond(AssemblyBuilderX64& build, const Instruction* pc, int pc
 
 void emitInstJumpIfCondFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Condition cond)
 {
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
 
     jumpOnAnyCmpFallback(build, LUAU_INSN_A(*pc), pc[1], cond, target, pcpos);
 }
@@ -151,7 +313,7 @@ void emitInstJumpX(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, 
 {
     emitInterrupt(build, pcpos);
 
-    build.jmp(labelarr[pcpos + LUAU_INSN_E(*pc) + 1]);
+    build.jmp(labelarr[pcpos + 1 + LUAU_INSN_E(*pc)]);
 }
 
 void emitInstJumpxEqNil(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
@@ -159,7 +321,7 @@ void emitInstJumpxEqNil(AssemblyBuilderX64& build, const Instruction* pc, int pc
     int ra = LUAU_INSN_A(*pc);
     bool not_ = (pc[1] & 0x80000000) != 0;
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
 
     build.cmp(luauRegTag(ra), LUA_TNIL);
     build.jcc(not_ ? Condition::NotEqual : Condition::Equal, target);
@@ -171,7 +333,7 @@ void emitInstJumpxEqB(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     uint32_t aux = pc[1];
     bool not_ = (aux & 0x80000000) != 0;
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
     Label& exit = labelarr[pcpos + 2];
 
     jumpIfTagIsNot(build, ra, LUA_TBOOLEAN, not_ ? target : exit);
@@ -187,7 +349,7 @@ void emitInstJumpxEqN(AssemblyBuilderX64& build, const Instruction* pc, const TV
     bool not_ = (aux & 0x80000000) != 0;
     TValue kv = k[aux & 0xffffff];
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
     Label& exit = labelarr[pcpos + 2];
 
     jumpIfTagIsNot(build, ra, LUA_TNUMBER, not_ ? target : exit);
@@ -212,7 +374,7 @@ void emitInstJumpxEqS(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     uint32_t aux = pc[1];
     bool not_ = (aux & 0x80000000) != 0;
 
-    Label& target = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
     Label& exit = labelarr[pcpos + 2];
 
     jumpIfTagIsNot(build, ra, LUA_TSTRING, not_ ? target : exit);
@@ -596,8 +758,8 @@ void emitInstCloseUpvals(AssemblyBuilderX64& build, const Instruction* pc, int p
     build.call(qword[rNativeContext + offsetof(NativeContext, luaF_close)]);
 }
 
-static void emitInstFastCallN(
-    AssemblyBuilderX64& build, const Instruction* pc, bool customParams, int customParamCount, OperandX64 customArgs, int pcpos, Label* labelarr)
+static int emitInstFastCallN(AssemblyBuilderX64& build, const Instruction* pc, bool customParams, int customParamCount, OperandX64 customArgs,
+    int pcpos, int instLen, Label* labelarr)
 {
     int bfid = LUAU_INSN_A(*pc);
     int skip = LUAU_INSN_C(*pc);
@@ -611,7 +773,7 @@ static void emitInstFastCallN(
     int arg = customParams ? LUAU_INSN_B(*pc) : ra + 1;
     OperandX64 args = customParams ? customArgs : luauRegValue(ra + 2);
 
-    Label exit;
+    Label& exit = labelarr[pcpos + instLen];
 
     jumpIfUnsafeEnv(build, rax, exit);
 
@@ -633,10 +795,7 @@ static void emitInstFastCallN(
             build.mov(qword[rState + offsetof(lua_State, top)], rax);
         }
 
-        // TODO: once we start outlining the fallback, we will be able to fallthrough to the next instruction
-        build.jmp(labelarr[pcpos + skip + 2]);
-        build.setLabel(exit);
-        return;
+        return skip + 2 - instLen; // Return fallback instruction sequence length
     }
 
     // TODO: we can skip saving pc for some well-behaved builtins which we didn't inline
@@ -705,37 +864,35 @@ static void emitInstFastCallN(
         build.mov(qword[rState + offsetof(lua_State, top)], rax);
     }
 
-    build.jmp(labelarr[pcpos + skip + 2]);
-
-    build.setLabel(exit);
-
-    // TODO: fallback to LOP_CALL after a fast call should be outlined
+    return skip + 2 - instLen; // Return fallback instruction sequence length
 }
 
-void emitInstFastCall1(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
+int emitInstFastCall1(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
-    emitInstFastCallN(build, pc, /* customParams */ true, /* customParamCount */ 1, /* customArgs */ 0, pcpos, labelarr);
+    return emitInstFastCallN(build, pc, /* customParams */ true, /* customParamCount */ 1, /* customArgs */ 0, pcpos, /* instLen */ 1, labelarr);
 }
 
-void emitInstFastCall2(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
+int emitInstFastCall2(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
-    emitInstFastCallN(build, pc, /* customParams */ true, /* customParamCount */ 2, /* customArgs */ luauRegValue(pc[1]), pcpos, labelarr);
+    return emitInstFastCallN(
+        build, pc, /* customParams */ true, /* customParamCount */ 2, /* customArgs */ luauRegValue(pc[1]), pcpos, /* instLen */ 2, labelarr);
 }
 
-void emitInstFastCall2K(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
+int emitInstFastCall2K(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
-    emitInstFastCallN(build, pc, /* customParams */ true, /* customParamCount */ 2, /* customArgs */ luauConstantValue(pc[1]), pcpos, labelarr);
+    return emitInstFastCallN(
+        build, pc, /* customParams */ true, /* customParamCount */ 2, /* customArgs */ luauConstantValue(pc[1]), pcpos, /* instLen */ 2, labelarr);
 }
 
-void emitInstFastCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
+int emitInstFastCall(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
-    emitInstFastCallN(build, pc, /* customParams */ false, /* customParamCount */ 0, /* customArgs */ 0, pcpos, labelarr);
+    return emitInstFastCallN(build, pc, /* customParams */ false, /* customParamCount */ 0, /* customArgs */ 0, pcpos, /* instLen */ 1, labelarr);
 }
 
 void emitInstForNPrep(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
 {
     int ra = LUAU_INSN_A(*pc);
-    Label& loopExit = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& loopExit = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
 
     Label tryConvert, exit;
 
@@ -784,7 +941,7 @@ void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     emitInterrupt(build, pcpos);
 
     int ra = LUAU_INSN_A(*pc);
-    Label& loopRepeat = labelarr[pcpos + LUAU_INSN_D(*pc) + 1];
+    Label& loopRepeat = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
 
     RegisterX64 limit = xmm0;
     RegisterX64 step = xmm1;
@@ -812,6 +969,162 @@ void emitInstForNLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpo
     jumpOnNumberCmp(build, noreg, limit, idx, Condition::LessEqual, loopRepeat);
 
     build.setLabel(exit);
+}
+
+void emitinstForGLoop(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Label& fallback)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int aux = pc[1];
+
+    Label& loopRepeat = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
+    Label& exit = labelarr[pcpos + 2];
+
+    emitInterrupt(build, pcpos);
+
+    // fast-path: builtin table iteration
+    jumpIfTagIsNot(build, ra, LUA_TNIL, fallback);
+
+    // Registers are chosen in this way to simplify fallback code for the node part
+    RegisterX64 table = rArg2;
+    RegisterX64 index = rArg3;
+    RegisterX64 elemPtr = rax;
+
+    build.mov(table, luauRegValue(ra + 1));
+    build.mov(index, luauRegValue(ra + 2));
+
+    // &array[index]
+    build.mov(dwordReg(elemPtr), dwordReg(index));
+    build.shl(dwordReg(elemPtr), kTValueSizeLog2);
+    build.add(elemPtr, qword[table + offsetof(Table, array)]);
+
+    // Clear extra variables since we might have more than two
+    for (int i = 2; i < aux; ++i)
+        build.mov(luauRegTag(ra + 3 + i), LUA_TNIL);
+
+    // ipairs-style traversal is terminated early when array part ends of nil array element is encountered
+    bool isIpairsIter = aux < 0;
+
+    Label skipArray, skipArrayNil;
+
+    // First we advance index through the array portion
+    // while (unsigned(index) < unsigned(sizearray))
+    Label arrayLoop = build.setLabel();
+    build.cmp(dwordReg(index), dword[table + offsetof(Table, sizearray)]);
+    build.jcc(Condition::NotBelow, isIpairsIter ? exit : skipArray);
+
+    // If element is nil, we increment the index; if it's not, we still need 'index + 1' inside
+    build.inc(index);
+
+    build.cmp(dword[elemPtr + offsetof(TValue, tt)], LUA_TNIL);
+    build.jcc(Condition::Equal, isIpairsIter ? exit : skipArrayNil);
+
+    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(index + 1)));
+    build.mov(luauRegValue(ra + 2), index);
+    // Tag should already be set to lightuserdata
+
+    // setnvalue(ra + 3, double(index + 1));
+    build.vcvtsi2sd(xmm0, xmm0, dwordReg(index));
+    build.vmovsd(luauRegValue(ra + 3), xmm0);
+    build.mov(luauRegTag(ra + 3), LUA_TNUMBER);
+
+    // setobj2s(L, ra + 4, e);
+    setLuauReg(build, xmm2, ra + 4, xmmword[elemPtr]);
+
+    build.jmp(loopRepeat);
+
+    if (!isIpairsIter)
+    {
+        build.setLabel(skipArrayNil);
+
+        // Index already incremented, advance to next array element
+        build.add(elemPtr, sizeof(TValue));
+        build.jmp(arrayLoop);
+
+        build.setLabel(skipArray);
+
+        // Call helper to assign next node value or to signal loop exit
+        build.mov(rArg1, rState);
+        // rArg2 and rArg3 are already set
+        build.lea(rArg4, luauRegValue(ra));
+        build.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNodeIter)]);
+        build.test(al, al);
+        build.jcc(Condition::NotZero, loopRepeat);
+    }
+}
+
+void emitinstForGLoopFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
+{
+    int ra = LUAU_INSN_A(*pc);
+    int aux = pc[1];
+
+    Label& loopRepeat = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
+
+    emitSetSavedPc(build, pcpos + 1);
+
+    build.mov(rArg1, rState);
+    build.mov(rArg2, ra);
+    build.mov(rArg3, aux);
+    build.call(qword[rNativeContext + offsetof(NativeContext, forgLoopNonTableFallback)]);
+    emitUpdateBase(build);
+    build.test(al, al);
+    build.jcc(Condition::NotZero, loopRepeat);
+}
+
+void emitInstForGPrepNext(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Label& fallback)
+{
+    int ra = LUAU_INSN_A(*pc);
+
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
+
+    // fast-path: pairs/next
+    jumpIfUnsafeEnv(build, rax, fallback);
+    jumpIfTagIsNot(build, ra + 1, LUA_TTABLE, fallback);
+    jumpIfTagIsNot(build, ra + 2, LUA_TNIL, fallback);
+
+    build.mov(luauRegTag(ra), LUA_TNIL);
+
+    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
+    build.mov(luauRegValue(ra + 2), 0);
+    build.mov(luauRegTag(ra + 2), LUA_TLIGHTUSERDATA);
+
+    build.jmp(target);
+}
+
+void emitInstForGPrepInext(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr, Label& fallback)
+{
+    int ra = LUAU_INSN_A(*pc);
+
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
+
+    // fast-path: ipairs/inext
+    jumpIfUnsafeEnv(build, rax, fallback);
+    jumpIfTagIsNot(build, ra + 1, LUA_TTABLE, fallback);
+    jumpIfTagIsNot(build, ra + 2, LUA_TNUMBER, fallback);
+
+    build.vxorpd(xmm0, xmm0, xmm0);
+    build.vmovsd(xmm1, luauRegValue(ra + 2));
+    jumpOnNumberCmp(build, noreg, xmm0, xmm1, Condition::NotEqual, fallback);
+
+    build.mov(luauRegTag(ra), LUA_TNIL);
+
+    // setpvalue(ra + 2, reinterpret_cast<void*>(uintptr_t(0)));
+    build.mov(luauRegValue(ra + 2), 0);
+    build.mov(luauRegTag(ra + 2), LUA_TLIGHTUSERDATA);
+
+    build.jmp(target);
+}
+
+void emitInstForGPrepXnextFallback(AssemblyBuilderX64& build, const Instruction* pc, int pcpos, Label* labelarr)
+{
+    int ra = LUAU_INSN_A(*pc);
+
+    Label& target = labelarr[pcpos + 1 + LUAU_INSN_D(*pc)];
+
+    build.mov(rArg1, rState);
+    build.lea(rArg2, luauRegValue(ra));
+    build.mov(rArg3, pcpos + 1);
+    build.call(qword[rNativeContext + offsetof(NativeContext, forgPrepXnextFallback)]);
+    build.jmp(target);
 }
 
 static void emitInstAndX(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c)
