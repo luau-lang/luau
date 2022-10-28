@@ -1633,8 +1633,6 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
 
 void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
-    Name className(declaredClass.name.value);
-
     std::optional<TypeId> superTy = std::nullopt;
     if (declaredClass.superName)
     {
@@ -1660,6 +1658,8 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
             return;
         }
     }
+
+    Name className(declaredClass.name.value);
 
     TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
     ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
