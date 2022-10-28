@@ -183,7 +183,7 @@ TEST_CASE_FIXTURE(JsonEncoderFixture, "encode_AstExprInterpString")
     AstStat* statement = expectParseStatement("local a = `var = {x}`");
 
     std::string_view expected =
-        R"({"type":"AstStatLocal","location":"0,0 - 0,17","vars":[{"luauType":null,"name":"a","type":"AstLocal","location":"0,6 - 0,7"}],"values":[{"type":"AstExprInterpString","location":"0,10 - 0,17","strings":["var = ",""],"expressions":[{"type":"AstExprGlobal","location":"0,18 - 0,19","global":"x"}]}]})";
+        R"({"type":"AstStatLocal","location":"0,0 - 0,18","vars":[{"luauType":null,"name":"a","type":"AstLocal","location":"0,6 - 0,7"}],"values":[{"type":"AstExprInterpString","location":"0,10 - 0,18","strings":["var = ",""],"expressions":[{"type":"AstExprGlobal","location":"0,18 - 0,19","global":"x"}]}]})";
 
     CHECK(toJson(statement) == expected);
 }
