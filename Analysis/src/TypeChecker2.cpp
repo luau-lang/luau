@@ -934,8 +934,62 @@ struct TypeChecker2
 
     void visit(AstExprUnary* expr)
     {
-        // TODO!
         visit(expr->expr);
+
+        NotNull<Scope> scope = stack.back();
+        TypeId operandType = lookupType(expr->expr);
+
+        if (get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType) || get<NeverTypeVar>(operandType))
+            return;
+
+        if (auto it = kUnaryOpMetamethods.find(expr->op); it != kUnaryOpMetamethods.end())
+        {
+            std::optional<TypeId> mm = findMetatableEntry(singletonTypes, module->errors, operandType, it->second, expr->location);
+            if (mm)
+            {
+                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
+                {
+                    TypePackId expectedArgs = module->internalTypes.addTypePack({operandType});
+                    reportErrors(tryUnify(scope, expr->location, ftv->argTypes, expectedArgs));
+
+                    if (std::optional<TypeId> ret = first(ftv->retTypes))
+                    {
+                        if (expr->op == AstExprUnary::Op::Len)
+                        {
+                            reportErrors(tryUnify(scope, expr->location, follow(*ret), singletonTypes->numberType));
+                        }
+                    }
+                    else
+                    {
+                        reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
+                    }
+                }
+
+                return;
+            }
+        }
+
+        if (expr->op == AstExprUnary::Op::Len)
+        {
+            DenseHashSet<TypeId> seen{nullptr};
+            int recursionCount = 0;
+
+            if (!hasLength(operandType, seen, &recursionCount))
+            {
+                reportError(NotATable{operandType}, expr->location);
+            }
+        }
+        else if (expr->op == AstExprUnary::Op::Minus)
+        {
+            reportErrors(tryUnify(scope, expr->location, operandType, singletonTypes->numberType));
+        }
+        else if (expr->op == AstExprUnary::Op::Not)
+        {
+        }
+        else
+        {
+            LUAU_ASSERT(!"Unhandled unary operator");
+        }
     }
 
     void visit(AstExprBinary* expr)
@@ -1240,9 +1294,8 @@ struct TypeChecker2
         Scope* scope = findInnermostScope(ty->location);
         LUAU_ASSERT(scope);
 
-        // TODO: Imported types
-
-        std::optional<TypeFun> alias = scope->lookupType(ty->name.value);
+        std::optional<TypeFun> alias =
+            (ty->prefix) ? scope->lookupImportedType(ty->prefix->value, ty->name.value) : scope->lookupType(ty->name.value);
 
         if (alias.has_value())
         {

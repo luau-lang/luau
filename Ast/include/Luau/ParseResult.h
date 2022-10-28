@@ -58,6 +58,8 @@ struct Comment
 struct ParseResult
 {
     AstStatBlock* root;
+    size_t lines = 0;
+
     std::vector<HotComment> hotcomments;
     std::vector<ParseError> errors;
 

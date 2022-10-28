@@ -309,6 +309,23 @@ TEST_CASE_FIXTURE(Fixture, "definitions_documentation_symbols")
     CHECK_EQ(yTtv->props["x"].documentationSymbol, "@test/global/y.x");
 }
 
+TEST_CASE_FIXTURE(Fixture, "definitions_symbols_are_generated_for_recursively_referenced_types")
+{
+    ScopedFastFlag LuauPersistTypesAfterGeneratingDocSyms("LuauPersistTypesAfterGeneratingDocSyms", true);
+
+    loadDefinition(R"(
+        declare class MyClass
+            function myMethod(self)
+        end
+
+        declare function myFunc(): MyClass
+    )");
+
+    std::optional<TypeFun> myClassTy = typeChecker.globalScope->lookupType("MyClass");
+    REQUIRE(bool(myClassTy));
+    CHECK_EQ(myClassTy->type->documentationSymbol, "@test/globaltype/MyClass");
+}
+
 TEST_CASE_FIXTURE(Fixture, "documentation_symbols_dont_attach_to_persistent_types")
 {
     loadDefinition(R"(

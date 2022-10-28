@@ -1736,8 +1736,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_type_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_missing_type_annotation")
 {
-    ScopedFastFlag LuauTypeAnnotationLocationChange{"LuauTypeAnnotationLocationChange", true};
-
     {
         ParseResult result = tryParse("local x:");
         CHECK(result.errors.size() == 1);

@@ -71,6 +71,7 @@ target_sources(Luau.CodeGen PRIVATE
     CodeGen/src/CodeAllocator.cpp
     CodeGen/src/CodeBlockUnwind.cpp
     CodeGen/src/CodeGen.cpp
+    CodeGen/src/CodeGenUtils.cpp
     CodeGen/src/CodeGenX64.cpp
     CodeGen/src/EmitBuiltinsX64.cpp
     CodeGen/src/EmitCommonX64.cpp
@@ -82,6 +83,7 @@ target_sources(Luau.CodeGen PRIVATE
 
     CodeGen/src/ByteUtils.h
     CodeGen/src/CustomExecUtils.h
+    CodeGen/src/CodeGenUtils.h
     CodeGen/src/CodeGenX64.h
     CodeGen/src/EmitBuiltinsX64.h
     CodeGen/src/EmitCommonX64.h
@@ -339,6 +341,7 @@ if(TARGET Luau.UnitTest)
         tests/TypeInfer.intersectionTypes.test.cpp
         tests/TypeInfer.loops.test.cpp
         tests/TypeInfer.modules.test.cpp
+        tests/TypeInfer.negations.test.cpp
         tests/TypeInfer.oop.test.cpp
         tests/TypeInfer.operators.test.cpp
         tests/TypeInfer.primitives.test.cpp

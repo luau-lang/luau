@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Common.h"
+#include "Luau/Error.h"
 
 #include <stdexcept>
 #include <exception>
@@ -9,10 +10,20 @@
 namespace Luau
 {
 
-struct RecursionLimitException : public std::exception
+struct RecursionLimitException : public InternalCompilerError
+{
+    RecursionLimitException()
+        : InternalCompilerError("Internal recursion counter limit exceeded")
+    {
+        LUAU_ASSERT(FFlag::LuauIceExceptionInheritanceChange);
+    }
+};
+
+struct RecursionLimitException_DEPRECATED : public std::exception
 {
     const char* what() const noexcept
     {
+        LUAU_ASSERT(!FFlag::LuauIceExceptionInheritanceChange);
         return "Internal recursion counter limit exceeded";
     }
 };
@@ -42,7 +53,14 @@ struct RecursionLimiter : RecursionCounter
     {
         if (limit > 0 && *count > limit)
         {
-            throw RecursionLimitException();
+            if (FFlag::LuauIceExceptionInheritanceChange)
+            {
+                throw RecursionLimitException();
+            }
+            else
+            {
+                throw RecursionLimitException_DEPRECATED();
+            }
         }
     }
 };

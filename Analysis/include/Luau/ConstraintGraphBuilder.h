@@ -23,6 +23,30 @@ using ScopePtr = std::shared_ptr<Scope>;
 
 struct DcrLogger;
 
+struct Inference
+{
+    TypeId ty = nullptr;
+
+    Inference() = default;
+
+    explicit Inference(TypeId ty)
+        : ty(ty)
+    {
+    }
+};
+
+struct InferencePack
+{
+    TypePackId tp = nullptr;
+
+    InferencePack() = default;
+
+    explicit InferencePack(TypePackId tp)
+        : tp(tp)
+    {
+    }
+};
+
 struct ConstraintGraphBuilder
 {
     // A list of all the scopes in the module. This vector holds ownership of the
@@ -130,8 +154,10 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
     void visit(const ScopePtr& scope, AstStatError* error);
 
-    TypePackId checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
-    TypePackId checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});
+    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
+    InferencePack checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});
+
+    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes);
 
     /**
      * Checks an expression that is expected to evaluate to one type.
@@ -141,18 +167,19 @@ struct ConstraintGraphBuilder
      *      surrounding context.  Used to implement bidirectional type checking.
      * @return the type of the expression.
      */
-    TypeId check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {});
+    Inference check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {});
 
-    TypeId check(const ScopePtr& scope, AstExprLocal* local);
-    TypeId check(const ScopePtr& scope, AstExprGlobal* global);
-    TypeId check(const ScopePtr& scope, AstExprIndexName* indexName);
-    TypeId check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
-    TypeId check(const ScopePtr& scope, AstExprUnary* unary);
-    TypeId check_(const ScopePtr& scope, AstExprUnary* unary);
-    TypeId check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
-    TypeId check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
-    TypeId check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
-    TypeId check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprLocal* local);
+    Inference check(const ScopePtr& scope, AstExprGlobal* global);
+    Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
+    Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
+    Inference check(const ScopePtr& scope, AstExprUnary* unary);
+    Inference check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
+    Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
 
     TypePackId checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
 
@@ -202,7 +229,7 @@ struct ConstraintGraphBuilder
     std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(const ScopePtr& scope, AstArray<AstGenericType> generics);
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(const ScopePtr& scope, AstArray<AstGenericTypePack> packs);
 
-    TypeId flattenPack(const ScopePtr& scope, Location location, TypePackId tp);
+    Inference flattenPack(const ScopePtr& scope, Location location, InferencePack pack);
 
     void reportError(Location location, TypeErrorData err);
     void reportCodeTooComplex(Location location);

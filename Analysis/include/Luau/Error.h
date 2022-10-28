@@ -7,6 +7,8 @@
 #include "Luau/Variant.h"
 #include "Luau/TypeArena.h"
 
+LUAU_FASTFLAG(LuauIceExceptionInheritanceChange)
+
 namespace Luau
 {
 struct TypeError;
@@ -302,12 +304,20 @@ struct NormalizationTooComplex
     }
 };
 
+struct TypePackMismatch
+{
+    TypePackId wantedTp;
+    TypePackId givenTp;
+
+    bool operator==(const TypePackMismatch& rhs) const;
+};
+
 using TypeErrorData = Variant<TypeMismatch, UnknownSymbol, UnknownProperty, NotATable, CannotExtendTable, OnlyTablesCanHaveMethods,
     DuplicateTypeDefinition, CountMismatch, FunctionDoesNotTakeSelf, FunctionRequiresSelf, OccursCheckFailed, UnknownRequire,
     IncorrectGenericParameterCount, SyntaxError, CodeTooComplex, UnificationTooComplex, UnknownPropButFoundLikeProp, GenericError, InternalError,
     CannotCallNonFunction, ExtraInformation, DeprecatedApiUsed, ModuleHasCyclicDependency, IllegalRequire, FunctionExitsWithoutReturning,
     DuplicateGenericParameter, CannotInferBinaryOperation, MissingProperties, SwappedGenericTypeParameter, OptionalValueAccess, MissingUnionProperty,
-    TypesAreUnrelated, NormalizationTooComplex>;
+    TypesAreUnrelated, NormalizationTooComplex, TypePackMismatch>;
 
 struct TypeError
 {
@@ -374,6 +384,10 @@ struct InternalErrorReporter
 class InternalCompilerError : public std::exception
 {
 public:
+    explicit InternalCompilerError(const std::string& message)
+        : message(message)
+    {
+    }
     explicit InternalCompilerError(const std::string& message, const std::string& moduleName)
         : message(message)
         , moduleName(moduleName)
@@ -388,8 +402,14 @@ public:
     virtual const char* what() const throw();
 
     const std::string message;
-    const std::string moduleName;
+    const std::optional<std::string> moduleName;
     const std::optional<Location> location;
 };
+
+// These two function overloads only exist to facilitate fast flagging a change to InternalCompilerError
+// Both functions can be removed when FFlagLuauIceExceptionInheritanceChange is removed and calling code
+// can directly throw InternalCompilerError.
+[[noreturn]] void throwRuntimeError(const std::string& message);
+[[noreturn]] void throwRuntimeError(const std::string& message, const std::string& moduleName);
 
 } // namespace Luau

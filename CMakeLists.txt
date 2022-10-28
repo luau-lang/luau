@@ -143,6 +143,11 @@ if (MSVC AND MSVC_VERSION GREATER_EQUAL 1924)
     set_source_files_properties(VM/src/lvmexecute.cpp PROPERTIES COMPILE_FLAGS /d2ssa-pre-)
 endif()
 
+if (NOT MSVC)
+    # disable support for math_errno which allows compilers to lower sqrt() into a single CPU instruction
+    target_compile_options(Luau.VM PRIVATE -fno-math-errno)
+endif()
+
 if(MSVC AND LUAU_BUILD_CLI)
     # the default stack size that MSVC linker uses is 1 MB; we need more stack space in Debug because stack frames are larger
     set_target_properties(Luau.Analyze.CLI PROPERTIES LINK_FLAGS_DEBUG /STACK:2097152)

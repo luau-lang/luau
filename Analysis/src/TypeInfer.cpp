@@ -36,6 +36,7 @@ LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAGVARIABLE(LuauAnyifyModuleReturnGenerics, false)
+LUAU_FASTFLAGVARIABLE(LuauLvaluelessPath, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauFixVarargExprHeadType, false)
@@ -43,15 +44,15 @@ LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
-LUAU_FASTFLAGVARIABLE(LuauUnionOfTypesFollow, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
+LUAU_FASTFLAGVARIABLE(LuauArgMismatchReportFunctionLocation, false)
 
 namespace Luau
 {
-
-const char* TimeLimitError::what() const throw()
+const char* TimeLimitError_DEPRECATED::what() const throw()
 {
+    LUAU_ASSERT(!FFlag::LuauIceExceptionInheritanceChange);
     return "Typeinfer failed to complete in allotted time";
 }
 
@@ -264,6 +265,11 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
         reportErrorCodeTooComplex(module.root->location);
         return std::move(currentModule);
     }
+    catch (const RecursionLimitException_DEPRECATED&)
+    {
+        reportErrorCodeTooComplex(module.root->location);
+        return std::move(currentModule);
+    }
 }
 
 ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope)
@@ -305,6 +311,10 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
         checkBlock(moduleScope, *module.root);
     }
     catch (const TimeLimitError&)
+    {
+        currentModule->timeout = true;
+    }
+    catch (const TimeLimitError_DEPRECATED&)
     {
         currentModule->timeout = true;
     }
@@ -415,7 +425,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         ice("Unknown AstStat");
 
     if (finishTime && TimeTrace::getClock() > *finishTime)
-        throw TimeLimitError();
+        throwTimeLimitError();
 }
 
 // This particular overload is for do...end. If you need to not increase the scope level, use checkBlock directly.
@@ -438,6 +448,11 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         checkBlockWithoutRecursionCheck(scope, block);
     }
     catch (const RecursionLimitException&)
+    {
+        reportErrorCodeTooComplex(block.location);
+        return;
+    }
+    catch (const RecursionLimitException_DEPRECATED&)
     {
         reportErrorCodeTooComplex(block.location);
         return;
@@ -2456,11 +2471,8 @@ std::string opToMetaTableEntry(const AstExprBinary::Op& op)
 
 TypeId TypeChecker::unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, const Location& location, bool unifyFreeTypes)
 {
-    if (FFlag::LuauUnionOfTypesFollow)
-    {
-        a = follow(a);
-        b = follow(b);
-    }
+    a = follow(a);
+    b = follow(b);
 
     if (unifyFreeTypes && (get<FreeTypeVar>(a) || get<FreeTypeVar>(b)))
     {
@@ -3596,8 +3608,17 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
             location = {state.location.begin, argLocations.back().end};
 
         std::string namePath;
-        if (std::optional<LValue> lValue = tryGetLValue(funName))
-            namePath = toString(*lValue);
+
+        if (FFlag::LuauLvaluelessPath)
+        {
+            if (std::optional<std::string> path = getFunctionNameAsString(funName))
+                namePath = *path;
+        }
+        else
+        {
+            if (std::optional<LValue> lValue = tryGetLValue(funName))
+                namePath = toString(*lValue);
+        }
 
         auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
         state.reportError(TypeError{location,
@@ -3706,11 +3727,28 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
                     bool isVariadic = tail && Luau::isVariadic(*tail);
 
                     std::string namePath;
-                    if (std::optional<LValue> lValue = tryGetLValue(funName))
-                        namePath = toString(*lValue);
 
-                    state.reportError(TypeError{
-                        state.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    if (FFlag::LuauLvaluelessPath)
+                    {
+                        if (std::optional<std::string> path = getFunctionNameAsString(funName))
+                            namePath = *path;
+                    }
+                    else
+                    {
+                        if (std::optional<LValue> lValue = tryGetLValue(funName))
+                            namePath = toString(*lValue);
+                    }
+
+                    if (FFlag::LuauArgMismatchReportFunctionLocation)
+                    {
+                        state.reportError(TypeError{
+                            funName.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    }
+                    else
+                    {
+                        state.reportError(TypeError{
+                            state.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    }
                     return;
                 }
                 ++paramIter;
@@ -4645,6 +4683,19 @@ void TypeChecker::ice(const std::string& message, const Location& location)
 void TypeChecker::ice(const std::string& message)
 {
     iceHandler->ice(message);
+}
+
+// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
+void TypeChecker::throwTimeLimitError()
+{
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        throw TimeLimitError(iceHandler->moduleName);
+    }
+    else
+    {
+        throw TimeLimitError_DEPRECATED();
+    }
 }
 
 void TypeChecker::prepareErrorsForDisplay(ErrorVec& errVec)

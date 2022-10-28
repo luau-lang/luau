@@ -263,7 +263,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
             if (hasAnnotation)
                 expectedTypes.insert(begin(expectedTypes), begin(varTypes) + i, end(varTypes));
 
-            TypePackId exprPack = checkPack(scope, value, expectedTypes);
+            TypePackId exprPack = checkPack(scope, value, expectedTypes).tp;
 
             if (i < local->vars.size)
             {
@@ -292,7 +292,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocal* local)
             if (hasAnnotation)
                 expectedType = varTypes.at(i);
 
-            TypeId exprType = check(scope, value, expectedType);
+            TypeId exprType = check(scope, value, expectedType).ty;
             if (i < varTypes.size())
             {
                 if (varTypes[i])
@@ -350,7 +350,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFor* for_)
         if (!expr)
             return;
 
-        TypeId t = check(scope, expr);
+        TypeId t = check(scope, expr).ty;
         addConstraint(scope, expr->location, SubtypeConstraint{t, singletonTypes->numberType});
     };
 
@@ -368,7 +368,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* forIn)
 {
     ScopePtr loopScope = childScope(forIn, scope);
 
-    TypePackId iterator = checkPack(scope, forIn->values);
+    TypePackId iterator = checkPack(scope, forIn->values).tp;
 
     std::vector<TypeId> variableTypes;
     variableTypes.reserve(forIn->vars.size);
@@ -489,7 +489,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
     }
     else if (AstExprIndexName* indexName = function->name->as<AstExprIndexName>())
     {
-        TypeId containingTableType = check(scope, indexName->expr);
+        TypeId containingTableType = check(scope, indexName->expr).ty;
 
         functionType = arena->addType(BlockedTypeVar{});
 
@@ -531,7 +531,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatReturn* ret)
     for (TypeId ty : scope->returnType)
         expectedTypes.push_back(ty);
 
-    TypePackId exprTypes = checkPack(scope, ret->list, expectedTypes);
+    TypePackId exprTypes = checkPack(scope, ret->list, expectedTypes).tp;
     addConstraint(scope, ret->location, PackSubtypeConstraint{exprTypes, scope->returnType});
 }
 
@@ -545,7 +545,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatBlock* block)
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatAssign* assign)
 {
     TypePackId varPackId = checkLValues(scope, assign->vars);
-    TypePackId valuePack = checkPack(scope, assign->values);
+    TypePackId valuePack = checkPack(scope, assign->values).tp;
 
     addConstraint(scope, assign->location, PackSubtypeConstraint{valuePack, varPackId});
 }
@@ -732,7 +732,6 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareClass* d
 
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatDeclareFunction* global)
 {
-
     std::vector<std::pair<Name, GenericTypeDefinition>> generics = createGenerics(scope, global->generics);
     std::vector<std::pair<Name, GenericTypePackDefinition>> genericPacks = createGenericPacks(scope, global->genericPacks);
 
@@ -779,7 +778,7 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatError* error)
         check(scope, expr);
 }
 
-TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes)
+InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes)
 {
     std::vector<TypeId> head;
     std::optional<TypePackId> tail;
@@ -792,201 +791,180 @@ TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstArray<Ast
             std::optional<TypeId> expectedType;
             if (i < expectedTypes.size())
                 expectedType = expectedTypes[i];
-            head.push_back(check(scope, expr));
+            head.push_back(check(scope, expr).ty);
         }
         else
         {
             std::vector<TypeId> expectedTailTypes;
             if (i < expectedTypes.size())
                 expectedTailTypes.assign(begin(expectedTypes) + i, end(expectedTypes));
-            tail = checkPack(scope, expr, expectedTailTypes);
+            tail = checkPack(scope, expr, expectedTailTypes).tp;
         }
     }
 
     if (head.empty() && tail)
-        return *tail;
+        return InferencePack{*tail};
     else
-        return arena->addTypePack(TypePack{std::move(head), tail});
+        return InferencePack{arena->addTypePack(TypePack{std::move(head), tail})};
 }
 
-TypePackId ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes)
+InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes)
 {
     RecursionCounter counter{&recursionCount};
 
     if (recursionCount >= FInt::LuauCheckRecursionLimit)
     {
         reportCodeTooComplex(expr->location);
-        return singletonTypes->errorRecoveryTypePack();
+        return InferencePack{singletonTypes->errorRecoveryTypePack()};
     }
 
-    TypePackId result = nullptr;
+    InferencePack result;
 
     if (AstExprCall* call = expr->as<AstExprCall>())
-    {
-        TypeId fnType = check(scope, call->func);
-        const size_t constraintIndex = scope->constraints.size();
-        const size_t scopeIndex = scopes.size();
-
-        std::vector<TypeId> args;
-
-        for (AstExpr* arg : call->args)
-        {
-            args.push_back(check(scope, arg));
-        }
-
-        // TODO self
-
-        if (matchSetmetatable(*call))
-        {
-            LUAU_ASSERT(args.size() == 2);
-            TypeId target = args[0];
-            TypeId mt = args[1];
-
-            MetatableTypeVar mtv{target, mt};
-            TypeId resultTy = arena->addType(mtv);
-            result = arena->addTypePack({resultTy});
-        }
-        else
-        {
-            const size_t constraintEndIndex = scope->constraints.size();
-            const size_t scopeEndIndex = scopes.size();
-
-            astOriginalCallTypes[call->func] = fnType;
-
-            TypeId instantiatedType = arena->addType(BlockedTypeVar{});
-            // TODO: How do expectedTypes play into this?  Do they?
-            TypePackId rets = arena->addTypePack(BlockedTypePack{});
-            TypePackId argPack = arena->addTypePack(TypePack{args, {}});
-            FunctionTypeVar ftv(TypeLevel{}, scope.get(), argPack, rets);
-            TypeId inferredFnType = arena->addType(ftv);
-
-            scope->unqueuedConstraints.push_back(
-                std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, InstantiationConstraint{instantiatedType, fnType}));
-            NotNull<const Constraint> ic(scope->unqueuedConstraints.back().get());
-
-            scope->unqueuedConstraints.push_back(
-                std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, SubtypeConstraint{inferredFnType, instantiatedType}));
-            NotNull<Constraint> sc(scope->unqueuedConstraints.back().get());
-
-            // We force constraints produced by checking function arguments to wait
-            // until after we have resolved the constraint on the function itself.
-            // This ensures, for instance, that we start inferring the contents of
-            // lambdas under the assumption that their arguments and return types
-            // will be compatible with the enclosing function call.
-            for (size_t ci = constraintIndex; ci < constraintEndIndex; ++ci)
-                scope->constraints[ci]->dependencies.push_back(sc);
-
-            for (size_t si = scopeIndex; si < scopeEndIndex; ++si)
-            {
-                for (auto& c : scopes[si].second->constraints)
-                {
-                    c->dependencies.push_back(sc);
-                }
-            }
-
-            addConstraint(scope, call->func->location,
-                FunctionCallConstraint{
-                    {ic, sc},
-                    fnType,
-                    argPack,
-                    rets,
-                    call,
-                });
-
-            result = rets;
-        }
-    }
+        result = {checkPack(scope, call, expectedTypes)};
     else if (AstExprVarargs* varargs = expr->as<AstExprVarargs>())
     {
         if (scope->varargPack)
-            result = *scope->varargPack;
+            result = InferencePack{*scope->varargPack};
         else
-            result = singletonTypes->errorRecoveryTypePack();
+            result = InferencePack{singletonTypes->errorRecoveryTypePack()};
     }
     else
     {
         std::optional<TypeId> expectedType;
         if (!expectedTypes.empty())
             expectedType = expectedTypes[0];
-        TypeId t = check(scope, expr, expectedType);
-        result = arena->addTypePack({t});
+        TypeId t = check(scope, expr, expectedType).ty;
+        result = InferencePack{arena->addTypePack({t})};
     }
 
-    LUAU_ASSERT(result);
-    astTypePacks[expr] = result;
+    LUAU_ASSERT(result.tp);
+    astTypePacks[expr] = result.tp;
     return result;
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType)
+InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes)
+{
+    TypeId fnType = check(scope, call->func).ty;
+    const size_t constraintIndex = scope->constraints.size();
+    const size_t scopeIndex = scopes.size();
+
+    std::vector<TypeId> args;
+
+    for (AstExpr* arg : call->args)
+    {
+        args.push_back(check(scope, arg).ty);
+    }
+
+    // TODO self
+
+    if (matchSetmetatable(*call))
+    {
+        LUAU_ASSERT(args.size() == 2);
+        TypeId target = args[0];
+        TypeId mt = args[1];
+
+        AstExpr* targetExpr = call->args.data[0];
+
+        MetatableTypeVar mtv{target, mt};
+        TypeId resultTy = arena->addType(mtv);
+
+        if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
+            scope->bindings[targetLocal->local].typeId = resultTy;
+
+        return InferencePack{arena->addTypePack({resultTy})};
+    }
+    else
+    {
+        const size_t constraintEndIndex = scope->constraints.size();
+        const size_t scopeEndIndex = scopes.size();
+
+        astOriginalCallTypes[call->func] = fnType;
+
+        TypeId instantiatedType = arena->addType(BlockedTypeVar{});
+        // TODO: How do expectedTypes play into this?  Do they?
+        TypePackId rets = arena->addTypePack(BlockedTypePack{});
+        TypePackId argPack = arena->addTypePack(TypePack{args, {}});
+        FunctionTypeVar ftv(TypeLevel{}, scope.get(), argPack, rets);
+        TypeId inferredFnType = arena->addType(ftv);
+
+        scope->unqueuedConstraints.push_back(
+            std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, InstantiationConstraint{instantiatedType, fnType}));
+        NotNull<const Constraint> ic(scope->unqueuedConstraints.back().get());
+
+        scope->unqueuedConstraints.push_back(
+            std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, SubtypeConstraint{inferredFnType, instantiatedType}));
+        NotNull<Constraint> sc(scope->unqueuedConstraints.back().get());
+
+        // We force constraints produced by checking function arguments to wait
+        // until after we have resolved the constraint on the function itself.
+        // This ensures, for instance, that we start inferring the contents of
+        // lambdas under the assumption that their arguments and return types
+        // will be compatible with the enclosing function call.
+        for (size_t ci = constraintIndex; ci < constraintEndIndex; ++ci)
+            scope->constraints[ci]->dependencies.push_back(sc);
+
+        for (size_t si = scopeIndex; si < scopeEndIndex; ++si)
+        {
+            for (auto& c : scopes[si].second->constraints)
+            {
+                c->dependencies.push_back(sc);
+            }
+        }
+
+        addConstraint(scope, call->func->location,
+            FunctionCallConstraint{
+                {ic, sc},
+                fnType,
+                argPack,
+                rets,
+                call,
+            });
+
+        return InferencePack{rets};
+    }
+}
+
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType)
 {
     RecursionCounter counter{&recursionCount};
 
     if (recursionCount >= FInt::LuauCheckRecursionLimit)
     {
         reportCodeTooComplex(expr->location);
-        return singletonTypes->errorRecoveryType();
+        return Inference{singletonTypes->errorRecoveryType()};
     }
 
-    TypeId result = nullptr;
+    Inference result;
 
     if (auto group = expr->as<AstExprGroup>())
         result = check(scope, group->expr, expectedType);
     else if (auto stringExpr = expr->as<AstExprConstantString>())
-    {
-        if (expectedType)
-        {
-            const TypeId expectedTy = follow(*expectedType);
-            if (get<BlockedTypeVar>(expectedTy) || get<PendingExpansionTypeVar>(expectedTy))
-            {
-                result = arena->addType(BlockedTypeVar{});
-                TypeId singletonType = arena->addType(SingletonTypeVar(StringSingleton{std::string(stringExpr->value.data, stringExpr->value.size)}));
-                addConstraint(scope, expr->location, PrimitiveTypeConstraint{result, expectedTy, singletonType, singletonTypes->stringType});
-            }
-            else if (maybeSingleton(expectedTy))
-                result = arena->addType(SingletonTypeVar{StringSingleton{std::string{stringExpr->value.data, stringExpr->value.size}}});
-            else
-                result = singletonTypes->stringType;
-        }
-        else
-            result = singletonTypes->stringType;
-    }
+        result = check(scope, stringExpr, expectedType);
     else if (expr->is<AstExprConstantNumber>())
-        result = singletonTypes->numberType;
+        result = Inference{singletonTypes->numberType};
     else if (auto boolExpr = expr->as<AstExprConstantBool>())
-    {
-        if (expectedType)
-        {
-            const TypeId expectedTy = follow(*expectedType);
-            const TypeId singletonType = boolExpr->value ? singletonTypes->trueType : singletonTypes->falseType;
-
-            if (get<BlockedTypeVar>(expectedTy) || get<PendingExpansionTypeVar>(expectedTy))
-            {
-                result = arena->addType(BlockedTypeVar{});
-                addConstraint(scope, expr->location, PrimitiveTypeConstraint{result, expectedTy, singletonType, singletonTypes->booleanType});
-            }
-            else if (maybeSingleton(expectedTy))
-                result = singletonType;
-            else
-                result = singletonTypes->booleanType;
-        }
-        else
-            result = singletonTypes->booleanType;
-    }
+        result = check(scope, boolExpr, expectedType);
     else if (expr->is<AstExprConstantNil>())
-        result = singletonTypes->nilType;
+        result = Inference{singletonTypes->nilType};
     else if (auto local = expr->as<AstExprLocal>())
         result = check(scope, local);
     else if (auto global = expr->as<AstExprGlobal>())
         result = check(scope, global);
     else if (expr->is<AstExprVarargs>())
         result = flattenPack(scope, expr->location, checkPack(scope, expr));
-    else if (expr->is<AstExprCall>())
-        result = flattenPack(scope, expr->location, checkPack(scope, expr)); // TODO: needs predicates too
+    else if (auto call = expr->as<AstExprCall>())
+    {
+        std::vector<TypeId> expectedTypes;
+        if (expectedType)
+            expectedTypes.push_back(*expectedType);
+        result = flattenPack(scope, expr->location, checkPack(scope, call, expectedTypes)); // TODO: needs predicates too
+    }
     else if (auto a = expr->as<AstExprFunction>())
     {
         FunctionSignature sig = checkFunctionSignature(scope, a);
         checkFunctionBody(sig.bodyScope, a);
-        return sig.signature;
+        return Inference{sig.signature};
     }
     else if (auto indexName = expr->as<AstExprIndexName>())
         result = check(scope, indexName);
@@ -1008,20 +986,63 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExpr* expr, std::
         for (AstExpr* subExpr : err->expressions)
             check(scope, subExpr);
 
-        result = singletonTypes->errorRecoveryType();
+        result = Inference{singletonTypes->errorRecoveryType()};
     }
     else
     {
         LUAU_ASSERT(0);
-        result = freshType(scope);
+        result = Inference{freshType(scope)};
     }
 
-    LUAU_ASSERT(result);
-    astTypes[expr] = result;
+    LUAU_ASSERT(result.ty);
+    astTypes[expr] = result.ty;
     return result;
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* local)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType)
+{
+    if (expectedType)
+    {
+        const TypeId expectedTy = follow(*expectedType);
+        if (get<BlockedTypeVar>(expectedTy) || get<PendingExpansionTypeVar>(expectedTy))
+        {
+            TypeId ty = arena->addType(BlockedTypeVar{});
+            TypeId singletonType = arena->addType(SingletonTypeVar(StringSingleton{std::string(string->value.data, string->value.size)}));
+            addConstraint(scope, string->location, PrimitiveTypeConstraint{ty, expectedTy, singletonType, singletonTypes->stringType});
+            return Inference{ty};
+        }
+        else if (maybeSingleton(expectedTy))
+            return Inference{arena->addType(SingletonTypeVar{StringSingleton{std::string{string->value.data, string->value.size}}})};
+
+        return Inference{singletonTypes->stringType};
+    }
+
+    return Inference{singletonTypes->stringType};
+}
+
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprConstantBool* boolExpr, std::optional<TypeId> expectedType)
+{
+    if (expectedType)
+    {
+        const TypeId expectedTy = follow(*expectedType);
+        const TypeId singletonType = boolExpr->value ? singletonTypes->trueType : singletonTypes->falseType;
+
+        if (get<BlockedTypeVar>(expectedTy) || get<PendingExpansionTypeVar>(expectedTy))
+        {
+            TypeId ty = arena->addType(BlockedTypeVar{});
+            addConstraint(scope, boolExpr->location, PrimitiveTypeConstraint{ty, expectedTy, singletonType, singletonTypes->booleanType});
+            return Inference{ty};
+        }
+        else if (maybeSingleton(expectedTy))
+            return Inference{singletonType};
+
+        return Inference{singletonTypes->booleanType};
+    }
+
+    return Inference{singletonTypes->booleanType};
+}
+
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* local)
 {
     std::optional<TypeId> resultTy;
 
@@ -1035,26 +1056,26 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprLocal* local)
     }
 
     if (!resultTy)
-        return singletonTypes->errorRecoveryType(); // TODO: replace with ice, locals should never exist before its definition.
+        return Inference{singletonTypes->errorRecoveryType()}; // TODO: replace with ice, locals should never exist before its definition.
 
-    return *resultTy;
+    return Inference{*resultTy};
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprGlobal* global)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprGlobal* global)
 {
     if (std::optional<TypeId> ty = scope->lookup(global->name))
-        return *ty;
+        return Inference{*ty};
 
     /* prepopulateGlobalScope() has already added all global functions to the environment by this point, so any
      * global that is not already in-scope is definitely an unknown symbol.
      */
     reportError(global->location, UnknownSymbol{global->name.value});
-    return singletonTypes->errorRecoveryType();
+    return Inference{singletonTypes->errorRecoveryType()};
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName* indexName)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName* indexName)
 {
-    TypeId obj = check(scope, indexName->expr);
+    TypeId obj = check(scope, indexName->expr).ty;
     TypeId result = freshType(scope);
 
     TableTypeVar::Props props{{indexName->index.value, Property{result}}};
@@ -1065,13 +1086,13 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexName* in
 
     addConstraint(scope, indexName->expr->location, SubtypeConstraint{obj, expectedTableType});
 
-    return result;
+    return Inference{result};
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr* indexExpr)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr* indexExpr)
 {
-    TypeId obj = check(scope, indexExpr->expr);
-    TypeId indexType = check(scope, indexExpr->index);
+    TypeId obj = check(scope, indexExpr->expr).ty;
+    TypeId indexType = check(scope, indexExpr->index).ty;
 
     TypeId result = freshType(scope);
 
@@ -1081,61 +1102,49 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIndexExpr* in
 
     addConstraint(scope, indexExpr->expr->location, SubtypeConstraint{obj, tableType});
 
-    return result;
+    return Inference{result};
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprUnary* unary)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprUnary* unary)
 {
-    TypeId operandType = check_(scope, unary);
+    TypeId operandType = check(scope, unary->expr).ty;
     TypeId resultType = arena->addType(BlockedTypeVar{});
     addConstraint(scope, unary->location, UnaryConstraint{unary->op, operandType, resultType});
-    return resultType;
+    return Inference{resultType};
 }
 
-TypeId ConstraintGraphBuilder::check_(const ScopePtr& scope, AstExprUnary* unary)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType)
 {
-    if (unary->op == AstExprUnary::Not)
-    {
-        TypeId ty = check(scope, unary->expr, std::nullopt);
-
-        return ty;
-    }
-
-    return check(scope, unary->expr);
-}
-
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType)
-{
-    TypeId leftType = check(scope, binary->left, expectedType);
-    TypeId rightType = check(scope, binary->right, expectedType);
+    TypeId leftType = check(scope, binary->left, expectedType).ty;
+    TypeId rightType = check(scope, binary->right, expectedType).ty;
 
     TypeId resultType = arena->addType(BlockedTypeVar{});
     addConstraint(scope, binary->location, BinaryConstraint{binary->op, leftType, rightType, resultType});
-    return resultType;
+    return Inference{resultType};
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
 {
     check(scope, ifElse->condition);
 
-    TypeId thenType = check(scope, ifElse->trueExpr, expectedType);
-    TypeId elseType = check(scope, ifElse->falseExpr, expectedType);
+    TypeId thenType = check(scope, ifElse->trueExpr, expectedType).ty;
+    TypeId elseType = check(scope, ifElse->falseExpr, expectedType).ty;
 
     if (ifElse->hasElse)
     {
         TypeId resultType = expectedType ? *expectedType : freshType(scope);
         addConstraint(scope, ifElse->trueExpr->location, SubtypeConstraint{thenType, resultType});
         addConstraint(scope, ifElse->falseExpr->location, SubtypeConstraint{elseType, resultType});
-        return resultType;
+        return Inference{resultType};
     }
 
-    return thenType;
+    return Inference{thenType};
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert)
 {
     check(scope, typeAssert->expr, std::nullopt);
-    return resolveType(scope, typeAssert->annotation);
+    return Inference{resolveType(scope, typeAssert->annotation)};
 }
 
 TypePackId ConstraintGraphBuilder::checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs)
@@ -1286,22 +1295,22 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
 
     auto dottedPath = extractDottedName(expr);
     if (!dottedPath)
-        return check(scope, expr);
+        return check(scope, expr).ty;
     const auto [sym, segments] = std::move(*dottedPath);
 
     if (!sym.local)
-        return check(scope, expr);
+        return check(scope, expr).ty;
 
     auto lookupResult = scope->lookupEx(sym);
     if (!lookupResult)
-        return check(scope, expr);
+        return check(scope, expr).ty;
     const auto [ty, symbolScope] = std::move(*lookupResult);
 
     TypeId replaceTy = arena->freshType(scope.get());
 
     std::optional<TypeId> updatedType = updateTheTableType(arena, ty, segments, replaceTy);
     if (!updatedType)
-        return check(scope, expr);
+        return check(scope, expr).ty;
 
     std::optional<DefId> def = dfg->getDef(sym);
     LUAU_ASSERT(def);
@@ -1310,7 +1319,7 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
     return replaceTy;
 }
 
-TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType)
+Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType)
 {
     TypeId ty = arena->addType(TableTypeVar{});
     TableTypeVar* ttv = getMutable<TableTypeVar>(ty);
@@ -1344,16 +1353,14 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* expr, 
             }
         }
 
-        TypeId itemTy = check(scope, item.value, expectedValueType);
-        if (get<ErrorTypeVar>(follow(itemTy)))
-            return ty;
+        TypeId itemTy = check(scope, item.value, expectedValueType).ty;
 
         if (item.key)
         {
             // Even though we don't need to use the type of the item's key if
             // it's a string constant, we still want to check it to populate
             // astTypes.
-            TypeId keyTy = check(scope, item.key);
+            TypeId keyTy = check(scope, item.key).ty;
 
             if (AstExprConstantString* key = item.key->as<AstExprConstantString>())
             {
@@ -1373,7 +1380,7 @@ TypeId ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* expr, 
         }
     }
 
-    return ty;
+    return Inference{ty};
 }
 
 ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionSignature(const ScopePtr& parent, AstExprFunction* fn)
@@ -1541,9 +1548,18 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
             }
         }
 
-        std::optional<TypeFun> alias = scope->lookupType(ref->name.value);
+        std::optional<TypeFun> alias;
 
-        if (alias.has_value() || ref->prefix.has_value())
+        if (ref->prefix.has_value())
+        {
+            alias = scope->lookupImportedType(ref->prefix->value, ref->name.value);
+        }
+        else
+        {
+            alias = scope->lookupType(ref->name.value);
+        }
+
+        if (alias.has_value())
         {
             // If the alias is not generic, we don't need to set up a blocked
             // type and an instantiation constraint.
@@ -1586,7 +1602,11 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         }
         else
         {
-            reportError(ty->location, UnknownSymbol{ref->name.value, UnknownSymbol::Context::Type});
+            std::string typeName;
+            if (ref->prefix)
+                typeName = std::string(ref->prefix->value) + ".";
+            typeName += ref->name.value;
+
             result = singletonTypes->errorRecoveryType();
         }
     }
@@ -1685,7 +1705,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
     else if (auto tof = ty->as<AstTypeTypeof>())
     {
         // TODO: Recursion limit.
-        TypeId exprType = check(scope, tof->expr);
+        TypeId exprType = check(scope, tof->expr).ty;
         result = exprType;
     }
     else if (auto unionAnnotation = ty->as<AstTypeUnion>())
@@ -1694,7 +1714,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         for (AstType* part : unionAnnotation->types)
         {
             // TODO: Recursion limit.
-            parts.push_back(resolveType(scope, part));
+            parts.push_back(resolveType(scope, part, topLevel));
         }
 
         result = arena->addType(UnionTypeVar{parts});
@@ -1705,7 +1725,7 @@ TypeId ConstraintGraphBuilder::resolveType(const ScopePtr& scope, AstType* ty, b
         for (AstType* part : intersectionAnnotation->types)
         {
             // TODO: Recursion limit.
-            parts.push_back(resolveType(scope, part));
+            parts.push_back(resolveType(scope, part, topLevel));
         }
 
         result = arena->addType(IntersectionTypeVar{parts});
@@ -1795,10 +1815,7 @@ std::vector<std::pair<Name, GenericTypeDefinition>> ConstraintGraphBuilder::crea
         if (generic.defaultValue)
             defaultTy = resolveType(scope, generic.defaultValue);
 
-        result.push_back({generic.name.value, GenericTypeDefinition{
-                                                  genericTy,
-                                                  defaultTy,
-                                              }});
+        result.push_back({generic.name.value, GenericTypeDefinition{genericTy, defaultTy}});
     }
 
     return result;
@@ -1816,19 +1833,17 @@ std::vector<std::pair<Name, GenericTypePackDefinition>> ConstraintGraphBuilder::
         if (generic.defaultValue)
             defaultTy = resolveTypePack(scope, generic.defaultValue);
 
-        result.push_back({generic.name.value, GenericTypePackDefinition{
-                                                  genericTy,
-                                                  defaultTy,
-                                              }});
+        result.push_back({generic.name.value, GenericTypePackDefinition{genericTy, defaultTy}});
     }
 
     return result;
 }
 
-TypeId ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location location, TypePackId tp)
+Inference ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location location, InferencePack pack)
 {
+    auto [tp] = pack;
     if (auto f = first(tp))
-        return *f;
+        return Inference{*f};
 
     TypeId typeResult = freshType(scope);
     TypePack onePack{{typeResult}, freshTypePack(scope)};
@@ -1836,7 +1851,7 @@ TypeId ConstraintGraphBuilder::flattenPack(const ScopePtr& scope, Location locat
 
     addConstraint(scope, location, PackSubtypeConstraint{tp, oneTypePack});
 
-    return typeResult;
+    return Inference{typeResult};
 }
 
 void ConstraintGraphBuilder::reportError(Location location, TypeErrorData err)

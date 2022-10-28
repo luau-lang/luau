@@ -347,7 +347,7 @@ public:
     AstType* operator()(const NegationTypeVar& ntv)
     {
         // FIXME: do the same thing we do with ErrorTypeVar
-        throw std::runtime_error("Cannot convert NegationTypeVar into AstNode");
+        throwRuntimeError("Cannot convert NegationTypeVar into AstNode");
     }
 
 private:
