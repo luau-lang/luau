@@ -3,6 +3,7 @@
 
 #include "Luau/UnwindBuilder.h"
 
+#include "CodeGenUtils.h"
 #include "CustomExecUtils.h"
 #include "Fallbacks.h"
 
@@ -13,13 +14,9 @@
 #include "lvm.h"
 
 #include <math.h>
+#include <string.h>
 
 #define CODEGEN_SET_FALLBACK(op, flags) data.context.fallback[op] = {execute_##op, flags}
-
-static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
-{
-    return -1;
-}
 
 namespace Luau
 {
@@ -42,11 +39,7 @@ void initFallbackTable(NativeState& data)
     CODEGEN_SET_FALLBACK(LOP_NEWCLOSURE, 0);
     CODEGEN_SET_FALLBACK(LOP_NAMECALL, 0);
     CODEGEN_SET_FALLBACK(LOP_CALL, kFallbackUpdateCi | kFallbackCheckInterrupt);
-    CODEGEN_SET_FALLBACK(LOP_RETURN, kFallbackUpdateCi | kFallbackCheckInterrupt);
     CODEGEN_SET_FALLBACK(LOP_FORGPREP, kFallbackUpdatePc);
-    CODEGEN_SET_FALLBACK(LOP_FORGLOOP, kFallbackUpdatePc | kFallbackCheckInterrupt);
-    CODEGEN_SET_FALLBACK(LOP_FORGPREP_INEXT, kFallbackUpdatePc);
-    CODEGEN_SET_FALLBACK(LOP_FORGPREP_NEXT, kFallbackUpdatePc);
     CODEGEN_SET_FALLBACK(LOP_GETVARARGS, 0);
     CODEGEN_SET_FALLBACK(LOP_DUPCLOSURE, 0);
     CODEGEN_SET_FALLBACK(LOP_PREPVARARGS, 0);
@@ -62,12 +55,8 @@ void initFallbackTable(NativeState& data)
 
 void initHelperFunctions(NativeState& data)
 {
-    static_assert(sizeof(data.context.luauF_table) / sizeof(data.context.luauF_table[0]) == sizeof(luauF_table) / sizeof(luauF_table[0]),
-        "fast call tables are not of the same length");
-
-    // Replace missing fast call functions with an empty placeholder that forces LOP_CALL fallback
-    for (size_t i = 0; i < sizeof(data.context.luauF_table) / sizeof(data.context.luauF_table[0]); i++)
-        data.context.luauF_table[i] = luauF_table[i] ? luauF_table[i] : luauF_missing;
+    static_assert(sizeof(data.context.luauF_table) == sizeof(luauF_table), "fastcall tables are not of the same length");
+    memcpy(data.context.luauF_table, luauF_table, sizeof(luauF_table));
 
     data.context.luaV_lessthan = luaV_lessthan;
     data.context.luaV_lessequal = luaV_lessequal;
@@ -93,6 +82,10 @@ void initHelperFunctions(NativeState& data)
     data.context.luaF_close = luaF_close;
 
     data.context.libm_pow = pow;
+
+    data.context.forgLoopNodeIter = forgLoopNodeIter;
+    data.context.forgLoopNonTableFallback = forgLoopNonTableFallback;
+    data.context.forgPrepXnextFallback = forgPrepXnextFallback;
 }
 
 } // namespace CodeGen

@@ -61,7 +61,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         {
             std::optional<TypeId> ty = utv->scope->lookup(utv->def);
             if (!ty)
-                throw std::runtime_error("UseTypeVar must map to another TypeId");
+                throwRuntimeError("UseTypeVar must map to another TypeId");
             return *ty;
         }
         else
@@ -73,7 +73,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         {
             TypeId res = ltv->thunk();
             if (get<LazyTypeVar>(res))
-                throw std::runtime_error("Lazy TypeVar cannot resolve to another Lazy TypeVar");
+                throwRuntimeError("Lazy TypeVar cannot resolve to another Lazy TypeVar");
 
             *asMutable(ty) = BoundTypeVar(res);
         }
@@ -111,7 +111,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
                 cycleTester = nullptr;
 
             if (t == cycleTester)
-                throw std::runtime_error("Luau::follow detected a TypeVar cycle!!");
+                throwRuntimeError("Luau::follow detected a TypeVar cycle!!");
         }
     }
 }
@@ -946,7 +946,7 @@ void persist(TypeId ty)
             queue.push_back(mtv->table);
             queue.push_back(mtv->metatable);
         }
-        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t))
+        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t) || get<NegationTypeVar>(t))
         {
         }
         else

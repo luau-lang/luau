@@ -624,15 +624,18 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_with_a_singleton_argument")
     CHECK_EQ("{string | string}", toString(requireType("t")));
 }
 
-struct NormalizeFixture : Fixture
+namespace
+{
+struct IsSubtypeFixture : Fixture
 {
     bool isSubtype(TypeId a, TypeId b)
     {
         return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
     }
 };
+}
 
-TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_functions_of_different_arities")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection_of_functions_of_different_arities")
 {
     check(R"(
         type A = (any) -> ()
@@ -653,7 +656,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "intersection_of_functions_of_different_arit
     CHECK("((any) -> ()) & ((any, any) -> ())" == toString(requireType("t")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity")
 {
     check(R"(
         local a: (number) -> ()
@@ -676,7 +679,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity")
     CHECK(!isSubtype(b, c));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity_but_optional_parameters")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity_but_optional_parameters")
 {
     /*
      * (T0..TN) <: (T0..TN, A?)
@@ -736,7 +739,7 @@ TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity_but_option
     // CHECK(!isSubtype(b, c));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "functions_with_mismatching_arity_but_any_is_an_optional_param")
+TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_with_mismatching_arity_but_any_is_an_optional_param")
 {
     check(R"(
         local a: (number?) -> ()

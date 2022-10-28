@@ -23,7 +23,6 @@ LUAU_FASTFLAGVARIABLE(LuauErrorDoubleHexPrefix, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
 LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
-LUAU_FASTFLAGVARIABLE(LuauTypeAnnotationLocationChange, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
 
@@ -164,15 +163,16 @@ ParseResult Parser::parse(const char* buffer, size_t bufferSize, AstNameTable& n
     try
     {
         AstStatBlock* root = p.parseChunk();
+        size_t lines = p.lexer.current().location.end.line + (bufferSize > 0 && buffer[bufferSize - 1] != '\n');
 
-        return ParseResult{root, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations)};
+        return ParseResult{root, lines, std::move(p.hotcomments), std::move(p.parseErrors), std::move(p.commentLocations)};
     }
     catch (ParseError& err)
     {
         // when catching a fatal error, append it to the list of non-fatal errors and return
         p.parseErrors.push_back(err);
 
-        return ParseResult{nullptr, {}, p.parseErrors};
+        return ParseResult{nullptr, 0, {}, p.parseErrors};
     }
 }
 
@@ -811,9 +811,8 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
 
     if (args.size() == 0 || args[0].name.name != "self" || args[0].annotation != nullptr)
     {
-        return AstDeclaredClassProp{fnName.name,
-            reportTypeAnnotationError(Location(start, end), {}, /*isMissing*/ false, "'self' must be present as the unannotated first parameter"),
-            true};
+        return AstDeclaredClassProp{
+            fnName.name, reportTypeAnnotationError(Location(start, end), {}, "'self' must be present as the unannotated first parameter"), true};
     }
 
     // Skip the first index.
@@ -824,8 +823,7 @@ AstDeclaredClassProp Parser::parseDeclaredClassMethod()
         if (args[i].annotation)
             vars.push_back(args[i].annotation);
         else
-            vars.push_back(reportTypeAnnotationError(
-                Location(start, end), {}, /*isMissing*/ false, "All declaration parameters aside from 'self' must be annotated"));
+            vars.push_back(reportTypeAnnotationError(Location(start, end), {}, "All declaration parameters aside from 'self' must be annotated"));
     }
 
     if (vararg && !varargAnnotation)
@@ -1537,7 +1535,7 @@ AstType* Parser::parseTypeAnnotation(TempVector<AstType*>& parts, const Location
 
     if (isUnion && isIntersection)
     {
-        return reportTypeAnnotationError(Location(begin, parts.back()->location), copy(parts), /*isMissing*/ false,
+        return reportTypeAnnotationError(Location(begin, parts.back()->location), copy(parts),
             "Mixing union and intersection types is not allowed; consider wrapping in parentheses.");
     }
 
@@ -1623,18 +1621,18 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
             return {allocator.alloc<AstTypeSingletonString>(start, svalue)};
         }
         else
-            return {reportTypeAnnotationError(start, {}, /*isMissing*/ false, "String literal contains malformed escape sequence")};
+            return {reportTypeAnnotationError(start, {}, "String literal contains malformed escape sequence")};
     }
     else if (lexer.current().type == Lexeme::InterpStringBegin || lexer.current().type == Lexeme::InterpStringSimple)
     {
         parseInterpString();
 
-        return {reportTypeAnnotationError(start, {}, /*isMissing*/ false, "Interpolated string literals cannot be used as types")};
+        return {reportTypeAnnotationError(start, {}, "Interpolated string literals cannot be used as types")};
     }
     else if (lexer.current().type == Lexeme::BrokenString)
     {
         nextLexeme();
-        return {reportTypeAnnotationError(start, {}, /*isMissing*/ false, "Malformed string")};
+        return {reportTypeAnnotationError(start, {}, "Malformed string")};
     }
     else if (lexer.current().type == Lexeme::Name)
     {
@@ -1693,33 +1691,20 @@ AstTypeOrPack Parser::parseSimpleTypeAnnotation(bool allowPack)
     {
         nextLexeme();
 
-        return {reportTypeAnnotationError(start, {}, /*isMissing*/ false,
+        return {reportTypeAnnotationError(start, {},
                     "Using 'function' as a type annotation is not supported, consider replacing with a function type annotation e.g. '(...any) -> "
                     "...any'"),
             {}};
     }
     else
     {
-        if (FFlag::LuauTypeAnnotationLocationChange)
-        {
-            // For a missing type annotation, capture 'space' between last token and the next one
-            Location astErrorlocation(lexer.previousLocation().end, start.begin);
-            // The parse error includes the next lexeme to make it easier to display where the error is (e.g. in an IDE or a CLI error message).
-            // Including the current lexeme also makes the parse error consistent with other parse errors returned by Luau.
-            Location parseErrorLocation(lexer.previousLocation().end, start.end);
-            return {
-                reportMissingTypeAnnotationError(parseErrorLocation, astErrorlocation, "Expected type, got %s", lexer.current().toString().c_str()),
-                {}};
-        }
-        else
-        {
-            Location location = lexer.current().location;
-
-            // For a missing type annotation, capture 'space' between last token and the next one
-            location = Location(lexer.previousLocation().end, lexer.current().location.begin);
-
-            return {reportTypeAnnotationError(location, {}, /*isMissing*/ true, "Expected type, got %s", lexer.current().toString().c_str()), {}};
-        }
+        // For a missing type annotation, capture 'space' between last token and the next one
+        Location astErrorlocation(lexer.previousLocation().end, start.begin);
+        // The parse error includes the next lexeme to make it easier to display where the error is (e.g. in an IDE or a CLI error message).
+        // Including the current lexeme also makes the parse error consistent with other parse errors returned by Luau.
+        Location parseErrorLocation(lexer.previousLocation().end, start.end);
+        return {
+            reportMissingTypeAnnotationError(parseErrorLocation, astErrorlocation, "Expected type, got %s", lexer.current().toString().c_str()), {}};
     }
 }
 
@@ -3033,27 +3018,18 @@ AstExprError* Parser::reportExprError(const Location& location, const AstArray<A
     return allocator.alloc<AstExprError>(location, expressions, unsigned(parseErrors.size() - 1));
 }
 
-AstTypeError* Parser::reportTypeAnnotationError(const Location& location, const AstArray<AstType*>& types, bool isMissing, const char* format, ...)
+AstTypeError* Parser::reportTypeAnnotationError(const Location& location, const AstArray<AstType*>& types, const char* format, ...)
 {
-    if (FFlag::LuauTypeAnnotationLocationChange)
-    {
-        // Missing type annotations should be using `reportMissingTypeAnnotationError` when LuauTypeAnnotationLocationChange is enabled
-        // Note: `isMissing` can be removed once FFlag::LuauTypeAnnotationLocationChange is removed since it will always be true.
-        LUAU_ASSERT(!isMissing);
-    }
-
     va_list args;
     va_start(args, format);
     report(location, format, args);
     va_end(args);
 
-    return allocator.alloc<AstTypeError>(location, types, isMissing, unsigned(parseErrors.size() - 1));
+    return allocator.alloc<AstTypeError>(location, types, false, unsigned(parseErrors.size() - 1));
 }
 
 AstTypeError* Parser::reportMissingTypeAnnotationError(const Location& parseErrorLocation, const Location& astErrorLocation, const char* format, ...)
 {
-    LUAU_ASSERT(FFlag::LuauTypeAnnotationLocationChange);
-
     va_list args;
     va_start(args, format);
     report(parseErrorLocation, format, args);

@@ -96,6 +96,7 @@ static int luauF_atan(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 }
 
 LUAU_FASTMATH_BEGIN
+LUAU_DISPATCH_SSE41
 static int luauF_ceil(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -159,6 +160,7 @@ static int luauF_exp(lua_State* L, StkId res, TValue* arg0, int nresults, StkId 
 }
 
 LUAU_FASTMATH_BEGIN
+LUAU_DISPATCH_SSE41
 static int luauF_floor(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -936,6 +938,7 @@ static int luauF_sign(lua_State* L, StkId res, TValue* arg0, int nresults, StkId
 }
 
 LUAU_FASTMATH_BEGIN
+LUAU_DISPATCH_SSE41
 static int luauF_round(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
 {
     if (nparams >= 1 && nresults <= 1 && ttisnumber(arg0))
@@ -1239,7 +1242,12 @@ static int luauF_setmetatable(lua_State* L, StkId res, TValue* arg0, int nresult
     return -1;
 }
 
-luau_FastFunction luauF_table[256] = {
+static int luauF_missing(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams)
+{
+    return -1;
+}
+
+const luau_FastFunction luauF_table[256] = {
     NULL,
     luauF_assert,
 
@@ -1317,4 +1325,20 @@ luau_FastFunction luauF_table[256] = {
 
     luauF_getmetatable,
     luauF_setmetatable,
+
+    // When adding builtins, add them above this line; what follows is 64 "dummy" entries with luauF_missing fallback.
+    // This is important so that older versions of the runtime that don't support newer builtins automatically fall back via luauF_missing.
+    // Given the builtin addition velocity this should always provide a larger compatibility window than bytecode versions suggest.
+#define MISSING8 luauF_missing, luauF_missing, luauF_missing, luauF_missing, luauF_missing, luauF_missing, luauF_missing, luauF_missing
+
+    MISSING8,
+    MISSING8,
+    MISSING8,
+    MISSING8,
+    MISSING8,
+    MISSING8,
+    MISSING8,
+    MISSING8,
+
+#undef MISSING8
 };

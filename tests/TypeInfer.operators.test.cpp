@@ -434,15 +434,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
 {
     CheckResult result = check(R"(
         --!strict
-        local foo = {
-            value = 10
-        }
+        local foo
         local mt = {}
-        setmetatable(foo, mt)
 
         mt.__unm = function(val: typeof(foo)): string
-            return val.value .. "test"
+            return tostring(val.value) .. "test"
         end
+
+        foo = setmetatable({
+            value = 10
+        }, mt)
 
         local a = -foo
 
@@ -459,24 +460,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus")
     CHECK_EQ("string", toString(requireType("a")));
     CHECK_EQ("number", toString(requireType("b")));
 
-    GenericError* gen = get<GenericError>(result.errors[0]);
-    REQUIRE_EQ(gen->message, "Unary operator '-' not supported by type 'bar'");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK(toString(result.errors[0]) == "Type '{ value: number }' could not be converted into 'number'");
+    }
+    else
+    {
+        GenericError* gen = get<GenericError>(result.errors[0]);
+        REQUIRE(gen);
+        REQUIRE_EQ(gen->message, "Unary operator '-' not supported by type 'bar'");
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_minus_error")
 {
     CheckResult result = check(R"(
         --!strict
-        local foo = {
-            value = 10
-        }
-
         local mt = {}
-        setmetatable(foo, mt)
 
         mt.__unm = function(val: boolean): string
             return "test"
         end
+
+        local foo = setmetatable({
+            value = 10
+        }, mt)
 
         local a = -foo
     )");
@@ -494,15 +502,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typecheck_unary_len_error")
 {
     CheckResult result = check(R"(
         --!strict
-        local foo = {
-            value = 10
-        }
         local mt = {}
-        setmetatable(foo, mt)
 
-        mt.__len = function(val: any): string
+        mt.__len = function(val): string
             return "test"
         end
+
+        local foo = setmetatable({
+            value = 10,
+        }, mt)
 
         local a = #foo
     )");

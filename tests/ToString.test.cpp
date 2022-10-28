@@ -512,9 +512,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
 
     TableTypeVar* tMeta5 = getMutable<TableTypeVar>(tMeta4->props["__index"].type);
     REQUIRE(tMeta5);
+    REQUIRE(tMeta5->props.count("one") > 0);
 
     TableTypeVar* tMeta6 = getMutable<TableTypeVar>(tMeta3->table);
     REQUIRE(tMeta6);
+    REQUIRE(tMeta6->props.count("two") > 0);
 
     ToStringResult oneResult = toStringDetailed(tMeta5->props["one"].type, opts);
     if (!FFlag::LuauFixNameMaps)

@@ -348,8 +348,6 @@ TEST_CASE_FIXTURE(Fixture, "prop_access_on_any_with_other_options")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "union_of_types_regression_test")
 {
-    ScopedFastFlag LuauUnionOfTypesFollow{"LuauUnionOfTypesFollow", true};
-
     CheckResult result = check(R"(
 --!strict
 local stat

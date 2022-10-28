@@ -117,7 +117,7 @@ public:
     std::string dumpEverything() const;
     std::string dumpSourceRemarks() const;
 
-    void annotateInstruction(std::string& result, uint32_t fid, uint32_t instid) const;
+    void annotateInstruction(std::string& result, uint32_t fid, uint32_t instpos) const;
 
     static uint32_t getImportId(int32_t id0);
     static uint32_t getImportId(int32_t id0, int32_t id1);
