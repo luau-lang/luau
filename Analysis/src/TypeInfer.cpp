@@ -355,6 +355,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     unifierState.skipCacheForType.clear();
 
     duplicateTypeAliases.clear();
+    incorrectClassDefinitions.clear();
 
     return std::move(currentModule);
 }
@@ -521,6 +522,10 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
         {
             prototype(scope, *typealias, subLevel);
             ++subLevel;
+        }
+        else if (const auto& declaredClass = stat->as<AstStatDeclareClass>())
+        {
+            prototype(scope, *declaredClass);
         }
     }
 
@@ -1626,8 +1631,10 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
     }
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
+void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
+    Name className(declaredClass.name.value);
+
     std::optional<TypeId> superTy = std::nullopt;
     if (declaredClass.superName)
     {
@@ -1637,6 +1644,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
         if (!lookupType)
         {
             reportError(declaredClass.location, UnknownSymbol{superName, UnknownSymbol::Type});
+            incorrectClassDefinitions.insert(&declaredClass);
             return;
         }
 
@@ -1648,22 +1656,42 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
         {
             reportError(declaredClass.location,
                 GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredClass.name.value)});
-
+            incorrectClassDefinitions.insert(&declaredClass);
             return;
         }
     }
 
-    Name className(declaredClass.name.value);
-
     TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
     ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
-
     TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
-    TableTypeVar* metatable = getMutable<TableTypeVar>(metaTy);
 
     ctv->metatable = metaTy;
-
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+}
+
+void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
+{
+    Name className(declaredClass.name.value);
+
+    // Don't bother checking if the class definition was incorrect
+    if (incorrectClassDefinitions.find(&declaredClass))
+        return;
+
+    std::optional<TypeFun> binding;
+    if (auto it = scope->exportedTypeBindings.find(className); it != scope->exportedTypeBindings.end())
+        binding = it->second;
+
+    // This class definition must have been `prototype()`d first.
+    if (!binding)
+        ice("Not predeclared");
+
+    TypeId classTy = binding->type;
+    ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+
+    if (!ctv->metatable)
+        ice("No metatable for declared class");
+
+    TableTypeVar* metatable = getMutable<TableTypeVar>(*ctv->metatable);
 
     for (const AstDeclaredClassProp& prop : declaredClass.props)
     {
