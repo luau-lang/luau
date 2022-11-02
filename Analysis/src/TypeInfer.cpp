@@ -47,6 +47,7 @@ LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauArgMismatchReportFunctionLocation, false)
+LUAU_FASTFLAGVARIABLE(LuauDeclareClassPrototype, false)
 
 namespace Luau
 {
@@ -523,7 +524,7 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
             prototype(scope, *typealias, subLevel);
             ++subLevel;
         }
-        else if (const auto& declaredClass = stat->as<AstStatDeclareClass>())
+        else if (const auto& declaredClass = stat->as<AstStatDeclareClass>(); FFlag::LuauDeclareClassPrototype && declaredClass)
         {
             prototype(scope, *declaredClass);
         }
@@ -1633,6 +1634,8 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
 
 void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
+    LUAU_ASSERT(FFlag::LuauDeclareClassPrototype);
+
     std::optional<TypeId> superTy = std::nullopt;
     if (declaredClass.superName)
     {
@@ -1671,75 +1674,166 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& de
 
 void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
-    Name className(declaredClass.name.value);
-
-    // Don't bother checking if the class definition was incorrect
-    if (incorrectClassDefinitions.find(&declaredClass))
-        return;
-
-    std::optional<TypeFun> binding;
-    if (auto it = scope->exportedTypeBindings.find(className); it != scope->exportedTypeBindings.end())
-        binding = it->second;
-
-    // This class definition must have been `prototype()`d first.
-    if (!binding)
-        ice("Not predeclared");
-
-    TypeId classTy = binding->type;
-    ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
-
-    if (!ctv->metatable)
-        ice("No metatable for declared class");
-
-    TableTypeVar* metatable = getMutable<TableTypeVar>(*ctv->metatable);
-
-    for (const AstDeclaredClassProp& prop : declaredClass.props)
+    if (FFlag::LuauDeclareClassPrototype)
     {
-        Name propName(prop.name.value);
-        TypeId propTy = resolveType(scope, *prop.ty);
+        Name className(declaredClass.name.value);
 
-        bool assignToMetatable = isMetamethod(propName);
-        Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+        // Don't bother checking if the class definition was incorrect
+        if (incorrectClassDefinitions.find(&declaredClass))
+            return;
 
-        // Function types always take 'self', but this isn't reflected in the
-        // parsed annotation. Add it here.
-        if (prop.isMethod)
+        std::optional<TypeFun> binding;
+        if (auto it = scope->exportedTypeBindings.find(className); it != scope->exportedTypeBindings.end())
+            binding = it->second;
+
+        // This class definition must have been `prototype()`d first.
+        if (!binding)
+            ice("Not predeclared");
+
+        TypeId classTy = binding->type;
+        ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+
+        if (!ctv->metatable)
+            ice("No metatable for declared class");
+
+        TableTypeVar* metatable = getMutable<TableTypeVar>(*ctv->metatable);
+        for (const AstDeclaredClassProp& prop : declaredClass.props)
         {
-            if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+            Name propName(prop.name.value);
+            TypeId propTy = resolveType(scope, *prop.ty);
+
+            bool assignToMetatable = isMetamethod(propName);
+            Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+
+            // Function types always take 'self', but this isn't reflected in the
+            // parsed annotation. Add it here.
+            if (prop.isMethod)
             {
-                ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
-                ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
-                ftv->hasSelf = true;
+                if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+                {
+                    ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
+                    ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
+                    ftv->hasSelf = true;
+                }
             }
-        }
 
-        if (assignTo.count(propName) == 0)
-        {
-            assignTo[propName] = {propTy};
-        }
-        else
-        {
-            TypeId currentTy = assignTo[propName].type;
-
-            // We special-case this logic to keep the intersection flat; otherwise we
-            // would create a ton of nested intersection types.
-            if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+            if (assignTo.count(propName) == 0)
             {
-                std::vector<TypeId> options = itv->parts;
-                options.push_back(propTy);
-                TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
-
-                assignTo[propName] = {newItv};
-            }
-            else if (get<FunctionTypeVar>(currentTy))
-            {
-                TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
-
-                assignTo[propName] = {intersection};
+                assignTo[propName] = {propTy};
             }
             else
             {
-                reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                TypeId currentTy = assignTo[propName].type;
+
+                // We special-case this logic to keep the intersection flat; otherwise we
+                // would create a ton of nested intersection types.
+                if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+                {
+                    std::vector<TypeId> options = itv->parts;
+                    options.push_back(propTy);
+                    TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
+
+                    assignTo[propName] = {newItv};
+                }
+                else if (get<FunctionTypeVar>(currentTy))
+                {
+                    TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
+
+                    assignTo[propName] = {intersection};
+                }
+                else
+                {
+                    reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                }
+            }
+        }
+    }
+    else
+    {
+        std::optional<TypeId> superTy = std::nullopt;
+        if (declaredClass.superName)
+        {
+            Name superName = Name(declaredClass.superName->value);
+            std::optional<TypeFun> lookupType = scope->lookupType(superName);
+
+            if (!lookupType)
+            {
+                reportError(declaredClass.location, UnknownSymbol{superName, UnknownSymbol::Type});
+                return;
+            }
+
+            // We don't have generic classes, so this assertion _should_ never be hit.
+            LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
+            superTy = lookupType->type;
+
+            if (!get<ClassTypeVar>(follow(*superTy)))
+            {
+                reportError(declaredClass.location, GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'",
+                                                        superName.c_str(), declaredClass.name.value)});
+                return;
+            }
+        }
+
+        Name className(declaredClass.name.value);
+
+        TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
+
+        ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+        TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
+        TableTypeVar* metatable = getMutable<TableTypeVar>(metaTy);
+
+        ctv->metatable = metaTy;
+
+        scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+
+        for (const AstDeclaredClassProp& prop : declaredClass.props)
+        {
+            Name propName(prop.name.value);
+            TypeId propTy = resolveType(scope, *prop.ty);
+
+            bool assignToMetatable = isMetamethod(propName);
+            Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+
+            // Function types always take 'self', but this isn't reflected in the
+            // parsed annotation. Add it here.
+            if (prop.isMethod)
+            {
+                if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+                {
+                    ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
+                    ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
+                    ftv->hasSelf = true;
+                }
+            }
+
+            if (assignTo.count(propName) == 0)
+            {
+                assignTo[propName] = {propTy};
+            }
+            else
+            {
+                TypeId currentTy = assignTo[propName].type;
+
+                // We special-case this logic to keep the intersection flat; otherwise we
+                // would create a ton of nested intersection types.
+                if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+                {
+                    std::vector<TypeId> options = itv->parts;
+                    options.push_back(propTy);
+                    TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
+
+                    assignTo[propName] = {newItv};
+                }
+                else if (get<FunctionTypeVar>(currentTy))
+                {
+                    TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
+
+                    assignTo[propName] = {intersection};
+                }
+                else
+                {
+                    reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                }
             }
         }
     }

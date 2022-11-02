@@ -398,6 +398,8 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
 
 TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
 {
+    ScopedFastFlag LuauDeclareClassPrototype("LuauDeclareClassPrototype", true);
+
     unfreeze(typeChecker.globalTypes);
     LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
         declare class Channel
