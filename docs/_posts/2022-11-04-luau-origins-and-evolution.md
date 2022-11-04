@@ -4,7 +4,7 @@ title:  "Luau origins and evolution"
 author: Arseny Kapoulkine
 ---
 
-At the heart of Roblox technology lies Luau, a scripting language derived from Lua 5.1 that is being developed in house by a team of programming language experts.
+At the heart of Roblox technology lies [Luau](https://luau-lang.org), a scripting language derived from Lua 5.1 that is being [developed](https://github.com/Roblox/luau) by an internal team of programming language experts with the help of open source contributors.
 
 It powers all user-generated content on Roblox, providing access to a very rich set of APIs that allows manipulation of objects in the 3D world, backend API access, UI interaction and more. Hundreds of thousands of developers write code in Luau every month, with top experiences using hundreds of thousands of lines of code, adding up to hundreds of millions of lines of code across the platform. For many of them, it is the first programming language they learn, and one they spend the majority of their time programming in. Using a set of extended APIs developers also customize their workflows by writing plugins to Roblox Studio, where they work on their experiences, using an extended API surface to interact with all aspects of the editor.
 
