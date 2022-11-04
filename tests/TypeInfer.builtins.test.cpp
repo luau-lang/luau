@@ -8,7 +8,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -685,7 +684,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauSpecialTypesAsterisked)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("string", toString(requireType("foo")));
         CHECK_EQ("*error-type*", toString(requireType("bar")));
@@ -714,7 +713,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauSpecialTypesAsterisked)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("string", toString(requireType("foo")));
         CHECK_EQ("string", toString(requireType("bar")));
@@ -1016,10 +1015,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("d")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("d")));
+    CHECK_EQ("*error-type*", toString(requireType("d")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")

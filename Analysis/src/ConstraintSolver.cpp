@@ -440,8 +440,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*fcc, constraint);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
-    else if (auto rc = get<RefinementConstraint>(*constraint))
-        success = tryDispatch(*rc, constraint);
+    else if (auto sottc = get<SingletonOrTopTypeConstraint>(*constraint))
+        success = tryDispatch(*sottc, constraint);
     else
         LUAU_ASSERT(false);
 
@@ -1274,25 +1274,18 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const RefinementConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint)
 {
-    // TODO: Figure out exact details on when refinements need to be blocked.
-    // It's possible that it never needs to be, since we can just use intersection types with the discriminant type?
+    if (isBlocked(c.discriminantType))
+        return false;
 
-    if (!constraint->scope->parent)
-        iceReporter.ice("No parent scope");
+    TypeId followed = follow(c.discriminantType);
 
-    std::optional<TypeId> previousTy = constraint->scope->parent->lookup(c.def);
-    if (!previousTy)
-        iceReporter.ice("No previous type");
-
-    std::optional<TypeId> useTy = constraint->scope->lookup(c.def);
-    if (!useTy)
-        iceReporter.ice("The def is not bound to a type");
-
-    TypeId resultTy = follow(*useTy);
-    std::vector<TypeId> parts{*previousTy, c.discriminantType};
-    asMutable(resultTy)->ty.emplace<IntersectionTypeVar>(std::move(parts));
+    // `nil` is a singleton type too! There's only one value of type `nil`.
+    if (get<SingletonTypeVar>(followed) || isNil(followed))
+        *asMutable(c.resultType) = NegationTypeVar{c.discriminantType};
+    else
+        *asMutable(c.resultType) = BoundTypeVar{singletonTypes->unknownType};
 
     return true;
 }

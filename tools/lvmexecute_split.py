@@ -32,6 +32,9 @@ source = """// This file is part of the Luau programming language and is license
 """
 
 function = ""
+signature = ""
+
+includeInsts = ["LOP_NEWCLOSURE", "LOP_NAMECALL", "LOP_FORGPREP", "LOP_GETVARARGS", "LOP_DUPCLOSURE", "LOP_PREPVARARGS", "LOP_COVERAGE", "LOP_BREAK", "LOP_GETGLOBAL", "LOP_SETGLOBAL", "LOP_GETTABLEKS", "LOP_SETTABLEKS"]
 
 state = 0
 
@@ -44,7 +47,6 @@ for line in input:
         if match:
             inst = match[1]
             signature = "const Instruction* execute_" + inst + "(lua_State* L, const Instruction* pc, StkId base, TValue* k)"
-            header += signature + ";\n"
             function = signature + "\n"
             function += "{\n"
             function += "    [[maybe_unused]] Closure* cl = clvalue(L->ci->func);\n"
@@ -84,7 +86,10 @@ for line in input:
                 function = function[:-len(finalline)]
                 function += "    return pc;\n}\n"
 
-            source += function + "\n"
+            if inst in includeInsts:
+                header += signature + ";\n"
+                source += function + "\n"
+
             state = 0
 
     # skip LUA_CUSTOM_EXECUTION code blocks

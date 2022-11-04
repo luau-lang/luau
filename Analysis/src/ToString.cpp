@@ -10,12 +10,12 @@
 #include <algorithm>
 #include <stdexcept>
 
-LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauLvaluelessPath)
-LUAU_FASTFLAGVARIABLE(LuauSpecialTypesAsterisked, false)
+LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauFixNameMaps, false)
-LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
 LUAU_FASTFLAGVARIABLE(LuauFunctionReturnStringificationFixup, false)
+LUAU_FASTFLAGVARIABLE(LuauUnseeArrayTtv, false)
 
 /*
  * Prefix generic typenames with gen-
@@ -225,6 +225,20 @@ struct StringifierState
         result.name += s;
     }
 
+    void emitLevel(Scope* scope)
+    {
+        size_t count = 0;
+        for (Scope* s = scope; s; s = s->parent.get())
+            ++count;
+
+        emit(count);
+        emit("-");
+        char buffer[16];
+        uint32_t s = uint32_t(intptr_t(scope) & 0xFFFFFF);
+        snprintf(buffer, sizeof(buffer), "0x%x", s);
+        emit(buffer);
+    }
+
     void emit(TypeLevel level)
     {
         emit(std::to_string(level.level));
@@ -296,10 +310,7 @@ struct TypeVarStringifier
         if (tv->ty.valueless_by_exception())
         {
             state.result.error = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("* VALUELESS BY EXCEPTION *");
-            else
-                state.emit("< VALUELESS BY EXCEPTION >");
+            state.emit("* VALUELESS BY EXCEPTION *");
             return;
         }
 
@@ -376,7 +387,10 @@ struct TypeVarStringifier
         if (FFlag::DebugLuauVerboseTypeNames)
         {
             state.emit("-");
-            state.emit(ftv.level);
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                state.emitLevel(ftv.scope);
+            else
+                state.emit(ftv.level);
         }
     }
 
@@ -398,6 +412,15 @@ struct TypeVarStringifier
         }
         else
             state.emit(state.getName(ty));
+
+        if (FFlag::DebugLuauVerboseTypeNames)
+        {
+            state.emit("-");
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                state.emitLevel(gtv.scope);
+            else
+                state.emit(gtv.level);
+        }
     }
 
     void operator()(TypeId, const BlockedTypeVar& btv)
@@ -433,6 +456,9 @@ struct TypeVarStringifier
         case PrimitiveTypeVar::Thread:
             state.emit("thread");
             return;
+        case PrimitiveTypeVar::Function:
+            state.emit("function");
+            return;
         default:
             LUAU_ASSERT(!"Unknown primitive type");
             throwRuntimeError("Unknown primitive type " + std::to_string(ptv.type));
@@ -461,10 +487,7 @@ struct TypeVarStringifier
         if (state.hasSeen(&ftv))
         {
             state.result.cycle = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("*CYCLE*");
-            else
-                state.emit("<CYCLE>");
+            state.emit("*CYCLE*");
             return;
         }
 
@@ -572,10 +595,7 @@ struct TypeVarStringifier
         if (state.hasSeen(&ttv))
         {
             state.result.cycle = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("*CYCLE*");
-            else
-                state.emit("<CYCLE>");
+            state.emit("*CYCLE*");
             return;
         }
 
@@ -709,10 +729,7 @@ struct TypeVarStringifier
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("*CYCLE*");
-            else
-                state.emit("<CYCLE>");
+            state.emit("*CYCLE*");
             return;
         }
 
@@ -779,10 +796,7 @@ struct TypeVarStringifier
         if (state.hasSeen(&uv))
         {
             state.result.cycle = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("*CYCLE*");
-            else
-                state.emit("<CYCLE>");
+            state.emit("*CYCLE*");
             return;
         }
 
@@ -827,10 +841,7 @@ struct TypeVarStringifier
     void operator()(TypeId, const ErrorTypeVar& tv)
     {
         state.result.error = true;
-        if (FFlag::LuauSpecialTypesAsterisked)
-            state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
-        else
-            state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
+        state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
     }
 
     void operator()(TypeId, const LazyTypeVar& ltv)
@@ -847,11 +858,6 @@ struct TypeVarStringifier
     void operator()(TypeId, const NeverTypeVar& ttv)
     {
         state.emit("never");
-    }
-
-    void operator()(TypeId ty, const UseTypeVar&)
-    {
-        stringify(follow(ty));
     }
 
     void operator()(TypeId, const NegationTypeVar& ntv)
@@ -906,10 +912,7 @@ struct TypePackStringifier
         if (tp->ty.valueless_by_exception())
         {
             state.result.error = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("* VALUELESS TP BY EXCEPTION *");
-            else
-                state.emit("< VALUELESS TP BY EXCEPTION >");
+            state.emit("* VALUELESS TP BY EXCEPTION *");
             return;
         }
 
@@ -932,10 +935,7 @@ struct TypePackStringifier
         if (state.hasSeen(&tp))
         {
             state.result.cycle = true;
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("*CYCLETP*");
-            else
-                state.emit("<CYCLETP>");
+            state.emit("*CYCLETP*");
             return;
         }
 
@@ -980,10 +980,7 @@ struct TypePackStringifier
     void operator()(TypePackId, const Unifiable::Error& error)
     {
         state.result.error = true;
-        if (FFlag::LuauSpecialTypesAsterisked)
-            state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
-        else
-            state.emit(FFlag::LuauUnknownAndNeverType ? "<error-type>" : "*unknown*");
+        state.emit(FFlag::LuauUnknownAndNeverType ? "*error-type*" : "*unknown*");
     }
 
     void operator()(TypePackId, const VariadicTypePack& pack)
@@ -991,10 +988,7 @@ struct TypePackStringifier
         state.emit("...");
         if (FFlag::DebugLuauVerboseTypeNames && pack.hidden)
         {
-            if (FFlag::LuauSpecialTypesAsterisked)
-                state.emit("*hidden*");
-            else
-                state.emit("<hidden>");
+            state.emit("*hidden*");
         }
         stringify(pack.ty);
     }
@@ -1029,7 +1023,10 @@ struct TypePackStringifier
         if (FFlag::DebugLuauVerboseTypeNames)
         {
             state.emit("-");
-            state.emit(pack.level);
+            if (FFlag::DebugLuauDeferredConstraintResolution)
+                state.emitLevel(pack.scope);
+            else
+                state.emit(pack.level);
         }
 
         state.emit("...");
@@ -1197,10 +1194,7 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
     {
         result.truncated = true;
 
-        if (FFlag::LuauSpecialTypesAsterisked)
-            result.name += "... *TRUNCATED*";
-        else
-            result.name += "... <TRUNCATED>";
+        result.name += "... *TRUNCATED*";
     }
 
     return result;
@@ -1270,10 +1264,7 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
 
     if (opts.maxTypeLength > 0 && result.name.length() > opts.maxTypeLength)
     {
-        if (FFlag::LuauSpecialTypesAsterisked)
-            result.name += "... *TRUNCATED*";
-        else
-            result.name += "... <TRUNCATED>";
+        result.name += "... *TRUNCATED*";
     }
 
     return result;
@@ -1516,9 +1507,12 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return tos(c.resultType, opts) + " ~ hasProp " + tos(c.subjectType, opts) + ", \"" + c.prop + "\"";
         }
-        else if constexpr (std::is_same_v<T, RefinementConstraint>)
+        else if constexpr (std::is_same_v<T, SingletonOrTopTypeConstraint>)
         {
-            return "TODO";
+            std::string result = tos(c.resultType, opts);
+            std::string discriminant = tos(c.discriminantType, opts);
+
+            return result + " ~ if isSingleton D then ~D else unknown where D = " + discriminant;
         }
         else
             static_assert(always_false_v<T>, "Non-exhaustive constraint switch");

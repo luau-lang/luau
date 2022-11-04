@@ -13,17 +13,17 @@ namespace
 struct NegationFixture : Fixture
 {
     TypeArena arena;
-    ScopedFastFlag sff[2] {
+    ScopedFastFlag sff[2]{
         {"LuauNegatedStringSingletons", true},
         {"LuauSubtypeNormalizer", true},
     };
 
     NegationFixture()
     {
-        registerNotType(*this, arena);
+        registerHiddenTypes(*this, arena);
     }
 };
-}
+} // namespace
 
 TEST_SUITE_BEGIN("Negations");
 

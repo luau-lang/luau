@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Luau/Ast.h"
+#include "Luau/Connective.h"
 #include "Luau/Constraint.h"
 #include "Luau/DataFlowGraphBuilder.h"
 #include "Luau/Module.h"
@@ -26,11 +27,13 @@ struct DcrLogger;
 struct Inference
 {
     TypeId ty = nullptr;
+    ConnectiveId connective = nullptr;
 
     Inference() = default;
 
-    explicit Inference(TypeId ty)
+    explicit Inference(TypeId ty, ConnectiveId connective = nullptr)
         : ty(ty)
+        , connective(connective)
     {
     }
 };
@@ -38,11 +41,13 @@ struct Inference
 struct InferencePack
 {
     TypePackId tp = nullptr;
+    std::vector<ConnectiveId> connectives;
 
     InferencePack() = default;
 
-    explicit InferencePack(TypePackId tp)
+    explicit InferencePack(TypePackId tp, const std::vector<ConnectiveId>& connectives = {})
         : tp(tp)
+        , connectives(connectives)
     {
     }
 };
@@ -73,6 +78,7 @@ struct ConstraintGraphBuilder
     // Defining scopes for AST nodes.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
     NotNull<const DataFlowGraph> dfg;
+    ConnectiveArena connectiveArena;
 
     int recursionCount = 0;
 
@@ -126,6 +132,8 @@ struct ConstraintGraphBuilder
      */
     NotNull<Constraint> addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c);
 
+    void applyRefinements(const ScopePtr& scope, Location location, ConnectiveId connective);
+
     /**
      * The entry point to the ConstraintGraphBuilder. This will construct a set
      * of scopes, constraints, and free types that can be solved later.
@@ -167,10 +175,10 @@ struct ConstraintGraphBuilder
      *      surrounding context.  Used to implement bidirectional type checking.
      * @return the type of the expression.
      */
-    Inference check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {});
+    Inference check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {}, bool forceSingleton = false);
 
-    Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType);
-    Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
+    Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
     Inference check(const ScopePtr& scope, AstExprLocal* local);
     Inference check(const ScopePtr& scope, AstExprGlobal* global);
     Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
@@ -180,6 +188,7 @@ struct ConstraintGraphBuilder
     Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
     Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
     Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+    std::tuple<TypeId, TypeId, ConnectiveId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
 
     TypePackId checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
 

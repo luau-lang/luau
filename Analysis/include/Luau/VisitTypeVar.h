@@ -155,10 +155,6 @@ struct GenericTypeVarVisitor
     {
         return visit(ty);
     }
-    virtual bool visit(TypeId ty, const UseTypeVar& utv)
-    {
-        return visit(ty);
-    }
     virtual bool visit(TypeId ty, const NegationTypeVar& ntv)
     {
         return visit(ty);
@@ -321,8 +317,6 @@ struct GenericTypeVarVisitor
                     traverse(a);
             }
         }
-        else if (auto utv = get<UseTypeVar>(ty))
-            visit(ty, *utv);
         else if (auto ntv = get<NegationTypeVar>(ty))
             visit(ty, *ntv);
         else if (!FFlag::LuauCompleteVisitor)

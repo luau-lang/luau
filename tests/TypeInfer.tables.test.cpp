@@ -17,7 +17,6 @@ using namespace Luau;
 LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -3272,11 +3271,12 @@ TEST_CASE_FIXTURE(Fixture, "invariant_table_properties_means_instantiating_table
 
     LUAU_REQUIRE_NO_ERRORS(result);
     // TODO: test behavior is wrong until we can re-enable the covariant requirement for instantiation in subtyping
-//     LUAU_REQUIRE_ERRORS(result);
-//     CHECK_EQ(toString(result.errors[0]), R"(Type 't' could not be converted into '{| m: (number) -> number |}'
-// caused by:
-//   Property 'm' is not compatible. Type '<a>(a) -> a' could not be converted into '(number) -> number'; different number of generic type parameters)");
-//     // this error message is not great since the underlying issue is that the context is invariant,
+    //     LUAU_REQUIRE_ERRORS(result);
+    //     CHECK_EQ(toString(result.errors[0]), R"(Type 't' could not be converted into '{| m: (number) -> number |}'
+    // caused by:
+    //   Property 'm' is not compatible. Type '<a>(a) -> a' could not be converted into '(number) -> number'; different number of generic type
+    //   parameters)");
+    //     // this error message is not great since the underlying issue is that the context is invariant,
     // and `(number) -> number` cannot be a subtype of `<a>(a) -> a`.
 }
 
@@ -3335,10 +3335,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tables_should_be_fully_populated")
 
     ToStringOptions opts;
     opts.exhaustive = true;
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("{ x: *error-type*, y: number }", toString(requireType("t"), opts));
-    else
-        CHECK_EQ("{ x: <error-type>, y: number }", toString(requireType("t"), opts));
+    CHECK_EQ("{ x: *error-type*, y: number }", toString(requireType("t"), opts));
 }
 
 TEST_SUITE_END();

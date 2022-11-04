@@ -34,7 +34,6 @@ inline bool luai_vecisnan(const float* a)
 }
 
 LUAU_FASTMATH_BEGIN
-LUAU_DISPATCH_SSE41
 inline double luai_nummod(double a, double b)
 {
     return a - floor(a / b) * b;

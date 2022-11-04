@@ -26,8 +26,6 @@ class UnwindBuilder;
 using FallbackFn = const Instruction*(lua_State* L, const Instruction* pc, StkId base, TValue* k);
 
 constexpr uint8_t kFallbackUpdatePc = 1 << 0;
-constexpr uint8_t kFallbackUpdateCi = 1 << 1;
-constexpr uint8_t kFallbackCheckInterrupt = 1 << 2;
 
 struct NativeFallback
 {
@@ -37,7 +35,8 @@ struct NativeFallback
 
 struct NativeProto
 {
-    uintptr_t* instTargets = nullptr;
+    uintptr_t entryTarget = 0;
+    uintptr_t* instTargets = nullptr; // TODO: NativeProto should be variable-size with all target embedded
 
     Proto* proto = nullptr;
     uint32_t location = 0;
@@ -85,6 +84,8 @@ struct NativeContext
     bool (*forgLoopNodeIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;
     bool (*forgLoopNonTableFallback)(lua_State* L, int insnA, int aux) = nullptr;
     void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
+    Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
+    void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
 };
 
 struct NativeState
