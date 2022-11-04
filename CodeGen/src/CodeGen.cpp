@@ -51,10 +51,15 @@ static void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers)
         build.logAppend("; exitNoContinueVm\n");
     helpers.exitNoContinueVm = build.setLabel();
     emitExit(build, /* continueInVm */ false);
+
+    if (build.logText)
+        build.logAppend("; continueCallInVm\n");
+    helpers.continueCallInVm = build.setLabel();
+    emitContinueCallInVm(build);
 }
 
-static int emitInst(
-    AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, LuauOpcode op, const Instruction* pc, int i, Label* labelarr, Label& fallback)
+static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, LuauOpcode op, const Instruction* pc, int i,
+    Label* labelarr, Label& fallback)
 {
     int skip = 0;
 
@@ -85,6 +90,9 @@ static int emitInst(
         break;
     case LOP_SETGLOBAL:
         emitInstSetGlobal(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_CALL:
+        emitInstCall(build, helpers, pc, i, labelarr);
         break;
     case LOP_RETURN:
         emitInstReturn(build, helpers, pc, i, labelarr);
@@ -123,19 +131,19 @@ static int emitInst(
         emitInstJumpIfEq(build, pc, i, labelarr, /* not_ */ false, fallback);
         break;
     case LOP_JUMPIFLE:
-        emitInstJumpIfCond(build, pc, i, labelarr, Condition::LessEqual, fallback);
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::LessEqual, fallback);
         break;
     case LOP_JUMPIFLT:
-        emitInstJumpIfCond(build, pc, i, labelarr, Condition::Less, fallback);
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::Less, fallback);
         break;
     case LOP_JUMPIFNOTEQ:
         emitInstJumpIfEq(build, pc, i, labelarr, /* not_ */ true, fallback);
         break;
     case LOP_JUMPIFNOTLE:
-        emitInstJumpIfCond(build, pc, i, labelarr, Condition::NotLessEqual, fallback);
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::NotLessEqual, fallback);
         break;
     case LOP_JUMPIFNOTLT:
-        emitInstJumpIfCond(build, pc, i, labelarr, Condition::NotLess, fallback);
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::NotLess, fallback);
         break;
     case LOP_JUMPX:
         emitInstJumpX(build, pc, i, labelarr);
@@ -291,19 +299,19 @@ static void emitInstFallback(AssemblyBuilderX64& build, NativeState& data, LuauO
         emitInstJumpIfEqFallback(build, pc, i, labelarr, /* not_ */ false);
         break;
     case LOP_JUMPIFLE:
-        emitInstJumpIfCondFallback(build, pc, i, labelarr, Condition::LessEqual);
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::LessEqual);
         break;
     case LOP_JUMPIFLT:
-        emitInstJumpIfCondFallback(build, pc, i, labelarr, Condition::Less);
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::Less);
         break;
     case LOP_JUMPIFNOTEQ:
         emitInstJumpIfEqFallback(build, pc, i, labelarr, /* not_ */ true);
         break;
     case LOP_JUMPIFNOTLE:
-        emitInstJumpIfCondFallback(build, pc, i, labelarr, Condition::NotLessEqual);
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::NotLessEqual);
         break;
     case LOP_JUMPIFNOTLT:
-        emitInstJumpIfCondFallback(build, pc, i, labelarr, Condition::NotLess);
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::NotLess);
         break;
     case LOP_ADD:
         emitInstBinaryFallback(build, pc, i, TM_ADD);
@@ -687,6 +695,9 @@ void compile(lua_State* L, int idx)
     {
         for (int i = 0; i < result->proto->sizecode; i++)
             result->instTargets[i] += uintptr_t(codeStart + result->location);
+
+        LUAU_ASSERT(result->proto->sizecode);
+        result->entryTarget = result->instTargets[0];
     }
 
     // Link native proto objects to Proto; the memory is now managed by VM and will be freed via onDestroyFunction

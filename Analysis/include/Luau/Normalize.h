@@ -17,10 +17,8 @@ struct SingletonTypes;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-bool isSubtype(
-    TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop = true);
-bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice,
-    bool anyIsTop = true);
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
+bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
 
 class TypeIds
 {
@@ -169,12 +167,26 @@ struct NormalizedStringType
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr);
 
-// A normalized function type is either `never` (represented by `nullopt`)
+// A normalized function type can be `never`, the top function type `function`,
 // or an intersection of function types.
-// NOTE: type normalization can fail on function types with generics
-// (e.g. because we do not support unions and intersections of generic type packs),
-// so this type may contain `error`.
-using NormalizedFunctionType = std::optional<TypeIds>;
+//
+// NOTE: type normalization can fail on function types with generics (e.g.
+// because we do not support unions and intersections of generic type packs), so
+// this type may contain `error`.
+struct NormalizedFunctionType
+{
+    NormalizedFunctionType();
+
+    bool isTop = false;
+    // TODO: Remove this wrapping optional when clipping
+    // FFlagLuauNegatedFunctionTypes.
+    std::optional<TypeIds> parts;
+
+    void resetToNever();
+    void resetToTop();
+
+    bool isNever() const;
+};
 
 // A normalized generic/free type is a union, where each option is of the form (X & T) where
 // * X is either a free type or a generic
@@ -234,12 +246,14 @@ struct NormalizedType
 
     NormalizedType(NotNull<SingletonTypes> singletonTypes);
 
-    NormalizedType(const NormalizedType&) = delete;
-    NormalizedType(NormalizedType&&) = default;
     NormalizedType() = delete;
     ~NormalizedType() = default;
+
+    NormalizedType(const NormalizedType&) = delete;
+    NormalizedType& operator=(const NormalizedType&) = delete;
+
+    NormalizedType(NormalizedType&&) = default;
     NormalizedType& operator=(NormalizedType&&) = default;
-    NormalizedType& operator=(NormalizedType&) = delete;
 };
 
 class Normalizer
@@ -291,7 +305,7 @@ public:
     bool unionNormalWithTy(NormalizedType& here, TypeId there, int ignoreSmallerTyvars = -1);
 
     // ------- Negations
-    NormalizedType negateNormal(const NormalizedType& here);
+    std::optional<NormalizedType> negateNormal(const NormalizedType& here);
     TypeIds negateAll(const TypeIds& theres);
     TypeId negate(TypeId there);
     void subtractPrimitive(NormalizedType& here, TypeId ty);

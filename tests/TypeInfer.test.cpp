@@ -17,7 +17,6 @@
 LUAU_FASTFLAG(LuauFixLocationSpanTableIndexExpr);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 using namespace Luau;
 
@@ -238,20 +237,10 @@ TEST_CASE_FIXTURE(Fixture, "type_errors_infer_types")
     // TODO: Should we assert anything about these tests when DCR is being used?
     if (!FFlag::DebugLuauDeferredConstraintResolution)
     {
-        if (FFlag::LuauSpecialTypesAsterisked)
-        {
-            CHECK_EQ("*error-type*", toString(requireType("c")));
-            CHECK_EQ("*error-type*", toString(requireType("d")));
-            CHECK_EQ("*error-type*", toString(requireType("e")));
-            CHECK_EQ("*error-type*", toString(requireType("f")));
-        }
-        else
-        {
-            CHECK_EQ("<error-type>", toString(requireType("c")));
-            CHECK_EQ("<error-type>", toString(requireType("d")));
-            CHECK_EQ("<error-type>", toString(requireType("e")));
-            CHECK_EQ("<error-type>", toString(requireType("f")));
-        }
+        CHECK_EQ("*error-type*", toString(requireType("c")));
+        CHECK_EQ("*error-type*", toString(requireType("d")));
+        CHECK_EQ("*error-type*", toString(requireType("e")));
+        CHECK_EQ("*error-type*", toString(requireType("f")));
     }
 }
 
@@ -662,10 +651,7 @@ TEST_CASE_FIXTURE(Fixture, "no_stack_overflow_from_isoptional")
     std::optional<TypeFun> t0 = getMainModule()->getModuleScope()->lookupType("t0");
     REQUIRE(t0);
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(t0->type));
-    else
-        CHECK_EQ("<error-type>", toString(t0->type));
+    CHECK_EQ("*error-type*", toString(t0->type));
 
     auto it = std::find_if(result.errors.begin(), result.errors.end(), [](TypeError& err) {
         return get<OccursCheckFailed>(err);

@@ -87,7 +87,7 @@ bool initEntryFunction(NativeState& data)
     unwind.allocStack(stacksize + localssize);
 
     // Setup frame pointer
-    build.lea(rbp, qword[rsp + stacksize]);
+    build.lea(rbp, addr[rsp + stacksize]);
     unwind.setupFrameReg(rbp, stacksize);
 
     unwind.finish();
@@ -113,7 +113,7 @@ bool initEntryFunction(NativeState& data)
     Label returnOff = build.setLabel();
 
     // Cleanup and exit
-    build.lea(rsp, qword[rbp + localssize]);
+    build.lea(rsp, addr[rbp + localssize]);
     build.pop(r15);
     build.pop(r14);
     build.pop(r13);

@@ -633,7 +633,7 @@ struct IsSubtypeFixture : Fixture
         return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
     }
 };
-}
+} // namespace
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection_of_functions_of_different_arities")
 {

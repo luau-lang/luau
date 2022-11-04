@@ -338,12 +338,6 @@ public:
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{"never"});
     }
-    AstType* operator()(const UseTypeVar& utv)
-    {
-        std::optional<TypeId> ty = utv.scope->lookup(utv.def);
-        LUAU_ASSERT(ty);
-        return Luau::visit(*this, (*ty)->ty);
-    }
     AstType* operator()(const NegationTypeVar& ntv)
     {
         // FIXME: do the same thing we do with ErrorTypeVar

@@ -35,10 +35,9 @@ NativeState::~NativeState() = default;
 
 void initFallbackTable(NativeState& data)
 {
-    // TODO: lvmexecute_split.py could be taught to generate a subset of instructions we actually need
+    // When fallback is completely removed, remove it from includeInsts list in lvmexecute_split.py
     CODEGEN_SET_FALLBACK(LOP_NEWCLOSURE, 0);
     CODEGEN_SET_FALLBACK(LOP_NAMECALL, 0);
-    CODEGEN_SET_FALLBACK(LOP_CALL, kFallbackUpdateCi | kFallbackCheckInterrupt);
     CODEGEN_SET_FALLBACK(LOP_FORGPREP, kFallbackUpdatePc);
     CODEGEN_SET_FALLBACK(LOP_GETVARARGS, 0);
     CODEGEN_SET_FALLBACK(LOP_DUPCLOSURE, 0);
@@ -86,6 +85,8 @@ void initHelperFunctions(NativeState& data)
     data.context.forgLoopNodeIter = forgLoopNodeIter;
     data.context.forgLoopNonTableFallback = forgLoopNonTableFallback;
     data.context.forgPrepXnextFallback = forgPrepXnextFallback;
+    data.context.callProlog = callProlog;
+    data.context.callEpilogC = callEpilogC;
 }
 
 } // namespace CodeGen

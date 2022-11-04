@@ -7,9 +7,9 @@
 
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
+#include "Luau/RecursionCounter.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
-#include "Luau/VisitTypeVar.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
@@ -20,6 +20,7 @@ LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauTypeNormalization2, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedStringSingletons, false);
+LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauOverloadedFunctionSubtypingPerf);
@@ -206,6 +207,28 @@ bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& s
     return true;
 }
 
+NormalizedFunctionType::NormalizedFunctionType()
+    : parts(FFlag::LuauNegatedFunctionTypes ? std::optional<TypeIds>{TypeIds{}} : std::nullopt)
+{
+}
+
+void NormalizedFunctionType::resetToTop()
+{
+    isTop = true;
+    parts.emplace();
+}
+
+void NormalizedFunctionType::resetToNever()
+{
+    isTop = false;
+    parts.emplace();
+}
+
+bool NormalizedFunctionType::isNever() const
+{
+    return !isTop && (!parts || parts->empty());
+}
+
 NormalizedType::NormalizedType(NotNull<SingletonTypes> singletonTypes)
     : tops(singletonTypes->neverType)
     , booleans(singletonTypes->neverType)
@@ -220,8 +243,8 @@ NormalizedType::NormalizedType(NotNull<SingletonTypes> singletonTypes)
 static bool isInhabited(const NormalizedType& norm)
 {
     return !get<NeverTypeVar>(norm.tops) || !get<NeverTypeVar>(norm.booleans) || !norm.classes.empty() || !get<NeverTypeVar>(norm.errors) ||
-           !get<NeverTypeVar>(norm.nils) || !get<NeverTypeVar>(norm.numbers) || !norm.strings.isNever() ||
-           !get<NeverTypeVar>(norm.threads) || norm.functions || !norm.tables.empty() || !norm.tyvars.empty();
+           !get<NeverTypeVar>(norm.nils) || !get<NeverTypeVar>(norm.numbers) || !norm.strings.isNever() || !get<NeverTypeVar>(norm.threads) ||
+           !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
 static int tyvarIndex(TypeId ty)
@@ -317,10 +340,14 @@ static bool isNormalizedThread(TypeId ty)
 
 static bool areNormalizedFunctions(const NormalizedFunctionType& tys)
 {
-    if (tys)
-        for (TypeId ty : *tys)
+    if (tys.parts)
+    {
+        for (TypeId ty : *tys.parts)
+        {
             if (!get<FunctionTypeVar>(ty) && !get<ErrorTypeVar>(ty))
                 return false;
+        }
+    }
     return true;
 }
 
@@ -420,7 +447,7 @@ void Normalizer::clearNormal(NormalizedType& norm)
     norm.strings.resetToNever();
     norm.threads = singletonTypes->neverType;
     norm.tables.clear();
-    norm.functions = std::nullopt;
+    norm.functions.resetToNever();
     norm.tyvars.clear();
 }
 
@@ -809,20 +836,28 @@ std::optional<TypeId> Normalizer::unionOfFunctions(TypeId here, TypeId there)
 
 void Normalizer::unionFunctions(NormalizedFunctionType& heres, const NormalizedFunctionType& theres)
 {
-    if (!theres)
+    if (FFlag::LuauNegatedFunctionTypes)
+    {
+        if (heres.isTop)
+            return;
+        if (theres.isTop)
+            heres.resetToTop();
+    }
+
+    if (theres.isNever())
         return;
 
     TypeIds tmps;
 
-    if (!heres)
+    if (heres.isNever())
     {
-        tmps.insert(theres->begin(), theres->end());
-        heres = std::move(tmps);
+        tmps.insert(theres.parts->begin(), theres.parts->end());
+        heres.parts = std::move(tmps);
         return;
     }
 
-    for (TypeId here : *heres)
-        for (TypeId there : *theres)
+    for (TypeId here : *heres.parts)
+        for (TypeId there : *theres.parts)
         {
             if (std::optional<TypeId> fun = unionOfFunctions(here, there))
                 tmps.insert(*fun);
@@ -830,28 +865,28 @@ void Normalizer::unionFunctions(NormalizedFunctionType& heres, const NormalizedF
                 tmps.insert(singletonTypes->errorRecoveryType(there));
         }
 
-    heres = std::move(tmps);
+    heres.parts = std::move(tmps);
 }
 
 void Normalizer::unionFunctionsWithFunction(NormalizedFunctionType& heres, TypeId there)
 {
-    if (!heres)
+    if (heres.isNever())
     {
         TypeIds tmps;
         tmps.insert(there);
-        heres = std::move(tmps);
+        heres.parts = std::move(tmps);
         return;
     }
 
     TypeIds tmps;
-    for (TypeId here : *heres)
+    for (TypeId here : *heres.parts)
     {
         if (std::optional<TypeId> fun = unionOfFunctions(here, there))
             tmps.insert(*fun);
         else
             tmps.insert(singletonTypes->errorRecoveryType(there));
     }
-    heres = std::move(tmps);
+    heres.parts = std::move(tmps);
 }
 
 void Normalizer::unionTablesWithTable(TypeIds& heres, TypeId there)
@@ -1004,6 +1039,11 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
             here.strings.resetToString();
         else if (ptv->type == PrimitiveTypeVar::Thread)
             here.threads = there;
+        else if (ptv->type == PrimitiveTypeVar::Function)
+        {
+            LUAU_ASSERT(FFlag::LuauNegatedFunctionTypes);
+            here.functions.resetToTop();
+        }
         else
             LUAU_ASSERT(!"Unreachable");
     }
@@ -1036,8 +1076,11 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
     else if (const NegationTypeVar* ntv = get<NegationTypeVar>(there))
     {
         const NormalizedType* thereNormal = normalize(ntv->ty);
-        NormalizedType tn = negateNormal(*thereNormal);
-        if (!unionNormals(here, tn))
+        std::optional<NormalizedType> tn = negateNormal(*thereNormal);
+        if (!tn)
+            return false;
+
+        if (!unionNormals(here, *tn))
             return false;
     }
     else
@@ -1053,7 +1096,7 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
 
 // ------- Negations
 
-NormalizedType Normalizer::negateNormal(const NormalizedType& here)
+std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& here)
 {
     NormalizedType result{singletonTypes};
     if (!get<NeverTypeVar>(here.tops))
@@ -1092,10 +1135,24 @@ NormalizedType Normalizer::negateNormal(const NormalizedType& here)
 
     result.threads = get<NeverTypeVar>(here.threads) ? singletonTypes->threadType : singletonTypes->neverType;
 
+    /*
+     * Things get weird and so, so complicated if we allow negations of
+     * arbitrary function types.  Ordinary code can never form these kinds of
+     * types, so we decline to negate them.
+     */
+    if (FFlag::LuauNegatedFunctionTypes)
+    {
+        if (here.functions.isNever())
+            result.functions.resetToTop();
+        else if (here.functions.isTop)
+            result.functions.resetToNever();
+        else
+            return std::nullopt;
+    }
+
     // TODO: negating tables
-    // TODO: negating functions
     // TODO: negating tyvars?
-    
+
     return result;
 }
 
@@ -1142,21 +1199,25 @@ void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
     LUAU_ASSERT(ptv);
     switch (ptv->type)
     {
-        case PrimitiveTypeVar::NilType:
-            here.nils = singletonTypes->neverType;
-            break;
-        case PrimitiveTypeVar::Boolean:
-            here.booleans = singletonTypes->neverType;
-            break;
-        case PrimitiveTypeVar::Number:
-            here.numbers = singletonTypes->neverType;
-            break;
-        case PrimitiveTypeVar::String:
-            here.strings.resetToNever();
-            break;
-        case PrimitiveTypeVar::Thread:
-            here.threads = singletonTypes->neverType;
-            break;
+    case PrimitiveTypeVar::NilType:
+        here.nils = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::Boolean:
+        here.booleans = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::Number:
+        here.numbers = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::String:
+        here.strings.resetToNever();
+        break;
+    case PrimitiveTypeVar::Thread:
+        here.threads = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::Function:
+        LUAU_ASSERT(FFlag::LuauNegatedStringSingletons);
+        here.functions.resetToNever();
+        break;
     }
 }
 
@@ -1589,7 +1650,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
 
     TypePackId argTypes;
     TypePackId retTypes;
-    
+
     if (hftv->retTypes == tftv->retTypes)
     {
         std::optional<TypePackId> argTypesOpt = unionOfTypePacks(hftv->argTypes, tftv->argTypes);
@@ -1598,7 +1659,7 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
         argTypes = *argTypesOpt;
         retTypes = hftv->retTypes;
     }
-    else if (FFlag::LuauOverloadedFunctionSubtypingPerf && hftv->argTypes == tftv->argTypes) 
+    else if (FFlag::LuauOverloadedFunctionSubtypingPerf && hftv->argTypes == tftv->argTypes)
     {
         std::optional<TypePackId> retTypesOpt = intersectionOfTypePacks(hftv->argTypes, tftv->argTypes);
         if (!retTypesOpt)
@@ -1738,18 +1799,20 @@ std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId th
 
 void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, TypeId there)
 {
-    if (!heres)
+    if (heres.isNever())
         return;
 
-    for (auto it = heres->begin(); it != heres->end();)
+    heres.isTop = false;
+
+    for (auto it = heres.parts->begin(); it != heres.parts->end();)
     {
         TypeId here = *it;
         if (get<ErrorTypeVar>(here))
             it++;
         else if (std::optional<TypeId> tmp = intersectionOfFunctions(here, there))
         {
-            heres->erase(it);
-            heres->insert(*tmp);
+            heres.parts->erase(it);
+            heres.parts->insert(*tmp);
             return;
         }
         else
@@ -1757,27 +1820,27 @@ void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, T
     }
 
     TypeIds tmps;
-    for (TypeId here : *heres)
+    for (TypeId here : *heres.parts)
     {
         if (std::optional<TypeId> tmp = unionSaturatedFunctions(here, there))
             tmps.insert(*tmp);
     }
-    heres->insert(there);
-    heres->insert(tmps.begin(), tmps.end());
+    heres.parts->insert(there);
+    heres.parts->insert(tmps.begin(), tmps.end());
 }
 
 void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const NormalizedFunctionType& theres)
 {
-    if (!heres)
+    if (heres.isNever())
         return;
-    else if (!theres)
+    else if (theres.isNever())
     {
-        heres = std::nullopt;
+        heres.resetToNever();
         return;
     }
     else
     {
-        for (TypeId there : *theres)
+        for (TypeId there : *theres.parts)
             intersectFunctionsWithFunction(heres, there);
     }
 }
@@ -1935,6 +1998,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
         TypeId nils = here.nils;
         TypeId numbers = here.numbers;
         NormalizedStringType strings = std::move(here.strings);
+        NormalizedFunctionType functions = std::move(here.functions);
         TypeId threads = here.threads;
 
         clearNormal(here);
@@ -1949,6 +2013,11 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
             here.strings = std::move(strings);
         else if (ptv->type == PrimitiveTypeVar::Thread)
             here.threads = threads;
+        else if (ptv->type == PrimitiveTypeVar::Function)
+        {
+            LUAU_ASSERT(FFlag::LuauNegatedFunctionTypes);
+            here.functions = std::move(functions);
+        }
         else
             LUAU_ASSERT(!"Unreachable");
     }
@@ -1981,8 +2050,10 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
             for (TypeId part : itv->options)
             {
                 const NormalizedType* normalPart = normalize(part);
-                NormalizedType negated = negateNormal(*normalPart);
-                intersectNormals(here, negated);
+                std::optional<NormalizedType> negated = negateNormal(*normalPart);
+                if (!negated)
+                    return false;
+                intersectNormals(here, *negated);
             }
         }
         else
@@ -2016,14 +2087,16 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     result.insert(result.end(), norm.classes.begin(), norm.classes.end());
     if (!get<NeverTypeVar>(norm.errors))
         result.push_back(norm.errors);
-    if (norm.functions)
+    if (FFlag::LuauNegatedFunctionTypes && norm.functions.isTop)
+        result.push_back(singletonTypes->functionType);
+    else if (!norm.functions.isNever())
     {
-        if (norm.functions->size() == 1)
-            result.push_back(*norm.functions->begin());
+        if (norm.functions.parts->size() == 1)
+            result.push_back(*norm.functions.parts->begin());
         else
         {
             std::vector<TypeId> parts;
-            parts.insert(parts.end(), norm.functions->begin(), norm.functions->end());
+            parts.insert(parts.end(), norm.functions.parts->begin(), norm.functions.parts->end());
             result.push_back(arena->addType(IntersectionTypeVar{std::move(parts)}));
         }
     }
@@ -2070,62 +2143,24 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         return arena->addType(UnionTypeVar{std::move(result)});
 }
 
-namespace
-{
-
-struct Replacer
-{
-    TypeArena* arena;
-    TypeId sourceType;
-    TypeId replacedType;
-    DenseHashMap<TypeId, TypeId> newTypes;
-
-    Replacer(TypeArena* arena, TypeId sourceType, TypeId replacedType)
-        : arena(arena)
-        , sourceType(sourceType)
-        , replacedType(replacedType)
-        , newTypes(nullptr)
-    {
-    }
-
-    TypeId smartClone(TypeId t)
-    {
-        t = follow(t);
-        TypeId* res = newTypes.find(t);
-        if (res)
-            return *res;
-
-        TypeId result = shallowClone(t, *arena, TxnLog::empty());
-        newTypes[t] = result;
-        newTypes[result] = result;
-
-        return result;
-    }
-};
-
-} // anonymous namespace
-
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
-    u.anyIsTop = anyIsTop;
 
     u.tryUnify(subTy, superTy);
     const bool ok = u.errors.empty() && u.log.empty();
     return ok;
 }
 
-bool isSubtype(
-    TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
+bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
-    u.anyIsTop = anyIsTop;
 
     u.tryUnify(subPack, superPack);
     const bool ok = u.errors.empty() && u.log.empty();

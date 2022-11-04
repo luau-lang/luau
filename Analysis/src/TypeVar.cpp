@@ -57,13 +57,6 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
             return btv->boundTo;
         else if (auto ttv = get<TableTypeVar>(mapper(ty)))
             return ttv->boundTo;
-        else if (auto utv = get<UseTypeVar>(mapper(ty)))
-        {
-            std::optional<TypeId> ty = utv->scope->lookup(utv->def);
-            if (!ty)
-                throwRuntimeError("UseTypeVar must map to another TypeId");
-            return *ty;
-        }
         else
             return std::nullopt;
     };
@@ -761,6 +754,7 @@ SingletonTypes::SingletonTypes()
     , stringType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true}))
     , booleanType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true}))
     , threadType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true}))
+    , functionType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Function}, /*persistent*/ true}))
     , trueType(arena->addType(TypeVar{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true}))
     , falseType(arena->addType(TypeVar{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true}))
     , anyType(arena->addType(TypeVar{AnyTypeVar{}, /*persistent*/ true}))
@@ -946,7 +940,8 @@ void persist(TypeId ty)
             queue.push_back(mtv->table);
             queue.push_back(mtv->metatable);
         }
-        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t) || get<NegationTypeVar>(t))
+        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t) ||
+                 get<NegationTypeVar>(t))
         {
         }
         else

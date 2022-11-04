@@ -978,7 +978,8 @@ int replMain(int argc, char** argv)
         if (compileFormat == CompileFormat::Null)
             printf("Compiled %d KLOC into %d KB bytecode\n", int(stats.lines / 1000), int(stats.bytecode / 1024));
         else if (compileFormat == CompileFormat::CodegenNull)
-            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code\n", int(stats.lines / 1000), int(stats.bytecode / 1024), int(stats.codegen / 1024));
+            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
+                int(stats.codegen / 1024));
 
         return failed ? 1 : 0;
     }

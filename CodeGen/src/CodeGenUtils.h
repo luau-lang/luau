@@ -13,5 +13,8 @@ bool forgLoopNonTableFallback(lua_State* L, int insnA, int aux);
 
 void forgPrepXnextFallback(lua_State* L, TValue* ra, int pc);
 
+Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults);
+void callEpilogC(lua_State* L, int nresults, int n);
+
 } // namespace CodeGen
 } // namespace Luau

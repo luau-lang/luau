@@ -35,7 +35,7 @@ std::vector<TypeId> flatten(TypeArena& arena, NotNull<SingletonTypes> singletonT
  * identity) types.
  * @param types the input type list to reduce.
  * @returns the reduced type list.
-*/
+ */
 std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
 
 /**
@@ -45,7 +45,7 @@ std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
  * @param arena the type arena to allocate the new type in, if necessary
  * @param ty the type to remove nil from
  * @returns a type with nil removed, or nil itself if that were the only option.
-*/
+ */
 TypeId stripNil(NotNull<SingletonTypes> singletonTypes, TypeArena& arena, TypeId ty);
 
 } // namespace Luau

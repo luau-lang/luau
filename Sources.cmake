@@ -55,18 +55,23 @@ target_sources(Luau.Compiler PRIVATE
 
 # Luau.CodeGen Sources
 target_sources(Luau.CodeGen PRIVATE
+    CodeGen/include/Luau/AddressA64.h
+    CodeGen/include/Luau/AssemblyBuilderA64.h
     CodeGen/include/Luau/AssemblyBuilderX64.h
     CodeGen/include/Luau/CodeAllocator.h
     CodeGen/include/Luau/CodeBlockUnwind.h
     CodeGen/include/Luau/CodeGen.h
-    CodeGen/include/Luau/Condition.h
+    CodeGen/include/Luau/ConditionA64.h
+    CodeGen/include/Luau/ConditionX64.h
     CodeGen/include/Luau/Label.h
     CodeGen/include/Luau/OperandX64.h
+    CodeGen/include/Luau/RegisterA64.h
     CodeGen/include/Luau/RegisterX64.h
     CodeGen/include/Luau/UnwindBuilder.h
     CodeGen/include/Luau/UnwindBuilderDwarf2.h
     CodeGen/include/Luau/UnwindBuilderWin.h
 
+    CodeGen/src/AssemblyBuilderA64.cpp
     CodeGen/src/AssemblyBuilderX64.cpp
     CodeGen/src/CodeAllocator.cpp
     CodeGen/src/CodeBlockUnwind.cpp
@@ -103,6 +108,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/BuiltinDefinitions.h
     Analysis/include/Luau/Clone.h
     Analysis/include/Luau/Config.h
+    Analysis/include/Luau/Connective.h
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
@@ -156,6 +162,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/BuiltinDefinitions.cpp
     Analysis/src/Clone.cpp
     Analysis/src/Config.cpp
+    Analysis/src/Connective.cpp
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp
@@ -299,6 +306,7 @@ if(TARGET Luau.UnitTest)
         tests/AstQueryDsl.cpp
         tests/ConstraintGraphBuilderFixture.cpp
         tests/Fixture.cpp
+        tests/AssemblyBuilderA64.test.cpp
         tests/AssemblyBuilderX64.test.cpp
         tests/AstJsonEncoder.test.cpp
         tests/AstQuery.test.cpp

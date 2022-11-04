@@ -714,8 +714,7 @@ static bool dcrMagicFunctionPack(MagicFunctionCallContext context)
         result = arena->addType(UnionTypeVar{std::move(options)});
 
     TypeId numberType = context.solver->singletonTypes->numberType;
-    TypeId packedTable = arena->addType(
-        TableTypeVar{{{"n", {numberType}}}, TableIndexer(numberType, result), {}, TableState::Sealed});
+    TypeId packedTable = arena->addType(TableTypeVar{{{"n", {numberType}}}, TableIndexer(numberType, result), {}, TableState::Sealed});
 
     TypePackId tableTypePack = arena->addTypePack({packedTable});
     asMutable(context.result)->ty.emplace<BoundTypePack>(tableTypePack);

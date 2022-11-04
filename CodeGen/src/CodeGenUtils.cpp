@@ -72,5 +72,59 @@ void forgPrepXnextFallback(lua_State* L, TValue* ra, int pc)
     }
 }
 
+Closure* callProlog(lua_State* L, TValue* ra, StkId argtop, int nresults)
+{
+    // slow-path: not a function call
+    if (LUAU_UNLIKELY(!ttisfunction(ra)))
+    {
+        luaV_tryfuncTM(L, ra);
+        argtop++; // __call adds an extra self
+    }
+
+    Closure* ccl = clvalue(ra);
+
+    CallInfo* ci = incr_ci(L);
+    ci->func = ra;
+    ci->base = ra + 1;
+    ci->top = argtop + ccl->stacksize; // note: technically UB since we haven't reallocated the stack yet
+    ci->savedpc = NULL;
+    ci->flags = 0;
+    ci->nresults = nresults;
+
+    L->base = ci->base;
+    L->top = argtop;
+
+    // note: this reallocs stack, but we don't need to VM_PROTECT this
+    // this is because we're going to modify base/savedpc manually anyhow
+    // crucially, we can't use ra/argtop after this line
+    luaD_checkstack(L, ccl->stacksize);
+
+    return ccl;
+}
+
+void callEpilogC(lua_State* L, int nresults, int n)
+{
+    // ci is our callinfo, cip is our parent
+    CallInfo* ci = L->ci;
+    CallInfo* cip = ci - 1;
+
+    // copy return values into parent stack (but only up to nresults!), fill the rest with nil
+    // note: in MULTRET context nresults starts as -1 so i != 0 condition never activates intentionally
+    StkId res = ci->func;
+    StkId vali = L->top - n;
+    StkId valend = L->top;
+
+    int i;
+    for (i = nresults; i != 0 && vali < valend; i--)
+        setobj2s(L, res++, vali++);
+    while (i-- > 0)
+        setnilvalue(res++);
+
+    // pop the stack frame
+    L->ci = cip;
+    L->base = cip->base;
+    L->top = (nresults == LUA_MULTRET) ? res : cip->top;
+}
+
 } // namespace CodeGen
 } // namespace Luau

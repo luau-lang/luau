@@ -25,6 +25,7 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
+LUAU_FASTFLAGVARIABLE(LuauTableConstructorRecovery, false)
 
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
@@ -2310,9 +2311,13 @@ AstExpr* Parser::parseTableConstructor()
 
     MatchLexeme matchBrace = lexer.current();
     expectAndConsume('{', "table literal");
+    unsigned lastElementIndent = 0;
 
     while (lexer.current().type != '}')
     {
+        if (FFlag::LuauTableConstructorRecovery)
+            lastElementIndent = lexer.current().location.begin.column;
+
         if (lexer.current().type == '[')
         {
             MatchLexeme matchLocationBracket = lexer.current();
@@ -2357,10 +2362,14 @@ AstExpr* Parser::parseTableConstructor()
         {
             nextLexeme();
         }
-        else
+        else if (FFlag::LuauTableConstructorRecovery && (lexer.current().type == '[' || lexer.current().type == Lexeme::Name) &&
+                 lexer.current().location.begin.column == lastElementIndent)
         {
-            if (lexer.current().type != '}')
-                break;
+            report(lexer.current().location, "Expected ',' after table constructor element");
+        }
+        else if (lexer.current().type != '}')
+        {
+            break;
         }
     }
 
