@@ -506,13 +506,14 @@ std::optional<TypeId> linearSearchForBinding(Scope* scope, const char* name)
     return std::nullopt;
 }
 
-void registerNotType(Fixture& fixture, TypeArena& arena)
+void registerHiddenTypes(Fixture& fixture, TypeArena& arena)
 {
     TypeId t = arena.addType(GenericTypeVar{"T"});
     GenericTypeDefinition genericT{t};
 
     ScopePtr moduleScope = fixture.frontend.getGlobalScope();
     moduleScope->exportedTypeBindings["Not"] = TypeFun{{genericT}, arena.addType(NegationTypeVar{t})};
+    moduleScope->exportedTypeBindings["fun"] = TypeFun{{}, fixture.singletonTypes->functionType};
 }
 
 void dump(const std::vector<Constraint>& constraints)

@@ -62,7 +62,6 @@ struct TypeCloner
     void operator()(const LazyTypeVar& t);
     void operator()(const UnknownTypeVar& t);
     void operator()(const NeverTypeVar& t);
-    void operator()(const UseTypeVar& t);
     void operator()(const NegationTypeVar& t);
 };
 
@@ -336,12 +335,6 @@ void TypeCloner::operator()(const UnknownTypeVar& t)
 void TypeCloner::operator()(const NeverTypeVar& t)
 {
     defaultClone(t);
-}
-
-void TypeCloner::operator()(const UseTypeVar& t)
-{
-    TypeId result = dest.addType(BoundTypeVar{follow(typeId)});
-    seenTypes[typeId] = result;
 }
 
 void TypeCloner::operator()(const NegationTypeVar& t)

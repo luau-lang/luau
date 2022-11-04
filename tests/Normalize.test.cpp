@@ -3,6 +3,7 @@
 #include "Fixture.h"
 
 #include "Luau/Common.h"
+#include "Luau/TypeVar.h"
 #include "doctest.h"
 
 #include "Luau/Normalize.h"
@@ -19,7 +20,7 @@ struct IsSubtypeFixture : Fixture
         return ::Luau::isSubtype(a, b, NotNull{getMainModule()->getModuleScope().get()}, singletonTypes, ice);
     }
 };
-}
+} // namespace
 
 void createSomeClasses(Frontend& frontend)
 {
@@ -109,12 +110,10 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "functions_and_any")
     TypeId a = requireType("a");
     TypeId b = requireType("b");
 
-    // Intuition:
-    //    We cannot use b where a is required because we cannot rely on b to return a string.
-    //    We cannot use a where b is required because we cannot rely on a to accept non-number arguments.
+    // any makes things work even when it makes no sense.
 
-    CHECK(!isSubtype(b, a));
-    CHECK(!isSubtype(a, b));
+    CHECK(isSubtype(b, a));
+    CHECK(isSubtype(a, b));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "variadic_functions_with_no_head")
@@ -199,7 +198,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "table_with_any_prop")
     TypeId b = requireType("b");
 
     CHECK(isSubtype(a, b));
-    CHECK(!isSubtype(b, a));
+    CHECK(isSubtype(b, a));
 }
 
 TEST_CASE_FIXTURE(IsSubtypeFixture, "intersection")
@@ -261,7 +260,7 @@ TEST_CASE_FIXTURE(IsSubtypeFixture, "tables")
     TypeId d = requireType("d");
 
     CHECK(isSubtype(a, b));
-    CHECK(!isSubtype(b, a));
+    CHECK(isSubtype(b, a));
 
     CHECK(!isSubtype(c, a));
     CHECK(!isSubtype(a, c));
@@ -394,7 +393,8 @@ TEST_SUITE_END();
 
 struct NormalizeFixture : Fixture
 {
-    ScopedFastFlag sff{"LuauNegatedStringSingletons", true};
+    ScopedFastFlag sff0{"LuauNegatedStringSingletons", true};
+    ScopedFastFlag sff1{"LuauNegatedFunctionTypes", true};
 
     TypeArena arena;
     InternalErrorReporter iceHandler;
@@ -403,16 +403,21 @@ struct NormalizeFixture : Fixture
 
     NormalizeFixture()
     {
-        registerNotType(*this, arena);
+        registerHiddenTypes(*this, arena);
     }
 
-    TypeId normal(const std::string& annotation)
+    const NormalizedType* toNormalizedType(const std::string& annotation)
     {
         CheckResult result = check("type _Res = " + annotation);
         LUAU_REQUIRE_NO_ERRORS(result);
         std::optional<TypeId> ty = lookupType("_Res");
         REQUIRE(ty);
-        const NormalizedType* norm = normalizer.normalize(*ty);
+        return normalizer.normalize(*ty);
+    }
+
+    TypeId normal(const std::string& annotation)
+    {
+        const NormalizedType* norm = toNormalizedType(annotation);
         REQUIRE(norm);
         return normalizer.typeFromNormal(*norm);
     }
@@ -476,6 +481,13 @@ TEST_CASE_FIXTURE(NormalizeFixture, "union_of_negations")
     )")));
 }
 
+TEST_CASE_FIXTURE(NormalizeFixture, "disjoint_negations_normalize_to_string")
+{
+    CHECK(R"(string)" == toString(normal(R"(
+        (string & Not<"hello"> & Not<"world">) | (string & Not<"goodbye">)
+    )")));
+}
+
 TEST_CASE_FIXTURE(NormalizeFixture, "negate_boolean")
 {
     CHECK("true" == toString(normal(R"(
@@ -490,10 +502,43 @@ TEST_CASE_FIXTURE(NormalizeFixture, "negate_boolean_2")
     )")));
 }
 
-TEST_CASE_FIXTURE(NormalizeFixture, "bare_negation")
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_function_and_top_function")
+{
+    CHECK("() -> ()" == toString(normal(R"(
+        fun & (() -> ())
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "intersect_function_and_top_function_reverse")
+{
+    CHECK("() -> ()" == toString(normal(R"(
+        (() -> ()) & fun
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "union_function_and_top_function")
+{
+    CHECK("function" == toString(normal(R"(
+        fun | (() -> ())
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "negated_function_is_anything_except_a_function")
+{
+    CHECK("(boolean | number | string | thread)?" == toString(normal(R"(
+        Not<fun>
+    )")));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "specific_functions_cannot_be_negated")
+{
+    CHECK(nullptr == toNormalizedType("Not<(boolean) -> boolean>"));
+}
+
+TEST_CASE_FIXTURE(NormalizeFixture, "bare_negated_boolean")
 {
     // TODO: We don't yet have a way to say number | string | thread | nil | Class | Table | Function
-    CHECK("(number | string | thread)?" == toString(normal(R"(
+    CHECK("(function | number | string | thread)?" == toString(normal(R"(
         Not<boolean>
     )")));
 }

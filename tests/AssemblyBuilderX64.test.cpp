@@ -8,7 +8,7 @@
 
 using namespace Luau::CodeGen;
 
-std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
+static std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
 {
     std::string result = "{";
 
@@ -21,7 +21,7 @@ std::string bytecodeAsArray(const std::vector<uint8_t>& bytecode)
 class AssemblyBuilderX64Fixture
 {
 public:
-    void check(void (*f)(AssemblyBuilderX64& build), std::vector<uint8_t> code, std::vector<uint8_t> data = {})
+    bool check(void (*f)(AssemblyBuilderX64& build), std::vector<uint8_t> code, std::vector<uint8_t> data = {})
     {
         AssemblyBuilderX64 build(/* logText= */ false);
 
@@ -32,25 +32,27 @@ public:
         if (build.code != code)
         {
             printf("Expected code: %s\nReceived code: %s\n", bytecodeAsArray(code).c_str(), bytecodeAsArray(build.code).c_str());
-            CHECK(false);
+            return false;
         }
 
         if (build.data != data)
         {
             printf("Expected data: %s\nReceived data: %s\n", bytecodeAsArray(data).c_str(), bytecodeAsArray(build.data).c_str());
-            CHECK(false);
+            return false;
         }
+
+        return true;
     }
 };
 
 TEST_SUITE_BEGIN("x64Assembly");
 
 #define SINGLE_COMPARE(inst, ...) \
-    check( \
+    CHECK(check( \
         [](AssemblyBuilderX64& build) { \
             build.inst; \
         }, \
-        {__VA_ARGS__})
+        {__VA_ARGS__}))
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "BaseBinaryInstructionForms")
 {
@@ -236,9 +238,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfShift")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfLea")
 {
-    SINGLE_COMPARE(lea(rax, qword[rdx + rcx]), 0x48, 0x8d, 0x04, 0x0a);
-    SINGLE_COMPARE(lea(rax, qword[rdx + rax * 4]), 0x48, 0x8d, 0x04, 0x82);
-    SINGLE_COMPARE(lea(rax, qword[r13 + r12 * 4 + 4]), 0x4b, 0x8d, 0x44, 0xa5, 0x04);
+    SINGLE_COMPARE(lea(rax, addr[rdx + rcx]), 0x48, 0x8d, 0x04, 0x0a);
+    SINGLE_COMPARE(lea(rax, addr[rdx + rax * 4]), 0x48, 0x8d, 0x04, 0x82);
+    SINGLE_COMPARE(lea(rax, addr[r13 + r12 * 4 + 4]), 0x4b, 0x8d, 0x44, 0xa5, 0x04);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "FormsOfAbsoluteJumps")
@@ -280,34 +282,34 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "NopForms")
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentForms")
 {
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             build.ret();
             build.align(8, AlignmentDataX64::Nop);
         },
-        {0xc3, 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00});
+        {0xc3, 0x0f, 0x1f, 0x80, 0x00, 0x00, 0x00, 0x00}));
 
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             build.ret();
             build.align(32, AlignmentDataX64::Nop);
         },
         {0xc3, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x66, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00, 0x66, 0x0f, 0x1f, 0x84,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x1f, 0x40, 0x00});
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x0f, 0x1f, 0x40, 0x00}));
 
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             build.ret();
             build.align(8, AlignmentDataX64::Int3);
         },
-        {0xc3, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc});
+        {0xc3, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc, 0xcc}));
 
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             build.ret();
             build.align(8, AlignmentDataX64::Ud2);
         },
-        {0xc3, 0x0f, 0x0b, 0x0f, 0x0b, 0x0f, 0x0b, 0xcc});
+        {0xc3, 0x0f, 0x0b, 0x0f, 0x0b, 0x0f, 0x0b, 0xcc}));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
@@ -349,40 +351,40 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AlignmentOverflow")
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
 {
     // Jump back
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             Label start = build.setLabel();
             build.add(rsi, 1);
             build.cmp(rsi, rdi);
-            build.jcc(Condition::Equal, start);
+            build.jcc(ConditionX64::Equal, start);
         },
-        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf3, 0xff, 0xff, 0xff});
+        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf3, 0xff, 0xff, 0xff}));
 
     // Jump back, but the label is set before use
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             Label start;
             build.add(rsi, 1);
             build.setLabel(start);
             build.cmp(rsi, rdi);
-            build.jcc(Condition::Equal, start);
+            build.jcc(ConditionX64::Equal, start);
         },
-        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf7, 0xff, 0xff, 0xff});
+        {0x48, 0x83, 0xc6, 0x01, 0x48, 0x3b, 0xf7, 0x0f, 0x84, 0xf7, 0xff, 0xff, 0xff}));
 
     // Jump forward
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             Label skip;
 
             build.cmp(rsi, rdi);
-            build.jcc(Condition::Greater, skip);
+            build.jcc(ConditionX64::Greater, skip);
             build.or_(rdi, 0x3e);
             build.setLabel(skip);
         },
-        {0x48, 0x3b, 0xf7, 0x0f, 0x8f, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xcf, 0x3e});
+        {0x48, 0x3b, 0xf7, 0x0f, 0x8f, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xcf, 0x3e}));
 
     // Regular jump
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             Label skip;
 
@@ -390,12 +392,12 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "ControlFlow")
             build.and_(rdi, 0x3e);
             build.setLabel(skip);
         },
-        {0xe9, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xe7, 0x3e});
+        {0xe9, 0x04, 0x00, 0x00, 0x00, 0x48, 0x83, 0xe7, 0x3e}));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelCall")
 {
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             Label fnB;
 
@@ -404,10 +406,10 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "LabelCall")
             build.ret();
 
             build.setLabel(fnB);
-            build.lea(rax, qword[rcx + 0x1f]);
+            build.lea(rax, addr[rcx + 0x1f]);
             build.ret();
         },
-        {0x48, 0x83, 0xe1, 0x3e, 0xe8, 0x01, 0x00, 0x00, 0x00, 0xc3, 0x48, 0x8d, 0x41, 0x1f, 0xc3});
+        {0x48, 0x83, 0xe1, 0x3e, 0xe8, 0x01, 0x00, 0x00, 0x00, 0xc3, 0x48, 0x8d, 0x41, 0x1f, 0xc3}));
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "AVXBinaryInstructionForms")
@@ -518,7 +520,7 @@ TEST_CASE("LogTest")
 
     Label start = build.setLabel();
     build.cmp(rsi, rdi);
-    build.jcc(Condition::Equal, start);
+    build.jcc(ConditionX64::Equal, start);
 
     build.jmp(qword[rdx]);
     build.vaddps(ymm9, ymm12, ymmword[rbp + 0xc]);
@@ -548,7 +550,7 @@ TEST_CASE("LogTest")
 
     build.finalize();
 
-    bool same = "\n" + build.text == R"(
+    std::string expected = R"(
  push        r12
 ; align 8
  nop         word ptr[rax+rax] ; 6-byte nop
@@ -588,13 +590,14 @@ TEST_CASE("LogTest")
  nop         dword ptr[rax+rax] ; 8-byte nop
  nop         word ptr[rax+rax] ; 9-byte nop
 )";
-    CHECK(same);
+
+    CHECK("\n" + build.text == expected);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "Constants")
 {
     // clang-format off
-    check(
+    CHECK(check(
         [](AssemblyBuilderX64& build) {
             build.xor_(rax, rax);
             build.add(rax, build.i64(0x1234567887654321));
@@ -625,7 +628,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderX64Fixture, "Constants")
             0x00, 0x00, 0x00, 0x00, // padding to align f64
             0x00, 0x00, 0x80, 0x3f,
             0x21, 0x43, 0x65, 0x87, 0x78, 0x56, 0x34, 0x12,
-        });
+        }));
     // clang-format on
 }
 

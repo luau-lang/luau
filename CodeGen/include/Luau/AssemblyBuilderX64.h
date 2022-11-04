@@ -2,8 +2,8 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/Condition.h"
 #include "Luau/Label.h"
+#include "Luau/ConditionX64.h"
 #include "Luau/OperandX64.h"
 #include "Luau/RegisterX64.h"
 
@@ -84,7 +84,7 @@ public:
     void ret();
 
     // Control flow
-    void jcc(Condition cond, Label& label);
+    void jcc(ConditionX64 cond, Label& label);
     void jmp(Label& label);
     void jmp(OperandX64 op);
 

@@ -539,8 +539,14 @@ TEST_CASE("Debugger")
     static bool singlestep = false;
     static int stephits = 0;
 
-    SUBCASE("") { singlestep = false; }
-    SUBCASE("SingleStep") { singlestep = true; }
+    SUBCASE("")
+    {
+        singlestep = false;
+    }
+    SUBCASE("SingleStep")
+    {
+        singlestep = true;
+    }
 
     breakhits = 0;
     interruptedthread = nullptr;

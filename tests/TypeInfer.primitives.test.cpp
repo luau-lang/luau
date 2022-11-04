@@ -11,8 +11,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypeInferPrimitives");
@@ -49,10 +47,7 @@ TEST_CASE_FIXTURE(Fixture, "string_index")
     REQUIRE(nat);
     CHECK_EQ("string", toString(nat->ty));
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("t")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("t")));
+    CHECK_EQ("*error-type*", toString(requireType("t")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_method")

@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 LUAU_FASTFLAG(LuauFixNameMaps);
 LUAU_FASTFLAG(LuauFunctionReturnStringificationFixup);
 
@@ -270,16 +269,8 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
     o.maxTypeLength = 40;
     CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
     CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    if (FFlag::LuauSpecialTypesAsterisked)
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-    }
+    CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
@@ -297,16 +288,8 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
     o.maxTypeLength = 40;
     CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
     CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    if (FFlag::LuauSpecialTypesAsterisked)
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-    }
-    else
-    {
-        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... <TRUNCATED>");
-    }
+    CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
@@ -535,10 +518,7 @@ local function target(callback: nil) return callback(4, "hello") end
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("(nil) -> (*error-type*)", toString(requireType("target")));
-    else
-        CHECK_EQ("(nil) -> (<error-type>)", toString(requireType("target")));
+    CHECK_EQ("(nil) -> (*error-type*)", toString(requireType("target")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "toStringGenericPack")

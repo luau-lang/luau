@@ -34,7 +34,6 @@ inline bool luai_vecisnan(const float* a)
 }
 
 LUAU_FASTMATH_BEGIN
-// TODO: LUAU_DISPATCH_SSE41 would be nice here, but clang-14 doesn't support it correctly on inline functions...
 inline double luai_nummod(double a, double b)
 {
     return a - floor(a / b) * b;

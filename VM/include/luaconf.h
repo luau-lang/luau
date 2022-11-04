@@ -20,14 +20,6 @@
 #define LUAU_FASTMATH_END
 #endif
 
-// Some functions like floor/ceil have SSE4.1 equivalents but we currently support systems without SSE4.1
-// On newer GCC and Clang we can use function multi-versioning to generate SSE4.1 code plus CPUID based dispatch.
-#if !defined(__APPLE__) && (defined(__x86_64__) || defined(_M_X64)) && ((defined(__clang__) && __clang_major__ >= 14) || (defined(__GNUC__) && __GNUC__ >= 6)) && !defined(__SSE4_1__)
-#define LUAU_DISPATCH_SSE41 __attribute__((target_clones("default", "sse4.1")))
-#else
-#define LUAU_DISPATCH_SSE41
-#endif
-
 // Used on functions that have a printf-like interface to validate them statically
 #if defined(__GNUC__)
 #define LUA_PRINTF_ATTR(fmt, arg) __attribute__((format(printf, fmt, arg)))

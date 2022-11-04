@@ -13,13 +13,13 @@ namespace CodeGen
 {
 // TODO: more assertions on operand sizes
 
-const uint8_t codeForCondition[] = {
+static const uint8_t codeForCondition[] = {
     0x0, 0x1, 0x2, 0x3, 0x2, 0x6, 0x7, 0x3, 0x4, 0xc, 0xe, 0xf, 0xd, 0x3, 0x7, 0x6, 0x2, 0x5, 0xd, 0xf, 0xe, 0xc, 0x4, 0x5, 0xa, 0xb};
-static_assert(sizeof(codeForCondition) / sizeof(codeForCondition[0]) == size_t(Condition::Count), "all conditions have to be covered");
+static_assert(sizeof(codeForCondition) / sizeof(codeForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
 
-const char* textForCondition[] = {"jo", "jno", "jc", "jnc", "jb", "jbe", "ja", "jae", "je", "jl", "jle", "jg", "jge", "jnb", "jnbe", "jna", "jnae",
-    "jne", "jnl", "jnle", "jng", "jnge", "jz", "jnz", "jp", "jnp"};
-static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(Condition::Count), "all conditions have to be covered");
+static const char* textForCondition[] = {"jo", "jno", "jc", "jnc", "jb", "jbe", "ja", "jae", "je", "jl", "jle", "jg", "jge", "jnb", "jnbe", "jna",
+    "jnae", "jne", "jnl", "jnle", "jng", "jnge", "jz", "jnz", "jp", "jnp"};
+static_assert(sizeof(textForCondition) / sizeof(textForCondition[0]) == size_t(ConditionX64::Count), "all conditions have to be covered");
 
 #define OP_PLUS_REG(op, reg) ((op) + (reg & 0x7))
 #define OP_PLUS_CC(op, cc) ((op) + uint8_t(cc))
@@ -328,7 +328,10 @@ void AssemblyBuilderX64::lea(OperandX64 lhs, OperandX64 rhs)
     if (logText)
         log("lea", lhs, rhs);
 
-    LUAU_ASSERT(rhs.cat == CategoryX64::mem);
+    LUAU_ASSERT(lhs.cat == CategoryX64::reg && rhs.cat == CategoryX64::mem && rhs.memSize == SizeX64::none);
+    LUAU_ASSERT(rhs.base == rip || rhs.base.size == lhs.base.size);
+    LUAU_ASSERT(rhs.index == noreg || rhs.index.size == lhs.base.size);
+    rhs.memSize = lhs.base.size;
     placeBinaryRegAndRegMem(lhs, rhs, 0x8d, 0x8d);
 }
 
@@ -363,7 +366,7 @@ void AssemblyBuilderX64::ret()
     commit();
 }
 
-void AssemblyBuilderX64::jcc(Condition cond, Label& label)
+void AssemblyBuilderX64::jcc(ConditionX64 cond, Label& label)
 {
     placeJcc(textForCondition[size_t(cond)], label, codeForCondition[size_t(cond)]);
 }
@@ -781,7 +784,7 @@ OperandX64 AssemblyBuilderX64::bytes(const void* ptr, size_t size, size_t align)
 {
     size_t pos = allocateData(size, align);
     memcpy(&data[pos], ptr, size);
-    return OperandX64(SizeX64::qword, noreg, 1, rip, int32_t(pos - data.size()));
+    return OperandX64(SizeX64::none, noreg, 1, rip, int32_t(pos - data.size()));
 }
 
 void AssemblyBuilderX64::logAppend(const char* fmt, ...)
@@ -1072,7 +1075,7 @@ void AssemblyBuilderX64::placeVex(OperandX64 dst, OperandX64 src1, OperandX64 sr
     place(AVX_3_3(setW, src1.base, dst.base.size == SizeX64::ymmword, prefix));
 }
 
-uint8_t getScaleEncoding(uint8_t scale)
+static uint8_t getScaleEncoding(uint8_t scale)
 {
     static const uint8_t scales[9] = {0xff, 0, 1, 0xff, 2, 0xff, 0xff, 0xff, 3};
 

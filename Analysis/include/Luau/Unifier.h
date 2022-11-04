@@ -61,7 +61,6 @@ struct Unifier
     ErrorVec errors;
     Location location;
     Variance variance = Covariant;
-    bool anyIsTop = false;  // If true, we consider any to be a top type.  If false, it is a familiar but weird mix of top and bottom all at once.
     bool normalize;         // Normalize unions and intersections if necessary
     bool useScopes = false; // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
@@ -131,6 +130,7 @@ public:
     Unifier makeChildUnifier();
 
     void reportError(TypeError err);
+    LUAU_NOINLINE void reportError(Location location, TypeErrorData data);
 
 private:
     bool isNonstrictMode() const;

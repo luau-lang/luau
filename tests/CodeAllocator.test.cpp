@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AssemblyBuilderX64.h"
+#include "Luau/AssemblyBuilderA64.h"
 #include "Luau/CodeAllocator.h"
 #include "Luau/CodeBlockUnwind.h"
 #include "Luau/UnwindBuilder.h"
@@ -207,7 +208,7 @@ constexpr RegisterX64 rArg3 = rdx;
 constexpr RegisterX64 rNonVol1 = r12;
 constexpr RegisterX64 rNonVol2 = rbx;
 
-TEST_CASE("GeneratedCodeExecution")
+TEST_CASE("GeneratedCodeExecutionX64")
 {
     AssemblyBuilderX64 build(/* logText= */ false);
 
@@ -241,7 +242,7 @@ void throwing(int64_t arg)
     throw std::runtime_error("testing");
 }
 
-TEST_CASE("GeneratedCodeExecutionWithThrow")
+TEST_CASE("GeneratedCodeExecutionWithThrowX64")
 {
     AssemblyBuilderX64 build(/* logText= */ false);
 
@@ -267,7 +268,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrow")
     build.sub(rsp, stackSize + localsSize);
     unwind->allocStack(stackSize + localsSize);
 
-    build.lea(rbp, qword[rsp + stackSize]);
+    build.lea(rbp, addr[rsp + stackSize]);
     unwind->setupFrameReg(rbp, stackSize);
 
     unwind->finish();
@@ -281,7 +282,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrow")
     build.call(rNonVol2);
 
     // Epilogue
-    build.lea(rsp, qword[rbp + localsSize]);
+    build.lea(rsp, addr[rbp + localsSize]);
     build.pop(rbp);
     build.pop(rNonVol2);
     build.pop(rNonVol1);
@@ -317,7 +318,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrow")
     }
 }
 
-TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGate")
+TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGateX64")
 {
     AssemblyBuilderX64 build(/* logText= */ false);
 
@@ -351,7 +352,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGate")
     build.sub(rsp, stackSize + localsSize);
     unwind->allocStack(stackSize + localsSize);
 
-    build.lea(rbp, qword[rsp + stackSize]);
+    build.lea(rbp, addr[rsp + stackSize]);
     unwind->setupFrameReg(rbp, stackSize);
 
     unwind->finish();
@@ -366,7 +367,7 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGate")
     Label returnOffset = build.setLabel();
 
     // Epilogue
-    build.lea(rsp, qword[rbp + localsSize]);
+    build.lea(rsp, addr[rbp + localsSize]);
     build.pop(rbp);
     build.pop(r15);
     build.pop(r14);
@@ -428,6 +429,45 @@ TEST_CASE("GeneratedCodeExecutionWithThrowOutsideTheGate")
     }
 
     REQUIRE(nativeEntry2);
+}
+
+#endif
+
+#if defined(__aarch64__)
+
+TEST_CASE("GeneratedCodeExecutionA64")
+{
+    AssemblyBuilderA64 build(/* logText= */ false);
+
+    Label skip;
+    build.cbz(x1, skip);
+    build.ldrsw(x1, x1);
+    build.cbnz(x1, skip);
+    build.mov(x1, 0); // doesn't execute due to cbnz above
+    build.setLabel(skip);
+
+    build.add(x1, x1, 1);
+    build.add(x0, x0, x1, /* LSL */ 1);
+    build.ret();
+
+    build.finalize();
+
+    size_t blockSize = 1024 * 1024;
+    size_t maxTotalSize = 1024 * 1024;
+    CodeAllocator allocator(blockSize, maxTotalSize);
+
+    uint8_t* nativeData;
+    size_t sizeNativeData;
+    uint8_t* nativeEntry;
+    REQUIRE(allocator.allocate(build.data.data(), build.data.size(), reinterpret_cast<uint8_t*>(build.code.data()), build.code.size() * 4, nativeData,
+        sizeNativeData, nativeEntry));
+    REQUIRE(nativeEntry);
+
+    using FunctionType = int64_t(int64_t, int*);
+    FunctionType* f = (FunctionType*)nativeEntry;
+    int input = 10;
+    int64_t result = f(20, &input);
+    CHECK(result == 42);
 }
 
 #endif
