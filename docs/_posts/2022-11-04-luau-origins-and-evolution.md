@@ -22,7 +22,7 @@ But which programming language do you choose? This is where [Lua](https://lua.or
 
 In addition to its simplicity, which made the language easy to learn and get productive in, Lua was the fastest scripting language compared to popular alternatives like Python or JavaScript at the time[^1], designed to be embedded which meant an easy ability to expose APIs from the host application to the scripts as well as high degree of execution control from the host, and implemented coroutines, a very powerful concurrency primitive that allowed to easily and intuitively script behaviors for independent actors in game using linear control flow.
 
-Instead of having a rich standard library, the expectation was that the embedding application would define a set of APIs that that application needed, as well as establish policies of running the code - which gave us a lot of freedom in how to structure the APIs and when the scripts would get triggered during the simulation of a single frame.
+Instead of having a large standard library, the expectation was that the embedding application would define a set of APIs that that application needed, as well as establish policies of running the code - which gave us a lot of freedom in how to structure the APIs and when the scripts would get triggered during the simulation of a single frame.
 
 # Power of simplicity
 
