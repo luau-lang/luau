@@ -2,8 +2,8 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/Condition.h"
 #include "Luau/Label.h"
+#include "Luau/ConditionX64.h"
 #include "Luau/OperandX64.h"
 #include "Luau/RegisterX64.h"
 
@@ -21,6 +21,19 @@ enum class RoundingModeX64
     RoundToNegativeInfinity = 0b01,
     RoundToPositiveInfinity = 0b10,
     RoundToZero = 0b11,
+};
+
+enum class AlignmentDataX64
+{
+    Nop,
+    Int3,
+    Ud2, // int3 will be used as a fall-back if it doesn't fit
+};
+
+enum class ABIX64
+{
+    Windows,
+    SystemV,
 };
 
 class AssemblyBuilderX64
@@ -71,7 +84,7 @@ public:
     void ret();
 
     // Control flow
-    void jcc(Condition cond, Label& label);
+    void jcc(ConditionX64 cond, Label& label);
     void jmp(Label& label);
     void jmp(OperandX64 op);
 
@@ -79,6 +92,10 @@ public:
     void call(OperandX64 op);
 
     void int3();
+
+    // Code alignment
+    void nop(uint32_t length = 1);
+    void align(uint32_t alignment, AlignmentDataX64 data = AlignmentDataX64::Nop);
 
     // AVX
     void vaddpd(OperandX64 dst, OperandX64 src1, OperandX64 src2);
@@ -131,6 +148,8 @@ public:
 
     void logAppend(const char* fmt, ...) LUAU_PRINTF_ATTR(2, 3);
 
+    uint32_t getCodeSize() const;
+
     // Resulting data and code that need to be copied over one after the other
     // The *end* of 'data' has to be aligned to 16 bytes, this will also align 'code'
     std::vector<uint8_t> data;
@@ -139,6 +158,8 @@ public:
     std::string text;
 
     const bool logText = false;
+
+    const ABIX64 abi;
 
 private:
     // Instruction archetypes
@@ -177,7 +198,6 @@ private:
 
     void commit();
     LUAU_NOINLINE void extend();
-    uint32_t getCodeSize();
 
     // Data
     size_t allocateData(size_t size, size_t align);
@@ -192,8 +212,8 @@ private:
     LUAU_NOINLINE void log(const char* opcode, Label label);
     void log(OperandX64 op);
 
-    const char* getSizeName(SizeX64 size);
-    const char* getRegisterName(RegisterX64 reg);
+    const char* getSizeName(SizeX64 size) const;
+    const char* getRegisterName(RegisterX64 reg) const;
 
     uint32_t nextLabel = 1;
     std::vector<Label> pendingLabels;

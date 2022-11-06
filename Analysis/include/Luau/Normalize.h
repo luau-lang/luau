@@ -17,19 +17,8 @@ struct SingletonTypes;
 
 using ModulePtr = std::shared_ptr<Module>;
 
-bool isSubtype(
-    TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop = true);
-bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice,
-    bool anyIsTop = true);
-
-std::pair<TypeId, bool> normalize(
-    TypeId ty, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
-std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Module> module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
-std::pair<TypeId, bool> normalize(TypeId ty, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
-std::pair<TypePackId, bool> normalize(
-    TypePackId ty, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
-std::pair<TypePackId, bool> normalize(TypePackId ty, NotNull<Module> module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
-std::pair<TypePackId, bool> normalize(TypePackId ty, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
+bool isSubtype(TypePackId subTy, TypePackId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice);
 
 class TypeIds
 {
@@ -115,16 +104,89 @@ struct std::equal_to<const Luau::TypeIds*>
 namespace Luau
 {
 
-// A normalized string type is either `string` (represented by `nullopt`)
-// or a union of string singletons.
-using NormalizedStringType = std::optional<std::map<std::string, TypeId>>;
+/** A normalized string type is either `string` (represented by `nullopt`) or a
+ * union of string singletons.
+ *
+ * When FFlagLuauNegatedStringSingletons is unset, the representation is as
+ * follows:
+ *
+ * * The `string` data type is represented by the option `singletons` having the
+ *   value `std::nullopt`.
+ * * The type `never` is represented by `singletons` being populated with an
+ *   empty map.
+ * * A union of string singletons is represented by a map populated by the names
+ *   and TypeIds of the singletons contained therein.
+ *
+ * When FFlagLuauNegatedStringSingletons is set, the representation is as
+ * follows:
+ *
+ * * A union of string singletons is finite and includes the singletons named by
+ *   the `singletons` field.
+ * * An intersection of negated string singletons is cofinite and includes the
+ *   singletons excluded by the `singletons` field.  It is implied that cofinite
+ *   values are exclusions from `string` itself.
+ * * The `string` data type is a cofinite set minus zero elements.
+ * * The `never` data type is a finite set plus zero elements.
+ */
+struct NormalizedStringType
+{
+    // When false, this type represents a union of singleton string types.
+    // eg "a" | "b" | "c"
+    //
+    // When true, this type represents string intersected with negated string
+    // singleton types.
+    // eg string & ~"a" & ~"b" & ...
+    bool isCofinite = false;
 
-// A normalized function type is either `never` (represented by `nullopt`)
+    // TODO: This field cannot be nullopt when FFlagLuauNegatedStringSingletons
+    // is set. When clipping that flag, we can remove the wrapping optional.
+    std::optional<std::map<std::string, TypeId>> singletons;
+
+    void resetToString();
+    void resetToNever();
+
+    bool isNever() const;
+    bool isString() const;
+
+    /// Returns true if the string has finite domain.
+    ///
+    /// Important subtlety: This method returns true for `never`.  The empty set
+    /// is indeed an empty set.
+    bool isUnion() const;
+
+    /// Returns true if the string has infinite domain.
+    bool isIntersection() const;
+
+    bool includes(const std::string& str) const;
+
+    static const NormalizedStringType never;
+
+    NormalizedStringType() = default;
+    NormalizedStringType(bool isCofinite, std::optional<std::map<std::string, TypeId>> singletons);
+};
+
+bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr);
+
+// A normalized function type can be `never`, the top function type `function`,
 // or an intersection of function types.
-// NOTE: type normalization can fail on function types with generics
-// (e.g. because we do not support unions and intersections of generic type packs),
-// so this type may contain `error`.
-using NormalizedFunctionType = std::optional<TypeIds>;
+//
+// NOTE: type normalization can fail on function types with generics (e.g.
+// because we do not support unions and intersections of generic type packs), so
+// this type may contain `error`.
+struct NormalizedFunctionType
+{
+    NormalizedFunctionType();
+
+    bool isTop = false;
+    // TODO: Remove this wrapping optional when clipping
+    // FFlagLuauNegatedFunctionTypes.
+    std::optional<TypeIds> parts;
+
+    void resetToNever();
+    void resetToTop();
+
+    bool isNever() const;
+};
 
 // A normalized generic/free type is a union, where each option is of the form (X & T) where
 // * X is either a free type or a generic
@@ -166,7 +228,7 @@ struct NormalizedType
 
     // The string part of the type.
     // This may be the `string` type, or a union of singletons.
-    NormalizedStringType strings = std::map<std::string, TypeId>{};
+    NormalizedStringType strings;
 
     // The thread part of the type.
     // This type is either never or thread.
@@ -184,12 +246,14 @@ struct NormalizedType
 
     NormalizedType(NotNull<SingletonTypes> singletonTypes);
 
-    NormalizedType(const NormalizedType&) = delete;
-    NormalizedType(NormalizedType&&) = default;
     NormalizedType() = delete;
     ~NormalizedType() = default;
+
+    NormalizedType(const NormalizedType&) = delete;
+    NormalizedType& operator=(const NormalizedType&) = delete;
+
+    NormalizedType(NormalizedType&&) = default;
     NormalizedType& operator=(NormalizedType&&) = default;
-    NormalizedType& operator=(NormalizedType&) = delete;
 };
 
 class Normalizer
@@ -240,8 +304,14 @@ public:
     bool unionNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
     bool unionNormalWithTy(NormalizedType& here, TypeId there, int ignoreSmallerTyvars = -1);
 
+    // ------- Negations
+    std::optional<NormalizedType> negateNormal(const NormalizedType& here);
+    TypeIds negateAll(const TypeIds& theres);
+    TypeId negate(TypeId there);
+    void subtractPrimitive(NormalizedType& here, TypeId ty);
+    void subtractSingleton(NormalizedType& here, TypeId ty);
+
     // ------- Normalizing intersections
-    void intersectTysWithTy(TypeIds& here, TypeId there);
     TypeId intersectionOfTops(TypeId here, TypeId there);
     TypeId intersectionOfBools(TypeId here, TypeId there);
     void intersectClasses(TypeIds& heres, const TypeIds& theres);

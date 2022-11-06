@@ -11,6 +11,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAGVARIABLE(LuauCheckOverloadedDocSymbol, false)
+
 namespace Luau
 {
 
@@ -427,6 +429,38 @@ ExprOrLocal findExprOrLocalAtPosition(const SourceModule& source, Position pos)
     return findVisitor.result;
 }
 
+static std::optional<DocumentationSymbol> checkOverloadedDocumentationSymbol(
+    const Module& module, const TypeId ty, const AstExpr* parentExpr, const std::optional<DocumentationSymbol> documentationSymbol)
+{
+    LUAU_ASSERT(FFlag::LuauCheckOverloadedDocSymbol);
+
+    if (!documentationSymbol)
+        return std::nullopt;
+
+    // This might be an overloaded function.
+    if (get<IntersectionTypeVar>(follow(ty)))
+    {
+        TypeId matchingOverload = nullptr;
+        if (parentExpr && parentExpr->is<AstExprCall>())
+        {
+            if (auto it = module.astOverloadResolvedTypes.find(parentExpr))
+            {
+                matchingOverload = *it;
+            }
+        }
+
+        if (matchingOverload)
+        {
+            std::string overloadSymbol = *documentationSymbol + "/overload/";
+            // Default toString options are fine for this purpose.
+            overloadSymbol += toString(matchingOverload);
+            return overloadSymbol;
+        }
+    }
+
+    return documentationSymbol;
+}
+
 std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const SourceModule& source, const Module& module, Position position)
 {
     std::vector<AstNode*> ancestry = findAstAncestryOfPosition(source, position);
@@ -436,31 +470,38 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
 
     if (std::optional<Binding> binding = findBindingAtPosition(module, source, position))
     {
-        if (binding->documentationSymbol)
+        if (FFlag::LuauCheckOverloadedDocSymbol)
         {
-            // This might be an overloaded function binding.
-            if (get<IntersectionTypeVar>(follow(binding->typeId)))
+            return checkOverloadedDocumentationSymbol(module, binding->typeId, parentExpr, binding->documentationSymbol);
+        }
+        else
+        {
+            if (binding->documentationSymbol)
             {
-                TypeId matchingOverload = nullptr;
-                if (parentExpr && parentExpr->is<AstExprCall>())
+                // This might be an overloaded function binding.
+                if (get<IntersectionTypeVar>(follow(binding->typeId)))
                 {
-                    if (auto it = module.astOverloadResolvedTypes.find(parentExpr))
+                    TypeId matchingOverload = nullptr;
+                    if (parentExpr && parentExpr->is<AstExprCall>())
                     {
-                        matchingOverload = *it;
+                        if (auto it = module.astOverloadResolvedTypes.find(parentExpr))
+                        {
+                            matchingOverload = *it;
+                        }
+                    }
+
+                    if (matchingOverload)
+                    {
+                        std::string overloadSymbol = *binding->documentationSymbol + "/overload/";
+                        // Default toString options are fine for this purpose.
+                        overloadSymbol += toString(matchingOverload);
+                        return overloadSymbol;
                     }
                 }
-
-                if (matchingOverload)
-                {
-                    std::string overloadSymbol = *binding->documentationSymbol + "/overload/";
-                    // Default toString options are fine for this purpose.
-                    overloadSymbol += toString(matchingOverload);
-                    return overloadSymbol;
-                }
             }
-        }
 
-        return binding->documentationSymbol;
+            return binding->documentationSymbol;
+        }
     }
 
     if (targetExpr)
@@ -474,14 +515,20 @@ std::optional<DocumentationSymbol> getDocumentationSymbolAtPosition(const Source
                 {
                     if (auto propIt = ttv->props.find(indexName->index.value); propIt != ttv->props.end())
                     {
-                        return propIt->second.documentationSymbol;
+                        if (FFlag::LuauCheckOverloadedDocSymbol)
+                            return checkOverloadedDocumentationSymbol(module, propIt->second.type, parentExpr, propIt->second.documentationSymbol);
+                        else
+                            return propIt->second.documentationSymbol;
                     }
                 }
                 else if (const ClassTypeVar* ctv = get<ClassTypeVar>(parentTy))
                 {
                     if (auto propIt = ctv->props.find(indexName->index.value); propIt != ctv->props.end())
                     {
-                        return propIt->second.documentationSymbol;
+                        if (FFlag::LuauCheckOverloadedDocSymbol)
+                            return checkOverloadedDocumentationSymbol(module, propIt->second.type, parentExpr, propIt->second.documentationSymbol);
+                        else
+                            return propIt->second.documentationSymbol;
                     }
                 }
             }

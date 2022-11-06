@@ -10,7 +10,7 @@ using namespace Luau;
 
 TEST_SUITE_BEGIN("SymbolTests");
 
-TEST_CASE("hashing_globals")
+TEST_CASE("equality_and_hashing_of_globals")
 {
     std::string s1 = "name";
     std::string s2 = "name";
@@ -37,7 +37,7 @@ TEST_CASE("hashing_globals")
     REQUIRE_EQ(1, theMap.size());
 }
 
-TEST_CASE("hashing_locals")
+TEST_CASE("equality_and_hashing_of_locals")
 {
     std::string s1 = "name";
     std::string s2 = "name";
@@ -62,6 +62,26 @@ TEST_CASE("hashing_locals")
     theMap[n2] = 1;
 
     REQUIRE_EQ(2, theMap.size());
+}
+
+TEST_CASE("equality_of_empty_symbols")
+{
+    ScopedFastFlag sff{"DebugLuauDeferredConstraintResolution", true};
+
+    std::string s1 = "name";
+    std::string s2 = "name";
+
+    AstName one{s1.data()};
+    AstLocal two{AstName{s2.data()}, Location(), nullptr, 0, 0, nullptr};
+
+    Symbol global{one};
+    Symbol local{&two};
+    Symbol empty1{};
+    Symbol empty2{};
+
+    CHECK(empty1 != global);
+    CHECK(empty1 != local);
+    CHECK(empty1 == empty2);
 }
 
 TEST_SUITE_END();

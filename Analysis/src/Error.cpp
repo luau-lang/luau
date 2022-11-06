@@ -7,7 +7,7 @@
 
 #include <stdexcept>
 
-LUAU_FASTFLAGVARIABLE(LuauTypeMismatchModuleNameResolution, false)
+LUAU_FASTFLAGVARIABLE(LuauIceExceptionInheritanceChange, false)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
@@ -70,7 +70,7 @@ struct ErrorConverter
             {
                 if (auto wantedDefinitionModule = getDefinitionModuleName(tm.wantedType))
                 {
-                    if (FFlag::LuauTypeMismatchModuleNameResolution && fileResolver != nullptr)
+                    if (fileResolver != nullptr)
                     {
                         std::string givenModuleName = fileResolver->getHumanReadableModuleName(*givenDefinitionModule);
                         std::string wantedModuleName = fileResolver->getHumanReadableModuleName(*wantedDefinitionModule);
@@ -96,14 +96,7 @@ struct ErrorConverter
             if (!tm.reason.empty())
                 result += tm.reason + " ";
 
-            if (FFlag::LuauTypeMismatchModuleNameResolution)
-            {
-                result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
-            }
-            else
-            {
-                result += Luau::toString(*tm.error);
-            }
+            result += Luau::toString(*tm.error, TypeErrorToStringOptions{fileResolver});
         }
         else if (!tm.reason.empty())
         {
@@ -469,6 +462,11 @@ struct ErrorConverter
     {
         return "Code is too complex to typecheck! Consider simplifying the code around this area";
     }
+
+    std::string operator()(const TypePackMismatch& e) const
+    {
+        return "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
+    }
 };
 
 struct InvalidNameChecker
@@ -727,6 +725,11 @@ bool TypesAreUnrelated::operator==(const TypesAreUnrelated& rhs) const
     return left == rhs.left && right == rhs.right;
 }
 
+bool TypePackMismatch::operator==(const TypePackMismatch& rhs) const
+{
+    return *wantedTp == *rhs.wantedTp && *givenTp == *rhs.givenTp;
+}
+
 std::string toString(const TypeError& error)
 {
     return toString(error, TypeErrorToStringOptions{});
@@ -878,6 +881,11 @@ void copyError(T& e, TypeArena& destArena, CloneState cloneState)
     else if constexpr (std::is_same_v<T, NormalizationTooComplex>)
     {
     }
+    else if constexpr (std::is_same_v<T, TypePackMismatch>)
+    {
+        e.wantedTp = clone(e.wantedTp);
+        e.givenTp = clone(e.givenTp);
+    }
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
@@ -920,6 +928,32 @@ void InternalErrorReporter::ice(const std::string& message)
 const char* InternalCompilerError::what() const throw()
 {
     return this->message.data();
+}
+
+// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
+void throwRuntimeError(const std::string& message)
+{
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        throw InternalCompilerError(message);
+    }
+    else
+    {
+        throw std::runtime_error(message);
+    }
+}
+
+// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
+void throwRuntimeError(const std::string& message, const std::string& moduleName)
+{
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        throw InternalCompilerError(message, moduleName);
+    }
+    else
+    {
+        throw std::runtime_error(message);
+    }
 }
 
 } // namespace Luau

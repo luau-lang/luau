@@ -48,7 +48,17 @@ struct HashBoolNamePair
     size_t operator()(const std::pair<bool, Name>& pair) const;
 };
 
-class TimeLimitError : public std::exception
+class TimeLimitError : public InternalCompilerError
+{
+public:
+    explicit TimeLimitError(const std::string& moduleName)
+        : InternalCompilerError("Typeinfer failed to complete in allotted time", moduleName)
+    {
+        LUAU_ASSERT(FFlag::LuauIceExceptionInheritanceChange);
+    }
+};
+
+class TimeLimitError_DEPRECATED : public std::exception
 {
 public:
     virtual const char* what() const throw();
@@ -192,17 +202,11 @@ struct TypeChecker
     ErrorVec canUnify(TypeId subTy, TypeId superTy, const ScopePtr& scope, const Location& location);
     ErrorVec canUnify(TypePackId subTy, TypePackId superTy, const ScopePtr& scope, const Location& location);
 
-    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const ScopePtr& scope, const Location& location);
-
     std::optional<TypeId> findMetatableEntry(TypeId type, std::string entry, const Location& location, bool addErrors);
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name, const Location& location, bool addErrors);
 
     std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, TypeId type, const Name& name, const Location& location, bool addErrors);
     std::optional<TypeId> getIndexTypeFromTypeImpl(const ScopePtr& scope, TypeId type, const Name& name, const Location& location, bool addErrors);
-
-    // Reduces the union to its simplest possible shape.
-    // (A | B) | B | C yields A | B | C
-    std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types);
 
     std::optional<TypeId> tryStripUnionFromNil(TypeId ty);
     TypeId stripFromNilAndReport(TypeId ty, const Location& location);
@@ -242,6 +246,7 @@ public:
 
     [[noreturn]] void ice(const std::string& message, const Location& location);
     [[noreturn]] void ice(const std::string& message);
+    [[noreturn]] void throwTimeLimitError();
 
     ScopePtr childFunctionScope(const ScopePtr& parent, const Location& location, int subLevel = 0);
     ScopePtr childScope(const ScopePtr& parent, const Location& location);

@@ -66,8 +66,8 @@ Syntactic subtyping is a syntax-directed recursive algorithm. The interesting ca
 * Reflexivity: `T` is a subtype of `T`
 * Intersection L: `(T₁ & … & Tⱼ)` is a subtype of `U` whenever some of the `Tᵢ` are subtypes of `U`
 * Union L: `(T₁ | … | Tⱼ)` is a subtype of `U` whenever all of the `Tᵢ` are subtypes of `U`
-* Intersection R: `T` is a subtype of `(U₁ & … & Uⱼ)` whenever `T` is a subtype of some of the `Uᵢ`
-* Union R: `T` is a subtype of `(U₁ | … | Uⱼ)` whenever `T` is a subtype of all of the `Uᵢ`.
+* Intersection R: `T` is a subtype of `(U₁ & … & Uⱼ)` whenever `T` is a subtype of all of the `Uᵢ`
+* Union R: `T` is a subtype of `(U₁ | … | Uⱼ)` whenever `T` is a subtype of some of the `Uᵢ`.
 
 For example:
 
@@ -262,6 +262,10 @@ Semantic subtyping has removed one source of false positives, but we still have 
 
 The quest to remove spurious red squiggles continues!
 
+## Acknowledgments
+
+Thanks to Giuseppe Castagna and Ben Greenman for helpful comments on drafts of this post.
+
 ## Further reading
 
 If you want to find out more about Luau and semantic subtyping, you might want to check out…
@@ -274,8 +278,9 @@ If you want to find out more about Luau and semantic subtyping, you might want t
 * Giuseppe Castagna, *Covariance and Contravariance*, Logical Methods in Computer Science 16(1), 2022. <https://arxiv.org/abs/1809.01427>
 * Giuseppe Castagna and Alain Frisch, *A gentle introduction to semantic subtyping*, Proc. Principles and practice of declarative programming (PPDP), pp 198–208, 2005. <https://doi.org/10.1145/1069774.1069793>
 * Giuseppe Castagna, Mickaël Laurent, Kim Nguyễn, Matthew Lutze, *On Type-Cases, Union Elimination, and Occurrence Typing*, Principles of Programming Languages (POPL), 2022. <https://doi.org/10.1145/3498674>
-* Sam Tobin-Hochstadt and Matthias Felleisen, *Logical types for untyped languages*. International Conference on Functional Programming (ICFP), 2010. https://doi.org/10.1145/1863543.1863561
-* José Valim, *My Future with Elixir: set-theoretic types*, 2022. https://elixir-lang.org/blog/2022/10/05/my-future-with-elixir-set-theoretic-types/
+* Giuseppe Castagna, *Programming with union, intersection, and negation types*, 2022. <https://arxiv.org/abs/2111.03354>
+* Sam Tobin-Hochstadt and Matthias Felleisen, *Logical types for untyped languages*. International Conference on Functional Programming (ICFP), 2010. <https://doi.org/10.1145/1863543.1863561>
+* José Valim, *My Future with Elixir: set-theoretic types*, 2022. <https://elixir-lang.org/blog/2022/10/05/my-future-with-elixir-set-theoretic-types/>
 
 Some other languages which support semantic subtyping…
 

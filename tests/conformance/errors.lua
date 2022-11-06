@@ -405,5 +405,7 @@ assert(ecall(function() (""):foo() end) == "attempt to call missing method 'foo'
 assert(ecall(function() (42):foo() end) == "attempt to index number with 'foo'")
 assert(ecall(function() ({foo=42}):foo() end) == "attempt to call a number value")
 assert(ecall(function() local ud = newproxy(true) getmetatable(ud).__index = {} ud:foo() end) == "attempt to call missing method 'foo' of userdata")
+assert(ecall(function() local ud = newproxy(true) getmetatable(ud).__index = function() end ud:foo() end) == "attempt to call missing method 'foo' of userdata")
+assert(ecall(function() local ud = newproxy(true) getmetatable(ud).__index = function() error("nope") end ud:foo() end) == "nope")
 
 return('OK')

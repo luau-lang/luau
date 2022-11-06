@@ -11,6 +11,7 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
+LUAU_FASTFLAG(LuauIceExceptionInheritanceChange);
 
 TEST_SUITE_BEGIN("ModuleTests");
 
@@ -226,24 +227,6 @@ TEST_CASE_FIXTURE(Fixture, "clone_free_tables")
     CHECK_EQ(clonedTtv->state, TableState::Free);
 }
 
-TEST_CASE_FIXTURE(Fixture, "clone_constrained_intersection")
-{
-    TypeArena src;
-
-    TypeId constrained = src.addType(ConstrainedTypeVar{TypeLevel{}, {singletonTypes->numberType, singletonTypes->stringType}});
-
-    TypeArena dest;
-    CloneState cloneState;
-
-    TypeId cloned = clone(constrained, dest, cloneState);
-    CHECK_NE(constrained, cloned);
-
-    const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(cloned);
-    REQUIRE_EQ(2, ctv->parts.size());
-    CHECK_EQ(singletonTypes->numberType, ctv->parts[0]);
-    CHECK_EQ(singletonTypes->stringType, ctv->parts[1]);
-}
-
 TEST_CASE_FIXTURE(BuiltinsFixture, "clone_self_property")
 {
     fileResolver.source["Module/A"] = R"(
@@ -296,7 +279,14 @@ TEST_CASE_FIXTURE(Fixture, "clone_recursion_limit")
     TypeArena dest;
     CloneState cloneState;
 
-    CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException);
+    }
+    else
+    {
+        CHECK_THROWS_AS(clone(table, dest, cloneState), RecursionLimitException_DEPRECATED);
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "any_persistance_does_not_leak")

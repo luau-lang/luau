@@ -1,7 +1,9 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#include "Luau/Common.h"
+
+#if defined(LUAU_BIG_ENDIAN)
 #include <endian.h>
 #endif
 
@@ -15,7 +17,7 @@ inline uint8_t* writeu8(uint8_t* target, uint8_t value)
 
 inline uint8_t* writeu32(uint8_t* target, uint32_t value)
 {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#if defined(LUAU_BIG_ENDIAN)
     value = htole32(value);
 #endif
 
@@ -25,7 +27,7 @@ inline uint8_t* writeu32(uint8_t* target, uint32_t value)
 
 inline uint8_t* writeu64(uint8_t* target, uint64_t value)
 {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#if defined(LUAU_BIG_ENDIAN)
     value = htole64(value);
 #endif
 
@@ -51,7 +53,7 @@ inline uint8_t* writeuleb128(uint8_t* target, uint64_t value)
 
 inline uint8_t* writef32(uint8_t* target, float value)
 {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#if defined(LUAU_BIG_ENDIAN)
     static_assert(sizeof(float) == sizeof(uint32_t), "type size must match to reinterpret data");
     uint32_t data;
     memcpy(&data, &value, sizeof(value));
@@ -65,7 +67,7 @@ inline uint8_t* writef32(uint8_t* target, float value)
 
 inline uint8_t* writef64(uint8_t* target, double value)
 {
-#if defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+#if defined(LUAU_BIG_ENDIAN)
     static_assert(sizeof(double) == sizeof(uint64_t), "type size must match to reinterpret data");
     uint64_t data;
     memcpy(&data, &value, sizeof(value));

@@ -16,8 +16,6 @@
 
 #include <string.h>
 
-LUAU_FASTFLAGVARIABLE(LuauNoTopRestoreInFastCall, false)
-
 // Disable c99-designator to avoid the warning in CGOTO dispatch table
 #ifdef __clang__
 #if __has_warning("-Wc99-designator")
@@ -757,6 +755,8 @@ reentry:
 
                 Proto* pv = cl->l.p->p[LUAU_INSN_D(insn)];
                 LUAU_ASSERT(unsigned(LUAU_INSN_D(insn)) < unsigned(cl->l.p->sizep));
+
+                VM_PROTECT_PC(); // luaF_newLclosure may fail due to OOM
 
                 // note: we save closure to stack early in case the code below wants to capture it by value
                 Closure* ncl = luaF_newLclosure(L, pv->nups, cl->env, pv);
@@ -2056,6 +2056,8 @@ reentry:
                 int b = LUAU_INSN_B(insn);
                 uint32_t aux = *pc++;
 
+                VM_PROTECT_PC(); // luaH_new may fail due to OOM
+
                 sethvalue(L, ra, luaH_new(L, aux, b == 0 ? 0 : (1 << (b - 1))));
                 VM_PROTECT(luaC_checkGC(L));
                 VM_NEXT();
@@ -2066,6 +2068,8 @@ reentry:
                 Instruction insn = *pc++;
                 StkId ra = VM_REG(LUAU_INSN_A(insn));
                 TValue* kv = VM_KV(LUAU_INSN_D(insn));
+
+                VM_PROTECT_PC(); // luaH_clone may fail due to OOM
 
                 sethvalue(L, ra, luaH_clone(L, hvalue(kv)));
                 VM_PROTECT(luaC_checkGC(L));
@@ -2088,12 +2092,17 @@ reentry:
 
                 Table* h = hvalue(ra);
 
+                // TODO: we really don't need this anymore
                 if (!ttistable(ra))
                     return; // temporary workaround to weaken a rather powerful exploitation primitive in case of a MITM attack on bytecode
 
                 int last = index + c - 1;
                 if (last > h->sizearray)
+                {
+                    VM_PROTECT_PC(); // luaH_resizearray may fail due to OOM
+
                     luaH_resizearray(L, h, last);
+                }
 
                 TValue* array = h->array;
 
@@ -2185,7 +2194,8 @@ reentry:
                         // protect against __iter returning nil, since nil is used as a marker for builtin iteration in FORGLOOP
                         if (ttisnil(ra))
                         {
-                            VM_PROTECT(luaG_typeerror(L, ra, "call"));
+                            VM_PROTECT_PC(); // next call always errors
+                            luaG_typeerror(L, ra, "call");
                         }
                     }
                     else if (fasttm(L, mt, TM_CALL))
@@ -2202,7 +2212,8 @@ reentry:
                     }
                     else
                     {
-                        VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                        VM_PROTECT_PC(); // next call always errors
+                        luaG_typeerror(L, ra, "iterate over");
                     }
                 }
 
@@ -2325,7 +2336,8 @@ reentry:
                 }
                 else if (!ttisfunction(ra))
                 {
-                    VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                    VM_PROTECT_PC(); // next call always errors
+                    luaG_typeerror(L, ra, "iterate over");
                 }
 
                 pc += LUAU_INSN_D(insn);
@@ -2353,7 +2365,8 @@ reentry:
                 }
                 else if (!ttisfunction(ra))
                 {
-                    VM_PROTECT(luaG_typeerror(L, ra, "iterate over"));
+                    VM_PROTECT_PC(); // next call always errors
+                    luaG_typeerror(L, ra, "iterate over");
                 }
 
                 pc += LUAU_INSN_D(insn);
@@ -2403,6 +2416,8 @@ reentry:
                 TValue* kv = VM_KV(LUAU_INSN_D(insn));
 
                 Closure* kcl = clvalue(kv);
+
+                VM_PROTECT_PC(); // luaF_newLclosure may fail due to OOM
 
                 // clone closure if the environment is not shared
                 // note: we save closure to stack early in case the code below wants to capture it by value
@@ -2530,10 +2545,11 @@ reentry:
                 nparams = (nparams == LUA_MULTRET) ? int(L->top - ra - 1) : nparams;
 
                 luau_FastFunction f = luauF_table[bfid];
+                LUAU_ASSERT(f);
 
-                if (cl->env->safeenv && f)
+                if (cl->env->safeenv)
                 {
-                    VM_PROTECT_PC();
+                    VM_PROTECT_PC(); // f may fail due to OOM
 
                     int n = f(L, ra, ra + 1, nresults, ra + 2, nparams);
 
@@ -2608,24 +2624,18 @@ reentry:
                 int nresults = LUAU_INSN_C(call) - 1;
 
                 luau_FastFunction f = luauF_table[bfid];
+                LUAU_ASSERT(f);
 
-                if (cl->env->safeenv && f)
+                if (cl->env->safeenv)
                 {
-                    VM_PROTECT_PC();
+                    VM_PROTECT_PC(); // f may fail due to OOM
 
                     int n = f(L, ra, arg, nresults, NULL, nparams);
 
                     if (n >= 0)
                     {
-                        if (FFlag::LuauNoTopRestoreInFastCall)
-                        {
-                            if (nresults == LUA_MULTRET)
-                                L->top = ra + n;
-                        }
-                        else
-                        {
-                            L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
-                        }
+                        if (nresults == LUA_MULTRET)
+                            L->top = ra + n;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
@@ -2664,24 +2674,18 @@ reentry:
                 int nresults = LUAU_INSN_C(call) - 1;
 
                 luau_FastFunction f = luauF_table[bfid];
+                LUAU_ASSERT(f);
 
-                if (cl->env->safeenv && f)
+                if (cl->env->safeenv)
                 {
-                    VM_PROTECT_PC();
+                    VM_PROTECT_PC(); // f may fail due to OOM
 
                     int n = f(L, ra, arg1, nresults, arg2, nparams);
 
                     if (n >= 0)
                     {
-                        if (FFlag::LuauNoTopRestoreInFastCall)
-                        {
-                            if (nresults == LUA_MULTRET)
-                                L->top = ra + n;
-                        }
-                        else
-                        {
-                            L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
-                        }
+                        if (nresults == LUA_MULTRET)
+                            L->top = ra + n;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));
@@ -2720,24 +2724,18 @@ reentry:
                 int nresults = LUAU_INSN_C(call) - 1;
 
                 luau_FastFunction f = luauF_table[bfid];
+                LUAU_ASSERT(f);
 
-                if (cl->env->safeenv && f)
+                if (cl->env->safeenv)
                 {
-                    VM_PROTECT_PC();
+                    VM_PROTECT_PC(); // f may fail due to OOM
 
                     int n = f(L, ra, arg1, nresults, arg2, nparams);
 
                     if (n >= 0)
                     {
-                        if (FFlag::LuauNoTopRestoreInFastCall)
-                        {
-                            if (nresults == LUA_MULTRET)
-                                L->top = ra + n;
-                        }
-                        else
-                        {
-                            L->top = (nresults == LUA_MULTRET) ? ra + n : L->ci->top;
-                        }
+                        if (nresults == LUA_MULTRET)
+                            L->top = ra + n;
 
                         pc += skip + 1; // skip instructions that compute function as well as CALL
                         LUAU_ASSERT(unsigned(pc - cl->l.p->code) < unsigned(cl->l.p->sizecode));

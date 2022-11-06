@@ -517,6 +517,33 @@ TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_is_dirty")
     CHECK_EQ("{| b_value: string |}", toString(*bExports));
 }
 
+TEST_CASE_FIXTURE(FrontendFixture, "mark_non_immediate_reverse_deps_as_dirty")
+{
+    ScopedFastFlag sff[] = {
+        {"LuauFixMarkDirtyReverseDeps", true},
+    };
+
+    fileResolver.source["game/Gui/Modules/A"] = "return {hello=5, world=true}";
+    fileResolver.source["game/Gui/Modules/B"] = R"(
+        return require(game:GetService('Gui').Modules.A)
+    )";
+    fileResolver.source["game/Gui/Modules/C"] = R"(
+        local Modules = game:GetService('Gui').Modules
+        local B = require(Modules.B)
+        return {c_value = B.hello}
+    )";
+
+    frontend.check("game/Gui/Modules/C");
+
+    std::vector<Luau::ModuleName> markedDirty;
+    frontend.markDirty("game/Gui/Modules/A", &markedDirty);
+
+    REQUIRE(markedDirty.size() == 3);
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/Gui/Modules/A") != markedDirty.end());
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/Gui/Modules/B") != markedDirty.end());
+    CHECK(std::find(markedDirty.begin(), markedDirty.end(), "game/Gui/Modules/C") != markedDirty.end());
+}
+
 #if 0
 // Does not work yet. :(
 TEST_CASE_FIXTURE(FrontendFixture, "recheck_if_dependent_script_has_a_parse_error")

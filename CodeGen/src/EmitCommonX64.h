@@ -35,11 +35,11 @@ constexpr RegisterX64 rConstants = r12;     // TValue* k
 constexpr OperandX64 sClosure = qword[rbp + 0]; // Closure* cl
 constexpr OperandX64 sCode = qword[rbp + 8];    // Instruction* code
 
+// TODO: These should be replaced with a portable call function that checks the ABI at runtime and reorders moves accordingly to avoid conflicts
 #if defined(_WIN32)
 
 constexpr RegisterX64 rArg1 = rcx;
 constexpr RegisterX64 rArg2 = rdx;
-constexpr RegisterX64 rArg2d = edx;
 constexpr RegisterX64 rArg3 = r8;
 constexpr RegisterX64 rArg4 = r9;
 constexpr RegisterX64 rArg5 = noreg;
@@ -51,7 +51,6 @@ constexpr OperandX64 sArg6 = qword[rsp + 40];
 
 constexpr RegisterX64 rArg1 = rdi;
 constexpr RegisterX64 rArg2 = rsi;
-constexpr RegisterX64 rArg2d = esi;
 constexpr RegisterX64 rArg3 = rdx;
 constexpr RegisterX64 rArg4 = rcx;
 constexpr RegisterX64 rArg5 = r8;
@@ -62,10 +61,28 @@ constexpr OperandX64 sArg6 = noreg;
 #endif
 
 constexpr unsigned kTValueSizeLog2 = 4;
+constexpr unsigned kLuaNodeSizeLog2 = 5;
+constexpr unsigned kLuaNodeTagMask = 0xf;
+
+constexpr unsigned kOffsetOfLuaNodeTag = 12; // offsetof cannot be used on a bit field
+constexpr unsigned kOffsetOfInstructionC = 3;
+
+// Leaf functions that are placed in every module to perform common instruction sequences
+struct ModuleHelpers
+{
+    Label exitContinueVm;
+    Label exitNoContinueVm;
+    Label continueCallInVm;
+};
 
 inline OperandX64 luauReg(int ri)
 {
     return xmmword[rBase + ri * sizeof(TValue)];
+}
+
+inline OperandX64 luauRegAddress(int ri)
+{
+    return addr[rBase + ri * sizeof(TValue)];
 }
 
 inline OperandX64 luauRegValue(int ri)
@@ -88,9 +105,35 @@ inline OperandX64 luauConstant(int ki)
     return xmmword[rConstants + ki * sizeof(TValue)];
 }
 
+inline OperandX64 luauConstantAddress(int ki)
+{
+    return addr[rConstants + ki * sizeof(TValue)];
+}
+
+inline OperandX64 luauConstantTag(int ki)
+{
+    return dword[rConstants + ki * sizeof(TValue) + offsetof(TValue, tt)];
+}
+
 inline OperandX64 luauConstantValue(int ki)
 {
     return qword[rConstants + ki * sizeof(TValue) + offsetof(TValue, value)];
+}
+
+inline OperandX64 luauNodeKeyValue(RegisterX64 node)
+{
+    return qword[node + offsetof(LuaNode, key) + offsetof(TKey, value)];
+}
+
+// Note: tag has dirty upper bits
+inline OperandX64 luauNodeKeyTag(RegisterX64 node)
+{
+    return dword[node + offsetof(LuaNode, key) + kOffsetOfLuaNodeTag];
+}
+
+inline OperandX64 luauNodeValue(RegisterX64 node)
+{
+    return xmmword[node + offsetof(LuaNode, val)];
 }
 
 inline void setLuauReg(AssemblyBuilderX64& build, RegisterX64 tmp, int ri, OperandX64 op)
@@ -101,16 +144,24 @@ inline void setLuauReg(AssemblyBuilderX64& build, RegisterX64 tmp, int ri, Opera
     build.vmovups(luauReg(ri), tmp);
 }
 
+inline void setNodeValue(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 op, int ri)
+{
+    LUAU_ASSERT(op.cat == CategoryX64::mem);
+
+    build.vmovups(tmp, luauReg(ri));
+    build.vmovups(op, tmp);
+}
+
 inline void jumpIfTagIs(AssemblyBuilderX64& build, int ri, lua_Type tag, Label& label)
 {
     build.cmp(luauRegTag(ri), tag);
-    build.jcc(Condition::Equal, label);
+    build.jcc(ConditionX64::Equal, label);
 }
 
 inline void jumpIfTagIsNot(AssemblyBuilderX64& build, int ri, lua_Type tag, Label& label)
 {
     build.cmp(luauRegTag(ri), tag);
-    build.jcc(Condition::NotEqual, label);
+    build.jcc(ConditionX64::NotEqual, label);
 }
 
 // Note: fallthrough label should be placed after this condition
@@ -120,7 +171,7 @@ inline void jumpIfFalsy(AssemblyBuilderX64& build, int ri, Label& target, Label&
     jumpIfTagIsNot(build, ri, LUA_TBOOLEAN, fallthrough); // true if not nil or boolean
 
     build.cmp(luauRegValueBoolean(ri), 0);
-    build.jcc(Condition::Equal, target); // true if boolean value is 'true'
+    build.jcc(ConditionX64::Equal, target); // true if boolean value is 'true'
 }
 
 // Note: fallthrough label should be placed after this condition
@@ -130,13 +181,13 @@ inline void jumpIfTruthy(AssemblyBuilderX64& build, int ri, Label& target, Label
     jumpIfTagIsNot(build, ri, LUA_TBOOLEAN, target); // true if not nil or boolean
 
     build.cmp(luauRegValueBoolean(ri), 0);
-    build.jcc(Condition::NotEqual, target); // true if boolean value is 'true'
+    build.jcc(ConditionX64::NotEqual, target); // true if boolean value is 'true'
 }
 
 inline void jumpIfMetatablePresent(AssemblyBuilderX64& build, RegisterX64 table, Label& target)
 {
     build.cmp(qword[table + offsetof(Table, metatable)], 0);
-    build.jcc(Condition::NotEqual, target);
+    build.jcc(ConditionX64::NotEqual, target);
 }
 
 inline void jumpIfUnsafeEnv(AssemblyBuilderX64& build, RegisterX64 tmp, Label& label)
@@ -144,18 +195,46 @@ inline void jumpIfUnsafeEnv(AssemblyBuilderX64& build, RegisterX64 tmp, Label& l
     build.mov(tmp, sClosure);
     build.mov(tmp, qword[tmp + offsetof(Closure, env)]);
     build.test(byte[tmp + offsetof(Table, safeenv)], 1);
-    build.jcc(Condition::Zero, label); // Not a safe environment
+    build.jcc(ConditionX64::Zero, label); // Not a safe environment
 }
 
 inline void jumpIfTableIsReadOnly(AssemblyBuilderX64& build, RegisterX64 table, Label& label)
 {
     build.cmp(byte[table + offsetof(Table, readonly)], 0);
-    build.jcc(Condition::NotEqual, label);
+    build.jcc(ConditionX64::NotEqual, label);
 }
 
-void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, Condition cond, Label& label);
-void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, Condition cond, Label& label, int pcpos);
+inline void jumpIfNodeKeyTagIsNot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, lua_Type tag, Label& label)
+{
+    tmp.size = SizeX64::dword;
 
+    build.mov(tmp, luauNodeKeyTag(node));
+    build.and_(tmp, kLuaNodeTagMask);
+    build.cmp(tmp, tag);
+    build.jcc(ConditionX64::NotEqual, label);
+}
+
+inline void jumpIfNodeValueTagIs(AssemblyBuilderX64& build, RegisterX64 node, lua_Type tag, Label& label)
+{
+    build.cmp(dword[node + offsetof(LuaNode, val) + offsetof(TValue, tt)], tag);
+    build.jcc(ConditionX64::Equal, label);
+}
+
+inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, OperandX64 expectedKey, Label& label)
+{
+    jumpIfNodeKeyTagIsNot(build, tmp, node, LUA_TSTRING, label);
+
+    build.mov(tmp, expectedKey);
+    build.cmp(tmp, luauNodeKeyValue(node));
+    build.jcc(ConditionX64::NotEqual, label);
+
+    jumpIfNodeValueTagIs(build, node, LUA_TNIL, label);
+}
+
+void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, ConditionX64 cond, Label& label);
+void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX64 cond, Label& label, int pcpos);
+
+RegisterX64 getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int pcpos);
 void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, int ri, Label& label);
 
 void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, int pcpos, TMS tm);
@@ -164,12 +243,18 @@ void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init, i
 void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos);
 void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos);
 void callBarrierTable(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int ra, Label& skip);
+void callBarrierObject(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
+void callBarrierTableFast(AssemblyBuilderX64& build, RegisterX64 table, Label& skip);
+void callCheckGc(AssemblyBuilderX64& build, int pcpos, bool savepc, Label& skip);
 
 void emitExit(AssemblyBuilderX64& build, bool continueInVm);
 void emitUpdateBase(AssemblyBuilderX64& build);
 void emitSetSavedPc(AssemblyBuilderX64& build, int pcpos); // Note: only uses rax/rdx, the caller may use other registers
 void emitInterrupt(AssemblyBuilderX64& build, int pcpos);
 void emitFallback(AssemblyBuilderX64& build, NativeState& data, int op, int pcpos);
+
+void emitContinueCallInVm(AssemblyBuilderX64& build);
+void emitExitFromLastReturn(AssemblyBuilderX64& build);
 
 } // namespace CodeGen
 } // namespace Luau

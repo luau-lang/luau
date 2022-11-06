@@ -2,22 +2,23 @@
 #pragma once
 
 #include "Luau/Ast.h"
+#include "Luau/Common.h"
 #include "Luau/DenseHash.h"
+#include "Luau/Def.h"
+#include "Luau/NotNull.h"
 #include "Luau/Predicate.h"
 #include "Luau/Unifiable.h"
 #include "Luau/Variant.h"
-#include "Luau/Common.h"
-#include "Luau/NotNull.h"
 
-#include <set>
-#include <string>
-#include <map>
-#include <unordered_set>
-#include <unordered_map>
-#include <vector>
 #include <deque>
+#include <map>
 #include <memory>
 #include <optional>
+#include <set>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
@@ -114,6 +115,7 @@ struct PrimitiveTypeVar
         Number,
         String,
         Thread,
+        Function,
     };
 
     Type type;
@@ -129,24 +131,6 @@ struct PrimitiveTypeVar
         , metatable(metatable)
     {
     }
-};
-
-struct ConstrainedTypeVar
-{
-    explicit ConstrainedTypeVar(TypeLevel level)
-        : level(level)
-    {
-    }
-
-    explicit ConstrainedTypeVar(TypeLevel level, const std::vector<TypeId>& parts)
-        : parts(parts)
-        , level(level)
-    {
-    }
-
-    std::vector<TypeId> parts;
-    TypeLevel level;
-    Scope* scope = nullptr;
 };
 
 // Singleton types https://github.com/Roblox/luau/blob/master/rfcs/syntax-singleton-types.md
@@ -496,11 +480,13 @@ struct AnyTypeVar
 {
 };
 
+// T | U
 struct UnionTypeVar
 {
     std::vector<TypeId> options;
 };
 
+// T & U
 struct IntersectionTypeVar
 {
     std::vector<TypeId> parts;
@@ -519,12 +505,19 @@ struct NeverTypeVar
 {
 };
 
+// ~T
+// TODO: Some simplification step that overwrites the type graph to make sure negation
+// types disappear from the user's view, and (?) a debug flag to disable that
+struct NegationTypeVar
+{
+    TypeId ty;
+};
+
 using ErrorTypeVar = Unifiable::Error;
 
 using TypeVariant =
-    Unifiable::Variant<TypeId, PrimitiveTypeVar, ConstrainedTypeVar, BlockedTypeVar, PendingExpansionTypeVar, SingletonTypeVar, FunctionTypeVar,
-        TableTypeVar, MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar>;
-
+    Unifiable::Variant<TypeId, PrimitiveTypeVar, BlockedTypeVar, PendingExpansionTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
+        MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar, NegationTypeVar>;
 
 struct TypeVar final
 {
@@ -541,7 +534,6 @@ struct TypeVar final
     TypeVar(const TypeVariant& ty, bool persistent)
         : ty(ty)
         , persistent(persistent)
-        , normal(persistent) // We assume that all persistent types are irreducable.
     {
     }
 
@@ -549,7 +541,6 @@ struct TypeVar final
     void reassign(const TypeVar& rhs)
     {
         ty = rhs.ty;
-        normal = rhs.normal;
         documentationSymbol = rhs.documentationSymbol;
     }
 
@@ -559,10 +550,6 @@ struct TypeVar final
     // Global type bindings are immutable but are reused many times.
     // Persistent TypeVars do not get cloned.
     bool persistent = false;
-
-    // Normalization sets this for types that are fully normalized.
-    // This implies that they are transitively immutable.
-    bool normal = false;
 
     std::optional<std::string> documentationSymbol;
 
@@ -650,12 +637,15 @@ public:
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
+    const TypeId functionType;
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;
     const TypeId unknownType;
     const TypeId neverType;
     const TypeId errorType;
+    const TypeId falsyType;  // No type binding!
+    const TypeId truthyType; // No type binding!
 
     const TypePackId anyTypePack;
     const TypePackId neverTypePack;
@@ -703,7 +693,6 @@ T* getMutable(TypeId tv)
 
 const std::vector<TypeId>& getTypes(const UnionTypeVar* utv);
 const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv);
-const std::vector<TypeId>& getTypes(const ConstrainedTypeVar* ctv);
 
 template<typename T>
 struct TypeIterator;
@@ -715,10 +704,6 @@ UnionTypeVarIterator end(const UnionTypeVar* utv);
 using IntersectionTypeVarIterator = TypeIterator<IntersectionTypeVar>;
 IntersectionTypeVarIterator begin(const IntersectionTypeVar* itv);
 IntersectionTypeVarIterator end(const IntersectionTypeVar* itv);
-
-using ConstrainedTypeVarIterator = TypeIterator<ConstrainedTypeVar>;
-ConstrainedTypeVarIterator begin(const ConstrainedTypeVar* ctv);
-ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv);
 
 /* Traverses the type T yielding each TypeId.
  * If the iterator encounters a nested type T, it will instead yield each TypeId within.
@@ -793,7 +778,6 @@ struct TypeIterator
     // with templates portability in this area, so not worth it. Thanks MSVC.
     friend UnionTypeVarIterator end(const UnionTypeVar*);
     friend IntersectionTypeVarIterator end(const IntersectionTypeVar*);
-    friend ConstrainedTypeVarIterator end(const ConstrainedTypeVar*);
 
 private:
     TypeIterator() = default;

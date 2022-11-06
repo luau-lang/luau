@@ -110,6 +110,7 @@ struct ConstraintSolver
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint);
 
     // for a, ... in some_table do
     // also handles __iter metamethod
@@ -214,6 +215,8 @@ private:
 
     TypeId errorRecoveryType() const;
     TypePackId errorRecoveryTypePack() const;
+
+    TypeId unionOfTypes(TypeId a, TypeId b, NotNull<Scope> scope, bool unifyFreeTypes);
 
     ToStringOptions opts;
 };

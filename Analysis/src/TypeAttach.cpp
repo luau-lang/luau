@@ -104,16 +104,6 @@ public:
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName("*pending-expansion*"));
     }
 
-    AstType* operator()(const ConstrainedTypeVar& ctv)
-    {
-        AstArray<AstType*> types;
-        types.size = ctv.parts.size();
-        types.data = static_cast<AstType**>(allocator->allocate(sizeof(AstType*) * ctv.parts.size()));
-        for (size_t i = 0; i < ctv.parts.size(); ++i)
-            types.data[i] = Luau::visit(*this, ctv.parts[i]->ty);
-        return allocator->alloc<AstTypeIntersection>(Location(), types);
-    }
-
     AstType* operator()(const SingletonTypeVar& stv)
     {
         if (const BooleanSingleton* bs = get<BooleanSingleton>(&stv))
@@ -347,6 +337,11 @@ public:
     AstType* operator()(const NeverTypeVar& ttv)
     {
         return allocator->alloc<AstTypeReference>(Location(), std::nullopt, AstName{"never"});
+    }
+    AstType* operator()(const NegationTypeVar& ntv)
+    {
+        // FIXME: do the same thing we do with ErrorTypeVar
+        throwRuntimeError("Cannot convert NegationTypeVar into AstNode");
     }
 
 private:

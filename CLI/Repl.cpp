@@ -49,6 +49,8 @@ enum class CompileFormat
     Binary,
     Remarks,
     Codegen,
+    CodegenVerbose,
+    CodegenNull,
     Null
 };
 
@@ -673,21 +675,33 @@ static void reportError(const char* name, const Luau::CompileError& error)
     report(name, error.getLocation(), "CompileError", error.what());
 }
 
-static std::string getCodegenAssembly(const char* name, const std::string& bytecode)
+static std::string getCodegenAssembly(const char* name, const std::string& bytecode, Luau::CodeGen::AssemblyOptions options)
 {
     std::unique_ptr<lua_State, void (*)(lua_State*)> globalState(luaL_newstate(), lua_close);
     lua_State* L = globalState.get();
 
-    setupState(L);
-
     if (luau_load(L, name, bytecode.data(), bytecode.size(), 0) == 0)
-        return Luau::CodeGen::getAssemblyText(L, -1);
+        return Luau::CodeGen::getAssembly(L, -1, options);
 
     fprintf(stderr, "Error loading bytecode %s\n", name);
     return "";
 }
 
-static bool compileFile(const char* name, CompileFormat format)
+static void annotateInstruction(void* context, std::string& text, int fid, int instpos)
+{
+    Luau::BytecodeBuilder& bcb = *(Luau::BytecodeBuilder*)context;
+
+    bcb.annotateInstruction(text, fid, instpos);
+}
+
+struct CompileStats
+{
+    size_t lines;
+    size_t bytecode;
+    size_t codegen;
+};
+
+static bool compileFile(const char* name, CompileFormat format, CompileStats& stats)
 {
     std::optional<std::string> source = readFile(name);
     if (!source)
@@ -696,9 +710,13 @@ static bool compileFile(const char* name, CompileFormat format)
         return false;
     }
 
+    // NOTE: Normally, you should use Luau::compile or luau_compile (see lua_require as an example)
+    // This function is much more complicated because it supports many output human-readable formats through internal interfaces
+
     try
     {
         Luau::BytecodeBuilder bcb;
+        Luau::CodeGen::AssemblyOptions options = {format == CompileFormat::CodegenNull, format == CompileFormat::Codegen, annotateInstruction, &bcb};
 
         if (format == CompileFormat::Text)
         {
@@ -711,8 +729,24 @@ static bool compileFile(const char* name, CompileFormat format)
             bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Remarks);
             bcb.setDumpSource(*source);
         }
+        else if (format == CompileFormat::Codegen || format == CompileFormat::CodegenVerbose)
+        {
+            bcb.setDumpFlags(Luau::BytecodeBuilder::Dump_Code | Luau::BytecodeBuilder::Dump_Source | Luau::BytecodeBuilder::Dump_Locals |
+                             Luau::BytecodeBuilder::Dump_Remarks);
+            bcb.setDumpSource(*source);
+        }
 
-        Luau::compileOrThrow(bcb, *source, copts());
+        Luau::Allocator allocator;
+        Luau::AstNameTable names(allocator);
+        Luau::ParseResult result = Luau::Parser::parse(source->c_str(), source->size(), names, allocator);
+
+        if (!result.errors.empty())
+            throw Luau::ParseErrors(result.errors);
+
+        stats.lines += result.lines;
+
+        Luau::compileOrThrow(bcb, result, names, copts());
+        stats.bytecode += bcb.getBytecode().size();
 
         switch (format)
         {
@@ -726,7 +760,11 @@ static bool compileFile(const char* name, CompileFormat format)
             fwrite(bcb.getBytecode().data(), 1, bcb.getBytecode().size(), stdout);
             break;
         case CompileFormat::Codegen:
-            printf("%s", getCodegenAssembly(name, bcb.getBytecode()).c_str());
+        case CompileFormat::CodegenVerbose:
+            printf("%s", getCodegenAssembly(name, bcb.getBytecode(), options).c_str());
+            break;
+        case CompileFormat::CodegenNull:
+            stats.codegen += getCodegenAssembly(name, bcb.getBytecode(), options).size();
             break;
         case CompileFormat::Null:
             break;
@@ -755,7 +793,7 @@ static void displayHelp(const char* argv0)
     printf("\n");
     printf("Available modes:\n");
     printf("  omitted: compile and run input files one by one\n");
-    printf("  --compile[=format]: compile input files and output resulting formatted bytecode (binary, text, remarks, codegen or null)\n");
+    printf("  --compile[=format]: compile input files and output resulting bytecode/assembly (binary, text, remarks, codegen)\n");
     printf("\n");
     printf("Available options:\n");
     printf("  --coverage: collect code coverage while running the code and output results to coverage.out\n");
@@ -812,6 +850,14 @@ int replMain(int argc, char** argv)
         else if (strcmp(argv[1], "--compile=codegen") == 0)
         {
             compileFormat = CompileFormat::Codegen;
+        }
+        else if (strcmp(argv[1], "--compile=codegenverbose") == 0)
+        {
+            compileFormat = CompileFormat::CodegenVerbose;
+        }
+        else if (strcmp(argv[1], "--compile=codegennull") == 0)
+        {
+            compileFormat = CompileFormat::CodegenNull;
         }
         else if (strcmp(argv[1], "--compile=null") == 0)
         {
@@ -924,10 +970,17 @@ int replMain(int argc, char** argv)
             _setmode(_fileno(stdout), _O_BINARY);
 #endif
 
+        CompileStats stats = {};
         int failed = 0;
 
         for (const std::string& path : files)
-            failed += !compileFile(path.c_str(), compileFormat);
+            failed += !compileFile(path.c_str(), compileFormat, stats);
+
+        if (compileFormat == CompileFormat::Null)
+            printf("Compiled %d KLOC into %d KB bytecode\n", int(stats.lines / 1000), int(stats.bytecode / 1024));
+        else if (compileFormat == CompileFormat::CodegenNull)
+            printf("Compiled %d KLOC into %d KB bytecode => %d KB native code\n", int(stats.lines / 1000), int(stats.bytecode / 1024),
+                int(stats.codegen / 1024));
 
         return failed ? 1 : 0;
     }

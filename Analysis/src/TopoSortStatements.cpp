@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/TopoSortStatements.h"
 
+#include "Luau/Error.h"
 /* Decide the order in which we typecheck Lua statements in a block.
  *
  * Algorithm:
@@ -149,7 +150,7 @@ Identifier mkName(const AstStatFunction& function)
     auto name = mkName(*function.name);
     LUAU_ASSERT(bool(name));
     if (!name)
-        throw std::runtime_error("Internal error: Function declaration has a bad name");
+        throwRuntimeError("Internal error: Function declaration has a bad name");
 
     return *name;
 }
@@ -255,7 +256,7 @@ struct ArcCollector : public AstVisitor
     {
         auto name = mkName(*node->name);
         if (!name)
-            throw std::runtime_error("Internal error: AstStatFunction has a bad name");
+            throwRuntimeError("Internal error: AstStatFunction has a bad name");
 
         add(*name);
         return true;

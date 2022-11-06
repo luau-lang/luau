@@ -32,7 +32,360 @@ namespace Luau
 namespace CodeGen
 {
 
-static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& data, Proto* proto)
+constexpr uint32_t kFunctionAlignment = 32;
+
+struct InstructionOutline
+{
+    int pcpos;
+    int length;
+};
+
+static void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers)
+{
+    if (build.logText)
+        build.logAppend("; exitContinueVm\n");
+    helpers.exitContinueVm = build.setLabel();
+    emitExit(build, /* continueInVm */ true);
+
+    if (build.logText)
+        build.logAppend("; exitNoContinueVm\n");
+    helpers.exitNoContinueVm = build.setLabel();
+    emitExit(build, /* continueInVm */ false);
+
+    if (build.logText)
+        build.logAppend("; continueCallInVm\n");
+    helpers.continueCallInVm = build.setLabel();
+    emitContinueCallInVm(build);
+}
+
+static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, LuauOpcode op, const Instruction* pc, int i,
+    Label* labelarr, Label& fallback)
+{
+    int skip = 0;
+
+    switch (op)
+    {
+    case LOP_NOP:
+        break;
+    case LOP_LOADNIL:
+        emitInstLoadNil(build, pc);
+        break;
+    case LOP_LOADB:
+        emitInstLoadB(build, pc, i, labelarr);
+        break;
+    case LOP_LOADN:
+        emitInstLoadN(build, pc);
+        break;
+    case LOP_LOADK:
+        emitInstLoadK(build, pc);
+        break;
+    case LOP_LOADKX:
+        emitInstLoadKX(build, pc);
+        break;
+    case LOP_MOVE:
+        emitInstMove(build, pc);
+        break;
+    case LOP_GETGLOBAL:
+        emitInstGetGlobal(build, pc, i, fallback);
+        break;
+    case LOP_SETGLOBAL:
+        emitInstSetGlobal(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_CALL:
+        emitInstCall(build, helpers, pc, i, labelarr);
+        break;
+    case LOP_RETURN:
+        emitInstReturn(build, helpers, pc, i, labelarr);
+        break;
+    case LOP_GETTABLE:
+        emitInstGetTable(build, pc, i, fallback);
+        break;
+    case LOP_SETTABLE:
+        emitInstSetTable(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_GETTABLEKS:
+        emitInstGetTableKS(build, pc, i, fallback);
+        break;
+    case LOP_SETTABLEKS:
+        emitInstSetTableKS(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_GETTABLEN:
+        emitInstGetTableN(build, pc, i, fallback);
+        break;
+    case LOP_SETTABLEN:
+        emitInstSetTableN(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_JUMP:
+        emitInstJump(build, pc, i, labelarr);
+        break;
+    case LOP_JUMPBACK:
+        emitInstJumpBack(build, pc, i, labelarr);
+        break;
+    case LOP_JUMPIF:
+        emitInstJumpIf(build, pc, i, labelarr, /* not_ */ false);
+        break;
+    case LOP_JUMPIFNOT:
+        emitInstJumpIf(build, pc, i, labelarr, /* not_ */ true);
+        break;
+    case LOP_JUMPIFEQ:
+        emitInstJumpIfEq(build, pc, i, labelarr, /* not_ */ false, fallback);
+        break;
+    case LOP_JUMPIFLE:
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::LessEqual, fallback);
+        break;
+    case LOP_JUMPIFLT:
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::Less, fallback);
+        break;
+    case LOP_JUMPIFNOTEQ:
+        emitInstJumpIfEq(build, pc, i, labelarr, /* not_ */ true, fallback);
+        break;
+    case LOP_JUMPIFNOTLE:
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::NotLessEqual, fallback);
+        break;
+    case LOP_JUMPIFNOTLT:
+        emitInstJumpIfCond(build, pc, i, labelarr, ConditionX64::NotLess, fallback);
+        break;
+    case LOP_JUMPX:
+        emitInstJumpX(build, pc, i, labelarr);
+        break;
+    case LOP_JUMPXEQKNIL:
+        emitInstJumpxEqNil(build, pc, i, labelarr);
+        break;
+    case LOP_JUMPXEQKB:
+        emitInstJumpxEqB(build, pc, i, labelarr);
+        break;
+    case LOP_JUMPXEQKN:
+        emitInstJumpxEqN(build, pc, proto->k, i, labelarr);
+        break;
+    case LOP_JUMPXEQKS:
+        emitInstJumpxEqS(build, pc, i, labelarr);
+        break;
+    case LOP_ADD:
+        emitInstBinary(build, pc, i, TM_ADD, fallback);
+        break;
+    case LOP_SUB:
+        emitInstBinary(build, pc, i, TM_SUB, fallback);
+        break;
+    case LOP_MUL:
+        emitInstBinary(build, pc, i, TM_MUL, fallback);
+        break;
+    case LOP_DIV:
+        emitInstBinary(build, pc, i, TM_DIV, fallback);
+        break;
+    case LOP_MOD:
+        emitInstBinary(build, pc, i, TM_MOD, fallback);
+        break;
+    case LOP_POW:
+        emitInstBinary(build, pc, i, TM_POW, fallback);
+        break;
+    case LOP_ADDK:
+        emitInstBinaryK(build, pc, i, TM_ADD, fallback);
+        break;
+    case LOP_SUBK:
+        emitInstBinaryK(build, pc, i, TM_SUB, fallback);
+        break;
+    case LOP_MULK:
+        emitInstBinaryK(build, pc, i, TM_MUL, fallback);
+        break;
+    case LOP_DIVK:
+        emitInstBinaryK(build, pc, i, TM_DIV, fallback);
+        break;
+    case LOP_MODK:
+        emitInstBinaryK(build, pc, i, TM_MOD, fallback);
+        break;
+    case LOP_POWK:
+        emitInstPowK(build, pc, proto->k, i, fallback);
+        break;
+    case LOP_NOT:
+        emitInstNot(build, pc);
+        break;
+    case LOP_MINUS:
+        emitInstMinus(build, pc, i, fallback);
+        break;
+    case LOP_LENGTH:
+        emitInstLength(build, pc, i, fallback);
+        break;
+    case LOP_NEWTABLE:
+        emitInstNewTable(build, pc, i, labelarr);
+        break;
+    case LOP_DUPTABLE:
+        emitInstDupTable(build, pc, i, labelarr);
+        break;
+    case LOP_SETLIST:
+        emitInstSetList(build, pc, i, labelarr);
+        break;
+    case LOP_GETUPVAL:
+        emitInstGetUpval(build, pc, i);
+        break;
+    case LOP_SETUPVAL:
+        emitInstSetUpval(build, pc, i, labelarr);
+        break;
+    case LOP_CLOSEUPVALS:
+        emitInstCloseUpvals(build, pc, i, labelarr);
+        break;
+    case LOP_FASTCALL:
+        skip = emitInstFastCall(build, pc, i, labelarr);
+        break;
+    case LOP_FASTCALL1:
+        skip = emitInstFastCall1(build, pc, i, labelarr);
+        break;
+    case LOP_FASTCALL2:
+        skip = emitInstFastCall2(build, pc, i, labelarr);
+        break;
+    case LOP_FASTCALL2K:
+        skip = emitInstFastCall2K(build, pc, i, labelarr);
+        break;
+    case LOP_FORNPREP:
+        emitInstForNPrep(build, pc, i, labelarr);
+        break;
+    case LOP_FORNLOOP:
+        emitInstForNLoop(build, pc, i, labelarr);
+        break;
+    case LOP_FORGLOOP:
+        emitinstForGLoop(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_FORGPREP_NEXT:
+        emitInstForGPrepNext(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_FORGPREP_INEXT:
+        emitInstForGPrepInext(build, pc, i, labelarr, fallback);
+        break;
+    case LOP_AND:
+        emitInstAnd(build, pc);
+        break;
+    case LOP_ANDK:
+        emitInstAndK(build, pc);
+        break;
+    case LOP_OR:
+        emitInstOr(build, pc);
+        break;
+    case LOP_ORK:
+        emitInstOrK(build, pc);
+        break;
+    case LOP_GETIMPORT:
+        emitInstGetImport(build, pc, fallback);
+        break;
+    case LOP_CONCAT:
+        emitInstConcat(build, pc, i, labelarr);
+        break;
+    default:
+        emitFallback(build, data, op, i);
+        break;
+    }
+
+    return skip;
+}
+
+static void emitInstFallback(AssemblyBuilderX64& build, NativeState& data, LuauOpcode op, const Instruction* pc, int i, Label* labelarr)
+{
+    switch (op)
+    {
+    case LOP_GETIMPORT:
+        emitInstGetImportFallback(build, pc, i);
+        break;
+    case LOP_GETTABLE:
+        emitInstGetTableFallback(build, pc, i);
+        break;
+    case LOP_SETTABLE:
+        emitInstSetTableFallback(build, pc, i);
+        break;
+    case LOP_GETTABLEN:
+        emitInstGetTableNFallback(build, pc, i);
+        break;
+    case LOP_SETTABLEN:
+        emitInstSetTableNFallback(build, pc, i);
+        break;
+    case LOP_JUMPIFEQ:
+        emitInstJumpIfEqFallback(build, pc, i, labelarr, /* not_ */ false);
+        break;
+    case LOP_JUMPIFLE:
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::LessEqual);
+        break;
+    case LOP_JUMPIFLT:
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::Less);
+        break;
+    case LOP_JUMPIFNOTEQ:
+        emitInstJumpIfEqFallback(build, pc, i, labelarr, /* not_ */ true);
+        break;
+    case LOP_JUMPIFNOTLE:
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::NotLessEqual);
+        break;
+    case LOP_JUMPIFNOTLT:
+        emitInstJumpIfCondFallback(build, pc, i, labelarr, ConditionX64::NotLess);
+        break;
+    case LOP_ADD:
+        emitInstBinaryFallback(build, pc, i, TM_ADD);
+        break;
+    case LOP_SUB:
+        emitInstBinaryFallback(build, pc, i, TM_SUB);
+        break;
+    case LOP_MUL:
+        emitInstBinaryFallback(build, pc, i, TM_MUL);
+        break;
+    case LOP_DIV:
+        emitInstBinaryFallback(build, pc, i, TM_DIV);
+        break;
+    case LOP_MOD:
+        emitInstBinaryFallback(build, pc, i, TM_MOD);
+        break;
+    case LOP_POW:
+        emitInstBinaryFallback(build, pc, i, TM_POW);
+        break;
+    case LOP_ADDK:
+        emitInstBinaryKFallback(build, pc, i, TM_ADD);
+        break;
+    case LOP_SUBK:
+        emitInstBinaryKFallback(build, pc, i, TM_SUB);
+        break;
+    case LOP_MULK:
+        emitInstBinaryKFallback(build, pc, i, TM_MUL);
+        break;
+    case LOP_DIVK:
+        emitInstBinaryKFallback(build, pc, i, TM_DIV);
+        break;
+    case LOP_MODK:
+        emitInstBinaryKFallback(build, pc, i, TM_MOD);
+        break;
+    case LOP_POWK:
+        emitInstBinaryKFallback(build, pc, i, TM_POW);
+        break;
+    case LOP_MINUS:
+        emitInstMinusFallback(build, pc, i);
+        break;
+    case LOP_LENGTH:
+        emitInstLengthFallback(build, pc, i);
+        break;
+    case LOP_FORGLOOP:
+        emitinstForGLoopFallback(build, pc, i, labelarr);
+        break;
+    case LOP_FORGPREP_NEXT:
+    case LOP_FORGPREP_INEXT:
+        emitInstForGPrepXnextFallback(build, pc, i, labelarr);
+        break;
+    case LOP_GETGLOBAL:
+        // TODO: luaV_gettable + cachedslot update instead of full fallback
+        emitFallback(build, data, op, i);
+        break;
+    case LOP_SETGLOBAL:
+        // TODO: luaV_settable + cachedslot update instead of full fallback
+        emitFallback(build, data, op, i);
+        break;
+    case LOP_GETTABLEKS:
+        // Full fallback required for LOP_GETTABLEKS because 'luaV_gettable' doesn't handle builtin vector field access
+        // It is also required to perform cached slot update
+        // TODO: extra fast-paths could be lowered before the full fallback
+        emitFallback(build, data, op, i);
+        break;
+    case LOP_SETTABLEKS:
+        // TODO: luaV_settable + cachedslot update instead of full fallback
+        emitFallback(build, data, op, i);
+        break;
+    default:
+        LUAU_ASSERT(!"Expected fallback for instruction");
+    }
+}
+
+static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, AssemblyOptions options)
 {
     NativeProto* result = new NativeProto();
 
@@ -54,6 +407,14 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
     std::vector<Label> instLabels;
     instLabels.resize(proto->sizecode);
 
+    std::vector<Label> instFallbacks;
+    instFallbacks.resize(proto->sizecode);
+
+    std::vector<InstructionOutline> instOutlines;
+    instOutlines.reserve(64);
+
+    build.align(kFunctionAlignment, AlignmentDataX64::Ud2);
+
     Label start = build.setLabel();
 
     for (int i = 0; i < proto->sizecode;)
@@ -61,172 +422,90 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
         const Instruction* pc = &proto->code[i];
         LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
 
+        int nexti = i + getOpLength(op);
+        LUAU_ASSERT(nexti <= proto->sizecode);
+
         build.setLabel(instLabels[i]);
 
-        if (build.logText)
-            build.logAppend("; #%d: %s\n", i, data.names[op]);
+        if (options.annotator)
+            options.annotator(options.annotatorContext, build.text, proto->bytecodeid, i);
 
-        switch (op)
+        int skip = emitInst(build, data, helpers, proto, op, pc, i, instLabels.data(), instFallbacks[i]);
+
+        if (skip != 0)
+            instOutlines.push_back({nexti, skip});
+
+        i = nexti + skip;
+        LUAU_ASSERT(i <= proto->sizecode);
+    }
+
+    size_t textSize = build.text.size();
+    uint32_t codeSize = build.getCodeSize();
+
+    if (options.annotator && !options.skipOutlinedCode)
+        build.logAppend("; outlined instructions\n");
+
+    for (auto [pcpos, length] : instOutlines)
+    {
+        int i = pcpos;
+
+        while (i < pcpos + length)
         {
-        case LOP_NOP:
-            break;
-        case LOP_LOADNIL:
-            emitInstLoadNil(build, data, pc);
-            break;
-        case LOP_LOADB:
-            emitInstLoadB(build, data, pc, i, instLabels.data());
-            break;
-        case LOP_LOADN:
-            emitInstLoadN(build, data, pc);
-            break;
-        case LOP_LOADK:
-            emitInstLoadK(build, data, pc, proto->k);
-            break;
-        case LOP_MOVE:
-            emitInstMove(build, data, pc);
-            break;
-        case LOP_GETTABLE:
-            emitInstGetTable(build, pc, i);
-            break;
-        case LOP_SETTABLE:
-            emitInstSetTable(build, pc, i);
-            break;
-        case LOP_GETTABLEN:
-            emitInstGetTableN(build, pc, i);
-            break;
-        case LOP_SETTABLEN:
-            emitInstSetTableN(build, pc, i);
-            break;
-        case LOP_JUMP:
-            emitInstJump(build, data, pc, i, instLabels.data());
-            break;
-        case LOP_JUMPBACK:
-            emitInstJumpBack(build, data, pc, i, instLabels.data());
-            break;
-        case LOP_JUMPIF:
-            emitInstJumpIf(build, data, pc, i, instLabels.data(), /* not_ */ false);
-            break;
-        case LOP_JUMPIFNOT:
-            emitInstJumpIf(build, data, pc, i, instLabels.data(), /* not_ */ true);
-            break;
-        case LOP_JUMPIFEQ:
-            emitInstJumpIfEq(build, data, pc, i, instLabels.data(), /* not_ */ false);
-            break;
-        case LOP_JUMPIFLE:
-            emitInstJumpIfCond(build, data, pc, i, instLabels.data(), Condition::LessEqual);
-            break;
-        case LOP_JUMPIFLT:
-            emitInstJumpIfCond(build, data, pc, i, instLabels.data(), Condition::Less);
-            break;
-        case LOP_JUMPIFNOTEQ:
-            emitInstJumpIfEq(build, data, pc, i, instLabels.data(), /* not_ */ true);
-            break;
-        case LOP_JUMPIFNOTLE:
-            emitInstJumpIfCond(build, data, pc, i, instLabels.data(), Condition::NotLessEqual);
-            break;
-        case LOP_JUMPIFNOTLT:
-            emitInstJumpIfCond(build, data, pc, i, instLabels.data(), Condition::NotLess);
-            break;
-        case LOP_JUMPX:
-            emitInstJumpX(build, data, pc, i, instLabels.data());
-            break;
-        case LOP_JUMPXEQKNIL:
-            emitInstJumpxEqNil(build, data, pc, proto->k, i, instLabels.data());
-            break;
-        case LOP_JUMPXEQKB:
-            emitInstJumpxEqB(build, data, pc, proto->k, i, instLabels.data());
-            break;
-        case LOP_JUMPXEQKN:
-            emitInstJumpxEqN(build, data, pc, proto->k, i, instLabels.data());
-            break;
-        case LOP_JUMPXEQKS:
-            emitInstJumpxEqS(build, data, pc, proto->k, i, instLabels.data());
-            break;
-        case LOP_ADD:
-            emitInstAdd(build, pc, i);
-            break;
-        case LOP_SUB:
-            emitInstSub(build, pc, i);
-            break;
-        case LOP_MUL:
-            emitInstMul(build, pc, i);
-            break;
-        case LOP_DIV:
-            emitInstDiv(build, pc, i);
-            break;
-        case LOP_MOD:
-            emitInstMod(build, pc, i);
-            break;
-        case LOP_POW:
-            emitInstPow(build, pc, i);
-            break;
-        case LOP_ADDK:
-            emitInstAddK(build, pc, proto->k, i);
-            break;
-        case LOP_SUBK:
-            emitInstSubK(build, pc, proto->k, i);
-            break;
-        case LOP_MULK:
-            emitInstMulK(build, pc, proto->k, i);
-            break;
-        case LOP_DIVK:
-            emitInstDivK(build, pc, proto->k, i);
-            break;
-        case LOP_MODK:
-            emitInstModK(build, pc, proto->k, i);
-            break;
-        case LOP_POWK:
-            emitInstPowK(build, pc, proto->k, i);
-            break;
-        case LOP_NOT:
-            emitInstNot(build, pc);
-            break;
-        case LOP_MINUS:
-            emitInstMinus(build, pc, i);
-            break;
-        case LOP_LENGTH:
-            emitInstLength(build, pc, i);
-            break;
-        case LOP_GETUPVAL:
-            emitInstGetUpval(build, pc, i);
-            break;
-        case LOP_FASTCALL:
-            emitInstFastCall(build, pc, i, instLabels.data());
-            break;
-        case LOP_FASTCALL1:
-            emitInstFastCall1(build, pc, i, instLabels.data());
-            break;
-        case LOP_FASTCALL2:
-            emitInstFastCall2(build, pc, i, instLabels.data());
-            break;
-        case LOP_FASTCALL2K:
-            emitInstFastCall2K(build, pc, proto->k, i, instLabels.data());
-            break;
-        case LOP_FORNPREP:
-            emitInstForNPrep(build, pc, i, instLabels.data());
-            break;
-        case LOP_FORNLOOP:
-            emitInstForNLoop(build, pc, i, instLabels.data());
-            break;
-        case LOP_AND:
-            emitInstAnd(build, pc);
-            break;
-        case LOP_ANDK:
-            emitInstAndK(build, pc);
-            break;
-        case LOP_OR:
-            emitInstOr(build, pc);
-            break;
-        case LOP_ORK:
-            emitInstOrK(build, pc);
-            break;
-        default:
-            emitFallback(build, data, op, i);
-            break;
+            const Instruction* pc = &proto->code[i];
+            LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
+
+            build.setLabel(instLabels[i]);
+
+            if (options.annotator && !options.skipOutlinedCode)
+                options.annotator(options.annotatorContext, build.text, proto->bytecodeid, i);
+
+            int skip = emitInst(build, data, helpers, proto, op, pc, i, instLabels.data(), instFallbacks[i]);
+            LUAU_ASSERT(skip == 0);
+
+            i += getOpLength(op);
         }
 
-        i += getOpLength(op);
-        LUAU_ASSERT(i <= proto->sizecode);
+        if (i < proto->sizecode)
+            build.jmp(instLabels[i]);
+    }
+
+    if (options.annotator && !options.skipOutlinedCode)
+        build.logAppend("; outlined code\n");
+
+    for (int i = 0, instid = 0; i < proto->sizecode; ++instid)
+    {
+        const Instruction* pc = &proto->code[i];
+        LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
+
+        int nexti = i + getOpLength(op);
+        LUAU_ASSERT(nexti <= proto->sizecode);
+
+        if (instFallbacks[i].id == 0)
+        {
+            i = nexti;
+            continue;
+        }
+
+        if (options.annotator && !options.skipOutlinedCode)
+            options.annotator(options.annotatorContext, build.text, proto->bytecodeid, instid);
+
+        build.setLabel(instFallbacks[i]);
+
+        emitInstFallback(build, data, op, pc, i, instLabels.data());
+
+        // Jump back to the next instruction handler
+        if (nexti < proto->sizecode)
+            build.jmp(instLabels[nexti]);
+
+        i = nexti;
+    }
+
+    // Truncate assembly output if we don't care for outlined code part
+    if (options.skipOutlinedCode)
+    {
+        build.text.resize(textSize);
+
+        build.logAppend("; skipping %u bytes of outlined code\n", build.getCodeSize() - codeSize);
     }
 
     result->instTargets = new uintptr_t[proto->sizecode];
@@ -386,13 +665,16 @@ void compile(lua_State* L, int idx)
     std::vector<Proto*> protos;
     gatherFunctions(protos, clvalue(func)->l.p);
 
+    ModuleHelpers helpers;
+    assembleHelpers(build, helpers);
+
     std::vector<NativeProto*> results;
     results.reserve(protos.size());
 
     // Skip protos that have been compiled during previous invocations of CodeGen::compile
     for (Proto* p : protos)
         if (p && getProtoExecData(p) == nullptr)
-            results.push_back(assembleFunction(build, *data, p));
+            results.push_back(assembleFunction(build, *data, helpers, p, {}));
 
     build.finalize();
 
@@ -413,6 +695,9 @@ void compile(lua_State* L, int idx)
     {
         for (int i = 0; i < result->proto->sizecode; i++)
             result->instTargets[i] += uintptr_t(codeStart + result->location);
+
+        LUAU_ASSERT(result->proto->sizecode);
+        result->entryTarget = result->instTargets[0];
     }
 
     // Link native proto objects to Proto; the memory is now managed by VM and will be freed via onDestroyFunction
@@ -420,29 +705,35 @@ void compile(lua_State* L, int idx)
         setProtoExecData(result->proto, result);
 }
 
-std::string getAssemblyText(lua_State* L, int idx)
+std::string getAssembly(lua_State* L, int idx, AssemblyOptions options)
 {
     LUAU_ASSERT(lua_isLfunction(L, idx));
     const TValue* func = luaA_toobject(L, idx);
 
-    AssemblyBuilderX64 build(/* logText= */ true);
+    AssemblyBuilderX64 build(/* logText= */ !options.outputBinary);
+
     NativeState data;
     initFallbackTable(data);
-    initInstructionNames(data);
 
     std::vector<Proto*> protos;
     gatherFunctions(protos, clvalue(func)->l.p);
 
+    ModuleHelpers helpers;
+    assembleHelpers(build, helpers);
+
     for (Proto* p : protos)
         if (p)
         {
-            NativeProto* nativeProto = assembleFunction(build, data, p);
+            NativeProto* nativeProto = assembleFunction(build, data, helpers, p, options);
             destroyNativeProto(nativeProto);
         }
 
     build.finalize();
 
-    return build.text;
+    if (options.outputBinary)
+        return std::string(build.code.begin(), build.code.end()) + std::string(build.data.begin(), build.data.end());
+    else
+        return build.text;
 }
 
 } // namespace CodeGen

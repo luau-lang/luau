@@ -14,7 +14,6 @@
 #endif
 
 LUAU_FASTFLAG(DebugLuauTimeTracing)
-LUAU_FASTFLAG(LuauTypeMismatchModuleNameResolution)
 
 enum class ReportFormat
 {
@@ -55,11 +54,9 @@ static void reportError(const Luau::Frontend& frontend, ReportFormat format, con
 
     if (const Luau::SyntaxError* syntaxError = Luau::get_if<Luau::SyntaxError>(&error.data))
         report(format, humanReadableName.c_str(), error.location, "SyntaxError", syntaxError->message.c_str());
-    else if (FFlag::LuauTypeMismatchModuleNameResolution)
+    else
         report(format, humanReadableName.c_str(), error.location, "TypeError",
             Luau::toString(error, Luau::TypeErrorToStringOptions{frontend.fileResolver}).c_str());
-    else
-        report(format, humanReadableName.c_str(), error.location, "TypeError", Luau::toString(error).c_str());
 }
 
 static void reportWarning(ReportFormat format, const char* name, const Luau::LintWarning& warning)

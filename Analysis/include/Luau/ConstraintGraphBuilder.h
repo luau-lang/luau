@@ -1,19 +1,20 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-
 #pragma once
 
-#include <memory>
-#include <vector>
-#include <unordered_map>
-
 #include "Luau/Ast.h"
+#include "Luau/Connective.h"
 #include "Luau/Constraint.h"
+#include "Luau/DataFlowGraphBuilder.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Symbol.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Variant.h"
+
+#include <memory>
+#include <vector>
+#include <unordered_map>
 
 namespace Luau
 {
@@ -22,6 +23,34 @@ struct Scope;
 using ScopePtr = std::shared_ptr<Scope>;
 
 struct DcrLogger;
+
+struct Inference
+{
+    TypeId ty = nullptr;
+    ConnectiveId connective = nullptr;
+
+    Inference() = default;
+
+    explicit Inference(TypeId ty, ConnectiveId connective = nullptr)
+        : ty(ty)
+        , connective(connective)
+    {
+    }
+};
+
+struct InferencePack
+{
+    TypePackId tp = nullptr;
+    std::vector<ConnectiveId> connectives;
+
+    InferencePack() = default;
+
+    explicit InferencePack(TypePackId tp, const std::vector<ConnectiveId>& connectives = {})
+        : tp(tp)
+        , connectives(connectives)
+    {
+    }
+};
 
 struct ConstraintGraphBuilder
 {
@@ -48,6 +77,8 @@ struct ConstraintGraphBuilder
     DenseHashMap<const AstTypePack*, TypePackId> astResolvedTypePacks{nullptr};
     // Defining scopes for AST nodes.
     DenseHashMap<const AstStatTypeAlias*, ScopePtr> astTypeAliasDefiningScopes{nullptr};
+    NotNull<const DataFlowGraph> dfg;
+    ConnectiveArena connectiveArena;
 
     int recursionCount = 0;
 
@@ -63,7 +94,8 @@ struct ConstraintGraphBuilder
     DcrLogger* logger;
 
     ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena, NotNull<ModuleResolver> moduleResolver,
-        NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger);
+        NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope, DcrLogger* logger,
+        NotNull<DataFlowGraph> dfg);
 
     /**
      * Fabricates a new free type belonging to a given scope.
@@ -88,15 +120,19 @@ struct ConstraintGraphBuilder
      * Adds a new constraint with no dependencies to a given scope.
      * @param scope the scope to add the constraint to.
      * @param cv the constraint variant to add.
+     * @return the pointer to the inserted constraint
      */
-    void addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv);
+    NotNull<Constraint> addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv);
 
     /**
      * Adds a constraint to a given scope.
      * @param scope the scope to add the constraint to. Must not be null.
      * @param c the constraint to add.
+     * @return the pointer to the inserted constraint
      */
-    void addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c);
+    NotNull<Constraint> addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c);
+
+    void applyRefinements(const ScopePtr& scope, Location location, ConnectiveId connective);
 
     /**
      * The entry point to the ConstraintGraphBuilder. This will construct a set
@@ -126,8 +162,10 @@ struct ConstraintGraphBuilder
     void visit(const ScopePtr& scope, AstStatDeclareFunction* declareFunction);
     void visit(const ScopePtr& scope, AstStatError* error);
 
-    TypePackId checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
-    TypePackId checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});
+    InferencePack checkPack(const ScopePtr& scope, AstArray<AstExpr*> exprs, const std::vector<TypeId>& expectedTypes = {});
+    InferencePack checkPack(const ScopePtr& scope, AstExpr* expr, const std::vector<TypeId>& expectedTypes = {});
+
+    InferencePack checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes);
 
     /**
      * Checks an expression that is expected to evaluate to one type.
@@ -137,15 +175,24 @@ struct ConstraintGraphBuilder
      *      surrounding context.  Used to implement bidirectional type checking.
      * @return the type of the expression.
      */
-    TypeId check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {});
+    Inference check(const ScopePtr& scope, AstExpr* expr, std::optional<TypeId> expectedType = {}, bool forceSingleton = false);
 
-    TypeId check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
-    TypeId check(const ScopePtr& scope, AstExprIndexName* indexName);
-    TypeId check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
-    TypeId check(const ScopePtr& scope, AstExprUnary* unary);
-    TypeId check(const ScopePtr& scope, AstExprBinary* binary);
-    TypeId check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
-    TypeId check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
+    Inference check(const ScopePtr& scope, AstExprConstantString* string, std::optional<TypeId> expectedType, bool forceSingleton);
+    Inference check(const ScopePtr& scope, AstExprConstantBool* bool_, std::optional<TypeId> expectedType, bool forceSingleton);
+    Inference check(const ScopePtr& scope, AstExprLocal* local);
+    Inference check(const ScopePtr& scope, AstExprGlobal* global);
+    Inference check(const ScopePtr& scope, AstExprIndexName* indexName);
+    Inference check(const ScopePtr& scope, AstExprIndexExpr* indexExpr);
+    Inference check(const ScopePtr& scope, AstExprUnary* unary);
+    Inference check(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType);
+    Inference check(const ScopePtr& scope, AstExprTypeAssertion* typeAssert);
+    Inference check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType);
+    std::tuple<TypeId, TypeId, ConnectiveId> checkBinary(const ScopePtr& scope, AstExprBinary* binary, std::optional<TypeId> expectedType);
+
+    TypePackId checkLValues(const ScopePtr& scope, AstArray<AstExpr*> exprs);
+
+    TypeId checkLValue(const ScopePtr& scope, AstExpr* expr);
 
     struct FunctionSignature
     {
@@ -191,7 +238,7 @@ struct ConstraintGraphBuilder
     std::vector<std::pair<Name, GenericTypeDefinition>> createGenerics(const ScopePtr& scope, AstArray<AstGenericType> generics);
     std::vector<std::pair<Name, GenericTypePackDefinition>> createGenericPacks(const ScopePtr& scope, AstArray<AstGenericTypePack> packs);
 
-    TypeId flattenPack(const ScopePtr& scope, Location location, TypePackId tp);
+    Inference flattenPack(const ScopePtr& scope, Location location, InferencePack pack);
 
     void reportError(Location location, TypeErrorData err);
     void reportCodeTooComplex(Location location);

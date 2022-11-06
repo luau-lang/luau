@@ -1,6 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-
 #include "Luau/Clone.h"
+
 #include "Luau/RecursionCounter.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypePack.h"
@@ -51,7 +51,6 @@ struct TypeCloner
     void operator()(const BlockedTypeVar& t);
     void operator()(const PendingExpansionTypeVar& t);
     void operator()(const PrimitiveTypeVar& t);
-    void operator()(const ConstrainedTypeVar& t);
     void operator()(const SingletonTypeVar& t);
     void operator()(const FunctionTypeVar& t);
     void operator()(const TableTypeVar& t);
@@ -63,6 +62,7 @@ struct TypeCloner
     void operator()(const LazyTypeVar& t);
     void operator()(const UnknownTypeVar& t);
     void operator()(const NeverTypeVar& t);
+    void operator()(const NegationTypeVar& t);
 };
 
 struct TypePackCloner
@@ -196,21 +196,6 @@ void TypeCloner::operator()(const PendingExpansionTypeVar& t)
 void TypeCloner::operator()(const PrimitiveTypeVar& t)
 {
     defaultClone(t);
-}
-
-void TypeCloner::operator()(const ConstrainedTypeVar& t)
-{
-    TypeId res = dest.addType(ConstrainedTypeVar{t.level});
-    ConstrainedTypeVar* ctv = getMutable<ConstrainedTypeVar>(res);
-    LUAU_ASSERT(ctv);
-
-    seenTypes[typeId] = res;
-
-    std::vector<TypeId> parts;
-    for (TypeId part : t.parts)
-        parts.push_back(clone(part, dest, cloneState));
-
-    ctv->parts = std::move(parts);
 }
 
 void TypeCloner::operator()(const SingletonTypeVar& t)
@@ -352,6 +337,15 @@ void TypeCloner::operator()(const NeverTypeVar& t)
     defaultClone(t);
 }
 
+void TypeCloner::operator()(const NegationTypeVar& t)
+{
+    TypeId result = dest.addType(AnyTypeVar{});
+    seenTypes[typeId] = result;
+
+    TypeId ty = clone(t.ty, dest, cloneState);
+    asMutable(result)->ty = NegationTypeVar{ty};
+}
+
 } // anonymous namespace
 
 TypePackId clone(TypePackId tp, TypeArena& dest, CloneState& cloneState)
@@ -390,7 +384,6 @@ TypeId clone(TypeId typeId, TypeArena& dest, CloneState& cloneState)
         if (!res->persistent)
         {
             asMutable(res)->documentationSymbol = typeId->documentationSymbol;
-            asMutable(res)->normal = typeId->normal;
         }
     }
 
@@ -478,11 +471,6 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
         clone.parts = itv->parts;
         result = dest.addType(std::move(clone));
     }
-    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
-    {
-        ConstrainedTypeVar clone{ctv->level, ctv->parts};
-        result = dest.addType(std::move(clone));
-    }
     else if (const PendingExpansionTypeVar* petv = get<PendingExpansionTypeVar>(ty))
     {
         PendingExpansionTypeVar clone{petv->prefix, petv->name, petv->typeArguments, petv->packArguments};
@@ -497,11 +485,20 @@ TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log, bool alwaysCl
     {
         result = dest.addType(*ty);
     }
+    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(ty))
+    {
+        result = dest.addType(NegationTypeVar{ntv->ty});
+    }
     else
         return result;
 
     asMutable(result)->documentationSymbol = ty->documentationSymbol;
     return result;
+}
+
+TypeId shallowClone(TypeId ty, NotNull<TypeArena> dest)
+{
+    return shallowClone(ty, *dest, TxnLog::empty());
 }
 
 } // namespace Luau

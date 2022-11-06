@@ -31,12 +31,12 @@ LUAU_FASTINTVARIABLE(LuauTypeInferTypePackLoopLimit, 5000)
 LUAU_FASTINTVARIABLE(LuauCheckRecursionLimit, 300)
 LUAU_FASTINTVARIABLE(LuauVisitRecursionLimit, 500)
 LUAU_FASTFLAG(LuauKnowsTheDataModel3)
-LUAU_FASTFLAG(LuauAutocompleteDynamicLimits)
 LUAU_FASTFLAG(LuauTypeNormalization2)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
 LUAU_FASTFLAGVARIABLE(LuauAnyifyModuleReturnGenerics, false)
+LUAU_FASTFLAGVARIABLE(LuauLvaluelessPath, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauFixVarargExprHeadType, false)
@@ -44,15 +44,15 @@ LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
-LUAU_FASTFLAGVARIABLE(LuauUnionOfTypesFollow, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
+LUAU_FASTFLAGVARIABLE(LuauArgMismatchReportFunctionLocation, false)
 
 namespace Luau
 {
-
-const char* TimeLimitError::what() const throw()
+const char* TimeLimitError_DEPRECATED::what() const throw()
 {
+    LUAU_ASSERT(!FFlag::LuauIceExceptionInheritanceChange);
     return "Typeinfer failed to complete in allotted time";
 }
 
@@ -265,6 +265,11 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
         reportErrorCodeTooComplex(module.root->location);
         return std::move(currentModule);
     }
+    catch (const RecursionLimitException_DEPRECATED&)
+    {
+        reportErrorCodeTooComplex(module.root->location);
+        return std::move(currentModule);
+    }
 }
 
 ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope)
@@ -280,11 +285,8 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     iceHandler->moduleName = module.name;
     normalizer.arena = &currentModule->internalTypes;
 
-    if (FFlag::LuauAutocompleteDynamicLimits)
-    {
-        unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
-        unifierState.counters.iterationLimit = unifierIterationLimit ? *unifierIterationLimit : FInt::LuauTypeInferIterationLimit;
-    }
+    unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
+    unifierState.counters.iterationLimit = unifierIterationLimit ? *unifierIterationLimit : FInt::LuauTypeInferIterationLimit;
 
     ScopePtr parentScope = environmentScope.value_or(globalScope);
     ScopePtr moduleScope = std::make_shared<Scope>(parentScope);
@@ -309,6 +311,10 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
         checkBlock(moduleScope, *module.root);
     }
     catch (const TimeLimitError&)
+    {
+        currentModule->timeout = true;
+    }
+    catch (const TimeLimitError_DEPRECATED&)
     {
         currentModule->timeout = true;
     }
@@ -419,7 +425,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         ice("Unknown AstStat");
 
     if (finishTime && TimeTrace::getClock() > *finishTime)
-        throw TimeLimitError();
+        throwTimeLimitError();
 }
 
 // This particular overload is for do...end. If you need to not increase the scope level, use checkBlock directly.
@@ -442,6 +448,11 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         checkBlockWithoutRecursionCheck(scope, block);
     }
     catch (const RecursionLimitException&)
+    {
+        reportErrorCodeTooComplex(block.location);
+        return;
+    }
+    catch (const RecursionLimitException_DEPRECATED&)
     {
         reportErrorCodeTooComplex(block.location);
         return;
@@ -771,16 +782,6 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatRepeat& statement)
     checkBlock(repScope, *statement.body);
 
     checkExpr(repScope, *statement.condition);
-}
-
-void TypeChecker::unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel, const ScopePtr& scope, const Location& location)
-{
-    Unifier state = mkUnifier(scope, location);
-    state.unifyLowerBound(subTy, superTy, demotedLevel);
-
-    state.log.commit();
-
-    reportErrors(state.errors);
 }
 
 struct Demoter : Substitution
@@ -2091,39 +2092,6 @@ std::optional<TypeId> TypeChecker::getIndexTypeFromTypeImpl(
     return std::nullopt;
 }
 
-std::vector<TypeId> TypeChecker::reduceUnion(const std::vector<TypeId>& types)
-{
-    std::vector<TypeId> result;
-    for (TypeId t : types)
-    {
-        t = follow(t);
-        if (get<NeverTypeVar>(t))
-            continue;
-
-        if (get<ErrorTypeVar>(t) || get<AnyTypeVar>(t))
-            return {t};
-
-        if (const UnionTypeVar* utv = get<UnionTypeVar>(t))
-        {
-            for (TypeId ty : utv)
-            {
-                ty = follow(ty);
-                if (get<NeverTypeVar>(ty))
-                    continue;
-                if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty))
-                    return {ty};
-
-                if (result.end() == std::find(result.begin(), result.end(), ty))
-                    result.push_back(ty);
-            }
-        }
-        else if (std::find(result.begin(), result.end(), t) == result.end())
-            result.push_back(t);
-    }
-
-    return result;
-}
-
 std::optional<TypeId> TypeChecker::tryStripUnionFromNil(TypeId ty)
 {
     if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
@@ -2503,11 +2471,8 @@ std::string opToMetaTableEntry(const AstExprBinary::Op& op)
 
 TypeId TypeChecker::unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, const Location& location, bool unifyFreeTypes)
 {
-    if (FFlag::LuauUnionOfTypesFollow)
-    {
-        a = follow(a);
-        b = follow(b);
-    }
+    a = follow(a);
+    b = follow(b);
 
     if (unifyFreeTypes && (get<FreeTypeVar>(a) || get<FreeTypeVar>(b)))
     {
@@ -3643,8 +3608,17 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
             location = {state.location.begin, argLocations.back().end};
 
         std::string namePath;
-        if (std::optional<LValue> lValue = tryGetLValue(funName))
-            namePath = toString(*lValue);
+
+        if (FFlag::LuauLvaluelessPath)
+        {
+            if (std::optional<std::string> path = getFunctionNameAsString(funName))
+                namePath = *path;
+        }
+        else
+        {
+            if (std::optional<LValue> lValue = tryGetLValue(funName))
+                namePath = toString(*lValue);
+        }
 
         auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
         state.reportError(TypeError{location,
@@ -3753,11 +3727,28 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
                     bool isVariadic = tail && Luau::isVariadic(*tail);
 
                     std::string namePath;
-                    if (std::optional<LValue> lValue = tryGetLValue(funName))
-                        namePath = toString(*lValue);
 
-                    state.reportError(TypeError{
-                        state.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    if (FFlag::LuauLvaluelessPath)
+                    {
+                        if (std::optional<std::string> path = getFunctionNameAsString(funName))
+                            namePath = *path;
+                    }
+                    else
+                    {
+                        if (std::optional<LValue> lValue = tryGetLValue(funName))
+                            namePath = toString(*lValue);
+                    }
+
+                    if (FFlag::LuauArgMismatchReportFunctionLocation)
+                    {
+                        state.reportError(TypeError{
+                            funName.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    }
+                    else
+                    {
+                        state.reportError(TypeError{
+                            state.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
+                    }
                     return;
                 }
                 ++paramIter;
@@ -4597,7 +4588,7 @@ TypeId TypeChecker::instantiate(const ScopePtr& scope, TypeId ty, Location locat
 
     Instantiation instantiation{log, &currentModule->internalTypes, scope->level, /*scope*/ nullptr};
 
-    if (FFlag::LuauAutocompleteDynamicLimits && instantiationChildLimit)
+    if (instantiationChildLimit)
         instantiation.childLimit = *instantiationChildLimit;
 
     std::optional<TypeId> instantiated = instantiation.substitute(ty);
@@ -4692,6 +4683,19 @@ void TypeChecker::ice(const std::string& message, const Location& location)
 void TypeChecker::ice(const std::string& message)
 {
     iceHandler->ice(message);
+}
+
+// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
+void TypeChecker::throwTimeLimitError()
+{
+    if (FFlag::LuauIceExceptionInheritanceChange)
+    {
+        throw TimeLimitError(iceHandler->moduleName);
+    }
+    else
+    {
+        throw TimeLimitError_DEPRECATED();
+    }
 }
 
 void TypeChecker::prepareErrorsForDisplay(ErrorVec& errVec)

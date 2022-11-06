@@ -13,47 +13,47 @@ declare bit32: {
     bor: (...number) -> number,
     bxor: (...number) -> number,
     btest: (number, ...number) -> boolean,
-    rrotate: (number, number) -> number,
-    lrotate: (number, number) -> number,
-    lshift: (number, number) -> number,
-    arshift: (number, number) -> number,
-    rshift: (number, number) -> number,
-    bnot: (number) -> number,
-    extract: (number, number, number?) -> number,
-    replace: (number, number, number, number?) -> number,
-    countlz: (number) -> number,
-    countrz: (number) -> number,
+    rrotate: (x: number, disp: number) -> number,
+    lrotate: (x: number, disp: number) -> number,
+    lshift: (x: number, disp: number) -> number,
+    arshift: (x: number, disp: number) -> number,
+    rshift: (x: number, disp: number) -> number,
+    bnot: (x: number) -> number,
+    extract: (n: number, field: number, width: number?) -> number,
+    replace: (n: number, v: number, field: number, width: number?) -> number,
+    countlz: (n: number) -> number,
+    countrz: (n: number) -> number,
 }
 
 declare math: {
-    frexp: (number) -> (number, number),
-    ldexp: (number, number) -> number,
-    fmod: (number, number) -> number,
-    modf: (number) -> (number, number),
-    pow: (number, number) -> number,
-    exp: (number) -> number,
+    frexp: (n: number) -> (number, number),
+    ldexp: (s: number, e: number) -> number,
+    fmod: (x: number, y: number) -> number,
+    modf: (n: number) -> (number, number),
+    pow: (x: number, y: number) -> number,
+    exp: (n: number) -> number,
 
-    ceil: (number) -> number,
-    floor: (number) -> number,
-    abs: (number) -> number,
-    sqrt: (number) -> number,
+    ceil: (n: number) -> number,
+    floor: (n: number) -> number,
+    abs: (n: number) -> number,
+    sqrt: (n: number) -> number,
 
-    log: (number, number?) -> number,
-    log10: (number) -> number,
+    log: (n: number, base: number?) -> number,
+    log10: (n: number) -> number,
 
-    rad: (number) -> number,
-    deg: (number) -> number,
+    rad: (n: number) -> number,
+    deg: (n: number) -> number,
 
-    sin: (number) -> number,
-    cos: (number) -> number,
-    tan: (number) -> number,
-    sinh: (number) -> number,
-    cosh: (number) -> number,
-    tanh: (number) -> number,
-    atan: (number) -> number,
-    acos: (number) -> number,
-    asin: (number) -> number,
-    atan2: (number, number) -> number,
+    sin: (n: number) -> number,
+    cos: (n: number) -> number,
+    tan: (n: number) -> number,
+    sinh: (n: number) -> number,
+    cosh: (n: number) -> number,
+    tanh: (n: number) -> number,
+    atan: (n: number) -> number,
+    acos: (n: number) -> number,
+    asin: (n: number) -> number,
+    atan2: (y: number, x: number) -> number,
 
     min: (number, ...number) -> number,
     max: (number, ...number) -> number,
@@ -61,13 +61,13 @@ declare math: {
     pi: number,
     huge: number,
 
-    randomseed: (number) -> (),
+    randomseed: (seed: number) -> (),
     random: (number?, number?) -> number,
 
-    sign: (number) -> number,
-    clamp: (number, number, number) -> number,
-    noise: (number, number?, number?) -> number,
-    round: (number) -> number,
+    sign: (n: number) -> number,
+    clamp: (n: number, min: number, max: number) -> number,
+    noise: (x: number, y: number?, z: number?) -> number,
+    round: (n: number) -> number,
 }
 
 type DateTypeArg = {
@@ -93,9 +93,9 @@ type DateTypeResult = {
 }
 
 declare os: {
-    time: (DateTypeArg?) -> number,
-    date: (string?, number?) -> DateTypeResult | string,
-    difftime: (DateTypeResult | number, DateTypeResult | number) -> number,
+    time: (time: DateTypeArg?) -> number,
+    date: (formatString: string?, time: number?) -> DateTypeResult | string,
+    difftime: (t2: DateTypeResult | number, t1: DateTypeResult | number) -> number,
     clock: () -> number,
 }
 
@@ -145,51 +145,51 @@ declare function loadstring<A...>(src: string, chunkname: string?): (((A...) -> 
 declare function newproxy(mt: boolean?): any
 
 declare coroutine: {
-    create: <A..., R...>((A...) -> R...) -> thread,
-    resume: <A..., R...>(thread, A...) -> (boolean, R...),
+    create: <A..., R...>(f: (A...) -> R...) -> thread,
+    resume: <A..., R...>(co: thread, A...) -> (boolean, R...),
     running: () -> thread,
-    status: (thread) -> "dead" | "running" | "normal" | "suspended",
+    status: (co: thread) -> "dead" | "running" | "normal" | "suspended",
     -- FIXME: This technically returns a function, but we can't represent this yet.
-    wrap: <A..., R...>((A...) -> R...) -> any,
+    wrap: <A..., R...>(f: (A...) -> R...) -> any,
     yield: <A..., R...>(A...) -> R...,
     isyieldable: () -> boolean,
-    close: (thread) -> (boolean, any)
+    close: (co: thread) -> (boolean, any)
 }
 
 declare table: {
-    concat: <V>({V}, string?, number?, number?) -> string,
-    insert: (<V>({V}, V) -> ()) & (<V>({V}, number, V) -> ()),
-    maxn: <V>({V}) -> number,
-    remove: <V>({V}, number?) -> V?,
-    sort: <V>({V}, ((V, V) -> boolean)?) -> (),
-    create: <V>(number, V?) -> {V},
-    find: <V>({V}, V, number?) -> number?,
+    concat: <V>(t: {V}, sep: string?, i: number?, j: number?) -> string,
+    insert: (<V>(t: {V}, value: V) -> ()) & (<V>(t: {V}, pos: number, value: V) -> ()),
+    maxn: <V>(t: {V}) -> number,
+    remove: <V>(t: {V}, number?) -> V?,
+    sort: <V>(t: {V}, comp: ((V, V) -> boolean)?) -> (),
+    create: <V>(count: number, value: V?) -> {V},
+    find: <V>(haystack: {V}, needle: V, init: number?) -> number?,
 
-    unpack: <V>({V}, number?, number?) -> ...V,
+    unpack: <V>(list: {V}, i: number?, j: number?) -> ...V,
     pack: <V>(...V) -> { n: number, [number]: V },
 
-    getn: <V>({V}) -> number,
-    foreach: <K, V>({[K]: V}, (K, V) -> ()) -> (),
+    getn: <V>(t: {V}) -> number,
+    foreach: <K, V>(t: {[K]: V}, f: (K, V) -> ()) -> (),
     foreachi: <V>({V}, (number, V) -> ()) -> (),
 
-    move: <V>({V}, number, number, number, {V}?) -> {V},
-    clear: <K, V>({[K]: V}) -> (),
+    move: <V>(src: {V}, a: number, b: number, t: number, dst: {V}?) -> {V},
+    clear: <K, V>(table: {[K]: V}) -> (),
 
-    isfrozen: <K, V>({[K]: V}) -> boolean,
+    isfrozen: <K, V>(t: {[K]: V}) -> boolean,
 }
 
 declare debug: {
-    info: (<R...>(thread, number, string) -> R...) & (<R...>(number, string) -> R...) & (<A..., R1..., R2...>((A...) -> R1..., string) -> R2...),
-    traceback: ((string?, number?) -> string) & ((thread, string?, number?) -> string),
+    info: (<R...>(thread: thread, level: number, options: string) -> R...) & (<R...>(level: number, options: string) -> R...) & (<A..., R1..., R2...>(func: (A...) -> R1..., options: string) -> R2...),
+    traceback: ((message: string?, level: number?) -> string) & ((thread: thread, message: string?, level: number?) -> string),
 }
 
 declare utf8: {
     char: (...number) -> string,
     charpattern: string,
-    codes: (string) -> ((string, number) -> (number, number), string, number),
-    codepoint: (string, number?, number?) -> ...number,
-    len: (string, number?, number?) -> (number?, number?),
-    offset: (string, number?, number?) -> number,
+    codes: (str: string) -> ((string, number) -> (number, number), string, number),
+    codepoint: (str: string, i: number?, j: number?) -> ...number,
+    len: (s: string, i: number?, j: number?) -> (number?, number?),
+    offset: (s: string, n: number?, i: number?) -> number,
 }
 
 -- Cannot use `typeof` here because it will produce a polytype when we expect a monotype.

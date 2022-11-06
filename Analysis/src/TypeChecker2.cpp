@@ -5,6 +5,7 @@
 #include "Luau/AstQuery.h"
 #include "Luau/Clone.h"
 #include "Luau/Instantiation.h"
+#include "Luau/Metamethods.h"
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
 #include "Luau/TxnLog.h"
@@ -61,6 +62,23 @@ struct StackPusher
     {
     }
 };
+
+static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
+{
+    if (AstExprGlobal* expr = node->as<AstExprGlobal>())
+        return expr->name.value;
+
+    if (AstExprLocal* expr = node->as<AstExprLocal>())
+        return expr->local->name.value;
+
+    if (AstExprIndexExpr* expr = node->as<AstExprIndexExpr>())
+        return getIdentifierOfBaseVar(expr->expr);
+
+    if (AstExprIndexName* expr = node->as<AstExprIndexName>())
+        return getIdentifierOfBaseVar(expr->expr);
+
+    return std::nullopt;
+}
 
 struct TypeChecker2
 {
@@ -283,7 +301,6 @@ struct TypeChecker2
         UnifierSharedState sharedState{&ice};
         Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
-        u.anyIsTop = true;
 
         u.tryUnify(actualRetType, expectedRetType);
         const bool ok = u.errors.empty() && u.log.empty();
@@ -313,16 +330,21 @@ struct TypeChecker2
             if (value)
                 visit(value);
 
-            if (i != local->values.size - 1)
+            TypeId* maybeValueType = value ? module->astTypes.find(value) : nullptr;
+            if (i != local->values.size - 1 || maybeValueType)
             {
                 AstLocal* var = i < local->vars.size ? local->vars.data[i] : nullptr;
 
                 if (var && var->annotation)
                 {
-                    TypeId varType = lookupAnnotation(var->annotation);
+                    TypeId annotationType = lookupAnnotation(var->annotation);
                     TypeId valueType = value ? lookupType(value) : nullptr;
-                    if (valueType && !isSubtype(varType, valueType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
-                        reportError(TypeMismatch{varType, valueType}, value->location);
+                    if (valueType)
+                    {
+                        ErrorVec errors = tryUnify(stack.back(), value->location, valueType, annotationType);
+                        if (!errors.empty())
+                            reportErrors(std::move(errors));
+                    }
                 }
             }
             else
@@ -588,7 +610,7 @@ struct TypeChecker2
             visit(rhs);
             TypeId rhsType = lookupType(rhs);
 
-            if (!isSubtype(rhsType, lhsType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+            if (!isSubtype(rhsType, lhsType, stack.back(), singletonTypes, ice))
             {
                 reportError(TypeMismatch{lhsType, rhsType}, rhs->location);
             }
@@ -739,7 +761,7 @@ struct TypeChecker2
         TypeId actualType = lookupType(number);
         TypeId numberType = singletonTypes->numberType;
 
-        if (!isSubtype(numberType, actualType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (!isSubtype(numberType, actualType, stack.back(), singletonTypes, ice))
         {
             reportError(TypeMismatch{actualType, numberType}, number->location);
         }
@@ -750,7 +772,7 @@ struct TypeChecker2
         TypeId actualType = lookupType(string);
         TypeId stringType = singletonTypes->stringType;
 
-        if (!isSubtype(stringType, actualType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (!isSubtype(actualType, stringType, stack.back(), singletonTypes, ice))
         {
             reportError(TypeMismatch{actualType, stringType}, string->location);
         }
@@ -783,26 +805,55 @@ struct TypeChecker2
 
         TypePackId expectedRetType = lookupPack(call);
         TypeId functionType = lookupType(call->func);
-        LUAU_ASSERT(functionType);
+        TypeId testFunctionType = functionType;
+        TypePack args;
 
         if (get<AnyTypeVar>(functionType) || get<ErrorTypeVar>(functionType))
             return;
-
-        // TODO: Lots of other types are callable: intersections of functions
-        // and things with the __call metamethod.
-        if (!get<FunctionTypeVar>(functionType))
+        else if (std::optional<TypeId> callMm = findMetatableEntry(singletonTypes, module->errors, functionType, "__call", call->func->location))
+        {
+            if (get<FunctionTypeVar>(follow(*callMm)))
+            {
+                if (std::optional<TypeId> instantiatedCallMm = instantiation.substitute(*callMm))
+                {
+                    args.head.push_back(functionType);
+                    testFunctionType = follow(*instantiatedCallMm);
+                }
+                else
+                {
+                    reportError(UnificationTooComplex{}, call->func->location);
+                    return;
+                }
+            }
+            else
+            {
+                // TODO: This doesn't flag the __call metamethod as the problem
+                // very clearly.
+                reportError(CannotCallNonFunction{*callMm}, call->func->location);
+                return;
+            }
+        }
+        else if (get<FunctionTypeVar>(functionType))
+        {
+            if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(functionType))
+            {
+                testFunctionType = *instantiatedFunctionType;
+            }
+            else
+            {
+                reportError(UnificationTooComplex{}, call->func->location);
+                return;
+            }
+        }
+        else
         {
             reportError(CannotCallNonFunction{functionType}, call->func->location);
             return;
         }
 
-        TypeId instantiatedFunctionType = follow(instantiation.substitute(functionType).value_or(nullptr));
-
-        TypePack args;
         for (AstExpr* arg : call->args)
         {
-            TypeId argTy = module->astTypes[arg];
-            LUAU_ASSERT(argTy);
+            TypeId argTy = lookupType(arg);
             args.head.push_back(argTy);
         }
 
@@ -810,7 +861,7 @@ struct TypeChecker2
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);
 
-        if (!isSubtype(instantiatedFunctionType, expectedType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (!isSubtype(testFunctionType, expectedType, stack.back(), singletonTypes, ice))
         {
             CloneState cloneState;
             expectedType = clone(expectedType, module->internalTypes, cloneState);
@@ -829,7 +880,7 @@ struct TypeChecker2
             getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
         if (ty)
         {
-            if (!isSubtype(resultType, *ty, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+            if (!isSubtype(resultType, *ty, stack.back(), singletonTypes, ice))
             {
                 reportError(TypeMismatch{resultType, *ty}, indexName->location);
             }
@@ -862,7 +913,7 @@ struct TypeChecker2
                 TypeId inferredArgTy = *argIt;
                 TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
-                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), singletonTypes, ice))
                 {
                     reportError(TypeMismatch{annotatedArgTy, inferredArgTy}, arg->location);
                 }
@@ -887,15 +938,264 @@ struct TypeChecker2
 
     void visit(AstExprUnary* expr)
     {
-        // TODO!
         visit(expr->expr);
+
+        NotNull<Scope> scope = stack.back();
+        TypeId operandType = lookupType(expr->expr);
+
+        if (get<AnyTypeVar>(operandType) || get<ErrorTypeVar>(operandType) || get<NeverTypeVar>(operandType))
+            return;
+
+        if (auto it = kUnaryOpMetamethods.find(expr->op); it != kUnaryOpMetamethods.end())
+        {
+            std::optional<TypeId> mm = findMetatableEntry(singletonTypes, module->errors, operandType, it->second, expr->location);
+            if (mm)
+            {
+                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
+                {
+                    TypePackId expectedArgs = module->internalTypes.addTypePack({operandType});
+                    reportErrors(tryUnify(scope, expr->location, ftv->argTypes, expectedArgs));
+
+                    if (std::optional<TypeId> ret = first(ftv->retTypes))
+                    {
+                        if (expr->op == AstExprUnary::Op::Len)
+                        {
+                            reportErrors(tryUnify(scope, expr->location, follow(*ret), singletonTypes->numberType));
+                        }
+                    }
+                    else
+                    {
+                        reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
+                    }
+                }
+
+                return;
+            }
+        }
+
+        if (expr->op == AstExprUnary::Op::Len)
+        {
+            DenseHashSet<TypeId> seen{nullptr};
+            int recursionCount = 0;
+
+            if (!hasLength(operandType, seen, &recursionCount))
+            {
+                reportError(NotATable{operandType}, expr->location);
+            }
+        }
+        else if (expr->op == AstExprUnary::Op::Minus)
+        {
+            reportErrors(tryUnify(scope, expr->location, operandType, singletonTypes->numberType));
+        }
+        else if (expr->op == AstExprUnary::Op::Not)
+        {
+        }
+        else
+        {
+            LUAU_ASSERT(!"Unhandled unary operator");
+        }
     }
 
     void visit(AstExprBinary* expr)
     {
-        // TODO!
         visit(expr->left);
         visit(expr->right);
+
+        NotNull<Scope> scope = stack.back();
+
+        bool isEquality = expr->op == AstExprBinary::Op::CompareEq || expr->op == AstExprBinary::Op::CompareNe;
+        bool isComparison = expr->op >= AstExprBinary::Op::CompareEq && expr->op <= AstExprBinary::Op::CompareGe;
+        bool isLogical = expr->op == AstExprBinary::Op::And || expr->op == AstExprBinary::Op::Or;
+
+        TypeId leftType = lookupType(expr->left);
+        TypeId rightType = lookupType(expr->right);
+
+        if (expr->op == AstExprBinary::Op::Or)
+        {
+            leftType = stripNil(singletonTypes, module->internalTypes, leftType);
+        }
+
+        bool isStringOperation = isString(leftType) && isString(rightType);
+
+        if (get<AnyTypeVar>(leftType) || get<ErrorTypeVar>(leftType) || get<AnyTypeVar>(rightType) || get<ErrorTypeVar>(rightType))
+            return;
+
+        if ((get<BlockedTypeVar>(leftType) || get<FreeTypeVar>(leftType)) && !isEquality && !isLogical)
+        {
+            auto name = getIdentifierOfBaseVar(expr->left);
+            reportError(CannotInferBinaryOperation{expr->op, name,
+                            isComparison ? CannotInferBinaryOperation::OpKind::Comparison : CannotInferBinaryOperation::OpKind::Operation},
+                expr->location);
+            return;
+        }
+
+        if (auto it = kBinaryOpMetamethods.find(expr->op); it != kBinaryOpMetamethods.end())
+        {
+            std::optional<TypeId> leftMt = getMetatable(leftType, singletonTypes);
+            std::optional<TypeId> rightMt = getMetatable(rightType, singletonTypes);
+
+            bool matches = leftMt == rightMt;
+            if (isEquality && !matches)
+            {
+                auto testUnion = [&matches, singletonTypes = this->singletonTypes](const UnionTypeVar* utv, std::optional<TypeId> otherMt) {
+                    for (TypeId option : utv)
+                    {
+                        if (getMetatable(follow(option), singletonTypes) == otherMt)
+                        {
+                            matches = true;
+                            break;
+                        }
+                    }
+                };
+
+                if (const UnionTypeVar* utv = get<UnionTypeVar>(leftType); utv && rightMt)
+                {
+                    testUnion(utv, rightMt);
+                }
+
+                if (const UnionTypeVar* utv = get<UnionTypeVar>(rightType); utv && leftMt && !matches)
+                {
+                    testUnion(utv, leftMt);
+                }
+            }
+
+            if (!matches && isComparison)
+            {
+                reportError(GenericError{format("Types %s and %s cannot be compared with %s because they do not have the same metatable",
+                                toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str())},
+                    expr->location);
+
+                return;
+            }
+
+            std::optional<TypeId> mm;
+            if (std::optional<TypeId> leftMm = findMetatableEntry(singletonTypes, module->errors, leftType, it->second, expr->left->location))
+                mm = leftMm;
+            else if (std::optional<TypeId> rightMm = findMetatableEntry(singletonTypes, module->errors, rightType, it->second, expr->right->location))
+                mm = rightMm;
+
+            if (mm)
+            {
+                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(*mm))
+                {
+                    TypePackId expectedArgs;
+                    // For >= and > we invoke __lt and __le respectively with
+                    // swapped argument ordering.
+                    if (expr->op == AstExprBinary::Op::CompareGe || expr->op == AstExprBinary::Op::CompareGt)
+                    {
+                        expectedArgs = module->internalTypes.addTypePack({rightType, leftType});
+                    }
+                    else
+                    {
+                        expectedArgs = module->internalTypes.addTypePack({leftType, rightType});
+                    }
+
+                    reportErrors(tryUnify(scope, expr->location, ftv->argTypes, expectedArgs));
+
+                    if (expr->op == AstExprBinary::CompareEq || expr->op == AstExprBinary::CompareNe || expr->op == AstExprBinary::CompareGe ||
+                        expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::Op::CompareLe || expr->op == AstExprBinary::Op::CompareLt)
+                    {
+                        TypePackId expectedRets = module->internalTypes.addTypePack({singletonTypes->booleanType});
+                        if (!isSubtype(ftv->retTypes, expectedRets, scope, singletonTypes, ice))
+                        {
+                            reportError(GenericError{format("Metamethod '%s' must return type 'boolean'", it->second)}, expr->location);
+                        }
+                    }
+                    else if (!first(ftv->retTypes))
+                    {
+                        reportError(GenericError{format("Metamethod '%s' must return a value", it->second)}, expr->location);
+                    }
+                }
+                else
+                {
+                    reportError(CannotCallNonFunction{*mm}, expr->location);
+                }
+
+                return;
+            }
+            // If this is a string comparison, or a concatenation of strings, we
+            // want to fall through to primitive behavior.
+            else if (!isEquality && !(isStringOperation && (expr->op == AstExprBinary::Op::Concat || isComparison)))
+            {
+                if (leftMt || rightMt)
+                {
+                    if (isComparison)
+                    {
+                        reportError(GenericError{format(
+                                        "Types '%s' and '%s' cannot be compared with %s because neither type's metatable has a '%s' metamethod",
+                                        toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str(), it->second)},
+                            expr->location);
+                    }
+                    else
+                    {
+                        reportError(GenericError{format(
+                                        "Operator %s is not applicable for '%s' and '%s' because neither type's metatable has a '%s' metamethod",
+                                        toString(expr->op).c_str(), toString(leftType).c_str(), toString(rightType).c_str(), it->second)},
+                            expr->location);
+                    }
+
+                    return;
+                }
+                else if (!leftMt && !rightMt && (get<TableTypeVar>(leftType) || get<TableTypeVar>(rightType)))
+                {
+                    if (isComparison)
+                    {
+                        reportError(GenericError{format("Types '%s' and '%s' cannot be compared with %s because neither type has a metatable",
+                                        toString(leftType).c_str(), toString(rightType).c_str(), toString(expr->op).c_str())},
+                            expr->location);
+                    }
+                    else
+                    {
+                        reportError(GenericError{format("Operator %s is not applicable for '%s' and '%s' because neither type has a metatable",
+                                        toString(expr->op).c_str(), toString(leftType).c_str(), toString(rightType).c_str())},
+                            expr->location);
+                    }
+
+                    return;
+                }
+            }
+        }
+
+        switch (expr->op)
+        {
+        case AstExprBinary::Op::Add:
+        case AstExprBinary::Op::Sub:
+        case AstExprBinary::Op::Mul:
+        case AstExprBinary::Op::Div:
+        case AstExprBinary::Op::Pow:
+        case AstExprBinary::Op::Mod:
+            reportErrors(tryUnify(scope, expr->left->location, leftType, singletonTypes->numberType));
+            reportErrors(tryUnify(scope, expr->right->location, rightType, singletonTypes->numberType));
+
+            break;
+        case AstExprBinary::Op::Concat:
+            reportErrors(tryUnify(scope, expr->left->location, leftType, singletonTypes->stringType));
+            reportErrors(tryUnify(scope, expr->right->location, rightType, singletonTypes->stringType));
+
+            break;
+        case AstExprBinary::Op::CompareGe:
+        case AstExprBinary::Op::CompareGt:
+        case AstExprBinary::Op::CompareLe:
+        case AstExprBinary::Op::CompareLt:
+            if (isNumber(leftType))
+                reportErrors(tryUnify(scope, expr->right->location, rightType, singletonTypes->numberType));
+            else if (isString(leftType))
+                reportErrors(tryUnify(scope, expr->right->location, rightType, singletonTypes->stringType));
+            else
+                reportError(GenericError{format("Types '%s' and '%s' cannot be compared with relational operator %s", toString(leftType).c_str(),
+                                toString(rightType).c_str(), toString(expr->op).c_str())},
+                    expr->location);
+
+            break;
+        case AstExprBinary::Op::And:
+        case AstExprBinary::Op::Or:
+        case AstExprBinary::Op::CompareEq:
+        case AstExprBinary::Op::CompareNe:
+            break;
+        default:
+            // Unhandled AstExprBinary::Op possibility.
+            LUAU_ASSERT(false);
+        }
     }
 
     void visit(AstExprTypeAssertion* expr)
@@ -907,10 +1207,10 @@ struct TypeChecker2
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (isSubtype(annotationType, computedType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (isSubtype(annotationType, computedType, stack.back(), singletonTypes, ice))
             return;
 
-        if (isSubtype(computedType, annotationType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (isSubtype(computedType, annotationType, stack.back(), singletonTypes, ice))
             return;
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
@@ -998,9 +1298,8 @@ struct TypeChecker2
         Scope* scope = findInnermostScope(ty->location);
         LUAU_ASSERT(scope);
 
-        // TODO: Imported types
-
-        std::optional<TypeFun> alias = scope->lookupType(ty->name.value);
+        std::optional<TypeFun> alias =
+            (ty->prefix) ? scope->lookupImportedType(ty->prefix->value, ty->name.value) : scope->lookupType(ty->name.value);
 
         if (alias.has_value())
         {
@@ -1212,7 +1511,6 @@ struct TypeChecker2
         UnifierSharedState sharedState{&ice};
         Normalizer normalizer{&module->internalTypes, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, scope, location, Covariant};
-        u.anyIsTop = true;
         u.tryUnify(subTy, superTy);
 
         return std::move(u.errors);

@@ -126,20 +126,5 @@ inline int getOpLength(LuauOpcode op)
     }
 }
 
-enum class X64ABI
-{
-    Windows,
-    SystemV,
-};
-
-inline X64ABI getCurrentX64ABI()
-{
-#if defined(_WIN32)
-    return X64ABI::Windows;
-#else
-    return X64ABI::SystemV;
-#endif
-}
-
 } // namespace CodeGen
 } // namespace Luau

@@ -3,13 +3,16 @@
 
 #include "Luau/Bytecode.h"
 #include "Luau/CodeAllocator.h"
+#include "Luau/Label.h"
 
 #include <memory>
 
 #include <stdint.h>
 
+#include "ldebug.h"
 #include "lobject.h"
 #include "ltm.h"
+#include "lstate.h"
 
 typedef int (*luau_FastFunction)(lua_State* L, StkId res, TValue* arg0, int nresults, StkId args, int nparams);
 
@@ -23,8 +26,6 @@ class UnwindBuilder;
 using FallbackFn = const Instruction*(lua_State* L, const Instruction* pc, StkId base, TValue* k);
 
 constexpr uint8_t kFallbackUpdatePc = 1 << 0;
-constexpr uint8_t kFallbackUpdateCi = 1 << 1;
-constexpr uint8_t kFallbackCheckInterrupt = 1 << 2;
 
 struct NativeFallback
 {
@@ -34,7 +35,8 @@ struct NativeFallback
 
 struct NativeProto
 {
-    uintptr_t* instTargets = nullptr;
+    uintptr_t entryTarget = 0;
+    uintptr_t* instTargets = nullptr; // TODO: NativeProto should be variable-size with all target embedded
 
     Proto* proto = nullptr;
     uint32_t location = 0;
@@ -61,12 +63,29 @@ struct NativeContext
     void (*luaV_prepareFORN)(lua_State* L, StkId plimit, StkId pstep, StkId pinit) = nullptr;
     void (*luaV_gettable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
     void (*luaV_settable)(lua_State* L, const TValue* t, TValue* key, StkId val) = nullptr;
+    void (*luaV_getimport)(lua_State* L, Table* env, TValue* k, uint32_t id, bool propagatenil) = nullptr;
+    void (*luaV_concat)(lua_State* L, int total, int last) = nullptr;
 
     int (*luaH_getn)(Table* t) = nullptr;
+    Table* (*luaH_new)(lua_State* L, int narray, int lnhash) = nullptr;
+    Table* (*luaH_clone)(lua_State* L, Table* tt) = nullptr;
+    void (*luaH_resizearray)(lua_State* L, Table* t, int nasize) = nullptr;
 
     void (*luaC_barriertable)(lua_State* L, Table* t, GCObject* v) = nullptr;
+    void (*luaC_barrierf)(lua_State* L, GCObject* o, GCObject* v) = nullptr;
+    void (*luaC_barrierback)(lua_State* L, GCObject* o, GCObject** gclist) = nullptr;
+    size_t (*luaC_step)(lua_State* L, bool assist) = nullptr;
+
+    void (*luaF_close)(lua_State* L, StkId level) = nullptr;
 
     double (*libm_pow)(double, double) = nullptr;
+
+    // Helper functions
+    bool (*forgLoopNodeIter)(lua_State* L, Table* h, int index, TValue* ra) = nullptr;
+    bool (*forgLoopNonTableFallback)(lua_State* L, int insnA, int aux) = nullptr;
+    void (*forgPrepXnextFallback)(lua_State* L, TValue* ra, int pc) = nullptr;
+    Closure* (*callProlog)(lua_State* L, TValue* ra, StkId argtop, int nresults) = nullptr;
+    void (*callEpilogC)(lua_State* L, int nresults, int n) = nullptr;
 };
 
 struct NativeState
@@ -77,9 +96,6 @@ struct NativeState
     CodeAllocator codeAllocator;
     std::unique_ptr<UnwindBuilder> unwindBuilder;
 
-    // For annotations in assembly text generation
-    const char* names[LOP__COUNT] = {};
-
     uint8_t* gateData = nullptr;
     size_t gateDataSize = 0;
 
@@ -88,7 +104,6 @@ struct NativeState
 
 void initFallbackTable(NativeState& data);
 void initHelperFunctions(NativeState& data);
-void initInstructionNames(NativeState& data);
 
 } // namespace CodeGen
 } // namespace Luau

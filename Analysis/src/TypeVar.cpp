@@ -66,7 +66,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         {
             TypeId res = ltv->thunk();
             if (get<LazyTypeVar>(res))
-                throw std::runtime_error("Lazy TypeVar cannot resolve to another Lazy TypeVar");
+                throwRuntimeError("Lazy TypeVar cannot resolve to another Lazy TypeVar");
 
             *asMutable(ty) = BoundTypeVar(res);
         }
@@ -104,7 +104,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
                 cycleTester = nullptr;
 
             if (t == cycleTester)
-                throw std::runtime_error("Luau::follow detected a TypeVar cycle!!");
+                throwRuntimeError("Luau::follow detected a TypeVar cycle!!");
         }
     }
 }
@@ -754,12 +754,15 @@ SingletonTypes::SingletonTypes()
     , stringType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::String}, /*persistent*/ true}))
     , booleanType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Boolean}, /*persistent*/ true}))
     , threadType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Thread}, /*persistent*/ true}))
+    , functionType(arena->addType(TypeVar{PrimitiveTypeVar{PrimitiveTypeVar::Function}, /*persistent*/ true}))
     , trueType(arena->addType(TypeVar{SingletonTypeVar{BooleanSingleton{true}}, /*persistent*/ true}))
     , falseType(arena->addType(TypeVar{SingletonTypeVar{BooleanSingleton{false}}, /*persistent*/ true}))
     , anyType(arena->addType(TypeVar{AnyTypeVar{}, /*persistent*/ true}))
     , unknownType(arena->addType(TypeVar{UnknownTypeVar{}, /*persistent*/ true}))
     , neverType(arena->addType(TypeVar{NeverTypeVar{}, /*persistent*/ true}))
     , errorType(arena->addType(TypeVar{ErrorTypeVar{}, /*persistent*/ true}))
+    , falsyType(arena->addType(TypeVar{UnionTypeVar{{falseType, nilType}}, /*persistent*/ true}))
+    , truthyType(arena->addType(TypeVar{NegationTypeVar{falsyType}, /*persistent*/ true}))
     , anyTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{anyType}, /*persistent*/ true}))
     , neverTypePack(arena->addTypePack(TypePackVar{VariadicTypePack{neverType}, /*persistent*/ true}))
     , uninhabitableTypePack(arena->addTypePack({neverType}, neverTypePack))
@@ -896,7 +899,6 @@ void persist(TypeId ty)
             continue;
 
         asMutable(t)->persistent = true;
-        asMutable(t)->normal = true; // all persistent types are assumed to be normal
 
         if (auto btv = get<BoundTypeVar>(t))
             queue.push_back(btv->boundTo);
@@ -933,17 +935,13 @@ void persist(TypeId ty)
             for (TypeId opt : itv->parts)
                 queue.push_back(opt);
         }
-        else if (auto ctv = get<ConstrainedTypeVar>(t))
-        {
-            for (TypeId opt : ctv->parts)
-                queue.push_back(opt);
-        }
         else if (auto mtv = get<MetatableTypeVar>(t))
         {
             queue.push_back(mtv->table);
             queue.push_back(mtv->metatable);
         }
-        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t))
+        else if (get<GenericTypeVar>(t) || get<AnyTypeVar>(t) || get<FreeTypeVar>(t) || get<SingletonTypeVar>(t) || get<PrimitiveTypeVar>(t) ||
+                 get<NegationTypeVar>(t))
         {
         }
         else
@@ -990,8 +988,6 @@ const TypeLevel* getLevel(TypeId ty)
         return &ttv->level;
     else if (auto ftv = get<FunctionTypeVar>(ty))
         return &ftv->level;
-    else if (auto ctv = get<ConstrainedTypeVar>(ty))
-        return &ctv->level;
     else
         return nullptr;
 }
@@ -1056,11 +1052,6 @@ const std::vector<TypeId>& getTypes(const IntersectionTypeVar* itv)
     return itv->parts;
 }
 
-const std::vector<TypeId>& getTypes(const ConstrainedTypeVar* ctv)
-{
-    return ctv->parts;
-}
-
 UnionTypeVarIterator begin(const UnionTypeVar* utv)
 {
     return UnionTypeVarIterator{utv};
@@ -1080,17 +1071,6 @@ IntersectionTypeVarIterator end(const IntersectionTypeVar* itv)
 {
     return IntersectionTypeVarIterator{};
 }
-
-ConstrainedTypeVarIterator begin(const ConstrainedTypeVar* ctv)
-{
-    return ConstrainedTypeVarIterator{ctv};
-}
-
-ConstrainedTypeVarIterator end(const ConstrainedTypeVar* ctv)
-{
-    return ConstrainedTypeVarIterator{};
-}
-
 
 static std::vector<TypeId> parseFormatString(TypeChecker& typechecker, const char* data, size_t size)
 {

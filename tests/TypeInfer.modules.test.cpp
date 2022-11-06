@@ -14,8 +14,6 @@ LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
-
 TEST_SUITE_BEGIN("TypeInferModules");
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "dcr_require_basic")
@@ -176,10 +174,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "require_module_that_does_not_export")
 
     auto hootyType = requireType(bModule, "Hooty");
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(hootyType));
-    else
-        CHECK_EQ("<error-type>", toString(hootyType));
+    CHECK_EQ("*error-type*", toString(hootyType));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "warn_if_you_try_to_require_a_non_modulescript")
@@ -251,23 +246,7 @@ end
 return m
 )");
 
-    if (FFlag::LuauInstantiateInSubtyping)
-    {
-        // though this didn't error before the flag, it seems as though it should error since fields of a table are invariant.
-        // the user's intent would likely be that these "method" fields would be read-only, but without an annotation, accepting this should be
-        // unsound.
-
-        LUAU_REQUIRE_ERROR_COUNT(1, result);
-
-        CHECK_EQ(R"(Type 'n' could not be converted into 't1 where t1 = {- Clone: (t1) -> (a...) -}'
-caused by:
-  Property 'Clone' is not compatible. Type '<a>(a) -> ()' could not be converted into 't1 where t1 = ({- Clone: t1 -}) -> (a...)'; different number of generic type parameters)",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        LUAU_REQUIRE_NO_ERRORS(result);
-    }
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "custom_require_global")
@@ -298,10 +277,7 @@ local ModuleA = require(game.A)
 
     std::optional<TypeId> oty = requireType("ModuleA");
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(*oty));
-    else
-        CHECK_EQ("<error-type>", toString(*oty));
+    CHECK_EQ("*error-type*", toString(*oty));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "do_not_modify_imported_types")

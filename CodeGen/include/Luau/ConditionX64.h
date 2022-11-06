@@ -6,7 +6,7 @@ namespace Luau
 namespace CodeGen
 {
 
-enum class Condition
+enum class ConditionX64 : uint8_t
 {
     Overflow,
     NoOverflow,

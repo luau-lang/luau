@@ -61,7 +61,6 @@ struct Unifier
     ErrorVec errors;
     Location location;
     Variance variance = Covariant;
-    bool anyIsTop = false;  // If true, we consider any to be a top type.  If false, it is a familiar but weird mix of top and bottom all at once.
     bool normalize;         // Normalize unions and intersections if necessary
     bool useScopes = false; // If true, we use the scope hierarchy rather than TypeLevels
     CountMismatch::Context ctx = CountMismatch::Arg;
@@ -96,6 +95,8 @@ private:
     void tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithMetatable(TypeId subTy, TypeId superTy, bool reversed);
     void tryUnifyWithClass(TypeId subTy, TypeId superTy, bool reversed);
+    void tryUnifyTypeWithNegation(TypeId subTy, TypeId superTy);
+    void tryUnifyNegationWithType(TypeId subTy, TypeId superTy);
 
     TypePackId tryApplyOverloadedFunction(TypeId function, const NormalizedFunctionType& overloads, TypePackId args);
 
@@ -119,12 +120,7 @@ private:
 
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name);
 
-    void tryUnifyWithConstrainedSubTypeVar(TypeId subTy, TypeId superTy);
-    void tryUnifyWithConstrainedSuperTypeVar(TypeId subTy, TypeId superTy);
-
 public:
-    void unifyLowerBound(TypePackId subTy, TypePackId superTy, TypeLevel demotedLevel);
-
     // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
     bool occursCheck(TypeId needle, TypeId haystack);
     bool occursCheck(DenseHashSet<TypeId>& seen, TypeId needle, TypeId haystack);
@@ -134,6 +130,7 @@ public:
     Unifier makeChildUnifier();
 
     void reportError(TypeError err);
+    LUAU_NOINLINE void reportError(Location location, TypeErrorData data);
 
 private:
     bool isNonstrictMode() const;

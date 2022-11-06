@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
 
+#include "AstQueryDsl.h"
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
@@ -1736,8 +1737,6 @@ TEST_CASE_FIXTURE(Fixture, "parse_error_type_annotation")
 
 TEST_CASE_FIXTURE(Fixture, "parse_error_missing_type_annotation")
 {
-    ScopedFastFlag LuauTypeAnnotationLocationChange{"LuauTypeAnnotationLocationChange", true};
-
     {
         ParseResult result = tryParse("local x:");
         CHECK(result.errors.size() == 1);
@@ -2775,6 +2774,53 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the
     REQUIRE(f != nullptr);
 
     CHECK(2 == f->generics.size);
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_between_table_members")
+{
+    ScopedFastFlag luauTableConstructorRecovery{"LuauTableConstructorRecovery", true};
+
+    ParseResult result = tryParse(R"(
+        local t = {
+            first = 1
+            second = 2,
+            third = 3,
+            fouth = 4,
+        }
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({3, 12}, {3, 18}) == result.errors[0].getLocation());
+    CHECK("Expected ',' after table constructor element" == result.errors[0].getMessage());
+
+    REQUIRE(1 == result.root->body.size);
+
+    AstExprTable* table = Luau::query<AstExprTable>(result.root);
+    REQUIRE(table);
+    CHECK(table->items.size == 4);
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_after_last_table_member")
+{
+    ParseResult result = tryParse(R"(
+        local t = {
+            first = 1
+
+        local ok = true
+        local good = ok == true
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({4, 8}, {4, 13}) == result.errors[0].getLocation());
+    CHECK("Expected '}' (to close '{' at line 2), got 'local'" == result.errors[0].getMessage());
+
+    REQUIRE(3 == result.root->body.size);
+
+    AstExprTable* table = Luau::query<AstExprTable>(result.root);
+    REQUIRE(table);
+    CHECK(table->items.size == 1);
 }
 
 TEST_SUITE_END();

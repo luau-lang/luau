@@ -237,15 +237,6 @@ void StateDot::visitChildren(TypeId ty, int index)
         finishNodeLabel(ty);
         finishNode();
     }
-    else if (const ConstrainedTypeVar* ctv = get<ConstrainedTypeVar>(ty))
-    {
-        formatAppend(result, "ConstrainedTypeVar %d", index);
-        finishNodeLabel(ty);
-        finishNode();
-
-        for (TypeId part : ctv->parts)
-            visitChild(part, index);
-    }
     else if (get<ErrorTypeVar>(ty))
     {
         formatAppend(result, "ErrorTypeVar %d", index);

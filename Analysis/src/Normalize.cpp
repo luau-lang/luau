@@ -7,8 +7,9 @@
 
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
+#include "Luau/RecursionCounter.h"
+#include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
-#include "Luau/VisitTypeVar.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauCopyBeforeNormalizing, false)
 LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
@@ -16,11 +17,13 @@ LUAU_FASTFLAGVARIABLE(DebugLuauCheckNormalizeInvariant, false)
 // This could theoretically be 2000 on amd64, but x86 requires this.
 LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
-LUAU_FASTINT(LuauTypeInferRecursionLimit);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauTypeNormalization2, false);
+LUAU_FASTFLAGVARIABLE(LuauNegatedStringSingletons, false);
+LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
+LUAU_FASTFLAG(LuauOverloadedFunctionSubtypingPerf);
 
 namespace Luau
 {
@@ -107,12 +110,132 @@ bool TypeIds::operator==(const TypeIds& there) const
     return hash == there.hash && types == there.types;
 }
 
+NormalizedStringType::NormalizedStringType(bool isCofinite, std::optional<std::map<std::string, TypeId>> singletons)
+    : isCofinite(isCofinite)
+    , singletons(std::move(singletons))
+{
+    if (!FFlag::LuauNegatedStringSingletons)
+        LUAU_ASSERT(!isCofinite);
+}
+
+void NormalizedStringType::resetToString()
+{
+    if (FFlag::LuauNegatedStringSingletons)
+    {
+        isCofinite = true;
+        singletons->clear();
+    }
+    else
+        singletons.reset();
+}
+
+void NormalizedStringType::resetToNever()
+{
+    if (FFlag::LuauNegatedStringSingletons)
+    {
+        isCofinite = false;
+        singletons.emplace();
+    }
+    else
+    {
+        if (singletons)
+            singletons->clear();
+        else
+            singletons.emplace();
+    }
+}
+
+bool NormalizedStringType::isNever() const
+{
+    if (FFlag::LuauNegatedStringSingletons)
+        return !isCofinite && singletons->empty();
+    else
+        return singletons && singletons->empty();
+}
+
+bool NormalizedStringType::isString() const
+{
+    if (FFlag::LuauNegatedStringSingletons)
+        return isCofinite && singletons->empty();
+    else
+        return !singletons;
+}
+
+bool NormalizedStringType::isUnion() const
+{
+    if (FFlag::LuauNegatedStringSingletons)
+        return !isCofinite;
+    else
+        return singletons.has_value();
+}
+
+bool NormalizedStringType::isIntersection() const
+{
+    if (FFlag::LuauNegatedStringSingletons)
+        return isCofinite;
+    else
+        return false;
+}
+
+bool NormalizedStringType::includes(const std::string& str) const
+{
+    if (isString())
+        return true;
+    else if (isUnion() && singletons->count(str))
+        return true;
+    else if (isIntersection() && !singletons->count(str))
+        return true;
+    else
+        return false;
+}
+
+const NormalizedStringType NormalizedStringType::never{false, {{}}};
+
+bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr)
+{
+    if (subStr.isUnion() && superStr.isUnion())
+    {
+        for (auto [name, ty] : *subStr.singletons)
+        {
+            if (!superStr.singletons->count(name))
+                return false;
+        }
+    }
+    else if (subStr.isString() && superStr.isUnion())
+        return false;
+
+    return true;
+}
+
+NormalizedFunctionType::NormalizedFunctionType()
+    : parts(FFlag::LuauNegatedFunctionTypes ? std::optional<TypeIds>{TypeIds{}} : std::nullopt)
+{
+}
+
+void NormalizedFunctionType::resetToTop()
+{
+    isTop = true;
+    parts.emplace();
+}
+
+void NormalizedFunctionType::resetToNever()
+{
+    isTop = false;
+    parts.emplace();
+}
+
+bool NormalizedFunctionType::isNever() const
+{
+    return !isTop && (!parts || parts->empty());
+}
+
 NormalizedType::NormalizedType(NotNull<SingletonTypes> singletonTypes)
     : tops(singletonTypes->neverType)
     , booleans(singletonTypes->neverType)
     , errors(singletonTypes->neverType)
     , nils(singletonTypes->neverType)
     , numbers(singletonTypes->neverType)
+    , strings{NormalizedStringType::never}
     , threads(singletonTypes->neverType)
 {
 }
@@ -120,8 +243,8 @@ NormalizedType::NormalizedType(NotNull<SingletonTypes> singletonTypes)
 static bool isInhabited(const NormalizedType& norm)
 {
     return !get<NeverTypeVar>(norm.tops) || !get<NeverTypeVar>(norm.booleans) || !norm.classes.empty() || !get<NeverTypeVar>(norm.errors) ||
-           !get<NeverTypeVar>(norm.nils) || !get<NeverTypeVar>(norm.numbers) || !norm.strings || !norm.strings->empty() ||
-           !get<NeverTypeVar>(norm.threads) || norm.functions || !norm.tables.empty() || !norm.tyvars.empty();
+           !get<NeverTypeVar>(norm.nils) || !get<NeverTypeVar>(norm.numbers) || !norm.strings.isNever() || !get<NeverTypeVar>(norm.threads) ||
+           !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
 }
 
 static int tyvarIndex(TypeId ty)
@@ -183,10 +306,10 @@ static bool isNormalizedNumber(TypeId ty)
 
 static bool isNormalizedString(const NormalizedStringType& ty)
 {
-    if (!ty)
+    if (ty.isString())
         return true;
 
-    for (auto& [str, ty] : *ty)
+    for (auto& [str, ty] : *ty.singletons)
     {
         if (const SingletonTypeVar* stv = get<SingletonTypeVar>(ty))
         {
@@ -217,10 +340,14 @@ static bool isNormalizedThread(TypeId ty)
 
 static bool areNormalizedFunctions(const NormalizedFunctionType& tys)
 {
-    if (tys)
-        for (TypeId ty : *tys)
+    if (tys.parts)
+    {
+        for (TypeId ty : *tys.parts)
+        {
             if (!get<FunctionTypeVar>(ty) && !get<ErrorTypeVar>(ty))
                 return false;
+        }
+    }
     return true;
 }
 
@@ -317,13 +444,10 @@ void Normalizer::clearNormal(NormalizedType& norm)
     norm.errors = singletonTypes->neverType;
     norm.nils = singletonTypes->neverType;
     norm.numbers = singletonTypes->neverType;
-    if (norm.strings)
-        norm.strings->clear();
-    else
-        norm.strings.emplace();
+    norm.strings.resetToNever();
     norm.threads = singletonTypes->neverType;
     norm.tables.clear();
-    norm.functions = std::nullopt;
+    norm.functions.resetToNever();
     norm.tyvars.clear();
 }
 
@@ -495,10 +619,56 @@ void Normalizer::unionClasses(TypeIds& heres, const TypeIds& theres)
 
 void Normalizer::unionStrings(NormalizedStringType& here, const NormalizedStringType& there)
 {
-    if (!there)
-        here.reset();
-    else if (here)
-        here->insert(there->begin(), there->end());
+    if (FFlag::LuauNegatedStringSingletons)
+    {
+        if (there.isString())
+            here.resetToString();
+        else if (here.isUnion() && there.isUnion())
+            here.singletons->insert(there.singletons->begin(), there.singletons->end());
+        else if (here.isUnion() && there.isIntersection())
+        {
+            here.isCofinite = true;
+            for (const auto& pair : *there.singletons)
+            {
+                auto it = here.singletons->find(pair.first);
+                if (it != end(*here.singletons))
+                    here.singletons->erase(it);
+                else
+                    here.singletons->insert(pair);
+            }
+        }
+        else if (here.isIntersection() && there.isUnion())
+        {
+            for (const auto& [name, ty] : *there.singletons)
+                here.singletons->erase(name);
+        }
+        else if (here.isIntersection() && there.isIntersection())
+        {
+            auto iter = begin(*here.singletons);
+            auto endIter = end(*here.singletons);
+
+            while (iter != endIter)
+            {
+                if (!there.singletons->count(iter->first))
+                {
+                    auto eraseIt = iter;
+                    ++iter;
+                    here.singletons->erase(eraseIt);
+                }
+                else
+                    ++iter;
+            }
+        }
+        else
+            LUAU_ASSERT(!"Unreachable");
+    }
+    else
+    {
+        if (there.isString())
+            here.resetToString();
+        else if (here.isUnion())
+            here.singletons->insert(there.singletons->begin(), there.singletons->end());
+    }
 }
 
 std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePackId there)
@@ -666,20 +836,28 @@ std::optional<TypeId> Normalizer::unionOfFunctions(TypeId here, TypeId there)
 
 void Normalizer::unionFunctions(NormalizedFunctionType& heres, const NormalizedFunctionType& theres)
 {
-    if (!theres)
+    if (FFlag::LuauNegatedFunctionTypes)
+    {
+        if (heres.isTop)
+            return;
+        if (theres.isTop)
+            heres.resetToTop();
+    }
+
+    if (theres.isNever())
         return;
 
     TypeIds tmps;
 
-    if (!heres)
+    if (heres.isNever())
     {
-        tmps.insert(theres->begin(), theres->end());
-        heres = std::move(tmps);
+        tmps.insert(theres.parts->begin(), theres.parts->end());
+        heres.parts = std::move(tmps);
         return;
     }
 
-    for (TypeId here : *heres)
-        for (TypeId there : *theres)
+    for (TypeId here : *heres.parts)
+        for (TypeId there : *theres.parts)
         {
             if (std::optional<TypeId> fun = unionOfFunctions(here, there))
                 tmps.insert(*fun);
@@ -687,28 +865,28 @@ void Normalizer::unionFunctions(NormalizedFunctionType& heres, const NormalizedF
                 tmps.insert(singletonTypes->errorRecoveryType(there));
         }
 
-    heres = std::move(tmps);
+    heres.parts = std::move(tmps);
 }
 
 void Normalizer::unionFunctionsWithFunction(NormalizedFunctionType& heres, TypeId there)
 {
-    if (!heres)
+    if (heres.isNever())
     {
         TypeIds tmps;
         tmps.insert(there);
-        heres = std::move(tmps);
+        heres.parts = std::move(tmps);
         return;
     }
 
     TypeIds tmps;
-    for (TypeId here : *heres)
+    for (TypeId here : *heres.parts)
     {
         if (std::optional<TypeId> fun = unionOfFunctions(here, there))
             tmps.insert(*fun);
         else
             tmps.insert(singletonTypes->errorRecoveryType(there));
     }
-    heres = std::move(tmps);
+    heres.parts = std::move(tmps);
 }
 
 void Normalizer::unionTablesWithTable(TypeIds& heres, TypeId there)
@@ -858,9 +1036,14 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
         else if (ptv->type == PrimitiveTypeVar::Number)
             here.numbers = there;
         else if (ptv->type == PrimitiveTypeVar::String)
-            here.strings = std::nullopt;
+            here.strings.resetToString();
         else if (ptv->type == PrimitiveTypeVar::Thread)
             here.threads = there;
+        else if (ptv->type == PrimitiveTypeVar::Function)
+        {
+            LUAU_ASSERT(FFlag::LuauNegatedFunctionTypes);
+            here.functions.resetToTop();
+        }
         else
             LUAU_ASSERT(!"Unreachable");
     }
@@ -870,11 +1053,35 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
             here.booleans = unionOfBools(here.booleans, there);
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))
         {
-            if (here.strings)
-                here.strings->insert({sstv->value, there});
+            if (FFlag::LuauNegatedStringSingletons)
+            {
+                if (here.strings.isCofinite)
+                {
+                    auto it = here.strings.singletons->find(sstv->value);
+                    if (it != here.strings.singletons->end())
+                        here.strings.singletons->erase(it);
+                }
+                else
+                    here.strings.singletons->insert({sstv->value, there});
+            }
+            else
+            {
+                if (here.strings.isUnion())
+                    here.strings.singletons->insert({sstv->value, there});
+            }
         }
         else
             LUAU_ASSERT(!"Unreachable");
+    }
+    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(there))
+    {
+        const NormalizedType* thereNormal = normalize(ntv->ty);
+        std::optional<NormalizedType> tn = negateNormal(*thereNormal);
+        if (!tn)
+            return false;
+
+        if (!unionNormals(here, *tn))
+            return false;
     }
     else
         LUAU_ASSERT(!"Unreachable");
@@ -885,6 +1092,177 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
 
     assertInvariant(here);
     return true;
+}
+
+// ------- Negations
+
+std::optional<NormalizedType> Normalizer::negateNormal(const NormalizedType& here)
+{
+    NormalizedType result{singletonTypes};
+    if (!get<NeverTypeVar>(here.tops))
+    {
+        // The negation of unknown or any is never.  Easy.
+        return result;
+    }
+
+    if (!get<NeverTypeVar>(here.errors))
+    {
+        // Negating an error yields the same error.
+        result.errors = here.errors;
+        return result;
+    }
+
+    if (get<NeverTypeVar>(here.booleans))
+        result.booleans = singletonTypes->booleanType;
+    else if (get<PrimitiveTypeVar>(here.booleans))
+        result.booleans = singletonTypes->neverType;
+    else if (auto stv = get<SingletonTypeVar>(here.booleans))
+    {
+        auto boolean = get<BooleanSingleton>(stv);
+        LUAU_ASSERT(boolean != nullptr);
+        if (boolean->value)
+            result.booleans = singletonTypes->falseType;
+        else
+            result.booleans = singletonTypes->trueType;
+    }
+
+    result.classes = negateAll(here.classes);
+    result.nils = get<NeverTypeVar>(here.nils) ? singletonTypes->nilType : singletonTypes->neverType;
+    result.numbers = get<NeverTypeVar>(here.numbers) ? singletonTypes->numberType : singletonTypes->neverType;
+
+    result.strings = here.strings;
+    result.strings.isCofinite = !result.strings.isCofinite;
+
+    result.threads = get<NeverTypeVar>(here.threads) ? singletonTypes->threadType : singletonTypes->neverType;
+
+    /*
+     * Things get weird and so, so complicated if we allow negations of
+     * arbitrary function types.  Ordinary code can never form these kinds of
+     * types, so we decline to negate them.
+     */
+    if (FFlag::LuauNegatedFunctionTypes)
+    {
+        if (here.functions.isNever())
+            result.functions.resetToTop();
+        else if (here.functions.isTop)
+            result.functions.resetToNever();
+        else
+            return std::nullopt;
+    }
+
+    // TODO: negating tables
+    // TODO: negating tyvars?
+
+    return result;
+}
+
+TypeIds Normalizer::negateAll(const TypeIds& theres)
+{
+    TypeIds tys;
+    for (TypeId there : theres)
+        tys.insert(negate(there));
+    return tys;
+}
+
+TypeId Normalizer::negate(TypeId there)
+{
+    there = follow(there);
+    if (get<AnyTypeVar>(there))
+        return there;
+    else if (get<UnknownTypeVar>(there))
+        return singletonTypes->neverType;
+    else if (get<NeverTypeVar>(there))
+        return singletonTypes->unknownType;
+    else if (auto ntv = get<NegationTypeVar>(there))
+        return ntv->ty; // TODO: do we want to normalize this?
+    else if (auto utv = get<UnionTypeVar>(there))
+    {
+        std::vector<TypeId> parts;
+        for (TypeId option : utv)
+            parts.push_back(negate(option));
+        return arena->addType(IntersectionTypeVar{std::move(parts)});
+    }
+    else if (auto itv = get<IntersectionTypeVar>(there))
+    {
+        std::vector<TypeId> options;
+        for (TypeId part : itv)
+            options.push_back(negate(part));
+        return arena->addType(UnionTypeVar{std::move(options)});
+    }
+    else
+        return there;
+}
+
+void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
+{
+    const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(follow(ty));
+    LUAU_ASSERT(ptv);
+    switch (ptv->type)
+    {
+    case PrimitiveTypeVar::NilType:
+        here.nils = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::Boolean:
+        here.booleans = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::Number:
+        here.numbers = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::String:
+        here.strings.resetToNever();
+        break;
+    case PrimitiveTypeVar::Thread:
+        here.threads = singletonTypes->neverType;
+        break;
+    case PrimitiveTypeVar::Function:
+        LUAU_ASSERT(FFlag::LuauNegatedStringSingletons);
+        here.functions.resetToNever();
+        break;
+    }
+}
+
+void Normalizer::subtractSingleton(NormalizedType& here, TypeId ty)
+{
+    LUAU_ASSERT(FFlag::LuauNegatedStringSingletons);
+
+    const SingletonTypeVar* stv = get<SingletonTypeVar>(ty);
+    LUAU_ASSERT(stv);
+
+    if (const StringSingleton* ss = get<StringSingleton>(stv))
+    {
+        if (here.strings.isCofinite)
+            here.strings.singletons->insert({ss->value, ty});
+        else
+        {
+            auto it = here.strings.singletons->find(ss->value);
+            if (it != here.strings.singletons->end())
+                here.strings.singletons->erase(it);
+        }
+    }
+    else if (const BooleanSingleton* bs = get<BooleanSingleton>(stv))
+    {
+        if (get<NeverTypeVar>(here.booleans))
+        {
+            // Nothing
+        }
+        else if (get<PrimitiveTypeVar>(here.booleans))
+            here.booleans = bs->value ? singletonTypes->falseType : singletonTypes->trueType;
+        else if (auto hereSingleton = get<SingletonTypeVar>(here.booleans))
+        {
+            const BooleanSingleton* hereBooleanSingleton = get<BooleanSingleton>(hereSingleton);
+            LUAU_ASSERT(hereBooleanSingleton);
+
+            // Crucial subtlety: ty (and thus bs) are the value that is being
+            // negated out. We therefore reduce to never when the values match,
+            // rather than when they differ.
+            if (bs->value == hereBooleanSingleton->value)
+                here.booleans = singletonTypes->neverType;
+        }
+        else
+            LUAU_ASSERT(!"Unreachable");
+    }
+    else
+        LUAU_ASSERT(!"Unreachable");
 }
 
 // ------- Normalizing intersections
@@ -971,17 +1349,17 @@ void Normalizer::intersectClassesWithClass(TypeIds& heres, TypeId there)
 
 void Normalizer::intersectStrings(NormalizedStringType& here, const NormalizedStringType& there)
 {
-    if (!there)
+    if (there.isString())
         return;
-    if (!here)
-        here.emplace();
+    if (here.isString())
+        here.resetToNever();
 
-    for (auto it = here->begin(); it != here->end();)
+    for (auto it = here.singletons->begin(); it != here.singletons->end();)
     {
-        if (there->count(it->first))
+        if (there.singletons->count(it->first))
             it++;
         else
-            it = here->erase(it);
+            it = here.singletons->erase(it);
     }
 }
 
@@ -1269,19 +1647,35 @@ std::optional<TypeId> Normalizer::intersectionOfFunctions(TypeId here, TypeId th
         return std::nullopt;
     if (hftv->genericPacks != tftv->genericPacks)
         return std::nullopt;
-    if (hftv->retTypes != tftv->retTypes)
+
+    TypePackId argTypes;
+    TypePackId retTypes;
+
+    if (hftv->retTypes == tftv->retTypes)
+    {
+        std::optional<TypePackId> argTypesOpt = unionOfTypePacks(hftv->argTypes, tftv->argTypes);
+        if (!argTypesOpt)
+            return std::nullopt;
+        argTypes = *argTypesOpt;
+        retTypes = hftv->retTypes;
+    }
+    else if (FFlag::LuauOverloadedFunctionSubtypingPerf && hftv->argTypes == tftv->argTypes)
+    {
+        std::optional<TypePackId> retTypesOpt = intersectionOfTypePacks(hftv->argTypes, tftv->argTypes);
+        if (!retTypesOpt)
+            return std::nullopt;
+        argTypes = hftv->argTypes;
+        retTypes = *retTypesOpt;
+    }
+    else
         return std::nullopt;
 
-    std::optional<TypePackId> argTypes = unionOfTypePacks(hftv->argTypes, tftv->argTypes);
-    if (!argTypes)
-        return std::nullopt;
-
-    if (*argTypes == hftv->argTypes)
+    if (argTypes == hftv->argTypes && retTypes == hftv->retTypes)
         return here;
-    if (*argTypes == tftv->argTypes)
+    if (argTypes == tftv->argTypes && retTypes == tftv->retTypes)
         return there;
 
-    FunctionTypeVar result{*argTypes, hftv->retTypes};
+    FunctionTypeVar result{argTypes, retTypes};
     result.generics = hftv->generics;
     result.genericPacks = hftv->genericPacks;
     return arena->addType(std::move(result));
@@ -1405,18 +1799,20 @@ std::optional<TypeId> Normalizer::unionSaturatedFunctions(TypeId here, TypeId th
 
 void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, TypeId there)
 {
-    if (!heres)
+    if (heres.isNever())
         return;
 
-    for (auto it = heres->begin(); it != heres->end();)
+    heres.isTop = false;
+
+    for (auto it = heres.parts->begin(); it != heres.parts->end();)
     {
         TypeId here = *it;
         if (get<ErrorTypeVar>(here))
             it++;
         else if (std::optional<TypeId> tmp = intersectionOfFunctions(here, there))
         {
-            heres->erase(it);
-            heres->insert(*tmp);
+            heres.parts->erase(it);
+            heres.parts->insert(*tmp);
             return;
         }
         else
@@ -1424,27 +1820,27 @@ void Normalizer::intersectFunctionsWithFunction(NormalizedFunctionType& heres, T
     }
 
     TypeIds tmps;
-    for (TypeId here : *heres)
+    for (TypeId here : *heres.parts)
     {
         if (std::optional<TypeId> tmp = unionSaturatedFunctions(here, there))
             tmps.insert(*tmp);
     }
-    heres->insert(there);
-    heres->insert(tmps.begin(), tmps.end());
+    heres.parts->insert(there);
+    heres.parts->insert(tmps.begin(), tmps.end());
 }
 
 void Normalizer::intersectFunctions(NormalizedFunctionType& heres, const NormalizedFunctionType& theres)
 {
-    if (!heres)
+    if (heres.isNever())
         return;
-    else if (!theres)
+    else if (theres.isNever())
     {
-        heres = std::nullopt;
+        heres.resetToNever();
         return;
     }
     else
     {
-        for (TypeId there : *theres)
+        for (TypeId there : *theres.parts)
             intersectFunctionsWithFunction(heres, there);
     }
 }
@@ -1602,6 +1998,7 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
         TypeId nils = here.nils;
         TypeId numbers = here.numbers;
         NormalizedStringType strings = std::move(here.strings);
+        NormalizedFunctionType functions = std::move(here.functions);
         TypeId threads = here.threads;
 
         clearNormal(here);
@@ -1616,6 +2013,11 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
             here.strings = std::move(strings);
         else if (ptv->type == PrimitiveTypeVar::Thread)
             here.threads = threads;
+        else if (ptv->type == PrimitiveTypeVar::Function)
+        {
+            LUAU_ASSERT(FFlag::LuauNegatedFunctionTypes);
+            here.functions = std::move(functions);
+        }
         else
             LUAU_ASSERT(!"Unreachable");
     }
@@ -1630,11 +2032,36 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
             here.booleans = intersectionOfBools(booleans, there);
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))
         {
-            if (!strings || strings->count(sstv->value))
-                here.strings->insert({sstv->value, there});
+            if (strings.includes(sstv->value))
+                here.strings.singletons->insert({sstv->value, there});
         }
         else
             LUAU_ASSERT(!"Unreachable");
+    }
+    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(there); FFlag::LuauNegatedStringSingletons && ntv)
+    {
+        TypeId t = follow(ntv->ty);
+        if (const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(t))
+            subtractPrimitive(here, ntv->ty);
+        else if (const SingletonTypeVar* stv = get<SingletonTypeVar>(t))
+            subtractSingleton(here, follow(ntv->ty));
+        else if (const UnionTypeVar* itv = get<UnionTypeVar>(t))
+        {
+            for (TypeId part : itv->options)
+            {
+                const NormalizedType* normalPart = normalize(part);
+                std::optional<NormalizedType> negated = negateNormal(*normalPart);
+                if (!negated)
+                    return false;
+                intersectNormals(here, *negated);
+            }
+        }
+        else
+        {
+            // TODO negated unions, intersections, table, and function.
+            // Report a TypeError for other types.
+            LUAU_ASSERT(!"Unimplemented");
+        }
     }
     else
         LUAU_ASSERT(!"Unreachable");
@@ -1660,14 +2087,16 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
     result.insert(result.end(), norm.classes.begin(), norm.classes.end());
     if (!get<NeverTypeVar>(norm.errors))
         result.push_back(norm.errors);
-    if (norm.functions)
+    if (FFlag::LuauNegatedFunctionTypes && norm.functions.isTop)
+        result.push_back(singletonTypes->functionType);
+    else if (!norm.functions.isNever())
     {
-        if (norm.functions->size() == 1)
-            result.push_back(*norm.functions->begin());
+        if (norm.functions.parts->size() == 1)
+            result.push_back(*norm.functions.parts->begin());
         else
         {
             std::vector<TypeId> parts;
-            parts.insert(parts.end(), norm.functions->begin(), norm.functions->end());
+            parts.insert(parts.end(), norm.functions.parts->begin(), norm.functions.parts->end());
             result.push_back(arena->addType(IntersectionTypeVar{std::move(parts)}));
         }
     }
@@ -1675,11 +2104,25 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         result.push_back(norm.nils);
     if (!get<NeverTypeVar>(norm.numbers))
         result.push_back(norm.numbers);
-    if (norm.strings)
-        for (auto& [_, ty] : *norm.strings)
-            result.push_back(ty);
-    else
+    if (norm.strings.isString())
         result.push_back(singletonTypes->stringType);
+    else if (norm.strings.isUnion())
+    {
+        for (auto& [_, ty] : *norm.strings.singletons)
+            result.push_back(ty);
+    }
+    else if (FFlag::LuauNegatedStringSingletons && norm.strings.isIntersection())
+    {
+        std::vector<TypeId> parts;
+        parts.push_back(singletonTypes->stringType);
+        for (const auto& [name, ty] : *norm.strings.singletons)
+            parts.push_back(arena->addType(NegationTypeVar{ty}));
+
+        result.push_back(arena->addType(IntersectionTypeVar{std::move(parts)}));
+    }
+    if (!get<NeverTypeVar>(norm.threads))
+        result.push_back(singletonTypes->threadType);
+
     result.insert(result.end(), norm.tables.begin(), norm.tables.end());
     for (auto& [tyvar, intersect] : norm.tyvars)
     {
@@ -1700,672 +2143,28 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         return arena->addType(UnionTypeVar{std::move(result)});
 }
 
-namespace
-{
-
-struct Replacer
-{
-    TypeArena* arena;
-    TypeId sourceType;
-    TypeId replacedType;
-    DenseHashMap<TypeId, TypeId> newTypes;
-
-    Replacer(TypeArena* arena, TypeId sourceType, TypeId replacedType)
-        : arena(arena)
-        , sourceType(sourceType)
-        , replacedType(replacedType)
-        , newTypes(nullptr)
-    {
-    }
-
-    TypeId smartClone(TypeId t)
-    {
-        t = follow(t);
-        TypeId* res = newTypes.find(t);
-        if (res)
-            return *res;
-
-        TypeId result = shallowClone(t, *arena, TxnLog::empty());
-        newTypes[t] = result;
-        newTypes[result] = result;
-
-        return result;
-    }
-};
-
-} // anonymous namespace
-
-bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
+bool isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
-    u.anyIsTop = anyIsTop;
 
     u.tryUnify(subTy, superTy);
     const bool ok = u.errors.empty() && u.log.empty();
     return ok;
 }
 
-bool isSubtype(
-    TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice, bool anyIsTop)
+bool isSubtype(TypePackId subPack, TypePackId superPack, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
 {
     UnifierSharedState sharedState{&ice};
     TypeArena arena;
     Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
     Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
-    u.anyIsTop = anyIsTop;
 
     u.tryUnify(subPack, superPack);
     const bool ok = u.errors.empty() && u.log.empty();
     return ok;
-}
-
-template<typename T>
-static bool areNormal_(const T& t, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
-{
-    int count = 0;
-    auto isNormal = [&](TypeId ty) {
-        ++count;
-        if (count >= FInt::LuauNormalizeIterationLimit)
-            ice.ice("Luau::areNormal hit iteration limit");
-
-        return ty->normal;
-    };
-
-    return std::all_of(begin(t), end(t), isNormal);
-}
-
-static bool areNormal(const std::vector<TypeId>& types, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
-{
-    return areNormal_(types, seen, ice);
-}
-
-static bool areNormal(TypePackId tp, const std::unordered_set<void*>& seen, InternalErrorReporter& ice)
-{
-    tp = follow(tp);
-    if (get<FreeTypePack>(tp))
-        return false;
-
-    auto [head, tail] = flatten(tp);
-
-    if (!areNormal_(head, seen, ice))
-        return false;
-
-    if (!tail)
-        return true;
-
-    if (auto vtp = get<VariadicTypePack>(*tail))
-        return vtp->ty->normal || follow(vtp->ty)->normal || seen.find(asMutable(vtp->ty)) != seen.end();
-
-    return true;
-}
-
-#define CHECK_ITERATION_LIMIT(...) \
-    do \
-    { \
-        if (iterationLimit > FInt::LuauNormalizeIterationLimit) \
-        { \
-            limitExceeded = true; \
-            return __VA_ARGS__; \
-        } \
-        ++iterationLimit; \
-    } while (false)
-
-struct Normalize final : TypeVarVisitor
-{
-    using TypeVarVisitor::Set;
-
-    Normalize(TypeArena& arena, NotNull<Scope> scope, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-        : arena(arena)
-        , scope(scope)
-        , singletonTypes(singletonTypes)
-        , ice(ice)
-    {
-    }
-
-    TypeArena& arena;
-    NotNull<Scope> scope;
-    NotNull<SingletonTypes> singletonTypes;
-    InternalErrorReporter& ice;
-
-    int iterationLimit = 0;
-    bool limitExceeded = false;
-
-    bool visit(TypeId ty, const FreeTypeVar&) override
-    {
-        LUAU_ASSERT(!ty->normal);
-        return false;
-    }
-
-    bool visit(TypeId ty, const BoundTypeVar& btv) override
-    {
-        // A type could be considered normal when it is in the stack, but we will eventually find out it is not normal as normalization progresses.
-        // So we need to avoid eagerly saying that this bound type is normal if the thing it is bound to is in the stack.
-        if (seen.find(asMutable(btv.boundTo)) != seen.end())
-            return false;
-
-        // It should never be the case that this TypeVar is normal, but is bound to a non-normal type, except in nontrivial cases.
-        LUAU_ASSERT(!ty->normal || ty->normal == btv.boundTo->normal);
-
-        if (!ty->normal)
-            asMutable(ty)->normal = btv.boundTo->normal;
-        return !ty->normal;
-    }
-
-    bool visit(TypeId ty, const PrimitiveTypeVar&) override
-    {
-        LUAU_ASSERT(ty->normal);
-        return false;
-    }
-
-    bool visit(TypeId ty, const GenericTypeVar&) override
-    {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
-    }
-
-    bool visit(TypeId ty, const ErrorTypeVar&) override
-    {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
-    }
-
-    bool visit(TypeId ty, const UnknownTypeVar&) override
-    {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
-    }
-
-    bool visit(TypeId ty, const NeverTypeVar&) override
-    {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
-    }
-
-    bool visit(TypeId ty, const ConstrainedTypeVar& ctvRef) override
-    {
-        CHECK_ITERATION_LIMIT(false);
-        LUAU_ASSERT(!ty->normal);
-
-        ConstrainedTypeVar* ctv = const_cast<ConstrainedTypeVar*>(&ctvRef);
-
-        std::vector<TypeId> parts = std::move(ctv->parts);
-
-        // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
-        for (TypeId part : parts)
-            traverse(part);
-
-        std::vector<TypeId> newParts = normalizeUnion(parts);
-        ctv->parts = std::move(newParts);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const FunctionTypeVar& ftv) override
-    {
-        CHECK_ITERATION_LIMIT(false);
-
-        if (ty->normal)
-            return false;
-
-        traverse(ftv.argTypes);
-        traverse(ftv.retTypes);
-
-        asMutable(ty)->normal = areNormal(ftv.argTypes, seen, ice) && areNormal(ftv.retTypes, seen, ice);
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const TableTypeVar& ttv) override
-    {
-        CHECK_ITERATION_LIMIT(false);
-
-        if (ty->normal)
-            return false;
-
-        bool normal = true;
-
-        auto checkNormal = [&](TypeId t) {
-            // if t is on the stack, it is possible that this type is normal.
-            // If t is not normal and it is not on the stack, this type is definitely not normal.
-            if (!t->normal && seen.find(asMutable(t)) == seen.end())
-                normal = false;
-        };
-
-        if (ttv.boundTo)
-        {
-            traverse(*ttv.boundTo);
-            asMutable(ty)->normal = (*ttv.boundTo)->normal;
-            return false;
-        }
-
-        for (const auto& [_name, prop] : ttv.props)
-        {
-            traverse(prop.type);
-            checkNormal(prop.type);
-        }
-
-        if (ttv.indexer)
-        {
-            traverse(ttv.indexer->indexType);
-            checkNormal(ttv.indexer->indexType);
-            traverse(ttv.indexer->indexResultType);
-            checkNormal(ttv.indexer->indexResultType);
-        }
-
-        // An unsealed table can never be normal, ditto for free tables iff the type it is bound to is also not normal.
-        if (ttv.state == TableState::Generic || ttv.state == TableState::Sealed || (ttv.state == TableState::Free && follow(ty)->normal))
-            asMutable(ty)->normal = normal;
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const MetatableTypeVar& mtv) override
-    {
-        CHECK_ITERATION_LIMIT(false);
-
-        if (ty->normal)
-            return false;
-
-        traverse(mtv.table);
-        traverse(mtv.metatable);
-
-        asMutable(ty)->normal = mtv.table->normal && mtv.metatable->normal;
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const ClassTypeVar& ctv) override
-    {
-        if (!ty->normal)
-            asMutable(ty)->normal = true;
-        return false;
-    }
-
-    bool visit(TypeId ty, const AnyTypeVar&) override
-    {
-        LUAU_ASSERT(ty->normal);
-        return false;
-    }
-
-    bool visit(TypeId ty, const UnionTypeVar& utvRef) override
-    {
-        CHECK_ITERATION_LIMIT(false);
-
-        if (ty->normal)
-            return false;
-
-        UnionTypeVar* utv = &const_cast<UnionTypeVar&>(utvRef);
-
-        // We might transmute, so it's not safe to rely on the builtin traversal logic of visitTypeVar
-        for (TypeId option : utv->options)
-            traverse(option);
-
-        std::vector<TypeId> newOptions = normalizeUnion(utv->options);
-
-        const bool normal = areNormal(newOptions, seen, ice);
-
-        LUAU_ASSERT(!newOptions.empty());
-
-        if (newOptions.size() == 1)
-            *asMutable(ty) = BoundTypeVar{newOptions[0]};
-        else
-            utv->options = std::move(newOptions);
-
-        asMutable(ty)->normal = normal;
-
-        return false;
-    }
-
-    bool visit(TypeId ty, const IntersectionTypeVar& itvRef) override
-    {
-        CHECK_ITERATION_LIMIT(false);
-
-        if (ty->normal)
-            return false;
-
-        IntersectionTypeVar* itv = &const_cast<IntersectionTypeVar&>(itvRef);
-
-        std::vector<TypeId> oldParts = itv->parts;
-        IntersectionTypeVar newIntersection;
-
-        for (TypeId part : oldParts)
-            traverse(part);
-
-        std::vector<TypeId> tables;
-        for (TypeId part : oldParts)
-        {
-            part = follow(part);
-            if (get<TableTypeVar>(part))
-                tables.push_back(part);
-            else
-            {
-                Replacer replacer{&arena, nullptr, nullptr}; // FIXME this is super super WEIRD
-                combineIntoIntersection(replacer, &newIntersection, part);
-            }
-        }
-
-        // Don't allocate a new table if there's just one in the intersection.
-        if (tables.size() == 1)
-            newIntersection.parts.push_back(tables[0]);
-        else if (!tables.empty())
-        {
-            const TableTypeVar* first = get<TableTypeVar>(tables[0]);
-            LUAU_ASSERT(first);
-
-            TypeId newTable = arena.addType(TableTypeVar{first->state, first->level});
-            TableTypeVar* ttv = getMutable<TableTypeVar>(newTable);
-            for (TypeId part : tables)
-            {
-                // Intuition: If combineIntoTable() needs to clone a table, any references to 'part' are cyclic and need
-                // to be rewritten to point at 'newTable' in the clone.
-                Replacer replacer{&arena, part, newTable};
-                combineIntoTable(replacer, ttv, part);
-            }
-
-            newIntersection.parts.push_back(newTable);
-        }
-
-        itv->parts = std::move(newIntersection.parts);
-
-        asMutable(ty)->normal = areNormal(itv->parts, seen, ice);
-
-        if (itv->parts.size() == 1)
-        {
-            TypeId part = itv->parts[0];
-            *asMutable(ty) = BoundTypeVar{part};
-        }
-
-        return false;
-    }
-
-    std::vector<TypeId> normalizeUnion(const std::vector<TypeId>& options)
-    {
-        if (options.size() == 1)
-            return options;
-
-        std::vector<TypeId> result;
-
-        for (TypeId part : options)
-        {
-            // AnyTypeVar always win the battle no matter what we do, so we're done.
-            if (FFlag::LuauUnknownAndNeverType && get<AnyTypeVar>(follow(part)))
-                return {part};
-
-            combineIntoUnion(result, part);
-        }
-
-        return result;
-    }
-
-    void combineIntoUnion(std::vector<TypeId>& result, TypeId ty)
-    {
-        ty = follow(ty);
-        if (auto utv = get<UnionTypeVar>(ty))
-        {
-            for (TypeId t : utv)
-            {
-                // AnyTypeVar always win the battle no matter what we do, so we're done.
-                if (FFlag::LuauUnknownAndNeverType && get<AnyTypeVar>(t))
-                {
-                    result = {t};
-                    return;
-                }
-
-                combineIntoUnion(result, t);
-            }
-
-            return;
-        }
-
-        for (TypeId& part : result)
-        {
-            if (isSubtype(ty, part, scope, singletonTypes, ice))
-                return; // no need to do anything
-            else if (isSubtype(part, ty, scope, singletonTypes, ice))
-            {
-                part = ty; // replace the less general type by the more general one
-                return;
-            }
-        }
-
-        result.push_back(ty);
-    }
-
-    /**
-     * @param replacer knows how to clone a type such that any recursive references point at the new containing type.
-     * @param result is an intersection that is safe for us to mutate in-place.
-     */
-    void combineIntoIntersection(Replacer& replacer, IntersectionTypeVar* result, TypeId ty)
-    {
-        // Note: this check guards against running out of stack space
-        // so if you increase the size of a stack frame, you'll need to decrease the limit.
-        CHECK_ITERATION_LIMIT();
-
-        ty = follow(ty);
-        if (auto itv = get<IntersectionTypeVar>(ty))
-        {
-            for (TypeId part : itv->parts)
-                combineIntoIntersection(replacer, result, part);
-            return;
-        }
-
-        // Let's say that the last part of our result intersection is always a table, if any table is part of this intersection
-        if (get<TableTypeVar>(ty))
-        {
-            if (result->parts.empty())
-                result->parts.push_back(arena.addType(TableTypeVar{TableState::Sealed, TypeLevel{}}));
-
-            TypeId theTable = result->parts.back();
-
-            if (!get<TableTypeVar>(follow(theTable)))
-            {
-                result->parts.push_back(arena.addType(TableTypeVar{TableState::Sealed, TypeLevel{}}));
-                theTable = result->parts.back();
-            }
-
-            TypeId newTable = replacer.smartClone(theTable);
-            result->parts.back() = newTable;
-
-            combineIntoTable(replacer, getMutable<TableTypeVar>(newTable), ty);
-        }
-        else if (auto ftv = get<FunctionTypeVar>(ty))
-        {
-            bool merged = false;
-            for (TypeId& part : result->parts)
-            {
-                if (isSubtype(part, ty, scope, singletonTypes, ice))
-                {
-                    merged = true;
-                    break; // no need to do anything
-                }
-                else if (isSubtype(ty, part, scope, singletonTypes, ice))
-                {
-                    merged = true;
-                    part = ty; // replace the less general type by the more general one
-                    break;
-                }
-            }
-
-            if (!merged)
-                result->parts.push_back(ty);
-        }
-        else
-            result->parts.push_back(ty);
-    }
-
-    TableState combineTableStates(TableState lhs, TableState rhs)
-    {
-        if (lhs == rhs)
-            return lhs;
-
-        if (lhs == TableState::Free || rhs == TableState::Free)
-            return TableState::Free;
-
-        if (lhs == TableState::Unsealed || rhs == TableState::Unsealed)
-            return TableState::Unsealed;
-
-        return lhs;
-    }
-
-    /**
-     * @param replacer gives us a way to clone a type such that recursive references are rewritten to the new
-     * "containing" type.
-     * @param table always points into a table that is safe for us to mutate.
-     */
-    void combineIntoTable(Replacer& replacer, TableTypeVar* table, TypeId ty)
-    {
-        // Note: this check guards against running out of stack space
-        // so if you increase the size of a stack frame, you'll need to decrease the limit.
-        CHECK_ITERATION_LIMIT();
-
-        LUAU_ASSERT(table);
-
-        ty = follow(ty);
-
-        TableTypeVar* tyTable = getMutable<TableTypeVar>(ty);
-        LUAU_ASSERT(tyTable);
-
-        for (const auto& [propName, prop] : tyTable->props)
-        {
-            if (auto it = table->props.find(propName); it != table->props.end())
-            {
-                /**
-                 * If we are going to recursively merge intersections of tables, we need to ensure that we never mutate
-                 * a table that comes from somewhere else in the type graph.
-                 *
-                 * smarClone() does some nice things for us: It will perform a clone that is as shallow as possible
-                 * while still rewriting any cyclic references back to the new 'root' table.
-                 *
-                 * replacer also keeps a mapping of types that have previously been copied, so we have the added
-                 * advantage here of knowing that, whether or not a new copy was actually made, the resulting TypeVar is
-                 * safe for us to mutate in-place.
-                 */
-                TypeId clone = replacer.smartClone(it->second.type);
-                it->second.type = combine(replacer, clone, prop.type);
-            }
-            else
-                table->props.insert({propName, prop});
-        }
-
-        if (tyTable->indexer)
-        {
-            if (table->indexer)
-            {
-                table->indexer->indexType = combine(replacer, replacer.smartClone(tyTable->indexer->indexType), table->indexer->indexType);
-                table->indexer->indexResultType =
-                    combine(replacer, replacer.smartClone(tyTable->indexer->indexResultType), table->indexer->indexResultType);
-            }
-            else
-            {
-                table->indexer =
-                    TableIndexer{replacer.smartClone(tyTable->indexer->indexType), replacer.smartClone(tyTable->indexer->indexResultType)};
-            }
-        }
-
-        table->state = combineTableStates(table->state, tyTable->state);
-        table->level = max(table->level, tyTable->level);
-    }
-
-    /**
-     * @param a is always cloned by the caller.  It is safe to mutate in-place.
-     * @param b will never be mutated.
-     */
-    TypeId combine(Replacer& replacer, TypeId a, TypeId b)
-    {
-        b = follow(b);
-
-        if (FFlag::LuauNormalizeCombineTableFix && a == b)
-            return a;
-
-        if (!get<IntersectionTypeVar>(a) && !get<TableTypeVar>(a))
-        {
-            if (!FFlag::LuauNormalizeCombineTableFix && a == b)
-                return a;
-            else
-                return arena.addType(IntersectionTypeVar{{a, b}});
-        }
-
-        if (auto itv = getMutable<IntersectionTypeVar>(a))
-        {
-            combineIntoIntersection(replacer, itv, b);
-            return a;
-        }
-        else if (auto ttv = getMutable<TableTypeVar>(a))
-        {
-            if (FFlag::LuauNormalizeCombineTableFix && !get<TableTypeVar>(b))
-                return arena.addType(IntersectionTypeVar{{a, b}});
-            combineIntoTable(replacer, ttv, b);
-            return a;
-        }
-
-        LUAU_ASSERT(!"Impossible");
-        LUAU_UNREACHABLE();
-    }
-};
-
-#undef CHECK_ITERATION_LIMIT
-
-/**
- * @returns A tuple of TypeId and a success indicator. (true indicates that the normalization completed successfully)
- */
-std::pair<TypeId, bool> normalize(
-    TypeId ty, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-{
-    CloneState state;
-    if (FFlag::DebugLuauCopyBeforeNormalizing)
-        (void)clone(ty, arena, state);
-
-    Normalize n{arena, scope, singletonTypes, ice};
-    n.traverse(ty);
-
-    return {ty, !n.limitExceeded};
-}
-
-// TODO: Think about using a temporary arena and cloning types out of it so that we
-// reclaim memory used by wantonly allocated intermediate types here.
-// The main wrinkle here is that we don't want clone() to copy a type if the source and dest
-// arena are the same.
-std::pair<TypeId, bool> normalize(TypeId ty, NotNull<Module> module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-{
-    return normalize(ty, NotNull{module->getModuleScope().get()}, module->internalTypes, singletonTypes, ice);
-}
-
-std::pair<TypeId, bool> normalize(TypeId ty, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-{
-    return normalize(ty, NotNull{module.get()}, singletonTypes, ice);
-}
-
-/**
- * @returns A tuple of TypeId and a success indicator. (true indicates that the normalization completed successfully)
- */
-std::pair<TypePackId, bool> normalize(
-    TypePackId tp, NotNull<Scope> scope, TypeArena& arena, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-{
-    CloneState state;
-    if (FFlag::DebugLuauCopyBeforeNormalizing)
-        (void)clone(tp, arena, state);
-
-    Normalize n{arena, scope, singletonTypes, ice};
-    n.traverse(tp);
-
-    return {tp, !n.limitExceeded};
-}
-
-std::pair<TypePackId, bool> normalize(TypePackId tp, NotNull<Module> module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-{
-    return normalize(tp, NotNull{module->getModuleScope().get()}, module->internalTypes, singletonTypes, ice);
-}
-
-std::pair<TypePackId, bool> normalize(TypePackId tp, const ModulePtr& module, NotNull<SingletonTypes> singletonTypes, InternalErrorReporter& ice)
-{
-    return normalize(tp, NotNull{module.get()}, singletonTypes, ice);
 }
 
 } // namespace Luau
