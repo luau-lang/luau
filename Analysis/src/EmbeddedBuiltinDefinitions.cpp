@@ -2,6 +2,7 @@
 #include "Luau/BuiltinDefinitions.h"
 
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
+LUAU_FASTFLAG(LuauOptionalNextKey)
 
 namespace Luau
 {
@@ -126,7 +127,7 @@ declare function rawlen<K, V>(obj: {[K]: V} | string): number
 
 declare function setfenv<T..., R...>(target: number | (T...) -> R..., env: {[string]: any}): ((T...) -> R...)?
 
-declare function ipairs<V>(tab: {V}): (({V}, number) -> (number, V), {V}, number)
+-- TODO: place ipairs definition here with removal of FFlagLuauOptionalNextKey
 
 declare function pcall<A..., R...>(f: (A...) -> R..., ...: A...): (boolean, R...)
 
@@ -206,6 +207,11 @@ std::string getBuiltinDefinitionSource()
         result += "declare function error<T>(message: T, level: number?): never\n";
     else
         result += "declare function error<T>(message: T, level: number?)\n";
+
+    if (FFlag::LuauOptionalNextKey)
+        result += "declare function ipairs<V>(tab: {V}): (({V}, number) -> (number?, V), {V}, number)\n";
+    else
+        result += "declare function ipairs<V>(tab: {V}): (({V}, number) -> (number, V), {V}, number)\n";
 
     return result;
 }

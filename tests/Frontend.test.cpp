@@ -1054,10 +1054,6 @@ TEST_CASE("check_without_builtin_next")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauForceExportSurfacesToBeNormal", true},
-    };
-
     fileResolver.source["Module/A"] = R"(
         type F<T> = (set: G<T>) -> ()
 
@@ -1089,10 +1085,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_cyclic_type")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "reexport_type_alias")
 {
-    ScopedFastFlag sff[] = {
-        {"LuauForceExportSurfacesToBeNormal", true},
-    };
-
     fileResolver.source["Module/A"] = R"(
         type KeyOfTestEvents = "test-file-start" | "test-file-success" | "test-file-failure" | "test-case-result"
         type MyAny = any

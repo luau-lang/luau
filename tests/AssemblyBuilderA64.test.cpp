@@ -69,6 +69,7 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Unary")
 {
     SINGLE_COMPARE(neg(x0, x1), 0xCB0103E0);
     SINGLE_COMPARE(neg(w0, w1), 0x4B0103E0);
+    SINGLE_COMPARE(mvn(x0, x1), 0xAA2103E0);
 
     SINGLE_COMPARE(clz(x0, x1), 0xDAC01020);
     SINGLE_COMPARE(clz(w0, w1), 0x5AC01020);
@@ -91,19 +92,22 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Binary")
     SINGLE_COMPARE(lsr(x0, x1, x2), 0x9AC22420);
     SINGLE_COMPARE(asr(x0, x1, x2), 0x9AC22820);
     SINGLE_COMPARE(ror(x0, x1, x2), 0x9AC22C20);
+    SINGLE_COMPARE(cmp(x0, x1), 0xEB01001F);
 
     // reg, imm
     SINGLE_COMPARE(add(x3, x7, 78), 0x910138E3);
     SINGLE_COMPARE(add(w3, w7, 78), 0x110138E3);
     SINGLE_COMPARE(sub(w3, w7, 78), 0x510138E3);
+    SINGLE_COMPARE(cmp(w0, 42), 0x7100A81F);
 }
 
 TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Loads")
 {
     // address forms
     SINGLE_COMPARE(ldr(x0, x1), 0xF9400020);
-    SINGLE_COMPARE(ldr(x0, AddressA64(x1, 8)), 0xF9400420);
-    SINGLE_COMPARE(ldr(x0, AddressA64(x1, x7)), 0xF8676820);
+    SINGLE_COMPARE(ldr(x0, mem(x1, 8)), 0xF9400420);
+    SINGLE_COMPARE(ldr(x0, mem(x1, x7)), 0xF8676820);
+    SINGLE_COMPARE(ldr(x0, mem(x1, -7)), 0xF85F9020);
 
     // load sizes
     SINGLE_COMPARE(ldr(x0, x1), 0xF9400020);
@@ -121,8 +125,9 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Stores")
 {
     // address forms
     SINGLE_COMPARE(str(x0, x1), 0xF9000020);
-    SINGLE_COMPARE(str(x0, AddressA64(x1, 8)), 0xF9000420);
-    SINGLE_COMPARE(str(x0, AddressA64(x1, x7)), 0xF8276820);
+    SINGLE_COMPARE(str(x0, mem(x1, 8)), 0xF9000420);
+    SINGLE_COMPARE(str(x0, mem(x1, x7)), 0xF8276820);
+    SINGLE_COMPARE(strh(w0, mem(x1, -7)), 0x781F9020);
 
     // store sizes
     SINGLE_COMPARE(str(x0, x1), 0xF9000020);
@@ -169,26 +174,69 @@ TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "ControlFlow")
             build.cbz(x0, skip);
             build.cbnz(x0, skip);
             build.setLabel(skip);
+            build.b(skip);
         },
-        {0x54000060, 0xB4000040, 0xB5000020}));
+        {0x54000060, 0xB4000040, 0xB5000020, 0x5400000E}));
 
     // Basic control flow
+    SINGLE_COMPARE(br(x0), 0xD61F0000);
+    SINGLE_COMPARE(blr(x0), 0xD63F0000);
     SINGLE_COMPARE(ret(), 0xD65F03C0);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "StackOps")
+{
+    SINGLE_COMPARE(mov(x0, sp), 0x910003E0);
+    SINGLE_COMPARE(mov(sp, x0), 0x9100001F);
+
+    SINGLE_COMPARE(add(sp, sp, 4), 0x910013FF);
+    SINGLE_COMPARE(sub(sp, sp, 4), 0xD10013FF);
+
+    SINGLE_COMPARE(add(x0, sp, 4), 0x910013E0);
+    SINGLE_COMPARE(sub(sp, x0, 4), 0xD100101F);
+
+    SINGLE_COMPARE(ldr(x0, mem(sp, 8)), 0xF94007E0);
+    SINGLE_COMPARE(str(x0, mem(sp, 8)), 0xF90007E0);
+}
+
+TEST_CASE_FIXTURE(AssemblyBuilderA64Fixture, "Constants")
+{
+    // clang-format off
+    CHECK(check(
+        [](AssemblyBuilderA64& build) {
+            char arr[12] = "hello world";
+            build.adr(x0, arr, 12);
+            build.adr(x0, uint64_t(0x1234567887654321));
+            build.adr(x0, 1.0);
+        },
+        {
+            0x10ffffa0, 0x10ffff20, 0x10fffec0
+        },
+        {
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xf0, 0x3f,
+            0x21, 0x43, 0x65, 0x87, 0x78, 0x56, 0x34, 0x12,
+            0x00, 0x00, 0x00, 0x00, // 4b padding to align double
+            'h', 'e', 'l', 'l', 'o', ' ', 'w', 'o', 'r', 'l', 'd', 0x0,
+        }));
+    // clang-format on
 }
 
 TEST_CASE("LogTest")
 {
     AssemblyBuilderA64 build(/* logText= */ true);
 
+    build.add(sp, sp, 4);
     build.add(w0, w1, w2);
     build.add(x0, x1, x2, 2);
     build.add(w7, w8, 5);
     build.add(x7, x8, 5);
     build.ldr(x7, x8);
-    build.ldr(x7, AddressA64(x8, 8));
-    build.ldr(x7, AddressA64(x8, x9));
+    build.ldr(x7, mem(x8, 8));
+    build.ldr(x7, mem(x8, x9));
     build.mov(x1, x2);
     build.movk(x1, 42, 16);
+    build.cmp(x1, x2);
+    build.blr(x0);
 
     Label l;
     build.b(ConditionA64::Plus, l);
@@ -200,6 +248,7 @@ TEST_CASE("LogTest")
     build.finalize();
 
     std::string expected = R"(
+ add         sp,sp,#4
  add         w0,w1,w2
  add         x0,x1,x2 LSL #2
  add         w7,w8,#5
@@ -209,6 +258,8 @@ TEST_CASE("LogTest")
  ldr         x7,[x8,x9]
  mov         x1,x2
  movk        x1,#42 LSL #16
+ cmp         x1,x2
+ blr         x0
  b.pl        .L1
  cbz         x7,.L1
 .L1:

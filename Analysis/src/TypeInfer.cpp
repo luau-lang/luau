@@ -35,18 +35,20 @@ LUAU_FASTFLAG(LuauTypeNormalization2)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
-LUAU_FASTFLAGVARIABLE(LuauAnyifyModuleReturnGenerics, false)
 LUAU_FASTFLAGVARIABLE(LuauLvaluelessPath, false)
+LUAU_FASTFLAGVARIABLE(LuauNilIterator, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
-LUAU_FASTFLAGVARIABLE(LuauFixVarargExprHeadType, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
+LUAU_FASTFLAGVARIABLE(LuauTryhardAnd, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
+LUAU_FASTFLAGVARIABLE(LuauOptionalNextKey, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauArgMismatchReportFunctionLocation, false)
+LUAU_FASTFLAGVARIABLE(LuauImplicitElseRefinement, false)
 
 namespace Luau
 {
@@ -331,8 +333,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     else
         moduleScope->returnType = anyify(moduleScope, moduleScope->returnType, Location{});
 
-    if (FFlag::LuauAnyifyModuleReturnGenerics)
-        moduleScope->returnType = anyifyModuleReturnTypePackGenerics(moduleScope->returnType);
+    moduleScope->returnType = anyifyModuleReturnTypePackGenerics(moduleScope->returnType);
 
     for (auto& [_, typeFun] : moduleScope->exportedTypeBindings)
         typeFun.type = anyify(moduleScope, typeFun.type, Location{});
@@ -1209,10 +1210,10 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
     AstExpr* firstValue = forin.values.data[0];
 
     // next is a function that takes Table<K, V> and an optional index of type K
-    //      next<K, V>(t: Table<K, V>, index: K | nil) -> (K, V)
+    //      next<K, V>(t: Table<K, V>, index: K | nil) -> (K?, V)
     // however, pairs and ipairs are quite messy, but they both share the same types
     // pairs returns 'next, t, nil', thus the type would be
-    //      pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K | nil) -> (K, V), Table<K, V>, K | nil)
+    //      pairs<K, V>(t: Table<K, V>) -> ((Table<K, V>, K | nil) -> (K?, V), Table<K, V>, K | nil)
     // ipairs returns 'next, t, 0', thus ipairs will also share the same type as pairs, except K = number
     //
     // we can also define our own custom iterators by by returning a wrapped coroutine that calls coroutine.yield
@@ -1254,6 +1255,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
     {
         iterTy = instantiate(scope, checkExpr(scope, *firstValue).type, firstValue->location);
     }
+
+    if (FFlag::LuauNilIterator)
+        iterTy = stripFromNilAndReport(iterTy, firstValue->location);
 
     if (std::optional<TypeId> iterMM = findMetatableEntry(iterTy, "__iter", firstValue->location, /* addErrors= */ true))
     {
@@ -1338,21 +1342,61 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatForIn& forin)
         reportErrors(state.errors);
     }
 
-    TypePackId varPack = addTypePack(TypePackVar{TypePack{varTypes, freshTypePack(scope)}});
-
-    if (forin.values.size >= 2)
+    if (FFlag::LuauOptionalNextKey)
     {
-        AstArray<AstExpr*> arguments{forin.values.data + 1, forin.values.size - 1};
+        TypePackId retPack = iterFunc->retTypes;
 
-        Position start = firstValue->location.begin;
-        Position end = values[forin.values.size - 1]->location.end;
-        AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
+        if (forin.values.size >= 2)
+        {
+            AstArray<AstExpr*> arguments{forin.values.data + 1, forin.values.size - 1};
 
-        TypePackId retPack = checkExprPack(scope, exprCall).type;
+            Position start = firstValue->location.begin;
+            Position end = values[forin.values.size - 1]->location.end;
+            AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
+
+            retPack = checkExprPack(scope, exprCall).type;
+        }
+
+        // We need to remove 'nil' from the set of options of the first return value
+        // Because for loop stops when it gets 'nil', this result is never actually assigned to the first variable
+        if (std::optional<TypeId> fty = first(retPack); fty && !varTypes.empty())
+        {
+            TypeId keyTy = follow(*fty);
+
+            if (get<UnionTypeVar>(keyTy))
+            {
+                if (std::optional<TypeId> ty = tryStripUnionFromNil(keyTy))
+                    keyTy = *ty;
+            }
+
+            unify(keyTy, varTypes.front(), scope, forin.location);
+
+            // We have already handled the first variable type, make it match in the pack check
+            varTypes.front() = *fty;
+        }
+
+        TypePackId varPack = addTypePack(TypePackVar{TypePack{varTypes, freshTypePack(scope)}});
+
         unify(retPack, varPack, scope, forin.location);
     }
     else
-        unify(iterFunc->retTypes, varPack, scope, forin.location);
+    {
+        TypePackId varPack = addTypePack(TypePackVar{TypePack{varTypes, freshTypePack(scope)}});
+
+        if (forin.values.size >= 2)
+        {
+            AstArray<AstExpr*> arguments{forin.values.data + 1, forin.values.size - 1};
+
+            Position start = firstValue->location.begin;
+            Position end = values[forin.values.size - 1]->location.end;
+            AstExprCall exprCall{Location(start, end), firstValue, arguments, /* self= */ false, Location()};
+
+            TypePackId retPack = checkExprPack(scope, exprCall).type;
+            unify(retPack, varPack, scope, forin.location);
+        }
+        else
+            unify(iterFunc->retTypes, varPack, scope, forin.location);
+    }
 
     check(loopScope, *forin.body);
 }
@@ -1855,18 +1899,10 @@ WithPredicate<TypeId> TypeChecker::checkExpr(const ScopePtr& scope, const AstExp
 
     if (get<TypePack>(varargPack))
     {
-        if (FFlag::LuauFixVarargExprHeadType)
-        {
-            if (std::optional<TypeId> ty = first(varargPack))
-                return {*ty};
+        if (std::optional<TypeId> ty = first(varargPack))
+            return {*ty};
 
-            return {nilType};
-        }
-        else
-        {
-            std::vector<TypeId> types = flatten(varargPack).first;
-            return {!types.empty() ? types[0] : nilType};
-        }
+        return {nilType};
     }
     else if (get<FreeTypePack>(varargPack))
     {
@@ -2717,12 +2753,54 @@ TypeId TypeChecker::checkRelationalOperation(
 
     case AstExprBinary::And:
         if (lhsIsAny)
+        {
             return lhsType;
-        return unionOfTypes(rhsType, booleanType, scope, expr.location, false);
+        }
+        else if (FFlag::LuauTryhardAnd)
+        {
+            // If lhs is free, we can't tell which 'falsy' components it has, if any
+            if (get<FreeTypeVar>(lhsType))
+                return unionOfTypes(addType(UnionTypeVar{{nilType, singletonType(false)}}), rhsType, scope, expr.location, false);
+
+            auto [oty, notNever] = pickTypesFromSense(lhsType, false, neverType); // Filter out falsy types
+
+            if (notNever)
+            {
+                LUAU_ASSERT(oty);
+                return unionOfTypes(*oty, rhsType, scope, expr.location, false);
+            }
+            else
+            {
+                return rhsType;
+            }
+        }
+        else
+        {
+            return unionOfTypes(rhsType, booleanType, scope, expr.location, false);
+        }
     case AstExprBinary::Or:
         if (lhsIsAny)
+        {
             return lhsType;
-        return unionOfTypes(lhsType, rhsType, scope, expr.location);
+        }
+        else if (FFlag::LuauTryhardAnd)
+        {
+            auto [oty, notNever] = pickTypesFromSense(lhsType, true, neverType); // Filter out truthy types
+
+            if (notNever)
+            {
+                LUAU_ASSERT(oty);
+                return unionOfTypes(*oty, rhsType, scope, expr.location);
+            }
+            else
+            {
+                return rhsType;
+            }
+        }
+        else
+        {
+            return unionOfTypes(lhsType, rhsType, scope, expr.location);
+        }
     default:
         LUAU_ASSERT(0);
         ice(format("checkRelationalOperation called with incorrect binary expression '%s'", toString(expr.op).c_str()), expr.location);
@@ -4840,9 +4918,9 @@ TypePackId TypeChecker::errorRecoveryTypePack(TypePackId guess)
     return singletonTypes->errorRecoveryTypePack(guess);
 }
 
-TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense)
+TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense, TypeId emptySetTy)
 {
-    return [this, sense](TypeId ty) -> std::optional<TypeId> {
+    return [this, sense, emptySetTy](TypeId ty) -> std::optional<TypeId> {
         // any/error/free gets a special pass unconditionally because they can't be decided.
         if (get<AnyTypeVar>(ty) || get<ErrorTypeVar>(ty) || get<FreeTypeVar>(ty))
             return ty;
@@ -4860,7 +4938,7 @@ TypeIdPredicate TypeChecker::mkTruthyPredicate(bool sense)
             return sense ? std::nullopt : std::optional<TypeId>(ty);
 
         // at this point, anything else is kept if sense is true, or replaced by nil
-        return sense ? ty : nilType;
+        return sense ? ty : emptySetTy;
     };
 }
 
@@ -4886,9 +4964,9 @@ std::pair<std::optional<TypeId>, bool> TypeChecker::filterMap(TypeId type, TypeI
     }
 }
 
-std::pair<std::optional<TypeId>, bool> TypeChecker::pickTypesFromSense(TypeId type, bool sense)
+std::pair<std::optional<TypeId>, bool> TypeChecker::pickTypesFromSense(TypeId type, bool sense, TypeId emptySetTy)
 {
-    return filterMap(type, mkTruthyPredicate(sense));
+    return filterMap(type, mkTruthyPredicate(sense, emptySetTy));
 }
 
 TypeId TypeChecker::addTV(TypeVar&& tv)
@@ -5657,7 +5735,7 @@ void TypeChecker::resolve(const TruthyPredicate& truthyP, RefinementMap& refis, 
     if (ty && fromOr)
         return addRefinement(refis, truthyP.lvalue, *ty);
 
-    refineLValue(truthyP.lvalue, refis, scope, mkTruthyPredicate(sense));
+    refineLValue(truthyP.lvalue, refis, scope, mkTruthyPredicate(sense, nilType));
 }
 
 void TypeChecker::resolve(const AndPredicate& andP, RefinementMap& refis, const ScopePtr& scope, bool sense)
@@ -5850,13 +5928,57 @@ void TypeChecker::resolve(const EqPredicate& eqP, RefinementMap& refis, const Sc
 
         if (maybeSingleton(eqP.type))
         {
-            // Normally we'd write option <: eqP.type, but singletons are always the subtype, so we flip this.
-            if (!sense || canUnify(eqP.type, option, scope, eqP.location).empty())
-                return sense ? eqP.type : option;
+            if (FFlag::LuauImplicitElseRefinement)
+            {
+                bool optionIsSubtype = canUnify(option, eqP.type, scope, eqP.location).empty();
+                bool targetIsSubtype = canUnify(eqP.type, option, scope, eqP.location).empty();
 
-            // local variable works around an odd gcc 9.3 warning: <anonymous> may be used uninitialized
-            std::optional<TypeId> res = std::nullopt;
-            return res;
+                // terminology refresher:
+                // - option is the type of the expression `x`, and
+                // - eqP.type is the type of the expression `"hello"`
+                //
+                // "hello" == x where
+                // x : "hello" | "world" -> x : "hello"
+                // x : number | string   -> x : "hello"
+                // x : number            -> x : never
+                //
+                // "hello" ~= x where
+                // x : "hello" | "world" -> x : "world"
+                // x : number | string   -> x : number | string
+                // x : number            -> x : number
+
+                // local variable works around an odd gcc 9.3 warning: <anonymous> may be used uninitialized
+                std::optional<TypeId> nope = std::nullopt;
+
+                if (sense)
+                {
+                    if (optionIsSubtype && !targetIsSubtype)
+                        return option;
+                    else if (!optionIsSubtype && targetIsSubtype)
+                        return eqP.type;
+                    else if (!optionIsSubtype && !targetIsSubtype)
+                        return nope;
+                    else if (optionIsSubtype && targetIsSubtype)
+                        return eqP.type;
+                }
+                else
+                {
+                    bool isOptionSingleton = get<SingletonTypeVar>(option);
+                    if (!isOptionSingleton)
+                        return option;
+                    else if (optionIsSubtype && targetIsSubtype)
+                        return nope;
+                }
+            }
+            else
+            {
+                if (!sense || canUnify(eqP.type, option, scope, eqP.location).empty())
+                    return sense ? eqP.type : option;
+
+                // local variable works around an odd gcc 9.3 warning: <anonymous> may be used uninitialized
+                std::optional<TypeId> res = std::nullopt;
+                return res;
+            }
         }
 
         return option;

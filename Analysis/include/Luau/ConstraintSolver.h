@@ -76,8 +76,8 @@ struct ConstraintSolver
 
     DcrLogger* logger;
 
-    explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, ModuleName moduleName, NotNull<ModuleResolver> moduleResolver,
-        std::vector<RequireCycle> requireCycles, DcrLogger* logger);
+    explicit ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
+        ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger);
 
     // Randomize the order in which to dispatch constraints
     void randomize(unsigned seed);

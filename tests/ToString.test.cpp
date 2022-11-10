@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
-LUAU_FASTFLAG(LuauFixNameMaps);
 LUAU_FASTFLAG(LuauFunctionReturnStringificationFixup);
 
 TEST_SUITE_BEGIN("ToString");
@@ -266,11 +265,23 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
 
     ToStringOptions o;
     o.exhaustive = false;
-    o.maxTypeLength = 40;
-    CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-    CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-    CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        o.maxTypeLength = 30;
+        CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> () -> ()");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> <a>(a) -> () -> ()");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> <b>(b) -> <a>(a) -> (... *TRUNCATED*");
+    }
+    else
+    {
+        o.maxTypeLength = 40;
+        CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
+        CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
+        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
@@ -285,11 +296,22 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
 
     ToStringOptions o;
     o.exhaustive = true;
-    o.maxTypeLength = 40;
-    CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-    CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
-    CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
-    CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        o.maxTypeLength = 30;
+        CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> () -> ()");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> <a>(a) -> () -> ()");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> <b>(b) -> <a>(a) -> (... *TRUNCATED*");
+    }
+    else
+    {
+        o.maxTypeLength = 40;
+        CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
+        CHECK_EQ(toString(requireType("f1"), o), "(() -> ()) -> () -> ()");
+        CHECK_EQ(toString(requireType("f2"), o), "((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "(((() -> ()) -> () -> ()) -> (() -> ()) -> ... *TRUNCATED*");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "stringifying_table_type_correctly_use_matching_table_state_braces")
@@ -423,18 +445,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     TypeId id3Type = requireType("id3");
     ToStringResult nameData = toStringDetailed(id3Type, opts);
 
-    if (FFlag::LuauFixNameMaps)
-        REQUIRE(3 == opts.nameMap.typeVars.size());
-    else
-        REQUIRE_EQ(3, nameData.DEPRECATED_nameMap.typeVars.size());
+    REQUIRE(3 == opts.nameMap.typeVars.size());
 
     REQUIRE_EQ("<a, b, c>(a, b, c) -> (a, b, c)", nameData.name);
-
-    ToStringOptions opts2; // TODO: delete opts2 when clipping FFlag::LuauFixNameMaps
-    if (FFlag::LuauFixNameMaps)
-        opts2.nameMap = std::move(opts.nameMap);
-    else
-        opts2.DEPRECATED_nameMap = std::move(nameData.DEPRECATED_nameMap);
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(id3Type));
     REQUIRE(ftv != nullptr);
@@ -442,9 +455,9 @@ TEST_CASE_FIXTURE(Fixture, "toStringDetailed")
     auto params = flatten(ftv->argTypes).first;
     REQUIRE(3 == params.size());
 
-    CHECK("a" == toString(params[0], opts2));
-    CHECK("b" == toString(params[1], opts2));
-    CHECK("c" == toString(params[2], opts2));
+    CHECK("a" == toString(params[0], opts));
+    CHECK("b" == toString(params[1], opts));
+    CHECK("c" == toString(params[2], opts));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
@@ -471,13 +484,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     TypeId tType = requireType("inst");
     ToStringResult r = toStringDetailed(tType, opts);
     CHECK_EQ("{ @metatable { __index: { @metatable {| __index: base |}, child } }, inst }", r.name);
-    if (FFlag::LuauFixNameMaps)
-        CHECK(0 == opts.nameMap.typeVars.size());
-    else
-        CHECK_EQ(0, r.DEPRECATED_nameMap.typeVars.size());
-
-    if (!FFlag::LuauFixNameMaps)
-        opts.DEPRECATED_nameMap = r.DEPRECATED_nameMap;
+    CHECK(0 == opts.nameMap.typeVars.size());
 
     const MetatableTypeVar* tMeta = get<MetatableTypeVar>(tType);
     REQUIRE(tMeta);
@@ -502,8 +509,6 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "toStringDetailed2")
     REQUIRE(tMeta6->props.count("two") > 0);
 
     ToStringResult oneResult = toStringDetailed(tMeta5->props["one"].type, opts);
-    if (!FFlag::LuauFixNameMaps)
-        opts.DEPRECATED_nameMap = oneResult.DEPRECATED_nameMap;
 
     std::string twoResult = toString(tMeta6->props["two"].type, opts);
 
