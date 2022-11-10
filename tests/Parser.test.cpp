@@ -2823,4 +2823,21 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_after_last_t
     CHECK(table->items.size == 1);
 }
 
+TEST_CASE_FIXTURE(Fixture, "missing_default_type_pack_argument_after_variadic_type_parameter")
+{
+    ScopedFastFlag sff{"LuauParserErrorsOnMissingDefaultTypePackArgument", true};
+
+    ParseResult result = tryParse(R"(
+        type Foo<T... = > = nil
+    )");
+
+    REQUIRE_EQ(2, result.errors.size());
+
+    CHECK_EQ(Location{{1, 23}, {1, 25}}, result.errors[0].getLocation());
+    CHECK_EQ("Expected type, got '>'", result.errors[0].getMessage());
+
+    CHECK_EQ(Location{{1, 23}, {1, 24}}, result.errors[1].getLocation());
+    CHECK_EQ("Expected type pack after '=', got type", result.errors[1].getMessage());
+}
+
 TEST_SUITE_END();

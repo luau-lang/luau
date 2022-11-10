@@ -22,6 +22,7 @@ LUAU_FASTFLAGVARIABLE(LuauSubtypeNormalizer, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOverloadedFunctionSubtypingPerf, false);
+LUAU_FASTFLAGVARIABLE(LuauScalarShapeUnifyToMtOwner, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNegatedFunctionTypes)
@@ -1699,8 +1700,20 @@ void Unifier::tryUnifyTables(TypeId subTy, TypeId superTy, bool isIntersection)
         // Recursive unification can change the txn log, and invalidate the old
         // table. If we detect that this has happened, we start over, with the updated
         // txn log.
-        TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTy);
-        TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTy);
+        TypeId superTyNew = FFlag::LuauScalarShapeUnifyToMtOwner ? log.follow(superTy) : superTy;
+        TypeId subTyNew = FFlag::LuauScalarShapeUnifyToMtOwner ? log.follow(subTy) : subTy;
+
+        if (FFlag::LuauScalarShapeUnifyToMtOwner)
+        {
+            // If one of the types stopped being a table altogether, we need to restart from the top
+            if ((superTy != superTyNew || subTy != subTyNew) && errors.empty())
+                return tryUnify(subTy, superTy, false, isIntersection);
+        }
+
+        // Otherwise, restart only the table unification
+        TableTypeVar* newSuperTable = log.getMutable<TableTypeVar>(superTyNew);
+        TableTypeVar* newSubTable = log.getMutable<TableTypeVar>(subTyNew);
+
         if (superTable != newSuperTable || (subTable != newSubTable && subTable != instantiatedSubTable))
         {
             if (errors.empty())
@@ -1862,7 +1875,9 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
     if (reversed)
         std::swap(subTy, superTy);
 
-    if (auto ttv = log.get<TableTypeVar>(superTy); !ttv || ttv->state != TableState::Free)
+    TableTypeVar* superTable = log.getMutable<TableTypeVar>(superTy);
+
+    if (!superTable || superTable->state != TableState::Free)
         return reportError(location, TypeMismatch{osuperTy, osubTy});
 
     auto fail = [&](std::optional<TypeError> e) {
@@ -1887,12 +1902,34 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
             Unifier child = makeChildUnifier();
             child.tryUnify_(ty, superTy);
 
+            if (FFlag::LuauScalarShapeUnifyToMtOwner)
+            {
+                // To perform subtype <: free table unification, we have tried to unify (subtype's metatable) <: free table
+                // There is a chance that it was unified with the origial subtype, but then, (subtype's metatable) <: subtype could've failed
+                // Here we check if we have a new supertype instead of the original free table and try original subtype <: new supertype check
+                TypeId newSuperTy = child.log.follow(superTy);
+
+                if (superTy != newSuperTy && canUnify(subTy, newSuperTy).empty())
+                {
+                    log.replace(superTy, BoundTypeVar{subTy});
+                    return;
+                }
+            }
+
             if (auto e = hasUnificationTooComplex(child.errors))
                 reportError(*e);
             else if (!child.errors.empty())
                 fail(child.errors.front());
 
             log.concat(std::move(child.log));
+
+            if (FFlag::LuauScalarShapeUnifyToMtOwner)
+            {
+                // To perform subtype <: free table unification, we have tried to unify (subtype's metatable) <: free table
+                // We return success because subtype <: free table which means that correct unification is to replace free table with the subtype
+                if (child.errors.empty())
+                    log.replace(superTy, BoundTypeVar{subTy});
+            }
 
             return;
         }

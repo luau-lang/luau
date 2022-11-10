@@ -17,7 +17,6 @@ enum class AddressKindA64 : uint8_t
     // reg + reg << shift
     // reg + sext(reg) << shift
     // reg + uext(reg) << shift
-    // pc + offset
 };
 
 struct AddressA64
@@ -28,8 +27,8 @@ struct AddressA64
         , offset(xzr)
         , data(off)
     {
-        LUAU_ASSERT(base.kind == KindA64::x);
-        LUAU_ASSERT(off >= 0 && off < 4096);
+        LUAU_ASSERT(base.kind == KindA64::x || base == sp);
+        LUAU_ASSERT(off >= -256 && off < 4096);
     }
 
     AddressA64(RegisterA64 base, RegisterA64 offset)
@@ -47,6 +46,8 @@ struct AddressA64
     RegisterA64 offset;
     int data;
 };
+
+using mem = AddressA64;
 
 } // namespace CodeGen
 } // namespace Luau

@@ -284,6 +284,7 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     ScopedFastFlag sff[]{
         {"LuauUnknownAndNeverType", true},
         {"LuauNeverTypesAndOperatorsInference", true},
+        {"LuauTryhardAnd", true},
     };
 
     CheckResult result = check(R"(
@@ -293,7 +294,8 @@ TEST_CASE_FIXTURE(Fixture, "dont_unify_operands_if_one_of_the_operand_is_never_i
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("<a>(nil, a) -> boolean", toString(requireType("ord")));
+    // Widening doesn't normalize yet, so the result is a bit strange
+    CHECK_EQ("<a>(nil, a) -> boolean | boolean", toString(requireType("ord")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "math_operators_and_never")

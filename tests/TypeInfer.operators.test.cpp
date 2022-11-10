@@ -50,14 +50,18 @@ TEST_CASE_FIXTURE(Fixture, "or_joins_types_with_no_superfluous_union")
     CHECK_EQ(*requireType("s"), *typeChecker.stringType);
 }
 
-TEST_CASE_FIXTURE(Fixture, "and_adds_boolean")
+TEST_CASE_FIXTURE(Fixture, "and_does_not_always_add_boolean")
 {
+    ScopedFastFlag sff[]{
+        {"LuauTryhardAnd", true},
+    };
+
     CheckResult result = check(R"(
         local s = "a" and 10
         local x:boolean|number = s
     )");
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ(toString(*requireType("s")), "boolean | number");
+    CHECK_EQ(toString(*requireType("s")), "number");
 }
 
 TEST_CASE_FIXTURE(Fixture, "and_adds_boolean_no_superfluous_union")
@@ -969,6 +973,81 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "mm_comparisons_must_return_a_boolean")
 
     CHECK(toString(result.errors[0]) == "Metamethod '__lt' must return type 'boolean'");
     CHECK(toString(result.errors[1]) == "Metamethod '__lt' must return type 'boolean'");
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reworked_and")
+{
+    ScopedFastFlag sff[]{
+        {"LuauTryhardAnd", true},
+    };
+
+    CheckResult result = check(R"(
+local a: number? = 5
+local b: boolean = (a or 1) > 10
+local c -- free
+
+local x = a and 1
+local y = 'a' and 1
+local z = b and 1
+local w = c and 1
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("number?" == toString(requireType("x")));
+        CHECK("number" == toString(requireType("y")));
+        CHECK("false | number" == toString(requireType("z")));
+        CHECK("number" == toString(requireType("w"))); // Normalizer considers free & falsy == never
+    }
+    else
+    {
+        CHECK("number?" == toString(requireType("x")));
+        CHECK("number" == toString(requireType("y")));
+        CHECK("boolean | number" == toString(requireType("z"))); // 'false' widened to boolean
+        CHECK("(boolean | number)?" == toString(requireType("w")));
+    }
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "reworked_or")
+{
+    ScopedFastFlag sff[]{
+        {"LuauTryhardAnd", true},
+    };
+
+    CheckResult result = check(R"(
+local a: number | false = 5
+local b: number? = 6
+local c: boolean = true
+local d: true = true
+local e: false = false
+local f: nil = false
+
+local a1 = a or 'a'
+local b1 = b or 4
+local c1 = c or 'c'
+local d1 = d or 'd'
+local e1 = e or 'e'
+local f1 = f or 'f'
+    )");
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK("number | string" == toString(requireType("a1")));
+        CHECK("number" == toString(requireType("b1")));
+        CHECK("string | true" == toString(requireType("c1")));
+        CHECK("string | true" == toString(requireType("d1")));
+        CHECK("string" == toString(requireType("e1")));
+        CHECK("string" == toString(requireType("f1")));
+    }
+    else
+    {
+        CHECK("number | string" == toString(requireType("a1")));
+        CHECK("number" == toString(requireType("b1")));
+        CHECK("boolean | string" == toString(requireType("c1"))); // 'true' widened to boolean
+        CHECK("boolean | string" == toString(requireType("d1"))); // 'true' widened to boolean
+        CHECK("string" == toString(requireType("e1")));
+        CHECK("string" == toString(requireType("f1")));
+    }
 }
 
 TEST_SUITE_END();

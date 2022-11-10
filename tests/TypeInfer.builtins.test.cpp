@@ -57,7 +57,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
 
         local s = "foo"
         local t = { [s] = 1 }
-        local c: string, d: number = next(t)
+        local c: string?, d: number = next(t)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -69,7 +69,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_c
         type Map<K, V> = { [K]: V }
         local map: Map<string, number> = { ["foo"] = 1, ["bar"] = 2, ["baz"] = 3 }
 
-        local it: (Map<string, number>, string | nil) -> (string, number), t: Map<string, number>, i: nil = pairs(map)
+        local it: (Map<string, number>, string | nil) -> (string?, number), t: Map<string, number>, i: nil = pairs(map)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -81,7 +81,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_iterator_should_infer_types_and_type_
         type Map<K, V> = { [K]: V }
         local array: Map<number, string> = { "foo", "bar", "baz" }
 
-        local it: (Map<number, string>, number) -> (number, string), t: Map<number, string>, i: number = ipairs(array)
+        local it: (Map<number, string>, number) -> (number?, string), t: Map<number, string>, i: number = ipairs(array)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

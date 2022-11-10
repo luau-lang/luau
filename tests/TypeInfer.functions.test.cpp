@@ -532,7 +532,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
     REQUIRE_EQ(2, argVec.size());
 
     const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
-    REQUIRE(fType != nullptr);
+    REQUIRE_MESSAGE(fType != nullptr, "Expected a function but got " << toString(argVec[0]));
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
 

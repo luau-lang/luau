@@ -66,6 +66,14 @@ struct ConstraintGraphBuilder
     // The root scope of the module we're generating constraints for.
     // This is null when the CGB is initially constructed.
     Scope* rootScope;
+
+    // Constraints that go straight to the solver.
+    std::vector<ConstraintPtr> constraints;
+
+    // Constraints that do not go to the solver right away.  Other constraints
+    // will enqueue them during solving.
+    std::vector<ConstraintPtr> unqueuedConstraints;
+
     // A mapping of AST node to TypeId.
     DenseHashMap<const AstExpr*, TypeId> astTypes{nullptr};
     // A mapping of AST node to TypePackId.
@@ -252,16 +260,8 @@ struct ConstraintGraphBuilder
     void prepopulateGlobalScope(const ScopePtr& globalScope, AstStatBlock* program);
 };
 
-/**
- * Collects a vector of borrowed constraints from the scope and all its child
- * scopes. It is important to only call this function when you're done adding
- * constraints to the scope or its descendants, lest the borrowed pointers
- * become invalid due to a container reallocation.
- * @param rootScope the root scope of the scope graph to collect constraints
- * from.
- * @return a list of pointers to constraints contained within the scope graph.
- * None of these pointers should be null.
+/** Borrow a vector of pointers from a vector of owning pointers to constraints.
  */
-std::vector<NotNull<Constraint>> collectConstraints(NotNull<Scope> rootScope);
+std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints);
 
 } // namespace Luau

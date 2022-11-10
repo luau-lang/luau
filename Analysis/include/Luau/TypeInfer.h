@@ -280,14 +280,14 @@ private:
     TypeId singletonType(bool value);
     TypeId singletonType(std::string value);
 
-    TypeIdPredicate mkTruthyPredicate(bool sense);
+    TypeIdPredicate mkTruthyPredicate(bool sense, TypeId emptySetTy);
 
     // TODO: Return TypeId only.
     std::optional<TypeId> filterMapImpl(TypeId type, TypeIdPredicate predicate);
     std::pair<std::optional<TypeId>, bool> filterMap(TypeId type, TypeIdPredicate predicate);
 
 public:
-    std::pair<std::optional<TypeId>, bool> pickTypesFromSense(TypeId type, bool sense);
+    std::pair<std::optional<TypeId>, bool> pickTypesFromSense(TypeId type, bool sense, TypeId emptySetTy);
 
 private:
     TypeId unionOfTypes(TypeId a, TypeId b, const ScopePtr& scope, const Location& location, bool unifyFreeTypes = true);
