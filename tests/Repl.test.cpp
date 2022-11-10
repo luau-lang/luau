@@ -404,3 +404,20 @@ t60 = makeChainedTable(60)
 }
 
 TEST_SUITE_END();
+
+TEST_SUITE_BEGIN("RegressionTests");
+
+TEST_CASE_FIXTURE(ReplFixture, "InfiniteRecursion")
+{
+    // If the infinite recrusion is not caught, test will fail
+    runCode(L, R"(
+local NewProxyOne = newproxy(true)
+local MetaTableOne = getmetatable(NewProxyOne)
+MetaTableOne.__index = function()
+	return NewProxyOne.Game
+end
+print(NewProxyOne.HelloICauseACrash)
+)");
+}
+
+TEST_SUITE_END();

@@ -34,15 +34,18 @@ public:
 
     // Comparisons
     // Note: some arithmetic instructions also have versions that update flags (ADDS etc) but we aren't using them atm
-    // TODO: add cmp
+    void cmp(RegisterA64 src1, RegisterA64 src2);
+    void cmp(RegisterA64 src1, int src2);
 
-    // Binary
+    // Bitwise
     // Note: shifted-register support and bitfield operations are omitted for simplicity
     // TODO: support immediate arguments (they have odd encoding and forbid many values)
-    // TODO: support not variants for and/or/eor (required to support not...)
     void and_(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void orr(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void eor(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
+    void mvn(RegisterA64 dst, RegisterA64 src);
+
+    // Shifts
     void lsl(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void lsr(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
     void asr(RegisterA64 dst, RegisterA64 src1, RegisterA64 src2);
@@ -66,10 +69,18 @@ public:
 
     // Control flow
     // Note: tbz/tbnz are currently not supported because they have 15-bit offsets and we don't support branch thunks
+    void b(Label& label);
     void b(ConditionA64 cond, Label& label);
     void cbz(RegisterA64 src, Label& label);
     void cbnz(RegisterA64 src, Label& label);
+    void br(RegisterA64 src);
+    void blr(RegisterA64 src);
     void ret();
+
+    // Address of embedded data
+    void adr(RegisterA64 dst, const void* ptr, size_t size);
+    void adr(RegisterA64 dst, uint64_t value);
+    void adr(RegisterA64 dst, double value);
 
     // Run final checks
     bool finalize();
@@ -97,17 +108,21 @@ private:
     // Instruction archetypes
     void place0(const char* name, uint32_t word);
     void placeSR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, int shift = 0);
-    void placeSR2(const char* name, RegisterA64 dst, RegisterA64 src, uint8_t op);
+    void placeSR2(const char* name, RegisterA64 dst, RegisterA64 src, uint8_t op, uint8_t op2 = 0);
     void placeR3(const char* name, RegisterA64 dst, RegisterA64 src1, RegisterA64 src2, uint8_t op, uint8_t op2);
     void placeR1(const char* name, RegisterA64 dst, RegisterA64 src, uint32_t op);
     void placeI12(const char* name, RegisterA64 dst, RegisterA64 src1, int src2, uint8_t op);
     void placeI16(const char* name, RegisterA64 dst, int src, uint8_t op, int shift = 0);
     void placeA(const char* name, RegisterA64 dst, AddressA64 src, uint8_t op, uint8_t size);
     void placeBC(const char* name, Label& label, uint8_t op, uint8_t cond);
-    void placeBR(const char* name, Label& label, uint8_t op, RegisterA64 cond);
+    void placeBCR(const char* name, Label& label, uint8_t op, RegisterA64 cond);
+    void placeBR(const char* name, RegisterA64 src, uint32_t op);
+    void placeADR(const char* name, RegisterA64 src, uint8_t op);
 
     void place(uint32_t word);
-    void placeLabel(Label& label);
+
+    void patchLabel(Label& label);
+    void patchImm19(uint32_t location, int value);
 
     void commit();
     LUAU_NOINLINE void extend();
@@ -123,6 +138,7 @@ private:
     LUAU_NOINLINE void log(const char* opcode, RegisterA64 dst, int src, int shift = 0);
     LUAU_NOINLINE void log(const char* opcode, RegisterA64 dst, AddressA64 src);
     LUAU_NOINLINE void log(const char* opcode, RegisterA64 src, Label label);
+    LUAU_NOINLINE void log(const char* opcode, RegisterA64 src);
     LUAU_NOINLINE void log(const char* opcode, Label label);
     LUAU_NOINLINE void log(Label label);
     LUAU_NOINLINE void log(RegisterA64 reg);
@@ -133,6 +149,7 @@ private:
     std::vector<uint32_t> labelLocations;
 
     bool finalized = false;
+    bool overflowed = false;
 
     size_t dataPos = 0;
 

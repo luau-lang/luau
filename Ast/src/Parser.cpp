@@ -27,6 +27,8 @@ LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
 LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
 LUAU_FASTFLAGVARIABLE(LuauTableConstructorRecovery, false)
 
+LUAU_FASTFLAGVARIABLE(LuauParserErrorsOnMissingDefaultTypePackArgument, false)
+
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
 bool lua_telemetry_parsed_out_of_range_hex_integer = false;
 bool lua_telemetry_parsed_double_prefix_hex_integer = false;
@@ -2503,12 +2505,21 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
 
                         namePacks.push_back({name, nameLocation, typePack});
                     }
-                    else if (lexer.current().type == '(')
+                    else if (!FFlag::LuauParserErrorsOnMissingDefaultTypePackArgument && lexer.current().type == '(')
                     {
                         auto [type, typePack] = parseTypeOrPackAnnotation();
 
                         if (type)
                             report(Location(packBegin.location.begin, lexer.previousLocation().end), "Expected type pack after '=', got type");
+
+                        namePacks.push_back({name, nameLocation, typePack});
+                    }
+                    else if (FFlag::LuauParserErrorsOnMissingDefaultTypePackArgument)
+                    {
+                        auto [type, typePack] = parseTypeOrPackAnnotation();
+
+                        if (type)
+                            report(type->location, "Expected type pack after '=', got type");
 
                         namePacks.push_back({name, nameLocation, typePack});
                     }

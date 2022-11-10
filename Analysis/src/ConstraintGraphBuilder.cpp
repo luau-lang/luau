@@ -52,6 +52,70 @@ static bool matchSetmetatable(const AstExprCall& call)
     return true;
 }
 
+struct TypeGuard
+{
+    bool isTypeof;
+    AstExpr* target;
+    std::string type;
+};
+
+static std::optional<TypeGuard> matchTypeGuard(const AstExprBinary* binary)
+{
+    if (binary->op != AstExprBinary::CompareEq && binary->op != AstExprBinary::CompareNe)
+        return std::nullopt;
+
+    AstExpr* left = binary->left;
+    AstExpr* right = binary->right;
+    if (right->is<AstExprCall>())
+        std::swap(left, right);
+
+    if (!right->is<AstExprConstantString>())
+        return std::nullopt;
+
+    AstExprCall* call = left->as<AstExprCall>();
+    AstExprConstantString* string = right->as<AstExprConstantString>();
+    if (!call || !string)
+        return std::nullopt;
+
+    AstExprGlobal* callee = call->func->as<AstExprGlobal>();
+    if (!callee)
+        return std::nullopt;
+
+    if (callee->name != "type" && callee->name != "typeof")
+        return std::nullopt;
+
+    if (call->args.size != 1)
+        return std::nullopt;
+
+    return TypeGuard{
+        /*isTypeof*/ callee->name == "typeof",
+        /*target*/ call->args.data[0],
+        /*type*/ std::string(string->value.data, string->value.size),
+    };
+}
+
+namespace
+{
+
+struct Checkpoint
+{
+    size_t offset;
+};
+
+Checkpoint checkpoint(const ConstraintGraphBuilder* cgb)
+{
+    return Checkpoint{cgb->constraints.size()};
+}
+
+template<typename F>
+void forEachConstraint(const Checkpoint& start, const Checkpoint& end, const ConstraintGraphBuilder* cgb, F f)
+{
+    for (size_t i = start.offset; i < end.offset; ++i)
+        f(cgb->constraints[i]);
+}
+
+} // namespace
+
 ConstraintGraphBuilder::ConstraintGraphBuilder(const ModuleName& moduleName, ModulePtr module, TypeArena* arena,
     NotNull<ModuleResolver> moduleResolver, NotNull<SingletonTypes> singletonTypes, NotNull<InternalErrorReporter> ice, const ScopePtr& globalScope,
     DcrLogger* logger, NotNull<DataFlowGraph> dfg)
@@ -99,12 +163,12 @@ ScopePtr ConstraintGraphBuilder::childScope(AstNode* node, const ScopePtr& paren
 
 NotNull<Constraint> ConstraintGraphBuilder::addConstraint(const ScopePtr& scope, const Location& location, ConstraintV cv)
 {
-    return NotNull{scope->constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv)}).get()};
+    return NotNull{constraints.emplace_back(new Constraint{NotNull{scope.get()}, location, std::move(cv)}).get()};
 }
 
 NotNull<Constraint> ConstraintGraphBuilder::addConstraint(const ScopePtr& scope, std::unique_ptr<Constraint> c)
 {
-    return NotNull{scope->constraints.emplace_back(std::move(c)).get()};
+    return NotNull{constraints.emplace_back(std::move(c)).get()};
 }
 
 static void unionRefinements(const std::unordered_map<DefId, TypeId>& lhs, const std::unordered_map<DefId, TypeId>& rhs,
@@ -476,6 +540,9 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatForIn* forIn)
         TypeId ty = freshType(loopScope);
         loopScope->bindings[var] = Binding{ty, var->location};
         variableTypes.push_back(ty);
+
+        if (auto def = dfg->getDef(var))
+            loopScope->dcrRefinements[*def] = ty;
     }
 
     // It is always ok to provide too few variables, so we give this pack a free tail.
@@ -506,20 +573,6 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatRepeat* repeat)
     check(repeatScope, repeat->condition);
 }
 
-void addConstraints(Constraint* constraint, NotNull<Scope> scope)
-{
-    scope->constraints.reserve(scope->constraints.size() + scope->constraints.size());
-
-    for (const auto& c : scope->constraints)
-        constraint->dependencies.push_back(NotNull{c.get()});
-
-    for (const auto& c : scope->unqueuedConstraints)
-        constraint->dependencies.push_back(NotNull{c.get()});
-
-    for (NotNull<Scope> childScope : scope->children)
-        addConstraints(constraint, childScope);
-}
-
 void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFunction* function)
 {
     // Local
@@ -537,12 +590,17 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatLocalFunction* 
     FunctionSignature sig = checkFunctionSignature(scope, function->func);
     sig.bodyScope->bindings[function->name] = Binding{sig.signature, function->func->location};
 
+    auto start = checkpoint(this);
     checkFunctionBody(sig.bodyScope, function->func);
+    auto end = checkpoint(this);
 
     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
     std::unique_ptr<Constraint> c =
         std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
-    addConstraints(c.get(), NotNull(sig.bodyScope.get()));
+
+    forEachConstraint(start, end, this, [&c](const ConstraintPtr& constraint) {
+        c->dependencies.push_back(NotNull{constraint.get()});
+    });
 
     addConstraint(scope, std::move(c));
 }
@@ -610,12 +668,17 @@ void ConstraintGraphBuilder::visit(const ScopePtr& scope, AstStatFunction* funct
 
     LUAU_ASSERT(functionType != nullptr);
 
+    auto start = checkpoint(this);
     checkFunctionBody(sig.bodyScope, function->func);
+    auto end = checkpoint(this);
 
     NotNull<Scope> constraintScope{sig.signatureScope ? sig.signatureScope.get() : sig.bodyScope.get()};
     std::unique_ptr<Constraint> c =
         std::make_unique<Constraint>(constraintScope, function->name->location, GeneralizationConstraint{functionType, sig.signature});
-    addConstraints(c.get(), NotNull(sig.bodyScope.get()));
+
+    forEachConstraint(start, end, this, [&c](const ConstraintPtr& constraint) {
+        c->dependencies.push_back(NotNull{constraint.get()});
+    });
 
     addConstraint(scope, std::move(c));
 }
@@ -947,8 +1010,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExpr* 
 InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCall* call, const std::vector<TypeId>& expectedTypes)
 {
     TypeId fnType = check(scope, call->func).ty;
-    const size_t constraintIndex = scope->constraints.size();
-    const size_t scopeIndex = scopes.size();
+    auto startCheckpoint = checkpoint(this);
 
     std::vector<TypeId> args;
 
@@ -977,8 +1039,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     }
     else
     {
-        const size_t constraintEndIndex = scope->constraints.size();
-        const size_t scopeEndIndex = scopes.size();
+        auto endCheckpoint = checkpoint(this);
 
         astOriginalCallTypes[call->func] = fnType;
 
@@ -989,29 +1050,22 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         FunctionTypeVar ftv(TypeLevel{}, scope.get(), argPack, rets);
         TypeId inferredFnType = arena->addType(ftv);
 
-        scope->unqueuedConstraints.push_back(
+        unqueuedConstraints.push_back(
             std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, InstantiationConstraint{instantiatedType, fnType}));
-        NotNull<const Constraint> ic(scope->unqueuedConstraints.back().get());
+        NotNull<const Constraint> ic(unqueuedConstraints.back().get());
 
-        scope->unqueuedConstraints.push_back(
+        unqueuedConstraints.push_back(
             std::make_unique<Constraint>(NotNull{scope.get()}, call->func->location, SubtypeConstraint{inferredFnType, instantiatedType}));
-        NotNull<Constraint> sc(scope->unqueuedConstraints.back().get());
+        NotNull<Constraint> sc(unqueuedConstraints.back().get());
 
         // We force constraints produced by checking function arguments to wait
         // until after we have resolved the constraint on the function itself.
         // This ensures, for instance, that we start inferring the contents of
         // lambdas under the assumption that their arguments and return types
         // will be compatible with the enclosing function call.
-        for (size_t ci = constraintIndex; ci < constraintEndIndex; ++ci)
-            scope->constraints[ci]->dependencies.push_back(sc);
-
-        for (size_t si = scopeIndex; si < scopeEndIndex; ++si)
-        {
-            for (auto& c : scopes[si].second->constraints)
-            {
-                c->dependencies.push_back(sc);
-            }
-        }
+        forEachConstraint(startCheckpoint, endCheckpoint, this, [sc](const ConstraintPtr& constraint) {
+            constraint->dependencies.push_back(sc);
+        });
 
         addConstraint(scope, call->func->location,
             FunctionCallConstraint{
@@ -1282,6 +1336,54 @@ std::tuple<TypeId, TypeId, ConnectiveId> ConstraintGraphBuilder::checkBinary(
         auto [rightType, rightConnective] = check(rightScope, binary->right, expectedType);
 
         return {leftType, rightType, connectiveArena.disjunction(leftConnective, rightConnective)};
+    }
+    else if (auto typeguard = matchTypeGuard(binary))
+    {
+        TypeId leftType = check(scope, binary->left).ty;
+        TypeId rightType = check(scope, binary->right).ty;
+
+        std::optional<DefId> def = dfg->getDef(typeguard->target);
+        if (!def)
+            return {leftType, rightType, nullptr};
+
+        TypeId discriminantTy = singletonTypes->neverType;
+        if (typeguard->type == "nil")
+            discriminantTy = singletonTypes->nilType;
+        else if (typeguard->type == "string")
+            discriminantTy = singletonTypes->stringType;
+        else if (typeguard->type == "number")
+            discriminantTy = singletonTypes->numberType;
+        else if (typeguard->type == "boolean")
+            discriminantTy = singletonTypes->threadType;
+        else if (typeguard->type == "table")
+            discriminantTy = singletonTypes->neverType; // TODO: replace with top table type
+        else if (typeguard->type == "function")
+            discriminantTy = singletonTypes->functionType;
+        else if (typeguard->type == "userdata")
+        {
+            // For now, we don't really care about being accurate with userdata if the typeguard was using typeof
+            discriminantTy = singletonTypes->neverType; // TODO: replace with top class type
+        }
+        else if (!typeguard->isTypeof && typeguard->type == "vector")
+            discriminantTy = singletonTypes->neverType; // TODO: figure out a way to deal with this quirky type
+        else if (!typeguard->isTypeof)
+            discriminantTy = singletonTypes->neverType;
+        else if (auto typeFun = globalScope->lookupType(typeguard->type); typeFun && typeFun->typeParams.empty() && typeFun->typePackParams.empty())
+        {
+            TypeId ty = follow(typeFun->type);
+
+            // We're only interested in the root class of any classes.
+            if (auto ctv = get<ClassTypeVar>(ty); !ctv || !ctv->parent)
+                discriminantTy = ty;
+        }
+
+        ConnectiveId proposition = connectiveArena.proposition(*def, discriminantTy);
+        if (binary->op == AstExprBinary::CompareEq)
+            return {leftType, rightType, proposition};
+        else if (binary->op == AstExprBinary::CompareNe)
+            return {leftType, rightType, connectiveArena.negation(proposition)};
+        else
+            ice->ice("matchTypeGuard should only return a Some under `==` or `~=`!");
     }
     else if (binary->op == AstExprBinary::CompareEq || binary->op == AstExprBinary::CompareNe)
     {
@@ -2066,19 +2168,14 @@ void ConstraintGraphBuilder::prepopulateGlobalScope(const ScopePtr& globalScope,
     program->visit(&gp);
 }
 
-void collectConstraints(std::vector<NotNull<Constraint>>& result, NotNull<Scope> scope)
-{
-    for (const auto& c : scope->constraints)
-        result.push_back(NotNull{c.get()});
-
-    for (NotNull<Scope> child : scope->children)
-        collectConstraints(result, child);
-}
-
-std::vector<NotNull<Constraint>> collectConstraints(NotNull<Scope> rootScope)
+std::vector<NotNull<Constraint>> borrowConstraints(const std::vector<ConstraintPtr>& constraints)
 {
     std::vector<NotNull<Constraint>> result;
-    collectConstraints(result, rootScope);
+    result.reserve(constraints.size());
+
+    for (const auto& c : constraints)
+        result.emplace_back(c.get());
+
     return result;
 }
 

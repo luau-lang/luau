@@ -1002,8 +1002,6 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 {
-    ScopedFastFlag luauFixVarargExprHeadType{"LuauFixVarargExprHeadType", true};
-
     CheckResult result = check(R"(
         local function wrapReject<TArg, TResult>(fn: (self: any, ...TArg) -> ...TResult): (self: any, ...TArg) -> ...TResult
             return function(self, ...)

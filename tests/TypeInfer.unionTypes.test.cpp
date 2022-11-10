@@ -395,6 +395,23 @@ local e = a.z
     CHECK_EQ("Type 'A | B | C | D' does not have key 'z'", toString(result.errors[3]));
 }
 
+TEST_CASE_FIXTURE(Fixture, "optional_iteration")
+{
+    ScopedFastFlag luauNilIterator{"LuauNilIterator", true};
+
+    CheckResult result = check(R"(
+function foo(values: {number}?)
+    local s = 0
+    for _, value in values do
+        s += value
+    end
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Value of type '{number}?' could be nil", toString(result.errors[0]));
+}
+
 TEST_CASE_FIXTURE(Fixture, "unify_unsealed_table_union_check")
 {
     CheckResult result = check(R"(

@@ -32,8 +32,12 @@ constexpr RegisterX64 rNativeContext = r13; // NativeContext* context
 constexpr RegisterX64 rConstants = r12;     // TValue* k
 
 // Native code is as stackless as the interpreter, so we can place some data on the stack once and have it accessible at any point
-constexpr OperandX64 sClosure = qword[rbp + 0]; // Closure* cl
-constexpr OperandX64 sCode = qword[rbp + 8];    // Instruction* code
+// See CodeGenX64.cpp for layout
+constexpr unsigned kStackSize = 32 + 16; // 4 home locations for registers, 16 bytes for additional function call arguments
+constexpr unsigned kLocalsSize = 24;     // 3 extra slots for our custom locals (also aligns the stack to 16 byte boundary)
+
+constexpr OperandX64 sClosure = qword[rsp + kStackSize + 0]; // Closure* cl
+constexpr OperandX64 sCode = qword[rsp + kStackSize + 8];    // Instruction* code
 
 // TODO: These should be replaced with a portable call function that checks the ABI at runtime and reorders moves accordingly to avoid conflicts
 #if defined(_WIN32)
