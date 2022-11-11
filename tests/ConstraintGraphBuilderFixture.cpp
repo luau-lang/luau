@@ -21,13 +21,13 @@ void ConstraintGraphBuilderFixture::generateConstraints(const std::string& code)
         frontend.getGlobalScope(), &logger, NotNull{dfg.get()});
     cgb->visit(root);
     rootScope = cgb->rootScope;
-    constraints = Luau::collectConstraints(NotNull{cgb->rootScope});
+    constraints = Luau::borrowConstraints(cgb->constraints);
 }
 
 void ConstraintGraphBuilderFixture::solve(const std::string& code)
 {
     generateConstraints(code);
-    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, "MainModule", NotNull(&moduleResolver), {}, &logger};
+    ConstraintSolver cs{NotNull{&normalizer}, NotNull{rootScope}, constraints, "MainModule", NotNull(&moduleResolver), {}, &logger};
     cs.run();
 }
 

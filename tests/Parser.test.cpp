@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Parser.h"
 
+#include "AstQueryDsl.h"
 #include "Fixture.h"
 #include "ScopedFlags.h"
 
@@ -2773,6 +2774,70 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the
     REQUIRE(f != nullptr);
 
     CHECK(2 == f->generics.size);
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_between_table_members")
+{
+    ScopedFastFlag luauTableConstructorRecovery{"LuauTableConstructorRecovery", true};
+
+    ParseResult result = tryParse(R"(
+        local t = {
+            first = 1
+            second = 2,
+            third = 3,
+            fouth = 4,
+        }
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({3, 12}, {3, 18}) == result.errors[0].getLocation());
+    CHECK("Expected ',' after table constructor element" == result.errors[0].getMessage());
+
+    REQUIRE(1 == result.root->body.size);
+
+    AstExprTable* table = Luau::query<AstExprTable>(result.root);
+    REQUIRE(table);
+    CHECK(table->items.size == 4);
+}
+
+TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_after_last_table_member")
+{
+    ParseResult result = tryParse(R"(
+        local t = {
+            first = 1
+
+        local ok = true
+        local good = ok == true
+    )");
+
+    REQUIRE(1 == result.errors.size());
+
+    CHECK(Location({4, 8}, {4, 13}) == result.errors[0].getLocation());
+    CHECK("Expected '}' (to close '{' at line 2), got 'local'" == result.errors[0].getMessage());
+
+    REQUIRE(3 == result.root->body.size);
+
+    AstExprTable* table = Luau::query<AstExprTable>(result.root);
+    REQUIRE(table);
+    CHECK(table->items.size == 1);
+}
+
+TEST_CASE_FIXTURE(Fixture, "missing_default_type_pack_argument_after_variadic_type_parameter")
+{
+    ScopedFastFlag sff{"LuauParserErrorsOnMissingDefaultTypePackArgument", true};
+
+    ParseResult result = tryParse(R"(
+        type Foo<T... = > = nil
+    )");
+
+    REQUIRE_EQ(2, result.errors.size());
+
+    CHECK_EQ(Location{{1, 23}, {1, 25}}, result.errors[0].getLocation());
+    CHECK_EQ("Expected type, got '>'", result.errors[0].getMessage());
+
+    CHECK_EQ(Location{{1, 23}, {1, 24}}, result.errors[1].getLocation());
+    CHECK_EQ("Expected type pack after '=', got type", result.errors[1].getMessage());
 }
 
 TEST_SUITE_END();

@@ -14,9 +14,7 @@
 
 #include <algorithm>
 
-LUAU_FASTFLAG(LuauAnyifyModuleReturnGenerics)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
-LUAU_FASTFLAGVARIABLE(LuauForceExportSurfacesToBeNormal, false);
 LUAU_FASTFLAGVARIABLE(LuauClonePublicInterfaceLess, false);
 LUAU_FASTFLAG(LuauSubstitutionReentrant);
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution);
@@ -219,18 +217,6 @@ void Module::clonePublicInterface(NotNull<SingletonTypes> singletonTypes, Intern
                 tf = clonePublicInterface.cloneTypeFun(tf);
             else
                 tf = clone(tf, interfaceTypes, cloneState);
-        }
-    }
-
-    if (!FFlag::LuauAnyifyModuleReturnGenerics)
-    {
-        for (TypeId ty : returnType)
-        {
-            if (get<GenericTypeVar>(follow(ty)))
-            {
-                auto t = asMutable(ty);
-                t->ty = AnyTypeVar{};
-            }
         }
     }
 

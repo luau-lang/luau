@@ -13,11 +13,10 @@
 // https://refspecs.linuxbase.org/elf/x86_64-abi-0.99.pdf [System V Application Binary Interface (AMD64 Architecture Processor Supplement)]
 // Interaction between Dwarf2 and System V ABI can be found in sections '3.6.2 DWARF Register Number Mapping' and '4.2.4 EH_FRAME sections'
 
-// Call frame instruction opcodes
+// Call frame instruction opcodes (Dwarf2, page 78, ch. 7.23 figure 37)
 #define DW_CFA_advance_loc 0x40
 #define DW_CFA_offset 0x80
 #define DW_CFA_restore 0xc0
-#define DW_CFA_nop 0x00
 #define DW_CFA_set_loc 0x01
 #define DW_CFA_advance_loc1 0x02
 #define DW_CFA_advance_loc2 0x03
@@ -33,17 +32,11 @@
 #define DW_CFA_def_cfa_register 0x0d
 #define DW_CFA_def_cfa_offset 0x0e
 #define DW_CFA_def_cfa_expression 0x0f
-#define DW_CFA_expression 0x10
-#define DW_CFA_offset_extended_sf 0x11
-#define DW_CFA_def_cfa_sf 0x12
-#define DW_CFA_def_cfa_offset_sf 0x13
-#define DW_CFA_val_offset 0x14
-#define DW_CFA_val_offset_sf 0x15
-#define DW_CFA_val_expression 0x16
+#define DW_CFA_nop 0x00
 #define DW_CFA_lo_user 0x1c
 #define DW_CFA_hi_user 0x3f
 
-// Register numbers for x64
+// Register numbers for x64 (System V ABI, page 57, ch. 3.7, figure 3.36)
 #define DW_REG_RAX 0
 #define DW_REG_RDX 1
 #define DW_REG_RCX 2
@@ -197,7 +190,12 @@ void UnwindBuilderDwarf2::allocStack(int size)
 
 void UnwindBuilderDwarf2::setupFrameReg(RegisterX64 reg, int espOffset)
 {
-    // Not required for unwinding
+    if (espOffset != 0)
+        pos = advanceLocation(pos, 5); // REX.W lea rbp, [rsp + imm8]
+    else
+        pos = advanceLocation(pos, 3); // REX.W mov rbp, rsp
+
+    // Cfa is based on rsp, so no additonal commands are required
 }
 
 void UnwindBuilderDwarf2::finish()

@@ -79,6 +79,16 @@ TEST_CASE_FIXTURE(Fixture, "string_singleton_subtype")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "string_singleton_subtype_multi_assignment")
+{
+    CheckResult result = check(R"(
+        local a: "foo" = "foo"
+        local b: string, c: number = a, 10
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "function_call_with_singletons")
 {
     CheckResult result = check(R"(

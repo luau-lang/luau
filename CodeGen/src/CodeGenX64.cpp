@@ -14,15 +14,15 @@
  * Each line is 8 bytes, stack grows downwards.
  *
  * | ... previous frames ...
- * | rdx home space | (saved only on windows)
- * | rcx home space | (saved only on windows)
+ * | rdx home space | (unused)
+ * | rcx home space | (unused)
  * | return address |
- * | ... saved non-volatile registers ...
+ * | ... saved non-volatile registers ... <-- rsp + kStackSize + kLocalsSize
  * | unused         | for 16 byte alignment of the stack
  * | sCode          |
- * | sClosure       | <-- rbp points here
- * | argument 6     |
- * | argument 5     |
+ * | sClosure       | <-- rsp + kStackSize
+ * | argument 6     | <-- rsp + 40
+ * | argument 5     | <-- rsp + 32
  * | r9 home space  |
  * | r8 home space  |
  * | rdx home space |
@@ -48,28 +48,18 @@ bool initEntryFunction(NativeState& data)
 
     unwind.start();
 
-    if (build.abi == ABIX64::Windows)
-    {
-        // Place arguments in home space
-        build.mov(qword[rsp + 16], rArg2);
-        unwind.spill(16, rArg2);
-        build.mov(qword[rsp + 8], rArg1);
-        unwind.spill(8, rArg1);
-
-        // Save non-volatile registers that are specific to Windows x64 ABI
-        build.push(rdi);
-        unwind.save(rdi);
-        build.push(rsi);
-        unwind.save(rsi);
-
-        // Once we start using non-volatile SIMD registers, we will save those here
-    }
-
     // Save common non-volatile registers
-    build.push(rbx);
-    unwind.save(rbx);
     build.push(rbp);
     unwind.save(rbp);
+
+    if (build.abi == ABIX64::SystemV)
+    {
+        build.mov(rbp, rsp);
+        unwind.setupFrameReg(rbp, 0);
+    }
+
+    build.push(rbx);
+    unwind.save(rbx);
     build.push(r12);
     unwind.save(r12);
     build.push(r13);
@@ -79,16 +69,20 @@ bool initEntryFunction(NativeState& data)
     build.push(r15);
     unwind.save(r15);
 
-    int stacksize = 32 + 16; // 4 home locations for registers, 16 bytes for additional function call arguments
-    int localssize = 24;     // 3 local pointers that also correctly align the stack
+    if (build.abi == ABIX64::Windows)
+    {
+        // Save non-volatile registers that are specific to Windows x64 ABI
+        build.push(rdi);
+        unwind.save(rdi);
+        build.push(rsi);
+        unwind.save(rsi);
+
+        // TODO: once we start using non-volatile SIMD registers on Windows, we will save those here
+    }
 
     // Allocate stack space (reg home area + local data)
-    build.sub(rsp, stacksize + localssize);
-    unwind.allocStack(stacksize + localssize);
-
-    // Setup frame pointer
-    build.lea(rbp, qword[rsp + stacksize]);
-    unwind.setupFrameReg(rbp, stacksize);
+    build.sub(rsp, kStackSize + kLocalsSize);
+    unwind.allocStack(kStackSize + kLocalsSize);
 
     unwind.finish();
 
@@ -113,13 +107,7 @@ bool initEntryFunction(NativeState& data)
     Label returnOff = build.setLabel();
 
     // Cleanup and exit
-    build.lea(rsp, qword[rbp + localssize]);
-    build.pop(r15);
-    build.pop(r14);
-    build.pop(r13);
-    build.pop(r12);
-    build.pop(rbp);
-    build.pop(rbx);
+    build.add(rsp, kStackSize + kLocalsSize);
 
     if (build.abi == ABIX64::Windows)
     {
@@ -127,6 +115,12 @@ bool initEntryFunction(NativeState& data)
         build.pop(rdi);
     }
 
+    build.pop(r15);
+    build.pop(r14);
+    build.pop(r13);
+    build.pop(r12);
+    build.pop(rbx);
+    build.pop(rbp);
     build.ret();
 
     build.finalize();

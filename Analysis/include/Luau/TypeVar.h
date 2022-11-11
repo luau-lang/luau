@@ -115,6 +115,7 @@ struct PrimitiveTypeVar
         Number,
         String,
         Thread,
+        Function,
     };
 
     Type type;
@@ -504,14 +505,6 @@ struct NeverTypeVar
 {
 };
 
-// Invariant 1: there should never be a reason why such UseTypeVar exists without it mapping to another type.
-// Invariant 2: UseTypeVar should always disappear across modules.
-struct UseTypeVar
-{
-    DefId def;
-    NotNull<Scope> scope;
-};
-
 // ~T
 // TODO: Some simplification step that overwrites the type graph to make sure negation
 // types disappear from the user's view, and (?) a debug flag to disable that
@@ -522,9 +515,9 @@ struct NegationTypeVar
 
 using ErrorTypeVar = Unifiable::Error;
 
-using TypeVariant = Unifiable::Variant<TypeId, PrimitiveTypeVar, BlockedTypeVar, PendingExpansionTypeVar, SingletonTypeVar, FunctionTypeVar,
-    TableTypeVar, MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar,
-    UseTypeVar, NegationTypeVar>;
+using TypeVariant =
+    Unifiable::Variant<TypeId, PrimitiveTypeVar, BlockedTypeVar, PendingExpansionTypeVar, SingletonTypeVar, FunctionTypeVar, TableTypeVar,
+        MetatableTypeVar, ClassTypeVar, AnyTypeVar, UnionTypeVar, IntersectionTypeVar, LazyTypeVar, UnknownTypeVar, NeverTypeVar, NegationTypeVar>;
 
 struct TypeVar final
 {
@@ -644,13 +637,14 @@ public:
     const TypeId stringType;
     const TypeId booleanType;
     const TypeId threadType;
+    const TypeId functionType;
     const TypeId trueType;
     const TypeId falseType;
     const TypeId anyType;
     const TypeId unknownType;
     const TypeId neverType;
     const TypeId errorType;
-    const TypeId falsyType; // No type binding!
+    const TypeId falsyType;  // No type binding!
     const TypeId truthyType; // No type binding!
 
     const TypePackId anyTypePack;

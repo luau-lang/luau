@@ -6,8 +6,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("UnionTypes");
@@ -199,10 +197,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_missing_property")
     CHECK_EQ(mup->missing[0], *bTy);
     CHECK_EQ(mup->key, "x");
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("r")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("r")));
+    CHECK_EQ("*error-type*", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_a_union_type_with_one_property_of_type_any")
@@ -398,6 +393,23 @@ local e = a.z
     CHECK_EQ("Key 'y' is missing from 'C', 'D' in the type 'A | B | C | D'", toString(result.errors[2]));
 
     CHECK_EQ("Type 'A | B | C | D' does not have key 'z'", toString(result.errors[3]));
+}
+
+TEST_CASE_FIXTURE(Fixture, "optional_iteration")
+{
+    ScopedFastFlag luauNilIterator{"LuauNilIterator", true};
+
+    CheckResult result = check(R"(
+function foo(values: {number}?)
+    local s = 0
+    for _, value in values do
+        s += value
+    end
+end
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK_EQ("Value of type '{number}?' could be nil", toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "unify_unsealed_table_union_check")

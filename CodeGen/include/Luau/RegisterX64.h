@@ -128,5 +128,10 @@ constexpr RegisterX64 dwordReg(RegisterX64 reg)
     return RegisterX64{SizeX64::dword, reg.index};
 }
 
+constexpr RegisterX64 qwordReg(RegisterX64 reg)
+{
+    return RegisterX64{SizeX64::qword, reg.index};
+}
+
 } // namespace CodeGen
 } // namespace Luau

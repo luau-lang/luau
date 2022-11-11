@@ -8,7 +8,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("BuiltinTests");
@@ -58,7 +57,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "next_iterator_should_infer_types_and_type_ch
 
         local s = "foo"
         local t = { [s] = 1 }
-        local c: string, d: number = next(t)
+        local c: string?, d: number = next(t)
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
@@ -70,7 +69,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "pairs_iterator_should_infer_types_and_type_c
         type Map<K, V> = { [K]: V }
         local map: Map<string, number> = { ["foo"] = 1, ["bar"] = 2, ["baz"] = 3 }
 
-        local it: (Map<string, number>, string | nil) -> (string, number), t: Map<string, number>, i: nil = pairs(map)
+        local it: (Map<string, number>, string | nil) -> (string?, number), t: Map<string, number>, i: nil = pairs(map)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -82,7 +81,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "ipairs_iterator_should_infer_types_and_type_
         type Map<K, V> = { [K]: V }
         local array: Map<number, string> = { "foo", "bar", "baz" }
 
-        local it: (Map<number, string>, number) -> (number, string), t: Map<number, string>, i: number = ipairs(array)
+        local it: (Map<number, string>, number) -> (number?, string), t: Map<number, string>, i: number = ipairs(array)
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
@@ -685,7 +684,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauSpecialTypesAsterisked)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("string", toString(requireType("foo")));
         CHECK_EQ("*error-type*", toString(requireType("bar")));
@@ -714,7 +713,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution && FFlag::LuauSpecialTypesAsterisked)
+    if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("string", toString(requireType("foo")));
         CHECK_EQ("string", toString(requireType("bar")));
@@ -1016,10 +1015,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_freeze_is_generic")
     CHECK_EQ("number", toString(requireType("a")));
     CHECK_EQ("string", toString(requireType("b")));
     CHECK_EQ("boolean", toString(requireType("c")));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireType("d")));
-    else
-        CHECK_EQ("<error-type>", toString(requireType("d")));
+    CHECK_EQ("*error-type*", toString(requireType("d")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "set_metatable_needs_arguments")

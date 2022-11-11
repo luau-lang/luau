@@ -7,7 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 using namespace Luau;
@@ -36,7 +35,7 @@ std::optional<WithPredicate<TypePackId>> magicFunctionInstanceIsA(
     return WithPredicate<TypePackId>{booleanPack, {IsAPredicate{std::move(*lvalue), expr.location, tfun->type}}};
 }
 
-struct RefinementClassFixture : Fixture
+struct RefinementClassFixture : BuiltinsFixture
 {
     RefinementClassFixture()
     {
@@ -127,7 +126,7 @@ TEST_CASE_FIXTURE(Fixture, "invert_is_truthy_constraint")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("(string?) & ~~(false?)", toString(requireTypeAtPosition({3, 26})));
-        CHECK_EQ("(string?) & ~~~(false?)", toString(requireTypeAtPosition({5, 26})));
+        CHECK_EQ("(string?) & ~(false?)", toString(requireTypeAtPosition({5, 26})));
     }
     else
     {
@@ -153,7 +152,7 @@ TEST_CASE_FIXTURE(Fixture, "parenthesized_expressions_are_followed_through")
     if (FFlag::DebugLuauDeferredConstraintResolution)
     {
         CHECK_EQ("(string?) & ~~(false?)", toString(requireTypeAtPosition({3, 26})));
-        CHECK_EQ("(string?) & ~~~(false?)", toString(requireTypeAtPosition({5, 26})));
+        CHECK_EQ("(string?) & ~(false?)", toString(requireTypeAtPosition({5, 26})));
     }
     else
     {
@@ -178,8 +177,16 @@ TEST_CASE_FIXTURE(Fixture, "and_constraint")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("string", toString(requireTypeAtPosition({3, 26})));
-    CHECK_EQ("number", toString(requireTypeAtPosition({4, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & ~(false?)", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("(number?) & ~(false?)", toString(requireTypeAtPosition({4, 26})));
+    }
+    else
+    {
+        CHECK_EQ("string", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("number", toString(requireTypeAtPosition({4, 26})));
+    }
 
     CHECK_EQ("string?", toString(requireTypeAtPosition({6, 26})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({7, 26})));
@@ -204,8 +211,16 @@ TEST_CASE_FIXTURE(Fixture, "not_and_constraint")
     CHECK_EQ("string?", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 26})));
 
-    CHECK_EQ("string", toString(requireTypeAtPosition({6, 26})));
-    CHECK_EQ("number", toString(requireTypeAtPosition({7, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & ~(false?)", toString(requireTypeAtPosition({6, 26})));
+        CHECK_EQ("(number?) & ~(false?)", toString(requireTypeAtPosition({7, 26})));
+    }
+    else
+    {
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 26})));
+        CHECK_EQ("number", toString(requireTypeAtPosition({7, 26})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "or_predicate_with_truthy_predicates")
@@ -227,8 +242,56 @@ TEST_CASE_FIXTURE(Fixture, "or_predicate_with_truthy_predicates")
     CHECK_EQ("string?", toString(requireTypeAtPosition({3, 26})));
     CHECK_EQ("number?", toString(requireTypeAtPosition({4, 26})));
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({6, 26})));
-    CHECK_EQ("nil", toString(requireTypeAtPosition({7, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & ~~(false?)", toString(requireTypeAtPosition({6, 26})));
+        CHECK_EQ("(number?) & ~~(false?)", toString(requireTypeAtPosition({7, 26})));
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({6, 26})));
+        CHECK_EQ("nil", toString(requireTypeAtPosition({7, 26})));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "a_and_b_or_a_and_c")
+{
+    CheckResult result = check(R"(
+        function f(a: string?, b: number?, c: boolean)
+            if (a and b) or (a and c) then
+                local foo = a
+                local bar = b
+                local baz = c
+            else
+                local foo = a
+                local bar = b
+                local baz = c
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string?) & (~(false?) | ~(false?))", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("number?", toString(requireTypeAtPosition({4, 28})));
+        CHECK_EQ("boolean", toString(requireTypeAtPosition({5, 28})));
+
+        CHECK_EQ("string?", toString(requireTypeAtPosition({7, 28})));
+        CHECK_EQ("number?", toString(requireTypeAtPosition({8, 28})));
+        CHECK_EQ("boolean", toString(requireTypeAtPosition({9, 28})));
+    }
+    else
+    {
+        CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("number?", toString(requireTypeAtPosition({4, 28})));
+        CHECK_EQ("true", toString(requireTypeAtPosition({5, 28}))); // oh no! :(
+
+        CHECK_EQ("string?", toString(requireTypeAtPosition({7, 28})));
+        CHECK_EQ("number?", toString(requireTypeAtPosition({8, 28})));
+        CHECK_EQ("boolean", toString(requireTypeAtPosition({9, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "type_assertion_expr_carry_its_constraints")
@@ -244,11 +307,20 @@ TEST_CASE_FIXTURE(Fixture, "type_assertion_expr_carry_its_constraints")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
-    CHECK_EQ("string", toString(requireTypeAtPosition({4, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("number?", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("string?", toString(requireTypeAtPosition({4, 26})));
+    }
+    else
+    {
+        // We're going to drop support for type refinements through type assertions.
+        CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({4, 26})));
+    }
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_in_if_condition_position")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_if_condition_position")
 {
     CheckResult result = check(R"(
         function f(s: any)
@@ -260,7 +332,14 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_in_if_condition_position")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("any & number", toString(requireTypeAtPosition({3, 26})));
+    }
+    else
+    {
+        CHECK_EQ("number", toString(requireTypeAtPosition({3, 26})));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
@@ -272,10 +351,11 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_in_assert_position")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+
     REQUIRE_EQ("number", toString(requireType("b")));
 }
 
-TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
+TEST_CASE_FIXTURE(BuiltinsFixture, "call_an_incompatible_function_after_using_typeguard")
 {
     CheckResult result = check(R"(
         local function f(x: number)
@@ -290,6 +370,7 @@ TEST_CASE_FIXTURE(Fixture, "call_a_more_specific_function_using_typeguard")
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+
     CHECK_EQ("Type 'string' could not be converted into 'number'", toString(result.errors[0]));
 }
 
@@ -381,11 +462,22 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_another_lvalue")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "(number | string)?"); // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?");           // a == b
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "((number | string)?) & (boolean?)"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "((number | string)?) & (boolean?)"); // a == b
 
-    CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "(number | string)?"); // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?");           // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "((number | string)?) & unknown"); // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "(boolean?) & unknown");           // a ~= b
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "(number | string)?"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?");           // a == b
+
+        CHECK_EQ(toString(requireTypeAtPosition({5, 33})), "(number | string)?"); // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({5, 36})), "boolean?");           // a ~= b
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
@@ -402,8 +494,16 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_equal_to_a_term")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "((number | string)?) & number");  // a == 1
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "((number | string)?) & unknown"); // a ~= 1
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "(number | string)?"); // a == 1;
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= 1
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
@@ -420,8 +520,16 @@ TEST_CASE_FIXTURE(Fixture, "term_is_equal_to_an_lvalue")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), R"("hello")");         // a == "hello"
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a ~= "hello"
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), R"("hello" & ((number | string)?))");  // a == "hello"
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), R"(((number | string)?) & ~"hello")"); // a ~= "hello"
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), R"("hello")");            // a == "hello"
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), R"((number | string)?)"); // a ~= "hello"
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
@@ -438,8 +546,16 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_is_not_nil")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
-    CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "((number | string)?) & ~nil"); // a ~= nil
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "((number | string)?) & nil");  // a == nil
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 28})), "number | string");    // a ~= nil
+        CHECK_EQ(toString(requireTypeAtPosition({5, 28})), "(number | string)?"); // a == nil
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
@@ -454,8 +570,17 @@ TEST_CASE_FIXTURE(Fixture, "free_type_is_equal_to_an_lvalue")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        ToStringOptions opts;
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33}), opts), "(string?) & a"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36}), opts), "(string?) & a"); // a == b
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "a");       // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "string?"); // a == b
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_equal")
@@ -470,8 +595,16 @@ TEST_CASE_FIXTURE(Fixture, "unknown_lvalue_is_not_synonymous_with_other_on_not_e
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any & unknown");                // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "({| x: number |}?) & unknown"); // a ~= b
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "any");              // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "{| x: number |}?"); // a ~= b
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
@@ -490,11 +623,22 @@ TEST_CASE_FIXTURE(Fixture, "string_not_equal_to_string_or_nil")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ(toString(requireTypeAtPosition({6, 29})), "string");  // a ~= b
-    CHECK_EQ(toString(requireTypeAtPosition({6, 32})), "string?"); // a ~= b
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({6, 29})), "string & unknown");    // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({6, 32})), "(string?) & unknown"); // a ~= b
 
-    CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
-    CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "(string?) & string"); // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "(string?) & string"); // a == b
+    }
+    else
+    {
+        CHECK_EQ(toString(requireTypeAtPosition({6, 29})), "string");  // a ~= b
+        CHECK_EQ(toString(requireTypeAtPosition({6, 32})), "string?"); // a ~= b
+
+        CHECK_EQ(toString(requireTypeAtPosition({8, 29})), "string");  // a == b
+        CHECK_EQ(toString(requireTypeAtPosition({8, 32})), "string?"); // a == b
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
@@ -513,7 +657,7 @@ TEST_CASE_FIXTURE(Fixture, "narrow_property_of_a_bounded_variable")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_narrow_to_vector")
 {
     CheckResult result = check(R"(
         local function f(x)
@@ -525,13 +669,10 @@ TEST_CASE_FIXTURE(Fixture, "type_narrow_to_vector")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
-    else
-        CHECK_EQ("<error-type>", toString(requireTypeAtPosition({3, 28})));
+    CHECK_EQ("*error-type*", toString(requireTypeAtPosition({3, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
+TEST_CASE_FIXTURE(BuiltinsFixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true")
 {
     CheckResult result = check(R"(
         local t = {"hello"}
@@ -558,7 +699,7 @@ TEST_CASE_FIXTURE(Fixture, "nonoptional_type_can_narrow_to_nil_if_sense_is_true"
     CHECK_EQ("string", toString(requireTypeAtPosition({12, 24}))); // equivalent to type(v) ~= "nil"
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_not_to_be_string")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_not_to_be_string")
 {
     CheckResult result = check(R"(
         local function f(x: string | number | boolean)
@@ -572,11 +713,19 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_not_to_be_string")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("boolean | number", toString(requireTypeAtPosition({3, 28}))); // type(x) ~= "string"
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));           // type(x) == "string"
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(boolean | number | string) & ~string", toString(requireTypeAtPosition({3, 28}))); // type(x) ~= "string"
+        CHECK_EQ("(boolean | number | string) & string", toString(requireTypeAtPosition({5, 28})));  // type(x) == "string"
+    }
+    else
+    {
+        CHECK_EQ("boolean | number", toString(requireTypeAtPosition({3, 28}))); // type(x) ~= "string"
+        CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));           // type(x) == "string"
+    }
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_table")
 {
     CheckResult result = check(R"(
         local function f(x: string | {x: number} | {y: boolean})
@@ -594,7 +743,7 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_table")
     CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));                             // type(x) ~= "table"
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_functions")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_narrows_for_functions")
 {
     CheckResult result = check(R"(
         local function weird(x: string | ((number) -> string))
@@ -608,11 +757,19 @@ TEST_CASE_FIXTURE(Fixture, "typeguard_narrows_for_functions")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("(number) -> string", toString(requireTypeAtPosition({3, 28}))); // type(x) == "function"
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));             // type(x) ~= "function"
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(((number) -> string) | string) & function", toString(requireTypeAtPosition({3, 28})));  // type(x) == "function"
+        CHECK_EQ("(((number) -> string) | string) & ~function", toString(requireTypeAtPosition({5, 28}))); // type(x) ~= "function"
+    }
+    else
+    {
+        CHECK_EQ("(number) -> string", toString(requireTypeAtPosition({3, 28}))); // type(x) == "function"
+        CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));             // type(x) ~= "function"
+    }
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_can_filter_for_intersection_of_tables")
 {
     CheckResult result = check(R"(
         type XYCoord = {x: number} & {y: number}
@@ -631,7 +788,7 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_intersection_of_tables")
     CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_can_filter_for_overloaded_function")
 {
     CheckResult result = check(R"(
         type SomeOverloadedFunction = ((number) -> string) & ((string) -> number)
@@ -646,8 +803,16 @@ TEST_CASE_FIXTURE(Fixture, "type_guard_can_filter_for_overloaded_function")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("((number) -> string) & ((string) -> number)", toString(requireTypeAtPosition({4, 28})));
-    CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("((((number) -> string) & ((string) -> number))?) & function", toString(requireTypeAtPosition({4, 28})));
+        CHECK_EQ("((((number) -> string) & ((string) -> number))?) & ~function", toString(requireTypeAtPosition({6, 28})));
+    }
+    else
+    {
+        CHECK_EQ("((number) -> string) & ((string) -> number)", toString(requireTypeAtPosition({4, 28})));
+        CHECK_EQ("nil", toString(requireTypeAtPosition({6, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_guard_narrowed_into_nothingness")
@@ -715,8 +880,16 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(number?) & ~~(false?)", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(number?) & ~~(false?)", toString(requireTypeAtPosition({4, 28})));
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b2")
@@ -732,11 +905,19 @@ TEST_CASE_FIXTURE(Fixture, "not_a_and_not_b2")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(number?) & ~~(false?)", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(number?) & ~~(false?)", toString(requireTypeAtPosition({4, 28})));
+    }
+    else
+    {
+        CHECK_EQ("nil", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("nil", toString(requireTypeAtPosition({4, 28})));
+    }
 }
 
-TEST_CASE_FIXTURE(Fixture, "either_number_or_string")
+TEST_CASE_FIXTURE(BuiltinsFixture, "either_number_or_string")
 {
     CheckResult result = check(R"(
         local function f(x: any)
@@ -748,7 +929,14 @@ TEST_CASE_FIXTURE(Fixture, "either_number_or_string")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("number | string", toString(requireTypeAtPosition({3, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(number | string) & any", toString(requireTypeAtPosition({3, 28})));
+    }
+    else
+    {
+        CHECK_EQ("number | string", toString(requireTypeAtPosition({3, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "not_t_or_some_prop_of_t")
@@ -798,10 +986,17 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "merge_should_be_fully_agnostic_of_hashmap_or
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("string", toString(requireTypeAtPosition({6, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(string | {| x: string |}) & string", toString(requireTypeAtPosition({6, 28})));
+    }
+    else
+    {
+        CHECK_EQ("string", toString(requireTypeAtPosition({6, 28})));
+    }
 }
 
-TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_number_or_string")
+TEST_CASE_FIXTURE(BuiltinsFixture, "refine_the_correct_types_opposite_of_when_a_is_not_number_or_string")
 {
     CheckResult result = check(R"(
         local function f(a: string | number | boolean)
@@ -815,8 +1010,16 @@ TEST_CASE_FIXTURE(Fixture, "refine_the_correct_types_opposite_of_when_a_is_not_n
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("boolean", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(boolean | number | string) & ~number & ~string", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(boolean | number | string) & (number | string)", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("boolean", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("number | string", toString(requireTypeAtPosition({5, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "is_truthy_constraint_ifelse_expression")
@@ -847,7 +1050,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "invert_is_truthy_constraint_ifelse_expressio
     CHECK_EQ("string", toString(requireTypeAtPosition({2, 50})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "type_comparison_ifelse_expression")
+TEST_CASE_FIXTURE(BuiltinsFixture, "type_comparison_ifelse_expression")
 {
     CheckResult result = check(R"(
         function returnOne(x)
@@ -879,7 +1082,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_lookup_a_shadowed_local_that_which
     CHECK_EQ("Type 'number' does not have key 'sub'", toString(result.errors[0]));
 }
 
-TEST_CASE_FIXTURE(Fixture, "correctly_lookup_property_whose_base_was_previously_refined")
+TEST_CASE_FIXTURE(BuiltinsFixture, "correctly_lookup_property_whose_base_was_previously_refined")
 {
     CheckResult result = check(R"(
         type T = {x: string | number}
@@ -1098,8 +1301,16 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "typeguard_cast_instance_or_vector3_to
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("Vector3", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(Instance | Vector3) & Vector3", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(Instance | Vector3) & ~Vector3", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("Vector3", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("Instance", toString(requireTypeAtPosition({5, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "type_narrow_for_all_the_userdata")
@@ -1134,14 +1345,22 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "eliminate_subclasses_of_instance")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(Folder | Part | string) & Instance", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(Folder | Part | string) & ~Instance", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("string", toString(requireTypeAtPosition({5, 28})));
+    }
 }
 
-TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
+TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_from_subclasses_of_instance_or_string_or_vector3")
 {
     CheckResult result = check(R"(
-        local function f(x: Part | Folder | Instance | string | Vector3 | any)
+        local function f(x: Part | Folder | string | Vector3)
             if typeof(x) == "Instance" then
                 local foo = x
             else
@@ -1152,8 +1371,16 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "narrow_this_large_union")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("Folder | Instance | Part", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("Vector3 | any | string", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("(Folder | Part | Vector3 | string) & Instance", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("(Folder | Part | Vector3 | string) & ~Instance", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("Folder | Part", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("Vector3 | string", toString(requireTypeAtPosition({5, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(RefinementClassFixture, "x_as_any_if_x_is_instance_elseif_x_is_table")
@@ -1194,7 +1421,7 @@ TEST_CASE_FIXTURE(RefinementClassFixture, "x_is_not_instance_or_else_not_part")
     CHECK_EQ("Part", toString(requireTypeAtPosition({5, 28})));
 }
 
-TEST_CASE_FIXTURE(Fixture, "typeguard_doesnt_leak_to_elseif")
+TEST_CASE_FIXTURE(BuiltinsFixture, "typeguard_doesnt_leak_to_elseif")
 {
     CheckResult result = check(R"(
         function f(a)
@@ -1225,8 +1452,16 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "refine_unknowns")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
-    CHECK_EQ("unknown", toString(requireTypeAtPosition({5, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("unknown & string", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("unknown & ~string", toString(requireTypeAtPosition({5, 28})));
+    }
+    else
+    {
+        CHECK_EQ("string", toString(requireTypeAtPosition({3, 28})));
+        CHECK_EQ("unknown", toString(requireTypeAtPosition({5, 28})));
+    }
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "falsiness_of_TruthyPredicate_narrows_into_nil")
@@ -1260,7 +1495,35 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "what_nonsensical_condition")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("a & number & string", toString(requireTypeAtPosition({3, 28})));
+    }
+    else
+    {
+        CHECK_EQ("never", toString(requireTypeAtPosition({3, 28})));
+    }
+}
+
+TEST_CASE_FIXTURE(Fixture, "else_with_no_explicit_expression_should_also_refine_the_tagged_union")
+{
+    ScopedFastFlag sff{"LuauImplicitElseRefinement", true};
+
+    CheckResult result = check(R"(
+        type Ok<T> = { tag: "ok", value: T }
+        type Err<E> = { tag: "err", err: E }
+        type Result<T, E> = Ok<T> | Err<E>
+
+        function and_then<T, U, E>(r: Result<T, E>, f: (T) -> U): Result<U, E>
+            if r.tag == "ok" then
+                return { tag = "ok", value = f(r.value) }
+            else
+                return r
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_SUITE_END();

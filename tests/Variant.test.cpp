@@ -217,4 +217,35 @@ TEST_CASE("Visit")
     CHECK(r3 == "1231147");
 }
 
+struct MoveOnly
+{
+    MoveOnly() = default;
+
+    MoveOnly(const MoveOnly&) = delete;
+    MoveOnly& operator=(const MoveOnly&) = delete;
+
+    MoveOnly(MoveOnly&&) = default;
+    MoveOnly& operator=(MoveOnly&&) = default;
+};
+
+TEST_CASE("Move")
+{
+    Variant<MoveOnly> v1 = MoveOnly{};
+    Variant<MoveOnly> v2 = std::move(v1);
+}
+
+TEST_CASE("MoveWithCopyableAlternative")
+{
+    Variant<std::string, MoveOnly> v1 = std::string{"Hello, world! I am longer than a normal hello world string to avoid SSO."};
+    Variant<std::string, MoveOnly> v2 = std::move(v1);
+
+    std::string* s1 = get_if<std::string>(&v1);
+    REQUIRE(s1);
+    CHECK(*s1 == "");
+
+    std::string* s2 = get_if<std::string>(&v2);
+    REQUIRE(s2);
+    CHECK(*s2 == "Hello, world! I am longer than a normal hello world string to avoid SSO.");
+}
+
 TEST_SUITE_END();

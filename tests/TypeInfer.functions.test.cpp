@@ -15,7 +15,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping);
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked);
 
 TEST_SUITE_BEGIN("TypeInferFunctions");
 
@@ -533,7 +532,7 @@ TEST_CASE_FIXTURE(Fixture, "infer_higher_order_function")
     REQUIRE_EQ(2, argVec.size());
 
     const FunctionTypeVar* fType = get<FunctionTypeVar>(follow(argVec[0]));
-    REQUIRE(fType != nullptr);
+    REQUIRE_MESSAGE(fType != nullptr, "Expected a function but got " << toString(argVec[0]));
 
     std::vector<TypeId> fArgs = flatten(fType->argTypes).first;
 
@@ -980,19 +979,13 @@ TEST_CASE_FIXTURE(Fixture, "function_cast_error_uses_correct_language")
     REQUIRE(tm1);
 
     CHECK_EQ("(string) -> number", toString(tm1->wantedType));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("(string, *error-type*) -> number", toString(tm1->givenType));
-    else
-        CHECK_EQ("(string, <error-type>) -> number", toString(tm1->givenType));
+    CHECK_EQ("(string, *error-type*) -> number", toString(tm1->givenType));
 
     auto tm2 = get<TypeMismatch>(result.errors[1]);
     REQUIRE(tm2);
 
     CHECK_EQ("(number, number) -> (number, number)", toString(tm2->wantedType));
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("(string, *error-type*) -> number", toString(tm2->givenType));
-    else
-        CHECK_EQ("(string, <error-type>) -> number", toString(tm2->givenType));
+    CHECK_EQ("(string, *error-type*) -> number", toString(tm2->givenType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_lossy_function_type")
@@ -1538,20 +1531,10 @@ function t:b() return 2 end -- not OK
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    if (FFlag::LuauSpecialTypesAsterisked)
-    {
-        CHECK_EQ(R"(Type '(*error-type*) -> number' could not be converted into '() -> number'
+    CHECK_EQ(R"(Type '(*error-type*) -> number' could not be converted into '() -> number'
 caused by:
   Argument count mismatch. Function expects 1 argument, but none are specified)",
-            toString(result.errors[0]));
-    }
-    else
-    {
-        CHECK_EQ(R"(Type '(<error-type>) -> number' could not be converted into '() -> number'
-caused by:
-  Argument count mismatch. Function expects 1 argument, but none are specified)",
-            toString(result.errors[0]));
-    }
+        toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "too_few_arguments_variadic")
@@ -1779,7 +1762,72 @@ z = y -- Not OK, so the line is colorable
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '((\"blue\" | \"red\") -> (\"blue\" | \"red\") -> (\"blue\" | \"red\") -> boolean) & ((\"blue\" | \"red\") -> (\"blue\") -> (\"blue\") -> false) & ((\"blue\" | \"red\") -> (\"red\") -> (\"red\") -> false) & ((\"blue\") -> (\"blue\") -> (\"blue\" | \"red\") -> false) & ((\"red\") -> (\"red\") -> (\"blue\" | \"red\") -> false)' could not be converted into '(\"blue\" | \"red\") -> (\"blue\" | \"red\") -> (\"blue\" | \"red\") -> false'; none of the intersection parts are compatible");
+    CHECK_EQ(toString(result.errors[0]),
+        "Type '((\"blue\" | \"red\") -> (\"blue\" | \"red\") -> (\"blue\" | \"red\") -> boolean) & ((\"blue\" | \"red\") -> (\"blue\") -> (\"blue\") "
+        "-> false) & ((\"blue\" | \"red\") -> (\"red\") -> (\"red\") -> false) & ((\"blue\") -> (\"blue\") -> (\"blue\" | \"red\") -> false) & "
+        "((\"red\") -> (\"red\") -> (\"blue\" | \"red\") -> false)' could not be converted into '(\"blue\" | \"red\") -> (\"blue\" | \"red\") -> "
+        "(\"blue\" | \"red\") -> false'; none of the intersection parts are compatible");
+}
+
+TEST_CASE_FIXTURE(Fixture, "function_is_supertype_of_concrete_functions")
+{
+    ScopedFastFlag sff{"LuauNegatedFunctionTypes", true};
+    registerHiddenTypes(*this, frontend.globalTypes);
+
+    CheckResult result = check(R"(
+        function foo(f: fun) end
+
+        function a() end
+        function id(x) return x end
+
+        foo(a)
+        foo(id)
+        foo(foo)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "concrete_functions_are_not_supertypes_of_function")
+{
+    ScopedFastFlag sff{"LuauNegatedFunctionTypes", true};
+    registerHiddenTypes(*this, frontend.globalTypes);
+
+    CheckResult result = check(R"(
+        local a: fun = function() end
+
+        function one(arg: () -> ()) end
+        function two(arg: <T>(T) -> T) end
+
+        one(a)
+        two(a)
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+
+    CHECK(6 == result.errors[0].location.begin.line);
+    CHECK(7 == result.errors[1].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(Fixture, "other_things_are_not_related_to_function")
+{
+    ScopedFastFlag sff{"LuauNegatedFunctionTypes", true};
+    registerHiddenTypes(*this, frontend.globalTypes);
+
+    CheckResult result = check(R"(
+        local a: fun = function() end
+        local b: {} = a
+        local c: boolean = a
+        local d: fun = true
+        local e: fun = {}
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(4, result);
+
+    CHECK(2 == result.errors[0].location.begin.line);
+    CHECK(3 == result.errors[1].location.begin.line);
+    CHECK(4 == result.errors[2].location.begin.line);
+    CHECK(5 == result.errors[3].location.begin.line);
 }
 
 TEST_SUITE_END();

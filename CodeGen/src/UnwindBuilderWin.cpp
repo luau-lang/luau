@@ -77,7 +77,11 @@ void UnwindBuilderWin::setupFrameReg(RegisterX64 reg, int espOffset)
     frameReg = reg;
     frameRegOffset = uint8_t(espOffset / 16);
 
-    prologSize += 5; // REX.W lea rbp, [rsp + imm8]
+    if (espOffset != 0)
+        prologSize += 5; // REX.W lea rbp, [rsp + imm8]
+    else
+        prologSize += 3; // REX.W mov rbp, rsp
+
     unwindCodes.push_back({prologSize, UWOP_SET_FPREG, frameRegOffset});
 }
 

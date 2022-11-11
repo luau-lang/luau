@@ -132,15 +132,16 @@ struct HasPropConstraint
     std::string prop;
 };
 
-struct RefinementConstraint
+// result ~ if isSingleton D then ~D else unknown where D = discriminantType
+struct SingletonOrTopTypeConstraint
 {
-    DefId def;
+    TypeId resultType;
     TypeId discriminantType;
 };
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
     BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint,
-    HasPropConstraint, RefinementConstraint>;
+    HasPropConstraint, SingletonOrTopTypeConstraint>;
 
 struct Constraint
 {

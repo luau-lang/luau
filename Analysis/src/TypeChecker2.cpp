@@ -301,7 +301,6 @@ struct TypeChecker2
         UnifierSharedState sharedState{&ice};
         Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
-        u.anyIsTop = true;
 
         u.tryUnify(actualRetType, expectedRetType);
         const bool ok = u.errors.empty() && u.log.empty();
@@ -331,16 +330,21 @@ struct TypeChecker2
             if (value)
                 visit(value);
 
-            if (i != local->values.size - 1)
+            TypeId* maybeValueType = value ? module->astTypes.find(value) : nullptr;
+            if (i != local->values.size - 1 || maybeValueType)
             {
                 AstLocal* var = i < local->vars.size ? local->vars.data[i] : nullptr;
 
                 if (var && var->annotation)
                 {
-                    TypeId varType = lookupAnnotation(var->annotation);
+                    TypeId annotationType = lookupAnnotation(var->annotation);
                     TypeId valueType = value ? lookupType(value) : nullptr;
-                    if (valueType && !isSubtype(varType, valueType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
-                        reportError(TypeMismatch{varType, valueType}, value->location);
+                    if (valueType)
+                    {
+                        ErrorVec errors = tryUnify(stack.back(), value->location, valueType, annotationType);
+                        if (!errors.empty())
+                            reportErrors(std::move(errors));
+                    }
                 }
             }
             else
@@ -606,7 +610,7 @@ struct TypeChecker2
             visit(rhs);
             TypeId rhsType = lookupType(rhs);
 
-            if (!isSubtype(rhsType, lhsType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+            if (!isSubtype(rhsType, lhsType, stack.back()))
             {
                 reportError(TypeMismatch{lhsType, rhsType}, rhs->location);
             }
@@ -757,7 +761,7 @@ struct TypeChecker2
         TypeId actualType = lookupType(number);
         TypeId numberType = singletonTypes->numberType;
 
-        if (!isSubtype(numberType, actualType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (!isSubtype(numberType, actualType, stack.back()))
         {
             reportError(TypeMismatch{actualType, numberType}, number->location);
         }
@@ -768,7 +772,7 @@ struct TypeChecker2
         TypeId actualType = lookupType(string);
         TypeId stringType = singletonTypes->stringType;
 
-        if (!isSubtype(actualType, stringType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (!isSubtype(actualType, stringType, stack.back()))
         {
             reportError(TypeMismatch{actualType, stringType}, string->location);
         }
@@ -857,7 +861,7 @@ struct TypeChecker2
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);
 
-        if (!isSubtype(testFunctionType, expectedType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (!isSubtype(testFunctionType, expectedType, stack.back()))
         {
             CloneState cloneState;
             expectedType = clone(expectedType, module->internalTypes, cloneState);
@@ -876,7 +880,7 @@ struct TypeChecker2
             getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
         if (ty)
         {
-            if (!isSubtype(resultType, *ty, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+            if (!isSubtype(resultType, *ty, stack.back()))
             {
                 reportError(TypeMismatch{resultType, *ty}, indexName->location);
             }
@@ -909,7 +913,7 @@ struct TypeChecker2
                 TypeId inferredArgTy = *argIt;
                 TypeId annotatedArgTy = lookupAnnotation(arg->annotation);
 
-                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+                if (!isSubtype(annotatedArgTy, inferredArgTy, stack.back()))
                 {
                     reportError(TypeMismatch{annotatedArgTy, inferredArgTy}, arg->location);
                 }
@@ -950,7 +954,7 @@ struct TypeChecker2
                 if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
                 {
                     TypePackId expectedArgs = module->internalTypes.addTypePack({operandType});
-                    reportErrors(tryUnify(scope, expr->location, ftv->argTypes, expectedArgs));
+                    reportErrors(tryUnify(scope, expr->location, expectedArgs, ftv->argTypes));
 
                     if (std::optional<TypeId> ret = first(ftv->retTypes))
                     {
@@ -1092,7 +1096,7 @@ struct TypeChecker2
                         expr->op == AstExprBinary::CompareGt || expr->op == AstExprBinary::Op::CompareLe || expr->op == AstExprBinary::Op::CompareLt)
                     {
                         TypePackId expectedRets = module->internalTypes.addTypePack({singletonTypes->booleanType});
-                        if (!isSubtype(ftv->retTypes, expectedRets, scope, singletonTypes, ice))
+                        if (!isSubtype(ftv->retTypes, expectedRets, scope))
                         {
                             reportError(GenericError{format("Metamethod '%s' must return type 'boolean'", it->second)}, expr->location);
                         }
@@ -1203,10 +1207,10 @@ struct TypeChecker2
         TypeId computedType = lookupType(expr->expr);
 
         // Note: As an optimization, we try 'number <: number | string' first, as that is the more likely case.
-        if (isSubtype(annotationType, computedType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (isSubtype(annotationType, computedType, stack.back()))
             return;
 
-        if (isSubtype(computedType, annotationType, stack.back(), singletonTypes, ice, /* anyIsTop */ false))
+        if (isSubtype(computedType, annotationType, stack.back()))
             return;
 
         reportError(TypesAreUnrelated{computedType, annotationType}, expr->location);
@@ -1502,12 +1506,26 @@ struct TypeChecker2
     }
 
     template<typename TID>
+    bool isSubtype(TID subTy, TID superTy, NotNull<Scope> scope)
+    {
+        UnifierSharedState sharedState{&ice};
+        TypeArena arena;
+        Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
+        Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
+        u.useScopes = true;
+
+        u.tryUnify(subTy, superTy);
+        const bool ok = u.errors.empty() && u.log.empty();
+        return ok;
+    }
+
+    template<typename TID>
     ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy)
     {
         UnifierSharedState sharedState{&ice};
         Normalizer normalizer{&module->internalTypes, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, scope, location, Covariant};
-        u.anyIsTop = true;
+        u.useScopes = true;
         u.tryUnify(subTy, superTy);
 
         return std::move(u.errors);

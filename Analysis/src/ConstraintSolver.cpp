@@ -18,7 +18,6 @@
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
-LUAU_FASTFLAG(LuauFixNameMaps)
 
 namespace Luau
 {
@@ -27,32 +26,12 @@ namespace Luau
 {
     for (const auto& [k, v] : scope->bindings)
     {
-        if (FFlag::LuauFixNameMaps)
-        {
-            auto d = toString(v.typeId, opts);
-            printf("\t%s : %s\n", k.c_str(), d.c_str());
-        }
-        else
-        {
-            auto d = toStringDetailed(v.typeId, opts);
-            opts.DEPRECATED_nameMap = d.DEPRECATED_nameMap;
-            printf("\t%s : %s\n", k.c_str(), d.name.c_str());
-        }
+        auto d = toString(v.typeId, opts);
+        printf("\t%s : %s\n", k.c_str(), d.c_str());
     }
 
     for (NotNull<Scope> child : scope->children)
         dumpBindings(child, opts);
-}
-
-static void dumpConstraints(NotNull<Scope> scope, ToStringOptions& opts)
-{
-    for (const ConstraintPtr& c : scope->constraints)
-    {
-        printf("\t%s\n", toString(*c, opts).c_str());
-    }
-
-    for (NotNull<Scope> child : scope->children)
-        dumpConstraints(child, opts);
 }
 
 static std::pair<std::vector<TypeId>, std::vector<TypePackId>> saturateArguments(TypeArena* arena, NotNull<SingletonTypes> singletonTypes,
@@ -219,12 +198,6 @@ size_t HashInstantiationSignature::operator()(const InstantiationSignature& sign
     return hash;
 }
 
-void dump(NotNull<Scope> rootScope, ToStringOptions& opts)
-{
-    printf("constraints:\n");
-    dumpConstraints(rootScope, opts);
-}
-
 void dump(ConstraintSolver* cs, ToStringOptions& opts)
 {
     printf("constraints:\n");
@@ -248,17 +221,17 @@ void dump(ConstraintSolver* cs, ToStringOptions& opts)
         if (auto fcc = get<FunctionCallConstraint>(*c))
         {
             for (NotNull<const Constraint> inner : fcc->innerConstraints)
-                printf("\t\t\t%s\n", toString(*inner, opts).c_str());
+                printf("\t ->\t\t%s\n", toString(*inner, opts).c_str());
         }
     }
 }
 
-ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, ModuleName moduleName,
-    NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
+ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope> rootScope, std::vector<NotNull<Constraint>> constraints,
+    ModuleName moduleName, NotNull<ModuleResolver> moduleResolver, std::vector<RequireCycle> requireCycles, DcrLogger* logger)
     : arena(normalizer->arena)
     , singletonTypes(normalizer->singletonTypes)
     , normalizer(normalizer)
-    , constraints(collectConstraints(rootScope))
+    , constraints(std::move(constraints))
     , rootScope(rootScope)
     , currentModuleName(std::move(moduleName))
     , moduleResolver(moduleResolver)
@@ -267,7 +240,7 @@ ConstraintSolver::ConstraintSolver(NotNull<Normalizer> normalizer, NotNull<Scope
 {
     opts.exhaustive = true;
 
-    for (NotNull<Constraint> c : constraints)
+    for (NotNull<Constraint> c : this->constraints)
     {
         unsolvedConstraints.push_back(c);
 
@@ -310,6 +283,8 @@ void ConstraintSolver::run()
     {
         printf("Starting solver\n");
         dump(this, opts);
+        printf("Bindings:\n");
+        dumpBindings(rootScope, opts);
     }
 
     if (FFlag::DebugLuauLogSolverToJson)
@@ -440,8 +415,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*fcc, constraint);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
-    else if (auto rc = get<RefinementConstraint>(*constraint))
-        success = tryDispatch(*rc, constraint);
+    else if (auto sottc = get<SingletonOrTopTypeConstraint>(*constraint))
+        success = tryDispatch(*sottc, constraint);
     else
         LUAU_ASSERT(false);
 
@@ -633,13 +608,6 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
         return true;
     }
 
-    // For or expressions, the LHS will never have nil as a possible output.
-    // Consider:
-    // local foo = nil or 2
-    // `foo` will always be 2.
-    if (c.op == AstExprBinary::Op::Or)
-        leftType = stripNil(singletonTypes, *arena, leftType);
-
     // Metatables go first, even if there is primitive behavior.
     if (auto it = kBinaryOpMetamethods.find(c.op); it != kBinaryOpMetamethods.end())
     {
@@ -769,15 +737,47 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     // And evalutes to a boolean if the LHS is falsey, and the RHS type if LHS is
     // truthy.
     case AstExprBinary::Op::And:
-        asMutable(resultType)->ty.emplace<BoundTypeVar>(unionOfTypes(rightType, singletonTypes->booleanType, constraint->scope, false));
+    {
+        TypeId leftFilteredTy = arena->addType(IntersectionTypeVar{{singletonTypes->falsyType, leftType}});
+
+        // TODO: normaliztion here should be replaced by a more limited 'simplification'
+        const NormalizedType* normalized = normalizer->normalize(arena->addType(UnionTypeVar{{leftFilteredTy, rightType}}));
+
+        if (!normalized)
+        {
+            reportError(CodeTooComplex{}, constraint->location);
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
+        }
+        else
+        {
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(normalizer->typeFromNormal(*normalized));
+        }
+
         unblock(resultType);
         return true;
+    }
     // Or evaluates to the LHS type if the LHS is truthy, and the RHS type if
     // LHS is falsey.
     case AstExprBinary::Op::Or:
-        asMutable(resultType)->ty.emplace<BoundTypeVar>(unionOfTypes(rightType, leftType, constraint->scope, true));
+    {
+        TypeId rightFilteredTy = arena->addType(IntersectionTypeVar{{singletonTypes->truthyType, leftType}});
+
+        // TODO: normaliztion here should be replaced by a more limited 'simplification'
+        const NormalizedType* normalized = normalizer->normalize(arena->addType(UnionTypeVar{{rightFilteredTy, rightType}}));
+
+        if (!normalized)
+        {
+            reportError(CodeTooComplex{}, constraint->location);
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
+        }
+        else
+        {
+            asMutable(resultType)->ty.emplace<BoundTypeVar>(normalizer->typeFromNormal(*normalized));
+        }
+
         unblock(resultType);
         return true;
+    }
     default:
         iceReporter.ice("Unhandled AstExprBinary::Op for binary operation", constraint->location);
         break;
@@ -1148,6 +1148,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         // Alter the inner constraints.
         LUAU_ASSERT(c.innerConstraints.size() == 2);
 
+        // Anything that is blocked on this constraint must also be blocked on our inner constraints
+        auto blockedIt = blocked.find(constraint.get());
+        if (blockedIt != blocked.end())
+        {
+            for (const auto& ic : c.innerConstraints)
+            {
+                for (const auto& blockedConstraint : blockedIt->second)
+                    block(ic, blockedConstraint);
+            }
+        }
+
         asMutable(*c.innerConstraints.at(0)).c = InstantiationConstraint{instantiatedType, *callMm};
         asMutable(*c.innerConstraints.at(1)).c = SubtypeConstraint{inferredFnType, instantiatedType};
 
@@ -1180,6 +1191,17 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     }
     else
     {
+        // Anything that is blocked on this constraint must also be blocked on our inner constraints
+        auto blockedIt = blocked.find(constraint.get());
+        if (blockedIt != blocked.end())
+        {
+            for (const auto& ic : c.innerConstraints)
+            {
+                for (const auto& blockedConstraint : blockedIt->second)
+                    block(ic, blockedConstraint);
+            }
+        }
+
         unsolvedConstraints.insert(end(unsolvedConstraints), begin(c.innerConstraints), end(c.innerConstraints));
         asMutable(c.result)->ty.emplace<FreeTypePack>(constraint->scope);
     }
@@ -1274,25 +1296,18 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     return true;
 }
 
-bool ConstraintSolver::tryDispatch(const RefinementConstraint& c, NotNull<const Constraint> constraint)
+bool ConstraintSolver::tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint)
 {
-    // TODO: Figure out exact details on when refinements need to be blocked.
-    // It's possible that it never needs to be, since we can just use intersection types with the discriminant type?
+    if (isBlocked(c.discriminantType))
+        return false;
 
-    if (!constraint->scope->parent)
-        iceReporter.ice("No parent scope");
+    TypeId followed = follow(c.discriminantType);
 
-    std::optional<TypeId> previousTy = constraint->scope->parent->lookup(c.def);
-    if (!previousTy)
-        iceReporter.ice("No previous type");
-
-    std::optional<TypeId> useTy = constraint->scope->lookup(c.def);
-    if (!useTy)
-        iceReporter.ice("The def is not bound to a type");
-
-    TypeId resultTy = follow(*useTy);
-    std::vector<TypeId> parts{*previousTy, c.discriminantType};
-    asMutable(resultTy)->ty.emplace<IntersectionTypeVar>(std::move(parts));
+    // `nil` is a singleton type too! There's only one value of type `nil`.
+    if (get<SingletonTypeVar>(followed) || isNil(followed))
+        *asMutable(c.resultType) = NegationTypeVar{c.discriminantType};
+    else
+        *asMutable(c.resultType) = BoundTypeVar{singletonTypes->unknownType};
 
     return true;
 }

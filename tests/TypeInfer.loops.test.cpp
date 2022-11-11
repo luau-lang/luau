@@ -13,7 +13,6 @@
 
 using namespace Luau;
 
-LUAU_FASTFLAG(LuauSpecialTypesAsterisked)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 
 TEST_SUITE_BEGIN("TypeInferLoops");
@@ -157,10 +156,7 @@ TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_error")
     LUAU_REQUIRE_ERROR_COUNT(2, result);
 
     TypeId p = requireType("p");
-    if (FFlag::LuauSpecialTypesAsterisked)
-        CHECK_EQ("*error-type*", toString(p));
-    else
-        CHECK_EQ("<error-type>", toString(p));
+    CHECK_EQ("*error-type*", toString(p));
 }
 
 TEST_CASE_FIXTURE(Fixture, "for_in_loop_on_non_function")
