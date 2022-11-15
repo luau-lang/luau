@@ -1219,6 +1219,29 @@ static std::optional<const ClassTypeVar*> getMethodContainingClass(const ModuleP
     return std::nullopt;
 }
 
+static bool stringPartOfInterpString(const AstNode* node, Position position)
+{
+    const AstExprInterpString* interpString = node->as<AstExprInterpString>();
+    if (!interpString)
+    {
+        return false;
+    }
+
+    printf("expressions.count: %ld\n", interpString->expressions.size);
+
+    for (const AstExpr* expression : interpString->expressions)
+    {
+        printf("%s <= %s <= %s -- expression = %d\n", toString(expression->location.begin).c_str(), toString(position).c_str(), toString(expression->location.end).c_str(), expression->classIndex);
+        if (expression->location.containsClosed(position))
+        {
+            return false;
+        }
+    }
+
+    return true;
+    // return node->is<AstExprInterpString>();
+}
+
 static std::optional<AutocompleteEntryMap> autocompleteStringParams(const SourceModule& sourceModule, const ModulePtr& module,
     const std::vector<AstNode*>& nodes, Position position, StringCompletionCallback callback)
 {
@@ -1227,7 +1250,7 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    if (!nodes.back()->is<AstExprConstantString>() && !nodes.back()->is<AstExprError>())
+    if (!nodes.back()->is<AstExprConstantString>() && !stringPartOfInterpString(nodes.back(), position) && !nodes.back()->is<AstExprError>())
     {
         return std::nullopt;
     }
@@ -1432,7 +1455,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
-    else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>()))
+    else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>()))
     {
         for (const auto& [kind, key, value] : exprTable->items)
         {
@@ -1471,7 +1494,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     {
         return {*ret, ancestry, AutocompleteContext::String};
     }
-    else if (node->is<AstExprConstantString>())
+    else if (node->is<AstExprConstantString>() || stringPartOfInterpString(node, position))
     {
         AutocompleteEntryMap result;
 

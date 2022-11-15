@@ -2677,6 +2677,7 @@ AstExpr* Parser::parseInterpString()
         if (!Lexer::fixupQuotedString(scratchData))
         {
             nextLexeme();
+            printf("FIXUP QUOTED STRING FAIL\n");
             return reportExprError(startLocation, {}, "Interpolated string literal contains malformed escape sequence");
         }
 
@@ -2694,9 +2695,30 @@ AstExpr* Parser::parseInterpString()
             return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
         }
 
-        AstExpr* expression = parseExpr();
+        switch (lexer.current().type)
+        {
+        case Lexeme::InterpStringMid:
+        case Lexeme::InterpStringEnd:
+        {
+            nextLexeme();
+            expressions.push_back(reportExprError(location, {}, "Malformed interpolated string, expected expression inside '{}'"));
+            AstArray<AstArray<char>> stringsArray = copy(strings);
+            AstArray<AstExpr*> expressionsArray = copy(expressions);
 
-        expressions.push_back(expression);
+            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
+        }
+        case Lexeme::BrokenString:
+        {
+            nextLexeme();
+            expressions.push_back(reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '`'?"));
+            AstArray<AstArray<char>> stringsArray = copy(strings);
+            AstArray<AstExpr*> expressionsArray = copy(expressions);
+
+            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
+        }
+        default:
+            expressions.push_back(parseExpr());
+        }
 
         switch (lexer.current().type)
         {
@@ -2706,11 +2728,14 @@ AstExpr* Parser::parseInterpString()
             break;
         case Lexeme::BrokenInterpDoubleBrace:
             nextLexeme();
+            printf("BROKEN INTERP DOUBLE BRACE\n");
             return reportExprError(location, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
         case Lexeme::BrokenString:
             nextLexeme();
+            printf("BROKEN STRING\n");
             return reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '}'?");
         default:
+            printf("DEFAULT: %s\n", lexer.current().toString().c_str());
             return reportExprError(location, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
         }
     } while (true);
