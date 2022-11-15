@@ -1,7 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/AstQuery.h"
 
-#include "Luau/Ast.h"
 #include "Luau/Module.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
