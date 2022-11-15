@@ -22,7 +22,7 @@ bool lua_telemetry_parsed_named_non_function_type = false;
 LUAU_FASTFLAGVARIABLE(LuauErrorDoubleHexPrefix, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
-LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, true)
+LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
 
 LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
 LUAU_FASTFLAGVARIABLE(LuauTableConstructorRecovery, false)
