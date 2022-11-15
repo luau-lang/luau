@@ -1227,11 +1227,8 @@ static bool stringPartOfInterpString(const AstNode* node, Position position)
         return false;
     }
 
-    printf("expressions.count: %ld\n", interpString->expressions.size);
-
     for (const AstExpr* expression : interpString->expressions)
     {
-        printf("%s <= %s <= %s -- expression = %d\n", toString(expression->location.begin).c_str(), toString(position).c_str(), toString(expression->location.end).c_str(), expression->classIndex);
         if (expression->location.containsClosed(position))
         {
             return false;
@@ -1239,7 +1236,6 @@ static bool stringPartOfInterpString(const AstNode* node, Position position)
     }
 
     return true;
-    // return node->is<AstExprInterpString>();
 }
 
 static std::optional<AutocompleteEntryMap> autocompleteStringParams(const SourceModule& sourceModule, const ModulePtr& module,

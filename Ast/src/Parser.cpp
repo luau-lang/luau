@@ -22,7 +22,7 @@ bool lua_telemetry_parsed_named_non_function_type = false;
 LUAU_FASTFLAGVARIABLE(LuauErrorDoubleHexPrefix, false)
 LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
-LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
+LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, true)
 
 LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
 LUAU_FASTFLAGVARIABLE(LuauTableConstructorRecovery, false)
@@ -2661,6 +2661,7 @@ AstExpr* Parser::parseInterpString()
     TempVector<AstExpr*> expressions(scratchExpr);
 
     Location startLocation = lexer.current().location;
+    Location endLocation;
 
     do
     {
@@ -2668,17 +2669,16 @@ AstExpr* Parser::parseInterpString()
         LUAU_ASSERT(currentLexeme.type == Lexeme::InterpStringBegin || currentLexeme.type == Lexeme::InterpStringMid ||
                     currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple);
 
-        Location location = currentLexeme.location;
+        endLocation = currentLexeme.location;
 
-        Location startOfBrace = Location(location.end, 1);
+        Location startOfBrace = Location(endLocation.end, 1);
 
         scratchData.assign(currentLexeme.data, currentLexeme.length);
 
         if (!Lexer::fixupQuotedString(scratchData))
         {
             nextLexeme();
-            printf("FIXUP QUOTED STRING FAIL\n");
-            return reportExprError(startLocation, {}, "Interpolated string literal contains malformed escape sequence");
+            return reportExprError(Location{startLocation, endLocation}, {}, "Interpolated string literal contains malformed escape sequence");
         }
 
         AstArray<char> chars = copy(scratchData);
@@ -2689,10 +2689,7 @@ AstExpr* Parser::parseInterpString()
 
         if (currentLexeme.type == Lexeme::InterpStringEnd || currentLexeme.type == Lexeme::InterpStringSimple)
         {
-            AstArray<AstArray<char>> stringsArray = copy(strings);
-            AstArray<AstExpr*> expressionsArray = copy(expressions);
-
-            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
+            break;
         }
 
         switch (lexer.current().type)
@@ -2701,20 +2698,14 @@ AstExpr* Parser::parseInterpString()
         case Lexeme::InterpStringEnd:
         {
             nextLexeme();
-            expressions.push_back(reportExprError(location, {}, "Malformed interpolated string, expected expression inside '{}'"));
-            AstArray<AstArray<char>> stringsArray = copy(strings);
-            AstArray<AstExpr*> expressionsArray = copy(expressions);
-
-            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
+            expressions.push_back(reportExprError(endLocation, {}, "Malformed interpolated string, expected expression inside '{}'"));
+            break;
         }
         case Lexeme::BrokenString:
         {
             nextLexeme();
-            expressions.push_back(reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '`'?"));
-            AstArray<AstArray<char>> stringsArray = copy(strings);
-            AstArray<AstExpr*> expressionsArray = copy(expressions);
-
-            return allocator.alloc<AstExprInterpString>(startLocation, stringsArray, expressionsArray);
+            expressions.push_back(reportExprError(endLocation, {}, "Malformed interpolated string, did you forget to add a '`'?"));
+            break;
         }
         default:
             expressions.push_back(parseExpr());
@@ -2728,17 +2719,18 @@ AstExpr* Parser::parseInterpString()
             break;
         case Lexeme::BrokenInterpDoubleBrace:
             nextLexeme();
-            printf("BROKEN INTERP DOUBLE BRACE\n");
-            return reportExprError(location, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
+            return reportExprError(endLocation, {}, ERROR_INVALID_INTERP_DOUBLE_BRACE);
         case Lexeme::BrokenString:
             nextLexeme();
-            printf("BROKEN STRING\n");
-            return reportExprError(location, {}, "Malformed interpolated string, did you forget to add a '}'?");
+            return reportExprError(endLocation, {}, "Malformed interpolated string, did you forget to add a '}'?");
         default:
-            printf("DEFAULT: %s\n", lexer.current().toString().c_str());
-            return reportExprError(location, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
+            return reportExprError(endLocation, {}, "Malformed interpolated string, got %s", lexer.current().toString().c_str());
         }
     } while (true);
+
+    AstArray<AstArray<char>> stringsArray = copy(strings);
+    AstArray<AstExpr*> expressionsArray = copy(expressions);
+    return allocator.alloc<AstExprInterpString>(Location{startLocation, endLocation}, stringsArray, expressionsArray);
 }
 
 AstExpr* Parser::parseNumber()

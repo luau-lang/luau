@@ -2712,15 +2712,24 @@ a = if temp then even else abc@3
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_constant")
 {
     ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
-    printf("======= autocomplete_interpolated_string_constant =======\n");
 
-    // check(R"(f(`@1`))");
-    // auto ac = autocomplete('1');
-    // CHECK(ac.entryMap.empty());
-    // CHECK_EQ(ac.context, AutocompleteContext::String);
+    check(R"(f(`@1`))");
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    check(R"(f(`@1 {"a"}`))");
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
 
     check(R"(f(`{"a"} @1`))");
-    auto ac = autocomplete('1');
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    check(R"(f(`{"a"} @1 {"b"}`))");
+    ac = autocomplete('1');
     CHECK(ac.entryMap.empty());
     CHECK_EQ(ac.context, AutocompleteContext::String);
 }
@@ -2745,8 +2754,9 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression_with_c
     CHECK(ac.entryMap.count("table"));
     CHECK_EQ(ac.context, AutocompleteContext::Expression);
 
-    check(R"(f(`expression = {@1--[[ bla bla bla ]]`))");
+    check(R"(f(`expression = {@1 --[[ bla bla bla ]]`))");
     ac = autocomplete('1');
+    CHECK(!ac.entryMap.empty());
     CHECK(ac.entryMap.count("table"));
     CHECK_EQ(ac.context, AutocompleteContext::Expression);
 }
