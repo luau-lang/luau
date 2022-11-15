@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Autocomplete.h"
 
+#include "Luau/Ast.h"
 #include "Luau/AstQuery.h"
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/Frontend.h"
@@ -1238,6 +1239,12 @@ static bool stringPartOfInterpString(const AstNode* node, Position position)
     return true;
 }
 
+static bool isSimpleInterpolatedString(const AstNode* node)
+{
+    const AstExprInterpString* interpString = node->as<AstExprInterpString>();
+    return interpString != nullptr && interpString->expressions.size == 0;
+}
+
 static std::optional<AutocompleteEntryMap> autocompleteStringParams(const SourceModule& sourceModule, const ModulePtr& module,
     const std::vector<AstNode*>& nodes, Position position, StringCompletionCallback callback)
 {
@@ -1246,7 +1253,8 @@ static std::optional<AutocompleteEntryMap> autocompleteStringParams(const Source
         return std::nullopt;
     }
 
-    if (!nodes.back()->is<AstExprConstantString>() && !stringPartOfInterpString(nodes.back(), position) && !nodes.back()->is<AstExprError>())
+    if (!nodes.back()->is<AstExprConstantString>() && !isSimpleInterpolatedString(nodes.back()) && !nodes.back()->is<AstExprInterpString>() &&
+        !nodes.back()->is<AstExprError>())
     {
         return std::nullopt;
     }
@@ -1490,7 +1498,7 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
     {
         return {*ret, ancestry, AutocompleteContext::String};
     }
-    else if (node->is<AstExprConstantString>() || stringPartOfInterpString(node, position))
+    else if (node->is<AstExprConstantString>() || isSimpleInterpolatedString(node))
     {
         AutocompleteEntryMap result;
 
@@ -1515,6 +1523,13 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         }
 
         return {result, ancestry, AutocompleteContext::String};
+    }
+    else if (stringPartOfInterpString(node, position))
+    {
+        // We're not a simple interpolated string, we're something like `a{"b"}@1`, and we
+        // can't know what to format to
+        AutocompleteEntryMap map;
+        return {map, ancestry, AutocompleteContext::String};
     }
 
     if (node->is<AstExprConstantNumber>())

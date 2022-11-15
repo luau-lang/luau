@@ -2761,6 +2761,27 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression_with_c
     CHECK_EQ(ac.context, AutocompleteContext::Expression);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_as_singleton")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    check(R"(
+        --!strict
+        local function f(a: "cat" | "dog") end
+
+        f(`@1`)
+        f(`uhhh{'try'}@2`)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("cat"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_explicit_type_pack")
 {
     check(R"(

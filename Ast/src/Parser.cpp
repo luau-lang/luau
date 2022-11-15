@@ -2692,23 +2692,32 @@ AstExpr* Parser::parseInterpString()
             break;
         }
 
+        bool errorWhileChecking = false;
+
         switch (lexer.current().type)
         {
         case Lexeme::InterpStringMid:
         case Lexeme::InterpStringEnd:
         {
+            errorWhileChecking = true;
             nextLexeme();
             expressions.push_back(reportExprError(endLocation, {}, "Malformed interpolated string, expected expression inside '{}'"));
             break;
         }
         case Lexeme::BrokenString:
         {
+            errorWhileChecking = true;
             nextLexeme();
             expressions.push_back(reportExprError(endLocation, {}, "Malformed interpolated string, did you forget to add a '`'?"));
             break;
         }
         default:
             expressions.push_back(parseExpr());
+        }
+
+        if (errorWhileChecking)
+        {
+            break;
         }
 
         switch (lexer.current().type)
