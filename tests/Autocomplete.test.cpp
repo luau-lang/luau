@@ -7,6 +7,7 @@
 #include "Luau/StringUtils.h"
 
 #include "Fixture.h"
+#include "ScopedFlags.h"
 
 #include "doctest.h"
 
@@ -2708,13 +2709,77 @@ a = if temp then even else abc@3
     CHECK(ac.entryMap.count("abcdef"));
 }
 
-TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string")
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_constant")
 {
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    check(R"(f(`@1`))");
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    check(R"(f(`@1 {"a"}`))");
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    check(R"(f(`{"a"} @1`))");
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    check(R"(f(`{"a"} @1 {"b"}`))");
+    ac = autocomplete('1');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
     check(R"(f(`expression = {@1}`))");
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("table"));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_expression_with_comments")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    check(R"(f(`expression = {--[[ bla bla bla ]]@1`))");
 
     auto ac = autocomplete('1');
     CHECK(ac.entryMap.count("table"));
     CHECK_EQ(ac.context, AutocompleteContext::Expression);
+
+    check(R"(f(`expression = {@1 --[[ bla bla bla ]]`))");
+    ac = autocomplete('1');
+    CHECK(!ac.entryMap.empty());
+    CHECK(ac.entryMap.count("table"));
+    CHECK_EQ(ac.context, AutocompleteContext::Expression);
+}
+
+TEST_CASE_FIXTURE(ACFixture, "autocomplete_interpolated_string_as_singleton")
+{
+    ScopedFastFlag sff{"LuauInterpolatedStringBaseSupport", true};
+
+    check(R"(
+        --!strict
+        local function f(a: "cat" | "dog") end
+
+        f(`@1`)
+        f(`uhhh{'try'}@2`)
+    )");
+
+    auto ac = autocomplete('1');
+    CHECK(ac.entryMap.count("cat"));
+    CHECK_EQ(ac.context, AutocompleteContext::String);
+
+    ac = autocomplete('2');
+    CHECK(ac.entryMap.empty());
+    CHECK_EQ(ac.context, AutocompleteContext::String);
 }
 
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_explicit_type_pack")
