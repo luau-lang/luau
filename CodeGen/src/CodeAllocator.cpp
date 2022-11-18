@@ -20,7 +20,11 @@ const size_t kPageSize = 4096;
 #include <sys/mman.h>
 #include <unistd.h>
 
+#if defined(__FreeBSD__) && !(_POSIX_C_SOURCE >= 200112L)
+const size_t kPageSize = getpagesize();
+#else
 const size_t kPageSize = sysconf(_SC_PAGESIZE);
+#endif
 #endif
 
 static size_t alignToPageSize(size_t size)

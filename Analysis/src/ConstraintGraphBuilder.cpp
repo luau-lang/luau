@@ -11,6 +11,7 @@
 #include "Luau/Scope.h"
 #include "Luau/ToString.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/TypeVar.h"
 
 LUAU_FASTINT(LuauCheckRecursionLimit);
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
@@ -1019,7 +1020,22 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         args.push_back(check(scope, arg).ty);
     }
 
-    // TODO self
+    if (call->self)
+    {
+        AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
+        if (!indexExpr)
+            ice->ice("method call expression has no 'self'");
+
+        // The call to `check` we already did on `call->func` should have already produced a type for
+        // `indexExpr->expr`, so we can get it from `astTypes` to avoid exponential blow-up.
+        TypeId selfType = astTypes[indexExpr->expr];
+
+        // If we don't have a type for self, it means we had a code too complex error already.
+        if (selfType == nullptr)
+            selfType = singletonTypes->errorRecoveryType();
+
+        args.insert(args.begin(), selfType);
+    }
 
     if (matchSetmetatable(*call))
     {
@@ -1428,13 +1444,6 @@ TypePackId ConstraintGraphBuilder::checkLValues(const ScopePtr& scope, AstArray<
     return arena->addTypePack(std::move(types));
 }
 
-static bool isUnsealedTable(TypeId ty)
-{
-    ty = follow(ty);
-    const TableTypeVar* ttv = get<TableTypeVar>(ty);
-    return ttv && ttv->state == TableState::Unsealed;
-};
-
 /**
  * If the expr is a dotted set of names, and if the root symbol refers to an
  * unsealed table, return that table type, plus the indeces that follow as a
@@ -1469,80 +1478,6 @@ static std::optional<std::pair<Symbol, std::vector<const char*>>> extractDottedN
 }
 
 /**
- * Create a shallow copy of `ty` and its properties along `path`.  Insert a new
- * property (the last segment of `path`) into the tail table with the value `t`.
- *
- * On success, returns the new outermost table type.  If the root table or any
- * of its subkeys are not unsealed tables, the function fails and returns
- * std::nullopt.
- *
- * TODO: Prove that we completely give up in the face of indexers and
- * metatables.
- */
-static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId ty, const std::vector<const char*>& path, TypeId replaceTy)
-{
-    if (path.empty())
-        return std::nullopt;
-
-    // First walk the path and ensure that it's unsealed tables all the way
-    // to the end.
-    {
-        TypeId t = ty;
-        for (size_t i = 0; i < path.size() - 1; ++i)
-        {
-            if (!isUnsealedTable(t))
-                return std::nullopt;
-
-            const TableTypeVar* tbl = get<TableTypeVar>(t);
-            auto it = tbl->props.find(path[i]);
-            if (it == tbl->props.end())
-                return std::nullopt;
-
-            t = it->second.type;
-        }
-
-        // The last path segment should not be a property of the table at all.
-        // We are not changing property types.  We are only admitting this one
-        // new property to be appended.
-        if (!isUnsealedTable(t))
-            return std::nullopt;
-        const TableTypeVar* tbl = get<TableTypeVar>(t);
-        auto it = tbl->props.find(path.back());
-        if (it != tbl->props.end())
-            return std::nullopt;
-    }
-
-    const TypeId res = shallowClone(ty, arena);
-    TypeId t = res;
-
-    for (size_t i = 0; i < path.size() - 1; ++i)
-    {
-        const std::string segment = path[i];
-
-        TableTypeVar* ttv = getMutable<TableTypeVar>(t);
-        LUAU_ASSERT(ttv);
-
-        auto propIt = ttv->props.find(segment);
-        if (propIt != ttv->props.end())
-        {
-            LUAU_ASSERT(isUnsealedTable(propIt->second.type));
-            t = shallowClone(follow(propIt->second.type), arena);
-            ttv->props[segment].type = t;
-        }
-        else
-            return std::nullopt;
-    }
-
-    TableTypeVar* ttv = getMutable<TableTypeVar>(t);
-    LUAU_ASSERT(ttv);
-
-    const std::string lastSegment = path.back();
-    LUAU_ASSERT(0 == ttv->props.count(lastSegment));
-    ttv->props[lastSegment] = Property{replaceTy};
-    return res;
-}
-
-/**
  * This function is mostly about identifying properties that are being inserted into unsealed tables.
  *
  * If expr has the form name.a.b.c
@@ -1559,31 +1494,36 @@ TypeId ConstraintGraphBuilder::checkLValue(const ScopePtr& scope, AstExpr* expr)
             return checkLValue(scope, &synthetic);
         }
     }
+    else if (!expr->is<AstExprIndexName>())
+        return check(scope, expr).ty;
 
     auto dottedPath = extractDottedName(expr);
     if (!dottedPath)
         return check(scope, expr).ty;
     const auto [sym, segments] = std::move(*dottedPath);
 
-    if (!sym.local)
-        return check(scope, expr).ty;
+    LUAU_ASSERT(!segments.empty());
 
     auto lookupResult = scope->lookupEx(sym);
     if (!lookupResult)
         return check(scope, expr).ty;
-    const auto [ty, symbolScope] = std::move(*lookupResult);
+    const auto [subjectType, symbolScope] = std::move(*lookupResult);
 
-    TypeId replaceTy = arena->freshType(scope.get());
+    TypeId propTy = freshType(scope);
 
-    std::optional<TypeId> updatedType = updateTheTableType(arena, ty, segments, replaceTy);
-    if (!updatedType)
-        return check(scope, expr).ty;
+    std::vector<std::string> segmentStrings(begin(segments), end(segments));
+
+    TypeId updatedType = arena->addType(BlockedTypeVar{});
+    addConstraint(scope, expr->location, SetPropConstraint{updatedType, subjectType, std::move(segmentStrings), propTy});
 
     std::optional<DefId> def = dfg->getDef(sym);
     LUAU_ASSERT(def);
-    symbolScope->bindings[sym].typeId = *updatedType;
-    symbolScope->dcrRefinements[*def] = *updatedType;
-    return replaceTy;
+    symbolScope->bindings[sym].typeId = updatedType;
+    symbolScope->dcrRefinements[*def] = updatedType;
+
+    astTypes[expr] = propTy;
+
+    return propTy;
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprTable* expr, std::optional<TypeId> expectedType)

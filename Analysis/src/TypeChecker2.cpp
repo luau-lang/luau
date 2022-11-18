@@ -857,6 +857,15 @@ struct TypeChecker2
             args.head.push_back(argTy);
         }
 
+        if (call->self)
+        {
+            AstExprIndexName* indexExpr = call->func->as<AstExprIndexName>();
+            if (!indexExpr)
+                ice.ice("method call expression has no 'self'");
+
+            args.head.insert(args.head.begin(), lookupType(indexExpr->expr));
+        }
+
         TypePackId argsTp = arena.addTypePack(args);
         FunctionTypeVar ftv{argsTp, expectedRetType};
         TypeId expectedType = arena.addType(ftv);

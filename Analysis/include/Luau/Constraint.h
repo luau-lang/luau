@@ -132,6 +132,23 @@ struct HasPropConstraint
     std::string prop;
 };
 
+// result ~ setProp subjectType ["prop", "prop2", ...] propType
+//
+// If the subject is a table or table-like thing that already has the named
+// property chain, we unify propType with that existing property type.
+//
+// If the subject is a free table, we augment it in place.
+//
+// If the subject is an unsealed table, result is an augmented table that
+// includes that new prop.
+struct SetPropConstraint
+{
+    TypeId resultType;
+    TypeId subjectType;
+    std::vector<std::string> path;
+    TypeId propType;
+};
+
 // result ~ if isSingleton D then ~D else unknown where D = discriminantType
 struct SingletonOrTopTypeConstraint
 {
@@ -141,7 +158,7 @@ struct SingletonOrTopTypeConstraint
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,
     BinaryConstraint, IterableConstraint, NameConstraint, TypeAliasExpansionConstraint, FunctionCallConstraint, PrimitiveTypeConstraint,
-    HasPropConstraint, SingletonOrTopTypeConstraint>;
+    HasPropConstraint, SetPropConstraint, SingletonOrTopTypeConstraint>;
 
 struct Constraint
 {
