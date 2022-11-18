@@ -13,7 +13,6 @@ inline bool isFlagExperimental(const char* flag)
     static const char* kList[] = {
         "LuauInterpolatedStringBaseSupport",
         "LuauInstantiateInSubtyping", // requires some fixes to lua-apps code
-        "LuauOptionalNextKey",        // waiting for a fix to land in lua-apps
         "LuauTryhardAnd",             // waiting for a fix in graphql-lua -> apollo-client-lia -> lua-apps
         // makes sure we always have at least one entry
         nullptr,

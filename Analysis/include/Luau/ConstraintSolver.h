@@ -110,6 +110,7 @@ struct ConstraintSolver
     bool tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const PrimitiveTypeConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const HasPropConstraint& c, NotNull<const Constraint> constraint);
+    bool tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint);
     bool tryDispatch(const SingletonOrTopTypeConstraint& c, NotNull<const Constraint> constraint);
 
     // for a, ... in some_table do
@@ -119,6 +120,8 @@ struct ConstraintSolver
     // for a, ... in next_function, t, ... do
     bool tryDispatchIterableFunction(
         TypeId nextTy, TypeId tableTy, TypeId firstIndexTy, const IterableConstraint& c, NotNull<const Constraint> constraint, bool force);
+
+    std::optional<TypeId> lookupTableProp(TypeId subjectType, const std::string& propName);
 
     void block(NotNull<const Constraint> target, NotNull<const Constraint> constraint);
     /**
