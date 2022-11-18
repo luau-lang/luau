@@ -2,6 +2,7 @@
 
 #include "Luau/Anyification.h"
 #include "Luau/ApplyTypeFunction.h"
+#include "Luau/Clone.h"
 #include "Luau/ConstraintSolver.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/Instantiation.h"
@@ -415,6 +416,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
         success = tryDispatch(*fcc, constraint);
     else if (auto hpc = get<HasPropConstraint>(*constraint))
         success = tryDispatch(*hpc, constraint);
+    else if (auto spc = get<SetPropConstraint>(*constraint))
+        success = tryDispatch(*spc, constraint);
     else if (auto sottc = get<SingletonOrTopTypeConstraint>(*constraint))
         success = tryDispatch(*sottc, constraint);
     else
@@ -1230,69 +1233,180 @@ bool ConstraintSolver::tryDispatch(const HasPropConstraint& c, NotNull<const Con
     if (isBlocked(subjectType) || get<PendingExpansionTypeVar>(subjectType))
         return block(subjectType, constraint);
 
-    TypeId resultType = nullptr;
+    std::optional<TypeId> resultType = lookupTableProp(subjectType, c.prop);
+    if (!resultType)
+        return false;
 
-    auto collectParts = [&](auto&& unionOrIntersection) -> std::pair<bool, std::vector<TypeId>> {
-        bool blocked = false;
+    if (isBlocked(*resultType))
+    {
+        block(*resultType, constraint);
+        return false;
+    }
 
-        std::vector<TypeId> parts;
-        for (TypeId expectedPart : unionOrIntersection)
+    asMutable(c.resultType)->ty.emplace<BoundTypeVar>(*resultType);
+    return true;
+}
+
+static bool isUnsealedTable(TypeId ty)
+{
+    ty = follow(ty);
+    const TableTypeVar* ttv = get<TableTypeVar>(ty);
+    return ttv && ttv->state == TableState::Unsealed;
+}
+
+/**
+ * Create a shallow copy of `ty` and its properties along `path`.  Insert a new
+ * property (the last segment of `path`) into the tail table with the value `t`.
+ *
+ * On success, returns the new outermost table type.  If the root table or any
+ * of its subkeys are not unsealed tables, the function fails and returns
+ * std::nullopt.
+ *
+ * TODO: Prove that we completely give up in the face of indexers and
+ * metatables.
+ */
+static std::optional<TypeId> updateTheTableType(NotNull<TypeArena> arena, TypeId ty, const std::vector<std::string>& path, TypeId replaceTy)
+{
+    if (path.empty())
+        return std::nullopt;
+
+    // First walk the path and ensure that it's unsealed tables all the way
+    // to the end.
+    {
+        TypeId t = ty;
+        for (size_t i = 0; i < path.size() - 1; ++i)
         {
-            expectedPart = follow(expectedPart);
-            if (isBlocked(expectedPart) || get<PendingExpansionTypeVar>(expectedPart))
-            {
-                blocked = true;
-                block(expectedPart, constraint);
-            }
-            else if (const TableTypeVar* ttv = get<TableTypeVar>(follow(expectedPart)))
-            {
-                if (auto prop = ttv->props.find(c.prop); prop != ttv->props.end())
-                    parts.push_back(prop->second.type);
-                else if (ttv->indexer && maybeString(ttv->indexer->indexType))
-                    parts.push_back(ttv->indexer->indexResultType);
-            }
+            if (!isUnsealedTable(t))
+                return std::nullopt;
+
+            const TableTypeVar* tbl = get<TableTypeVar>(t);
+            auto it = tbl->props.find(path[i]);
+            if (it == tbl->props.end())
+                return std::nullopt;
+
+            t = it->second.type;
         }
 
-        return {blocked, parts};
+        // The last path segment should not be a property of the table at all.
+        // We are not changing property types.  We are only admitting this one
+        // new property to be appended.
+        if (!isUnsealedTable(t))
+            return std::nullopt;
+        const TableTypeVar* tbl = get<TableTypeVar>(t);
+        if (0 != tbl->props.count(path.back()))
+            return std::nullopt;
+    }
+
+    const TypeId res = shallowClone(ty, arena);
+    TypeId t = res;
+
+    for (size_t i = 0; i < path.size() - 1; ++i)
+    {
+        const std::string segment = path[i];
+
+        TableTypeVar* ttv = getMutable<TableTypeVar>(t);
+        LUAU_ASSERT(ttv);
+
+        auto propIt = ttv->props.find(segment);
+        if (propIt != ttv->props.end())
+        {
+            LUAU_ASSERT(isUnsealedTable(propIt->second.type));
+            t = shallowClone(follow(propIt->second.type), arena);
+            ttv->props[segment].type = t;
+        }
+        else
+            return std::nullopt;
+    }
+
+    TableTypeVar* ttv = getMutable<TableTypeVar>(t);
+    LUAU_ASSERT(ttv);
+
+    const std::string lastSegment = path.back();
+    LUAU_ASSERT(0 == ttv->props.count(lastSegment));
+    ttv->props[lastSegment] = Property{replaceTy};
+    return res;
+}
+
+bool ConstraintSolver::tryDispatch(const SetPropConstraint& c, NotNull<const Constraint> constraint)
+{
+    TypeId subjectType = follow(c.subjectType);
+
+    if (isBlocked(subjectType))
+        return block(subjectType, constraint);
+
+    std::optional<TypeId> existingPropType = subjectType;
+    for (const std::string& segment : c.path)
+    {
+        ErrorVec e;
+        std::optional<TypeId> propTy = lookupTableProp(*existingPropType, segment);
+        if (!propTy)
+        {
+            existingPropType = std::nullopt;
+            break;
+        }
+        else if (isBlocked(*propTy))
+            return block(*propTy, constraint);
+        else
+            existingPropType = follow(*propTy);
+    }
+
+    auto bind = [](TypeId a, TypeId b) {
+        asMutable(a)->ty.emplace<BoundTypeVar>(b);
     };
 
-    if (auto ttv = get<TableTypeVar>(subjectType))
+    if (existingPropType)
     {
-        if (auto prop = ttv->props.find(c.prop); prop != ttv->props.end())
-            resultType = prop->second.type;
-        else if (ttv->indexer && maybeString(ttv->indexer->indexType))
-            resultType = ttv->indexer->indexResultType;
+        unify(c.propType, *existingPropType, constraint->scope);
+        bind(c.resultType, c.subjectType);
+        return true;
     }
-    else if (auto utv = get<UnionTypeVar>(subjectType))
-    {
-        auto [blocked, parts] = collectParts(utv);
 
-        if (blocked)
-            return false;
-        else if (parts.size() == 1)
-            resultType = parts[0];
-        else if (parts.size() > 1)
-            resultType = arena->addType(UnionTypeVar{std::move(parts)});
+    if (get<FreeTypeVar>(subjectType))
+    {
+        TypeId ty = arena->freshType(constraint->scope);
+
+        // Mint a chain of free tables per c.path
+        for (auto it = rbegin(c.path); it != rend(c.path); ++it)
+        {
+            TableTypeVar t{TableState::Free, TypeLevel{}, constraint->scope};
+            t.props[*it] = {ty};
+
+            ty = arena->addType(std::move(t));
+        }
+
+        LUAU_ASSERT(ty);
+
+        bind(subjectType, ty);
+        bind(c.resultType, ty);
+        return true;
+    }
+    else if (auto ttv = getMutable<TableTypeVar>(subjectType))
+    {
+        if (ttv->state == TableState::Free)
+        {
+            ttv->props[c.path[0]] = Property{c.propType};
+            bind(c.resultType, c.subjectType);
+            return true;
+        }
+        else if (ttv->state == TableState::Unsealed)
+        {
+            std::optional<TypeId> augmented = updateTheTableType(NotNull{arena}, subjectType, c.path, c.propType);
+            bind(c.resultType, augmented.value_or(subjectType));
+            return true;
+        }
         else
-            LUAU_ASSERT(false); // parts.size() == 0
+        {
+            bind(c.resultType, subjectType);
+            return true;
+        }
     }
-    else if (auto itv = get<IntersectionTypeVar>(subjectType))
+    else if (get<AnyTypeVar>(subjectType) || get<ErrorTypeVar>(subjectType))
     {
-        auto [blocked, parts] = collectParts(itv);
-
-        if (blocked)
-            return false;
-        else if (parts.size() == 1)
-            resultType = parts[0];
-        else if (parts.size() > 1)
-            resultType = arena->addType(IntersectionTypeVar{std::move(parts)});
-        else
-            LUAU_ASSERT(false); // parts.size() == 0
+        bind(c.resultType, subjectType);
+        return true;
     }
 
-    if (resultType)
-        asMutable(c.resultType)->ty.emplace<BoundTypeVar>(resultType);
-
+    LUAU_ASSERT(0);
     return true;
 }
 
@@ -1479,6 +1593,68 @@ bool ConstraintSolver::tryDispatchIterableFunction(
     pushConstraint(constraint->scope, constraint->location, PackSubtypeConstraint{c.variables, nextRetPack});
 
     return true;
+}
+
+std::optional<TypeId> ConstraintSolver::lookupTableProp(TypeId subjectType, const std::string& propName)
+{
+    auto collectParts = [&](auto&& unionOrIntersection) -> std::pair<std::optional<TypeId>, std::vector<TypeId>> {
+        std::optional<TypeId> blocked;
+
+        std::vector<TypeId> parts;
+        for (TypeId expectedPart : unionOrIntersection)
+        {
+            expectedPart = follow(expectedPart);
+            if (isBlocked(expectedPart) || get<PendingExpansionTypeVar>(expectedPart))
+                blocked = expectedPart;
+            else if (const TableTypeVar* ttv = get<TableTypeVar>(follow(expectedPart)))
+            {
+                if (auto prop = ttv->props.find(propName); prop != ttv->props.end())
+                    parts.push_back(prop->second.type);
+                else if (ttv->indexer && maybeString(ttv->indexer->indexType))
+                    parts.push_back(ttv->indexer->indexResultType);
+            }
+        }
+
+        return {blocked, parts};
+    };
+
+    std::optional<TypeId> resultType;
+
+    if (auto ttv = get<TableTypeVar>(subjectType))
+    {
+        if (auto prop = ttv->props.find(propName); prop != ttv->props.end())
+            resultType = prop->second.type;
+        else if (ttv->indexer && maybeString(ttv->indexer->indexType))
+            resultType = ttv->indexer->indexResultType;
+    }
+    else if (auto utv = get<UnionTypeVar>(subjectType))
+    {
+        auto [blocked, parts] = collectParts(utv);
+
+        if (blocked)
+            resultType = *blocked;
+        else if (parts.size() == 1)
+            resultType = parts[0];
+        else if (parts.size() > 1)
+            resultType = arena->addType(UnionTypeVar{std::move(parts)});
+        else
+            LUAU_ASSERT(false); // parts.size() == 0
+    }
+    else if (auto itv = get<IntersectionTypeVar>(subjectType))
+    {
+        auto [blocked, parts] = collectParts(itv);
+
+        if (blocked)
+            resultType = *blocked;
+        else if (parts.size() == 1)
+            resultType = parts[0];
+        else if (parts.size() > 1)
+            resultType = arena->addType(IntersectionTypeVar{std::move(parts)});
+        else
+            LUAU_ASSERT(false); // parts.size() == 0
+    }
+
+    return resultType;
 }
 
 void ConstraintSolver::block_(BlockedConstraintId target, NotNull<const Constraint> constraint)

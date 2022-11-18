@@ -1477,6 +1477,11 @@ std::string toString(const Constraint& constraint, ToStringOptions& opts)
         {
             return tos(c.resultType) + " ~ hasProp " + tos(c.subjectType) + ", \"" + c.prop + "\"";
         }
+        else if constexpr (std::is_same_v<T, SetPropConstraint>)
+        {
+            const std::string pathStr = c.path.size() == 1 ? "\"" + c.path[0] + "\"" : "[\"" + join(c.path, "\", \"") + "\"]";
+            return tos(c.resultType) + " ~ setProp " + tos(c.subjectType) + ", " + pathStr + " " + tos(c.propType);
+        }
         else if constexpr (std::is_same_v<T, SingletonOrTopTypeConstraint>)
         {
             std::string result = tos(c.resultType);

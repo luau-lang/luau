@@ -50,7 +50,7 @@ TEST_CASE_FIXTURE(Fixture, "augment_table")
     const TableTypeVar* tType = get<TableTypeVar>(requireType("t"));
     REQUIRE(tType != nullptr);
 
-    CHECK(1 == tType->props.count("foo"));
+    CHECK("{ foo: string }" == toString(requireType("t"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
@@ -65,7 +65,7 @@ TEST_CASE_FIXTURE(Fixture, "augment_nested_table")
     const TableTypeVar* pType = get<TableTypeVar>(tType->props["p"].type);
     REQUIRE(pType != nullptr);
 
-    CHECK(pType->props.find("foo") != pType->props.end());
+    CHECK("{ p: { foo: string } }" == toString(requireType("t"), {true}));
 }
 
 TEST_CASE_FIXTURE(Fixture, "cannot_augment_sealed_table")
