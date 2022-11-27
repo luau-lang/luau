@@ -4135,26 +4135,31 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
 
     std::vector<Location> metaArgLocations;
 
-    // Might be a callable table
+    // Might be a callable table or class
+    std::optional<TypeId> callTy = std::nullopt;
     if (const MetatableTypeVar* mttv = get<MetatableTypeVar>(fn))
     {
-        if (std::optional<TypeId> ty = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false))
-        {
-            // Construct arguments with 'self' added in front
-            TypePackId metaCallArgPack = addTypePack(TypePackVar(TypePack{args->head, args->tail}));
+        callTy = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false);
+    } else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); ctv && ctv->metatable)
+    {
+        callTy = getIndexTypeFromType(scope, *ctv->metatable, "__call", expr.func->location, /* addErrors= */ false);
+    }
 
-            TypePack* metaCallArgs = getMutable<TypePack>(metaCallArgPack);
-            metaCallArgs->head.insert(metaCallArgs->head.begin(), fn);
+    if (callTy) {
+        // Construct arguments with 'self' added in front
+        TypePackId metaCallArgPack = addTypePack(TypePackVar(TypePack{args->head, args->tail}));
 
-            metaArgLocations = *argLocations;
-            metaArgLocations.insert(metaArgLocations.begin(), expr.func->location);
+        TypePack* metaCallArgs = getMutable<TypePack>(metaCallArgPack);
+        metaCallArgs->head.insert(metaCallArgs->head.begin(), fn);
 
-            fn = instantiate(scope, *ty, expr.func->location);
+        metaArgLocations = *argLocations;
+        metaArgLocations.insert(metaArgLocations.begin(), expr.func->location);
 
-            argPack = metaCallArgPack;
-            args = metaCallArgs;
-            argLocations = &metaArgLocations;
-        }
+        fn = instantiate(scope, *callTy, expr.func->location);
+
+        argPack = metaCallArgPack;
+        args = metaCallArgs;
+        argLocations = &metaArgLocations;
     }
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fn);
