@@ -396,4 +396,26 @@ TEST_CASE_FIXTURE(Fixture, "class_definition_string_props")
     CHECK_EQ(toString(requireType("y")), "string");
 }
 
+TEST_CASE_FIXTURE(Fixture, "class_definitions_reference_other_classes")
+{
+    ScopedFastFlag LuauDeclareClassPrototype("LuauDeclareClassPrototype", true);
+
+    unfreeze(typeChecker.globalTypes);
+    LoadDefinitionFileResult result = loadDefinitionFile(typeChecker, typeChecker.globalScope, R"(
+        declare class Channel
+            Messages: { Message }
+            OnMessage: (message: Message) -> ()
+        end
+
+        declare class Message
+            Text: string
+            Channel: Channel
+        end
+    )",
+        "@test");
+    freeze(typeChecker.globalTypes);
+
+    REQUIRE(result.success);
+}
+
 TEST_SUITE_END();
