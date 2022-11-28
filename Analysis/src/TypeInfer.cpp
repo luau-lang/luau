@@ -49,6 +49,7 @@ LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
 LUAU_FASTFLAGVARIABLE(LuauArgMismatchReportFunctionLocation, false)
 LUAU_FASTFLAGVARIABLE(LuauImplicitElseRefinement, false)
+LUAU_FASTFLAGVARIABLE(LuauCallableClasses, false)
 
 namespace Luau
 {
@@ -4140,7 +4141,7 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
     if (const MetatableTypeVar* mttv = get<MetatableTypeVar>(fn))
     {
         callTy = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false);
-    } else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); ctv && ctv->metatable)
+    } else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); FFlag::LuauCallableClasses && ctv && ctv->metatable)
     {
         callTy = getIndexTypeFromType(scope, *ctv->metatable, "__call", expr.func->location, /* addErrors= */ false);
     }

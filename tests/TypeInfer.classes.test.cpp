@@ -523,6 +523,8 @@ TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
 
 TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
 {
+    ScopedFastFlag luauCallableClasses{"LuauCallableClasses", true};
+
     CheckResult result = check(R"(
         local x : CallableClass
         local y = x("testing")
