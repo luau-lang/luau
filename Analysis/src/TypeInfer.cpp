@@ -4141,12 +4141,14 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
     if (const MetatableTypeVar* mttv = get<MetatableTypeVar>(fn))
     {
         callTy = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false);
-    } else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); FFlag::LuauCallableClasses && ctv && ctv->metatable)
+    }
+    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); FFlag::LuauCallableClasses && ctv && ctv->metatable)
     {
         callTy = getIndexTypeFromType(scope, *ctv->metatable, "__call", expr.func->location, /* addErrors= */ false);
     }
 
-    if (callTy) {
+    if (callTy)
+    {
         // Construct arguments with 'self' added in front
         TypePackId metaCallArgPack = addTypePack(TypePackVar(TypePack{args->head, args->tail}));
 
