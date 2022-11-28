@@ -1732,7 +1732,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
 
         // This class definition must have been `prototype()`d first.
         if (!binding)
-            ice("Not predeclared");
+            ice("Class not predeclared");
 
         TypeId classTy = binding->type;
         ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
