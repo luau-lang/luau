@@ -36,7 +36,7 @@ local t = {
 }
 ```
 
-If you iterate over a table value that could also be '`nil`', you get a better explanation in the error message:
+If you iterate over a table value that could also be `nil`, you get a better explanation in the error message:
 
 ```lua
 local function f(t: {number}?)
@@ -45,17 +45,17 @@ local function f(t: {number}?)
     end
 end
 ```
-Previously it was "`Cannot call non-function {number}?`" which was confusing.
+Previously it was `Cannot call non-function {number}?` which was confusing.
 
-And speaking of confusing, some of you might have seen an error like "`Type 'string' could not be converted into 'string'`".
+And speaking of confusing, some of you might have seen an error like `Type 'string' could not be converted into 'string'`.
 
-This was caused by Luau having both a primitive type '`string`' and a table type coming from '`string`' library. Since the way you can get the type of the '`string`' library table is by using '`typeof(string)`', the updated error message will mirror that and report "`Type 'string' could not be converted into 'typeof(string)'`."
+This was caused by Luau having both a primitive type `string` and a table type coming from `string` library. Since the way you can get the type of the `string` library table is by using `typeof(string)`, the updated error message will mirror that and report `Type 'string' could not be converted into 'typeof(string)'`.
 
 ## Analysis improvements
 
-For better inference, we updated definition of '`Enum.SomeEnumType:GetEnumItems()`' to return '`{Enum.SomeEnumType}`' instead of common '`{EnumItem}`' and the return type of '`next`' function now includes the possibility of key being '`nil`.' 
+For better inference, we updated definition of `Enum.SomeType:GetEnumItems()` to return `{Enum.SomeType}` instead of common `{EnumItem}` and the return type of `next` function now includes the possibility of key being `nil`.
 
-If you use '`and`' operator on non-boolean values, '`boolean`' type will no longer be added by the type inference:
+If you use `and` operator on non-boolean values, `boolean` type will no longer be added by the type inference:
 
 ```lua
 local function f1(a: number?)
