@@ -27,7 +27,7 @@ function unwrap<T>(r: Result<T>): T?
 end
 ```
 
-For better inference, we updated definition of `Enum.SomeType:GetEnumItems()` to return `{Enum.SomeType}` instead of common `{EnumItem}` and the return type of `next` function now includes the possibility of key being `nil`.
+For better inference, we updated the definition of `Enum.SomeType:GetEnumItems()` to return `{Enum.SomeType}` instead of common `{EnumItem}` and the return type of `next` function now includes the possibility of key being `nil`.
 
 Finally, if you use `and` operator on non-boolean values, `boolean` type will no longer be added by the type inference:
 
