@@ -24,9 +24,6 @@ LUAU_DYNAMIC_FASTFLAGVARIABLE(LuaReportParseIntegerIssues, false)
 
 LUAU_FASTFLAGVARIABLE(LuauInterpolatedStringBaseSupport, false)
 
-LUAU_FASTFLAGVARIABLE(LuauCommaParenWarnings, false)
-LUAU_FASTFLAGVARIABLE(LuauTableConstructorRecovery, false)
-
 LUAU_FASTFLAGVARIABLE(LuauParserErrorsOnMissingDefaultTypePackArgument, false)
 
 bool lua_telemetry_parsed_out_of_range_bin_integer = false;
@@ -1084,7 +1081,7 @@ void Parser::parseExprList(TempVector<AstExpr*>& result)
     {
         nextLexeme();
 
-        if (FFlag::LuauCommaParenWarnings && lexer.current().type == ')')
+        if (lexer.current().type == ')')
         {
             report(lexer.current().location, "Expected expression after ',' but got ')' instead");
             break;
@@ -1179,7 +1176,7 @@ AstTypePack* Parser::parseTypeList(TempVector<AstType*>& result, TempVector<std:
 
         nextLexeme();
 
-        if (FFlag::LuauCommaParenWarnings && lexer.current().type == ')')
+        if (lexer.current().type == ')')
         {
             report(lexer.current().location, "Expected type after ',' but got ')' instead");
             break;
@@ -2317,8 +2314,7 @@ AstExpr* Parser::parseTableConstructor()
 
     while (lexer.current().type != '}')
     {
-        if (FFlag::LuauTableConstructorRecovery)
-            lastElementIndent = lexer.current().location.begin.column;
+        lastElementIndent = lexer.current().location.begin.column;
 
         if (lexer.current().type == '[')
         {
@@ -2364,8 +2360,7 @@ AstExpr* Parser::parseTableConstructor()
         {
             nextLexeme();
         }
-        else if (FFlag::LuauTableConstructorRecovery && (lexer.current().type == '[' || lexer.current().type == Lexeme::Name) &&
-                 lexer.current().location.begin.column == lastElementIndent)
+        else if ((lexer.current().type == '[' || lexer.current().type == Lexeme::Name) && lexer.current().location.begin.column == lastElementIndent)
         {
             report(lexer.current().location, "Expected ',' after table constructor element");
         }
@@ -2556,7 +2551,7 @@ std::pair<AstArray<AstGenericType>, AstArray<AstGenericTypePack>> Parser::parseG
             {
                 nextLexeme();
 
-                if (FFlag::LuauCommaParenWarnings && lexer.current().type == '>')
+                if (lexer.current().type == '>')
                 {
                     report(lexer.current().location, "Expected type after ',' but got '>' instead");
                     break;

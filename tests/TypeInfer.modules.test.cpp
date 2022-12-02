@@ -11,6 +11,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
 
 using namespace Luau;
 
@@ -408,7 +409,12 @@ local b: B.T = a
     CheckResult result = frontend.check("game/C");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
+caused by:
+  Property 'x' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/A' could not be converted into 'T' from 'game/B'
 caused by:
   Property 'x' is not compatible. Type 'number' could not be converted into 'string')");
 }
@@ -442,7 +448,12 @@ local b: B.T = a
     CheckResult result = frontend.check("game/D");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
+caused by:
+  Property 'x' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'T' from 'game/B' could not be converted into 'T' from 'game/C'
 caused by:
   Property 'x' is not compatible. Type 'number' could not be converted into 'string')");
 }
@@ -460,6 +471,17 @@ return l0
 
     CheckResult result = frontend.check("game/B");
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_anyify_variadic_return_must_follow")
+{
+    ScopedFastFlag luauTypeInferMissingFollows{"LuauTypeInferMissingFollows", true};
+
+    CheckResult result = check(R"(
+return unpack(l0[_])
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

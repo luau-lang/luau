@@ -2723,8 +2723,6 @@ TEST_CASE_FIXTURE(Fixture, "error_message_for_using_function_as_type_annotation"
 
 TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the_end_of_a_function_argument_list")
 {
-    ScopedFastFlag sff{"LuauCommaParenWarnings", true};
-
     ParseResult result = tryParse(R"(
         foo(a, b, c,)
     )");
@@ -2737,8 +2735,6 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the
 
 TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the_end_of_a_function_parameter_list")
 {
-    ScopedFastFlag sff{"LuauCommaParenWarnings", true};
-
     ParseResult result = tryParse(R"(
         export type VisitFn = (
             any,
@@ -2754,8 +2750,6 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the
 
 TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the_end_of_a_generic_parameter_list")
 {
-    ScopedFastFlag sff{"LuauCommaParenWarnings", true};
-
     ParseResult result = tryParse(R"(
         export type VisitFn = <A, B,>(a: A, b: B) -> ()
     )");
@@ -2778,8 +2772,6 @@ TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_an_extra_comma_at_the
 
 TEST_CASE_FIXTURE(Fixture, "get_a_nice_error_when_there_is_no_comma_between_table_members")
 {
-    ScopedFastFlag luauTableConstructorRecovery{"LuauTableConstructorRecovery", true};
-
     ParseResult result = tryParse(R"(
         local t = {
             first = 1

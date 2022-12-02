@@ -3,6 +3,8 @@
 
 #include "Luau/Ast.h"
 #include "Luau/Common.h"
+#include "Luau/Connective.h"
+#include "Luau/DataFlowGraph.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Def.h"
 #include "Luau/NotNull.h"
@@ -257,7 +259,17 @@ struct MagicFunctionCallContext
     TypePackId result;
 };
 
-using DcrMagicFunction = std::function<bool(MagicFunctionCallContext)>;
+using DcrMagicFunction = bool (*)(MagicFunctionCallContext);
+
+struct MagicRefinementContext
+{
+    ScopePtr scope;
+    NotNull<const DataFlowGraph> dfg;
+    NotNull<ConnectiveArena> connectiveArena;
+    const class AstExprCall* callSite;
+};
+
+using DcrMagicRefinement = std::vector<ConnectiveId> (*)(MagicRefinementContext);
 
 struct FunctionTypeVar
 {
@@ -279,19 +291,20 @@ struct FunctionTypeVar
     FunctionTypeVar(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
         TypePackId retTypes, std::optional<FunctionDefinition> defn = {}, bool hasSelf = false);
 
-    TypeLevel level;
-    Scope* scope = nullptr;
+    std::optional<FunctionDefinition> definition;
     /// These should all be generic
     std::vector<TypeId> generics;
     std::vector<TypePackId> genericPacks;
-    TypePackId argTypes;
     std::vector<std::optional<FunctionArgument>> argNames;
-    TypePackId retTypes;
-    std::optional<FunctionDefinition> definition;
-    MagicFunction magicFunction = nullptr;       // Function pointer, can be nullptr.
-    DcrMagicFunction dcrMagicFunction = nullptr; // can be nullptr
-    bool hasSelf;
     Tags tags;
+    TypeLevel level;
+    Scope* scope = nullptr;
+    TypePackId argTypes;
+    TypePackId retTypes;
+    MagicFunction magicFunction = nullptr;
+    DcrMagicFunction dcrMagicFunction = nullptr;     // Fired only while solving constraints
+    DcrMagicRefinement dcrMagicRefinement = nullptr; // Fired only while generating constraints
+    bool hasSelf;
     bool hasNoGenerics = false;
 };
 

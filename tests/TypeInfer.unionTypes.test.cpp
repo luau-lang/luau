@@ -729,4 +729,37 @@ TEST_CASE_FIXTURE(Fixture, "union_of_functions_with_mismatching_result_variadics
                                          "of the union options are compatible");
 }
 
+TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function f(t): { x: number } | { x: string }
+            local x = t.x
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("({| x: number |} | {| x: string |}) -> {| x: number |} | {| x: string |}", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_union_types_2")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function f(t: { x: number } | { x: string })
+            return t.x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("({| x: number |} | {| x: string |}) -> number | string", toString(requireType("f")));
+}
+
 TEST_SUITE_END();

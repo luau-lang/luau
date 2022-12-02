@@ -10,6 +10,7 @@
 #include "doctest.h"
 
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
+LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
 
 using namespace Luau;
 
@@ -717,12 +718,24 @@ y.a.c = y
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]),
-        R"(Type 'y' could not be converted into 'T<string>'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+    {
+        CHECK_EQ(toString(result.errors[0]),
+            R"(Type 'y' could not be converted into 'T<string>'
+caused by:
+  Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
+caused by:
+  Property 'd' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    }
+    else
+    {
+        CHECK_EQ(toString(result.errors[0]),
+            R"(Type 'y' could not be converted into 'T<string>'
 caused by:
   Property 'a' is not compatible. Type '{ c: T<string>?, d: number }' could not be converted into 'U<string>'
 caused by:
   Property 'd' is not compatible. Type 'number' could not be converted into 'string')");
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "generic_type_pack_unification1")
@@ -1247,6 +1260,23 @@ instantiate(function(x: string) return "foo" end)
 
     CHECK_EQ("<a>(a) -> a", toString(tm1->wantedType));
     CHECK_EQ("<a>(string) -> string", toString(tm1->givenType));
+}
+
+TEST_CASE_FIXTURE(Fixture, "bidirectional_checking_and_generalization_play_nice")
+{
+    CheckResult result = check(R"(
+        local foo = function(a)
+            return a()
+        end
+
+        local a = foo(function() return 1 end)
+        local b = foo(function() return "bar" end)
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK("number" == toString(requireType("a")));
+    CHECK("string" == toString(requireType("b")));
 }
 
 TEST_SUITE_END();

@@ -120,6 +120,9 @@ private:
 
     std::optional<TypeId> findTablePropertyRespectingMeta(TypeId lhsType, Name name);
 
+    TxnLog combineLogsIntoIntersection(std::vector<TxnLog> logs);
+    TxnLog combineLogsIntoUnion(std::vector<TxnLog> logs);
+
 public:
     // Returns true if the type "needle" already occurs within "haystack" and reports an "infinite type error"
     bool occursCheck(TypeId needle, TypeId haystack);
@@ -134,6 +137,7 @@ public:
 
 private:
     bool isNonstrictMode() const;
+    TypeMismatch::Context mismatchContext();
 
     void checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, TypeId wantedType, TypeId givenType);
     void checkChildUnifierTypeMismatch(const ErrorVec& innerErrors, const std::string& prop, TypeId wantedType, TypeId givenType);

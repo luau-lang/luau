@@ -149,11 +149,15 @@ struct SetPropConstraint
     TypeId propType;
 };
 
-// result ~ if isSingleton D then ~D else unknown where D = discriminantType
+// if negation:
+//   result ~ if isSingleton D then ~D else unknown where D = discriminantType
+// if not negation:
+//   result ~ if isSingleton D then D else unknown where D = discriminantType
 struct SingletonOrTopTypeConstraint
 {
     TypeId resultType;
     TypeId discriminantType;
+    bool negated;
 };
 
 using ConstraintV = Variant<SubtypeConstraint, PackSubtypeConstraint, GeneralizationConstraint, InstantiationConstraint, UnaryConstraint,

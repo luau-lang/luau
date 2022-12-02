@@ -10,7 +10,6 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(LuauRecursiveTypeParameterRestriction);
-LUAU_FASTFLAG(LuauFunctionReturnStringificationFixup);
 
 TEST_SUITE_BEGIN("ToString");
 
@@ -83,7 +82,7 @@ TEST_CASE_FIXTURE(Fixture, "table_respects_use_line_break")
 
     ToStringOptions opts;
     opts.useLineBreaks = true;
-    opts.indent = true;
+    opts.DEPRECATED_indent = true;
 
     //clang-format off
     CHECK_EQ("{|\n"
@@ -568,10 +567,7 @@ TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_return_type_if_pack_has_an_emp
 
     TypeId functionType = arena.addType(FunctionTypeVar{argList, emptyTail});
 
-    if (FFlag::LuauFunctionReturnStringificationFixup)
-        CHECK("(string) -> string" == toString(functionType));
-    else
-        CHECK("(string) -> (string)" == toString(functionType));
+    CHECK("(string) -> string" == toString(functionType));
 }
 
 TEST_CASE_FIXTURE(Fixture, "no_parentheses_around_cyclic_function_type_in_union")

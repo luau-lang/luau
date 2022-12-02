@@ -24,6 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauOverloadedFunctionSubtypingPerf);
+LUAU_FASTFLAG(LuauUninhabitedSubAnything)
 
 namespace Luau
 {
@@ -240,11 +241,73 @@ NormalizedType::NormalizedType(NotNull<SingletonTypes> singletonTypes)
 {
 }
 
-static bool isInhabited(const NormalizedType& norm)
+static bool isShallowInhabited(const NormalizedType& norm)
 {
+    // This test is just a shallow check, for example it returns `true` for `{ p : never }`
     return !get<NeverTypeVar>(norm.tops) || !get<NeverTypeVar>(norm.booleans) || !norm.classes.empty() || !get<NeverTypeVar>(norm.errors) ||
            !get<NeverTypeVar>(norm.nils) || !get<NeverTypeVar>(norm.numbers) || !norm.strings.isNever() || !get<NeverTypeVar>(norm.threads) ||
            !norm.functions.isNever() || !norm.tables.empty() || !norm.tyvars.empty();
+}
+
+bool isInhabited_DEPRECATED(const NormalizedType& norm)
+{
+    LUAU_ASSERT(!FFlag::LuauUninhabitedSubAnything);
+    return isShallowInhabited(norm);
+}
+
+bool Normalizer::isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen)
+{
+    if (!get<NeverTypeVar>(norm->tops) || !get<NeverTypeVar>(norm->booleans) || !get<NeverTypeVar>(norm->errors) ||
+        !get<NeverTypeVar>(norm->nils) || !get<NeverTypeVar>(norm->numbers) || !get<NeverTypeVar>(norm->threads) ||
+        !norm->classes.empty() || !norm->strings.isNever() || !norm->functions.isNever())
+        return true;
+    
+    for (const auto& [_, intersect] : norm->tyvars)
+    {
+        if (isInhabited(intersect.get(), seen))
+            return true;
+    }
+
+    for (TypeId table : norm->tables)
+    {
+        if (isInhabited(table, seen))
+            return true;
+    }
+
+    return false;
+}
+
+bool Normalizer::isInhabited(TypeId ty, std::unordered_set<TypeId> seen)
+{
+    // TODO: use log.follow(ty), CLI-64291
+    ty = follow(ty);
+
+    if (get<NeverTypeVar>(ty))
+        return false;
+
+    if (!get<IntersectionTypeVar>(ty) && !get<UnionTypeVar>(ty) && !get<TableTypeVar>(ty) && !get<MetatableTypeVar>(ty))
+        return true;
+
+    if (seen.count(ty))
+        return true;
+
+    seen.insert(ty);
+
+    if (const TableTypeVar* ttv = get<TableTypeVar>(ty))
+    {
+        for (const auto& [_, prop] : ttv->props)
+        {
+            if (!isInhabited(prop.type, seen))
+                return false;
+        }
+        return true;
+    }
+
+    if (const MetatableTypeVar* mtv = get<MetatableTypeVar>(ty))
+        return isInhabited(mtv->table, seen) && isInhabited(mtv->metatable, seen);
+
+    const NormalizedType* norm = normalize(ty);
+    return isInhabited(norm, seen);
 }
 
 static int tyvarIndex(TypeId ty)
@@ -378,7 +441,7 @@ static bool isNormalizedTyvar(const NormalizedTyvars& tyvars)
     {
         if (!isPlainTyvar(tyvar))
             return false;
-        if (!isInhabited(*intersect))
+        if (!isShallowInhabited(*intersect))
             return false;
         for (auto& [other, _] : intersect->tyvars)
             if (tyvarIndex(other) <= tyvarIndex(tyvar))
@@ -1852,7 +1915,7 @@ bool Normalizer::intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there)
         NormalizedType& inter = *it->second;
         if (!intersectNormalWithTy(inter, there))
             return false;
-        if (isInhabited(inter))
+        if (isShallowInhabited(inter))
             ++it;
         else
             it = here.erase(it);
@@ -1914,7 +1977,7 @@ bool Normalizer::intersectNormals(NormalizedType& here, const NormalizedType& th
             if (!intersectNormals(inter, *found->second, index))
                 return false;
         }
-        if (isInhabited(inter))
+        if (isShallowInhabited(inter))
             it++;
         else
             it = here.tyvars.erase(it);

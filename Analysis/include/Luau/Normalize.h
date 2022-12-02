@@ -194,6 +194,8 @@ struct NormalizedFunctionType
 struct NormalizedType;
 using NormalizedTyvars = std::unordered_map<TypeId, std::unique_ptr<NormalizedType>>;
 
+bool isInhabited_DEPRECATED(const NormalizedType& norm);
+
 // A normalized type is either any, unknown, or one of the form P | T | F | G where
 // * P is a union of primitive types (including singletons, classes and the error type)
 // * T is a union of table types
@@ -327,6 +329,10 @@ public:
     bool intersectTyvarsWithTy(NormalizedTyvars& here, TypeId there);
     bool intersectNormals(NormalizedType& here, const NormalizedType& there, int ignoreSmallerTyvars = -1);
     bool intersectNormalWithTy(NormalizedType& here, TypeId there);
+
+    // Check for inhabitance
+    bool isInhabited(TypeId ty, std::unordered_set<TypeId> seen = {});
+    bool isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen = {});
 
     // -------- Convert back from a normalized type to a type
     TypeId typeFromNormal(const NormalizedType& norm);

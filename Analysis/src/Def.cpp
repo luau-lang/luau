@@ -4,9 +4,14 @@
 namespace Luau
 {
 
-DefId DefArena::freshDef()
+DefId DefArena::freshCell()
 {
-    return NotNull{allocator.allocate<Def>(Undefined{})};
+    return NotNull{allocator.allocate<Def>(Def{Cell{std::nullopt}})};
+}
+
+DefId DefArena::freshCell(DefId parent, const std::string& prop)
+{
+    return NotNull{allocator.allocate<Def>(Def{Cell{FieldMetadata{parent, prop}}})};
 }
 
 } // namespace Luau

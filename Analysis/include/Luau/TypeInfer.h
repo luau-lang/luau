@@ -54,14 +54,7 @@ public:
     explicit TimeLimitError(const std::string& moduleName)
         : InternalCompilerError("Typeinfer failed to complete in allotted time", moduleName)
     {
-        LUAU_ASSERT(FFlag::LuauIceExceptionInheritanceChange);
     }
-};
-
-class TimeLimitError_DEPRECATED : public std::exception
-{
-public:
-    virtual const char* what() const throw();
 };
 
 // All TypeVars are retained via Environment::typeVars.  All TypeIds
@@ -95,6 +88,7 @@ struct TypeChecker
     void check(const ScopePtr& scope, const AstStatDeclareFunction& declaredFunction);
 
     void prototype(const ScopePtr& scope, const AstStatTypeAlias& typealias, int subLevel = 0);
+    void prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass);
 
     void checkBlock(const ScopePtr& scope, const AstStatBlock& statement);
     void checkBlockWithoutRecursionCheck(const ScopePtr& scope, const AstStatBlock& statement);
@@ -398,6 +392,11 @@ private:
      * (exported, name) to properly deal with the case where the two duplicates do not have the same export status.
      */
     DenseHashSet<std::pair<bool, Name>, HashBoolNamePair> duplicateTypeAliases;
+
+    /**
+     * A set of incorrect class definitions which is used to avoid a second-pass analysis.
+     */
+    DenseHashSet<const AstStatDeclareClass*> incorrectClassDefinitions{nullptr};
 
     std::vector<std::pair<TypeId, ScopePtr>> deferredQuantification;
 };

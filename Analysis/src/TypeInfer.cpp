@@ -35,11 +35,12 @@ LUAU_FASTFLAG(LuauTypeNormalization2)
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeDuringUnification, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnAnyInsteadOfICE, false) // Eventually removed as false.
 LUAU_FASTFLAGVARIABLE(DebugLuauSharedSelf, false)
-LUAU_FASTFLAGVARIABLE(LuauLvaluelessPath, false)
 LUAU_FASTFLAGVARIABLE(LuauNilIterator, false)
 LUAU_FASTFLAGVARIABLE(LuauUnknownAndNeverType, false)
+LUAU_FASTFLAGVARIABLE(LuauTypeInferMissingFollows, false)
 LUAU_FASTFLAGVARIABLE(LuauBinaryNeedsExpectedTypesToo, false)
 LUAU_FASTFLAGVARIABLE(LuauNeverTypesAndOperatorsInference, false)
+LUAU_FASTFLAGVARIABLE(LuauFollowInLvalueIndexCheck, false)
 LUAU_FASTFLAGVARIABLE(LuauReturnsFromCallsitesAreNotWidened, false)
 LUAU_FASTFLAGVARIABLE(LuauTryhardAnd, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
@@ -47,16 +48,15 @@ LUAU_FASTFLAGVARIABLE(LuauCompleteVisitor, false)
 LUAU_FASTFLAGVARIABLE(LuauOptionalNextKey, false)
 LUAU_FASTFLAGVARIABLE(LuauReportShadowedTypeAlias, false)
 LUAU_FASTFLAGVARIABLE(LuauBetterMessagingOnCountMismatch, false)
-LUAU_FASTFLAGVARIABLE(LuauArgMismatchReportFunctionLocation, false)
+LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
 LUAU_FASTFLAGVARIABLE(LuauImplicitElseRefinement, false)
+LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
+LUAU_FASTFLAGVARIABLE(LuauDeclareClassPrototype, false)
+LUAU_FASTFLAG(LuauUninhabitedSubAnything)
+LUAU_FASTFLAGVARIABLE(LuauCallableClasses, false)
 
 namespace Luau
 {
-const char* TimeLimitError_DEPRECATED::what() const throw()
-{
-    LUAU_ASSERT(!FFlag::LuauIceExceptionInheritanceChange);
-    return "Typeinfer failed to complete in allotted time";
-}
 
 static bool typeCouldHaveMetatable(TypeId ty)
 {
@@ -267,11 +267,6 @@ ModulePtr TypeChecker::check(const SourceModule& module, Mode mode, std::optiona
         reportErrorCodeTooComplex(module.root->location);
         return std::move(currentModule);
     }
-    catch (const RecursionLimitException_DEPRECATED&)
-    {
-        reportErrorCodeTooComplex(module.root->location);
-        return std::move(currentModule);
-    }
 }
 
 ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mode mode, std::optional<ScopePtr> environmentScope)
@@ -316,10 +311,6 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     {
         currentModule->timeout = true;
     }
-    catch (const TimeLimitError_DEPRECATED&)
-    {
-        currentModule->timeout = true;
-    }
 
     if (FFlag::DebugLuauSharedSelf)
     {
@@ -356,6 +347,7 @@ ModulePtr TypeChecker::checkWithoutRecursionCheck(const SourceModule& module, Mo
     unifierState.skipCacheForType.clear();
 
     duplicateTypeAliases.clear();
+    incorrectClassDefinitions.clear();
 
     return std::move(currentModule);
 }
@@ -426,7 +418,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStat& program)
         ice("Unknown AstStat");
 
     if (finishTime && TimeTrace::getClock() > *finishTime)
-        throwTimeLimitError();
+        throw TimeLimitError(iceHandler->moduleName);
 }
 
 // This particular overload is for do...end. If you need to not increase the scope level, use checkBlock directly.
@@ -449,11 +441,6 @@ void TypeChecker::checkBlock(const ScopePtr& scope, const AstStatBlock& block)
         checkBlockWithoutRecursionCheck(scope, block);
     }
     catch (const RecursionLimitException&)
-    {
-        reportErrorCodeTooComplex(block.location);
-        return;
-    }
-    catch (const RecursionLimitException_DEPRECATED&)
     {
         reportErrorCodeTooComplex(block.location);
         return;
@@ -522,6 +509,10 @@ void TypeChecker::checkBlockWithoutRecursionCheck(const ScopePtr& scope, const A
         {
             prototype(scope, *typealias, subLevel);
             ++subLevel;
+        }
+        else if (const auto& declaredClass = stat->as<AstStatDeclareClass>(); FFlag::LuauDeclareClassPrototype && declaredClass)
+        {
+            prototype(scope, *declaredClass);
         }
     }
 
@@ -959,9 +950,9 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatAssign& assign)
 
         TypeId right = nullptr;
 
-        Location loc = 0 == assign.values.size  ? assign.location
-                       : i < assign.values.size ? assign.values.data[i]->location
-                                                : assign.values.data[assign.values.size - 1]->location;
+        Location loc = 0 == assign.values.size
+                           ? assign.location
+                           : i < assign.values.size ? assign.values.data[i]->location : assign.values.data[assign.values.size - 1]->location;
 
         if (valueIter != valueEnd)
         {
@@ -1670,8 +1661,10 @@ void TypeChecker::prototype(const ScopePtr& scope, const AstStatTypeAlias& typea
     }
 }
 
-void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
+void TypeChecker::prototype(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
 {
+    LUAU_ASSERT(FFlag::LuauDeclareClassPrototype);
+
     std::optional<TypeId> superTy = std::nullopt;
     if (declaredClass.superName)
     {
@@ -1681,6 +1674,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
         if (!lookupType)
         {
             reportError(declaredClass.location, UnknownSymbol{superName, UnknownSymbol::Type});
+            incorrectClassDefinitions.insert(&declaredClass);
             return;
         }
 
@@ -1692,7 +1686,7 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
         {
             reportError(declaredClass.location,
                 GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'", superName.c_str(), declaredClass.name.value)});
-
+            incorrectClassDefinitions.insert(&declaredClass);
             return;
         }
     }
@@ -1701,61 +1695,174 @@ void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declar
 
     TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
     ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
-
     TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
-    TableTypeVar* metatable = getMutable<TableTypeVar>(metaTy);
 
     ctv->metatable = metaTy;
-
     scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+}
 
-    for (const AstDeclaredClassProp& prop : declaredClass.props)
+void TypeChecker::check(const ScopePtr& scope, const AstStatDeclareClass& declaredClass)
+{
+    if (FFlag::LuauDeclareClassPrototype)
     {
-        Name propName(prop.name.value);
-        TypeId propTy = resolveType(scope, *prop.ty);
+        Name className(declaredClass.name.value);
 
-        bool assignToMetatable = isMetamethod(propName);
-        Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+        // Don't bother checking if the class definition was incorrect
+        if (incorrectClassDefinitions.find(&declaredClass))
+            return;
 
-        // Function types always take 'self', but this isn't reflected in the
-        // parsed annotation. Add it here.
-        if (prop.isMethod)
+        std::optional<TypeFun> binding;
+        if (auto it = scope->exportedTypeBindings.find(className); it != scope->exportedTypeBindings.end())
+            binding = it->second;
+
+        // This class definition must have been `prototype()`d first.
+        if (!binding)
+            ice("Class not predeclared");
+
+        TypeId classTy = binding->type;
+        ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+
+        if (!ctv->metatable)
+            ice("No metatable for declared class");
+
+        TableTypeVar* metatable = getMutable<TableTypeVar>(*ctv->metatable);
+        for (const AstDeclaredClassProp& prop : declaredClass.props)
         {
-            if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+            Name propName(prop.name.value);
+            TypeId propTy = resolveType(scope, *prop.ty);
+
+            bool assignToMetatable = isMetamethod(propName);
+            Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+
+            // Function types always take 'self', but this isn't reflected in the
+            // parsed annotation. Add it here.
+            if (prop.isMethod)
             {
-                ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
-                ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
-                ftv->hasSelf = true;
+                if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+                {
+                    ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
+                    ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
+                    ftv->hasSelf = true;
+                }
             }
-        }
 
-        if (assignTo.count(propName) == 0)
-        {
-            assignTo[propName] = {propTy};
-        }
-        else
-        {
-            TypeId currentTy = assignTo[propName].type;
-
-            // We special-case this logic to keep the intersection flat; otherwise we
-            // would create a ton of nested intersection types.
-            if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+            if (assignTo.count(propName) == 0)
             {
-                std::vector<TypeId> options = itv->parts;
-                options.push_back(propTy);
-                TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
-
-                assignTo[propName] = {newItv};
-            }
-            else if (get<FunctionTypeVar>(currentTy))
-            {
-                TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
-
-                assignTo[propName] = {intersection};
+                assignTo[propName] = {propTy};
             }
             else
             {
-                reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                TypeId currentTy = assignTo[propName].type;
+
+                // We special-case this logic to keep the intersection flat; otherwise we
+                // would create a ton of nested intersection types.
+                if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+                {
+                    std::vector<TypeId> options = itv->parts;
+                    options.push_back(propTy);
+                    TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
+
+                    assignTo[propName] = {newItv};
+                }
+                else if (get<FunctionTypeVar>(currentTy))
+                {
+                    TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
+
+                    assignTo[propName] = {intersection};
+                }
+                else
+                {
+                    reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                }
+            }
+        }
+    }
+    else
+    {
+        std::optional<TypeId> superTy = std::nullopt;
+        if (declaredClass.superName)
+        {
+            Name superName = Name(declaredClass.superName->value);
+            std::optional<TypeFun> lookupType = scope->lookupType(superName);
+
+            if (!lookupType)
+            {
+                reportError(declaredClass.location, UnknownSymbol{superName, UnknownSymbol::Type});
+                return;
+            }
+
+            // We don't have generic classes, so this assertion _should_ never be hit.
+            LUAU_ASSERT(lookupType->typeParams.size() == 0 && lookupType->typePackParams.size() == 0);
+            superTy = lookupType->type;
+
+            if (!get<ClassTypeVar>(follow(*superTy)))
+            {
+                reportError(declaredClass.location, GenericError{format("Cannot use non-class type '%s' as a superclass of class '%s'",
+                                                        superName.c_str(), declaredClass.name.value)});
+                return;
+            }
+        }
+
+        Name className(declaredClass.name.value);
+
+        TypeId classTy = addType(ClassTypeVar(className, {}, superTy, std::nullopt, {}, {}, currentModuleName));
+
+        ClassTypeVar* ctv = getMutable<ClassTypeVar>(classTy);
+        TypeId metaTy = addType(TableTypeVar{TableState::Sealed, scope->level});
+        TableTypeVar* metatable = getMutable<TableTypeVar>(metaTy);
+
+        ctv->metatable = metaTy;
+
+        scope->exportedTypeBindings[className] = TypeFun{{}, classTy};
+
+        for (const AstDeclaredClassProp& prop : declaredClass.props)
+        {
+            Name propName(prop.name.value);
+            TypeId propTy = resolveType(scope, *prop.ty);
+
+            bool assignToMetatable = isMetamethod(propName);
+            Luau::ClassTypeVar::Props& assignTo = assignToMetatable ? metatable->props : ctv->props;
+
+            // Function types always take 'self', but this isn't reflected in the
+            // parsed annotation. Add it here.
+            if (prop.isMethod)
+            {
+                if (FunctionTypeVar* ftv = getMutable<FunctionTypeVar>(propTy))
+                {
+                    ftv->argNames.insert(ftv->argNames.begin(), FunctionArgument{"self", {}});
+                    ftv->argTypes = addTypePack(TypePack{{classTy}, ftv->argTypes});
+                    ftv->hasSelf = true;
+                }
+            }
+
+            if (assignTo.count(propName) == 0)
+            {
+                assignTo[propName] = {propTy};
+            }
+            else
+            {
+                TypeId currentTy = assignTo[propName].type;
+
+                // We special-case this logic to keep the intersection flat; otherwise we
+                // would create a ton of nested intersection types.
+                if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(currentTy))
+                {
+                    std::vector<TypeId> options = itv->parts;
+                    options.push_back(propTy);
+                    TypeId newItv = addType(IntersectionTypeVar{std::move(options)});
+
+                    assignTo[propName] = {newItv};
+                }
+                else if (get<FunctionTypeVar>(currentTy))
+                {
+                    TypeId intersection = addType(IntersectionTypeVar{{currentTy, propTy}});
+
+                    assignTo[propName] = {intersection};
+                }
+                else
+                {
+                    reportError(declaredClass.location, GenericError{format("Cannot overload non-function class member '%s'", propName.c_str())});
+                }
             }
         }
     }
@@ -2548,6 +2655,48 @@ static std::optional<std::string> getIdentifierOfBaseVar(AstExpr* node)
     return std::nullopt;
 }
 
+/** Return true if comparison between the types a and b should be permitted with
+ * the == or ~= operators.
+ *
+ * Two types are considered eligible for equality testing if it is possible for
+ * the test to ever succeed.  In other words, we test to see whether the two
+ * types have any overlap at all.
+ *
+ * In order to make things work smoothly with the greedy solver, this function
+ * exempts any and FreeTypeVars from this requirement.
+ *
+ * This function does not (yet?) take into account extra Lua restrictions like
+ * that two tables can only be compared if they have the same metatable.  That
+ * is presently handled by the caller.
+ *
+ * @return True if the types are comparable.  False if they are not.
+ *
+ * If an internal recursion limit is reached while performing this test, the
+ * function returns std::nullopt.
+ */
+static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Normalizer> normalizer, TypeId a, TypeId b)
+{
+    a = follow(a);
+    b = follow(b);
+
+    auto isExempt = [](TypeId t) {
+        return isNil(t) || get<FreeTypeVar>(t);
+    };
+
+    if (isExempt(a) || isExempt(b))
+        return true;
+
+    TypeId c = arena->addType(IntersectionTypeVar{{a, b}});
+    const NormalizedType* n = normalizer->normalize(c);
+    if (!n)
+        return std::nullopt;
+
+    if (FFlag::LuauUninhabitedSubAnything)
+        return normalizer->isInhabited(n);
+    else
+        return isInhabited_DEPRECATED(*n);
+}
+
 TypeId TypeChecker::checkRelationalOperation(
     const ScopePtr& scope, const AstExprBinary& expr, TypeId lhsType, TypeId rhsType, const PredicateVec& predicates)
 {
@@ -2618,6 +2767,28 @@ TypeId TypeChecker::checkRelationalOperation(
                 return booleanType;
         }
 
+        if (FFlag::LuauIntersectionTestForEquality && isEquality)
+        {
+            // Unless either type is free or any, an equality comparison is only
+            // valid when the intersection of the two operands is non-empty.
+            //
+            // eg it is okay to compare string? == number? because the two types
+            // have nil in common, but string == number is not allowed.
+            std::optional<bool> eqTestResult = areEqComparable(NotNull{&currentModule->internalTypes}, NotNull{&normalizer}, lhsType, rhsType);
+            if (!eqTestResult)
+            {
+                reportErrorCodeTooComplex(expr.location);
+                return errorRecoveryType(booleanType);
+            }
+
+            if (!*eqTestResult)
+            {
+                reportError(
+                    expr.location, GenericError{format("Type %s cannot be compared with %s", toString(lhsType).c_str(), toString(rhsType).c_str())});
+                return errorRecoveryType(booleanType);
+            }
+        }
+
         /* Subtlety here:
          * We need to do this unification first, but there are situations where we don't actually want to
          * report any problems that might have been surfaced as a result of this step because we might already
@@ -2630,7 +2801,7 @@ TypeId TypeChecker::checkRelationalOperation(
             state.log.commit();
         }
 
-        bool needsMetamethod = !isEquality;
+        const bool needsMetamethod = !isEquality;
 
         TypeId leftType = follow(lhsType);
         if (get<PrimitiveTypeVar>(leftType) || get<AnyTypeVar>(leftType) || get<ErrorTypeVar>(leftType) || get<UnionTypeVar>(leftType))
@@ -3212,6 +3383,9 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 
     TypeId indexType = checkExpr(scope, *expr.index).type;
 
+    if (FFlag::LuauFollowInLvalueIndexCheck)
+        exprType = follow(exprType);
+
     if (get<AnyTypeVar>(exprType) || get<ErrorTypeVar>(exprType))
         return exprType;
 
@@ -3231,6 +3405,16 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
                 return errorRecoveryType(scope);
             }
             return prop->type;
+        }
+    }
+    else if (FFlag::LuauAllowIndexClassParameters)
+    {
+        if (const ClassTypeVar* exprClass = get<ClassTypeVar>(exprType))
+        {
+            if (isNonstrictMode())
+                return unknownType;
+            reportError(TypeError{expr.location, DynamicPropertyLookupOnClassesUnsafe{exprType}});
+            return errorRecoveryType(scope);
         }
     }
 
@@ -3687,16 +3871,8 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
 
         std::string namePath;
 
-        if (FFlag::LuauLvaluelessPath)
-        {
-            if (std::optional<std::string> path = getFunctionNameAsString(funName))
-                namePath = *path;
-        }
-        else
-        {
-            if (std::optional<LValue> lValue = tryGetLValue(funName))
-                namePath = toString(*lValue);
-        }
+        if (std::optional<std::string> path = getFunctionNameAsString(funName))
+            namePath = *path;
 
         auto [minParams, optMaxParams] = getParameterExtents(&state.log, paramPack);
         state.reportError(TypeError{location,
@@ -3806,27 +3982,11 @@ void TypeChecker::checkArgumentList(const ScopePtr& scope, const AstExpr& funNam
 
                     std::string namePath;
 
-                    if (FFlag::LuauLvaluelessPath)
-                    {
-                        if (std::optional<std::string> path = getFunctionNameAsString(funName))
-                            namePath = *path;
-                    }
-                    else
-                    {
-                        if (std::optional<LValue> lValue = tryGetLValue(funName))
-                            namePath = toString(*lValue);
-                    }
+                    if (std::optional<std::string> path = getFunctionNameAsString(funName))
+                        namePath = *path;
 
-                    if (FFlag::LuauArgMismatchReportFunctionLocation)
-                    {
-                        state.reportError(TypeError{
-                            funName.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
-                    }
-                    else
-                    {
-                        state.reportError(TypeError{
-                            state.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
-                    }
+                    state.reportError(TypeError{
+                        funName.location, CountMismatch{minParams, optMaxParams, paramIndex, CountMismatch::Context::Arg, isVariadic, namePath}});
                     return;
                 }
                 ++paramIter;
@@ -4135,26 +4295,33 @@ std::optional<WithPredicate<TypePackId>> TypeChecker::checkCallOverload(const Sc
 
     std::vector<Location> metaArgLocations;
 
-    // Might be a callable table
+    // Might be a callable table or class
+    std::optional<TypeId> callTy = std::nullopt;
     if (const MetatableTypeVar* mttv = get<MetatableTypeVar>(fn))
     {
-        if (std::optional<TypeId> ty = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false))
-        {
-            // Construct arguments with 'self' added in front
-            TypePackId metaCallArgPack = addTypePack(TypePackVar(TypePack{args->head, args->tail}));
+        callTy = getIndexTypeFromType(scope, mttv->metatable, "__call", expr.func->location, /* addErrors= */ false);
+    }
+    else if (const ClassTypeVar* ctv = get<ClassTypeVar>(fn); FFlag::LuauCallableClasses && ctv && ctv->metatable)
+    {
+        callTy = getIndexTypeFromType(scope, *ctv->metatable, "__call", expr.func->location, /* addErrors= */ false);
+    }
 
-            TypePack* metaCallArgs = getMutable<TypePack>(metaCallArgPack);
-            metaCallArgs->head.insert(metaCallArgs->head.begin(), fn);
+    if (callTy)
+    {
+        // Construct arguments with 'self' added in front
+        TypePackId metaCallArgPack = addTypePack(TypePackVar(TypePack{args->head, args->tail}));
 
-            metaArgLocations = *argLocations;
-            metaArgLocations.insert(metaArgLocations.begin(), expr.func->location);
+        TypePack* metaCallArgs = getMutable<TypePack>(metaCallArgPack);
+        metaCallArgs->head.insert(metaCallArgs->head.begin(), fn);
 
-            fn = instantiate(scope, *ty, expr.func->location);
+        metaArgLocations = *argLocations;
+        metaArgLocations.insert(metaArgLocations.begin(), expr.func->location);
 
-            argPack = metaCallArgPack;
-            args = metaCallArgs;
-            argLocations = &metaArgLocations;
-        }
+        fn = instantiate(scope, *callTy, expr.func->location);
+
+        argPack = metaCallArgPack;
+        args = metaCallArgs;
+        argLocations = &metaArgLocations;
     }
 
     const FunctionTypeVar* ftv = get<FunctionTypeVar>(fn);
@@ -4331,7 +4498,7 @@ void TypeChecker::reportOverloadResolutionError(const ScopePtr& scope, const Ast
     std::string s;
     for (size_t i = 0; i < overloadTypes.size(); ++i)
     {
-        TypeId overload = overloadTypes[i];
+        TypeId overload = FFlag::LuauTypeInferMissingFollows ? follow(overloadTypes[i]) : overloadTypes[i];
         Unifier state = mkUnifier(scope, expr.location);
 
         // Unify return types
@@ -4712,7 +4879,10 @@ TypePackId TypeChecker::anyifyModuleReturnTypePackGenerics(TypePackId tp)
     tp = follow(tp);
 
     if (const VariadicTypePack* vtp = get<VariadicTypePack>(tp))
-        return get<GenericTypeVar>(vtp->ty) ? anyTypePack : tp;
+    {
+        TypeId ty = FFlag::LuauTypeInferMissingFollows ? follow(vtp->ty) : vtp->ty;
+        return get<GenericTypeVar>(ty) ? anyTypePack : tp;
+    }
 
     if (!get<TypePack>(follow(tp)))
         return tp;
@@ -4761,19 +4931,6 @@ void TypeChecker::ice(const std::string& message, const Location& location)
 void TypeChecker::ice(const std::string& message)
 {
     iceHandler->ice(message);
-}
-
-// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
-void TypeChecker::throwTimeLimitError()
-{
-    if (FFlag::LuauIceExceptionInheritanceChange)
-    {
-        throw TimeLimitError(iceHandler->moduleName);
-    }
-    else
-    {
-        throw TimeLimitError_DEPRECATED();
-    }
 }
 
 void TypeChecker::prepareErrorsForDisplay(ErrorVec& errVec)
@@ -5955,11 +6112,11 @@ void TypeChecker::resolve(const EqPredicate& eqP, RefinementMap& refis, const Sc
                     if (optionIsSubtype && !targetIsSubtype)
                         return option;
                     else if (!optionIsSubtype && targetIsSubtype)
-                        return eqP.type;
+                        return FFlag::LuauTypeInferMissingFollows ? follow(eqP.type) : eqP.type;
                     else if (!optionIsSubtype && !targetIsSubtype)
                         return nope;
                     else if (optionIsSubtype && targetIsSubtype)
-                        return eqP.type;
+                        return FFlag::LuauTypeInferMissingFollows ? follow(eqP.type) : eqP.type;
                 }
                 else
                 {

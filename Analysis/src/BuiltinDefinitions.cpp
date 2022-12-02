@@ -132,6 +132,14 @@ void attachDcrMagicFunction(TypeId ty, DcrMagicFunction fn)
         LUAU_ASSERT(!"Got a non functional type");
 }
 
+void attachDcrMagicRefinement(TypeId ty, DcrMagicRefinement fn)
+{
+    if (auto ftv = getMutable<FunctionTypeVar>(ty))
+        ftv->dcrMagicRefinement = fn;
+    else
+        LUAU_ASSERT(!"Got a non functional type");
+}
+
 Property makeProperty(TypeId ty, std::optional<std::string> documentationSymbol)
 {
     return {

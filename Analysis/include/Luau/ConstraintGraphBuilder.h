@@ -4,7 +4,7 @@
 #include "Luau/Ast.h"
 #include "Luau/Connective.h"
 #include "Luau/Constraint.h"
-#include "Luau/DataFlowGraphBuilder.h"
+#include "Luau/DataFlowGraph.h"
 #include "Luau/Module.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
@@ -215,7 +215,7 @@ struct ConstraintGraphBuilder
         ScopePtr bodyScope;
     };
 
-    FunctionSignature checkFunctionSignature(const ScopePtr& parent, AstExprFunction* fn);
+    FunctionSignature checkFunctionSignature(const ScopePtr& parent, AstExprFunction* fn, std::optional<TypeId> expectedType = {});
 
     /**
      * Checks the body of a function expression.

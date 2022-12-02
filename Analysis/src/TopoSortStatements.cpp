@@ -150,7 +150,7 @@ Identifier mkName(const AstStatFunction& function)
     auto name = mkName(*function.name);
     LUAU_ASSERT(bool(name));
     if (!name)
-        throwRuntimeError("Internal error: Function declaration has a bad name");
+        throw InternalCompilerError("Internal error: Function declaration has a bad name");
 
     return *name;
 }
@@ -256,7 +256,7 @@ struct ArcCollector : public AstVisitor
     {
         auto name = mkName(*node->name);
         if (!name)
-            throwRuntimeError("Internal error: AstStatFunction has a bad name");
+            throw InternalCompilerError("Internal error: AstStatFunction has a bad name");
 
         add(*name);
         return true;

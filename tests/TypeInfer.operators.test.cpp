@@ -8,6 +8,7 @@
 #include "Luau/VisitTypeVar.h"
 
 #include "Fixture.h"
+#include "ClassFixture.h"
 
 #include "doctest.h"
 
@@ -817,6 +818,21 @@ TEST_CASE_FIXTURE(Fixture, "operator_eq_operands_are_not_subtypes_of_each_other_
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
+{
+    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
+
+    CheckResult result = check(R"(
+        local a: string | number = "hi"
+        local b: {x: string}? = {x = "bye"}
+
+        local r1 = a == b
+        local r2 = b == a
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+}
+
 TEST_CASE_FIXTURE(Fixture, "refine_and_or")
 {
     CheckResult result = check(R"(
@@ -914,6 +930,31 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "expected_types_through_binary_or")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "unrelated_classes_cannot_be_compared")
+{
+    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
+
+    CheckResult result = check(R"(
+        local a = BaseClass.New()
+        local b = UnrelatedClass.New()
+
+        local c = a == b
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "unrelated_primitives_cannot_be_compared")
+{
+    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
+
+    CheckResult result = check(R"(
+        local c = 5 == true
+    )");
+
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "mm_ops_must_return_a_value")
