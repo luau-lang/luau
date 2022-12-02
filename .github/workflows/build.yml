@@ -86,10 +86,10 @@ jobs:
     - uses: actions/checkout@v2
     - name: install
       run: |
-        sudo apt install llvm-10
+        sudo apt install llvm
     - name: make coverage
       run: |
-        CXX=clang++-10 make -j2 config=coverage native=1 coverage
+        CXX=clang++ make -j2 config=coverage native=1 coverage
     - name: upload coverage
       uses: codecov/codecov-action@v3
       with:
