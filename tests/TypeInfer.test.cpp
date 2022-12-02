@@ -351,7 +351,7 @@ TEST_CASE_FIXTURE(Fixture, "check_expr_recursion_limit")
     CheckResult result = check(R"(("foo"))" + rep(":lower()", limit));
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK(nullptr != get<CodeTooComplex>(result.errors[0]));
+    CHECK_MESSAGE(nullptr != get<CodeTooComplex>(result.errors[0]), "Expected CodeTooComplex but got " << toString(result.errors[0]));
 }
 
 TEST_CASE_FIXTURE(Fixture, "globals")
@@ -1157,6 +1157,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "it_is_ok_to_have_inconsistent_number_of_retu
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_free_table_type_change_during_index_check")
+{
+    ScopedFastFlag luauFollowInLvalueIndexCheck{"LuauFollowInLvalueIndexCheck", true};
+
+    CheckResult result = check(R"(
+local _ = nil
+while _["" >= _] do
+end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

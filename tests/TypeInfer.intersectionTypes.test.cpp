@@ -185,7 +185,15 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_works_at_arbitrary_dep
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("string & string", toString(requireType("r")));
+
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+    {
+        CHECK_EQ("string", toString(requireType("r")));
+    }
+    else
+    {
+        CHECK_EQ("string & string", toString(requireType("r")));
+    }
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
@@ -199,7 +207,7 @@ TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_mixed_types")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK_EQ("number & string", toString(requireType("r"))); // TODO(amccord): This should be an error.
+    CHECK_EQ("number & string", toString(requireType("r")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "index_on_an_intersection_type_with_one_part_missing_the_property")
@@ -525,18 +533,16 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
+        {"LuauUninhabitedSubAnything", true},
     };
 
     CheckResult result = check(R"(
-        local x : { p : number?, q : never } & { p : never, q : string? }
+        local x : { p : number?, q : never } & { p : never, q : string? } -- OK
         local y : { p : never, q : never } = x -- OK
         local z : never = x -- OK
     )");
 
-    // TODO: this should not produce type errors, since never <: { p : never }
-    LUAU_REQUIRE_ERROR_COUNT(1, result);
-    CHECK_EQ(toString(result.errors[0]), "Type '{| p: never, q: string? |} & {| p: number?, q: never |}' could not be converted into 'never'; none "
-                                         "of the intersection parts are compatible");
+    LUAU_REQUIRE_NO_ERRORS(result);
 }
 
 TEST_CASE_FIXTURE(Fixture, "overloaded_functions_returning_intersections")
@@ -848,7 +854,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatables_with_properties")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
-TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with table")
+TEST_CASE_FIXTURE(BuiltinsFixture, "intersect_metatable_with_table")
 {
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
@@ -900,6 +906,39 @@ TEST_CASE_FIXTURE(Fixture, "CLI-44817")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function f(t): { x: number } & { x: string }
+            local x = t.x
+            return t
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("({| x: number |} & {| x: string |}) -> {| x: number |} & {| x: string |}", toString(requireType("f")));
+}
+
+TEST_CASE_FIXTURE(Fixture, "less_greedy_unification_with_intersection_types_2")
+{
+    if (!FFlag::DebugLuauDeferredConstraintResolution)
+        return;
+
+    CheckResult result = check(R"(
+        local function f(t: { x: number } & { x: string })
+            return t.x
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+
+    CHECK_EQ("({| x: number |} & {| x: string |}) -> number & string", toString(requireType("f")));
 }
 
 TEST_SUITE_END();

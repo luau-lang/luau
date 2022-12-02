@@ -1,5 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
-#include "Luau/DataFlowGraphBuilder.h"
+#include "Luau/DataFlowGraph.h"
 
 #include "Luau/Error.h"
 
@@ -11,6 +11,9 @@ namespace Luau
 
 std::optional<DefId> DataFlowGraph::getDef(const AstExpr* expr) const
 {
+    // We need to skip through AstExprGroup because DFG doesn't try its best to transitively
+    while (auto group = expr->as<AstExprGroup>())
+        expr = group->expr;
     if (auto def = astDefs.find(expr))
         return NotNull{*def};
     return std::nullopt;
@@ -52,14 +55,23 @@ std::optional<DefId> DataFlowGraphBuilder::use(DfgScope* scope, Symbol symbol, A
 {
     for (DfgScope* current = scope; current; current = current->parent)
     {
-        if (auto loc = current->bindings.find(symbol))
+        if (auto def = current->bindings.find(symbol))
         {
-            graph.astDefs[e] = *loc;
-            return NotNull{*loc};
+            graph.astDefs[e] = *def;
+            return NotNull{*def};
         }
     }
 
     return std::nullopt;
+}
+
+DefId DataFlowGraphBuilder::use(DefId def, AstExprIndexName* e)
+{
+    auto& propertyDef = props[def][e->index.value];
+    if (!propertyDef)
+        propertyDef = arena->freshCell(def, e->index.value);
+    graph.astDefs[e] = propertyDef;
+    return NotNull{propertyDef};
 }
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatBlock* b)
@@ -180,7 +192,7 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatLocal* l)
 
     for (AstLocal* local : l->vars)
     {
-        DefId def = arena->freshDef();
+        DefId def = arena->freshCell();
         graph.localDefs[local] = def;
         scope->bindings[local] = def;
     }
@@ -189,7 +201,7 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatLocal* l)
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatFor* f)
 {
     DfgScope* forScope = childScope(scope); // TODO: loop scope.
-    DefId def = arena->freshDef();
+    DefId def = arena->freshCell();
     graph.localDefs[f->var] = def;
     scope->bindings[f->var] = def;
 
@@ -203,7 +215,7 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatForIn* f)
 
     for (AstLocal* local : f->vars)
     {
-        DefId def = arena->freshDef();
+        DefId def = arena->freshCell();
         graph.localDefs[local] = def;
         forScope->bindings[local] = def;
     }
@@ -245,7 +257,7 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatAssign* a)
             // TODO global?
             if (auto exprLocal = root->as<AstExprLocal>())
             {
-                DefId def = arena->freshDef();
+                DefId def = arena->freshCell();
                 graph.astDefs[exprLocal] = def;
 
                 // Update the def in the scope that introduced the local.  Not
@@ -277,7 +289,7 @@ void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatFunction* f)
 
 void DataFlowGraphBuilder::visit(DfgScope* scope, AstStatLocalFunction* l)
 {
-    DefId def = arena->freshDef();
+    DefId def = arena->freshCell();
     graph.localDefs[l->name] = def;
     scope->bindings[l->name] = def;
 
@@ -354,8 +366,7 @@ ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprInde
     if (!def)
         return {};
 
-    // TODO: properties for the above def.
-    return {};
+    return {use(*def, i)};
 }
 
 ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprIndexExpr* i)
@@ -375,14 +386,14 @@ ExpressionFlowGraph DataFlowGraphBuilder::visitExpr(DfgScope* scope, AstExprFunc
 {
     if (AstLocal* self = f->self)
     {
-        DefId def = arena->freshDef();
+        DefId def = arena->freshCell();
         graph.localDefs[self] = def;
         scope->bindings[self] = def;
     }
 
     for (AstLocal* param : f->args)
     {
-        DefId def = arena->freshDef();
+        DefId def = arena->freshCell();
         graph.localDefs[param] = def;
         scope->bindings[param] = def;
     }

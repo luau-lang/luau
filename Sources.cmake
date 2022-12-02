@@ -112,7 +112,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/Constraint.h
     Analysis/include/Luau/ConstraintGraphBuilder.h
     Analysis/include/Luau/ConstraintSolver.h
-    Analysis/include/Luau/DataFlowGraphBuilder.h
+    Analysis/include/Luau/DataFlowGraph.h
     Analysis/include/Luau/DcrLogger.h
     Analysis/include/Luau/Def.h
     Analysis/include/Luau/Documentation.h
@@ -166,7 +166,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/src/Constraint.cpp
     Analysis/src/ConstraintGraphBuilder.cpp
     Analysis/src/ConstraintSolver.cpp
-    Analysis/src/DataFlowGraphBuilder.cpp
+    Analysis/src/DataFlowGraph.cpp
     Analysis/src/DcrLogger.cpp
     Analysis/src/Def.cpp
     Analysis/src/EmbeddedBuiltinDefinitions.cpp
@@ -298,15 +298,16 @@ endif()
 if(TARGET Luau.UnitTest)
     # Luau.UnitTest Sources
     target_sources(Luau.UnitTest PRIVATE
+        tests/AstQueryDsl.cpp
         tests/AstQueryDsl.h
+        tests/ClassFixture.cpp
+        tests/ClassFixture.h
+        tests/ConstraintGraphBuilderFixture.cpp
         tests/ConstraintGraphBuilderFixture.h
+        tests/Fixture.cpp
         tests/Fixture.h
         tests/IostreamOptional.h
         tests/ScopedFlags.h
-        tests/AstQueryDsl.cpp
-        tests/ConstraintGraphBuilderFixture.cpp
-        tests/Fixture.cpp
-        tests/AssemblyBuilderA64.test.cpp
         tests/AssemblyBuilderX64.test.cpp
         tests/AstJsonEncoder.test.cpp
         tests/AstQuery.test.cpp
@@ -318,7 +319,7 @@ if(TARGET Luau.UnitTest)
         tests/Config.test.cpp
         tests/ConstraintSolver.test.cpp
         tests/CostModel.test.cpp
-        tests/DataFlowGraphBuilder.test.cpp
+        tests/DataFlowGraph.test.cpp
         tests/Error.test.cpp
         tests/Frontend.test.cpp
         tests/JsonEmitter.test.cpp

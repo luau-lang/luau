@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauFunctionReturnStringificationFixup);
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("TypePackTests");
@@ -311,10 +309,7 @@ local c: Packed<string, number, boolean>
     auto ttvA = get<TableTypeVar>(requireType("a"));
     REQUIRE(ttvA);
     CHECK_EQ(toString(requireType("a")), "Packed<number>");
-    if (FFlag::LuauFunctionReturnStringificationFixup)
-        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
-    else
-        CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> (number) |}");
+    CHECK_EQ(toString(requireType("a"), {true}), "{| f: (number) -> number |}");
     REQUIRE(ttvA->instantiatedTypeParams.size() == 1);
     REQUIRE(ttvA->instantiatedTypePackParams.size() == 1);
     CHECK_EQ(toString(ttvA->instantiatedTypeParams[0], {true}), "number");
@@ -467,8 +462,6 @@ type I<S..., R...> = W<number, (string, S...), R...>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit")
 {
-    ScopedFastFlag sff("LuauFunctionReturnStringificationFixup", true);
-
     CheckResult result = check(R"(
 type X<T...> = (T...) -> (T...)
 
@@ -492,8 +485,6 @@ type F = X<(string, ...number)>
 
 TEST_CASE_FIXTURE(Fixture, "type_alias_type_pack_explicit_multi")
 {
-    ScopedFastFlag sff("LuauFunctionReturnStringificationFixup", true);
-
     CheckResult result = check(R"(
 type Y<T..., U...> = (T...) -> (U...)
 
@@ -1002,6 +993,10 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
 {
+    std::optional<ScopedFastFlag> sff;
+    if (FFlag::DebugLuauDeferredConstraintResolution)
+        sff = {"LuauInstantiateInSubtyping", true};
+
     CheckResult result = check(R"(
         local function wrapReject<TArg, TResult>(fn: (self: any, ...TArg) -> ...TResult): (self: any, ...TArg) -> ...TResult
             return function(self, ...)
@@ -1012,6 +1007,48 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "type_packs_with_tails_in_vararg_adjustment")
                 return result
             end
         end 
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "generalize_expectedTypes_with_proper_scope")
+{
+    ScopedFastFlag sff[] = {
+        {"DebugLuauDeferredConstraintResolution", true},
+        {"LuauInstantiateInSubtyping", true},
+    };
+
+    CheckResult result = check(R"(
+        local function f<TResult>(fn: () -> ...TResult): () -> ...TResult
+            return function()
+            end
+        end
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_typepack_iter_follow")
+{
+    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
+
+    CheckResult result = check(R"(
+local _
+local _ = _,_(),_(_)
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_typepack_iter_follow_2")
+{
+    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
+
+    CheckResult result = check(R"(
+function test(name, searchTerm)
+    local found = string.find(name:lower(), searchTerm:lower())
+end
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);

@@ -7,8 +7,6 @@
 
 #include "doctest.h"
 
-LUAU_FASTFLAG(LuauIceExceptionInheritanceChange)
-
 using namespace Luau;
 
 TEST_SUITE_BEGIN("AnnotationTests");

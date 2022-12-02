@@ -295,11 +295,11 @@ struct TypeChecker2
         Scope* scope = findInnermostScope(ret->location);
         TypePackId expectedRetType = scope->returnType;
 
-        TypeArena arena;
-        TypePackId actualRetType = reconstructPack(ret->list, arena);
+        TypeArena* arena = &module->internalTypes;
+        TypePackId actualRetType = reconstructPack(ret->list, *arena);
 
         UnifierSharedState sharedState{&ice};
-        Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
+        Normalizer normalizer{arena, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
 
         u.tryUnify(actualRetType, expectedRetType);
@@ -424,13 +424,13 @@ struct TypeChecker2
         TypePackId iteratorPack = arena.addTypePack(valueTypes, iteratorTail);
 
         // ... and then expand it out to 3 values (if possible)
-        const std::vector<TypeId> iteratorTypes = flatten(arena, singletonTypes, iteratorPack, 3);
-        if (iteratorTypes.empty())
+        TypePack iteratorTypes = extendTypePack(arena, singletonTypes, iteratorPack, 3);
+        if (iteratorTypes.head.empty())
         {
             reportError(GenericError{"for..in loops require at least one value to iterate over.  Got zero"}, getLocation(forInStatement->values));
             return;
         }
-        TypeId iteratorTy = follow(iteratorTypes[0]);
+        TypeId iteratorTy = follow(iteratorTypes.head[0]);
 
         auto checkFunction = [this, &arena, &scope, &forInStatement, &variableTypes](
                                  const FunctionTypeVar* iterFtv, std::vector<TypeId> iterTys, bool isMm) {
@@ -445,8 +445,8 @@ struct TypeChecker2
             }
 
             // It is okay if there aren't enough iterators, but the iteratee must provide enough.
-            std::vector<TypeId> expectedVariableTypes = flatten(arena, singletonTypes, iterFtv->retTypes, variableTypes.size());
-            if (expectedVariableTypes.size() < variableTypes.size())
+            TypePack expectedVariableTypes = extendTypePack(arena, singletonTypes, iterFtv->retTypes, variableTypes.size());
+            if (expectedVariableTypes.head.size() < variableTypes.size())
             {
                 if (isMm)
                     reportError(
@@ -455,8 +455,8 @@ struct TypeChecker2
                     reportError(GenericError{"next() does not return enough values"}, forInStatement->values.data[0]->location);
             }
 
-            for (size_t i = 0; i < std::min(expectedVariableTypes.size(), variableTypes.size()); ++i)
-                reportErrors(tryUnify(scope, forInStatement->vars.data[i]->location, variableTypes[i], expectedVariableTypes[i]));
+            for (size_t i = 0; i < std::min(expectedVariableTypes.head.size(), variableTypes.size()); ++i)
+                reportErrors(tryUnify(scope, forInStatement->vars.data[i]->location, variableTypes[i], expectedVariableTypes.head[i]));
 
             // nextFn is going to be invoked with (arrayTy, startIndexTy)
 
@@ -477,25 +477,25 @@ struct TypeChecker2
             if (maxCount && *maxCount < 2)
                 reportError(CountMismatch{2, std::nullopt, *maxCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
 
-            const std::vector<TypeId> flattenedArgTypes = flatten(arena, singletonTypes, iterFtv->argTypes, 2);
+            TypePack flattenedArgTypes = extendTypePack(arena, singletonTypes, iterFtv->argTypes, 2);
             size_t firstIterationArgCount = iterTys.empty() ? 0 : iterTys.size() - 1;
-            size_t actualArgCount = expectedVariableTypes.size();
+            size_t actualArgCount = expectedVariableTypes.head.size();
 
             if (firstIterationArgCount < minCount)
                 reportError(CountMismatch{2, std::nullopt, firstIterationArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
             else if (actualArgCount < minCount)
                 reportError(CountMismatch{2, std::nullopt, actualArgCount, CountMismatch::Arg}, forInStatement->vars.data[0]->location);
 
-            if (iterTys.size() >= 2 && flattenedArgTypes.size() > 0)
+            if (iterTys.size() >= 2 && flattenedArgTypes.head.size() > 0)
             {
                 size_t valueIndex = forInStatement->values.size > 1 ? 1 : 0;
-                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iterTys[1], flattenedArgTypes[0]));
+                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iterTys[1], flattenedArgTypes.head[0]));
             }
 
-            if (iterTys.size() == 3 && flattenedArgTypes.size() > 1)
+            if (iterTys.size() == 3 && flattenedArgTypes.head.size() > 1)
             {
                 size_t valueIndex = forInStatement->values.size > 2 ? 2 : 0;
-                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iterTys[2], flattenedArgTypes[1]));
+                reportErrors(tryUnify(scope, forInStatement->values.data[valueIndex]->location, iterTys[2], flattenedArgTypes.head[1]));
             }
         };
 
@@ -516,7 +516,7 @@ struct TypeChecker2
          */
         if (const FunctionTypeVar* nextFn = get<FunctionTypeVar>(iteratorTy))
         {
-            checkFunction(nextFn, iteratorTypes, false);
+            checkFunction(nextFn, iteratorTypes.head, false);
         }
         else if (const TableTypeVar* ttv = get<TableTypeVar>(iteratorTy))
         {
@@ -545,19 +545,19 @@ struct TypeChecker2
                     TypePackId argPack = arena.addTypePack({iteratorTy});
                     reportErrors(tryUnify(scope, forInStatement->values.data[0]->location, argPack, iterMmFtv->argTypes));
 
-                    std::vector<TypeId> mmIteratorTypes = flatten(arena, singletonTypes, iterMmFtv->retTypes, 3);
+                    TypePack mmIteratorTypes = extendTypePack(arena, singletonTypes, iterMmFtv->retTypes, 3);
 
-                    if (mmIteratorTypes.size() == 0)
+                    if (mmIteratorTypes.head.size() == 0)
                     {
                         reportError(GenericError{"__iter must return at least one value"}, forInStatement->values.data[0]->location);
                         return;
                     }
 
-                    TypeId nextFn = follow(mmIteratorTypes[0]);
+                    TypeId nextFn = follow(mmIteratorTypes.head[0]);
 
                     if (std::optional<TypeId> instantiatedNextFn = instantiation.substitute(nextFn))
                     {
-                        std::vector<TypeId> instantiatedIteratorTypes = mmIteratorTypes;
+                        std::vector<TypeId> instantiatedIteratorTypes = mmIteratorTypes.head;
                         instantiatedIteratorTypes[0] = *instantiatedNextFn;
 
                         if (const FunctionTypeVar* nextFtv = get<FunctionTypeVar>(*instantiatedNextFn))
@@ -800,8 +800,8 @@ struct TypeChecker2
         for (AstExpr* arg : call->args)
             visit(arg);
 
-        TypeArena arena;
-        Instantiation instantiation{TxnLog::empty(), &arena, TypeLevel{}, stack.back()};
+        TypeArena* arena = &module->internalTypes;
+        Instantiation instantiation{TxnLog::empty(), arena, TypeLevel{}, stack.back()};
 
         TypePackId expectedRetType = lookupPack(call);
         TypeId functionType = lookupType(call->func);
@@ -845,16 +845,38 @@ struct TypeChecker2
                 return;
             }
         }
+        else if (auto utv = get<UnionTypeVar>(functionType))
+        {
+            // Sometimes it's okay to call a union of functions, but only if all of the functions are the same.
+            std::optional<TypeId> fst;
+            for (TypeId ty : utv)
+            {
+                if (!fst)
+                    fst = follow(ty);
+                else if (fst != follow(ty))
+                {
+                    reportError(CannotCallNonFunction{functionType}, call->func->location);
+                    return;
+                }
+            }
+
+            if (!fst)
+                ice.ice("UnionTypeVar had no elements, so fst is nullopt?");
+
+            if (std::optional<TypeId> instantiatedFunctionType = instantiation.substitute(*fst))
+            {
+                testFunctionType = *instantiatedFunctionType;
+            }
+            else
+            {
+                reportError(UnificationTooComplex{}, call->func->location);
+                return;
+            }
+        }
         else
         {
             reportError(CannotCallNonFunction{functionType}, call->func->location);
             return;
-        }
-
-        for (AstExpr* arg : call->args)
-        {
-            TypeId argTy = lookupType(arg);
-            args.head.push_back(argTy);
         }
 
         if (call->self)
@@ -863,12 +885,30 @@ struct TypeChecker2
             if (!indexExpr)
                 ice.ice("method call expression has no 'self'");
 
-            args.head.insert(args.head.begin(), lookupType(indexExpr->expr));
+            args.head.push_back(lookupType(indexExpr->expr));
         }
 
-        TypePackId argsTp = arena.addTypePack(args);
+        for (size_t i = 0; i < call->args.size; ++i)
+        {
+            AstExpr* arg = call->args.data[i];
+            TypeId* argTy = module->astTypes.find(arg);
+            if (argTy)
+                args.head.push_back(*argTy);
+            else if (i == call->args.size - 1)
+            {
+                TypePackId* argTail = module->astTypePacks.find(arg);
+                if (argTail)
+                    args.tail = *argTail;
+                else
+                    args.tail = singletonTypes->anyTypePack;
+            }
+            else
+                args.head.push_back(singletonTypes->anyType);
+        }
+
+        TypePackId argsTp = arena->addTypePack(args);
         FunctionTypeVar ftv{argsTp, expectedRetType};
-        TypeId expectedType = arena.addType(ftv);
+        TypeId expectedType = arena->addType(ftv);
 
         if (!isSubtype(testFunctionType, expectedType, stack.back()))
         {
@@ -881,19 +921,7 @@ struct TypeChecker2
     void visit(AstExprIndexName* indexName)
     {
         TypeId leftType = lookupType(indexName->expr);
-        TypeId resultType = lookupType(indexName);
-
-        // leftType must have a property called indexName->index
-
-        std::optional<TypeId> ty =
-            getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
-        if (ty)
-        {
-            if (!isSubtype(resultType, *ty, stack.back()))
-            {
-                reportError(TypeMismatch{resultType, *ty}, indexName->location);
-            }
-        }
+        getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
     }
 
     void visit(AstExprIndexExpr* indexExpr)
@@ -1085,7 +1113,7 @@ struct TypeChecker2
 
             if (mm)
             {
-                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(*mm))
+                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
                 {
                     TypePackId expectedArgs;
                     // For >= and > we invoke __lt and __le respectively with

@@ -1457,7 +1457,8 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
         return autocompleteExpression(sourceModule, *module, singletonTypes, &typeArena, ancestry, position);
     else if (AstStatRepeat* statRepeat = extractStat<AstStatRepeat>(ancestry); statRepeat)
         return {autocompleteStatement(sourceModule, *module, ancestry, position), ancestry, AutocompleteContext::Statement};
-    else if (AstExprTable* exprTable = parent->as<AstExprTable>(); exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>()))
+    else if (AstExprTable* exprTable = parent->as<AstExprTable>();
+             exprTable && (node->is<AstExprGlobal>() || node->is<AstExprConstantString>() || node->is<AstExprInterpString>()))
     {
         for (const auto& [kind, key, value] : exprTable->items)
         {

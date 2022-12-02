@@ -9,6 +9,7 @@ using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauNoMoreGlobalSingletonTypes)
+LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -199,9 +200,15 @@ TEST_CASE_FIXTURE(Fixture, "generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const char* expectedError = "Type '{ v: string }' could not be converted into 'T<number>'\n"
-                                "caused by:\n"
-                                "  Property 'v' is not compatible. Type 'string' could not be converted into 'number'";
+    const char* expectedError;
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        expectedError = "Type '{ v: string }' could not be converted into 'T<number>'\n"
+                        "caused by:\n"
+                        "  Property 'v' is not compatible. Type 'string' could not be converted into 'number' in an invariant context";
+    else
+        expectedError = "Type '{ v: string }' could not be converted into 'T<number>'\n"
+                        "caused by:\n"
+                        "  Property 'v' is not compatible. Type 'string' could not be converted into 'number'";
 
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 44}});
     CHECK(toString(result.errors[0]) == expectedError);
@@ -220,11 +227,19 @@ TEST_CASE_FIXTURE(Fixture, "dependent_generic_aliases")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 
-    const char* expectedError = "Type '{ t: { v: string } }' could not be converted into 'U<number>'\n"
-                                "caused by:\n"
-                                "  Property 't' is not compatible. Type '{ v: string }' could not be converted into 'T<number>'\n"
-                                "caused by:\n"
-                                "  Property 'v' is not compatible. Type 'string' could not be converted into 'number'";
+    const char* expectedError;
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        expectedError = "Type '{ t: { v: string } }' could not be converted into 'U<number>'\n"
+                        "caused by:\n"
+                        "  Property 't' is not compatible. Type '{ v: string }' could not be converted into 'T<number>'\n"
+                        "caused by:\n"
+                        "  Property 'v' is not compatible. Type 'string' could not be converted into 'number' in an invariant context";
+    else
+        expectedError = "Type '{ t: { v: string } }' could not be converted into 'U<number>'\n"
+                        "caused by:\n"
+                        "  Property 't' is not compatible. Type '{ v: string }' could not be converted into 'T<number>'\n"
+                        "caused by:\n"
+                        "  Property 'v' is not compatible. Type 'string' could not be converted into 'number'";
 
     CHECK(result.errors[0].location == Location{{4, 31}, {4, 52}});
     CHECK(toString(result.errors[0]) == expectedError);

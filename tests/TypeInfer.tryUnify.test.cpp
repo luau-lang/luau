@@ -110,6 +110,68 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "incompatible_tables_are_preserved")
     CHECK_NE(*getMutable<TableTypeVar>(&tableOne)->props["foo"].type, *getMutable<TableTypeVar>(&tableTwo)->props["foo"].type);
 }
 
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_never")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : string & number) : never
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_intersection_sub_anything")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : string & number) : boolean
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+        {"LuauUninhabitedSubAnything", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : { prop : string & number }) : never
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_anything")
+{
+    ScopedFastFlag sffs[]{
+        {"LuauSubtypeNormalizer", true},
+        {"LuauTypeNormalization2", true},
+        {"LuauUninhabitedSubAnything", true},
+    };
+
+    CheckResult result = check(R"(
+        function f(arg : { prop : string & number }) : boolean
+          return arg
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_CASE_FIXTURE(TryUnifyFixture, "members_of_failed_typepack_unification_are_unified_with_errorType")
 {
     CheckResult result = check(R"(
@@ -297,6 +359,21 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "metatables_unify_against_shape_of_free_table
                            "caused by:\n"
                            "  Type 'number' could not be converted into 'string'";
     CHECK_EQ(toString(state.errors[0]), expected);
+}
+
+TEST_CASE_FIXTURE(TryUnifyFixture, "fuzz_tail_unification_issue")
+{
+    ScopedFastFlag luauTxnLogTypePackIterator{"LuauTxnLogTypePackIterator", true};
+
+    TypePackVar variadicAny{VariadicTypePack{typeChecker.anyType}};
+    TypePackVar packTmp{TypePack{{typeChecker.anyType}, &variadicAny}};
+    TypePackVar packSub{TypePack{{typeChecker.anyType, typeChecker.anyType}, &packTmp}};
+
+    TypeVar freeTy{FreeTypeVar{TypeLevel{}}};
+    TypePackVar freeTp{FreeTypePack{TypeLevel{}}};
+    TypePackVar packSuper{TypePack{{&freeTy}, &freeTp}};
+
+    state.tryUnify(&packSub, &packSuper);
 }
 
 TEST_SUITE_END();

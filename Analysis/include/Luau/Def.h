@@ -5,37 +5,38 @@
 #include "Luau/TypedAllocator.h"
 #include "Luau/Variant.h"
 
+#include <string>
+#include <optional>
+
 namespace Luau
 {
 
-using Def = Variant<struct Undefined, struct Phi>;
-
-/**
- * We statically approximate a value at runtime using a symbolic value, which we call a Def.
- *
- * DataFlowGraphBuilder will allocate these defs as a stand-in for some Luau values, and bind them to places that
- * can hold a Luau value, and then observes how those defs will commute as it statically evaluate the program.
- *
- * It must also be noted that defs are a cyclic graph, so it is not safe to recursively traverse into it expecting it to terminate.
- */
+struct Def;
 using DefId = NotNull<const Def>;
 
+struct FieldMetadata
+{
+    DefId parent;
+    std::string propName;
+};
+
 /**
- * A "single-object" value.
+ * A cell is a "single-object" value.
  *
  * Leaky implementation note: sometimes "multiple-object" values, but none of which were interesting enough to warrant creating a phi node instead.
  * That can happen because there's no point in creating a phi node that points to either resultant in `if math.random() > 0.5 then 5 else "hello"`.
  * This might become of utmost importance if we wanted to do some backward reasoning, e.g. if `5` is taken, then `cond` must be `truthy`.
  */
-struct Undefined
+struct Cell
 {
+    std::optional<struct FieldMetadata> field;
 };
 
 /**
- * A phi node is a union of defs.
+ * A phi node is a union of cells.
  *
  * We need this because we're statically evaluating a program, and sometimes a place may be assigned with
- * different defs, and when that happens, we need a special data type that merges in all the defs
+ * different cells, and when that happens, we need a special data type that merges in all the cells
  * that will flow into that specific place. For example, consider this simple program:
  *
  * ```
@@ -56,23 +57,35 @@ struct Phi
     std::vector<DefId> operands;
 };
 
-template<typename T>
-T* getMutable(DefId def)
+/**
+ * We statically approximate a value at runtime using a symbolic value, which we call a Def.
+ *
+ * DataFlowGraphBuilder will allocate these defs as a stand-in for some Luau values, and bind them to places that
+ * can hold a Luau value, and then observes how those defs will commute as it statically evaluate the program.
+ *
+ * It must also be noted that defs are a cyclic graph, so it is not safe to recursively traverse into it expecting it to terminate.
+ */
+struct Def
 {
-    return get_if<T>(def.get());
-}
+    using V = Variant<struct Cell, struct Phi>;
+
+    V v;
+};
 
 template<typename T>
 const T* get(DefId def)
 {
-    return getMutable<T>(def);
+    return get_if<T>(&def->v);
 }
 
 struct DefArena
 {
     TypedAllocator<Def> allocator;
 
-    DefId freshDef();
+    DefId freshCell();
+    DefId freshCell(DefId parent, const std::string& prop);
+    // TODO: implement once we have cases where we need to merge in definitions
+    // DefId phi(const std::vector<DefId>& defs);
 };
 
 } // namespace Luau

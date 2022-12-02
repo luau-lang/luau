@@ -9,6 +9,8 @@
 
 using Luau::NotNull;
 
+static_assert(!std::is_convertible<NotNull<int>, bool>::value, "NotNull<T> ought not to be convertible into bool");
+
 namespace
 {
 

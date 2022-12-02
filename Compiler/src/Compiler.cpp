@@ -26,6 +26,7 @@ LUAU_FASTINTVARIABLE(LuauCompileInlineThresholdMaxBoost, 300)
 LUAU_FASTINTVARIABLE(LuauCompileInlineDepth, 5)
 
 LUAU_FASTFLAG(LuauInterpolatedStringBaseSupport)
+LUAU_FASTFLAGVARIABLE(LuauMultiAssignmentConflictFix, false)
 
 namespace Luau
 {
@@ -2977,16 +2978,46 @@ struct Compiler
 
         Visitor visitor(this);
 
-        // mark any registers that are used *after* assignment as conflicting
-        for (size_t i = 0; i < vars.size(); ++i)
+        if (FFlag::LuauMultiAssignmentConflictFix)
         {
-            const LValue& li = vars[i].lvalue;
+            // mark any registers that are used *after* assignment as conflicting
 
-            if (i < values.size)
-                values.data[i]->visit(&visitor);
+            // first we go through assignments to locals, since they are performed before assignments to other l-values
+            for (size_t i = 0; i < vars.size(); ++i)
+            {
+                const LValue& li = vars[i].lvalue;
 
-            if (li.kind == LValue::Kind_Local)
-                visitor.assigned[li.reg] = true;
+                if (li.kind == LValue::Kind_Local)
+                {
+                    if (i < values.size)
+                        values.data[i]->visit(&visitor);
+
+                    visitor.assigned[li.reg] = true;
+                }
+            }
+
+            // and now we handle all other l-values
+            for (size_t i = 0; i < vars.size(); ++i)
+            {
+                const LValue& li = vars[i].lvalue;
+
+                if (li.kind != LValue::Kind_Local && i < values.size)
+                    values.data[i]->visit(&visitor);
+            }
+        }
+        else
+        {
+            // mark any registers that are used *after* assignment as conflicting
+            for (size_t i = 0; i < vars.size(); ++i)
+            {
+                const LValue& li = vars[i].lvalue;
+
+                if (i < values.size)
+                    values.data[i]->visit(&visitor);
+
+                if (li.kind == LValue::Kind_Local)
+                    visitor.assigned[li.reg] = true;
+            }
         }
 
         // mark any registers used in trailing expressions as conflicting as well

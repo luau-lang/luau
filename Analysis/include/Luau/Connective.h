@@ -3,13 +3,15 @@
 
 #include "Luau/Def.h"
 #include "Luau/TypedAllocator.h"
-#include "Luau/TypeVar.h"
 #include "Luau/Variant.h"
 
 #include <memory>
 
 namespace Luau
 {
+
+struct TypeVar;
+using TypeId = const TypeVar*;
 
 struct Negation;
 struct Conjunction;

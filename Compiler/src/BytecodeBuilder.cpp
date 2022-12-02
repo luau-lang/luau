@@ -1895,10 +1895,7 @@ void BytecodeBuilder::dumpInstruction(const uint32_t* code, std::string& result,
 
     case LOP_CAPTURE:
         formatAppend(result, "CAPTURE %s %c%d\n",
-            LUAU_INSN_A(insn) == LCT_UPVAL ? "UPVAL"
-            : LUAU_INSN_A(insn) == LCT_REF ? "REF"
-            : LUAU_INSN_A(insn) == LCT_VAL ? "VAL"
-                                           : "",
+            LUAU_INSN_A(insn) == LCT_UPVAL ? "UPVAL" : LUAU_INSN_A(insn) == LCT_REF ? "REF" : LUAU_INSN_A(insn) == LCT_VAL ? "VAL" : "",
             LUAU_INSN_A(insn) == LCT_UPVAL ? 'U' : 'R', LUAU_INSN_B(insn));
         break;
 
