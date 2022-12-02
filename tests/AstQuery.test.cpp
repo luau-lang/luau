@@ -91,8 +91,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "class_method")
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "overloaded_class_method")
 {
-    ScopedFastFlag luauCheckOverloadedDocSymbol{"LuauCheckOverloadedDocSymbol", true};
-
     loadDefinition(R"(
         declare class Foo
             function bar(self, x: string): number
@@ -127,8 +125,6 @@ TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_function_prop")
 
 TEST_CASE_FIXTURE(DocumentationSymbolFixture, "table_overloaded_function_prop")
 {
-    ScopedFastFlag luauCheckOverloadedDocSymbol{"LuauCheckOverloadedDocSymbol", true};
-
     loadDefinition(R"(
         declare Foo: {
             new: ((number) -> string) & ((string) -> number)

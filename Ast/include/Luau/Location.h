@@ -50,6 +50,20 @@ struct Position
     {
         return *this == rhs || *this > rhs;
     }
+
+    void shift(const Position& start, const Position& oldEnd, const Position& newEnd)
+    {
+        if (*this >= start)
+        {
+            if (this->line > oldEnd.line)
+                this->line += (newEnd.line - oldEnd.line);
+            else
+            {
+                this->line = newEnd.line;
+                this->column += (newEnd.column - oldEnd.column);
+            }
+        }
+    }
 };
 
 struct Location
@@ -93,6 +107,10 @@ struct Location
     {
         return begin <= l.begin && end >= l.end;
     }
+    bool overlaps(const Location& l) const
+    {
+        return (begin <= l.begin && end >= l.begin) || (begin <= l.end && end >= l.end) || (begin >= l.begin && end <= l.end);
+    }
     bool contains(const Position& p) const
     {
         return begin <= p && p < end;
@@ -100,6 +118,18 @@ struct Location
     bool containsClosed(const Position& p) const
     {
         return begin <= p && p <= end;
+    }
+    void extend(const Location& other)
+    {
+        if (other.begin < begin)
+            begin = other.begin;
+        if (other.end > end)
+            end = other.end;
+    }
+    void shift(const Position& start, const Position& oldEnd, const Position& newEnd)
+    {
+        begin.shift(start, oldEnd, newEnd);
+        end.shift(start, oldEnd, newEnd);
     }
 };
 

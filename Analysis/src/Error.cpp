@@ -2,12 +2,14 @@
 #include "Luau/Error.h"
 
 #include "Luau/Clone.h"
+#include "Luau/Common.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 
 #include <stdexcept>
+#include <type_traits>
 
-LUAU_FASTFLAGVARIABLE(LuauIceExceptionInheritanceChange, false)
+LUAU_FASTFLAGVARIABLE(LuauTypeMismatchInvarianceInError, false)
 
 static std::string wrongNumberOfArgsString(
     size_t expectedCount, std::optional<size_t> maximumCount, size_t actualCount, const char* argPrefix = nullptr, bool isVariadic = false)
@@ -89,6 +91,7 @@ struct ErrorConverter
         if (result.empty())
             result = "Type '" + givenTypeName + "' could not be converted into '" + wantedTypeName + "'";
 
+
         if (tm.error)
         {
             result += "\ncaused by:\n  ";
@@ -101,6 +104,10 @@ struct ErrorConverter
         else if (!tm.reason.empty())
         {
             result += "; " + tm.reason;
+        }
+        else if (FFlag::LuauTypeMismatchInvarianceInError && tm.context == TypeMismatch::InvariantContext)
+        {
+            result += " in an invariant context";
         }
 
         return result;
@@ -467,6 +474,11 @@ struct ErrorConverter
     {
         return "Type pack '" + toString(e.givenTp) + "' could not be converted into '" + toString(e.wantedTp) + "'";
     }
+
+    std::string operator()(const DynamicPropertyLookupOnClassesUnsafe& e) const
+    {
+        return "Attempting a dynamic property access on type '" + Luau::toString(e.ty) + "' is unsafe and may cause exceptions at runtime";
+    }
 };
 
 struct InvalidNameChecker
@@ -514,6 +526,30 @@ TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reas
 {
 }
 
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, TypeMismatch::Context context)
+    : wantedType(wantedType)
+    , givenType(givenType)
+    , context(context)
+{
+}
+
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, TypeMismatch::Context context)
+    : wantedType(wantedType)
+    , givenType(givenType)
+    , context(context)
+    , reason(reason)
+{
+}
+
+TypeMismatch::TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error, TypeMismatch::Context context)
+    : wantedType(wantedType)
+    , givenType(givenType)
+    , context(context)
+    , reason(reason)
+    , error(error ? std::make_shared<TypeError>(std::move(*error)) : nullptr)
+{
+}
+
 bool TypeMismatch::operator==(const TypeMismatch& rhs) const
 {
     if (!!error != !!rhs.error)
@@ -522,7 +558,7 @@ bool TypeMismatch::operator==(const TypeMismatch& rhs) const
     if (error && !(*error == *rhs.error))
         return false;
 
-    return *wantedType == *rhs.wantedType && *givenType == *rhs.givenType && reason == rhs.reason;
+    return *wantedType == *rhs.wantedType && *givenType == *rhs.givenType && reason == rhs.reason && context == rhs.context;
 }
 
 bool UnknownSymbol::operator==(const UnknownSymbol& rhs) const
@@ -662,7 +698,17 @@ bool FunctionExitsWithoutReturning::operator==(const FunctionExitsWithoutReturni
 
 int TypeError::code() const
 {
-    return 1000 + int(data.index());
+    return minCode() + int(data.index());
+}
+
+int TypeError::minCode()
+{
+    return 1000;
+}
+
+TypeErrorSummary TypeError::summary() const
+{
+    return TypeErrorSummary{location, moduleName, code()};
 }
 
 bool TypeError::operator==(const TypeError& rhs) const
@@ -728,6 +774,11 @@ bool TypesAreUnrelated::operator==(const TypesAreUnrelated& rhs) const
 bool TypePackMismatch::operator==(const TypePackMismatch& rhs) const
 {
     return *wantedTp == *rhs.wantedTp && *givenTp == *rhs.givenTp;
+}
+
+bool DynamicPropertyLookupOnClassesUnsafe::operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const
+{
+    return ty == rhs.ty;
 }
 
 std::string toString(const TypeError& error)
@@ -886,6 +937,8 @@ void copyError(T& e, TypeArena& destArena, CloneState cloneState)
         e.wantedTp = clone(e.wantedTp);
         e.givenTp = clone(e.givenTp);
     }
+    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
+        e.ty = clone(e.ty);
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }
@@ -928,32 +981,6 @@ void InternalErrorReporter::ice(const std::string& message)
 const char* InternalCompilerError::what() const throw()
 {
     return this->message.data();
-}
-
-// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
-void throwRuntimeError(const std::string& message)
-{
-    if (FFlag::LuauIceExceptionInheritanceChange)
-    {
-        throw InternalCompilerError(message);
-    }
-    else
-    {
-        throw std::runtime_error(message);
-    }
-}
-
-// TODO: Inline me when LuauIceExceptionInheritanceChange is deleted.
-void throwRuntimeError(const std::string& message, const std::string& moduleName)
-{
-    if (FFlag::LuauIceExceptionInheritanceChange)
-    {
-        throw InternalCompilerError(message, moduleName);
-    }
-    else
-    {
-        throw std::runtime_error(message);
-    }
 }
 
 } // namespace Luau

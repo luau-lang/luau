@@ -54,14 +54,7 @@ public:
     explicit TimeLimitError(const std::string& moduleName)
         : InternalCompilerError("Typeinfer failed to complete in allotted time", moduleName)
     {
-        LUAU_ASSERT(FFlag::LuauIceExceptionInheritanceChange);
     }
-};
-
-class TimeLimitError_DEPRECATED : public std::exception
-{
-public:
-    virtual const char* what() const throw();
 };
 
 // All TypeVars are retained via Environment::typeVars.  All TypeIds

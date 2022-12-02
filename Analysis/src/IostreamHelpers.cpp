@@ -190,6 +190,8 @@ static void errorToString(std::ostream& stream, const T& err)
         stream << "NormalizationTooComplex { }";
     else if constexpr (std::is_same_v<T, TypePackMismatch>)
         stream << "TypePackMismatch { wanted = '" + toString(err.wantedTp) + "', given = '" + toString(err.givenTp) + "' }";
+    else if constexpr (std::is_same_v<T, DynamicPropertyLookupOnClassesUnsafe>)
+        stream << "DynamicPropertyLookupOnClassesUnsafe { " << toString(err.ty) << " }";
     else
         static_assert(always_false_v<T>, "Non-exhaustive type switch");
 }

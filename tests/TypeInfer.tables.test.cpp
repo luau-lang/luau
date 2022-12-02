@@ -18,6 +18,7 @@ LUAU_FASTFLAG(LuauLowerBoundsCalculation);
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution);
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 LUAU_FASTFLAG(LuauNoMoreGlobalSingletonTypes)
+LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
 
 TEST_SUITE_BEGIN("TableTests");
 
@@ -2024,7 +2025,12 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property 'y' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'y' is not compatible. Type 'number' could not be converted into 'string')");
 }
@@ -2043,7 +2049,14 @@ local b: B = a
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property 'b' is not compatible. Type 'AS' could not be converted into 'BS'
+caused by:
+  Property 'y' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property 'b' is not compatible. Type 'AS' could not be converted into 'BS'
 caused by:
@@ -2063,7 +2076,14 @@ local c2: typeof(a2) = b2
     )");
 
     LUAU_REQUIRE_ERROR_COUNT(2, result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
+caused by:
+  Type '{ x: number, y: string }' could not be converted into '{ x: number, y: number }'
+caused by:
+  Property 'y' is not compatible. Type 'string' could not be converted into 'number' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'b1' could not be converted into 'a1'
 caused by:
   Type '{ x: number, y: string }' could not be converted into '{ x: number, y: number }'
 caused by:
@@ -2098,7 +2118,12 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_key")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property '[indexer key]' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property '[indexer key]' is not compatible. Type 'number' could not be converted into 'string')");
 }
@@ -2114,7 +2139,12 @@ TEST_CASE_FIXTURE(Fixture, "error_detailed_indexer_value")
     )");
 
     LUAU_REQUIRE_ERRORS(result);
-    CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+    if (FFlag::LuauTypeMismatchInvarianceInError)
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
+caused by:
+  Property '[indexer value]' is not compatible. Type 'number' could not be converted into 'string' in an invariant context)");
+    else
+        CHECK_EQ(toString(result.errors[0]), R"(Type 'A' could not be converted into 'B'
 caused by:
   Property '[indexer value]' is not compatible. Type 'number' could not be converted into 'string')");
 }
@@ -3261,7 +3291,7 @@ caused by:
 TEST_CASE_FIXTURE(Fixture, "a_free_shape_can_turn_into_a_scalar_if_it_is_compatible")
 {
     ScopedFastFlag sff{"LuauScalarShapeSubtyping", true};
-    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner", true}; // Changes argument from table type to primitive
+    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true}; // Changes argument from table type to primitive
 
     CheckResult result = check(R"(
         local function f(s): string
@@ -3308,7 +3338,7 @@ caused by:
 TEST_CASE_FIXTURE(BuiltinsFixture, "a_free_shape_can_turn_into_a_scalar_directly")
 {
     ScopedFastFlag luauScalarShapeSubtyping{"LuauScalarShapeSubtyping", true};
-    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner", true};
+    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true};
 
     CheckResult result = check(R"(
         local function stringByteList(str)
@@ -3394,7 +3424,7 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "setmetatable_has_a_side_effect")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
-    CHECK(toString(requireType("foo")) == "{ @metatable { __add: (a, b) -> number }, {  } }");
+    CHECK(toString(requireType("foo")) == "{ @metatable { __add: <a, b>(a, b) -> number }, {  } }");
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "tables_should_be_fully_populated")
@@ -3411,6 +3441,45 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "tables_should_be_fully_populated")
     ToStringOptions opts;
     opts.exhaustive = true;
     CHECK_EQ("{ x: *error-type*, y: number }", toString(requireType("t"), opts));
+}
+
+TEST_CASE_FIXTURE(Fixture, "fuzz_table_indexer_unification_can_bound_owner_to_string")
+{
+    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true};
+
+    CheckResult result = check(R"(
+sin,_ = nil
+_ = _[_.sin][_._][_][_]._
+_[_] = _
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_table_extra_prop_unification_can_bound_owner_to_string")
+{
+    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true};
+
+    CheckResult result = check(R"(
+l0,_ = nil
+_ = _,_[_.n5]._[_][_][_]._
+_._.foreach[_],_ = _[_],_._
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_typelevel_promote_on_changed_table_type")
+{
+    ScopedFastFlag luauScalarShapeUnifyToMtOwner{"LuauScalarShapeUnifyToMtOwner2", true};
+
+    CheckResult result = check(R"(
+_._,_ = nil
+_ = _.foreach[_]._,_[_.n5]._[_.foreach][_][_]._
+_ = _._
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

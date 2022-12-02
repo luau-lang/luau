@@ -78,6 +78,42 @@ void TxnLog::concat(TxnLog rhs)
         typePackChanges[tp] = std::move(rep);
 }
 
+void TxnLog::concatAsIntersections(TxnLog rhs, NotNull<TypeArena> arena)
+{
+    for (auto& [ty, rightRep] : rhs.typeVarChanges)
+    {
+        if (auto leftRep = typeVarChanges.find(ty))
+        {
+            TypeId leftTy = arena->addType((*leftRep)->pending);
+            TypeId rightTy = arena->addType(rightRep->pending);
+            typeVarChanges[ty]->pending.ty = IntersectionTypeVar{{leftTy, rightTy}};
+        }
+        else
+            typeVarChanges[ty] = std::move(rightRep);
+    }
+
+    for (auto& [tp, rep] : rhs.typePackChanges)
+        typePackChanges[tp] = std::move(rep);
+}
+
+void TxnLog::concatAsUnion(TxnLog rhs, NotNull<TypeArena> arena)
+{
+    for (auto& [ty, rightRep] : rhs.typeVarChanges)
+    {
+        if (auto leftRep = typeVarChanges.find(ty))
+        {
+            TypeId leftTy = arena->addType((*leftRep)->pending);
+            TypeId rightTy = arena->addType(rightRep->pending);
+            typeVarChanges[ty]->pending.ty = UnionTypeVar{{leftTy, rightTy}};
+        }
+        else
+            typeVarChanges[ty] = std::move(rightRep);
+    }
+
+    for (auto& [tp, rep] : rhs.typePackChanges)
+        typePackChanges[tp] = std::move(rep);
+}
+
 void TxnLog::commit()
 {
     for (auto& [ty, rep] : typeVarChanges)

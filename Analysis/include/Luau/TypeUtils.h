@@ -25,9 +25,9 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
 // Returns the minimum and maximum number of types the argument list can accept.
 std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, TypePackId tp, bool includeHiddenVariadics = false);
 
-// "Render" a type pack out to an array of a given length. Expands variadics and
-// various other things to get there.
-std::vector<TypeId> flatten(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length);
+// Extend the provided pack to at least `length` types.
+// Returns a temporary TypePack that contains those types plus a tail.
+TypePack extendTypePack(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length);
 
 /**
  * Reduces a union by decomposing to the any/error type if it appears in the

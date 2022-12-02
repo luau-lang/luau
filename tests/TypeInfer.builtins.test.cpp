@@ -684,20 +684,10 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail")
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
-        CHECK_EQ("string", toString(requireType("foo")));
-        CHECK_EQ("*error-type*", toString(requireType("bar")));
-        CHECK_EQ("*error-type*", toString(requireType("baz")));
-        CHECK_EQ("*error-type*", toString(requireType("quux")));
-    }
-    else
-    {
-        CHECK_EQ("any", toString(requireType("foo")));
-        CHECK_EQ("any", toString(requireType("bar")));
-        CHECK_EQ("any", toString(requireType("baz")));
-        CHECK_EQ("any", toString(requireType("quux")));
-    }
+    CHECK_EQ("any", toString(requireType("foo")));
+    CHECK_EQ("any", toString(requireType("bar")));
+    CHECK_EQ("any", toString(requireType("baz")));
+    CHECK_EQ("any", toString(requireType("quux")));
 }
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_string_head")
@@ -714,19 +704,13 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "select_with_variadic_typepack_tail_and_strin
     LUAU_REQUIRE_NO_ERRORS(result);
 
     if (FFlag::DebugLuauDeferredConstraintResolution)
-    {
         CHECK_EQ("string", toString(requireType("foo")));
-        CHECK_EQ("string", toString(requireType("bar")));
-        CHECK_EQ("*error-type*", toString(requireType("baz")));
-        CHECK_EQ("*error-type*", toString(requireType("quux")));
-    }
     else
-    {
         CHECK_EQ("any", toString(requireType("foo")));
-        CHECK_EQ("any", toString(requireType("bar")));
-        CHECK_EQ("any", toString(requireType("baz")));
-        CHECK_EQ("any", toString(requireType("quux")));
-    }
+
+    CHECK_EQ("any", toString(requireType("bar")));
+    CHECK_EQ("any", toString(requireType("baz")));
+    CHECK_EQ("any", toString(requireType("quux")));
 }
 
 TEST_CASE_FIXTURE(Fixture, "string_format_as_method")

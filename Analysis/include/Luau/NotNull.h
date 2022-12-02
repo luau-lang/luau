@@ -59,6 +59,20 @@ struct NotNull
         return ptr;
     }
 
+    template<typename U>
+    bool operator==(NotNull<U> other) const noexcept
+    {
+        return get() == other.get();
+    }
+
+    template<typename U>
+    bool operator!=(NotNull<U> other) const noexcept
+    {
+        return get() != other.get();
+    }
+
+    operator bool() const noexcept = delete;
+
     T& operator[](int) = delete;
 
     T& operator+(int) = delete;

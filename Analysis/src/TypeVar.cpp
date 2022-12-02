@@ -72,7 +72,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
         {
             TypeId res = ltv->thunk();
             if (get<LazyTypeVar>(res))
-                throwRuntimeError("Lazy TypeVar cannot resolve to another Lazy TypeVar");
+                throw InternalCompilerError("Lazy TypeVar cannot resolve to another Lazy TypeVar");
 
             *asMutable(ty) = BoundTypeVar(res);
         }
@@ -110,7 +110,7 @@ TypeId follow(TypeId t, std::function<TypeId(TypeId)> mapper)
                 cycleTester = nullptr;
 
             if (t == cycleTester)
-                throwRuntimeError("Luau::follow detected a TypeVar cycle!!");
+                throw InternalCompilerError("Luau::follow detected a TypeVar cycle!!");
         }
     }
 }
@@ -468,65 +468,65 @@ PendingExpansionTypeVar::PendingExpansionTypeVar(
 size_t PendingExpansionTypeVar::nextIndex = 0;
 
 FunctionTypeVar::FunctionTypeVar(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
-    : argTypes(argTypes)
+    : definition(std::move(defn))
+    , argTypes(argTypes)
     , retTypes(retTypes)
-    , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
 FunctionTypeVar::FunctionTypeVar(TypeLevel level, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
-    : level(level)
+    : definition(std::move(defn))
+    , level(level)
     , argTypes(argTypes)
     , retTypes(retTypes)
-    , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
 FunctionTypeVar::FunctionTypeVar(
     TypeLevel level, Scope* scope, TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
-    : level(level)
+    : definition(std::move(defn))
+    , level(level)
     , scope(scope)
     , argTypes(argTypes)
     , retTypes(retTypes)
-    , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
 FunctionTypeVar::FunctionTypeVar(std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes, TypePackId retTypes,
     std::optional<FunctionDefinition> defn, bool hasSelf)
-    : generics(generics)
+    : definition(std::move(defn))
+    , generics(generics)
     , genericPacks(genericPacks)
     , argTypes(argTypes)
     , retTypes(retTypes)
-    , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
 FunctionTypeVar::FunctionTypeVar(TypeLevel level, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks, TypePackId argTypes,
     TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
-    : level(level)
+    : definition(std::move(defn))
     , generics(generics)
     , genericPacks(genericPacks)
+    , level(level)
     , argTypes(argTypes)
     , retTypes(retTypes)
-    , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }
 
 FunctionTypeVar::FunctionTypeVar(TypeLevel level, Scope* scope, std::vector<TypeId> generics, std::vector<TypePackId> genericPacks,
     TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
-    : level(level)
-    , scope(scope)
+    : definition(std::move(defn))
     , generics(generics)
     , genericPacks(genericPacks)
+    , level(level)
+    , scope(scope)
     , argTypes(argTypes)
     , retTypes(retTypes)
-    , definition(std::move(defn))
     , hasSelf(hasSelf)
 {
 }

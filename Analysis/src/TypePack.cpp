@@ -6,6 +6,8 @@
 
 #include <stdexcept>
 
+LUAU_FASTFLAGVARIABLE(LuauTxnLogTypePackIterator, false)
+
 namespace Luau
 {
 
@@ -60,8 +62,8 @@ TypePackIterator::TypePackIterator(TypePackId typePack)
 }
 
 TypePackIterator::TypePackIterator(TypePackId typePack, const TxnLog* log)
-    : currentTypePack(follow(typePack))
-    , tp(get<TypePack>(currentTypePack))
+    : currentTypePack(FFlag::LuauTxnLogTypePackIterator ? log->follow(typePack) : follow(typePack))
+    , tp(FFlag::LuauTxnLogTypePackIterator ? log->get<TypePack>(currentTypePack) : get<TypePack>(currentTypePack))
     , currentIndex(0)
     , log(log)
 {
@@ -235,7 +237,7 @@ TypePackId follow(TypePackId tp, std::function<TypePackId(TypePackId)> mapper)
                 cycleTester = nullptr;
 
             if (tp == cycleTester)
-                throwRuntimeError("Luau::follow detected a TypeVar cycle!!");
+                throw InternalCompilerError("Luau::follow detected a TypeVar cycle!!");
         }
     }
 }

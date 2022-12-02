@@ -230,8 +230,6 @@ TEST_CASE_FIXTURE(Fixture, "too_many_arguments")
 
 TEST_CASE_FIXTURE(Fixture, "too_many_arguments_error_location")
 {
-    ScopedFastFlag sff{"LuauArgMismatchReportFunctionLocation", true};
-
     CheckResult result = check(R"(
         --!strict
 
@@ -507,7 +505,9 @@ TEST_CASE_FIXTURE(Fixture, "complicated_return_types_require_an_explicit_annotat
 
     LUAU_REQUIRE_NO_ERRORS(result);
 
-    const FunctionTypeVar* functionType = get<FunctionTypeVar>(requireType("most_of_the_natural_numbers"));
+    TypeId ty = requireType("most_of_the_natural_numbers");
+    const FunctionTypeVar* functionType = get<FunctionTypeVar>(ty);
+    REQUIRE_MESSAGE(functionType, "Expected function but got " << toString(ty));
 
     std::optional<TypeId> retType = first(functionType->retTypes);
     REQUIRE(retType);
@@ -1828,6 +1828,20 @@ TEST_CASE_FIXTURE(Fixture, "other_things_are_not_related_to_function")
     CHECK(3 == result.errors[1].location.begin.line);
     CHECK(4 == result.errors[2].location.begin.line);
     CHECK(5 == result.errors[3].location.begin.line);
+}
+
+TEST_CASE_FIXTURE(BuiltinsFixture, "fuzz_must_follow_in_overload_resolution")
+{
+    ScopedFastFlag luauTypeInferMissingFollows{"LuauTypeInferMissingFollows", true};
+
+    CheckResult result = check(R"(
+for _ in function<t0>():(t0)&((()->())&(()->()))
+end do
+_(_(_,_,_),_)
+end
+    )");
+
+    LUAU_REQUIRE_ERRORS(result);
 }
 
 TEST_SUITE_END();

@@ -69,9 +69,14 @@ private:
     struct InternalErrorReporter* handle;
     std::vector<std::unique_ptr<DfgScope>> scopes;
 
+    // Does not belong in DataFlowGraphBuilder, but the old solver allows properties to escape the scope they were defined in,
+    // so we will need to be able to emulate this same behavior here too. We can kill this once we have better flow sensitivity.
+    DenseHashMap<const Def*, std::unordered_map<std::string, const Def*>> props{nullptr};
+
     DfgScope* childScope(DfgScope* scope);
 
     std::optional<DefId> use(DfgScope* scope, Symbol symbol, AstExpr* e);
+    DefId use(DefId def, AstExprIndexName* e);
 
     void visit(DfgScope* scope, AstStatBlock* b);
     void visitBlockWithoutChildScope(DfgScope* scope, AstStatBlock* b);

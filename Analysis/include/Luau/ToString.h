@@ -30,7 +30,7 @@ struct ToStringOptions
     bool hideTableKind = false;                   // If true, all tables will be surrounded with plain '{}'
     bool hideNamedFunctionTypeParameters = false; // If true, type parameters of functions will be hidden at top-level.
     bool hideFunctionSelfArgument = false;        // If true, `self: X` will be omitted from the function signature if the function has self
-    bool indent = false;
+    bool DEPRECATED_indent = false;               // TODO Deprecated field, prune when clipping flag FFlagLuauLineBreaksDeterminIndents
     size_t maxTableLength = size_t(FInt::LuauTableTypeMaximumStringifierLength); // Only applied to TableTypeVars
     size_t maxTypeLength = size_t(FInt::LuauTypeMaximumStringifierLength);
     ToStringNameMap nameMap;
@@ -89,8 +89,6 @@ inline std::string toString(const Constraint& c)
 {
     return toString(c, ToStringOptions{});
 }
-
-std::string toString(const LValue& lvalue);
 
 std::string toString(const TypeVar& tv, ToStringOptions& opts);
 std::string toString(const TypePackVar& tp, ToStringOptions& opts);

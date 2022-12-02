@@ -7,21 +7,31 @@
 #include "Luau/Variant.h"
 #include "Luau/TypeArena.h"
 
-LUAU_FASTFLAG(LuauIceExceptionInheritanceChange)
-
 namespace Luau
 {
 struct TypeError;
 
+
 struct TypeMismatch
 {
+    enum Context
+    {
+        CovariantContext,
+        InvariantContext
+    };
+
     TypeMismatch() = default;
     TypeMismatch(TypeId wantedType, TypeId givenType);
     TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason);
     TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error);
 
+    TypeMismatch(TypeId wantedType, TypeId givenType, Context context);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, Context context);
+    TypeMismatch(TypeId wantedType, TypeId givenType, std::string reason, std::optional<TypeError> error, Context context);
+
     TypeId wantedType = nullptr;
     TypeId givenType = nullptr;
+    Context context = CovariantContext;
 
     std::string reason;
     std::shared_ptr<TypeError> error;
@@ -312,12 +322,33 @@ struct TypePackMismatch
     bool operator==(const TypePackMismatch& rhs) const;
 };
 
+struct DynamicPropertyLookupOnClassesUnsafe
+{
+    TypeId ty;
+
+    bool operator==(const DynamicPropertyLookupOnClassesUnsafe& rhs) const;
+};
+
 using TypeErrorData = Variant<TypeMismatch, UnknownSymbol, UnknownProperty, NotATable, CannotExtendTable, OnlyTablesCanHaveMethods,
     DuplicateTypeDefinition, CountMismatch, FunctionDoesNotTakeSelf, FunctionRequiresSelf, OccursCheckFailed, UnknownRequire,
     IncorrectGenericParameterCount, SyntaxError, CodeTooComplex, UnificationTooComplex, UnknownPropButFoundLikeProp, GenericError, InternalError,
     CannotCallNonFunction, ExtraInformation, DeprecatedApiUsed, ModuleHasCyclicDependency, IllegalRequire, FunctionExitsWithoutReturning,
     DuplicateGenericParameter, CannotInferBinaryOperation, MissingProperties, SwappedGenericTypeParameter, OptionalValueAccess, MissingUnionProperty,
-    TypesAreUnrelated, NormalizationTooComplex, TypePackMismatch>;
+    TypesAreUnrelated, NormalizationTooComplex, TypePackMismatch, DynamicPropertyLookupOnClassesUnsafe>;
+
+struct TypeErrorSummary
+{
+    Location location;
+    ModuleName moduleName;
+    int code;
+
+    TypeErrorSummary(const Location& location, const ModuleName& moduleName, int code)
+        : location(location)
+        , moduleName(moduleName)
+        , code(code)
+    {
+    }
+};
 
 struct TypeError
 {
@@ -325,6 +356,7 @@ struct TypeError
     ModuleName moduleName;
     TypeErrorData data;
 
+    static int minCode();
     int code() const;
 
     TypeError() = default;
@@ -342,6 +374,8 @@ struct TypeError
     }
 
     bool operator==(const TypeError& rhs) const;
+
+    TypeErrorSummary summary() const;
 };
 
 template<typename T>
@@ -405,11 +439,5 @@ public:
     const std::optional<std::string> moduleName;
     const std::optional<Location> location;
 };
-
-// These two function overloads only exist to facilitate fast flagging a change to InternalCompilerError
-// Both functions can be removed when FFlagLuauIceExceptionInheritanceChange is removed and calling code
-// can directly throw InternalCompilerError.
-[[noreturn]] void throwRuntimeError(const std::string& message);
-[[noreturn]] void throwRuntimeError(const std::string& message, const std::string& moduleName);
 
 } // namespace Luau

@@ -6752,6 +6752,21 @@ MOVE R0 R2
 MOVE R1 R3
 RETURN R0 0
 )");
+
+    ScopedFastFlag luauMultiAssignmentConflictFix{"LuauMultiAssignmentConflictFix", true};
+
+    // because we perform assignments to complex l-values after assignments to locals, we make sure register conflicts are tracked accordingly
+    CHECK_EQ("\n" + compileFunction0(R"(
+        local a, b = ...
+        a[1], b = b, b + 1
+    )"),
+        R"(
+GETVARARGS R0 2
+ADDK R2 R1 K0
+SETTABLEN R1 R0 1
+MOVE R1 R2
+RETURN R0 0
+)");
 }
 
 TEST_CASE("BuiltinExtractK")

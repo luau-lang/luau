@@ -122,10 +122,6 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
 
         for (TypeId t : utv)
         {
-            // TODO: we should probably limit recursion here?
-            // RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
-
-            // Not needed when we normalize types.
             if (get<AnyTypeVar>(follow(t)))
                 return t;
 
@@ -164,9 +160,6 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
 
         for (TypeId t : itv->parts)
         {
-            // TODO: we should probably limit recursion here?
-            // RecursionLimiter _rl(&recursionCount, FInt::LuauTypeInferRecursionLimit);
-
             if (std::optional<TypeId> ty =
                     getIndexTypeFromType(scope, errors, arena, singletonTypes, t, prop, location, /* addErrors= */ false, handle))
                 parts.push_back(*ty);
@@ -183,7 +176,7 @@ std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, ErrorVec& erro
         if (parts.size() == 1)
             return parts[0];
 
-        return arena->addType(IntersectionTypeVar{std::move(parts)}); // Not at all correct.
+        return arena->addType(IntersectionTypeVar{std::move(parts)});
     }
 
     if (addErrors)
@@ -221,46 +214,95 @@ std::pair<size_t, std::optional<size_t>> getParameterExtents(const TxnLog* log, 
         return {minCount, minCount + optionalCount};
 }
 
-std::vector<TypeId> flatten(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length)
+TypePack extendTypePack(TypeArena& arena, NotNull<SingletonTypes> singletonTypes, TypePackId pack, size_t length)
 {
-    std::vector<TypeId> result;
+    TypePack result;
 
-    auto it = begin(pack);
-    auto endIt = end(pack);
-
-    while (it != endIt)
+    while (true)
     {
-        result.push_back(*it);
+        pack = follow(pack);
 
-        if (result.size() >= length)
+        if (const TypePack* p = get<TypePack>(pack))
+        {
+            size_t i = 0;
+            while (i < p->head.size() && result.head.size() < length)
+            {
+                result.head.push_back(p->head[i]);
+                ++i;
+            }
+
+            if (result.head.size() == length)
+            {
+                if (i == p->head.size())
+                    result.tail = p->tail;
+                else
+                {
+                    TypePackId newTail = arena.addTypePack(TypePack{});
+                    TypePack* newTailPack = getMutable<TypePack>(newTail);
+
+                    newTailPack->head.insert(newTailPack->head.begin(), p->head.begin() + i, p->head.end());
+                    newTailPack->tail = p->tail;
+
+                    result.tail = newTail;
+                }
+
+                return result;
+            }
+            else if (p->tail)
+            {
+                pack = *p->tail;
+                continue;
+            }
+            else
+            {
+                // There just aren't enough types in this pack to satisfy the request.
+                return result;
+            }
+        }
+        else if (const VariadicTypePack* vtp = get<VariadicTypePack>(pack))
+        {
+            while (result.head.size() < length)
+                result.head.push_back(vtp->ty);
+            result.tail = pack;
             return result;
+        }
+        else if (FreeTypePack* ftp = getMutable<FreeTypePack>(pack))
+        {
+            // If we need to get concrete types out of a free pack, we choose to
+            // interpret this as proof that the pack must have at least 'length'
+            // elements.  We mint fresh types for each element we're extracting
+            // and rebind the free pack to be a TypePack containing them. We
+            // also have to create a new tail.
 
-        ++it;
-    }
+            TypePack newPack;
+            newPack.tail = arena.freshTypePack(ftp->scope);
 
-    if (!it.tail())
-        return result;
+            while (result.head.size() < length)
+            {
+                newPack.head.push_back(arena.freshType(ftp->scope));
+                result.head.push_back(newPack.head.back());
+            }
 
-    TypePackId tail = *it.tail();
-    if (get<TypePack>(tail))
-        LUAU_ASSERT(0);
-    else if (auto vtp = get<VariadicTypePack>(tail))
-    {
-        while (result.size() < length)
-            result.push_back(vtp->ty);
-    }
-    else if (get<FreeTypePack>(tail) || get<GenericTypePack>(tail))
-    {
-        while (result.size() < length)
-            result.push_back(arena.addType(FreeTypeVar{nullptr}));
-    }
-    else if (auto etp = get<Unifiable::Error>(tail))
-    {
-        while (result.size() < length)
-            result.push_back(singletonTypes->errorRecoveryType());
-    }
+            asMutable(pack)->ty.emplace<TypePack>(std::move(newPack));
 
-    return result;
+            return result;
+        }
+        else if (const Unifiable::Error* etp = getMutable<Unifiable::Error>(pack))
+        {
+            while (result.head.size() < length)
+                result.head.push_back(singletonTypes->errorRecoveryType());
+
+            result.tail = pack;
+            return result;
+        }
+        else
+        {
+            // If the pack is blocked or generic, we can't extract.
+            // Return whatever we've got with this pack as the tail.
+            result.tail = pack;
+            return result;
+        }
+    }
 }
 
 std::vector<TypeId> reduceUnion(const std::vector<TypeId>& types)

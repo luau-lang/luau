@@ -48,6 +48,8 @@ void* pagedAllocate(size_t size)
     // On Linux, we must use mmap because using regular heap results in mprotect() fragmenting the page table and us bumping into 64K mmap limit.
 #ifdef _WIN32
     return _aligned_malloc(size, kPageSize);
+#elif defined(__FreeBSD__)
+    return aligned_alloc(kPageSize, size);
 #else
     return mmap(nullptr, pageAlign(size), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 #endif
@@ -61,6 +63,8 @@ void pagedDeallocate(void* ptr, size_t size)
 
 #ifdef _WIN32
     _aligned_free(ptr);
+#elif defined(__FreeBSD__)
+    free(ptr);
 #else
     int rc = munmap(ptr, size);
     LUAU_ASSERT(rc == 0);

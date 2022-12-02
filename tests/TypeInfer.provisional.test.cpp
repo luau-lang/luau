@@ -170,24 +170,12 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "error_on_eq_metamethod_returning_a_type_othe
     CHECK_EQ("Metamethod '__eq' must return type 'boolean'", ge->message);
 }
 
-// Requires success typing to confidently determine that this expression has no overlap.
-TEST_CASE_FIXTURE(Fixture, "operator_eq_completely_incompatible")
-{
-    CheckResult result = check(R"(
-        local a: string | number = "hi"
-        local b: {x: string}? = {x = "bye"}
-
-        local r1 = a == b
-        local r2 = b == a
-    )");
-
-    LUAU_REQUIRE_NO_ERRORS(result);
-}
-
 // Belongs in TypeInfer.refinements.test.cpp.
-// We'll need to not only report an error on `a == b`, but also to refine both operands as `never` in the `==` branch.
+// We need refine both operands as `never` in the `==` branch.
 TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
 {
+    ScopedFastFlag sff{"LuauIntersectionTestForEquality", true};
+
     CheckResult result = check(R"(
         local function f(a: string, b: boolean?)
             if a == b then
@@ -198,7 +186,7 @@ TEST_CASE_FIXTURE(Fixture, "lvalue_equals_another_lvalue_with_no_overlap")
         end
     )");
 
-    LUAU_REQUIRE_NO_ERRORS(result);
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
 
     CHECK_EQ(toString(requireTypeAtPosition({3, 33})), "string");   // a == b
     CHECK_EQ(toString(requireTypeAtPosition({3, 36})), "boolean?"); // a == b
