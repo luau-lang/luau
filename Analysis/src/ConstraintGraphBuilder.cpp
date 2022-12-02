@@ -1807,7 +1807,9 @@ ConstraintGraphBuilder::FunctionSignature ConstraintGraphBuilder::checkFunctionS
             signatureScope->privateTypePackBindings[name] = g.tp;
         }
 
-        expectedType.reset();
+        // Local variable works around an odd gcc 11.3 warning: <anonymous> may be used uninitialized
+        std::optional<TypeId> none = std::nullopt;
+        expectedType = none;
     }
 
     std::vector<TypeId> argTypes;

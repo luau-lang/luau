@@ -27,7 +27,6 @@ jobs:
     - uses: actions/checkout@v1
     - name: make tests
       run: |
-        g++ --version
         make -j2 config=sanitize werror=1 native=1 luau-tests
     - name: run tests
       run: |
