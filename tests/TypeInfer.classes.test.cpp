@@ -91,6 +91,13 @@ struct ClassFixture : BuiltinsFixture
         typeChecker.globalScope->exportedTypeBindings["Vector2"] = TypeFun{{}, vector2InstanceType};
         addGlobalBinding(frontend, "Vector2", vector2Type, "@test");
 
+        TypeId callableClassMetaType = arena.addType(TableTypeVar{});
+        TypeId callableClassType = arena.addType(ClassTypeVar{"CallableClass", {}, nullopt, callableClassMetaType, {}, {}, "Test"});
+        getMutable<TableTypeVar>(callableClassMetaType)->props = {
+            {"__call", {makeFunction(arena, nullopt, {callableClassType, typeChecker.stringType}, {typeChecker.numberType})}},
+        };
+        typeChecker.globalScope->exportedTypeBindings["CallableClass"] = TypeFun{{}, callableClassType};
+
         for (const auto& [name, tf] : typeChecker.globalScope->exportedTypeBindings)
             persist(tf.type);
 
@@ -512,6 +519,19 @@ TEST_CASE_FIXTURE(ClassFixture, "unions_of_intersections_of_classes")
     )");
 
     LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(ClassFixture, "callable_classes")
+{
+    ScopedFastFlag luauCallableClasses{"LuauCallableClasses", true};
+
+    CheckResult result = check(R"(
+        local x : CallableClass
+        local y = x("testing")
+    )");
+
+    LUAU_REQUIRE_NO_ERRORS(result);
+    CHECK_EQ("number", toString(requireType("y")));
 }
 
 TEST_SUITE_END();
