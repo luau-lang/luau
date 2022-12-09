@@ -2,16 +2,12 @@
 #include "Luau/ConstraintGraphBuilder.h"
 
 #include "Luau/Ast.h"
-#include "Luau/Clone.h"
 #include "Luau/Common.h"
 #include "Luau/Constraint.h"
 #include "Luau/DcrLogger.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
-#include "Luau/Substitution.h"
-#include "Luau/ToString.h"
-#include "Luau/TxnLog.h"
 #include "Luau/TypeUtils.h"
 #include "Luau/TypeVar.h"
 
@@ -1068,16 +1064,9 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     else
         expectedArgs = extendTypePack(*arena, singletonTypes, expectedArgPack, exprArgs.size() - 1);
 
-    std::vector<ConnectiveId> connectives;
-    if (auto ftv = get<FunctionTypeVar>(follow(fnType)); ftv && ftv->dcrMagicRefinement)
-    {
-        MagicRefinementContext ctx{globalScope, dfg, NotNull{&connectiveArena}, call};
-        connectives = ftv->dcrMagicRefinement(ctx);
-    }
-
-
     std::vector<TypeId> args;
     std::optional<TypePackId> argTail;
+    std::vector<ConnectiveId> argumentConnectives;
 
     Checkpoint argCheckpoint = checkpoint(this);
 
@@ -1101,7 +1090,11 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
                 args.push_back(arena->freshType(scope.get()));
         }
         else if (i < exprArgs.size() - 1 || !(arg->is<AstExprCall>() || arg->is<AstExprVarargs>()))
-            args.push_back(check(scope, arg, expectedType).ty);
+        {
+            auto [ty, connective] = check(scope, arg, expectedType);
+            args.push_back(ty);
+            argumentConnectives.push_back(connective);
+        }
         else
             argTail = checkPack(scope, arg, {}).tp; // FIXME? not sure about expectedTypes here
     }
@@ -1113,6 +1106,13 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
     forEachConstraint(argCheckpoint, argEndCheckpoint, this, [extractArgsConstraint](const ConstraintPtr& constraint) {
         constraint->dependencies.push_back(extractArgsConstraint);
     });
+
+    std::vector<ConnectiveId> returnConnectives;
+    if (auto ftv = get<FunctionTypeVar>(follow(fnType)); ftv && ftv->dcrMagicRefinement)
+    {
+        MagicRefinementContext ctx{scope, NotNull{this}, dfg, NotNull{&connectiveArena}, std::move(argumentConnectives), call};
+        returnConnectives = ftv->dcrMagicRefinement(ctx);
+    }
 
     if (matchSetmetatable(*call))
     {
@@ -1133,7 +1133,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
         if (AstExprLocal* targetLocal = targetExpr->as<AstExprLocal>())
             scope->bindings[targetLocal->local].typeId = resultTy;
 
-        return InferencePack{arena->addTypePack({resultTy}), std::move(connectives)};
+        return InferencePack{arena->addTypePack({resultTy}), std::move(returnConnectives)};
     }
     else
     {
@@ -1172,7 +1172,7 @@ InferencePack ConstraintGraphBuilder::checkPack(const ScopePtr& scope, AstExprCa
             fcc->dependencies.emplace_back(constraint.get());
         });
 
-        return InferencePack{rets, std::move(connectives)};
+        return InferencePack{rets, std::move(returnConnectives)};
     }
 }
 
@@ -1468,16 +1468,22 @@ Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprBinary* bi
     auto [leftType, rightType, connective] = checkBinary(scope, binary, expectedType);
 
     TypeId resultType = arena->addType(BlockedTypeVar{});
-    addConstraint(scope, binary->location, BinaryConstraint{binary->op, leftType, rightType, resultType});
+    addConstraint(scope, binary->location, BinaryConstraint{binary->op, leftType, rightType, resultType, binary, &astOriginalCallTypes, &astOverloadResolvedTypes});
     return Inference{resultType, std::move(connective)};
 }
 
 Inference ConstraintGraphBuilder::check(const ScopePtr& scope, AstExprIfElse* ifElse, std::optional<TypeId> expectedType)
 {
-    check(scope, ifElse->condition);
+    ScopePtr condScope = childScope(ifElse->condition, scope);
+    auto [_, connective] = check(scope, ifElse->condition);
 
-    TypeId thenType = check(scope, ifElse->trueExpr, expectedType).ty;
-    TypeId elseType = check(scope, ifElse->falseExpr, expectedType).ty;
+    ScopePtr thenScope = childScope(ifElse->trueExpr, scope);
+    applyRefinements(thenScope, ifElse->trueExpr->location, connective);
+    TypeId thenType = check(thenScope, ifElse->trueExpr, expectedType).ty;
+
+    ScopePtr elseScope = childScope(ifElse->falseExpr, scope);
+    applyRefinements(elseScope, ifElse->falseExpr->location, connectiveArena.negation(connective));
+    TypeId elseType = check(elseScope, ifElse->falseExpr, expectedType).ty;
 
     if (ifElse->hasElse)
     {

@@ -6,6 +6,7 @@
 #include "Luau/AstJsonEncoder.h"
 #include "Luau/Parser.h"
 #include "Luau/ParseOptions.h"
+#include "Luau/ToString.h"
 
 #include "FileUtils.h"
 

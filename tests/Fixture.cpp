@@ -2,19 +2,21 @@
 #include "Fixture.h"
 
 #include "Luau/AstQuery.h"
+#include "Luau/BuiltinDefinitions.h"
+#include "Luau/Constraint.h"
 #include "Luau/ModuleResolver.h"
 #include "Luau/NotNull.h"
 #include "Luau/Parser.h"
 #include "Luau/TypeVar.h"
 #include "Luau/TypeAttach.h"
 #include "Luau/Transpiler.h"
-#include "Luau/BuiltinDefinitions.h"
 
 #include "doctest.h"
 
 #include <algorithm>
 #include <sstream>
 #include <string_view>
+#include <iostream>
 
 static const char* mainModuleName = "MainModule";
 
@@ -26,6 +28,41 @@ extern std::optional<unsigned> randomSeed; // tests/main.cpp
 
 namespace Luau
 {
+
+std::optional<ModuleInfo> TestFileResolver::resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr)
+{
+    if (auto name = pathExprToModuleName(currentModuleName, pathExpr))
+        return {{*name, false}};
+
+    return std::nullopt;
+}
+
+const ModulePtr TestFileResolver::getModule(const ModuleName& moduleName) const
+{
+    LUAU_ASSERT(false);
+    return nullptr;
+}
+
+bool TestFileResolver::moduleExists(const ModuleName& moduleName) const
+{
+    auto it = source.find(moduleName);
+    return (it != source.end());
+}
+
+std::optional<SourceCode> TestFileResolver::readSource(const ModuleName& name)
+{
+    auto it = source.find(name);
+    if (it == source.end())
+        return std::nullopt;
+
+    SourceCode::Type sourceType = SourceCode::Module;
+
+    auto it2 = sourceTypes.find(name);
+    if (it2 != sourceTypes.end())
+        sourceType = it2->second;
+
+    return SourceCode{it->second, sourceType};
+}
 
 std::optional<ModuleInfo> TestFileResolver::resolveModule(const ModuleInfo* context, AstExpr* expr)
 {
@@ -88,6 +125,15 @@ std::optional<std::string> TestFileResolver::getEnvironmentForModule(const Modul
         return it->second;
 
     return std::nullopt;
+}
+
+const Config& TestConfigResolver::getConfig(const ModuleName& name) const
+{
+    auto it = configFiles.find(name);
+    if (it != configFiles.end())
+        return it->second;
+
+    return defaultConfig;
 }
 
 Fixture::Fixture(bool freeze, bool prepareAutocomplete)

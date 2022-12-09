@@ -8,8 +8,8 @@
 using namespace Luau;
 
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
-LUAU_FASTFLAG(LuauNoMoreGlobalSingletonTypes)
 LUAU_FASTFLAG(LuauTypeMismatchInvarianceInError)
+LUAU_FASTFLAG(LuauNewLibraryTypeNames)
 
 TEST_SUITE_BEGIN("TypeAliases");
 
@@ -525,21 +525,15 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "general_require_multi_assign")
 
 TEST_CASE_FIXTURE(BuiltinsFixture, "type_alias_import_mutation")
 {
-    ScopedFastFlag luauNewLibraryTypeNames{"LuauNewLibraryTypeNames", true};
-
     CheckResult result = check("type t10<x> = typeof(table)");
     LUAU_REQUIRE_NO_ERRORS(result);
 
     TypeId ty = getGlobalBinding(frontend, "table");
 
-    if (FFlag::LuauNoMoreGlobalSingletonTypes)
-    {
-        CHECK_EQ(toString(ty), "typeof(table)");
-    }
+    if (FFlag::LuauNewLibraryTypeNames)
+        CHECK(toString(ty) == "typeof(table)");
     else
-    {
-        CHECK_EQ(toString(ty), "table");
-    }
+        CHECK(toString(ty) == "table");
 
     const TableTypeVar* ttv = get<TableTypeVar>(ty);
     REQUIRE(ttv);

@@ -533,7 +533,7 @@ TEST_CASE_FIXTURE(Fixture, "intersection_of_tables_with_never_properties")
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
-        {"LuauUninhabitedSubAnything", true},
+        {"LuauUninhabitedSubAnything2", true},
     };
 
     CheckResult result = check(R"(

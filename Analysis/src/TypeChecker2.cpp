@@ -90,6 +90,9 @@ struct TypeChecker2
 
     std::vector<NotNull<Scope>> stack;
 
+    UnifierSharedState sharedState{&ice};
+    Normalizer normalizer{&module->internalTypes, singletonTypes, NotNull{&sharedState}};
+
     TypeChecker2(NotNull<SingletonTypes> singletonTypes, DcrLogger* logger, const SourceModule* sourceModule, Module* module)
         : singletonTypes(singletonTypes)
         , logger(logger)
@@ -298,8 +301,6 @@ struct TypeChecker2
         TypeArena* arena = &module->internalTypes;
         TypePackId actualRetType = reconstructPack(ret->list, *arena);
 
-        UnifierSharedState sharedState{&ice};
-        Normalizer normalizer{arena, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, stack.back(), ret->location, Covariant};
 
         u.tryUnify(actualRetType, expectedRetType);
@@ -921,7 +922,12 @@ struct TypeChecker2
     void visit(AstExprIndexName* indexName)
     {
         TypeId leftType = lookupType(indexName->expr);
-        getIndexTypeFromType(module->getModuleScope(), leftType, indexName->index.value, indexName->location, /* addErrors */ true);
+
+        const NormalizedType* norm = normalizer.normalize(leftType);
+        if (!norm)
+            reportError(NormalizationTooComplex{}, indexName->indexLocation);
+
+        checkIndexTypeFromType(leftType, *norm, indexName->index.value, indexName->location);
     }
 
     void visit(AstExprIndexExpr* indexExpr)
@@ -1109,11 +1115,18 @@ struct TypeChecker2
             if (std::optional<TypeId> leftMm = findMetatableEntry(singletonTypes, module->errors, leftType, it->second, expr->left->location))
                 mm = leftMm;
             else if (std::optional<TypeId> rightMm = findMetatableEntry(singletonTypes, module->errors, rightType, it->second, expr->right->location))
+            {
                 mm = rightMm;
+                std::swap(leftType, rightType);
+            }
 
             if (mm)
             {
-                if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
+                TypeId instantiatedMm = module->astOverloadResolvedTypes[expr];
+                if (!instantiatedMm)
+                    reportError(CodeTooComplex{}, expr->location);
+
+                else if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(instantiatedMm)))
                 {
                     TypePackId expectedArgs;
                     // For >= and > we invoke __lt and __le respectively with
@@ -1545,9 +1558,7 @@ struct TypeChecker2
     template<typename TID>
     bool isSubtype(TID subTy, TID superTy, NotNull<Scope> scope)
     {
-        UnifierSharedState sharedState{&ice};
         TypeArena arena;
-        Normalizer normalizer{&arena, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, scope, Location{}, Covariant};
         u.useScopes = true;
 
@@ -1559,8 +1570,6 @@ struct TypeChecker2
     template<typename TID>
     ErrorVec tryUnify(NotNull<Scope> scope, const Location& location, TID subTy, TID superTy)
     {
-        UnifierSharedState sharedState{&ice};
-        Normalizer normalizer{&module->internalTypes, singletonTypes, NotNull{&sharedState}};
         Unifier u{NotNull{&normalizer}, Mode::Strict, scope, location, Covariant};
         u.useScopes = true;
         u.tryUnify(subTy, superTy);
@@ -1587,9 +1596,90 @@ struct TypeChecker2
             reportError(std::move(e));
     }
 
-    std::optional<TypeId> getIndexTypeFromType(const ScopePtr& scope, TypeId type, const std::string& prop, const Location& location, bool addErrors)
+    void checkIndexTypeFromType(TypeId denormalizedTy, const NormalizedType& norm, const std::string& prop, const Location& location)
     {
-        return Luau::getIndexTypeFromType(scope, module->errors, &module->internalTypes, singletonTypes, type, prop, location, addErrors, ice);
+        bool foundOneProp = false;
+        std::vector<TypeId> typesMissingTheProp;
+
+        auto fetch = [&](TypeId ty) {
+            if (!normalizer.isInhabited(ty))
+                return;
+
+            bool found = hasIndexTypeFromType(ty, prop, location);
+            foundOneProp |= found;
+            if (!found)
+                typesMissingTheProp.push_back(ty);
+        };
+
+        fetch(norm.tops);
+        fetch(norm.booleans);
+        for (TypeId ty : norm.classes)
+            fetch(ty);
+        fetch(norm.errors);
+        fetch(norm.nils);
+        fetch(norm.numbers);
+        if (!norm.strings.isNever())
+            fetch(singletonTypes->stringType);
+        fetch(norm.threads);
+        for (TypeId ty : norm.tables)
+            fetch(ty);
+        if (norm.functions.isTop)
+            fetch(singletonTypes->functionType);
+        else if (!norm.functions.isNever())
+        {
+            if (norm.functions.parts->size() == 1)
+                fetch(norm.functions.parts->front());
+            else
+            {
+                std::vector<TypeId> parts;
+                parts.insert(parts.end(), norm.functions.parts->begin(), norm.functions.parts->end());
+                fetch(module->internalTypes.addType(IntersectionTypeVar{std::move(parts)}));
+            }
+        }
+        for (const auto& [tyvar, intersect] : norm.tyvars)
+        {
+            if (get<NeverTypeVar>(intersect->tops))
+            {
+                TypeId ty = normalizer.typeFromNormal(*intersect);
+                fetch(module->internalTypes.addType(IntersectionTypeVar{{tyvar, ty}}));
+            }
+            else
+                fetch(tyvar);
+        }
+
+        if (!typesMissingTheProp.empty())
+        {
+            if (foundOneProp)
+                reportError(TypeError{location, MissingUnionProperty{denormalizedTy, typesMissingTheProp, prop}});
+            else
+                reportError(TypeError{location, UnknownProperty{denormalizedTy, prop}});
+        }
+    }
+
+    bool hasIndexTypeFromType(TypeId ty, const std::string& prop, const Location& location)
+    {
+        if (get<ErrorTypeVar>(ty) || get<AnyTypeVar>(ty) || get<NeverTypeVar>(ty))
+            return true;
+
+        if (isString(ty))
+        {
+            std::optional<TypeId> mtIndex = Luau::findMetatableEntry(singletonTypes, module->errors, singletonTypes->stringType, "__index", location);
+            LUAU_ASSERT(mtIndex);
+            ty = *mtIndex;
+        }
+
+        if (getTableType(ty))
+            return bool(findTablePropertyRespectingMeta(singletonTypes, module->errors, ty, prop, location));
+        else if (const ClassTypeVar* cls = get<ClassTypeVar>(ty))
+            return bool(lookupClassProp(cls, prop));
+        else if (const UnionTypeVar* utv = get<UnionTypeVar>(ty))
+            ice.ice("getIndexTypeFromTypeHelper cannot take a UnionTypeVar");
+        else if (const IntersectionTypeVar* itv = get<IntersectionTypeVar>(ty))
+            return std::any_of(begin(itv), end(itv), [&](TypeId part) {
+                return hasIndexTypeFromType(part, prop, location);
+            });
+        else
+            return false;
     }
 };
 

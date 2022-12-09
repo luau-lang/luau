@@ -1,12 +1,17 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/Frontend.h"
 #include "Luau/Scope.h"
-#include "Luau/TypeInfer.h"
+#include "Luau/TypeVar.h"
+
+#include <optional>
 
 namespace Luau
 {
+
+struct Frontend;
+struct TypeChecker;
+struct TypeArena;
 
 void registerBuiltinTypes(Frontend& frontend);
 

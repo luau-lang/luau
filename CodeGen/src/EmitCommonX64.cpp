@@ -61,10 +61,8 @@ void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs,
     }
 }
 
-void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX64 cond, Label& label, int pcpos)
+void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX64 cond, Label& label)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(ra));
     build.lea(rArg3, luauRegAddress(rb));
@@ -85,10 +83,8 @@ void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX6
         label);
 }
 
-RegisterX64 getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int pcpos)
+void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, RegisterX64 table, int pcpos)
 {
-    RegisterX64 node = rdx;
-
     LUAU_ASSERT(tmp != node);
     LUAU_ASSERT(table != node);
 
@@ -102,15 +98,11 @@ RegisterX64 getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp,
     // LuaNode* n = &h->node[slot];
     build.shl(dwordReg(tmp), kLuaNodeSizeLog2);
     build.add(node, tmp);
-
-    return node;
 }
 
-void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, int ri, Label& label)
+void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, Label& label)
 {
     LUAU_ASSERT(numi.size == SizeX64::dword);
-
-    build.vmovsd(numd, luauRegValue(ri));
 
     // Convert to integer, NaN is converted into 0x80000000
     build.vcvttsd2si(numi, numd);
@@ -124,10 +116,8 @@ void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, Regi
     build.jcc(ConditionX64::NotZero, label);
 }
 
-void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, int pcpos, TMS tm)
+void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     if (build.abi == ABIX64::Windows)
         build.mov(sArg5, tm);
     else
@@ -142,10 +132,8 @@ void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, in
     emitUpdateBase(build);
 }
 
-void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb, int pcpos)
+void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(ra));
     build.lea(rArg3, luauRegAddress(rb));
@@ -154,10 +142,8 @@ void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb, int pcpos)
     emitUpdateBase(build);
 }
 
-void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init, int pcpos)
+void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(limit));
     build.lea(rArg3, luauRegAddress(step));
@@ -165,10 +151,8 @@ void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init, i
     build.call(qword[rNativeContext + offsetof(NativeContext, luaV_prepareFORN)]);
 }
 
-void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos)
+void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(rb));
     build.lea(rArg3, c);
@@ -178,10 +162,8 @@ void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int p
     emitUpdateBase(build);
 }
 
-void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos)
+void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra)
 {
-    emitSetSavedPc(build, pcpos + 1);
-
     build.mov(rArg1, rState);
     build.lea(rArg2, luauRegAddress(rb));
     build.lea(rArg3, c);

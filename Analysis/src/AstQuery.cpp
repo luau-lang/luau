@@ -11,6 +11,8 @@
 
 #include <algorithm>
 
+LUAU_FASTFLAG(LuauCompleteTableKeysBetter);
+
 namespace Luau
 {
 
@@ -29,12 +31,24 @@ struct AutocompleteNodeFinder : public AstVisitor
 
     bool visit(AstExpr* expr) override
     {
-        if (expr->location.begin < pos && pos <= expr->location.end)
+        if (FFlag::LuauCompleteTableKeysBetter)
         {
-            ancestry.push_back(expr);
-            return true;
+            if (expr->location.begin <= pos && pos <= expr->location.end)
+            {
+                ancestry.push_back(expr);
+                return true;
+            }
+            return false;
         }
-        return false;
+        else
+        {
+            if (expr->location.begin < pos && pos <= expr->location.end)
+            {
+                ancestry.push_back(expr);
+                return true;
+            }
+            return false;
+        }
     }
 
     bool visit(AstStat* stat) override

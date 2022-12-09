@@ -10,59 +10,31 @@
 #include "Luau/ModuleResolver.h"
 #include "Luau/Scope.h"
 #include "Luau/ToString.h"
-#include "Luau/TypeInfer.h"
 #include "Luau/TypeVar.h"
 
 #include "IostreamOptional.h"
 #include "ScopedFlags.h"
 
-#include <iostream>
 #include <string>
 #include <unordered_map>
-
 #include <optional>
 
 namespace Luau
 {
 
+struct TypeChecker;
+
 struct TestFileResolver
     : FileResolver
     , ModuleResolver
 {
-    std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override
-    {
-        if (auto name = pathExprToModuleName(currentModuleName, pathExpr))
-            return {{*name, false}};
+    std::optional<ModuleInfo> resolveModuleInfo(const ModuleName& currentModuleName, const AstExpr& pathExpr) override;
 
-        return std::nullopt;
-    }
+    const ModulePtr getModule(const ModuleName& moduleName) const override;
 
-    const ModulePtr getModule(const ModuleName& moduleName) const override
-    {
-        LUAU_ASSERT(false);
-        return nullptr;
-    }
+    bool moduleExists(const ModuleName& moduleName) const override;
 
-    bool moduleExists(const ModuleName& moduleName) const override
-    {
-        auto it = source.find(moduleName);
-        return (it != source.end());
-    }
-
-    std::optional<SourceCode> readSource(const ModuleName& name) override
-    {
-        auto it = source.find(name);
-        if (it == source.end())
-            return std::nullopt;
-
-        SourceCode::Type sourceType = SourceCode::Module;
-
-        auto it2 = sourceTypes.find(name);
-        if (it2 != sourceTypes.end())
-            sourceType = it2->second;
-
-        return SourceCode{it->second, sourceType};
-    }
+    std::optional<SourceCode> readSource(const ModuleName& name) override;
 
     std::optional<ModuleInfo> resolveModule(const ModuleInfo* context, AstExpr* expr) override;
 
@@ -80,14 +52,7 @@ struct TestConfigResolver : ConfigResolver
     Config defaultConfig;
     std::unordered_map<ModuleName, Config> configFiles;
 
-    const Config& getConfig(const ModuleName& name) const override
-    {
-        auto it = configFiles.find(name);
-        if (it != configFiles.end())
-            return it->second;
-
-        return defaultConfig;
-    }
+    const Config& getConfig(const ModuleName& name) const override;
 };
 
 struct Fixture
