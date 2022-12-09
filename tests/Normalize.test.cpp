@@ -393,7 +393,6 @@ TEST_SUITE_END();
 
 struct NormalizeFixture : Fixture
 {
-    ScopedFastFlag sff0{"LuauNegatedStringSingletons", true};
     ScopedFastFlag sff1{"LuauNegatedFunctionTypes", true};
 
     TypeArena arena;

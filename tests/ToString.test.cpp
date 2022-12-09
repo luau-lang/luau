@@ -269,9 +269,9 @@ TEST_CASE_FIXTURE(Fixture, "quit_stringifying_type_when_length_is_exceeded")
     {
         o.maxTypeLength = 30;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> () -> ()");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> <a>(a) -> () -> ()");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> <b>(b) -> <a>(a) -> (... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
     }
     else
     {
@@ -299,9 +299,9 @@ TEST_CASE_FIXTURE(Fixture, "stringifying_type_is_still_capped_when_exhaustive")
     {
         o.maxTypeLength = 30;
         CHECK_EQ(toString(requireType("f0"), o), "() -> ()");
-        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> () -> ()");
-        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> <a>(a) -> () -> ()");
-        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> <b>(b) -> <a>(a) -> (... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f1"), o), "<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f2"), o), "<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
+        CHECK_EQ(toString(requireType("f3"), o), "<c>(c) -> (<b>(b) -> (<a>(a) -> (() -> ()) | (a & ~(false?))... *TRUNCATED*");
     }
     else
     {

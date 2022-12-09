@@ -6,6 +6,8 @@
 #include "Luau/StringUtils.h"
 #include "Luau/Common.h"
 
+#include <math.h>
+
 namespace Luau
 {
 
@@ -103,9 +105,28 @@ struct AstJsonEncoder : public AstVisitor
 
     void write(double d)
     {
-        char b[32];
-        snprintf(b, sizeof(b), "%.17g", d);
-        writeRaw(b);
+        switch (fpclassify(d))
+        {
+        case FP_INFINITE:
+            if (d < 0)
+                writeRaw("-Infinity");
+            else
+                writeRaw("Infinity");
+            break;
+
+        case FP_NAN:
+            writeRaw("NaN");
+            break;
+
+        case FP_NORMAL:
+        case FP_SUBNORMAL:
+        case FP_ZERO:
+        default:
+            char b[32];
+            snprintf(b, sizeof(b), "%.17g", d);
+            writeRaw(b);
+            break;
+        }
     }
 
     void writeString(std::string_view sv)

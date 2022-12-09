@@ -3,6 +3,7 @@
 
 #include "Luau/Clone.h"
 #include "Luau/Common.h"
+#include "Luau/FileResolver.h"
 #include "Luau/StringUtils.h"
 #include "Luau/ToString.h"
 

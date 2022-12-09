@@ -42,6 +42,7 @@ public:
     void retain(const TypeIds& tys);
     void clear();
 
+    TypeId front() const;
     iterator begin();
     iterator end();
     const_iterator begin() const;
@@ -107,18 +108,7 @@ namespace Luau
 /** A normalized string type is either `string` (represented by `nullopt`) or a
  * union of string singletons.
  *
- * When FFlagLuauNegatedStringSingletons is unset, the representation is as
- * follows:
- *
- * * The `string` data type is represented by the option `singletons` having the
- *   value `std::nullopt`.
- * * The type `never` is represented by `singletons` being populated with an
- *   empty map.
- * * A union of string singletons is represented by a map populated by the names
- *   and TypeIds of the singletons contained therein.
- *
- * When FFlagLuauNegatedStringSingletons is set, the representation is as
- * follows:
+ * The representation is as follows:
  *
  * * A union of string singletons is finite and includes the singletons named by
  *   the `singletons` field.
@@ -138,9 +128,7 @@ struct NormalizedStringType
     // eg string & ~"a" & ~"b" & ...
     bool isCofinite = false;
 
-    // TODO: This field cannot be nullopt when FFlagLuauNegatedStringSingletons
-    // is set. When clipping that flag, we can remove the wrapping optional.
-    std::optional<std::map<std::string, TypeId>> singletons;
+    std::map<std::string, TypeId> singletons;
 
     void resetToString();
     void resetToNever();
@@ -161,8 +149,8 @@ struct NormalizedStringType
 
     static const NormalizedStringType never;
 
-    NormalizedStringType() = default;
-    NormalizedStringType(bool isCofinite, std::optional<std::map<std::string, TypeId>> singletons);
+    NormalizedStringType();
+    NormalizedStringType(bool isCofinite, std::map<std::string, TypeId> singletons);
 };
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr);

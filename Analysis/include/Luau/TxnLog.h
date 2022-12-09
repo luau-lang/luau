@@ -1,11 +1,11 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include <memory>
-#include <unordered_map>
-
 #include "Luau/TypeVar.h"
 #include "Luau/TypePack.h"
+
+#include <memory>
+#include <unordered_map>
 
 namespace Luau
 {

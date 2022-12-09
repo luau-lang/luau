@@ -52,7 +52,7 @@ LUAU_FASTFLAGVARIABLE(LuauIntersectionTestForEquality, false)
 LUAU_FASTFLAGVARIABLE(LuauImplicitElseRefinement, false)
 LUAU_FASTFLAGVARIABLE(LuauAllowIndexClassParameters, false)
 LUAU_FASTFLAGVARIABLE(LuauDeclareClassPrototype, false)
-LUAU_FASTFLAG(LuauUninhabitedSubAnything)
+LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 LUAU_FASTFLAGVARIABLE(LuauCallableClasses, false)
 
 namespace Luau
@@ -2691,7 +2691,7 @@ static std::optional<bool> areEqComparable(NotNull<TypeArena> arena, NotNull<Nor
     if (!n)
         return std::nullopt;
 
-    if (FFlag::LuauUninhabitedSubAnything)
+    if (FFlag::LuauUninhabitedSubAnything2)
         return normalizer->isInhabited(n);
     else
         return isInhabited_DEPRECATED(*n);

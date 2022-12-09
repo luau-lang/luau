@@ -6,6 +6,7 @@
 
 #include "doctest.h"
 
+#include <math.h>
 #include <ostream>
 
 using namespace Luau;
@@ -58,6 +59,9 @@ TEST_CASE("encode_constants")
     AstExprConstantBool b{Location(), true};
     AstExprConstantNumber n{Location(), 8.2};
     AstExprConstantNumber bigNum{Location(), 0.1677721600000003};
+    AstExprConstantNumber positiveInfinity{Location(), INFINITY};
+    AstExprConstantNumber negativeInfinity{Location(), -INFINITY};
+    AstExprConstantNumber nan{Location(), NAN};
 
     AstArray<char> charString;
     charString.data = const_cast<char*>("a\x1d\0\\\"b");
@@ -69,6 +73,9 @@ TEST_CASE("encode_constants")
     CHECK_EQ(R"({"type":"AstExprConstantBool","location":"0,0 - 0,0","value":true})", toJson(&b));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":8.1999999999999993})", toJson(&n));
     CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":0.16777216000000031})", toJson(&bigNum));
+    CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":Infinity})", toJson(&positiveInfinity));
+    CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":-Infinity})", toJson(&negativeInfinity));
+    CHECK_EQ(R"({"type":"AstExprConstantNumber","location":"0,0 - 0,0","value":NaN})", toJson(&nan));
     CHECK_EQ("{\"type\":\"AstExprConstantString\",\"location\":\"0,0 - 0,0\",\"value\":\"a\\u001d\\u0000\\\\\\\"b\"}", toJson(&needsEscaping));
 }
 

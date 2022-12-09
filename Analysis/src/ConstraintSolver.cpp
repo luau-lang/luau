@@ -15,7 +15,6 @@
 #include "Luau/TypeVar.h"
 #include "Luau/Unifier.h"
 #include "Luau/VisitTypeVar.h"
-#include "Luau/TypeUtils.h"
 
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolver, false);
 LUAU_FASTFLAGVARIABLE(DebugLuauLogSolverToJson, false);
@@ -635,9 +634,17 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
 
         if (mm)
         {
+            Instantiation instantiation{TxnLog::empty(), arena, TypeLevel{}, constraint->scope};
+            std::optional<TypeId> instantiatedMm = instantiation.substitute(*mm);
+            if (!instantiatedMm)
+            {
+                reportError(CodeTooComplex{}, constraint->location);
+                return true;
+            }
+
             // TODO: Is a table with __call legal here?
             // TODO: Overloads
-            if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*mm)))
+            if (const FunctionTypeVar* ftv = get<FunctionTypeVar>(follow(*instantiatedMm)))
             {
                 TypePackId inferredArgs;
                 // For >= and > we invoke __lt and __le respectively with
@@ -673,6 +680,9 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
 
                 asMutable(resultType)->ty.emplace<BoundTypeVar>(mmResult);
                 unblock(resultType);
+
+                (*c.astOriginalCallTypes)[c.expr] = *mm;
+                (*c.astOverloadResolvedTypes)[c.expr] = *instantiatedMm;
                 return true;
             }
         }
@@ -743,19 +753,7 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     {
         TypeId leftFilteredTy = arena->addType(IntersectionTypeVar{{singletonTypes->falsyType, leftType}});
 
-        // TODO: normaliztion here should be replaced by a more limited 'simplification'
-        const NormalizedType* normalized = normalizer->normalize(arena->addType(UnionTypeVar{{leftFilteredTy, rightType}}));
-
-        if (!normalized)
-        {
-            reportError(CodeTooComplex{}, constraint->location);
-            asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
-        }
-        else
-        {
-            asMutable(resultType)->ty.emplace<BoundTypeVar>(normalizer->typeFromNormal(*normalized));
-        }
-
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(arena->addType(UnionTypeVar{{leftFilteredTy, rightType}}));
         unblock(resultType);
         return true;
     }
@@ -763,21 +761,9 @@ bool ConstraintSolver::tryDispatch(const BinaryConstraint& c, NotNull<const Cons
     // LHS is falsey.
     case AstExprBinary::Op::Or:
     {
-        TypeId rightFilteredTy = arena->addType(IntersectionTypeVar{{singletonTypes->truthyType, leftType}});
+        TypeId leftFilteredTy = arena->addType(IntersectionTypeVar{{singletonTypes->truthyType, leftType}});
 
-        // TODO: normaliztion here should be replaced by a more limited 'simplification'
-        const NormalizedType* normalized = normalizer->normalize(arena->addType(UnionTypeVar{{rightFilteredTy, rightType}}));
-
-        if (!normalized)
-        {
-            reportError(CodeTooComplex{}, constraint->location);
-            asMutable(resultType)->ty.emplace<BoundTypeVar>(errorRecoveryType());
-        }
-        else
-        {
-            asMutable(resultType)->ty.emplace<BoundTypeVar>(normalizer->typeFromNormal(*normalized));
-        }
-
+        asMutable(resultType)->ty.emplace<BoundTypeVar>(arena->addType(UnionTypeVar{{leftFilteredTy, rightType}}));
         unblock(resultType);
         return true;
     }

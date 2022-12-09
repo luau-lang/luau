@@ -264,12 +264,14 @@ using DcrMagicFunction = bool (*)(MagicFunctionCallContext);
 struct MagicRefinementContext
 {
     ScopePtr scope;
+    NotNull<struct ConstraintGraphBuilder> cgb;
     NotNull<const DataFlowGraph> dfg;
     NotNull<ConnectiveArena> connectiveArena;
+    std::vector<ConnectiveId> argumentConnectives;
     const class AstExprCall* callSite;
 };
 
-using DcrMagicRefinement = std::vector<ConnectiveId> (*)(MagicRefinementContext);
+using DcrMagicRefinement = std::vector<ConnectiveId> (*)(const MagicRefinementContext&);
 
 struct FunctionTypeVar
 {
@@ -665,9 +667,6 @@ public:
     const TypePackId uninhabitableTypePack;
     const TypePackId errorTypePack;
 };
-
-// Clip with FFlagLuauNoMoreGlobalSingletonTypes
-SingletonTypes& DEPRECATED_getSingletonTypes();
 
 void persist(TypeId ty);
 void persist(TypePackId tp);

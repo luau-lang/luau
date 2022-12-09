@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <functional>
+#include <string>
 
 #include <string.h>
 

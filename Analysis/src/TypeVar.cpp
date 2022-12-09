@@ -26,7 +26,6 @@ LUAU_FASTINTVARIABLE(LuauTableTypeMaximumStringifierLength, 0)
 LUAU_FASTINT(LuauTypeInferRecursionLimit)
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAGVARIABLE(LuauMaybeGenericIntersectionTypes, false)
-LUAU_FASTFLAGVARIABLE(LuauNoMoreGlobalSingletonTypes, false)
 LUAU_FASTFLAGVARIABLE(LuauNewLibraryTypeNames, false)
 LUAU_FASTFLAG(LuauInstantiateInSubtyping)
 
@@ -888,12 +887,6 @@ TypeId SingletonTypes::errorRecoveryType(TypeId guess)
 TypePackId SingletonTypes::errorRecoveryTypePack(TypePackId guess)
 {
     return guess;
-}
-
-SingletonTypes& DEPRECATED_getSingletonTypes()
-{
-    static SingletonTypes singletonTypes;
-    return singletonTypes;
 }
 
 void persist(TypeId ty)
