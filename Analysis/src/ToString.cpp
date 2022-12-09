@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/ToString.h"
 
+#include "Luau/Constraint.h"
+#include "Luau/Location.h"
 #include "Luau/Scope.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
@@ -1572,4 +1574,15 @@ std::optional<std::string> getFunctionNameAsString(const AstExpr& expr)
 
     return s;
 }
+
+std::string toString(const Position& position)
+{
+    return "{ line = " + std::to_string(position.line) + ", col = " + std::to_string(position.column) + " }";
+}
+
+std::string toString(const Location& location)
+{
+    return "Location { " + toString(location.begin) + ", " + toString(location.end) + " }";
+}
+
 } // namespace Luau

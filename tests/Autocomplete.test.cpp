@@ -2948,6 +2948,71 @@ TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singletons")
     CHECK_EQ(ac.context, AutocompleteContext::String);
 }
 
+TEST_CASE_FIXTURE(ACFixture, "string_singleton_as_table_key")
+{
+    ScopedFastFlag sff{"LuauCompleteTableKeysBetter", true};
+
+    check(R"(
+        type Direction = "up" | "down"
+
+        local a: {[Direction]: boolean} = {[@1] = true}
+        local b: {[Direction]: boolean} = {["@2"] = true}
+        local c: {[Direction]: boolean} = {u@3 = true}
+        local d: {[Direction]: boolean} = {[u@4] = true}
+
+        local e: {[Direction]: boolean} = {[@5]}
+        local f: {[Direction]: boolean} = {["@6"]}
+        local g: {[Direction]: boolean} = {u@7}
+        local h: {[Direction]: boolean} = {[u@8]}
+    )");
+
+    auto ac = autocomplete('1');
+
+    CHECK(ac.entryMap.count("\"up\""));
+    CHECK(ac.entryMap.count("\"down\""));
+
+    ac = autocomplete('2');
+
+    CHECK(ac.entryMap.count("up"));
+    CHECK(ac.entryMap.count("down"));
+
+    ac = autocomplete('3');
+
+    CHECK(ac.entryMap.count("up"));
+    CHECK(ac.entryMap.count("down"));
+
+    ac = autocomplete('4');
+
+    CHECK(!ac.entryMap.count("up"));
+    CHECK(!ac.entryMap.count("down"));
+
+    CHECK(ac.entryMap.count("\"up\""));
+    CHECK(ac.entryMap.count("\"down\""));
+
+    ac = autocomplete('5');
+
+    CHECK(ac.entryMap.count("\"up\""));
+    CHECK(ac.entryMap.count("\"down\""));
+
+    ac = autocomplete('6');
+
+    CHECK(ac.entryMap.count("up"));
+    CHECK(ac.entryMap.count("down"));
+
+    ac = autocomplete('7');
+
+    CHECK(ac.entryMap.count("up"));
+    CHECK(ac.entryMap.count("down"));
+
+    ac = autocomplete('8');
+
+    CHECK(!ac.entryMap.count("up"));
+    CHECK(!ac.entryMap.count("down"));
+
+    CHECK(ac.entryMap.count("\"up\""));
+    CHECK(ac.entryMap.count("\"down\""));
+}
+
 TEST_CASE_FIXTURE(ACFixture, "autocomplete_string_singleton_equality")
 {
     check(R"(

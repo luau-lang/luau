@@ -12,6 +12,8 @@
 #include <unordered_set>
 #include <utility>
 
+LUAU_FASTFLAGVARIABLE(LuauCompleteTableKeysBetter, false);
+
 static const std::unordered_set<std::string> kStatementStartingKeywords = {
     "while", "if", "local", "repeat", "function", "do", "for", "return", "break", "continue", "type", "export"};
 
@@ -966,13 +968,28 @@ T* extractStat(const std::vector<AstNode*>& ancestry)
     if (!parent)
         return nullptr;
 
-    if (T* t = parent->as<T>(); t && parent->is<AstStatBlock>())
-        return t;
-
     AstNode* grandParent = ancestry.size() >= 3 ? ancestry.rbegin()[2] : nullptr;
     AstNode* greatGrandParent = ancestry.size() >= 4 ? ancestry.rbegin()[3] : nullptr;
-    if (!grandParent || !greatGrandParent)
-        return nullptr;
+
+    if (FFlag::LuauCompleteTableKeysBetter)
+    {
+        if (!grandParent)
+            return nullptr;
+
+        if (T* t = parent->as<T>(); t && grandParent->is<AstStatBlock>())
+            return t;
+
+        if (!greatGrandParent)
+            return nullptr;
+    }
+    else
+    {
+        if (T* t = parent->as<T>(); t && parent->is<AstStatBlock>())
+            return t;
+
+        if (!grandParent || !greatGrandParent)
+            return nullptr;
+    }
 
     if (T* t = greatGrandParent->as<T>(); t && grandParent->is<AstStatBlock>() && parent->is<AstStatError>() && isIdentifier(node))
         return t;
@@ -1468,6 +1485,26 @@ static AutocompleteResult autocomplete(const SourceModule& sourceModule, const M
                 if (auto it = module->astExpectedTypes.find(exprTable))
                 {
                     auto result = autocompleteProps(*module, &typeArena, singletonTypes, *it, PropIndexType::Key, ancestry);
+
+                    if (FFlag::LuauCompleteTableKeysBetter)
+                    {
+                        if (auto nodeIt = module->astExpectedTypes.find(node->asExpr()))
+                            autocompleteStringSingleton(*nodeIt, !node->is<AstExprConstantString>(), result);
+
+                        if (!key)
+                        {
+                            // If there is "no key," it may be that the user
+                            // intends for the current token to be the key, but
+                            // has yet to type the `=` sign.
+                            //
+                            // If the key type is a union of singleton strings,
+                            // suggest those too.
+                            if (auto ttv = get<TableTypeVar>(follow(*it)); ttv && ttv->indexer)
+                            {
+                                autocompleteStringSingleton(ttv->indexer->indexType, false, result);
+                            }
+                        }
+                    }
 
                     // Remove keys that are already completed
                     for (const auto& item : exprTable->items)

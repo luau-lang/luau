@@ -21,16 +21,15 @@
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
+#include <string>
 
 LUAU_FASTINT(LuauTypeInferIterationLimit)
 LUAU_FASTINT(LuauTarjanChildLimit)
 LUAU_FASTFLAG(LuauInferInNoCheckMode)
-LUAU_FASTFLAG(LuauNoMoreGlobalSingletonTypes)
 LUAU_FASTFLAGVARIABLE(LuauKnowsTheDataModel3, false)
 LUAU_FASTINTVARIABLE(LuauAutocompleteCheckTimeoutMs, 100)
 LUAU_FASTFLAGVARIABLE(DebugLuauDeferredConstraintResolution, false)
 LUAU_FASTFLAG(DebugLuauLogSolverToJson);
-LUAU_FASTFLAGVARIABLE(LuauFixMarkDirtyReverseDeps, false)
 
 namespace Luau
 {
@@ -409,7 +408,7 @@ double getTimestamp()
 } // namespace
 
 Frontend::Frontend(FileResolver* fileResolver, ConfigResolver* configResolver, const FrontendOptions& options)
-    : singletonTypes(NotNull{FFlag::LuauNoMoreGlobalSingletonTypes ? &singletonTypes_ : &DEPRECATED_getSingletonTypes()})
+    : singletonTypes(NotNull{&singletonTypes_})
     , fileResolver(fileResolver)
     , moduleResolver(this)
     , moduleResolverForAutocomplete(this)
@@ -819,26 +818,13 @@ void Frontend::markDirty(const ModuleName& name, std::vector<ModuleName>* marked
         sourceNode.dirtyModule = true;
         sourceNode.dirtyModuleForAutocomplete = true;
 
-        if (FFlag::LuauFixMarkDirtyReverseDeps)
-        {
-            if (0 == reverseDeps.count(next))
-                continue;
+        if (0 == reverseDeps.count(next))
+            continue;
 
-            sourceModules.erase(next);
+        sourceModules.erase(next);
 
-            const std::vector<ModuleName>& dependents = reverseDeps[next];
-            queue.insert(queue.end(), dependents.begin(), dependents.end());
-        }
-        else
-        {
-            if (0 == reverseDeps.count(name))
-                continue;
-
-            sourceModules.erase(name);
-
-            const std::vector<ModuleName>& dependents = reverseDeps[name];
-            queue.insert(queue.end(), dependents.begin(), dependents.end());
-        }
+        const std::vector<ModuleName>& dependents = reverseDeps[next];
+        queue.insert(queue.end(), dependents.begin(), dependents.end());
     }
 }
 
@@ -919,6 +905,7 @@ ModulePtr Frontend::check(
     result->astTypes = std::move(cgb.astTypes);
     result->astTypePacks = std::move(cgb.astTypePacks);
     result->astOriginalCallTypes = std::move(cgb.astOriginalCallTypes);
+    result->astOverloadResolvedTypes = std::move(cgb.astOverloadResolvedTypes);
     result->astResolvedTypes = std::move(cgb.astResolvedTypes);
     result->astResolvedTypePacks = std::move(cgb.astResolvedTypePacks);
     result->type = sourceModule.type;

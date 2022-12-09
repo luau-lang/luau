@@ -2,6 +2,7 @@
 #include "Luau/TxnLog.h"
 
 #include "Luau/ToString.h"
+#include "Luau/TypeArena.h"
 #include "Luau/TypePack.h"
 
 #include <algorithm>

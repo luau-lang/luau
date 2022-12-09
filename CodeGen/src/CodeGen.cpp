@@ -59,7 +59,7 @@ static void assembleHelpers(AssemblyBuilderX64& build, ModuleHelpers& helpers)
 }
 
 static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers& helpers, Proto* proto, LuauOpcode op, const Instruction* pc, int i,
-    Label* labelarr, Label& fallback)
+    Label* labelarr, Label& next, Label& fallback)
 {
     int skip = 0;
 
@@ -89,31 +89,31 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
         emitInstGetGlobal(build, pc, i, fallback);
         break;
     case LOP_SETGLOBAL:
-        emitInstSetGlobal(build, pc, i, labelarr, fallback);
+        emitInstSetGlobal(build, pc, i, next, fallback);
         break;
     case LOP_CALL:
-        emitInstCall(build, helpers, pc, i, labelarr);
+        emitInstCall(build, helpers, pc, i);
         break;
     case LOP_RETURN:
-        emitInstReturn(build, helpers, pc, i, labelarr);
+        emitInstReturn(build, helpers, pc, i);
         break;
     case LOP_GETTABLE:
-        emitInstGetTable(build, pc, i, fallback);
+        emitInstGetTable(build, pc, fallback);
         break;
     case LOP_SETTABLE:
-        emitInstSetTable(build, pc, i, labelarr, fallback);
+        emitInstSetTable(build, pc, next, fallback);
         break;
     case LOP_GETTABLEKS:
         emitInstGetTableKS(build, pc, i, fallback);
         break;
     case LOP_SETTABLEKS:
-        emitInstSetTableKS(build, pc, i, labelarr, fallback);
+        emitInstSetTableKS(build, pc, i, next, fallback);
         break;
     case LOP_GETTABLEN:
-        emitInstGetTableN(build, pc, i, fallback);
+        emitInstGetTableN(build, pc, fallback);
         break;
     case LOP_SETTABLEN:
-        emitInstSetTableN(build, pc, i, labelarr, fallback);
+        emitInstSetTableN(build, pc, next, fallback);
         break;
     case LOP_JUMP:
         emitInstJump(build, pc, i, labelarr);
@@ -161,94 +161,96 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
         emitInstJumpxEqS(build, pc, i, labelarr);
         break;
     case LOP_ADD:
-        emitInstBinary(build, pc, i, TM_ADD, fallback);
+        emitInstBinary(build, pc, TM_ADD, fallback);
         break;
     case LOP_SUB:
-        emitInstBinary(build, pc, i, TM_SUB, fallback);
+        emitInstBinary(build, pc, TM_SUB, fallback);
         break;
     case LOP_MUL:
-        emitInstBinary(build, pc, i, TM_MUL, fallback);
+        emitInstBinary(build, pc, TM_MUL, fallback);
         break;
     case LOP_DIV:
-        emitInstBinary(build, pc, i, TM_DIV, fallback);
+        emitInstBinary(build, pc, TM_DIV, fallback);
         break;
     case LOP_MOD:
-        emitInstBinary(build, pc, i, TM_MOD, fallback);
+        emitInstBinary(build, pc, TM_MOD, fallback);
         break;
     case LOP_POW:
-        emitInstBinary(build, pc, i, TM_POW, fallback);
+        emitInstBinary(build, pc, TM_POW, fallback);
         break;
     case LOP_ADDK:
-        emitInstBinaryK(build, pc, i, TM_ADD, fallback);
+        emitInstBinaryK(build, pc, TM_ADD, fallback);
         break;
     case LOP_SUBK:
-        emitInstBinaryK(build, pc, i, TM_SUB, fallback);
+        emitInstBinaryK(build, pc, TM_SUB, fallback);
         break;
     case LOP_MULK:
-        emitInstBinaryK(build, pc, i, TM_MUL, fallback);
+        emitInstBinaryK(build, pc, TM_MUL, fallback);
         break;
     case LOP_DIVK:
-        emitInstBinaryK(build, pc, i, TM_DIV, fallback);
+        emitInstBinaryK(build, pc, TM_DIV, fallback);
         break;
     case LOP_MODK:
-        emitInstBinaryK(build, pc, i, TM_MOD, fallback);
+        emitInstBinaryK(build, pc, TM_MOD, fallback);
         break;
     case LOP_POWK:
-        emitInstPowK(build, pc, proto->k, i, fallback);
+        emitInstPowK(build, pc, proto->k, fallback);
         break;
     case LOP_NOT:
         emitInstNot(build, pc);
         break;
     case LOP_MINUS:
-        emitInstMinus(build, pc, i, fallback);
+        emitInstMinus(build, pc, fallback);
         break;
     case LOP_LENGTH:
-        emitInstLength(build, pc, i, fallback);
+        emitInstLength(build, pc, fallback);
         break;
     case LOP_NEWTABLE:
-        emitInstNewTable(build, pc, i, labelarr);
+        emitInstNewTable(build, pc, i, next);
         break;
     case LOP_DUPTABLE:
-        emitInstDupTable(build, pc, i, labelarr);
+        emitInstDupTable(build, pc, i, next);
         break;
     case LOP_SETLIST:
-        emitInstSetList(build, pc, i, labelarr);
+        emitInstSetList(build, pc, next);
         break;
     case LOP_GETUPVAL:
-        emitInstGetUpval(build, pc, i);
+        emitInstGetUpval(build, pc);
         break;
     case LOP_SETUPVAL:
-        emitInstSetUpval(build, pc, i, labelarr);
+        emitInstSetUpval(build, pc, next);
         break;
     case LOP_CLOSEUPVALS:
-        emitInstCloseUpvals(build, pc, i, labelarr);
+        emitInstCloseUpvals(build, pc, next);
         break;
     case LOP_FASTCALL:
-        skip = emitInstFastCall(build, pc, i, labelarr);
+        // We want to lower next instruction at skip+2, but this instruction is only 1 long, so we need to add 1
+        skip = emitInstFastCall(build, pc, i, next) + 1;
         break;
     case LOP_FASTCALL1:
-        skip = emitInstFastCall1(build, pc, i, labelarr);
+        // We want to lower next instruction at skip+2, but this instruction is only 1 long, so we need to add 1
+        skip = emitInstFastCall1(build, pc, i, next) + 1;
         break;
     case LOP_FASTCALL2:
-        skip = emitInstFastCall2(build, pc, i, labelarr);
+        skip = emitInstFastCall2(build, pc, i, next);
         break;
     case LOP_FASTCALL2K:
-        skip = emitInstFastCall2K(build, pc, i, labelarr);
+        skip = emitInstFastCall2K(build, pc, i, next);
         break;
     case LOP_FORNPREP:
-        emitInstForNPrep(build, pc, i, labelarr);
+        emitInstForNPrep(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
         break;
     case LOP_FORNLOOP:
-        emitInstForNLoop(build, pc, i, labelarr);
+        emitInstForNLoop(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
         break;
     case LOP_FORGLOOP:
-        emitinstForGLoop(build, pc, i, labelarr, fallback);
+        emitinstForGLoop(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)], next, fallback);
         break;
     case LOP_FORGPREP_NEXT:
-        emitInstForGPrepNext(build, pc, i, labelarr, fallback);
+        emitInstForGPrepNext(build, pc, labelarr[i + 1 + LUAU_INSN_D(*pc)], fallback);
         break;
     case LOP_FORGPREP_INEXT:
-        emitInstForGPrepInext(build, pc, i, labelarr, fallback);
+        emitInstForGPrepInext(build, pc, labelarr[i + 1 + LUAU_INSN_D(*pc)], fallback);
         break;
     case LOP_AND:
         emitInstAnd(build, pc);
@@ -266,7 +268,7 @@ static int emitInst(AssemblyBuilderX64& build, NativeState& data, ModuleHelpers&
         emitInstGetImport(build, pc, fallback);
         break;
     case LOP_CONCAT:
-        emitInstConcat(build, pc, i, labelarr);
+        emitInstConcat(build, pc, i, next);
         break;
     default:
         emitFallback(build, data, op, i);
@@ -281,7 +283,8 @@ static void emitInstFallback(AssemblyBuilderX64& build, NativeState& data, LuauO
     switch (op)
     {
     case LOP_GETIMPORT:
-        emitInstGetImportFallback(build, pc, i);
+        emitSetSavedPc(build, i + 1);
+        emitInstGetImportFallback(build, LUAU_INSN_A(*pc), pc[1]);
         break;
     case LOP_GETTABLE:
         emitInstGetTableFallback(build, pc, i);
@@ -356,11 +359,11 @@ static void emitInstFallback(AssemblyBuilderX64& build, NativeState& data, LuauO
         emitInstLengthFallback(build, pc, i);
         break;
     case LOP_FORGLOOP:
-        emitinstForGLoopFallback(build, pc, i, labelarr);
+        emitinstForGLoopFallback(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
         break;
     case LOP_FORGPREP_NEXT:
     case LOP_FORGPREP_INEXT:
-        emitInstForGPrepXnextFallback(build, pc, i, labelarr);
+        emitInstForGPrepXnextFallback(build, pc, i, labelarr[i + 1 + LUAU_INSN_D(*pc)]);
         break;
     case LOP_GETGLOBAL:
         // TODO: luaV_gettable + cachedslot update instead of full fallback
@@ -430,7 +433,9 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
         if (options.annotator)
             options.annotator(options.annotatorContext, build.text, proto->bytecodeid, i);
 
-        int skip = emitInst(build, data, helpers, proto, op, pc, i, instLabels.data(), instFallbacks[i]);
+        Label& next = nexti < proto->sizecode ? instLabels[nexti] : start; // Last instruction can't use 'next' label
+
+        int skip = emitInst(build, data, helpers, proto, op, pc, i, instLabels.data(), next, instFallbacks[i]);
 
         if (skip != 0)
             instOutlines.push_back({nexti, skip});
@@ -454,15 +459,20 @@ static NativeProto* assembleFunction(AssemblyBuilderX64& build, NativeState& dat
             const Instruction* pc = &proto->code[i];
             LuauOpcode op = LuauOpcode(LUAU_INSN_OP(*pc));
 
+            int nexti = i + getOpLength(op);
+            LUAU_ASSERT(nexti <= proto->sizecode);
+
             build.setLabel(instLabels[i]);
 
             if (options.annotator && !options.skipOutlinedCode)
                 options.annotator(options.annotatorContext, build.text, proto->bytecodeid, i);
 
-            int skip = emitInst(build, data, helpers, proto, op, pc, i, instLabels.data(), instFallbacks[i]);
+            Label& next = nexti < proto->sizecode ? instLabels[nexti] : start; // Last instruction can't use 'next' label
+
+            int skip = emitInst(build, data, helpers, proto, op, pc, i, instLabels.data(), next, instFallbacks[i]);
             LUAU_ASSERT(skip == 0);
 
-            i += getOpLength(op);
+            i = nexti;
         }
 
         if (i < proto->sizecode)

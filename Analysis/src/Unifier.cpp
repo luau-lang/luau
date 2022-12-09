@@ -5,12 +5,13 @@
 #include "Luau/Instantiation.h"
 #include "Luau/RecursionCounter.h"
 #include "Luau/Scope.h"
+#include "Luau/StringUtils.h"
+#include "Luau/TimeTrace.h"
+#include "Luau/ToString.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeUtils.h"
-#include "Luau/TimeTrace.h"
 #include "Luau/TypeVar.h"
 #include "Luau/VisitTypeVar.h"
-#include "Luau/ToString.h"
 
 #include <algorithm>
 
@@ -23,7 +24,7 @@ LUAU_FASTFLAGVARIABLE(LuauScalarShapeSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauInstantiateInSubtyping, false)
 LUAU_FASTFLAGVARIABLE(LuauOverloadedFunctionSubtypingPerf, false);
 LUAU_FASTFLAGVARIABLE(LuauScalarShapeUnifyToMtOwner2, false)
-LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything, false)
+LUAU_FASTFLAGVARIABLE(LuauUninhabitedSubAnything2, false)
 LUAU_FASTFLAG(LuauClassTypeVarsInSubstitution)
 LUAU_FASTFLAG(LuauTxnLogTypePackIterator)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
@@ -588,7 +589,7 @@ void Unifier::tryUnify_(TypeId subTy, TypeId superTy, bool isFunctionCall, bool 
     else if (log.get<NegationTypeVar>(subTy))
         tryUnifyNegationWithType(subTy, superTy);
 
-    else if (FFlag::LuauUninhabitedSubAnything && !normalizer->isInhabited(subTy))
+    else if (FFlag::LuauUninhabitedSubAnything2 && !normalizer->isInhabited(subTy))
         {}
 
     else
@@ -1980,7 +1981,7 @@ void Unifier::tryUnifyScalarShape(TypeId subTy, TypeId superTy, bool reversed)
     TypeId osubTy = subTy;
     TypeId osuperTy = superTy;
 
-    if (FFlag::LuauUninhabitedSubAnything && !normalizer->isInhabited(subTy))
+    if (FFlag::LuauUninhabitedSubAnything2 && !normalizer->isInhabited(subTy))
         return;
 
     if (reversed)

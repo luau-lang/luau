@@ -2,19 +2,34 @@
 #pragma once
 
 #include "Luau/Common.h"
-#include "Luau/TypeVar.h"
-#include "Luau/ConstraintGraphBuilder.h"
 
-#include <unordered_map>
-#include <optional>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 LUAU_FASTINT(LuauTableTypeMaximumStringifierLength)
 LUAU_FASTINT(LuauTypeMaximumStringifierLength)
 
 namespace Luau
 {
+
+class AstExpr;
+
+struct Scope;
+
+struct TypeVar;
+using TypeId = const TypeVar*;
+
+struct TypePackVar;
+using TypePackId = const TypePackVar*;
+
+struct FunctionTypeVar;
+struct Constraint;
+
+struct Position;
+struct Location;
 
 struct ToStringNameMap
 {
@@ -124,5 +139,8 @@ std::string dump(const Constraint& c);
 std::string dump(const std::shared_ptr<Scope>& scope, const char* name);
 
 std::string generateName(size_t n);
+
+std::string toString(const Position& position);
+std::string toString(const Location& location);
 
 } // namespace Luau

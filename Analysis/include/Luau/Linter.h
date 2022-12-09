@@ -4,6 +4,7 @@
 #include "Luau/Location.h"
 
 #include <memory>
+#include <string>
 #include <vector>
 
 namespace Luau

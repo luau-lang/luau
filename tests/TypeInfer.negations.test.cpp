@@ -13,8 +13,7 @@ namespace
 struct NegationFixture : Fixture
 {
     TypeArena arena;
-    ScopedFastFlag sff[2]{
-        {"LuauNegatedStringSingletons", true},
+    ScopedFastFlag sff[1]{
         {"LuauSubtypeNormalizer", true},
     };
 

@@ -145,7 +145,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_never")
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
-        {"LuauUninhabitedSubAnything", true},
+        {"LuauUninhabitedSubAnything2", true},
     };
 
     CheckResult result = check(R"(
@@ -161,7 +161,7 @@ TEST_CASE_FIXTURE(TryUnifyFixture, "uninhabited_table_sub_anything")
     ScopedFastFlag sffs[]{
         {"LuauSubtypeNormalizer", true},
         {"LuauTypeNormalization2", true},
-        {"LuauUninhabitedSubAnything", true},
+        {"LuauUninhabitedSubAnything2", true},
     };
 
     CheckResult result = check(R"(

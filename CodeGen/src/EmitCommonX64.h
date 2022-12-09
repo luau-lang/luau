@@ -99,7 +99,7 @@ inline OperandX64 luauRegTag(int ri)
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, tt)];
 }
 
-inline OperandX64 luauRegValueBoolean(int ri)
+inline OperandX64 luauRegValueInt(int ri)
 {
     return dword[rBase + ri * sizeof(TValue) + offsetof(TValue, value)];
 }
@@ -174,7 +174,7 @@ inline void jumpIfFalsy(AssemblyBuilderX64& build, int ri, Label& target, Label&
     jumpIfTagIs(build, ri, LUA_TNIL, target);             // false if nil
     jumpIfTagIsNot(build, ri, LUA_TBOOLEAN, fallthrough); // true if not nil or boolean
 
-    build.cmp(luauRegValueBoolean(ri), 0);
+    build.cmp(luauRegValueInt(ri), 0);
     build.jcc(ConditionX64::Equal, target); // true if boolean value is 'true'
 }
 
@@ -184,7 +184,7 @@ inline void jumpIfTruthy(AssemblyBuilderX64& build, int ri, Label& target, Label
     jumpIfTagIs(build, ri, LUA_TNIL, fallthrough);   // false if nil
     jumpIfTagIsNot(build, ri, LUA_TBOOLEAN, target); // true if not nil or boolean
 
-    build.cmp(luauRegValueBoolean(ri), 0);
+    build.cmp(luauRegValueInt(ri), 0);
     build.jcc(ConditionX64::NotEqual, target); // true if boolean value is 'true'
 }
 
@@ -236,16 +236,16 @@ inline void jumpIfNodeKeyNotInExpectedSlot(AssemblyBuilderX64& build, RegisterX6
 }
 
 void jumpOnNumberCmp(AssemblyBuilderX64& build, RegisterX64 tmp, OperandX64 lhs, OperandX64 rhs, ConditionX64 cond, Label& label);
-void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX64 cond, Label& label, int pcpos);
+void jumpOnAnyCmpFallback(AssemblyBuilderX64& build, int ra, int rb, ConditionX64 cond, Label& label);
 
-RegisterX64 getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int pcpos);
-void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, int ri, Label& label);
+void getTableNodeAtCachedSlot(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 node, RegisterX64 table, int pcpos);
+void convertNumberToIndexOrJump(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 numd, RegisterX64 numi, Label& label);
 
-void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, int pcpos, TMS tm);
-void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb, int pcpos);
-void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init, int pcpos);
-void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos);
-void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra, int pcpos);
+void callArithHelper(AssemblyBuilderX64& build, int ra, int rb, OperandX64 c, TMS tm);
+void callLengthHelper(AssemblyBuilderX64& build, int ra, int rb);
+void callPrepareForN(AssemblyBuilderX64& build, int limit, int step, int init);
+void callGetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
+void callSetTable(AssemblyBuilderX64& build, int rb, OperandX64 c, int ra);
 void callBarrierTable(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 table, int ra, Label& skip);
 void callBarrierObject(AssemblyBuilderX64& build, RegisterX64 tmp, RegisterX64 object, int ra, Label& skip);
 void callBarrierTableFast(AssemblyBuilderX64& build, RegisterX64 table, Label& skip);

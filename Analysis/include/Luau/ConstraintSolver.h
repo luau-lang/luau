@@ -2,12 +2,13 @@
 
 #pragma once
 
-#include "Luau/Error.h"
-#include "Luau/Variant.h"
 #include "Luau/Constraint.h"
-#include "Luau/TypeVar.h"
-#include "Luau/ToString.h"
+#include "Luau/Error.h"
+#include "Luau/Module.h"
 #include "Luau/Normalize.h"
+#include "Luau/ToString.h"
+#include "Luau/TypeVar.h"
+#include "Luau/Variant.h"
 
 #include <vector>
 

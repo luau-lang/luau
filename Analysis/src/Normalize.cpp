@@ -19,12 +19,11 @@ LUAU_FASTINTVARIABLE(LuauNormalizeIterationLimit, 1200);
 LUAU_FASTINTVARIABLE(LuauNormalizeCacheLimit, 100000);
 LUAU_FASTFLAGVARIABLE(LuauNormalizeCombineTableFix, false);
 LUAU_FASTFLAGVARIABLE(LuauTypeNormalization2, false);
-LUAU_FASTFLAGVARIABLE(LuauNegatedStringSingletons, false);
 LUAU_FASTFLAGVARIABLE(LuauNegatedFunctionTypes, false);
 LUAU_FASTFLAG(LuauUnknownAndNeverType)
 LUAU_FASTFLAG(DebugLuauDeferredConstraintResolution)
 LUAU_FASTFLAG(LuauOverloadedFunctionSubtypingPerf);
-LUAU_FASTFLAG(LuauUninhabitedSubAnything)
+LUAU_FASTFLAG(LuauUninhabitedSubAnything2)
 
 namespace Luau
 {
@@ -44,6 +43,11 @@ void TypeIds::clear()
     order.clear();
     types.clear();
     hash = 0;
+}
+
+TypeId TypeIds::front() const
+{
+    return order.at(0);
 }
 
 TypeIds::iterator TypeIds::begin()
@@ -111,94 +115,68 @@ bool TypeIds::operator==(const TypeIds& there) const
     return hash == there.hash && types == there.types;
 }
 
-NormalizedStringType::NormalizedStringType(bool isCofinite, std::optional<std::map<std::string, TypeId>> singletons)
+NormalizedStringType::NormalizedStringType()
+{}
+
+NormalizedStringType::NormalizedStringType(bool isCofinite, std::map<std::string, TypeId> singletons)
     : isCofinite(isCofinite)
     , singletons(std::move(singletons))
 {
-    if (!FFlag::LuauNegatedStringSingletons)
-        LUAU_ASSERT(!isCofinite);
 }
 
 void NormalizedStringType::resetToString()
 {
-    if (FFlag::LuauNegatedStringSingletons)
-    {
-        isCofinite = true;
-        singletons->clear();
-    }
-    else
-        singletons.reset();
+    isCofinite = true;
+    singletons.clear();
 }
 
 void NormalizedStringType::resetToNever()
 {
-    if (FFlag::LuauNegatedStringSingletons)
-    {
-        isCofinite = false;
-        singletons.emplace();
-    }
-    else
-    {
-        if (singletons)
-            singletons->clear();
-        else
-            singletons.emplace();
-    }
+    isCofinite = false;
+    singletons.clear();
 }
 
 bool NormalizedStringType::isNever() const
 {
-    if (FFlag::LuauNegatedStringSingletons)
-        return !isCofinite && singletons->empty();
-    else
-        return singletons && singletons->empty();
+    return !isCofinite && singletons.empty();
 }
 
 bool NormalizedStringType::isString() const
 {
-    if (FFlag::LuauNegatedStringSingletons)
-        return isCofinite && singletons->empty();
-    else
-        return !singletons;
+    return isCofinite && singletons.empty();
 }
 
 bool NormalizedStringType::isUnion() const
 {
-    if (FFlag::LuauNegatedStringSingletons)
-        return !isCofinite;
-    else
-        return singletons.has_value();
+    return !isCofinite;
 }
 
 bool NormalizedStringType::isIntersection() const
 {
-    if (FFlag::LuauNegatedStringSingletons)
-        return isCofinite;
-    else
-        return false;
+    return isCofinite;
 }
 
 bool NormalizedStringType::includes(const std::string& str) const
 {
     if (isString())
         return true;
-    else if (isUnion() && singletons->count(str))
+    else if (isUnion() && singletons.count(str))
         return true;
-    else if (isIntersection() && !singletons->count(str))
+    else if (isIntersection() && !singletons.count(str))
         return true;
     else
         return false;
 }
 
-const NormalizedStringType NormalizedStringType::never{false, {{}}};
+const NormalizedStringType NormalizedStringType::never;
 
 bool isSubtype(const NormalizedStringType& subStr, const NormalizedStringType& superStr)
 {
     if (subStr.isUnion() && superStr.isUnion())
     {
-        for (auto [name, ty] : *subStr.singletons)
+        for (auto [name, ty] : subStr.singletons)
         {
-            if (!superStr.singletons->count(name))
+            if (!superStr.singletons.count(name))
                 return false;
         }
     }
@@ -251,17 +229,21 @@ static bool isShallowInhabited(const NormalizedType& norm)
 
 bool isInhabited_DEPRECATED(const NormalizedType& norm)
 {
-    LUAU_ASSERT(!FFlag::LuauUninhabitedSubAnything);
+    LUAU_ASSERT(!FFlag::LuauUninhabitedSubAnything2);
     return isShallowInhabited(norm);
 }
 
 bool Normalizer::isInhabited(const NormalizedType* norm, std::unordered_set<TypeId> seen)
 {
+    // If normalization failed, the type is complex, and so is more likely than not to be inhabited.
+    if (!norm)
+        return true;
+
     if (!get<NeverTypeVar>(norm->tops) || !get<NeverTypeVar>(norm->booleans) || !get<NeverTypeVar>(norm->errors) ||
         !get<NeverTypeVar>(norm->nils) || !get<NeverTypeVar>(norm->numbers) || !get<NeverTypeVar>(norm->threads) ||
         !norm->classes.empty() || !norm->strings.isNever() || !norm->functions.isNever())
         return true;
-    
+
     for (const auto& [_, intersect] : norm->tyvars)
     {
         if (isInhabited(intersect.get(), seen))
@@ -372,7 +354,7 @@ static bool isNormalizedString(const NormalizedStringType& ty)
     if (ty.isString())
         return true;
 
-    for (auto& [str, ty] : *ty.singletons)
+    for (auto& [str, ty] : ty.singletons)
     {
         if (const SingletonTypeVar* stv = get<SingletonTypeVar>(ty))
         {
@@ -682,56 +664,46 @@ void Normalizer::unionClasses(TypeIds& heres, const TypeIds& theres)
 
 void Normalizer::unionStrings(NormalizedStringType& here, const NormalizedStringType& there)
 {
-    if (FFlag::LuauNegatedStringSingletons)
+    if (there.isString())
+        here.resetToString();
+    else if (here.isUnion() && there.isUnion())
+        here.singletons.insert(there.singletons.begin(), there.singletons.end());
+    else if (here.isUnion() && there.isIntersection())
     {
-        if (there.isString())
-            here.resetToString();
-        else if (here.isUnion() && there.isUnion())
-            here.singletons->insert(there.singletons->begin(), there.singletons->end());
-        else if (here.isUnion() && there.isIntersection())
+        here.isCofinite = true;
+        for (const auto& pair : there.singletons)
         {
-            here.isCofinite = true;
-            for (const auto& pair : *there.singletons)
-            {
-                auto it = here.singletons->find(pair.first);
-                if (it != end(*here.singletons))
-                    here.singletons->erase(it);
-                else
-                    here.singletons->insert(pair);
-            }
+            auto it = here.singletons.find(pair.first);
+            if (it != end(here.singletons))
+                here.singletons.erase(it);
+            else
+                here.singletons.insert(pair);
         }
-        else if (here.isIntersection() && there.isUnion())
-        {
-            for (const auto& [name, ty] : *there.singletons)
-                here.singletons->erase(name);
-        }
-        else if (here.isIntersection() && there.isIntersection())
-        {
-            auto iter = begin(*here.singletons);
-            auto endIter = end(*here.singletons);
+    }
+    else if (here.isIntersection() && there.isUnion())
+    {
+        for (const auto& [name, ty] : there.singletons)
+            here.singletons.erase(name);
+    }
+    else if (here.isIntersection() && there.isIntersection())
+    {
+        auto iter = begin(here.singletons);
+        auto endIter = end(here.singletons);
 
-            while (iter != endIter)
+        while (iter != endIter)
+        {
+            if (!there.singletons.count(iter->first))
             {
-                if (!there.singletons->count(iter->first))
-                {
-                    auto eraseIt = iter;
-                    ++iter;
-                    here.singletons->erase(eraseIt);
-                }
-                else
-                    ++iter;
+                auto eraseIt = iter;
+                ++iter;
+                here.singletons.erase(eraseIt);
             }
+            else
+                ++iter;
         }
-        else
-            LUAU_ASSERT(!"Unreachable");
     }
     else
-    {
-        if (there.isString())
-            here.resetToString();
-        else if (here.isUnion())
-            here.singletons->insert(there.singletons->begin(), there.singletons->end());
-    }
+        LUAU_ASSERT(!"Unreachable");
 }
 
 std::optional<TypePackId> Normalizer::unionOfTypePacks(TypePackId here, TypePackId there)
@@ -1116,22 +1088,14 @@ bool Normalizer::unionNormalWithTy(NormalizedType& here, TypeId there, int ignor
             here.booleans = unionOfBools(here.booleans, there);
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))
         {
-            if (FFlag::LuauNegatedStringSingletons)
+            if (here.strings.isCofinite)
             {
-                if (here.strings.isCofinite)
-                {
-                    auto it = here.strings.singletons->find(sstv->value);
-                    if (it != here.strings.singletons->end())
-                        here.strings.singletons->erase(it);
-                }
-                else
-                    here.strings.singletons->insert({sstv->value, there});
+                auto it = here.strings.singletons.find(sstv->value);
+                if (it != here.strings.singletons.end())
+                    here.strings.singletons.erase(it);
             }
             else
-            {
-                if (here.strings.isUnion())
-                    here.strings.singletons->insert({sstv->value, there});
-            }
+                here.strings.singletons.insert({sstv->value, there});
         }
         else
             LUAU_ASSERT(!"Unreachable");
@@ -1278,7 +1242,6 @@ void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
         here.threads = singletonTypes->neverType;
         break;
     case PrimitiveTypeVar::Function:
-        LUAU_ASSERT(FFlag::LuauNegatedStringSingletons);
         here.functions.resetToNever();
         break;
     }
@@ -1286,20 +1249,18 @@ void Normalizer::subtractPrimitive(NormalizedType& here, TypeId ty)
 
 void Normalizer::subtractSingleton(NormalizedType& here, TypeId ty)
 {
-    LUAU_ASSERT(FFlag::LuauNegatedStringSingletons);
-
     const SingletonTypeVar* stv = get<SingletonTypeVar>(ty);
     LUAU_ASSERT(stv);
 
     if (const StringSingleton* ss = get<StringSingleton>(stv))
     {
         if (here.strings.isCofinite)
-            here.strings.singletons->insert({ss->value, ty});
+            here.strings.singletons.insert({ss->value, ty});
         else
         {
-            auto it = here.strings.singletons->find(ss->value);
-            if (it != here.strings.singletons->end())
-                here.strings.singletons->erase(it);
+            auto it = here.strings.singletons.find(ss->value);
+            if (it != here.strings.singletons.end())
+                here.strings.singletons.erase(it);
         }
     }
     else if (const BooleanSingleton* bs = get<BooleanSingleton>(stv))
@@ -1417,12 +1378,12 @@ void Normalizer::intersectStrings(NormalizedStringType& here, const NormalizedSt
     if (here.isString())
         here.resetToNever();
 
-    for (auto it = here.singletons->begin(); it != here.singletons->end();)
+    for (auto it = here.singletons.begin(); it != here.singletons.end();)
     {
-        if (there.singletons->count(it->first))
+        if (there.singletons.count(it->first))
             it++;
         else
-            it = here.singletons->erase(it);
+            it = here.singletons.erase(it);
     }
 }
 
@@ -2096,12 +2057,12 @@ bool Normalizer::intersectNormalWithTy(NormalizedType& here, TypeId there)
         else if (const StringSingleton* sstv = get<StringSingleton>(stv))
         {
             if (strings.includes(sstv->value))
-                here.strings.singletons->insert({sstv->value, there});
+                here.strings.singletons.insert({sstv->value, there});
         }
         else
             LUAU_ASSERT(!"Unreachable");
     }
-    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(there); FFlag::LuauNegatedStringSingletons && ntv)
+    else if (const NegationTypeVar* ntv = get<NegationTypeVar>(there))
     {
         TypeId t = follow(ntv->ty);
         if (const PrimitiveTypeVar* ptv = get<PrimitiveTypeVar>(t))
@@ -2171,14 +2132,14 @@ TypeId Normalizer::typeFromNormal(const NormalizedType& norm)
         result.push_back(singletonTypes->stringType);
     else if (norm.strings.isUnion())
     {
-        for (auto& [_, ty] : *norm.strings.singletons)
+        for (auto& [_, ty] : norm.strings.singletons)
             result.push_back(ty);
     }
-    else if (FFlag::LuauNegatedStringSingletons && norm.strings.isIntersection())
+    else if (norm.strings.isIntersection())
     {
         std::vector<TypeId> parts;
         parts.push_back(singletonTypes->stringType);
-        for (const auto& [name, ty] : *norm.strings.singletons)
+        for (const auto& [name, ty] : norm.strings.singletons)
             parts.push_back(arena->addType(NegationTypeVar{ty}));
 
         result.push_back(arena->addType(IntersectionTypeVar{std::move(parts)}));

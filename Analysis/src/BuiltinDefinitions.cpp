@@ -7,6 +7,7 @@
 #include "Luau/Common.h"
 #include "Luau/ToString.h"
 #include "Luau/ConstraintSolver.h"
+#include "Luau/ConstraintGraphBuilder.h"
 #include "Luau/TypeInfer.h"
 #include "Luau/TypePack.h"
 #include "Luau/TypeVar.h"
@@ -45,6 +46,8 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionRequire(
 static bool dcrMagicFunctionSelect(MagicFunctionCallContext context);
 static bool dcrMagicFunctionRequire(MagicFunctionCallContext context);
 static bool dcrMagicFunctionPack(MagicFunctionCallContext context);
+
+static std::vector<ConnectiveId> dcrMagicRefinementAssert(const MagicRefinementContext& context);
 
 TypeId makeUnion(TypeArena& arena, std::vector<TypeId>&& types)
 {
@@ -478,6 +481,7 @@ void registerBuiltinGlobals(Frontend& frontend)
     }
 
     attachMagicFunction(getGlobalBinding(frontend, "assert"), magicFunctionAssert);
+    attachDcrMagicRefinement(getGlobalBinding(frontend, "assert"), dcrMagicRefinementAssert);
     attachMagicFunction(getGlobalBinding(frontend, "setmetatable"), magicFunctionSetMetaTable);
     attachMagicFunction(getGlobalBinding(frontend, "select"), magicFunctionSelect);
     attachDcrMagicFunction(getGlobalBinding(frontend, "select"), dcrMagicFunctionSelect);
@@ -701,6 +705,15 @@ static std::optional<WithPredicate<TypePackId>> magicFunctionAssert(
     }
 
     return WithPredicate<TypePackId>{arena.addTypePack(TypePack{std::move(head), tail})};
+}
+
+static std::vector<ConnectiveId> dcrMagicRefinementAssert(const MagicRefinementContext& ctx)
+{
+    if (ctx.argumentConnectives.empty())
+        return {};
+
+    ctx.cgb->applyRefinements(ctx.scope, ctx.callSite->location, ctx.argumentConnectives[0]);
+    return {};
 }
 
 static std::optional<WithPredicate<TypePackId>> magicFunctionPack(

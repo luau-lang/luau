@@ -1,16 +1,16 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
-#include "Luau/FileResolver.h"
 #include "Luau/Location.h"
 #include "Luau/TypeVar.h"
 #include "Luau/Variant.h"
-#include "Luau/TypeArena.h"
 
 namespace Luau
 {
-struct TypeError;
 
+struct FileResolver;
+struct TypeArena;
+struct TypeError;
 
 struct TypeMismatch
 {
