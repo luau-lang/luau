@@ -35,6 +35,8 @@ SomethingWithAGenericTable(5) --not OK
 
 This adds unusual syntax, as well as adding to the complexity of the language.
 
+This also doesn't address how this should be approached around type packs.
+
 ## Alternatives
 
 Do nothing, and use the `assert(type(T) == T)` syntax, though this creates extra bytecode.
